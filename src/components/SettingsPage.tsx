@@ -1,0 +1,1091 @@
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Badge } from "./ui/badge";
+import { RefreshCw, Download, Mic, Shield, FolderOpen } from "lucide-react";
+import MarkdownRenderer from "./ui/MarkdownRenderer";
+import MicPermissionWarning from "./ui/MicPermissionWarning";
+import MicrophoneSettings from "./ui/MicrophoneSettings";
+import PermissionCard from "./ui/PermissionCard";
+import PasteToolsInfo from "./ui/PasteToolsInfo";
+import TranscriptionModelPicker from "./TranscriptionModelPicker";
+import { ConfirmDialog, AlertDialog } from "./ui/dialog";
+import { useSettings } from "../hooks/useSettings";
+import { useDialogs } from "../hooks/useDialogs";
+import { useAgentName } from "../utils/agentName";
+import { useWhisper } from "../hooks/useWhisper";
+import { usePermissions } from "../hooks/usePermissions";
+import { useClipboard } from "../hooks/useClipboard";
+import { useUpdater } from "../hooks/useUpdater";
+
+import PromptStudio from "./ui/PromptStudio";
+import ReasoningModelSelector from "./ReasoningModelSelector";
+
+import { HotkeyInput } from "./ui/HotkeyInput";
+import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
+import { ActivationModeSelector } from "./ui/ActivationModeSelector";
+import { Toggle } from "./ui/toggle";
+import DeveloperSection from "./DeveloperSection";
+import { SettingsRow } from "./ui/SettingsSection";
+import { LANGUAGE_OPTIONS } from "../utils/languages";
+
+export type SettingsSectionType =
+  | "general"
+  | "preferences"
+  | "transcription"
+  | "permissions"
+  | "help"
+  | "developer";
+
+interface SettingsPageProps {
+  activeSection?: SettingsSectionType;
+}
+
+// ── Reusable layout primitives ──────────────────────────────────────
+
+function SettingsPanel({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm divide-y divide-border-subtle/30 shadow-sm overflow-hidden ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SettingsPanelRow({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <div className={`px-5 py-4 ${className}`}>{children}</div>;
+}
+
+function SectionHeader({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="mb-5">
+      <h3 className="text-lg font-semibold text-foreground tracking-tight">{title}</h3>
+      {description && (
+        <p className="text-sm text-muted-foreground/80 mt-1.5 leading-relaxed">{description}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ──────────────────────────────────────────────────
+
+export default function SettingsPage({ activeSection = "general" }: SettingsPageProps) {
+  const {
+    confirmDialog,
+    alertDialog,
+    showConfirmDialog,
+    showAlertDialog,
+    hideConfirmDialog,
+    hideAlertDialog,
+  } = useDialogs();
+
+  const {
+    useLocalWhisper,
+    whisperModel,
+    localTranscriptionProvider,
+    parakeetModel,
+    cloudTranscriptionProvider,
+    cloudTranscriptionModel,
+    cloudTranscriptionBaseUrl,
+    cloudReasoningBaseUrl,
+    customDictionary,
+    useReasoningModel,
+    reasoningModel,
+    reasoningProvider,
+    openaiApiKey,
+    anthropicApiKey,
+    geminiApiKey,
+    groqApiKey,
+    dictationKey,
+    activationMode,
+    setActivationMode,
+    preferBuiltInMic,
+    selectedMicDeviceId,
+    setPreferBuiltInMic,
+    setSelectedMicDeviceId,
+    setUseLocalWhisper,
+    setWhisperModel,
+    setLocalTranscriptionProvider,
+    setParakeetModel,
+    setCloudTranscriptionProvider,
+    setCloudTranscriptionModel,
+    setCloudTranscriptionBaseUrl,
+    setCloudReasoningBaseUrl,
+    setCustomDictionary,
+    setUseReasoningModel,
+    setReasoningModel,
+    setReasoningProvider,
+    setOpenaiApiKey,
+    setAnthropicApiKey,
+    setGeminiApiKey,
+    setGroqApiKey,
+    customTranscriptionApiKey,
+    setCustomTranscriptionApiKey,
+    customReasoningApiKey,
+    setCustomReasoningApiKey,
+    setDictationKey,
+    historyLimit,
+    setHistoryLimit,
+    updateTranscriptionSettings,
+    updateReasoningSettings,
+    language,
+    setLanguage,
+  } = useSettings();
+
+  const [currentVersion, setCurrentVersion] = useState<string>("");
+  const [isRemovingModels, setIsRemovingModels] = useState(false);
+  const cachePathHint =
+    typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
+      ? "%USERPROFILE%\\.cache\\dictatevoice\\whisper-models"
+      : "~/.cache/dictatevoice/whisper-models";
+
+  const {
+    status: updateStatus,
+    info: updateInfo,
+    downloadProgress: updateDownloadProgress,
+    isChecking: checkingForUpdates,
+    isDownloading: downloadingUpdate,
+    isInstalling: installInitiated,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate: installUpdateAction,
+    getAppVersion,
+    error: updateError,
+  } = useUpdater();
+
+  const isUpdateAvailable =
+    !updateStatus.isDevelopment && (updateStatus.updateAvailable || updateStatus.updateDownloaded);
+
+  const whisperHook = useWhisper();
+  const permissionsHook = usePermissions(showAlertDialog);
+  useClipboard(showAlertDialog);
+  const { agentName, setAgentName } = useAgentName();
+  const installTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
+    onSuccess: (registeredHotkey) => {
+      setDictationKey(registeredHotkey);
+    },
+    showSuccessToast: false,
+    showErrorToast: true,
+    showAlert: showAlertDialog,
+  });
+
+  const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
+
+  const platform = useMemo(() => {
+    if (typeof window !== "undefined" && window.electronAPI?.getPlatform) {
+      return window.electronAPI.getPlatform();
+    }
+    return "linux";
+  }, []);
+
+  const [newDictionaryWord, setNewDictionaryWord] = useState("");
+
+  const handleAddDictionaryWord = useCallback(() => {
+    const word = newDictionaryWord.trim();
+    if (word && !customDictionary.includes(word)) {
+      setCustomDictionary([...customDictionary, word]);
+      setNewDictionaryWord("");
+    }
+  }, [newDictionaryWord, customDictionary, setCustomDictionary]);
+
+  const handleRemoveDictionaryWord = useCallback(
+    (wordToRemove: string) => {
+      setCustomDictionary(customDictionary.filter((word) => word !== wordToRemove));
+    },
+    [customDictionary, setCustomDictionary]
+  );
+
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [autoStartLoading, setAutoStartLoading] = useState(true);
+
+  useEffect(() => {
+    if (platform === "linux") {
+      setAutoStartLoading(false);
+      return;
+    }
+    const loadAutoStart = async () => {
+      if (window.electronAPI?.getAutoStartEnabled) {
+        try {
+          const enabled = await window.electronAPI.getAutoStartEnabled();
+          setAutoStartEnabled(enabled);
+        } catch (error) {
+          console.error("Failed to get auto-start status:", error);
+        }
+      }
+      setAutoStartLoading(false);
+    };
+    loadAutoStart();
+  }, [platform]);
+
+  const handleAutoStartChange = async (enabled: boolean) => {
+    if (window.electronAPI?.setAutoStartEnabled) {
+      try {
+        setAutoStartLoading(true);
+        const result = await window.electronAPI.setAutoStartEnabled(enabled);
+        if (result.success) {
+          setAutoStartEnabled(enabled);
+        }
+      } catch (error) {
+        console.error("Failed to set auto-start:", error);
+      } finally {
+        setAutoStartLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const timer = setTimeout(async () => {
+      if (!mounted) return;
+
+      const version = await getAppVersion();
+      if (version && mounted) setCurrentVersion(version);
+
+      if (mounted) {
+        whisperHook.checkWhisperInstallation();
+      }
+    }, 100);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, [whisperHook, getAppVersion]);
+
+  useEffect(() => {
+    const checkHotkeyMode = async () => {
+      try {
+        const info = await window.electronAPI?.getHotkeyModeInfo();
+        if (info?.isUsingGnome) {
+          setIsUsingGnomeHotkeys(true);
+          setActivationMode("tap");
+        }
+      } catch (error) {
+        console.error("Failed to check hotkey mode:", error);
+      }
+    };
+    checkHotkeyMode();
+  }, [setActivationMode]);
+
+  useEffect(() => {
+    if (updateError) {
+      showAlertDialog({
+        title: "Update Error",
+        description:
+          updateError.message ||
+          "The updater encountered a problem. Please try again or download the latest release manually.",
+      });
+    }
+  }, [updateError, showAlertDialog]);
+
+  useEffect(() => {
+    if (installInitiated) {
+      if (installTimeoutRef.current) {
+        clearTimeout(installTimeoutRef.current);
+      }
+      installTimeoutRef.current = setTimeout(() => {
+        showAlertDialog({
+          title: "Still Running",
+          description:
+            "DictateVoice didn't restart automatically. Please quit the app manually to finish installing the update.",
+        });
+      }, 10000);
+    } else if (installTimeoutRef.current) {
+      clearTimeout(installTimeoutRef.current);
+      installTimeoutRef.current = null;
+    }
+
+    return () => {
+      if (installTimeoutRef.current) {
+        clearTimeout(installTimeoutRef.current);
+        installTimeoutRef.current = null;
+      }
+    };
+  }, [installInitiated, showAlertDialog]);
+
+  const resetAccessibilityPermissions = () => {
+    const message = `To fix accessibility permissions:\n\n1. Open System Settings > Privacy & Security > Accessibility\n2. Remove any old DictateVoice or Electron entries\n3. Click (+) and add the current DictateVoice app\n4. Make sure the checkbox is enabled\n5. Restart DictateVoice\n\nClick OK to open System Settings.`;
+
+    showConfirmDialog({
+      title: "Reset Accessibility Permissions",
+      description: message,
+      onConfirm: () => {
+        permissionsHook.openAccessibilitySettings();
+      },
+    });
+  };
+
+  const handleRemoveModels = useCallback(() => {
+    if (isRemovingModels) return;
+
+    showConfirmDialog({
+      title: "Remove downloaded models?",
+      description: `This deletes all locally cached Whisper models (${cachePathHint}) and frees disk space. You can download them again from the model picker.`,
+      confirmText: "Delete Models",
+      variant: "destructive",
+      onConfirm: () => {
+        setIsRemovingModels(true);
+        window.electronAPI
+          ?.deleteAllWhisperModels?.()
+          .then((result) => {
+            if (!result?.success) {
+              showAlertDialog({
+                title: "Unable to Remove Models",
+                description:
+                  result?.error || "Something went wrong while deleting the cached models.",
+              });
+              return;
+            }
+
+            window.dispatchEvent(new Event("dictatevoice-models-cleared"));
+
+            showAlertDialog({
+              title: "Models Removed",
+              description:
+                "All downloaded Whisper models were deleted. You can re-download any model from the picker when needed.",
+            });
+          })
+          .catch((error) => {
+            showAlertDialog({
+              title: "Unable to Remove Models",
+              description: error?.message || "An unknown error occurred.",
+            });
+          })
+          .finally(() => {
+            setIsRemovingModels(false);
+          });
+      },
+    });
+  }, [isRemovingModels, cachePathHint, showConfirmDialog, showAlertDialog]);
+
+  const renderSectionContent = () => {
+    switch (activeSection) {
+      // ───────────────────────────────────────────────────
+      // GENERAL — Updates, Hotkey, Startup, Mic
+      // ───────────────────────────────────────────────────
+      case "general":
+        return (
+          <div className="space-y-8">
+            {/* Updates */}
+            <div>
+              <SectionHeader
+                title="Updates"
+                description="Keep DictateVoice up to date with the latest features and improvements"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Current version"
+                    description={
+                      updateStatus.isDevelopment
+                        ? "Running in development mode"
+                        : isUpdateAvailable
+                          ? "A newer version is available"
+                          : "You're on the latest version"
+                    }
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
+                        {currentVersion || "..."}
+                      </span>
+                      {updateStatus.isDevelopment ? (
+                        <Badge variant="warning">Dev</Badge>
+                      ) : isUpdateAvailable ? (
+                        <Badge variant="success">Update</Badge>
+                      ) : (
+                        <Badge variant="outline">Latest</Badge>
+                      )}
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
+                  <div className="space-y-2.5">
+                    <Button
+                      onClick={async () => {
+                        try {
+                          const result = await checkForUpdates();
+                          if (result?.updateAvailable) {
+                            showAlertDialog({
+                              title: "Update Available",
+                              description: `Update available: v${result.version || "new version"}`,
+                            });
+                          } else {
+                            showAlertDialog({
+                              title: "No Updates",
+                              description: result?.message || "No updates available",
+                            });
+                          }
+                        } catch (error: any) {
+                          showAlertDialog({
+                            title: "Update Check Failed",
+                            description: `Error checking for updates: ${error.message}`,
+                          });
+                        }
+                      }}
+                      disabled={checkingForUpdates || updateStatus.isDevelopment}
+                      variant="outline"
+                      className="w-full"
+                      size="sm"
+                    >
+                      <RefreshCw
+                        size={13}
+                        className={`mr-1.5 ${checkingForUpdates ? "animate-spin" : ""}`}
+                      />
+                      {checkingForUpdates ? "Checking..." : "Check for Updates"}
+                    </Button>
+
+                    {isUpdateAvailable && !updateStatus.updateDownloaded && (
+                      <div className="space-y-2">
+                        <Button
+                          onClick={async () => {
+                            try {
+                              await downloadUpdate();
+                            } catch (error: any) {
+                              showAlertDialog({
+                                title: "Download Failed",
+                                description: `Failed to download update: ${error.message}`,
+                              });
+                            }
+                          }}
+                          disabled={downloadingUpdate}
+                          variant="success"
+                          className="w-full"
+                          size="sm"
+                        >
+                          <Download
+                            size={13}
+                            className={`mr-1.5 ${downloadingUpdate ? "animate-pulse" : ""}`}
+                          />
+                          {downloadingUpdate
+                            ? `Downloading... ${Math.round(updateDownloadProgress)}%`
+                            : `Download Update${updateInfo?.version ? ` v${updateInfo.version}` : ""}`}
+                        </Button>
+
+                        {downloadingUpdate && (
+                          <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
+                            <div
+                              className="h-full bg-success transition-all duration-200 rounded-full"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, updateDownloadProgress))}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {updateStatus.updateDownloaded && (
+                      <Button
+                        onClick={() => {
+                          showConfirmDialog({
+                            title: "Install Update",
+                            description: `Ready to install update${updateInfo?.version ? ` v${updateInfo.version}` : ""}. The app will restart to complete installation.`,
+                            confirmText: "Install & Restart",
+                            onConfirm: async () => {
+                              try {
+                                await installUpdateAction();
+                              } catch (error: any) {
+                                showAlertDialog({
+                                  title: "Install Failed",
+                                  description: `Failed to install update: ${error.message}`,
+                                });
+                              }
+                            },
+                          });
+                        }}
+                        disabled={installInitiated}
+                        className="w-full"
+                        size="sm"
+                      >
+                        <RefreshCw
+                          size={14}
+                          className={`mr-2 ${installInitiated ? "animate-spin" : ""}`}
+                        />
+                        {installInitiated ? "Restarting..." : "Install & Restart"}
+                      </Button>
+                    )}
+                  </div>
+
+                  {updateInfo?.releaseNotes && (
+                    <div className="mt-4 pt-4 border-t border-border/30">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                        What's new in v{updateInfo.version}
+                      </p>
+                      <div className="text-[12px] text-muted-foreground">
+                        <MarkdownRenderer content={updateInfo.releaseNotes} />
+                      </div>
+                    </div>
+                  )}
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Dictation Hotkey */}
+            <div>
+              <SectionHeader
+                title="Dictation Control"
+                description="Configure how you activate and control voice dictation"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <HotkeyInput
+                    value={dictationKey}
+                    onChange={async (newHotkey) => {
+                      await registerHotkey(newHotkey);
+                    }}
+                    disabled={isHotkeyRegistering}
+                  />
+                </SettingsPanelRow>
+
+                {!isUsingGnomeHotkeys && (
+                  <SettingsPanelRow>
+                    <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
+                      Activation Mode
+                    </p>
+                    <ActivationModeSelector value={activationMode} onChange={setActivationMode} />
+                  </SettingsPanelRow>
+                )}
+              </SettingsPanel>
+            </div>
+
+            {/* Startup */}
+            {platform !== "linux" && (
+              <div>
+                <SectionHeader title="Startup" />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Launch at login"
+                      description="Start DictateVoice automatically when you log in"
+                    >
+                      <Toggle
+                        checked={autoStartEnabled}
+                        onChange={(checked: boolean) => handleAutoStartChange(checked)}
+                        disabled={autoStartLoading}
+                      />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+            )}
+
+            {/* Microphone */}
+            <div>
+              <SectionHeader
+                title="Audio Input"
+                description="Choose your preferred microphone and configure audio settings"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <MicrophoneSettings
+                    preferBuiltInMic={preferBuiltInMic}
+                    selectedMicDeviceId={selectedMicDeviceId}
+                    onPreferBuiltInChange={setPreferBuiltInMic}
+                    onDeviceSelect={setSelectedMicDeviceId}
+                  />
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // PREFERENCES - New section with additional options
+      // ───────────────────────────────────────────────────
+      case "preferences":
+        return (
+          <div className="space-y-8">
+            {/* Language */}
+            <div>
+              <SectionHeader
+                title="Language"
+                description="Select the primary language for speech recognition"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Transcription language"
+                    description="Choose a specific language or let the engine detect automatically"
+                  >
+                    <select
+                      value={language || "auto"}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="h-9 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                    >
+                      {LANGUAGE_OPTIONS.map((lang) => (
+                        <option key={lang.value} value={lang.value}>
+                          {lang.label}
+                        </option>
+                      ))}
+                    </select>
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Behavior */}
+            <div>
+              <SectionHeader
+                title="Behavior"
+                description="Customize how DictateVoice responds after transcription"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Auto-paste transcription"
+                    description="Automatically paste text where your cursor is after transcribing"
+                  >
+                    <Toggle checked={true} onChange={() => { }} disabled />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Copy to clipboard"
+                    description="Also save transcription to clipboard for manual pasting"
+                  >
+                    <Toggle checked={true} onChange={() => { }} disabled />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Show control panel on error"
+                    description="Automatically open settings when transcription fails"
+                  >
+                    <Toggle checked={false} onChange={() => { }} disabled />
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+              <p className="mt-3 text-xs text-muted-foreground/50 px-1">
+                More behavior options coming soon
+              </p>
+            </div>
+
+            {/* Notifications */}
+            <div>
+              <SectionHeader
+                title="Notifications"
+                description="Configure alerts and feedback during dictation"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Audio feedback"
+                    description="Play sounds when starting and stopping recording"
+                  >
+                    <Toggle checked={false} onChange={() => { }} disabled />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Error notifications"
+                    description="Show system notifications when transcription fails"
+                  >
+                    <Toggle checked={false} onChange={() => { }} disabled />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Success confirmation"
+                    description="Brief notification when transcription completes successfully"
+                  >
+                    <Toggle checked={false} onChange={() => { }} disabled />
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+              <p className="mt-3 text-xs text-muted-foreground/50 px-1">
+                Notification settings coming in future update
+              </p>
+            </div>
+
+            {/* Privacy & History */}
+            <div className="border-t border-border/30 pt-8">
+              <SectionHeader
+                title="Privacy & History"
+                description="Control how long transcriptions are kept"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="History limit"
+                    description="Number of transcriptions to keep (stats persist even when history is cleared)"
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={10}
+                        max={10000}
+                        value={historyLimit}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val) && val >= 10 && val <= 10000) {
+                            setHistoryLimit(val);
+                          }
+                        }}
+                        className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <span className="text-xs text-muted-foreground">items</span>
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // TRANSCRIPTION
+      // ───────────────────────────────────────────────────
+      case "transcription":
+        return (
+          <div className="space-y-6">
+            <SectionHeader
+              title="Speech Recognition"
+              description="Choose between cloud-based services for speed or local models for privacy"
+            />
+
+            <TranscriptionModelPicker
+              selectedCloudProvider={cloudTranscriptionProvider}
+              onCloudProviderSelect={setCloudTranscriptionProvider}
+              selectedCloudModel={cloudTranscriptionModel}
+              onCloudModelSelect={setCloudTranscriptionModel}
+              selectedLocalModel={
+                localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel
+              }
+              onLocalModelSelect={(modelId) => {
+                if (localTranscriptionProvider === "nvidia") {
+                  setParakeetModel(modelId);
+                } else {
+                  setWhisperModel(modelId);
+                }
+              }}
+              selectedLocalProvider={localTranscriptionProvider}
+              onLocalProviderSelect={setLocalTranscriptionProvider}
+              useLocalWhisper={useLocalWhisper}
+              onModeChange={(isLocal) => {
+                setUseLocalWhisper(isLocal);
+                updateTranscriptionSettings({ useLocalWhisper: isLocal });
+              }}
+              openaiApiKey={openaiApiKey}
+              setOpenaiApiKey={setOpenaiApiKey}
+              groqApiKey={groqApiKey}
+              setGroqApiKey={setGroqApiKey}
+              customTranscriptionApiKey={customTranscriptionApiKey}
+              setCustomTranscriptionApiKey={setCustomTranscriptionApiKey}
+              cloudTranscriptionBaseUrl={cloudTranscriptionBaseUrl}
+              setCloudTranscriptionBaseUrl={setCloudTranscriptionBaseUrl}
+              variant="settings"
+            />
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // PERMISSIONS
+      // ───────────────────────────────────────────────────
+      case "permissions":
+        return (
+          <div className="space-y-6">
+            <SectionHeader
+              title="System Permissions"
+              description="Grant access to microphone, accessibility features, and other system capabilities"
+            />
+
+            {/* Permission Cards - matching onboarding style */}
+            <div className="space-y-3">
+              <PermissionCard
+                icon={Mic}
+                title="Microphone"
+                description="Required for voice recording and dictation"
+                granted={permissionsHook.micPermissionGranted}
+                onRequest={permissionsHook.requestMicPermission}
+                buttonText="Test"
+                onOpenSettings={permissionsHook.openMicPrivacySettings}
+              />
+
+              {platform === "darwin" && (
+                <PermissionCard
+                  icon={Shield}
+                  title="Accessibility"
+                  description="Required for auto-paste to work after transcription"
+                  granted={permissionsHook.accessibilityPermissionGranted}
+                  onRequest={permissionsHook.testAccessibilityPermission}
+                  buttonText="Test & Grant"
+                  onOpenSettings={permissionsHook.openAccessibilitySettings}
+                />
+              )}
+            </div>
+
+            {/* Error state for microphone */}
+            {!permissionsHook.micPermissionGranted && permissionsHook.micPermissionError && (
+              <MicPermissionWarning
+                error={permissionsHook.micPermissionError}
+                onOpenSoundSettings={permissionsHook.openSoundInputSettings}
+                onOpenPrivacySettings={permissionsHook.openMicPrivacySettings}
+              />
+            )}
+
+            {/* Linux paste tools info */}
+            {platform === "linux" &&
+              permissionsHook.pasteToolsInfo &&
+              !permissionsHook.pasteToolsInfo.available && (
+                <PasteToolsInfo
+                  pasteToolsInfo={permissionsHook.pasteToolsInfo}
+                  isChecking={permissionsHook.isCheckingPasteTools}
+                  onCheck={permissionsHook.checkPasteToolsAvailability}
+                />
+              )}
+
+            {/* Troubleshooting section for macOS */}
+            {platform === "darwin" && (
+              <div>
+                <p className="text-[13px] font-medium text-foreground mb-3">Troubleshooting</p>
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Reset accessibility permissions"
+                      description="Fix issues after reinstalling or rebuilding the app by removing and re-adding DictateVoice in System Settings"
+                    >
+                      <Button
+                        onClick={resetAccessibilityPermissions}
+                        variant="ghost"
+                        size="sm"
+                        className="text-foreground/70 hover:text-foreground"
+                      >
+                        Troubleshoot
+                      </Button>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+            )}
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // HELP & SUPPORT
+      // ───────────────────────────────────────────────────
+      case "help":
+        return (
+          <div className="space-y-6">
+            <SectionHeader
+              title="Help & Support"
+              description="Get assistance with DictateVoice and report issues"
+            />
+
+            <SettingsPanel>
+              <SettingsPanelRow>
+                <SettingsRow
+                  label="Contact Support"
+                  description="Send an email to our support team for assistance"
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const result = await window.electronAPI?.openExternal("mailto:support@dictatevoice.com");
+                        if (!result?.success) {
+                          // Fallback: try opening the email as a web URL
+                          await window.electronAPI?.openExternal(
+                            "https://mail.google.com/mail/?view=cm&to=support@dictatevoice.com"
+                          );
+                        }
+                      } catch (error) {
+                        console.error("Error opening email client:", error);
+                      }
+                    }}
+                  >
+                    Email Support
+                  </Button>
+                </SettingsRow>
+              </SettingsPanelRow>
+
+              <SettingsPanelRow>
+                <SettingsRow
+                  label="Submit Bug Report"
+                  description="Report issues or suggest improvements on GitHub"
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await window.electronAPI?.openExternal(
+                          "https://github.com/DictateVoice/dictatevoice/issues"
+                        );
+                      } catch (error) {
+                        console.error("Error opening GitHub issues:", error);
+                      }
+                    }}
+                  >
+                    Open GitHub Issues
+                  </Button>
+                </SettingsRow>
+              </SettingsPanelRow>
+            </SettingsPanel>
+
+            <div>
+              <p className="text-[13px] font-medium text-foreground mb-3">Version Information</p>
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Current version"
+                    description={
+                      updateStatus.isDevelopment
+                        ? "Running in development mode"
+                        : "Installed version of DictateVoice"
+                    }
+                  >
+                    <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
+                      {currentVersion || "..."}
+                    </span>
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // DEVELOPER (+ data management moved here)
+      // ───────────────────────────────────────────────────
+      case "developer":
+        return (
+          <div className="space-y-8">
+            <SectionHeader
+              title="Developer Tools"
+              description="Advanced diagnostics, logging, and debugging capabilities"
+            />
+
+            <DeveloperSection />
+
+            {/* Data Management — moved from General */}
+            <div className="border-t border-border/30 pt-8">
+              <SectionHeader
+                title="Data & Storage"
+                description="Manage cached files, models, and application data"
+              />
+
+              <div className="space-y-4">
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow label="Model cache" description={cachePathHint}>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => window.electronAPI?.openWhisperModelsFolder?.()}
+                        >
+                          <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+                          Open
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleRemoveModels}
+                          disabled={isRemovingModels}
+                        >
+                          {isRemovingModels ? "Removing..." : "Clear Cache"}
+                        </Button>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+
+
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Reset app data"
+                      description="Permanently delete all settings, transcriptions, and cached data"
+                    >
+                      <Button
+                        onClick={() => {
+                          showConfirmDialog({
+                            title: "Reset All App Data",
+                            description:
+                              "This will permanently delete ALL DictateVoice data including:\n\n- Database and transcriptions\n- Local storage settings\n- Downloaded models\n- Environment files\n\nYou will need to manually remove app permissions in System Settings.\n\nThis action cannot be undone.",
+                            onConfirm: () => {
+                              window.electronAPI
+                                ?.cleanupApp()
+                                .then(() => {
+                                  showAlertDialog({
+                                    title: "Reset Complete",
+                                    description:
+                                      "All app data has been removed. The app will reload.",
+                                  });
+                                  setTimeout(() => {
+                                    window.location.reload();
+                                  }, 1000);
+                                })
+                                .catch((error) => {
+                                  showAlertDialog({
+                                    title: "Reset Failed",
+                                    description: `Failed to reset: ${error.message}`,
+                                  });
+                                });
+                            },
+                            variant: "destructive",
+                            confirmText: "Delete Everything",
+                          });
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
+                      >
+                        Reset
+                      </Button>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <>
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => !open && hideConfirmDialog()}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        onConfirm={confirmDialog.onConfirm}
+        variant={confirmDialog.variant}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+      />
+
+      <AlertDialog
+        open={alertDialog.open}
+        onOpenChange={(open) => !open && hideAlertDialog()}
+        title={alertDialog.title}
+        description={alertDialog.description}
+        onOk={() => { }}
+      />
+
+      {renderSectionContent()}
+    </>
+  );
+}

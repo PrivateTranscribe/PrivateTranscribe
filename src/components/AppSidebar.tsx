@@ -1,0 +1,320 @@
+import { useState, useEffect } from "react";
+import {
+  LayoutDashboard,
+  Clock,
+  Upload,
+  BookOpen,
+  Brain,
+  MessageSquare,
+  BookMarked,
+  Zap,
+  Settings,
+} from "lucide-react";
+
+export type PageId =
+  | "home"
+  | "history"
+  | "transcribe"
+  | "dictionary"
+  | "ai-enhancement"
+  | "voice-assistant"
+  | "correction-memory"
+  | "action-engine"
+  | "settings";
+
+interface NavItem {
+  id: PageId;
+  label: string;
+  icon: typeof LayoutDashboard;
+  badge?: string;
+  badgeVariant?: "new" | "soon";
+}
+
+interface NavGroup {
+  label?: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    items: [
+      { id: "home", label: "Home", icon: LayoutDashboard },
+      { id: "history", label: "History", icon: Clock },
+      { id: "transcribe", label: "Transcribe", icon: Upload, badge: "New", badgeVariant: "new" },
+    ],
+  },
+  {
+    label: "SPEECH",
+    items: [{ id: "dictionary", label: "Dictionary", icon: BookOpen }],
+  },
+  {
+    label: "INTELLIGENCE",
+    items: [
+      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
+      { id: "voice-assistant", label: "Voice Assistant", icon: MessageSquare },
+    ],
+  },
+  {
+    label: "ADVANCED",
+    items: [
+      {
+        id: "correction-memory",
+        label: "Correction Memory",
+        icon: BookMarked,
+        badge: "Soon",
+        badgeVariant: "soon",
+      },
+      { id: "action-engine", label: "Action Engine", icon: Zap, badge: "Soon", badgeVariant: "soon" },
+    ],
+  },
+];
+
+interface AppSidebarProps {
+  activePage: PageId;
+  onPageChange: (page: PageId) => void;
+}
+
+export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps) {
+  const [hotkey, setHotkey] = useState("`");
+  const [currentVersion, setCurrentVersion] = useState("");
+
+  useEffect(() => {
+    const savedHotkey = localStorage.getItem("dictationKey");
+    if (savedHotkey) setHotkey(savedHotkey);
+  }, []);
+
+  useEffect(() => {
+    const getVersion = async () => {
+      try {
+        const result = await window.electronAPI?.getAppVersion?.();
+        if (result && result.version) setCurrentVersion(result.version);
+      } catch { }
+    };
+    getVersion();
+  }, []);
+
+  const formatHotkey = (key: string) => {
+    if (!key) return "...";
+    const map: Record<string, string> = {
+      "`": "` (backtick)",
+      " ": "Space",
+      Enter: "Enter",
+      Escape: "Esc",
+    };
+    return map[key] || key;
+  };
+
+  return (
+    <div
+      style={{
+        width: "220px",
+        minWidth: "220px",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "#0D0F0D",
+        borderRight: "1px solid #222523",
+        overflow: "hidden",
+      }}
+    >
+      {/* Top padding for navigation */}
+      <div style={{ padding: "12px 0 0" }} />
+
+      {/* Navigation */}
+      <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
+        {navGroups.map((group, gi) => (
+          <div key={gi} style={{ marginBottom: gi < navGroups.length - 1 ? "6px" : 0 }}>
+            {group.label && (
+              <p
+                style={{
+                  fontSize: "9px",
+                  fontWeight: 600,
+                  color: "#4A4F4C",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  padding: "12px 12px 6px",
+                  margin: 0,
+                }}
+              >
+                {group.label}
+              </p>
+            )}
+            {group.items.map((item) => {
+              const isActive = activePage === item.id;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onPageChange(item.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    width: "100%",
+                    padding: "8px 12px",
+                    marginBottom: "2px",
+                    backgroundColor: isActive ? "#1A1D1A" : "transparent",
+                    color: isActive ? "#70FFBA" : "#8A8F8C",
+                    border: "none",
+                    borderRadius: "8px",
+                    borderLeft: isActive ? "2px solid #70FFBA" : "2px solid transparent",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontWeight: isActive ? 500 : 400,
+                    textAlign: "left",
+                    transition: "all 0.15s ease",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = "#141614";
+                      e.currentTarget.style.color = "#B0B5B2";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.color = "#8A8F8C";
+                    }
+                  }}
+                >
+                  <Icon
+                    size={16}
+                    style={{
+                      opacity: isActive ? 1 : 0.6,
+                      filter: isActive ? "drop-shadow(0 0 6px rgba(112,255,186,0.4))" : "none",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.badge && (
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
+                        padding: "1px 6px",
+                        borderRadius: "4px",
+                        backgroundColor:
+                          item.badgeVariant === "new"
+                            ? "rgba(112,255,186,0.15)"
+                            : "rgba(255,255,255,0.06)",
+                        color: item.badgeVariant === "new" ? "#70FFBA" : "#6B7370",
+                      }}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Divider */}
+        <div
+          style={{
+            height: "1px",
+            backgroundColor: "#222523",
+            margin: "8px 12px",
+          }}
+        />
+
+        {/* Settings */}
+        {(() => {
+          const isActive = activePage === "settings";
+          return (
+            <button
+              onClick={() => onPageChange("settings")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                padding: "8px 12px",
+                backgroundColor: isActive ? "#1A1D1A" : "transparent",
+                color: isActive ? "#70FFBA" : "#8A8F8C",
+                border: "none",
+                borderRadius: "8px",
+                borderLeft: isActive ? "2px solid #70FFBA" : "2px solid transparent",
+                cursor: "pointer",
+                fontSize: "13px",
+                fontWeight: isActive ? 500 : 400,
+                textAlign: "left",
+                transition: "all 0.15s ease",
+                fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = "#141614";
+                  e.currentTarget.style.color = "#B0B5B2";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.color = "#8A8F8C";
+                }
+              }}
+            >
+              <Settings
+                size={16}
+                style={{
+                  opacity: isActive ? 1 : 0.6,
+                  filter: isActive ? "drop-shadow(0 0 6px rgba(112,255,186,0.4))" : "none",
+                  flexShrink: 0,
+                }}
+              />
+              <span>Settings</span>
+            </button>
+          );
+        })()}
+      </nav>
+
+      {/* Footer */}
+      <div
+        style={{
+          padding: "12px",
+          borderTop: "1px solid #1A1D1A",
+        }}
+      >
+        {/* Pro tip */}
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: "8px",
+            backgroundColor: "rgba(112,255,186,0.04)",
+            border: "1px solid rgba(112,255,186,0.08)",
+            marginBottom: "10px",
+          }}
+        >
+          <p style={{ fontSize: "10px", color: "#6B7370", margin: 0, lineHeight: 1.5 }}>
+            Press{" "}
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "#70FFBA",
+                fontWeight: 500,
+              }}
+            >
+              {formatHotkey(hotkey)}
+            </span>{" "}
+            anywhere to start dictating
+          </p>
+        </div>
+
+        {/* Version */}
+        <p
+          style={{
+            fontSize: "10px",
+            color: "#3D423F",
+            textAlign: "center",
+            margin: 0,
+          }}
+        >
+          {currentVersion ? `v${currentVersion}` : "..."} · Open Source
+        </p>
+      </div>
+    </div>
+  );
+}
