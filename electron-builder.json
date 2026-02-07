@@ -1,9 +1,10 @@
 {
-  "appId": "com.dictatevoice.app",
-  "productName": "DictateVoice",
+  "appId": "com.privoca.app",
+  "productName": "Privoca",
   "directories": {
     "output": "dist"
   },
+  "afterPack": "scripts/after-pack-win.js",
   "npmRebuild": true,
   "buildDependenciesFromSource": false,
   "files": [
@@ -121,7 +122,8 @@
       "portable"
     ],
     "signAndEditExecutable": false,
-    "icon": "./src/assets/icon.ico",
+    "icon": "src/assets/icon.ico",
+    "executableName": "Privoca",
     "extraResources": [
       {
         "from": "resources/bin/nircmd.exe",
@@ -174,7 +176,7 @@
     "include": "resources/nsis/cleanup-models.nsh"
   },
   "dmg": {
-    "title": "DictateVoice",
+    "title": "Privoca",
     "icon": "src/assets/icon.icns",
     "window": {
       "width": 540,

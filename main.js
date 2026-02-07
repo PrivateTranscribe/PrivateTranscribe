@@ -1,13 +1,19 @@
 const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electron");
+const APP_NAME = "Privoca";
+const APP_ID = "com.privoca.app";
 
 // Enable native Wayland global shortcuts: https://github.com/electron/electron/pull/45171
 if (process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland") {
   app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
 }
 
+if (app.getName() !== APP_NAME) {
+  app.setName(APP_NAME);
+}
+
 // Group all windows under single taskbar entry on Windows
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.dictatevoice.app");
+  app.setAppUserModelId(APP_ID);
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -17,11 +23,6 @@ if (!gotSingleInstanceLock) {
 }
 
 const isLiveWindow = (window) => window && !window.isDestroyed();
-
-// Ensure macOS menus use the proper casing for the app name
-if (process.platform === "darwin" && app.getName() !== "DictateVoice") {
-  app.setName("DictateVoice");
-}
 
 // Add global error handling for uncaught exceptions
 process.on("uncaughtException", (error) => {
