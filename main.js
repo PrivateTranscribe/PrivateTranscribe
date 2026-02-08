@@ -290,6 +290,16 @@ async function startApp() {
     let winKeyIsRecording = false;
     let currentActivationMode = "tap";
 
+    const stopPushToTalkRecording = (reason) => {
+      if (!winKeyIsRecording) {
+        return;
+      }
+
+      winKeyIsRecording = false;
+      debugLogger.debug("[Push-to-Talk] Stopping recording", { reason });
+      windowManager.sendStopDictation();
+    };
+
     // Helper to check if hotkey is valid for Windows key listener
     // Supports compound hotkeys like "CommandOrControl+F11"
     const isValidHotkey = (hotkey) => {
@@ -320,19 +330,19 @@ async function startApp() {
     windowsKeyManager.on("key-up", () => {
       debugLogger.debug("[Push-to-Talk] Key UP received");
 
-      if (!isLiveWindow(windowManager.mainWindow) || currentActivationMode !== "push") {
+      if (!isLiveWindow(windowManager.mainWindow)) {
         return;
       }
 
+      // Always stop if recording is active, even if activation mode state drifted.
       if (winKeyIsRecording) {
-        winKeyIsRecording = false;
-        debugLogger.debug("[Push-to-Talk] Sending stop dictation command");
-        windowManager.sendStopDictation();
+        stopPushToTalkRecording("key-up");
       }
     });
 
     windowsKeyManager.on("error", (error) => {
       debugLogger.warn("[Push-to-Talk] Windows key listener error", { error: error.message });
+      stopPushToTalkRecording("listener-error");
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
@@ -344,6 +354,7 @@ async function startApp() {
 
     windowsKeyManager.on("unavailable", () => {
       debugLogger.debug("[Push-to-Talk] Windows key listener not available - falling back to toggle mode");
+      stopPushToTalkRecording("listener-unavailable");
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
@@ -398,7 +409,7 @@ async function startApp() {
       debugLogger.debug("[Push-to-Talk] IPC: Activation mode changed", { mode });
       currentActivationMode = mode === "push" ? "push" : "tap";
       if (currentActivationMode !== "push") {
-        winKeyIsRecording = false;
+        stopPushToTalkRecording("activation-mode-changed");
       }
 
       if (mode === "push") {
@@ -422,6 +433,7 @@ async function startApp() {
       }
       debugLogger.debug("[Push-to-Talk] Current activation mode", { activationMode: currentActivationMode });
       if (currentActivationMode === "push") {
+        stopPushToTalkRecording("hotkey-changed");
         windowsKeyManager.stop();
         if (isValidHotkey(hotkey)) {
           debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });

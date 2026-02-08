@@ -109,6 +109,7 @@ export default function App() {
   const [dragStartPos, setDragStartPos] = useState(null);
   const [hasDragged, setHasDragged] = useState(false);
   const dragInitiatedRef = useRef(false);
+  const suppressClickAfterDragRef = useRef(false);
 
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
@@ -479,6 +480,7 @@ export default function App() {
               setDragStartPos({ x: e.clientX, y: e.clientY });
               setHasDragged(false);
               dragInitiatedRef.current = false;
+              suppressClickAfterDragRef.current = false;
             }}
             onMouseMove={(e) => {
               if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
@@ -493,13 +495,27 @@ export default function App() {
               }
             }}
             onMouseUp={(e) => {
+              const didDrag = dragInitiatedRef.current || hasDragged || isDragging;
               if (dragInitiatedRef.current || isDragging) {
                 handleMouseUp(e);
               }
               dragInitiatedRef.current = false;
               setDragStartPos(null);
+              setHasDragged(false);
+
+              if (didDrag) {
+                suppressClickAfterDragRef.current = true;
+                setTimeout(() => {
+                  suppressClickAfterDragRef.current = false;
+                }, 0);
+              }
             }}
             onClick={(e) => {
+              if (suppressClickAfterDragRef.current) {
+                e.preventDefault();
+                return;
+              }
+
               if (!hasDragged) {
                 closeContextMenu(false);
                 toggleListening();
