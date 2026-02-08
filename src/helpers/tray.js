@@ -225,7 +225,7 @@ class TrayManager {
 
     return [
       {
-        label: dictationVisible ? "Hide Dictation Panel" : "Show Dictation Panel",
+        label: dictationVisible ? "Hide Overlay" : "Show Overlay",
         click: () => {
           if (!this.windowManager) return;
           if (this.windowManager.isDictationPanelVisible()) {
@@ -237,14 +237,14 @@ class TrayManager {
         },
       },
       {
-        label: "Open Control Panel",
+        label: "Open Privoca",
         click: async () => {
           await this.showControlPanelFromTray();
         },
       },
       { type: "separator" },
       {
-        label: "Quit DictateVoice",
+        label: "Exit Privoca",
         click: () => {
           console.log("Quitting app via tray menu");
           app.quit();

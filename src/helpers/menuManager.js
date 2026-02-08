@@ -15,7 +15,7 @@ class MenuManager {
             { role: "hideOthers" },
             { role: "unhide" },
             { type: "separator" },
-            { role: "quit", label: "Quit DictateVoice" },
+            { role: "quit", label: "Quit Privoca" },
           ],
         },
       ];
@@ -39,7 +39,7 @@ class MenuManager {
             { role: "hideOthers" },
             { role: "unhide" },
             { type: "separator" },
-            { role: "quit", label: "Quit DictateVoice" },
+            { role: "quit", label: "Quit Privoca" },
           ],
         },
         {
