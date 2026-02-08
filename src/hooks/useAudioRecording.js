@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import AudioManager from "../helpers/audioManager";
 
 export const useAudioRecording = (toast, options = {}) => {
@@ -6,86 +6,118 @@ export const useAudioRecording = (toast, options = {}) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const audioManagerRef = useRef(null);
-  const { onToggle } = options;
+  const toastRef = useRef(toast);
+  const onToggleRef = useRef(options.onToggle);
 
   useEffect(() => {
-    audioManagerRef.current = new AudioManager();
+    toastRef.current = toast;
+  }, [toast]);
 
-    audioManagerRef.current.setCallbacks({
+  useEffect(() => {
+    onToggleRef.current = options.onToggle;
+  }, [options.onToggle]);
+
+  useEffect(() => {
+    const manager = new AudioManager();
+    audioManagerRef.current = manager;
+    let disposed = false;
+
+    manager.setCallbacks({
       onStateChange: ({ isRecording, isProcessing }) => {
+        if (disposed) {
+          return;
+        }
         setIsRecording(isRecording);
         setIsProcessing(isProcessing);
       },
       onError: (error) => {
-        toast({
+        if (disposed) {
+          return;
+        }
+        toastRef.current?.({
           title: error.title,
           description: error.description,
           variant: "destructive",
         });
       },
       onTranscriptionComplete: async (result) => {
-        if (result.success) {
-          setTranscript(result.text);
+        if (disposed || !result.success) {
+          return;
+        }
 
-          await audioManagerRef.current.safePaste(result.text);
+        const text = result.text || "";
+        if (!text.trim()) {
+          return;
+        }
 
-          audioManagerRef.current.saveTranscription(result.text, result.durationSeconds);
+        setTranscript(text);
 
-          if (result.source === "openai" && localStorage.getItem("useLocalWhisper") === "true") {
-            toast({
-              title: "Fallback Mode",
-              description: "Local Whisper failed. Used OpenAI API instead.",
-              variant: "default",
-            });
-          }
+        await manager.safePaste(text);
+
+        void manager.saveTranscription(text, result.durationSeconds);
+
+        if (result.source === "openai" && localStorage.getItem("useLocalWhisper") === "true") {
+          toastRef.current?.({
+            title: "Fallback Mode",
+            description: "Local Whisper failed. Used OpenAI API instead.",
+            variant: "default",
+          });
         }
       },
     });
 
     // Set up hotkey listener for tap-to-talk mode
     const handleToggle = () => {
-      const currentState = audioManagerRef.current.getState();
+      const currentState = manager.getState();
 
-      if (!currentState.isRecording && !currentState.isProcessing) {
-        audioManagerRef.current.startRecording();
-      } else if (currentState.isRecording) {
-        audioManagerRef.current.stopRecording();
+      if (
+        !currentState.isRecording &&
+        !currentState.isProcessing &&
+        !currentState.isStartingRecording
+      ) {
+        void manager.startRecording();
+      } else if (currentState.isRecording || currentState.isStartingRecording) {
+        manager.stopRecording();
       }
     };
 
     // Set up listener for push-to-talk start
     const handleStart = () => {
-      const currentState = audioManagerRef.current.getState();
-      if (!currentState.isRecording && !currentState.isProcessing) {
-        audioManagerRef.current.startRecording();
+      const currentState = manager.getState();
+      if (
+        !currentState.isRecording &&
+        !currentState.isProcessing &&
+        !currentState.isStartingRecording
+      ) {
+        void manager.startRecording();
       }
     };
 
     // Set up listener for push-to-talk stop
     const handleStop = () => {
-      const currentState = audioManagerRef.current.getState();
-      if (currentState.isRecording) {
-        audioManagerRef.current.stopRecording();
+      const currentState = manager.getState();
+      if (currentState.isRecording || currentState.isStartingRecording) {
+        manager.stopRecording();
       }
     };
 
     const disposeToggle = window.electronAPI.onToggleDictation(() => {
       handleToggle();
-      onToggle?.();
+      onToggleRef.current?.();
     });
 
     const disposeStart = window.electronAPI.onStartDictation?.(() => {
       handleStart();
-      onToggle?.();
+      onToggleRef.current?.();
     });
 
     const disposeStop = window.electronAPI.onStopDictation?.(() => {
       handleStop();
-      onToggle?.();
+      onToggleRef.current?.();
     });
 
     const handleNoAudioDetected = () => {
-      toast({
+      toastRef.current?.({
         title: "No Audio Detected",
         description: "The recording contained no detectable audio. Please try again.",
         variant: "default",
@@ -96,51 +128,63 @@ export const useAudioRecording = (toast, options = {}) => {
 
     // Cleanup
     return () => {
+      disposed = true;
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
       disposeNoAudio?.();
-      if (audioManagerRef.current) {
-        audioManagerRef.current.cleanup();
+      manager.cleanup();
+      if (audioManagerRef.current === manager) {
+        audioManagerRef.current = null;
       }
     };
-  }, [toast, onToggle]);
+  }, []);
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     if (audioManagerRef.current) {
       return await audioManagerRef.current.startRecording();
     }
     return false;
-  };
+  }, []);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (audioManagerRef.current) {
       return audioManagerRef.current.stopRecording();
     }
     return false;
-  };
+  }, []);
 
-  const cancelRecording = () => {
+  const cancelRecording = useCallback(() => {
     if (audioManagerRef.current) {
       return audioManagerRef.current.cancelRecording();
     }
     return false;
-  };
+  }, []);
 
-  const cancelProcessing = () => {
+  const cancelProcessing = useCallback(() => {
     if (audioManagerRef.current) {
       return audioManagerRef.current.cancelProcessing();
     }
     return false;
-  };
+  }, []);
 
-  const toggleListening = () => {
-    if (!isRecording && !isProcessing) {
-      startRecording();
-    } else if (isRecording) {
+  const toggleListening = useCallback(() => {
+    const manager = audioManagerRef.current;
+    if (!manager) {
+      return;
+    }
+
+    const currentState = manager.getState();
+    if (
+      !currentState.isRecording &&
+      !currentState.isProcessing &&
+      !currentState.isStartingRecording
+    ) {
+      void startRecording();
+    } else if (currentState.isRecording || currentState.isStartingRecording) {
       stopRecording();
     }
-  };
+  }, [startRecording, stopRecording]);
 
   return {
     isRecording,

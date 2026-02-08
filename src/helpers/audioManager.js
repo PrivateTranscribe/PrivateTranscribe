@@ -6,6 +6,7 @@ import { isSecureEndpoint } from "../utils/urlUtils";
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
+const RECORDER_STOP_TIMEOUT_MS = 2500;
 
 const PLACEHOLDER_KEYS = {
   openai: "your_openai_api_key_here",
@@ -92,9 +93,11 @@ const resolveUploadFileName = (originalFileName, mimeType) => {
 class AudioManager {
   constructor() {
     this.mediaRecorder = null;
+    this.recordingStream = null;
     this.audioChunks = [];
     this.isRecording = false;
     this.isProcessing = false;
+    this.isStartingRecording = false;
     this.onStateChange = null;
     this.onError = null;
     this.onTranscriptionComplete = null;
@@ -104,6 +107,13 @@ class AudioManager {
     this.cachedEndpointProvider = null;
     this.cachedEndpointBaseUrl = null;
     this.recordingStartTime = null;
+    this.recordingMimeType = "audio/webm";
+    this.recordingSessionCounter = 0;
+    this.activeRecordingSessionId = null;
+    this.recordingStopTimeoutId = null;
+    this.pendingStopAfterStart = false;
+    this.pendingCancelAfterStart = false;
+    this.discardCurrentRecording = false;
     this.reasoningAvailabilityCache = { value: false, expiresAt: 0 };
     this.cachedReasoningPreference = null;
   }
@@ -124,6 +134,126 @@ class AudioManager {
     this.onStateChange = onStateChange;
     this.onError = onError;
     this.onTranscriptionComplete = onTranscriptionComplete;
+  }
+
+  emitStateChange() {
+    this.onStateChange?.({
+      isRecording: this.isRecording,
+      isProcessing: this.isProcessing,
+    });
+  }
+
+  clearRecorderStopWatchdog() {
+    if (this.recordingStopTimeoutId) {
+      clearTimeout(this.recordingStopTimeoutId);
+      this.recordingStopTimeoutId = null;
+    }
+  }
+
+  stopRecordingStream() {
+    const stream = this.recordingStream || this.mediaRecorder?.stream || null;
+    if (!stream) {
+      this.recordingStream = null;
+      return;
+    }
+
+    try {
+      stream.getTracks().forEach((track) => track.stop());
+    } catch {
+      // Ignore stream cleanup errors.
+    }
+
+    this.recordingStream = null;
+  }
+
+  releaseMediaRecorder() {
+    this.clearRecorderStopWatchdog();
+
+    if (this.mediaRecorder) {
+      this.mediaRecorder.ondataavailable = null;
+      this.mediaRecorder.onstop = null;
+      this.mediaRecorder.onerror = null;
+    }
+
+    this.stopRecordingStream();
+    this.mediaRecorder = null;
+    this.activeRecordingSessionId = null;
+  }
+
+  getRecordingDurationSeconds() {
+    return this.recordingStartTime ? (Date.now() - this.recordingStartTime) / 1000 : null;
+  }
+
+  scheduleRecorderStopWatchdog({ discard }) {
+    this.clearRecorderStopWatchdog();
+    const activeSessionId = this.activeRecordingSessionId;
+
+    this.recordingStopTimeoutId = setTimeout(() => {
+      if (!this.isRecording || activeSessionId !== this.activeRecordingSessionId) {
+        return;
+      }
+
+      logger.warn(
+        "Recorder stop timeout reached; forcing finalization",
+        {
+          discard,
+          recorderState: this.mediaRecorder?.state,
+          activeSessionId,
+        },
+        "audio"
+      );
+
+      void this.forceFinalizeRecording({ discard });
+    }, RECORDER_STOP_TIMEOUT_MS);
+  }
+
+  async forceFinalizeRecording({ discard = false } = {}) {
+    if (!this.isRecording && !this.isStartingRecording) {
+      return false;
+    }
+
+    const durationSeconds = this.getRecordingDurationSeconds();
+    const audioBlob = new Blob(this.audioChunks, { type: this.recordingMimeType || "audio/webm" });
+    const chunksCount = this.audioChunks.length;
+
+    this.audioChunks = [];
+    this.recordingStartTime = null;
+    this.isRecording = false;
+    this.isStartingRecording = false;
+    this.pendingStopAfterStart = false;
+    this.pendingCancelAfterStart = false;
+    this.discardCurrentRecording = false;
+    this.releaseMediaRecorder();
+
+    if (discard || audioBlob.size === 0) {
+      this.isProcessing = false;
+      this.emitStateChange();
+
+      if (!discard && audioBlob.size === 0) {
+        logger.warn(
+          "Forced finalize produced empty audio blob",
+          { chunksCount },
+          "audio"
+        );
+      }
+      return true;
+    }
+
+    this.isProcessing = true;
+    this.emitStateChange();
+
+    logger.info(
+      "Recording forced to stop",
+      {
+        blobSize: audioBlob.size,
+        blobType: audioBlob.type,
+        chunksCount,
+      },
+      "audio"
+    );
+
+    await this.processAudio(audioBlob, { durationSeconds });
+    return true;
   }
 
   async getAudioConstraints() {
@@ -165,13 +295,25 @@ class AudioManager {
   }
 
   async startRecording() {
+    let stream = null;
+
     try {
-      if (this.isRecording || this.isProcessing || this.mediaRecorder?.state === "recording") {
+      if (
+        this.isRecording ||
+        this.isProcessing ||
+        this.isStartingRecording ||
+        this.mediaRecorder?.state === "recording"
+      ) {
         return false;
       }
 
+      this.isStartingRecording = true;
+      this.pendingStopAfterStart = false;
+      this.pendingCancelAfterStart = false;
+      this.discardCurrentRecording = false;
+
       const constraints = await this.getAudioConstraints();
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       // Log which microphone is actually being used
       const audioTrack = stream.getAudioTracks()[0];
@@ -189,21 +331,75 @@ class AudioManager {
         );
       }
 
+      if (this.pendingCancelAfterStart) {
+        stream.getTracks().forEach((track) => track.stop());
+        this.isStartingRecording = false;
+        this.pendingCancelAfterStart = false;
+        this.pendingStopAfterStart = false;
+        return false;
+      }
+
+      this.recordingStream = stream;
       this.mediaRecorder = new MediaRecorder(stream);
+      const sessionId = ++this.recordingSessionCounter;
+      this.activeRecordingSessionId = sessionId;
       this.audioChunks = [];
       this.recordingStartTime = Date.now();
       this.recordingMimeType = this.mediaRecorder.mimeType || "audio/webm";
 
       this.mediaRecorder.ondataavailable = (event) => {
-        this.audioChunks.push(event.data);
+        if (sessionId !== this.activeRecordingSessionId) {
+          return;
+        }
+        if (event?.data && event.data.size > 0) {
+          this.audioChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.onerror = (event) => {
+        if (sessionId !== this.activeRecordingSessionId) {
+          return;
+        }
+
+        logger.warn(
+          "MediaRecorder reported an error",
+          {
+            message: event?.error?.message || "Unknown recorder error",
+            recorderState: this.mediaRecorder?.state,
+          },
+          "audio"
+        );
       };
 
       this.mediaRecorder.onstop = async () => {
-        this.isRecording = false;
-        this.isProcessing = true;
-        this.onStateChange?.({ isRecording: false, isProcessing: true });
+        if (sessionId !== this.activeRecordingSessionId) {
+          return;
+        }
 
-        const audioBlob = new Blob(this.audioChunks, { type: this.recordingMimeType });
+        this.clearRecorderStopWatchdog();
+        const shouldDiscard = this.discardCurrentRecording;
+        const durationSeconds = this.getRecordingDurationSeconds();
+        const audioBlob = new Blob(this.audioChunks, { type: this.recordingMimeType || "audio/webm" });
+        const chunksCount = this.audioChunks.length;
+
+        this.audioChunks = [];
+        this.recordingStartTime = null;
+        this.isRecording = false;
+        this.isStartingRecording = false;
+        this.pendingStopAfterStart = false;
+        this.pendingCancelAfterStart = false;
+        this.discardCurrentRecording = false;
+        this.releaseMediaRecorder();
+
+        if (shouldDiscard) {
+          this.isProcessing = false;
+          this.emitStateChange();
+          return;
+        }
+
+        this.isProcessing = true;
+        this.emitStateChange();
+
 
         // Debug: Log audio blob info
         logger.info(
@@ -211,27 +407,44 @@ class AudioManager {
           {
             blobSize: audioBlob.size,
             blobType: audioBlob.type,
-            chunksCount: this.audioChunks.length,
+            chunksCount,
           },
           "audio"
         );
 
-        const durationSeconds = this.recordingStartTime
-          ? (Date.now() - this.recordingStartTime) / 1000
-          : null;
-        this.recordingStartTime = null;
         await this.processAudio(audioBlob, { durationSeconds });
-
-        // Clean up stream
-        stream.getTracks().forEach((track) => track.stop());
       };
 
       this.mediaRecorder.start();
       this.isRecording = true;
-      this.onStateChange?.({ isRecording: true, isProcessing: false });
+      this.isProcessing = false;
+      this.isStartingRecording = false;
+      this.emitStateChange();
+
+      if (this.pendingCancelAfterStart) {
+        this.pendingCancelAfterStart = false;
+        this.cancelRecording();
+      } else if (this.pendingStopAfterStart) {
+        this.pendingStopAfterStart = false;
+        this.stopRecording();
+      }
 
       return true;
     } catch (error) {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      this.audioChunks = [];
+      this.recordingStartTime = null;
+      this.isRecording = false;
+      this.isProcessing = false;
+      this.isStartingRecording = false;
+      this.pendingStopAfterStart = false;
+      this.pendingCancelAfterStart = false;
+      this.discardCurrentRecording = false;
+      this.releaseMediaRecorder();
+
       // Provide more specific error messages
       let errorTitle = "Recording Error";
       let errorDescription = `Failed to access microphone: ${error.message}`;
@@ -258,32 +471,67 @@ class AudioManager {
   }
 
   stopRecording() {
+    if (this.isStartingRecording) {
+      this.pendingStopAfterStart = true;
+      this.pendingCancelAfterStart = false;
+      return true;
+    }
+
     if (this.mediaRecorder?.state === "recording") {
+      this.discardCurrentRecording = false;
+      try {
+        this.mediaRecorder.requestData?.();
+      } catch {
+        // Ignore requestData errors from some browsers/recorders.
+      }
       this.mediaRecorder.stop();
+      this.scheduleRecorderStopWatchdog({ discard: false });
       // State change will be handled in onstop callback
       return true;
     }
+
+    if (this.isRecording) {
+      logger.warn(
+        "Recorder state drift detected during stop; forcing finalization",
+        { recorderState: this.mediaRecorder?.state },
+        "audio"
+      );
+      void this.forceFinalizeRecording({ discard: false });
+      return true;
+    }
+
     return false;
   }
 
   cancelRecording() {
-    if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
-      this.mediaRecorder.onstop = () => {
-        this.isRecording = false;
-        this.isProcessing = false;
-        this.audioChunks = [];
-        this.recordingStartTime = null;
-        this.onStateChange?.({ isRecording: false, isProcessing: false });
-      };
-
-      this.mediaRecorder.stop();
-
-      if (this.mediaRecorder.stream) {
-        this.mediaRecorder.stream.getTracks().forEach((track) => track.stop());
-      }
-
+    if (this.isStartingRecording) {
+      this.pendingCancelAfterStart = true;
+      this.pendingStopAfterStart = false;
       return true;
     }
+
+    if (this.mediaRecorder?.state === "recording") {
+      this.discardCurrentRecording = true;
+      try {
+        this.mediaRecorder.requestData?.();
+      } catch {
+        // Ignore requestData errors from some browsers/recorders.
+      }
+      this.mediaRecorder.stop();
+      this.scheduleRecorderStopWatchdog({ discard: true });
+      return true;
+    }
+
+    if (this.isRecording) {
+      logger.warn(
+        "Recorder state drift detected during cancel; forcing cleanup",
+        { recorderState: this.mediaRecorder?.state },
+        "audio"
+      );
+      void this.forceFinalizeRecording({ discard: true });
+      return true;
+    }
+
     return false;
   }
 
@@ -1514,13 +1762,30 @@ class AudioManager {
     return {
       isRecording: this.isRecording,
       isProcessing: this.isProcessing,
+      isStartingRecording: this.isStartingRecording,
     };
   }
 
   cleanup() {
+    this.discardCurrentRecording = true;
+    this.clearRecorderStopWatchdog();
     if (this.mediaRecorder?.state === "recording") {
-      this.stopRecording();
+      try {
+        this.mediaRecorder.stop();
+      } catch {
+        // Ignore stop errors during teardown.
+      }
     }
+
+    this.releaseMediaRecorder();
+    this.audioChunks = [];
+    this.recordingStartTime = null;
+    this.isRecording = false;
+    this.isProcessing = false;
+    this.isStartingRecording = false;
+    this.pendingStopAfterStart = false;
+    this.pendingCancelAfterStart = false;
+    this.discardCurrentRecording = false;
     this.onStateChange = null;
     this.onError = null;
     this.onTranscriptionComplete = null;
