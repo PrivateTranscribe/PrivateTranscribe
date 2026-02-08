@@ -170,6 +170,10 @@ export interface AggregateStats {
   updated_at?: string;
 }
 
+export interface SaveTranscriptionOptions {
+  includeInStats?: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -182,7 +186,11 @@ declare global {
       onStopDictation?: (callback: () => void) => (() => void) | void;
 
       // Database operations
-      saveTranscription: (text: string, durationSeconds?: number | null) => Promise<{ id: number; success: boolean }>;
+      saveTranscription: (
+        text: string,
+        durationSeconds?: number | null,
+        options?: SaveTranscriptionOptions
+      ) => Promise<{ id: number; success: boolean }>;
       getTranscriptions: (limit?: number) => Promise<TranscriptionItem[]>;
       clearTranscriptions: () => Promise<{ cleared: number; success: boolean }>;
       deleteTranscription: (id: number) => Promise<{ success: boolean }>;

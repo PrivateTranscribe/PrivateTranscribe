@@ -55,6 +55,8 @@ const MAIN_WINDOW_CONFIG = {
 const CONTROL_PANEL_CONFIG = {
   width: 1200,
   height: 800,
+  minWidth: 1024,
+  minHeight: 700,
   icon: getWindowIcon(),
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
@@ -64,7 +66,7 @@ const CONTROL_PANEL_CONFIG = {
     webSecurity: false,
     spellcheck: false,
   },
-  title: "Control Panel",
+  title: "Privoca",
   resizable: true,
   show: false,
   frame: false,

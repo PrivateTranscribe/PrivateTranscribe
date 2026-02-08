@@ -40,8 +40,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ),
 
   // Database functions
-  saveTranscription: (text, durationSeconds) =>
-    ipcRenderer.invoke("db-save-transcription", text, durationSeconds),
+  saveTranscription: (text, durationSeconds, options) =>
+    ipcRenderer.invoke("db-save-transcription", text, durationSeconds, options),
   getTranscriptions: (limit) =>
     ipcRenderer.invoke("db-get-transcriptions", limit),
   clearTranscriptions: () => ipcRenderer.invoke("db-clear-transcriptions"),

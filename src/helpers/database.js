@@ -80,7 +80,7 @@ class DatabaseManager {
     }
   }
 
-  saveTranscription(text, durationSeconds = null) {
+  saveTranscription(text, durationSeconds = null, options = {}) {
     try {
       if (!this.db) {
         throw new Error("Database not initialized");
@@ -91,32 +91,36 @@ class DatabaseManager {
       const fetchStmt = this.db.prepare("SELECT * FROM transcriptions WHERE id = ?");
       const transcription = fetchStmt.get(result.lastInsertRowid);
 
-      // Update aggregate stats
-      const wordCount = text.split(/\s+/).filter(Boolean).length;
+      const includeInStats = options?.includeInStats !== false;
 
-      // Use actual recording duration if available, otherwise estimate at 150 WPM
-      const actualSeconds = durationSeconds && durationSeconds > 0
-        ? durationSeconds
-        : (wordCount / 150) * 60;
+      if (includeInStats) {
+        // Update aggregate stats
+        const wordCount = text.split(/\s+/).filter(Boolean).length;
 
-      // Get current stats to calculate cumulative average WPM
-      const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
-      const newTotalWords = (currentStats?.total_words || 0) + wordCount;
-      const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
+        // Use actual recording duration if available, otherwise estimate at 150 WPM
+        const actualSeconds = durationSeconds && durationSeconds > 0
+          ? durationSeconds
+          : (wordCount / 150) * 60;
 
-      // Calculate average WPM: (total words / total minutes)
-      const averageWPM = newTotalSeconds > 0 ? (newTotalWords / (newTotalSeconds / 60)) : 0;
+        // Get current stats to calculate cumulative average WPM
+        const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
+        const newTotalWords = (currentStats?.total_words || 0) + wordCount;
+        const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
 
-      const updateStats = this.db.prepare(`
-        UPDATE stats 
-        SET total_words = total_words + ?,
-            total_transcriptions = total_transcriptions + 1,
-            total_seconds = total_seconds + ?,
-            average_wpm = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = 1
-      `);
-      updateStats.run(wordCount, actualSeconds, averageWPM);
+        // Calculate average WPM: (total words / total minutes)
+        const averageWPM = newTotalSeconds > 0 ? (newTotalWords / (newTotalSeconds / 60)) : 0;
+
+        const updateStats = this.db.prepare(`
+          UPDATE stats 
+          SET total_words = total_words + ?,
+              total_transcriptions = total_transcriptions + 1,
+              total_seconds = total_seconds + ?,
+              average_wpm = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = 1
+        `);
+        updateStats.run(wordCount, actualSeconds, averageWPM);
+      }
 
       return { id: result.lastInsertRowid, success: true, transcription };
     } catch (error) {

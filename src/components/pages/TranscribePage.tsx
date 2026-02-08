@@ -213,7 +213,7 @@ export default function TranscribePage() {
         throw new Error("No text was transcribed from this file.");
       }
 
-      await window.electronAPI.saveTranscription(text, null);
+      await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
       setTranscript(text);
       setStatus("success");
       toast({
@@ -306,9 +306,6 @@ export default function TranscribePage() {
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Transcribe</h1>
-          <Badge variant="success" className="text-[10px]">
-            New
-          </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
           Upload audio or video files for transcription

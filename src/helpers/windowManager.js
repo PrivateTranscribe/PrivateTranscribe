@@ -314,7 +314,7 @@ class WindowManager {
 
     this.controlPanelWindow.webContents.on("did-finish-load", () => {
       clearVisibilityTimer();
-      this.controlPanelWindow.setTitle("Control Panel");
+      this.controlPanelWindow.setTitle("Privoca");
     });
 
     this.controlPanelWindow.webContents.on(

@@ -40,7 +40,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "home", label: "Home", icon: LayoutDashboard },
       { id: "history", label: "History", icon: Clock },
-      { id: "transcribe", label: "Transcribe", icon: Upload, badge: "New", badgeVariant: "new" },
+      { id: "transcribe", label: "Transcribe", icon: Upload },
     ],
   },
   {
