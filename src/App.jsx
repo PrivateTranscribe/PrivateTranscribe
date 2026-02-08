@@ -258,6 +258,17 @@ export default function App() {
   }, [isCommandMenuOpen, closeContextMenu]);
 
   useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      dragInitiatedRef.current = false;
+      setDragStartPos(null);
+      setHasDragged(false);
+    };
+
+    document.addEventListener("mouseup", handleGlobalMouseUp, true);
+    return () => document.removeEventListener("mouseup", handleGlobalMouseUp, true);
+  }, []);
+
+  useEffect(() => {
     const handleKeyPress = (e) => {
       if (e.key === "Escape") {
         if (isCommandMenuOpen) {
@@ -495,8 +506,8 @@ export default function App() {
               }
             }}
             onMouseUp={(e) => {
-              const didDrag = dragInitiatedRef.current || hasDragged || isDragging;
-              if (dragInitiatedRef.current || isDragging) {
+              const didDrag = dragInitiatedRef.current || hasDragged;
+              if (dragInitiatedRef.current) {
                 handleMouseUp(e);
               }
               dragInitiatedRef.current = false;

@@ -316,8 +316,10 @@ async function startApp() {
         return;
       }
 
-      // Guard against repeated key-down events while already recording.
+      // Recovery path: if we get a new key-down while still marked recording,
+      // assume a missed key-up and force-stop first.
       if (winKeyIsRecording) {
+        stopPushToTalkRecording("recovery-duplicate-key-down");
         return;
       }
 
@@ -371,6 +373,7 @@ async function startApp() {
 
     const refreshActivationMode = async () => {
       currentActivationMode = await windowManager.getActivationMode();
+      windowManager.setActivationMode(currentActivationMode);
       debugLogger.debug("[Push-to-Talk] Refreshed activation mode", { activationMode: currentActivationMode });
     };
 
@@ -402,12 +405,16 @@ async function startApp() {
     // so we wait 3 seconds to ensure settings are fully loaded before starting.
     const STARTUP_DELAY_MS = 3000;
     debugLogger.debug("[Push-to-Talk] Scheduling listener start", { delayMs: STARTUP_DELAY_MS });
+    refreshActivationMode().catch(() => {
+      // Non-fatal; cache will refresh on subsequent calls.
+    });
     setTimeout(startWindowsKeyListener, STARTUP_DELAY_MS);
 
     // Listen for activation mode changes from renderer
     ipcMain.on("activation-mode-changed", async (_event, mode) => {
       debugLogger.debug("[Push-to-Talk] IPC: Activation mode changed", { mode });
       currentActivationMode = mode === "push" ? "push" : "tap";
+      windowManager.setActivationMode(currentActivationMode);
       if (currentActivationMode !== "push") {
         stopPushToTalkRecording("activation-mode-changed");
       }

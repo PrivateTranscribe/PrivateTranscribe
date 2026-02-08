@@ -22,6 +22,7 @@ class WindowManager {
     this.isMainWindowInteractive = false;
     this.loadErrorShown = false;
     this.windowsPushToTalkAvailable = false;
+    this.activationModeCache = "tap";
 
     app.on("before-quit", () => {
       this.isQuitting = true;
@@ -30,6 +31,10 @@ class WindowManager {
 
   setWindowsPushToTalkAvailable(available) {
     this.windowsPushToTalkAvailable = available;
+  }
+
+  setActivationMode(mode) {
+    this.activationModeCache = mode === "push" ? "push" : "tap";
   }
 
   async createMainWindow() {
@@ -171,6 +176,10 @@ class WindowManager {
       // Windows push mode: always defer to windowsKeyManager and never fall back to toggle
       // while activation mode is "push", even if listener is restarting.
       if (process.platform === "win32") {
+        if (this.activationModeCache === "push") {
+          return;
+        }
+
         const activationMode = await this.getActivationMode();
         if (activationMode === "push") {
           return;
@@ -223,15 +232,16 @@ class WindowManager {
 
   async getActivationMode() {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return "tap";
+      return this.activationModeCache;
     }
     try {
       const mode = await this.mainWindow.webContents.executeJavaScript(
         `localStorage.getItem("activationMode") || "tap"`
       );
-      return mode === "push" ? "push" : "tap";
+      this.setActivationMode(mode);
+      return this.activationModeCache;
     } catch {
-      return "tap";
+      return this.activationModeCache;
     }
   }
 
