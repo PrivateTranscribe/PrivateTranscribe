@@ -5,6 +5,33 @@ const { getModelsDirForService } = require("./modelDirUtils");
 const { getFFmpegPath, isWavFormat, convertToWav, wavToFloat32Samples } = require("./ffmpegUtils");
 const { getSafeTempDir } = require("./safeTempDir");
 const ParakeetWsServer = require("./parakeetWsServer");
+const DEFAULT_INPUT_EXTENSION = ".webm";
+const ALLOWED_INPUT_EXTENSIONS = new Set([
+  ".wav",
+  ".mp3",
+  ".m4a",
+  ".ogg",
+  ".flac",
+  ".webm",
+  ".mp4",
+  ".m4v",
+  ".mov",
+  ".mkv",
+  ".avi",
+]);
+
+function resolveTempInputExtension(inputFileName) {
+  if (!inputFileName || typeof inputFileName !== "string") {
+    return DEFAULT_INPUT_EXTENSION;
+  }
+
+  const ext = path.extname(inputFileName).toLowerCase();
+  if (ALLOWED_INPUT_EXTENSIONS.has(ext)) {
+    return ext;
+  }
+
+  return DEFAULT_INPUT_EXTENSION;
+}
 
 class ParakeetServerManager {
   constructor() {
@@ -43,7 +70,7 @@ class ParakeetServerManager {
     return true;
   }
 
-  async _ensureWav(audioBuffer) {
+  async _ensureWav(audioBuffer, inputFileName = null) {
     const isWav = isWavFormat(audioBuffer);
     if (isWav) return { wavBuffer: audioBuffer, filesToCleanup: [] };
 
@@ -56,7 +83,8 @@ class ParakeetServerManager {
 
     const tempDir = getSafeTempDir();
     const timestamp = Date.now();
-    const tempInputPath = path.join(tempDir, `parakeet-input-${timestamp}.webm`);
+    const inputExtension = resolveTempInputExtension(inputFileName);
+    const tempInputPath = path.join(tempDir, `parakeet-input-${timestamp}${inputExtension}`);
     const tempWavPath = path.join(tempDir, `parakeet-${timestamp}.wav`);
 
     fs.writeFileSync(tempInputPath, audioBuffer);
@@ -74,7 +102,7 @@ class ParakeetServerManager {
   }
 
   async transcribe(audioBuffer, options = {}) {
-    const { modelName = "parakeet-tdt-0.6b-v3", language = "auto" } = options;
+    const { modelName = "parakeet-tdt-0.6b-v3", language = "auto", inputFileName = null } = options;
 
     const modelDir = path.join(this.getModelsDir(), modelName);
     if (!this.isModelDownloaded(modelName)) {
@@ -88,7 +116,7 @@ class ParakeetServerManager {
       isWavFormat: isWavFormat(audioBuffer),
     });
 
-    const { wavBuffer, filesToCleanup } = await this._ensureWav(audioBuffer);
+    const { wavBuffer, filesToCleanup } = await this._ensureWav(audioBuffer, inputFileName);
     try {
       if (!this.wsServer.ready || this.wsServer.modelName !== modelName) {
         await this.wsServer.start(modelName, modelDir);

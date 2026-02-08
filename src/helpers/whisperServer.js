@@ -13,6 +13,33 @@ const PORT_RANGE_END = 8199;
 const STARTUP_TIMEOUT_MS = 30000;
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
+const DEFAULT_INPUT_EXTENSION = ".webm";
+const ALLOWED_INPUT_EXTENSIONS = new Set([
+  ".wav",
+  ".mp3",
+  ".m4a",
+  ".ogg",
+  ".flac",
+  ".webm",
+  ".mp4",
+  ".m4v",
+  ".mov",
+  ".mkv",
+  ".avi",
+]);
+
+function resolveTempInputExtension(inputFileName) {
+  if (!inputFileName || typeof inputFileName !== "string") {
+    return DEFAULT_INPUT_EXTENSION;
+  }
+
+  const ext = path.extname(inputFileName).toLowerCase();
+  if (ALLOWED_INPUT_EXTENSIONS.has(ext)) {
+    return ext;
+  }
+
+  return DEFAULT_INPUT_EXTENSION;
+}
 
 class WhisperServerManager {
   constructor() {
@@ -382,14 +409,14 @@ class WhisperServerManager {
           : "too short",
     });
 
-    const { language, initialPrompt } = options;
+    const { language, initialPrompt, inputFileName } = options;
 
     // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
     let finalBuffer = audioBuffer;
     if (!this.canConvert) {
       throw new Error("FFmpeg not found - required for audio conversion");
     }
-    finalBuffer = await this._convertToWav(audioBuffer);
+    finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
 
     const boundary = `----WhisperBoundary${Date.now()}`;
     const parts = [];
@@ -487,10 +514,11 @@ class WhisperServerManager {
     });
   }
 
-  async _convertToWav(audioBuffer) {
+  async _convertToWav(audioBuffer, inputFileName = null) {
     const tempDir = getSafeTempDir();
     const timestamp = Date.now();
-    const tempInputPath = path.join(tempDir, `whisper-input-${timestamp}.webm`);
+    const inputExtension = resolveTempInputExtension(inputFileName);
+    const tempInputPath = path.join(tempDir, `whisper-input-${timestamp}${inputExtension}`);
     const tempWavPath = path.join(tempDir, `whisper-output-${timestamp}.wav`);
 
     try {

@@ -1,10 +1,248 @@
-import { Upload, FileAudio } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  Upload,
+  FileAudio,
+  FileVideo,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Copy,
+} from "lucide-react";
+import AudioManager from "../../helpers/audioManager";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { useToast } from "../ui/Toast";
+import { useSettings } from "../../hooks/useSettings";
+import { formatBytes } from "../../utils/formatBytes";
+
+const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
+const VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "mkv", "avi", "webm"] as const;
+const SUPPORTED_EXTENSIONS = new Set([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]);
+const ACCEPT_ATTR = [
+  ...AUDIO_EXTENSIONS.map((ext) => `.${ext}`),
+  ...VIDEO_EXTENSIONS.map((ext) => `.${ext}`),
+].join(",");
+const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
+const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_PARAKEET_MODEL = "parakeet-tdt-0.6b-v3";
+
+type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
+
+function getFileExtension(fileName: string): string {
+  const parts = fileName.split(".");
+  if (parts.length < 2) return "";
+  return parts.pop()?.toLowerCase() || "";
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return "Failed to transcribe this file. Please try again.";
+}
 
 export default function TranscribePage() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const audioManagerRef = useRef<AudioManager | null>(null);
+  const [status, setStatus] = useState<UploadStatus>("idle");
+  const [selectedFileName, setSelectedFileName] = useState("");
+  const [selectedFileSize, setSelectedFileSize] = useState(0);
+  const [transcript, setTranscript] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  const {
+    useLocalWhisper,
+    localTranscriptionProvider,
+    whisperModel,
+    parakeetModel,
+    cloudTranscriptionProvider,
+  } = useSettings();
+
+  useEffect(() => {
+    audioManagerRef.current = new AudioManager();
+    return () => {
+      audioManagerRef.current?.cleanup();
+      audioManagerRef.current = null;
+    };
+  }, []);
+
+  const currentMaxBytes = useMemo(
+    () => (useLocalWhisper ? LOCAL_MAX_BYTES : CLOUD_MAX_BYTES),
+    [useLocalWhisper]
+  );
+
+  const maxBytesLabel = useMemo(() => {
+    if (useLocalWhisper) {
+      return "Maximum file size: 500 MB (local mode)";
+    }
+    if (cloudTranscriptionProvider === "groq") {
+      return "Maximum file size: 25 MB (Groq cloud mode)";
+    }
+    if (cloudTranscriptionProvider === "custom") {
+      return "Maximum file size: 25 MB (custom cloud mode default)";
+    }
+    return "Maximum file size: 25 MB (OpenAI cloud mode)";
+  }, [useLocalWhisper, cloudTranscriptionProvider]);
+
+  const validateFile = (file: File): string | null => {
+    const extension = getFileExtension(file.name);
+
+    if (!SUPPORTED_EXTENSIONS.has(extension)) {
+      return "Unsupported file type. Upload audio/video files like MP3, WAV, MP4, MOV, MKV, or AVI.";
+    }
+
+    if (file.size <= 0) {
+      return "File is empty. Please choose a valid file.";
+    }
+
+    if (file.size > currentMaxBytes) {
+      return `File is too large (${formatBytes(file.size)}). Limit for current mode is ${formatBytes(currentMaxBytes)}.`;
+    }
+
+    return null;
+  };
+
+  const handleBrowse = () => {
+    if (status === "processing") return;
+    inputRef.current?.click();
+  };
+
+  const resetState = () => {
+    setStatus("idle");
+    setSelectedFileName("");
+    setSelectedFileSize(0);
+    setTranscript("");
+    setErrorMessage("");
+    setCopied(false);
+  };
+
+  const processFile = async (file: File) => {
+    const manager = audioManagerRef.current;
+    if (!manager) return;
+
+    setStatus("processing");
+    setErrorMessage("");
+    setTranscript("");
+    setCopied(false);
+    setSelectedFileName(file.name);
+    setSelectedFileSize(file.size);
+
+    try {
+      const metadata = {
+        source: "upload",
+        originalFileName: file.name,
+        skipOptimization: true,
+      };
+
+      let result;
+      if (useLocalWhisper) {
+        if (localTranscriptionProvider === "nvidia") {
+          result = await manager.processWithLocalParakeet(
+            file,
+            parakeetModel || DEFAULT_PARAKEET_MODEL,
+            metadata
+          );
+        } else {
+          result = await manager.processWithLocalWhisper(file, whisperModel || "base", metadata);
+        }
+      } else {
+        result = await manager.processWithOpenAIAPI(file, metadata);
+      }
+
+      const text = result?.text?.trim();
+      if (!text) {
+        throw new Error("No text was transcribed from this file.");
+      }
+
+      await window.electronAPI.saveTranscription(text, null);
+      setTranscript(text);
+      setStatus("success");
+      toast({
+        title: "Transcription complete",
+        description: `${file.name} was transcribed successfully.`,
+        variant: "success",
+      });
+    } catch (error) {
+      const message = toErrorMessage(error);
+      setErrorMessage(message);
+      setStatus("error");
+      toast({
+        title: "Transcription failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    if (files.length > 1) {
+      setStatus("error");
+      setErrorMessage("Please upload one file at a time in this version.");
+      return;
+    }
+
+    const file = files[0];
+    const validationError = validateFile(file);
+    if (validationError) {
+      setStatus("error");
+      setSelectedFileName(file.name);
+      setSelectedFileSize(file.size);
+      setErrorMessage(validationError);
+      return;
+    }
+
+    processFile(file);
+  };
+
+  const onInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    handleFiles(event.target.files);
+    event.target.value = "";
+  };
+
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (status !== "processing") {
+      setStatus("drag-active");
+    }
+  };
+
+  const onDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (status === "drag-active") {
+      setStatus("idle");
+    }
+  };
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (status === "processing") return;
+    setStatus("idle");
+    handleFiles(event.dataTransfer.files);
+  };
+
+  const copyTranscript = async () => {
+    if (!transcript) return;
+    try {
+      await navigator.clipboard.writeText(transcript);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Copied",
+        description: "Transcript copied to clipboard.",
+        variant: "success",
+      });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Could not copy transcript to clipboard.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      {/* Page header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Transcribe</h1>
@@ -12,64 +250,120 @@ export default function TranscribePage() {
             New
           </Badge>
         </div>
-        <p className="text-sm text-muted-foreground">Upload audio files for transcription</p>
+        <p className="text-sm text-muted-foreground">
+          Upload audio or video files for transcription
+        </p>
       </div>
 
-      {/* Drag-and-drop zone (placeholder) */}
-      <div className="relative">
-        <div className="rounded-2xl border-2 border-dashed border-border-subtle bg-surface-raised/30 p-12 flex flex-col items-center justify-center text-center min-h-[400px] transition-all duration-200 hover:border-primary/30 hover:bg-surface-raised/50">
-          <div className="w-20 h-20 rounded-2xl bg-surface-raised flex items-center justify-center mb-6 shadow-lg">
-            <Upload size={32} className="text-muted-foreground" />
-          </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPT_ATTR}
+        onChange={onInputChange}
+        className="hidden"
+      />
 
-          <h3 className="text-lg font-semibold text-foreground mb-2">
-            Drag files here or click to browse
-          </h3>
-          <p className="text-sm text-muted-foreground mb-6 max-w-md">
-            Upload audio files to transcribe them using your selected model
-          </p>
-
-          <div className="flex items-center gap-2 text-xs text-muted-foreground/60 mb-3">
-            <FileAudio size={14} />
-            <span>Supported formats: WAV, MP3, M4A, OGG, FLAC</span>
-          </div>
-          <p className="text-xs text-muted-foreground/40">Maximum file size: 500MB</p>
-        </div>
-
-        {/* Coming Soon overlay */}
-        <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] rounded-2xl flex items-center justify-center">
-          <div className="text-center">
-            <Badge className="mb-3 px-4 py-1.5 text-sm shadow-lg">Coming Soon</Badge>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              File upload transcription is currently in development and will be available in a
-              future update.
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleBrowse}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleBrowse();
+          }
+        }}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={[
+          "rounded-2xl border-2 border-dashed p-12 min-h-[320px] flex flex-col items-center justify-center text-center",
+          "transition-all duration-200 select-none",
+          status === "processing" ? "cursor-wait" : "cursor-pointer",
+          status === "drag-active"
+            ? "border-primary bg-primary/5"
+            : "border-border-subtle bg-surface-raised/30 hover:border-primary/30 hover:bg-surface-raised/50",
+        ].join(" ")}
+      >
+        {status === "processing" ? (
+          <>
+            <div className="w-20 h-20 rounded-2xl bg-surface-raised flex items-center justify-center mb-6 shadow-lg">
+              <Loader2 size={32} className="text-primary animate-spin" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Transcribing file...</h3>
+            <p className="text-sm text-muted-foreground mb-2">{selectedFileName}</p>
+            <p className="text-xs text-muted-foreground/70 tabular-nums">
+              {formatBytes(selectedFileSize)}
             </p>
-          </div>
-        </div>
+          </>
+        ) : status === "error" ? (
+          <>
+            <div className="w-20 h-20 rounded-2xl bg-destructive/10 flex items-center justify-center mb-6 shadow-lg">
+              <AlertCircle size={32} className="text-destructive" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Could not transcribe file</h3>
+            <p className="text-sm text-muted-foreground mb-5 max-w-2xl">{errorMessage}</p>
+            <Button size="sm" variant="outline" onClick={handleBrowse}>
+              Choose another file
+            </Button>
+          </>
+        ) : status === "success" ? (
+          <>
+            <div className="w-20 h-20 rounded-2xl bg-success/10 flex items-center justify-center mb-6 shadow-lg">
+              <CheckCircle2 size={32} className="text-success" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Transcription complete</h3>
+            <p className="text-sm text-muted-foreground mb-2">{selectedFileName}</p>
+            <p className="text-xs text-muted-foreground/70 tabular-nums mb-5">
+              {formatBytes(selectedFileSize)}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={copyTranscript}>
+                <Copy size={14} />
+                {copied ? "Copied" : "Copy transcript"}
+              </Button>
+              <Button size="sm" onClick={resetState}>
+                Upload another
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="w-20 h-20 rounded-2xl bg-surface-raised flex items-center justify-center mb-6 shadow-lg">
+              <Upload size={32} className="text-muted-foreground" />
+            </div>
+
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Drag a file here or click to browse
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6 max-w-xl">
+              Upload a single audio or video file to transcribe with your current settings.
+            </p>
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-2">
+              <FileAudio size={14} />
+              <span>Audio: WAV, MP3, M4A, OGG, FLAC, WEBM</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-3">
+              <FileVideo size={14} />
+              <span>Video: MP4, M4V, MOV, MKV, AVI, WEBM</span>
+            </div>
+            <p className="text-xs text-muted-foreground/50">{maxBytesLabel}</p>
+          </>
+        )}
       </div>
 
-      {/* Feature description */}
-      <div className="mt-8 rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6">
-        <h4 className="text-sm font-semibold text-foreground mb-3">What's coming</h4>
-        <ul className="space-y-2 text-sm text-muted-foreground">
-          <li className="flex items-start gap-2">
-            <span className="text-primary mt-0.5">•</span>
-            <span>Batch transcription of multiple audio files at once</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-primary mt-0.5">•</span>
-            <span>Progress tracking with pause/resume support</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-primary mt-0.5">•</span>
-            <span>Export transcriptions in multiple formats (TXT, SRT, VTT)</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-primary mt-0.5">•</span>
-            <span>Automatic speaker diarization for multi-speaker audio</span>
-          </li>
-        </ul>
-      </div>
+      {status === "success" && transcript && (
+        <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-foreground">Transcript</p>
+            <Badge variant="info" className="text-[10px]">
+              Saved to History
+            </Badge>
+          </div>
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{transcript}</p>
+        </div>
+      )}
     </div>
   );
 }

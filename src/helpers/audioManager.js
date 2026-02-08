@@ -18,6 +18,77 @@ const isValidApiKey = (key, provider = "openai") => {
   return key !== placeholder;
 };
 
+const MIME_EXTENSION_MAP = {
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/ogg": "ogg",
+  "audio/webm": "webm",
+  "audio/flac": "flac",
+  "audio/x-flac": "flac",
+  "audio/mp4": "m4a",
+  "video/mp4": "mp4",
+  "video/x-m4v": "m4v",
+  "video/quicktime": "mov",
+  "video/x-matroska": "mkv",
+  "video/webm": "webm",
+  "video/x-msvideo": "avi",
+};
+
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  "wav",
+  "mp3",
+  "m4a",
+  "ogg",
+  "flac",
+  "webm",
+  "mp4",
+  "m4v",
+  "mov",
+  "mkv",
+  "avi",
+]);
+
+const getExtensionFromFileName = (fileName) => {
+  if (!fileName || typeof fileName !== "string") return "";
+  const parts = fileName.toLowerCase().split(".");
+  return parts.length > 1 ? parts.pop() || "" : "";
+};
+
+const getExtensionFromMimeType = (mimeType) => {
+  if (!mimeType || typeof mimeType !== "string") return "";
+  return MIME_EXTENSION_MAP[mimeType.toLowerCase()] || "";
+};
+
+const resolveUploadExtension = (originalFileName, mimeType, fallback = "webm") => {
+  const fromName = getExtensionFromFileName(originalFileName);
+  if (ALLOWED_UPLOAD_EXTENSIONS.has(fromName)) {
+    return fromName;
+  }
+
+  const fromMime = getExtensionFromMimeType(mimeType);
+  if (ALLOWED_UPLOAD_EXTENSIONS.has(fromMime)) {
+    return fromMime;
+  }
+
+  return fallback;
+};
+
+const resolveUploadFileName = (originalFileName, mimeType) => {
+  const extension = resolveUploadExtension(originalFileName, mimeType);
+  const baseName =
+    originalFileName && typeof originalFileName === "string"
+      ? originalFileName
+          .trim()
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .replace(/\.[^./\\]+$/, "")
+      : "";
+
+  const safeBase = baseName || "upload";
+  return `${safeBase}.${extension}`;
+};
+
 class AudioManager {
   constructor() {
     this.mediaRecorder = null;
@@ -320,6 +391,9 @@ class AudioManager {
       if (language && language !== "auto") {
         options.language = language;
       }
+      if (metadata?.originalFileName) {
+        options.inputFileName = metadata.originalFileName;
+      }
 
       // Add custom dictionary as initial prompt to help Whisper recognize specific words
       const dictionaryPrompt = this.getCustomDictionaryPrompt();
@@ -398,6 +472,9 @@ class AudioManager {
       const options = { model };
       if (language && language !== "auto") {
         options.language = language;
+      }
+      if (metadata?.originalFileName) {
+        options.inputFileName = metadata.originalFileName;
       }
 
       logger.debug(
@@ -943,6 +1020,9 @@ class AudioManager {
     const language = localStorage.getItem("preferredLanguage");
     const allowLocalFallback = localStorage.getItem("allowLocalFallback") === "true";
     const fallbackModel = localStorage.getItem("fallbackWhisperModel") || "base";
+    const source = metadata?.source || "dictation";
+    const originalFileName = metadata?.originalFileName || null;
+    const skipOptimizationByMetadata = metadata?.skipOptimization === true;
 
     try {
       const durationSeconds = metadata.durationSeconds ?? null;
@@ -959,6 +1039,8 @@ class AudioManager {
         {
           provider,
           model,
+          source,
+          originalFileName,
           blobSize: audioBlob.size,
           blobType: audioBlob.type,
           durationSeconds,
@@ -971,7 +1053,10 @@ class AudioManager {
       // Only use WAV optimization for whisper-1 and groq models
       const is4oModel = model.includes("gpt-4o");
       const shouldOptimize =
-        !is4oModel && !shouldSkipOptimizationForDuration && audioBlob.size > 1024 * 1024;
+        !is4oModel &&
+        !shouldSkipOptimizationForDuration &&
+        !skipOptimizationByMetadata &&
+        audioBlob.size > 1024 * 1024;
 
       logger.debug(
         "Audio optimization decision",
@@ -979,6 +1064,7 @@ class AudioManager {
           is4oModel,
           shouldOptimize,
           shouldSkipOptimizationForDuration,
+          skipOptimizationByMetadata,
         },
         "transcription"
       );
@@ -989,32 +1075,23 @@ class AudioManager {
       ]);
 
       const formData = new FormData();
-      // Determine the correct file extension based on the blob type
       const mimeType = optimizedAudio.type || "audio/webm";
-      const extension = mimeType.includes("webm")
-        ? "webm"
-        : mimeType.includes("ogg")
-          ? "ogg"
-          : mimeType.includes("mp4")
-            ? "mp4"
-            : mimeType.includes("mpeg")
-              ? "mp3"
-              : mimeType.includes("wav")
-                ? "wav"
-                : "webm";
+      const extension = resolveUploadExtension(originalFileName, mimeType);
+      const uploadFileName = resolveUploadFileName(originalFileName, mimeType);
 
       logger.debug(
         "FormData preparation",
         {
           mimeType,
           extension,
+          uploadFileName,
           optimizedSize: optimizedAudio.size,
           hasApiKey: !!apiKey,
         },
         "transcription"
       );
 
-      formData.append("file", optimizedAudio, `audio.${extension}`);
+      formData.append("file", optimizedAudio, uploadFileName);
       formData.append("model", model);
 
       if (language && language !== "auto") {
@@ -1044,6 +1121,7 @@ class AudioManager {
           shouldStream,
           model,
           provider,
+          source,
           isCustomEndpoint,
           hasApiKey: !!apiKey,
           apiKeyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "(none)",
@@ -1217,6 +1295,9 @@ class AudioManager {
           const options = { model: fallbackModel };
           if (language && language !== "auto") {
             options.language = language;
+          }
+          if (originalFileName) {
+            options.inputFileName = originalFileName;
           }
 
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
