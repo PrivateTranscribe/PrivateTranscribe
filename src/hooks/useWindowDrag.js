@@ -1,22 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export const useWindowDrag = () => {
   const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
+
+  useEffect(() => {
+    isDraggingRef.current = isDragging;
+  }, [isDragging]);
 
   const handleMouseDown = (e) => {
-    if (e.button === 0) {
-      // Left mouse button
-      setIsDragging(true);
-      window.electronAPI.startWindowDrag?.();
-      e.preventDefault();
+    if (e.button !== 0 || isDraggingRef.current) {
+      return;
     }
+
+    setIsDragging(true);
+    isDraggingRef.current = true;
+    window.electronAPI.startWindowDrag?.();
+    e.preventDefault();
   };
 
   const handleMouseUp = () => {
-    if (isDragging) {
-      setIsDragging(false);
-      window.electronAPI.stopWindowDrag?.();
+    if (!isDraggingRef.current) {
+      return;
     }
+
+    setIsDragging(false);
+    isDraggingRef.current = false;
+    window.electronAPI.stopWindowDrag?.();
   };
 
   const handleClick = (e) => {
@@ -27,10 +37,7 @@ export const useWindowDrag = () => {
   // Set up global mouse up listener when dragging
   useEffect(() => {
     if (isDragging) {
-      const handleGlobalMouseUp = () => {
-        setIsDragging(false);
-        window.electronAPI.stopWindowDrag?.();
-      };
+      const handleGlobalMouseUp = () => handleMouseUp();
 
       document.addEventListener("mouseup", handleGlobalMouseUp);
 

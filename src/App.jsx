@@ -207,12 +207,19 @@ export default function App() {
   }, [toast]);
 
   useEffect(() => {
-    if (isCommandMenuOpen || toastCount > 0) {
+    if (isCommandMenuOpen || toastCount > 0 || isRecording || isProcessing) {
       setWindowInteractivity(true);
     } else if (!isHovered) {
       setWindowInteractivity(false);
     }
-  }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
+  }, [
+    isCommandMenuOpen,
+    isHovered,
+    toastCount,
+    isRecording,
+    isProcessing,
+    setWindowInteractivity,
+  ]);
 
   useEffect(() => {
     const resizeWindow = () => {
@@ -474,7 +481,7 @@ export default function App() {
               dragInitiatedRef.current = false;
             }}
             onMouseMove={(e) => {
-              if (dragStartPos && !hasDragged) {
+              if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
                 const distance = Math.sqrt(
                   Math.pow(e.clientX - dragStartPos.x, 2) + Math.pow(e.clientY - dragStartPos.y, 2)
                 );

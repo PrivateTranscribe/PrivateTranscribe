@@ -19,6 +19,7 @@ class WindowsKeyManager extends EventEmitter {
     this.hasReportedError = false;
     this.currentKey = null;
     this.isReady = false;
+    this.isStopping = false;
   }
 
   /**
@@ -47,6 +48,7 @@ class WindowsKeyManager extends EventEmitter {
 
     this.hasReportedError = false;
     this.isReady = false;
+    this.isStopping = false;
     this.currentKey = key;
 
     debugLogger.debug("[WindowsKeyManager] Starting key listener", {
@@ -55,18 +57,21 @@ class WindowsKeyManager extends EventEmitter {
     });
 
     try {
-      this.process = spawn(listenerPath, [key], {
+      const child = spawn(listenerPath, [key], {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
+
+      this.process = child;
     } catch (error) {
       debugLogger.error("[WindowsKeyManager] Failed to spawn process", { error: error.message });
       this.reportError(error);
       return;
     }
 
-    this.process.stdout.setEncoding("utf8");
-    this.process.stdout.on("data", (chunk) => {
+    const listenerProcess = this.process;
+    listenerProcess.stdout.setEncoding("utf8");
+    listenerProcess.stdout.on("data", (chunk) => {
       chunk
         .split(/\r?\n/)
         .map((line) => line.trim())
@@ -89,8 +94,8 @@ class WindowsKeyManager extends EventEmitter {
         });
     });
 
-    this.process.stderr.setEncoding("utf8");
-    this.process.stderr.on("data", (data) => {
+    listenerProcess.stderr.setEncoding("utf8");
+    listenerProcess.stderr.on("data", (data) => {
       const message = data.toString().trim();
       if (message.length > 0) {
         // Native binary logs to stderr for info messages, don't treat as error
@@ -98,19 +103,30 @@ class WindowsKeyManager extends EventEmitter {
       }
     });
 
-    this.process.on("error", (error) => {
+    listenerProcess.on("error", (error) => {
+      if (this.process !== listenerProcess) {
+        return;
+      }
       this.reportError(error);
       this.process = null;
     });
 
-    this.process.on("exit", (code, signal) => {
-      this.process = null;
-      this.isReady = false;
-      if (code !== 0) {
+    listenerProcess.on("exit", (code, signal) => {
+      const isCurrentProcess = this.process === listenerProcess;
+      if (isCurrentProcess) {
+        this.process = null;
+        this.isReady = false;
+      }
+
+      const isExpectedStop = signal === "SIGTERM" || signal === "SIGINT";
+      if (!isExpectedStop && code !== 0 && isCurrentProcess) {
         const error = new Error(
           `Windows key listener exited with code ${code ?? "null"} signal ${signal ?? "null"}`
         );
         this.reportError(error);
+      }
+      if (isCurrentProcess) {
+        this.isStopping = false;
       }
     });
   }
@@ -121,6 +137,7 @@ class WindowsKeyManager extends EventEmitter {
   stop() {
     if (this.process) {
       debugLogger.debug("[WindowsKeyManager] Stopping key listener");
+      this.isStopping = true;
       try {
         this.process.kill();
       } catch {

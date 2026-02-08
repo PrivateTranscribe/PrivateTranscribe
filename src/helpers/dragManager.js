@@ -17,6 +17,10 @@ class DragManager {
       return { success: false, message: "Window not available" };
     }
 
+    if (this.isDragging) {
+      return { success: true, message: "Drag already active" };
+    }
+
     try {
       this.isDragging = true;
 
@@ -44,6 +48,11 @@ class DragManager {
 
   async stopWindowDrag() {
     try {
+      if (!this.isDragging) {
+        this.stopMouseTracking();
+        return { success: true, message: "Drag already stopped" };
+      }
+
       this.isDragging = false;
       this.stopMouseTracking();
       console.log("🖱️ Window drag stopped");

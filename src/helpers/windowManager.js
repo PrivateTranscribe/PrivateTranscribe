@@ -168,8 +168,9 @@ class WindowManager {
         return;
       }
 
-      // Windows push mode: defer to windowsKeyManager if available, else fall through to toggle
-      if (process.platform === "win32" && this.windowsPushToTalkAvailable) {
+      // Windows push mode: always defer to windowsKeyManager and never fall back to toggle
+      // while activation mode is "push", even if listener is restarting.
+      if (process.platform === "win32") {
         const activationMode = await this.getActivationMode();
         if (activationMode === "push") {
           return;
