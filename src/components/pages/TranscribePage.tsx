@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type MouseEvent,
+  type KeyboardEvent,
+} from "react";
 import {
   Upload,
   FileAudio,
@@ -14,6 +23,7 @@ import { Button } from "../ui/button";
 import { useToast } from "../ui/Toast";
 import { useSettings } from "../../hooks/useSettings";
 import { formatBytes } from "../../utils/formatBytes";
+import { getLanguageLabel } from "../../utils/languages";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
 const VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "mkv", "avi", "webm"] as const;
@@ -55,6 +65,12 @@ export default function TranscribePage() {
     whisperModel,
     parakeetModel,
     cloudTranscriptionProvider,
+    cloudTranscriptionModel,
+    preferredLanguage,
+    useReasoningModel,
+    reasoningModel,
+    allowOpenAIFallback,
+    allowLocalFallback,
   } = useSettings();
 
   useEffect(() => {
@@ -83,6 +99,35 @@ export default function TranscribePage() {
     return "Maximum file size: 25 MB (OpenAI cloud mode)";
   }, [useLocalWhisper, cloudTranscriptionProvider]);
 
+  const activeModelLabel = useMemo(() => {
+    if (useLocalWhisper) {
+      if (localTranscriptionProvider === "nvidia") {
+        return `NVIDIA Parakeet (${parakeetModel || DEFAULT_PARAKEET_MODEL})`;
+      }
+      return `Whisper (${whisperModel || "base"})`;
+    }
+    return `${cloudTranscriptionProvider.toUpperCase()} (${cloudTranscriptionModel || "default"})`;
+  }, [
+    useLocalWhisper,
+    localTranscriptionProvider,
+    parakeetModel,
+    whisperModel,
+    cloudTranscriptionProvider,
+    cloudTranscriptionModel,
+  ]);
+
+  const activeLanguageLabel = useMemo(
+    () => getLanguageLabel(preferredLanguage || "auto"),
+    [preferredLanguage]
+  );
+
+  const fallbackLabel = useMemo(() => {
+    if (useLocalWhisper) {
+      return allowOpenAIFallback ? "Enabled (local -> cloud)" : "Disabled";
+    }
+    return allowLocalFallback ? "Enabled (cloud -> local)" : "Disabled";
+  }, [useLocalWhisper, allowOpenAIFallback, allowLocalFallback]);
+
   const validateFile = (file: File): string | null => {
     const extension = getFileExtension(file.name);
 
@@ -104,6 +149,21 @@ export default function TranscribePage() {
   const handleBrowse = () => {
     if (status === "processing") return;
     inputRef.current?.click();
+  };
+
+  const handleDropzoneClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (status === "processing") return;
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-prevent-browse='true']")) return;
+    handleBrowse();
+  };
+
+  const handleDropzoneKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleBrowse();
+    }
   };
 
   const resetState = () => {
@@ -266,13 +326,8 @@ export default function TranscribePage() {
       <div
         role="button"
         tabIndex={0}
-        onClick={handleBrowse}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            handleBrowse();
-          }
-        }}
+        onClick={handleDropzoneClick}
+        onKeyDown={handleDropzoneKeyDown}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -303,7 +358,12 @@ export default function TranscribePage() {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Could not transcribe file</h3>
             <p className="text-sm text-muted-foreground mb-5 max-w-2xl">{errorMessage}</p>
-            <Button size="sm" variant="outline" onClick={handleBrowse}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleBrowse}
+              data-prevent-browse="true"
+            >
               Choose another file
             </Button>
           </>
@@ -317,12 +377,12 @@ export default function TranscribePage() {
             <p className="text-xs text-muted-foreground/70 tabular-nums mb-5">
               {formatBytes(selectedFileSize)}
             </p>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={copyTranscript}>
+            <div className="flex items-center gap-2" data-prevent-browse="true">
+              <Button size="sm" variant="outline" onClick={copyTranscript} data-prevent-browse="true">
                 <Copy size={14} />
                 {copied ? "Copied" : "Copy transcript"}
               </Button>
-              <Button size="sm" onClick={resetState}>
+              <Button size="sm" onClick={resetState} data-prevent-browse="true">
                 Upload another
               </Button>
             </div>
@@ -364,6 +424,41 @@ export default function TranscribePage() {
           <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{transcript}</p>
         </div>
       )}
+
+      <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-foreground">Active settings</p>
+          <Badge variant="outline" className="text-[10px]">
+            Applied automatically
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">Model</p>
+            <p className="text-foreground">{activeModelLabel}</p>
+          </div>
+          <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">
+              Language
+            </p>
+            <p className="text-foreground">{activeLanguageLabel}</p>
+          </div>
+          <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">
+              AI Enhancement
+            </p>
+            <p className="text-foreground">
+              {useReasoningModel ? `Enabled${reasoningModel ? ` (${reasoningModel})` : ""}` : "Disabled"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">
+              Fallback
+            </p>
+            <p className="text-foreground">{fallbackLabel}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
