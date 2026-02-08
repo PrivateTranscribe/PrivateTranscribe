@@ -470,9 +470,14 @@ export default function App() {
           {(isRecording || isProcessing) && isHovered && (
             <button
               aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
-              onClick={(e) => {
+              onMouseDown={(e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 isRecording ? cancelRecording() : cancelProcessing();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
               }}
               className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
             >

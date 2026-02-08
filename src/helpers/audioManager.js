@@ -184,7 +184,7 @@ class AudioManager {
     return this.recordingStartTime ? (Date.now() - this.recordingStartTime) / 1000 : null;
   }
 
-  scheduleRecorderStopWatchdog({ discard }) {
+  scheduleRecorderStopWatchdog({ discard, timeoutMs = RECORDER_STOP_TIMEOUT_MS }) {
     this.clearRecorderStopWatchdog();
     const activeSessionId = this.activeRecordingSessionId;
 
@@ -204,7 +204,7 @@ class AudioManager {
       );
 
       void this.forceFinalizeRecording({ discard });
-    }, RECORDER_STOP_TIMEOUT_MS);
+    }, timeoutMs);
   }
 
   async forceFinalizeRecording({ discard = false } = {}) {
@@ -518,7 +518,7 @@ class AudioManager {
         // Ignore requestData errors from some browsers/recorders.
       }
       this.mediaRecorder.stop();
-      this.scheduleRecorderStopWatchdog({ discard: true });
+      this.scheduleRecorderStopWatchdog({ discard: true, timeoutMs: 350 });
       return true;
     }
 
