@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Settings } from "lucide-react";
 import SettingsPage, { SettingsSectionType } from "../SettingsPage";
 
@@ -18,6 +18,28 @@ const tabs: SettingsTab[] = [
 
 export default function SettingsPageWrapper() {
   const [activeTab, setActiveTab] = useState<SettingsSectionType>("general");
+
+  useEffect(() => {
+    const requestedSection = localStorage.getItem("controlPanelInitialSettingsTab");
+    if (!requestedSection) {
+      return;
+    }
+
+    const validSections: SettingsSectionType[] = [
+      "general",
+      "preferences",
+      "transcription",
+      "permissions",
+      "help",
+      "developer",
+    ];
+
+    if (validSections.includes(requestedSection as SettingsSectionType)) {
+      setActiveTab(requestedSection as SettingsSectionType);
+    }
+
+    localStorage.removeItem("controlPanelInitialSettingsTab");
+  }, []);
 
   return (
     <div className="p-8 max-w-4xl mx-auto">

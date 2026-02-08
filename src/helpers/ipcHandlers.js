@@ -97,6 +97,11 @@ class IPCHandlers {
       this.windowManager.showDictationPanel();
     });
 
+    ipcMain.handle("open-control-panel", async () => {
+      await this.windowManager.createControlPanelWindow();
+      return { success: true };
+    });
+
     ipcMain.handle("set-main-window-interactivity", (event, shouldCapture) => {
       this.windowManager.setMainWindowInteractivity(Boolean(shouldCapture));
       return { success: true };

@@ -39,6 +39,31 @@ export default function ControlPanelShell() {
   } = useUpdater();
 
   useEffect(() => {
+    const requestedPage = localStorage.getItem("controlPanelInitialPage");
+    if (!requestedPage) {
+      return;
+    }
+
+    const validPages: PageId[] = [
+      "home",
+      "history",
+      "transcribe",
+      "dictionary",
+      "ai-enhancement",
+      "voice-assistant",
+      "correction-memory",
+      "action-engine",
+      "settings",
+    ];
+
+    if (validPages.includes(requestedPage as PageId)) {
+      setActivePage(requestedPage as PageId);
+    }
+
+    localStorage.removeItem("controlPanelInitialPage");
+  }, []);
+
+  useEffect(() => {
     if (updateStatus.updateDownloaded && !isDownloading) {
       toast({
         title: "Update Ready",

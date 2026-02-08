@@ -181,6 +181,7 @@ declare global {
       pasteText: (text: string) => Promise<void>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
+      openControlPanel?: () => Promise<{ success: boolean }>;
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;
