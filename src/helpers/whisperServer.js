@@ -41,6 +41,9 @@ function resolveTempInputExtension(inputFileName) {
   return DEFAULT_INPUT_EXTENSION;
 }
 
+// Stop whisper-server after a period of inactivity to free GPU/CPU memory
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 class WhisperServerManager {
   constructor() {
     this.process = null;
@@ -52,6 +55,11 @@ class WhisperServerManager {
     this.cachedServerBinaryPath = null;
     this.cachedFFmpegPath = null;
     this.canConvert = false;
+
+    // Idle timeout tracking (for automatic GPU memory cleanup)
+    this.lastUsedTime = 0;
+    this.idleCheckTimeout = null;
+    this.stoppedDueToIdle = false;
   }
 
   getFFmpegPath() {
@@ -211,7 +219,13 @@ class WhisperServerManager {
   async start(modelPath, options = {}) {
     if (this.startupPromise) return this.startupPromise;
 
-    if (this.ready && this.modelPath === modelPath) return;
+    // If the server is already running with the requested model, just mark it as used.
+    if (this.ready && this.modelPath === modelPath) {
+      this.lastUsedTime = Date.now();
+      this.stoppedDueToIdle = false;
+      this._scheduleIdleCheck();
+      return;
+    }
 
     if (this.process) {
       await this.stop();
@@ -301,10 +315,16 @@ class WhisperServerManager {
       this.ready = false;
       this.process = null;
       this.stopHealthCheck();
+      this._clearIdleCheck();
     });
 
     await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
     this.startHealthCheck();
+
+    // Initialize idle timer on successful start.
+    this.lastUsedTime = Date.now();
+    this.stoppedDueToIdle = false;
+    this._scheduleIdleCheck();
 
     debugLogger.info("whisper-server started successfully", {
       port: this.port,
@@ -390,6 +410,56 @@ class WhisperServerManager {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
+  }
+
+  _clearIdleCheck() {
+    if (this.idleCheckTimeout) {
+      clearTimeout(this.idleCheckTimeout);
+      this.idleCheckTimeout = null;
+    }
+  }
+
+  _scheduleIdleCheck() {
+    this._clearIdleCheck();
+
+    // If never used yet or not running, don't schedule.
+    if (!this.process || !this.ready) return;
+    if (!this.lastUsedTime) this.lastUsedTime = Date.now();
+
+    const now = Date.now();
+    const idleForMs = now - this.lastUsedTime;
+    const remainingMs = Math.max(0, IDLE_TIMEOUT_MS - idleForMs);
+
+    this.idleCheckTimeout = setTimeout(() => {
+      // Fire-and-forget. If it errors, we just log.
+      this.checkIdleAndStop().catch((err) => {
+        debugLogger.warn("Idle check failed", { error: err.message });
+      });
+    }, remainingMs);
+  }
+
+  async checkIdleAndStop() {
+    // No process => nothing to do.
+    if (!this.process || !this.ready) return false;
+
+    const now = Date.now();
+    const last = this.lastUsedTime || 0;
+    const idleForMs = now - last;
+
+    if (idleForMs < IDLE_TIMEOUT_MS) {
+      // Still active enough; reschedule next check.
+      this._scheduleIdleCheck();
+      return false;
+    }
+
+    debugLogger.info("Stopping whisper-server due to inactivity", {
+      idleForMs,
+      idleTimeoutMs: IDLE_TIMEOUT_MS,
+    });
+
+    this.stoppedDueToIdle = true;
+    await this.stop();
+    return true;
   }
 
   async transcribe(audioBuffer, options = {}) {
@@ -493,7 +563,16 @@ class WhisperServerManager {
             }
 
             try {
-              resolve(JSON.parse(data));
+              const parsed = JSON.parse(data);
+
+              // Mark server as used on successful transcription.
+              this.lastUsedTime = Date.now();
+              this.stoppedDueToIdle = false;
+              this._scheduleIdleCheck();
+              // Ensure idle shutdown logic is engaged (fire-and-forget).
+              this.checkIdleAndStop().catch(() => {});
+
+              resolve(parsed);
             } catch (e) {
               reject(new Error(`Failed to parse whisper-server response: ${e.message}`));
             }
@@ -538,6 +617,7 @@ class WhisperServerManager {
 
   async stop() {
     this.stopHealthCheck();
+    this._clearIdleCheck();
 
     if (!this.process) {
       this.ready = false;
@@ -575,6 +655,7 @@ class WhisperServerManager {
     this.ready = false;
     this.port = null;
     this.modelPath = null;
+    this.lastUsedTime = 0;
   }
 
   getStatus() {

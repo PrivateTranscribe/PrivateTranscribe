@@ -266,9 +266,20 @@ class WhisperManager {
     debugLogger.info("Transcription mode: SERVER", { model, language: language || "auto" });
     const modelPath = this.getModelPath(model);
 
-    // Start server if not running or if model changed
-    if (!this.serverManager.ready || this.currentServerModel !== model) {
-      debugLogger.debug("Starting/restarting whisper-server for model", { model });
+    // Start server if not running, was auto-stopped due to idleness, or if model changed
+    if (
+      !this.serverManager.ready ||
+      this.serverManager.stoppedDueToIdle ||
+      this.currentServerModel !== model
+    ) {
+      debugLogger.debug("Starting/restarting whisper-server for model", {
+        model,
+        reason: !this.serverManager.ready
+          ? "not running"
+          : this.serverManager.stoppedDueToIdle
+            ? "stopped due to idle"
+            : "model changed",
+      });
       await this.serverManager.start(modelPath);
       this.currentServerModel = model;
     }
@@ -312,6 +323,10 @@ class WhisperManager {
       elapsed,
       resultKeys: Object.keys(result),
     });
+
+    // Trigger idle-timeout bookkeeping after a successful transcription.
+    // (This is mostly a no-op immediately after use, but ensures the idle timer is scheduled.)
+    await this.serverManager.checkIdleAndStop();
 
     return this.parseWhisperResult(result);
   }
