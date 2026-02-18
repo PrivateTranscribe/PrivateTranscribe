@@ -162,6 +162,40 @@ export interface PasteToolsResult {
   recommendedInstall?: string;
 }
 
+export interface HardwareDetectionCPU {
+  count: number;
+  model: string;
+  speed: number;
+}
+
+export interface HardwareDetectionGPU {
+  available: boolean;
+  vendor: "nvidia" | "amd" | "intel" | "apple" | "unknown" | null;
+  model: string | null;
+  vram: number | null;
+  cuda: { available: boolean; version: string | null };
+  metal: { available: boolean; version: string | null };
+  directml: { available: boolean };
+  rocm: { available: boolean; version: string | null };
+}
+
+export interface HardwareRecommendations {
+  transcriptionProvider: string;
+  localTranscriptionProvider: "whisper" | "nvidia";
+  whisperModel: string;
+  parakeetModel?: string;
+  reasoning: string[];
+}
+
+export interface HardwareDetectionResult {
+  timestamp: number;
+  platform: string;
+  arch: string;
+  cpu: HardwareDetectionCPU;
+  gpu: HardwareDetectionGPU;
+  recommendations: HardwareRecommendations;
+}
+
 export interface AggregateStats {
   total_words: number;
   total_transcriptions: number;
@@ -425,6 +459,14 @@ declare global {
       // Auto-start at login
       getAutoStartEnabled?: () => Promise<boolean>;
       setAutoStartEnabled?: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+
+      // Hardware detection
+      detectHardware?: () => Promise<{
+        success: boolean;
+        detection?: HardwareDetectionResult;
+        error?: string;
+      }>;
+      clearHardwareCache?: () => Promise<{ success: boolean }>;
     };
 
     api?: {

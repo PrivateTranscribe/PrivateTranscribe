@@ -11,9 +11,11 @@ import {
   Shield,
   Command,
   Sparkles,
+  Cpu,
 } from "lucide-react";
 import TitleBar from "./TitleBar";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
+import HardwareSetupStep from "./ui/HardwareSetupStep";
 import PermissionCard from "./ui/PermissionCard";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
 import PasteToolsInfo from "./ui/PasteToolsInfo";
@@ -35,8 +37,8 @@ interface OnboardingFlowProps {
 }
 
 export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
-  // Max valid step index for the current onboarding flow (4 steps, index 0-3)
-  const MAX_STEP = 3;
+  // Max valid step index for the current onboarding flow (5 steps, index 0-4)
+  const MAX_STEP = 4;
 
   const [currentStep, setCurrentStep, removeCurrentStep] = useLocalStorage(
     "onboardingCurrentStep",
@@ -79,6 +81,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const agentName = "DictateVoice"; // Default agent name, editable in settings
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
+  const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
     useDialogs();
@@ -100,6 +103,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const steps = [
     { title: "Welcome", icon: Sparkles },
+    { title: "Hardware", icon: Cpu },
     { title: "Setup", icon: Settings },
     { title: "Permissions", icon: Shield },
     { title: "Activation", icon: Command },
@@ -143,10 +147,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     checkStatus();
   }, [useLocalWhisper, whisperModel, parakeetModel, localTranscriptionProvider]);
 
-  // Auto-register default hotkey when entering the hotkey step (step 3)
+  // Auto-register default hotkey when entering the hotkey step (step 4)
   useEffect(() => {
-    if (currentStep !== 3) {
-      // Reset initialization flag when leaving step 3
+    if (currentStep !== 4) {
+      // Reset initialization flag when leaving step 4
       hotkeyStepInitializedRef.current = false;
       return;
     }
@@ -247,7 +251,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     const newStep = currentStep + 1;
     setCurrentStep(newStep);
 
-    if (currentStep === 2 && newStep === 3) {
+    if (currentStep === 3 && newStep === 4) {
       if (window.electronAPI?.showDictationPanel) {
         window.electronAPI.showDictationPanel();
       }
@@ -322,7 +326,24 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           </div>
         );
 
-      case 1: // Setup - Choose Mode & Configure
+      case 1: // Hardware Detection
+        return (
+          <HardwareSetupStep
+            onApplyRecommendations={(recommendations) => {
+              updateTranscriptionSettings({
+                useLocalWhisper: recommendations.useLocalWhisper,
+                localTranscriptionProvider: recommendations.localTranscriptionProvider,
+                whisperModel: recommendations.whisperModel,
+                parakeetModel: recommendations.parakeetModel,
+              });
+              setHardwareRecommendationsApplied(true);
+            }}
+            onSkip={() => nextStep()}
+            showSkip={true}
+          />
+        );
+
+      case 2: // Setup - Choose Mode & Configure
         return (
           <div className="space-y-3">
             <div className="text-center space-y-0.5">
@@ -375,7 +396,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           </div>
         );
 
-      case 2: // Permissions
+      case 3: // Permissions
         const platform = permissionsHook.pasteToolsInfo?.platform;
         const isMacOS = platform === "darwin";
 
@@ -435,7 +456,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           </div>
         );
 
-      case 3: // Hotkey & Activation Mode
+      case 4: // Hotkey & Activation Mode
         return (
           <div className="space-y-4">
             {/* Header */}
@@ -519,6 +540,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       case 0:
         return true; // Welcome
       case 1:
+        // Hardware detection - always can proceed (recommendations are optional)
+        return true;
+      case 2:
         // Setup - check if configuration is complete
         if (useLocalWhisper) {
           const modelToCheck =
@@ -536,7 +560,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           }
           return openaiApiKey.trim().length > 0; // Default to OpenAI
         }
-      case 2: {
+      case 3: {
         // Permissions
         if (!permissionsHook.micPermissionGranted) {
           return false;
@@ -547,7 +571,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         }
         return true;
       }
-      case 3:
+      case 4:
         return hotkey.trim() !== ""; // Activation step (final)
       default:
         return false;

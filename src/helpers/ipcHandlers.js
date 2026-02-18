@@ -4,6 +4,7 @@ const AppUtils = require("../utils");
 const debugLogger = require("./debugLogger");
 const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
+const HardwareDetector = require("./hardwareDetector");
 
 class IPCHandlers {
   constructor(managers) {
@@ -15,6 +16,7 @@ class IPCHandlers {
     this.windowManager = managers.windowManager;
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
+    this.hardwareDetector = new HardwareDetector();
     this.setupHandlers();
   }
 
@@ -1051,6 +1053,22 @@ class IPCHandlers {
         debugLogger.error("Failed to open logs folder:", error);
         return { success: false, error: error.message };
       }
+    });
+
+    // Hardware detection handler
+    ipcMain.handle("detect-hardware", async () => {
+      try {
+        const detection = await this.hardwareDetector.detectHardware();
+        return { success: true, detection };
+      } catch (error) {
+        debugLogger.error("Hardware detection failed:", error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("clear-hardware-cache", async () => {
+      this.hardwareDetector.clearCache();
+      return { success: true };
     });
 
     // Update handlers
