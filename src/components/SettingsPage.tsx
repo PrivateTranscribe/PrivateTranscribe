@@ -80,6 +80,54 @@ function SectionHeader({ title, description }: { title: string; description?: st
   );
 }
 
+// ── History limit input — free-type text field with commit-on-blur/Enter ──
+
+function HistoryLimitInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [raw, setRaw] = React.useState(String(value));
+
+  // Keep raw in sync when the committed value changes externally
+  React.useEffect(() => {
+    setRaw(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const parsed = parseInt(raw, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      onChange(parsed);
+      setRaw(String(parsed));
+    } else {
+      // Snap back to last valid value
+      setRaw(String(value));
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={raw}
+        onChange={(e) => setRaw(e.target.value.replace(/[^0-9]/g, ""))}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+        className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        aria-label="History limit"
+      />
+      <span className="text-xs text-muted-foreground">items</span>
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────
 
 export default function SettingsPage({ activeSection = "general" }: SettingsPageProps) {
@@ -724,24 +772,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="History limit"
-                    description="Number of transcriptions to keep (stats persist even when history is cleared)"
+                    description="Number of transcriptions to keep. Set to 0 to disable history."
                   >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={10}
-                        max={10000}
-                        value={historyLimit}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          if (!isNaN(val) && val >= 10 && val <= 10000) {
-                            setHistoryLimit(val);
-                          }
-                        }}
-                        className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
-                      <span className="text-xs text-muted-foreground">items</span>
-                    </div>
+                    <HistoryLimitInput value={historyLimit} onChange={setHistoryLimit} />
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>

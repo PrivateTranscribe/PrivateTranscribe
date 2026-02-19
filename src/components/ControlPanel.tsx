@@ -36,7 +36,7 @@ export default function ControlPanel() {
   const [aiCTADismissed, setAiCTADismissed] = useState(false);
   const { hotkey } = useHotkey();
   const { toast } = useToast();
-  const { useReasoningModel } = useSettings();
+  const { useReasoningModel, historyLimit } = useSettings();
 
   // Use centralized updater hook to prevent EventEmitter memory leaks
   const {
@@ -87,7 +87,7 @@ export default function ControlPanel() {
   const loadTranscriptions = async () => {
     try {
       setIsLoading(true);
-      await initializeTranscriptions();
+      await initializeTranscriptions(historyLimit);
     } catch (error) {
       showAlertDialog({
         title: "Unable to load history",

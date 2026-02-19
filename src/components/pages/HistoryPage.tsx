@@ -7,6 +7,7 @@ import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useSettings } from "../../hooks/useSettings";
 import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
 
 // ---------------------------------------------------------------------------
@@ -66,13 +67,14 @@ export default function HistoryPage() {
     showConfirmDialog,
     hideConfirmDialog,
   } = useDialogs();
+  const { historyLimit } = useSettings();
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Initialise store on mount
+  // Initialise store on mount, respecting the user's history limit setting
   useEffect(() => {
-    initializeTranscriptions();
-  }, []);
+    initializeTranscriptions(historyLimit);
+  }, [historyLimit]);
 
   // ------- Filtered + grouped data -------
   const filtered = useMemo(() => {

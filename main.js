@@ -2,6 +2,13 @@ const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electro
 const APP_NAME = "Privoca";
 const APP_ID = "com.privoca.app";
 
+// Set App User Model ID immediately on Windows — must happen before app is ready
+// and before any window creation so that the taskbar groups the running process
+// with the pinned shortcut (which reads AppUserModelID from the EXE resource).
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID);
+}
+
 // Enable native Wayland global shortcuts: https://github.com/electron/electron/pull/45171
 if (process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland") {
   app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
@@ -9,11 +16,6 @@ if (process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland") 
 
 if (app.getName() !== APP_NAME) {
   app.setName(APP_NAME);
-}
-
-// Group all windows under single taskbar entry on Windows
-if (process.platform === "win32") {
-  app.setAppUserModelId(APP_ID);
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -554,14 +556,14 @@ if (gotSingleInstanceLock) {
     }
     // Stop whisper server if running
     if (whisperManager) {
-      whisperManager.stopServer().catch(() => {});
+      whisperManager.stopServer().catch(() => { });
     }
     // Stop parakeet WS server if running
     if (parakeetManager) {
-      parakeetManager.stopServer().catch(() => {});
+      parakeetManager.stopServer().catch(() => { });
     }
     // Stop llama-server if running
     const modelManager = require("./src/helpers/modelManagerBridge").default;
-    modelManager.stopServer().catch(() => {});
+    modelManager.stopServer().catch(() => { });
   });
 }
