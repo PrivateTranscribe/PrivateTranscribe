@@ -147,6 +147,12 @@ class HardwareDetector {
    */
   async detectMacGPU(gpu) {
     try {
+      // Always check macOS version first for Metal support
+      const osRelease = require("os").release();
+      const darwinMajor = parseFloat(osRelease);
+      const macOSSupportsMetal = darwinMajor >= 18; // macOS 10.14 Mojave (Darwin 18) minimum
+      const isAppleSilicon = process.arch === "arm64";
+
       const systemProfiler = execSync("system_profiler SPDisplaysDataType -json", {
         encoding: "utf8",
         timeout: 5000,
@@ -162,28 +168,32 @@ class HardwareDetector {
           gpu.vendor = this.identifyVendor(name);
           gpu.available = true;
 
-          // All Macs running macOS 10.14+ support Metal (Apple Silicon or Intel/AMD with Metal drivers).
-          // Check for explicit Apple Silicon first, then fall back to OS version check.
-          const isAppleSilicon =
-            name.includes("Apple") ||
-            display?.sppci_vendor === "sppci_vendor_Apple" ||
-            process.arch === "arm64";
-
-          // macOS 10.14 Mojave (Darwin 18) is the minimum for Metal on Intel/AMD Macs.
-          const osRelease = require("os").release();
-          const darwinMajor = parseFloat(osRelease);
-          const macOSSupportsMetal = darwinMajor >= 18;
-
-          if (isAppleSilicon || macOSSupportsMetal) {
+          // Check for Apple Silicon first (most reliable indicator)
+          if (isAppleSilicon) {
+            gpu.vendor = "apple";
+            gpu.metal.available = true;
+            gpu.metal.version = this.getMetalVersion(osRelease);
+          } else if (macOSSupportsMetal) {
+            // Intel/AMD Mac with Metal support
             gpu.metal.available = true;
             gpu.metal.version = this.getMetalVersion(osRelease);
           }
 
-          if (isAppleSilicon) {
-            gpu.vendor = "apple";
-          }
-
           break;
+        }
+      }
+
+      // If no GPU model found but we're on a Metal-capable system, set defaults
+      if (!gpu.model && macOSSupportsMetal) {
+        gpu.available = true;
+        gpu.metal.available = true;
+        gpu.metal.version = this.getMetalVersion(osRelease);
+        if (isAppleSilicon) {
+          gpu.vendor = "apple";
+          gpu.model = "Apple Silicon";
+        } else {
+          gpu.vendor = "unknown";
+          gpu.model = "Mac GPU (Metal)";
         }
       }
     } catch (error) {
@@ -353,9 +363,9 @@ class HardwareDetector {
    */
   generateRecommendations(detection) {
     const rec = {
-      transcriptionProvider: "local", // Default to local whisper (CPU fallback)
+      transcriptionProvider: "local", // Always default to local
       whisperModel: "base",
-      localTranscriptionProvider: "whisper",
+      localTranscriptionProvider: "whisper", // Default to whisper for CPU fallback
       reasoning: [],
     };
 
@@ -363,7 +373,6 @@ class HardwareDetector {
 
     // NVIDIA GPU with CUDA - recommend Parakeet
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
-      rec.transcriptionProvider = "local";
       rec.localTranscriptionProvider = "nvidia";
       rec.parakeetModel = "parakeet-tdt-0.6b-v3";
       rec.reasoning.push("NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration");
@@ -374,7 +383,6 @@ class HardwareDetector {
       }
     } else if (gpu.vendor === "apple" || gpu.metal?.available) {
       // Apple Silicon or Intel Mac with Metal - whisper.cpp benefits from Metal acceleration
-      rec.transcriptionProvider = "local";
       rec.localTranscriptionProvider = "whisper";
       rec.whisperModel = "small"; // Metal acceleration can handle larger models
       if (gpu.vendor === "apple") {
@@ -384,7 +392,6 @@ class HardwareDetector {
       }
     } else {
       // CPU-only or unsupported GPU
-      rec.transcriptionProvider = "local";
       rec.localTranscriptionProvider = "whisper";
       rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
 
