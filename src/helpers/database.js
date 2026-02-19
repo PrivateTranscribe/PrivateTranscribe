@@ -172,6 +172,32 @@ class DatabaseManager {
     }
   }
 
+  // Deletes all records beyond the newest `limit` entries (oldest first).
+  // If limit is 0, deletes everything (same as clearTranscriptions).
+  trimTranscriptions(limit) {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      if (limit <= 0) {
+        return this.clearTranscriptions();
+      }
+      const stmt = this.db.prepare(`
+        DELETE FROM transcriptions
+        WHERE id NOT IN (
+          SELECT id FROM transcriptions
+          ORDER BY timestamp DESC, id DESC
+          LIMIT ?
+        )
+      `);
+      const result = stmt.run(limit);
+      return { trimmed: result.changes, success: true };
+    } catch (error) {
+      console.error("Error trimming transcriptions:", error.message);
+      throw error;
+    }
+  }
+
   getDictionary() {
     try {
       if (!this.db) {

@@ -162,6 +162,18 @@ class IPCHandlers {
       return result;
     });
 
+    ipcMain.handle("db-trim-transcriptions", async (event, limit) => {
+      const result = this.databaseManager.trimTranscriptions(limit);
+      if (result?.success) {
+        setImmediate(() => {
+          this.broadcastToWindows("transcriptions-cleared", {
+            cleared: result.trimmed ?? result.cleared ?? 0,
+          });
+        });
+      }
+      return result;
+    });
+
     // Dictionary handlers
     ipcMain.handle("db-get-dictionary", async () => {
       return this.databaseManager.getDictionary();

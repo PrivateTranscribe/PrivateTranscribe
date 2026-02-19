@@ -80,7 +80,7 @@ function SectionHeader({ title, description }: { title: string; description?: st
   );
 }
 
-// ── History limit input — free-type text field with commit-on-blur/Enter ──
+// ── History limit input — free-type with inline confirm when lowering ──
 
 function HistoryLimitInput({
   value,
@@ -90,40 +90,100 @@ function HistoryLimitInput({
   onChange: (v: number) => void;
 }) {
   const [raw, setRaw] = React.useState(String(value));
+  // Pending is set when the user tries to lower the limit — awaiting confirmation
+  const [pending, setPending] = React.useState<number | null>(null);
+  const [isConfirming, setIsConfirming] = React.useState(false);
 
-  // Keep raw in sync when the committed value changes externally
+  // Keep raw in sync when committed value changes externally
   React.useEffect(() => {
-    setRaw(String(value));
-  }, [value]);
+    if (pending === null) setRaw(String(value));
+  }, [value, pending]);
 
   const commit = () => {
     const parsed = parseInt(raw, 10);
-    if (!isNaN(parsed) && parsed >= 0) {
+    if (isNaN(parsed) || parsed < 0) {
+      // Invalid — snap back
+      setRaw(String(value));
+      return;
+    }
+    if (parsed < value) {
+      // User is lowering the limit — show warning instead of committing
+      setPending(parsed);
+    } else {
+      // Same or higher — commit immediately, no cleanup needed
       onChange(parsed);
       setRaw(String(parsed));
-    } else {
-      // Snap back to last valid value
-      setRaw(String(value));
     }
   };
 
+  const handleConfirm = async () => {
+    if (pending === null) return;
+    setIsConfirming(true);
+    try {
+      await window.electronAPI?.trimTranscriptions?.(pending);
+      onChange(pending);
+      setRaw(String(pending));
+    } finally {
+      setPending(null);
+      setIsConfirming(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setPending(null);
+    setRaw(String(value));
+  };
+
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="text"
-        inputMode="numeric"
-        value={raw}
-        onChange={(e) => setRaw(e.target.value.replace(/[^0-9]/g, ""))}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.currentTarget.blur();
-          }
-        }}
-        className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-        aria-label="History limit"
-      />
-      <span className="text-xs text-muted-foreground">items</span>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={raw}
+          onChange={(e) => {
+            setRaw(e.target.value.replace(/[^0-9]/g, ""));
+            // If user starts typing again, dismiss any pending confirmation
+            if (pending !== null) setPending(null);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              handleCancel();
+              e.currentTarget.blur();
+            }
+          }}
+          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          aria-label="History limit"
+        />
+        <span className="text-xs text-muted-foreground">items</span>
+      </div>
+
+      {pending !== null && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs space-y-2">
+          <p className="text-amber-700 dark:text-amber-400 font-medium">
+            ⚠️ This will permanently delete history older than{" "}
+            {pending === 0 ? "all entries" : `the newest ${pending} item${pending === 1 ? "" : "s"}`}.
+            Records deleted this way cannot be recovered.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleConfirm}
+              disabled={isConfirming}
+              className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {isConfirming ? "Deleting…" : "Confirm & delete"}
+            </button>
+            <button
+              onClick={handleCancel}
+              className="rounded-md border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
