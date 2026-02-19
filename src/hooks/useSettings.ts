@@ -244,13 +244,33 @@ export function useSettings() {
   });
 
   // History limit setting - controls how many transcriptions to keep in history (privacy)
-  const [historyLimit, setHistoryLimit] = useLocalStorage<number>("historyLimit", 50, {
+  const [historyLimit, setHistoryLimitLocal] = useLocalStorage<number>("historyLimit", 50, {
     serialize: String,
     deserialize: (value) => {
       const num = parseInt(value, 10);
       return isNaN(num) ? 50 : num;
     },
   });
+
+  // Sync historyLimit to main process so db-save-transcription can gate on it
+  // (different Electron windows have isolated localStorage, so the main process
+  //  is the single source of truth for this setting at save time)
+  const syncHistoryLimit = (limit: number) => {
+    if (typeof window !== "undefined" && window.electronAPI?.setHistoryLimit) {
+      window.electronAPI.setHistoryLimit(limit);
+    }
+  };
+
+  const setHistoryLimit = (limit: number) => {
+    setHistoryLimitLocal(limit);
+    syncHistoryLimit(limit);
+  };
+
+  // Send the current value on mount so main process is accurate from the start
+  useEffect(() => {
+    syncHistoryLimit(historyLimit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Custom endpoint API keys - synced to .env like other keys
   const [customTranscriptionApiKey, setCustomTranscriptionApiKeyLocal] = useLocalStorage(

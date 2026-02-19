@@ -17,6 +17,9 @@ class IPCHandlers {
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
     this.hardwareDetector = new HardwareDetector();
+    // Current history limit — synced from control panel via set-history-limit.
+    // Default 50 until the renderer sends the real value.
+    this.historyLimit = 50;
     this.setupHandlers();
   }
 
@@ -126,9 +129,27 @@ class IPCHandlers {
       return this.environmentManager.createProductionEnvFile(apiKey);
     });
 
+    ipcMain.handle("set-history-limit", async (event, limit) => {
+      const parsed = parseInt(limit, 10);
+      this.historyLimit = isNaN(parsed) ? 50 : parsed;
+      return { success: true };
+    });
+
     ipcMain.handle("db-save-transcription", async (event, text, durationSeconds, options = {}) => {
+      // If historyLimit is 0, the user has opted out of history — don't write to DB
+      if (this.historyLimit === 0) {
+        return { success: true, skipped: true };
+      }
       const result = this.databaseManager.saveTranscription(text, durationSeconds, options);
       if (result?.success && result?.transcription) {
+        // Enforce the retention limit immediately after each save.
+        // trimTranscriptions is a no-op if count <= limit, so this is always safe.
+        try {
+          this.databaseManager.trimTranscriptions(this.historyLimit);
+        } catch (trimErr) {
+          // Non-fatal — the save itself succeeded; log and continue.
+          console.error("Failed to trim transcriptions after save:", trimErr);
+        }
         setImmediate(() => {
           this.broadcastToWindows("transcription-added", result.transcription);
         });

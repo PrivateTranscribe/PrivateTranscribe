@@ -230,6 +230,7 @@ declare global {
       clearTranscriptions: () => Promise<{ cleared: number; success: boolean }>;
       deleteTranscription: (id: number) => Promise<{ success: boolean }>;
       trimTranscriptions?: (limit: number) => Promise<{ trimmed?: number; cleared?: number; success: boolean }>;
+      setHistoryLimit?: (limit: number) => Promise<{ success: boolean }>;
 
       // Dictionary operations
       getDictionary: () => Promise<string[]>;

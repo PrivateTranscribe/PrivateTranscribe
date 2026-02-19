@@ -71,6 +71,7 @@ export default function TranscribePage() {
     reasoningModel,
     allowOpenAIFallback,
     allowLocalFallback,
+    historyLimit,
   } = useSettings();
 
   useEffect(() => {
@@ -213,7 +214,9 @@ export default function TranscribePage() {
         throw new Error("No text was transcribed from this file.");
       }
 
-      await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
+      if (historyLimit !== 0) {
+        await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
+      }
       setTranscript(text);
       setStatus("success");
       toast({
@@ -414,9 +417,11 @@ export default function TranscribePage() {
         <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-foreground">Transcript</p>
-            <Badge variant="info" className="text-[10px]">
-              Saved to History
-            </Badge>
+            {historyLimit !== 0 && (
+              <Badge variant="info" className="text-[10px]">
+                Saved to History
+              </Badge>
+            )}
           </div>
           <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{transcript}</p>
         </div>

@@ -116,13 +116,23 @@ function HistoryLimitInput({
     }
   };
 
+  const [trimError, setTrimError] = React.useState<string | null>(null);
+
   const handleConfirm = async () => {
     if (pending === null) return;
+    if (!window.electronAPI?.trimTranscriptions) {
+      setTrimError("Restart the app for this change to take effect.");
+      return;
+    }
     setIsConfirming(true);
+    setTrimError(null);
     try {
-      await window.electronAPI?.trimTranscriptions?.(pending);
+      await window.electronAPI.trimTranscriptions(pending);
       onChange(pending);
       setRaw(String(pending));
+    } catch (err) {
+      console.error("trimTranscriptions failed:", err);
+      setTrimError("Failed to delete records. Please try again.");
     } finally {
       setPending(null);
       setIsConfirming(false);
@@ -182,6 +192,9 @@ function HistoryLimitInput({
               Cancel
             </button>
           </div>
+          {trimError && (
+            <p className="text-red-600 dark:text-red-400">{trimError}</p>
+          )}
         </div>
       )}
     </div>

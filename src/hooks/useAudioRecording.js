@@ -54,7 +54,12 @@ export const useAudioRecording = (toast, options = {}) => {
 
         await manager.safePaste(text);
 
-        void manager.saveTranscription(text, result.durationSeconds);
+        // Only save to history if the user hasn't disabled history entirely
+        const historyLimitRaw = localStorage.getItem("historyLimit");
+        const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
+        if (isNaN(historyLimit) || historyLimit > 0) {
+          void manager.saveTranscription(text, result.durationSeconds);
+        }
 
         if (result.source === "openai" && localStorage.getItem("useLocalWhisper") === "true") {
           toastRef.current?.({

@@ -81,9 +81,9 @@ const resolveUploadFileName = (originalFileName, mimeType) => {
   const baseName =
     originalFileName && typeof originalFileName === "string"
       ? originalFileName
-          .trim()
-          .replace(/[\\/:*?"<>|]/g, "_")
-          .replace(/\.[^./\\]+$/, "")
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, "_")
+        .replace(/\.[^./\\]+$/, "")
       : "";
 
   const safeBase = baseName || "upload";
