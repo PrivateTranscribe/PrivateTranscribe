@@ -15,6 +15,7 @@ interface HardwareSetupStepProps {
     whisperModel: string;
     parakeetModel?: string;
   }) => void;
+  onNext?: () => void;
   onSkip?: () => void;
   showSkip?: boolean;
 }
@@ -23,6 +24,7 @@ type DetectionState = "idle" | "detecting" | "complete" | "error";
 
 export default function HardwareSetupStep({
   onApplyRecommendations,
+  onNext,
   onSkip,
   showSkip = true,
 }: HardwareSetupStepProps) {
@@ -66,6 +68,11 @@ export default function HardwareSetupStep({
       parakeetModel: rec.parakeetModel,
     });
     setApplied(true);
+
+    // Auto-advance to next step after a brief confirmation delay
+    if (onNext) {
+      setTimeout(onNext, 800);
+    }
   };
 
   const getGPUIcon = () => {
@@ -203,15 +210,11 @@ export default function HardwareSetupStep({
         </div>
 
         {/* Recommendations */}
-        {detection.recommendations && (
+        {detection.recommendations ? (
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
             <div className="flex items-start gap-2.5">
               <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                {applied ? (
-                  <Check className="w-3.5 h-3.5 text-success" />
-                ) : (
-                  <Check className="w-3.5 h-3.5 text-primary" />
-                )}
+                <Check className={cn("w-3.5 h-3.5", applied ? "text-success" : "text-primary")} />
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">Recommended Setup</h4>
@@ -223,6 +226,21 @@ export default function HardwareSetupStep({
                     </li>
                   ))}
                 </ul>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+            <div className="flex items-start gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-warning/10 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 text-warning" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-medium text-foreground">No Recommendations Available</h4>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Hardware analysis completed but could not generate recommendations. You can configure
+                  transcription settings manually or skip this step.
+                </p>
               </div>
             </div>
           </div>
@@ -245,23 +263,40 @@ export default function HardwareSetupStep({
       {renderDetectionCard()}
 
       {/* Actions */}
-      {detectionState === "complete" && detection?.recommendations && (
+      {detectionState === "complete" && (
         <div className="flex items-center justify-center gap-2 pt-2">
-          {!applied ? (
-            <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
-              <Check className="w-3.5 h-3.5" />
-              Apply Recommendations
-            </Button>
+          {detection?.recommendations ? (
+            <>
+              {!applied ? (
+                <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
+                  <Check className="w-3.5 h-3.5" />
+                  Apply Recommendations
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 text-success">
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm font-medium">Settings Applied</span>
+                </div>
+              )}
+              {showSkip && !applied && onSkip && (
+                <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
+                  Skip
+                </Button>
+              )}
+            </>
           ) : (
-            <div className="flex items-center gap-2 text-success">
-              <Check className="w-4 h-4" />
-              <span className="text-sm font-medium">Settings Applied</span>
-            </div>
-          )}
-          {showSkip && !applied && onSkip && (
-            <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
-              Skip
-            </Button>
+            <>
+              {onNext && (
+                <Button onClick={onNext} className="h-8 px-6">
+                  Continue
+                </Button>
+              )}
+              {showSkip && onSkip && (
+                <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
+                  Skip
+                </Button>
+              )}
+            </>
           )}
         </div>
       )}

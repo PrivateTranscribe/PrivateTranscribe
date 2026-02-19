@@ -151,29 +151,61 @@ class HardwareDetector {
         encoding: "utf8",
         timeout: 5000,
       });
-      
+
       const data = JSON.parse(systemProfiler);
       const displays = data?.SPDisplaysDataType || [];
-      
+
       for (const display of displays) {
         const name = display?.sppci_model || display?._name;
         if (name) {
           gpu.model = name;
           gpu.vendor = this.identifyVendor(name);
           gpu.available = true;
-          
-          // Apple Silicon has Metal
-          if (name.includes("Apple") || display?.sppci_vendor === "sppci_vendor_Apple") {
+
+          // All Macs running macOS 10.14+ support Metal (Apple Silicon or Intel/AMD with Metal drivers).
+          // Check for explicit Apple Silicon first, then fall back to OS version check.
+          const isAppleSilicon =
+            name.includes("Apple") ||
+            display?.sppci_vendor === "sppci_vendor_Apple" ||
+            process.arch === "arm64";
+
+          // macOS 10.14 Mojave (Darwin 18) is the minimum for Metal on Intel/AMD Macs.
+          const osRelease = require("os").release();
+          const darwinMajor = parseFloat(osRelease);
+          const macOSSupportsMetal = darwinMajor >= 18;
+
+          if (isAppleSilicon || macOSSupportsMetal) {
             gpu.metal.available = true;
-            // Get Metal version from macOS version
-            const osRelease = require("os").release();
             gpu.metal.version = this.getMetalVersion(osRelease);
           }
+
+          if (isAppleSilicon) {
+            gpu.vendor = "apple";
+          }
+
           break;
         }
       }
     } catch (error) {
       debugLogger.debug("macOS GPU detection failed", { error: error.message });
+
+      // Fallback: on any modern macOS (Darwin 18+) assume Metal is available
+      try {
+        const osRelease = require("os").release();
+        const darwinMajor = parseFloat(osRelease);
+        if (darwinMajor >= 18) {
+          gpu.metal.available = true;
+          gpu.metal.version = this.getMetalVersion(osRelease);
+          // Mark available so recommendations pick up Metal
+          gpu.available = true;
+          if (process.arch === "arm64") {
+            gpu.vendor = "apple";
+            gpu.model = "Apple Silicon";
+          }
+        }
+      } catch {
+        // ignore secondary fallback failure
+      }
     }
   }
 
@@ -317,7 +349,7 @@ class HardwareDetector {
    */
   generateRecommendations(detection) {
     const rec = {
-      transcriptionProvider: "whisper", // Default to whisper (CPU)
+      transcriptionProvider: "local", // Default to local whisper (CPU fallback)
       whisperModel: "base",
       localTranscriptionProvider: "whisper",
       reasoning: [],
@@ -331,31 +363,37 @@ class HardwareDetector {
       rec.localTranscriptionProvider = "nvidia";
       rec.parakeetModel = "parakeet-tdt-0.6b-v3";
       rec.reasoning.push("NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration");
-      
+
       // Check VRAM for model recommendations
       if (gpu.vram && gpu.vram >= 4096) {
         rec.reasoning.push(`GPU has ${gpu.vram}MB VRAM - excellent for local transcription`);
       }
-    } else if (gpu.vendor === "apple") {
-      // Apple Silicon - whisper.cpp with Metal or Parakeet (both work well)
+    } else if (gpu.vendor === "apple" || gpu.metal?.available) {
+      // Apple Silicon or Intel Mac with Metal - whisper.cpp benefits from Metal acceleration
       rec.transcriptionProvider = "local";
       rec.localTranscriptionProvider = "whisper";
-      rec.whisperModel = "small"; // Apple Silicon can handle larger models
-      rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal");
+      rec.whisperModel = "small"; // Metal acceleration can handle larger models
+      if (gpu.vendor === "apple") {
+        rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
+      } else {
+        rec.reasoning.push("Metal-capable GPU detected - Whisper will use Metal acceleration");
+      }
     } else {
-      // CPU-only or other GPU
-      rec.reasoning.push("No NVIDIA GPU detected - Whisper CPU recommended");
-      
+      // CPU-only or unsupported GPU
+      rec.transcriptionProvider = "local";
+      rec.localTranscriptionProvider = "whisper";
+      rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
+
       // Adjust model size based on CPU cores
       if (cpu.count >= 8) {
         rec.whisperModel = "small";
-        rec.reasoning.push(`Multi-core CPU (${cpu.count} cores) - can use Small model`);
+        rec.reasoning.push(`Multi-core CPU (${cpu.count} cores) - Small model recommended`);
       } else if (cpu.count >= 4) {
         rec.whisperModel = "base";
-        rec.reasoning.push(`Quad-core CPU - Base model recommended`);
+        rec.reasoning.push(`Quad-core CPU (${cpu.count} cores) - Base model recommended`);
       } else {
         rec.whisperModel = "tiny";
-        rec.reasoning.push(`Limited CPU cores (${cpu.count}) - Tiny model for speed`);
+        rec.reasoning.push(`Limited CPU cores (${cpu.count}) - Tiny model recommended for speed`);
       }
     }
 
