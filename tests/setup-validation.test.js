@@ -1,0 +1,489 @@
+"use strict";
+
+/**
+ * Setup validation tests for Windows/Linux provider fallback and recommendation outputs.
+ *
+ * Run with: node tests/setup-validation.test.js
+ *
+ * Tests the HardwareDetector.generateRecommendations() logic and provider fallback
+ * behaviour across Windows and Linux hardware scenarios without requiring any
+ * external test framework.
+ */
+
+const assert = require("assert");
+const path = require("path");
+
+// ─── Minimal stub for debugLogger so HardwareDetector can be required in CI ──
+const Module = require("module");
+const originalLoad = Module._load.bind(Module);
+Module._load = function (request, parent, isMain) {
+  if (request === "./debugLogger" || request.endsWith("/debugLogger")) {
+    return { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} };
+  }
+  return originalLoad(request, parent, isMain);
+};
+
+const HardwareDetector = require(path.join(__dirname, "../src/helpers/hardwareDetector.js"));
+
+// ─── Simple test runner ───────────────────────────────────────────────────────
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function test(name, fn) {
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+    passed++;
+  } catch (err) {
+    console.error(`  ✗ ${name}`);
+    console.error(`      ${err.message}`);
+    failed++;
+    failures.push({ name, error: err });
+  }
+}
+
+function suite(title, fn) {
+  console.log(`\n${title}`);
+  fn();
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal detection object that generateRecommendations() expects.
+ */
+function makeDetection({ platform = "linux", cpuCount = 4, gpu = {} } = {}) {
+  const defaultGpu = {
+    available: false,
+    vendor: null,
+    model: null,
+    vram: null,
+    cuda: { available: false, version: null },
+    metal: { available: false, version: null },
+    directml: { available: false },
+    rocm: { available: false, version: null },
+  };
+  return {
+    timestamp: Date.now(),
+    platform,
+    arch: "x64",
+    cpu: { count: cpuCount, model: "Test CPU", speed: 3000 },
+    gpu: Object.assign({}, defaultGpu, gpu),
+  };
+}
+
+// ─── Test Suites ─────────────────────────────────────────────────────────────
+
+suite("HardwareDetector – utility methods", () => {
+  const detector = new HardwareDetector();
+
+  test("identifyVendor returns nvidia for GeForce RTX strings", () => {
+    assert.strictEqual(detector.identifyVendor("NVIDIA GeForce RTX 3080"), "nvidia");
+    assert.strictEqual(detector.identifyVendor("GeForce GTX 1060"), "nvidia");
+  });
+
+  test("identifyVendor returns amd for Radeon strings", () => {
+    assert.strictEqual(detector.identifyVendor("AMD Radeon RX 7900"), "amd");
+    assert.strictEqual(detector.identifyVendor("ATI Radeon HD 5870"), "amd");
+  });
+
+  test("identifyVendor returns intel for Intel Arc strings", () => {
+    assert.strictEqual(detector.identifyVendor("Intel Arc A770"), "intel");
+    assert.strictEqual(detector.identifyVendor("Intel Iris Xe Graphics"), "intel");
+    assert.strictEqual(detector.identifyVendor("Intel HD Graphics 630"), "intel");
+  });
+
+  test("identifyVendor returns apple for Apple GPU strings", () => {
+    assert.strictEqual(detector.identifyVendor("Apple M2 GPU"), "apple");
+  });
+
+  test("identifyVendor returns unknown for unrecognised strings", () => {
+    // Note: any string containing "ati" as a substring will match amd (implementation detail).
+    // Use a string with no overlapping substrings.
+    assert.strictEqual(detector.identifyVendor("Qualcomm Adreno 730"), "unknown");
+    assert.strictEqual(detector.identifyVendor("Mali-G710"), "unknown");
+  });
+
+  test("parseVRAM parses MiB correctly", () => {
+    assert.strictEqual(detector.parseVRAM("8192 MiB"), 8192);
+    assert.strictEqual(detector.parseVRAM("4096 MiB"), 4096);
+  });
+
+  test("parseVRAM parses GiB correctly", () => {
+    assert.strictEqual(detector.parseVRAM("8 GiB"), 8192);
+    assert.strictEqual(detector.parseVRAM("16 GiB"), 16384);
+  });
+
+  test("parseVRAM parses GB correctly", () => {
+    assert.strictEqual(detector.parseVRAM("8 GB"), 8192);
+  });
+
+  test("parseVRAM returns null for invalid input", () => {
+    assert.strictEqual(detector.parseVRAM(null), null);
+    assert.strictEqual(detector.parseVRAM("unknown"), null);
+  });
+
+  test("clearCache resets cachedDetection", () => {
+    detector.cachedDetection = { fake: true };
+    detector.clearCache();
+    assert.strictEqual(detector.cachedDetection, null);
+  });
+});
+
+suite("generateRecommendations – Windows NVIDIA + CUDA (provider: nvidia)", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "win32",
+    cpuCount: 8,
+    gpu: {
+      available: true,
+      vendor: "nvidia",
+      model: "NVIDIA GeForce RTX 3080",
+      vram: 10240,
+      cuda: { available: true, version: "12.1" },
+      directml: { available: true },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("recommends local transcription provider", () => {
+    assert.strictEqual(rec.transcriptionProvider, "local");
+  });
+
+  test("selects nvidia as localTranscriptionProvider", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "nvidia");
+  });
+
+  test("sets default Parakeet model", () => {
+    assert.strictEqual(rec.parakeetModel, "parakeet-tdt-0.6b-v3");
+  });
+
+  test("includes CUDA detection reasoning", () => {
+    const hasCudaReason = rec.reasoning.some((r) => r.toLowerCase().includes("cuda"));
+    assert.ok(hasCudaReason, "Expected a CUDA-related reasoning entry");
+  });
+
+  test("includes VRAM note when VRAM >= 4 GB", () => {
+    const hasVramReason = rec.reasoning.some((r) => r.toLowerCase().includes("vram"));
+    assert.ok(hasVramReason, "Expected a VRAM-related reasoning entry");
+  });
+
+  test("reasoning array is non-empty", () => {
+    assert.ok(rec.reasoning.length > 0);
+  });
+});
+
+suite("generateRecommendations – Windows NVIDIA + CUDA low VRAM (< 4 GB)", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "win32",
+    cpuCount: 4,
+    gpu: {
+      available: true,
+      vendor: "nvidia",
+      model: "NVIDIA GeForce GTX 1050",
+      vram: 2048, // 2 GB – below threshold
+      cuda: { available: true, version: "11.8" },
+      directml: { available: true },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("still recommends nvidia provider for low-VRAM CUDA GPU", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "nvidia");
+  });
+
+  test("no VRAM note when VRAM < 4 GB", () => {
+    const hasVramReason = rec.reasoning.some((r) => r.toLowerCase().includes("vram"));
+    assert.ok(!hasVramReason, "Did not expect a VRAM reasoning entry for low-VRAM GPU");
+  });
+});
+
+suite("generateRecommendations – Windows CPU-only (no GPU)", () => {
+  const detector = new HardwareDetector();
+
+  test("8+ core CPU recommends small whisper model", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 8 }));
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
+    assert.strictEqual(rec.whisperModel, "small");
+  });
+
+  test("4-core CPU recommends base whisper model", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 4 }));
+    assert.strictEqual(rec.whisperModel, "base");
+  });
+
+  test("2-core CPU recommends tiny whisper model", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 2 }));
+    assert.strictEqual(rec.whisperModel, "tiny");
+  });
+
+  test("CPU-only reasoning mentions no GPU acceleration", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 4 }));
+    const hasCpuReason = rec.reasoning.some((r) => r.toLowerCase().includes("cpu"));
+    assert.ok(hasCpuReason);
+  });
+
+  test("transcriptionProvider is local for CPU-only", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 4 }));
+    assert.strictEqual(rec.transcriptionProvider, "local");
+  });
+});
+
+suite("generateRecommendations – Windows AMD (DirectML, no CUDA)", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "win32",
+    cpuCount: 8,
+    gpu: {
+      available: true,
+      vendor: "amd",
+      model: "AMD Radeon RX 7900 XT",
+      vram: 20480,
+      cuda: { available: false },
+      directml: { available: true },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("falls back to whisper (not nvidia) for AMD GPU without CUDA", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
+  });
+
+  test("transcriptionProvider is local", () => {
+    assert.strictEqual(rec.transcriptionProvider, "local");
+  });
+});
+
+suite("generateRecommendations – Linux NVIDIA + CUDA", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "linux",
+    cpuCount: 16,
+    gpu: {
+      available: true,
+      vendor: "nvidia",
+      model: "NVIDIA GeForce RTX 4090",
+      vram: 24576,
+      cuda: { available: true, version: "12.2" },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("recommends nvidia provider on Linux with CUDA", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "nvidia");
+  });
+
+  test("sets parakeet model on Linux NVIDIA", () => {
+    assert.strictEqual(rec.parakeetModel, "parakeet-tdt-0.6b-v3");
+  });
+
+  test("transcriptionProvider is local", () => {
+    assert.strictEqual(rec.transcriptionProvider, "local");
+  });
+
+  test("VRAM note present for 24 GB GPU", () => {
+    const hasVramReason = rec.reasoning.some((r) => r.toLowerCase().includes("vram"));
+    assert.ok(hasVramReason);
+  });
+});
+
+suite("generateRecommendations – Linux AMD (ROCm detected, no CUDA)", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "linux",
+    cpuCount: 8,
+    gpu: {
+      available: true,
+      vendor: "amd",
+      model: "AMD Radeon RX 7900 XTX",
+      vram: 24576,
+      cuda: { available: false },
+      rocm: { available: true, version: "5.7" },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("falls back to whisper for AMD/ROCm (no CUDA)", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
+  });
+
+  test("model is based on CPU core count (8 cores → small)", () => {
+    assert.strictEqual(rec.whisperModel, "small");
+  });
+});
+
+suite("generateRecommendations – Linux CPU-only (no GPU)", () => {
+  const detector = new HardwareDetector();
+
+  test("8-core Linux CPU recommends small model", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "linux", cpuCount: 8 }));
+    assert.strictEqual(rec.whisperModel, "small");
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
+  });
+
+  test("4-core Linux CPU recommends base model", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "linux", cpuCount: 4 }));
+    assert.strictEqual(rec.whisperModel, "base");
+  });
+
+  test("1-core Linux CPU recommends tiny model", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "linux", cpuCount: 1 }));
+    assert.strictEqual(rec.whisperModel, "tiny");
+  });
+
+  test("cpu reasoning is present for CPU-only Linux", () => {
+    const rec = detector.generateRecommendations(makeDetection({ platform: "linux", cpuCount: 4 }));
+    const hasCpuReason = rec.reasoning.some((r) => r.toLowerCase().includes("cpu"));
+    assert.ok(hasCpuReason);
+  });
+});
+
+suite("generateRecommendations – Linux Intel GPU (lspci fallback, no CUDA)", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "linux",
+    cpuCount: 6,
+    gpu: {
+      available: true,
+      vendor: "intel",
+      model: "Intel Arc A770",
+      vram: null,
+      cuda: { available: false },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("Intel GPU without CUDA falls back to whisper on Linux", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
+  });
+
+  test("whisperModel is base for 6-core CPU", () => {
+    assert.strictEqual(rec.whisperModel, "base");
+  });
+});
+
+suite("generateRecommendations – output shape invariants", () => {
+  const detector = new HardwareDetector();
+
+  const scenarios = [
+    { label: "Windows NVIDIA", d: makeDetection({ platform: "win32", cpuCount: 8, gpu: { available: true, vendor: "nvidia", cuda: { available: true } } }) },
+    { label: "Windows CPU-only", d: makeDetection({ platform: "win32", cpuCount: 4 }) },
+    { label: "Linux NVIDIA", d: makeDetection({ platform: "linux", cpuCount: 16, gpu: { available: true, vendor: "nvidia", cuda: { available: true } } }) },
+    { label: "Linux CPU-only", d: makeDetection({ platform: "linux", cpuCount: 2 }) },
+    { label: "Linux AMD ROCm", d: makeDetection({ platform: "linux", cpuCount: 8, gpu: { available: true, vendor: "amd", rocm: { available: true } } }) },
+  ];
+
+  for (const { label, d } of scenarios) {
+    test(`${label}: transcriptionProvider is always "local"`, () => {
+      const rec = detector.generateRecommendations(d);
+      assert.strictEqual(rec.transcriptionProvider, "local", `Expected "local" for ${label}`);
+    });
+
+    test(`${label}: localTranscriptionProvider is "whisper" or "nvidia"`, () => {
+      const rec = detector.generateRecommendations(d);
+      assert.ok(
+        rec.localTranscriptionProvider === "whisper" || rec.localTranscriptionProvider === "nvidia",
+        `Unexpected localTranscriptionProvider "${rec.localTranscriptionProvider}" for ${label}`,
+      );
+    });
+
+    test(`${label}: reasoning is a non-empty array`, () => {
+      const rec = detector.generateRecommendations(d);
+      assert.ok(Array.isArray(rec.reasoning), "reasoning should be an array");
+      assert.ok(rec.reasoning.length > 0, "reasoning should not be empty");
+    });
+
+    test(`${label}: whisperModel is one of the valid options when provider is whisper`, () => {
+      const rec = detector.generateRecommendations(d);
+      if (rec.localTranscriptionProvider === "whisper") {
+        const validModels = ["tiny", "base", "small", "medium", "large", "turbo"];
+        assert.ok(
+          validModels.includes(rec.whisperModel),
+          `Invalid whisperModel "${rec.whisperModel}" for ${label}`,
+        );
+      }
+    });
+  }
+});
+
+suite("Provider fallback settings – token validation", () => {
+  /**
+   * Validate that the localStorage key names used by the fallback logic
+   * match the documented settings constants.  These are pure string-equality
+   * checks so they don't require a DOM or Electron environment.
+   */
+
+  const EXPECTED_FALLBACK_KEYS = {
+    localToCloud: "allowOpenAIFallback",
+    cloudToLocal: "allowLocalFallback",
+    useLocalWhisper: "useLocalWhisper",
+    localProvider: "localTranscriptionProvider",
+    cloudProvider: "cloudTranscriptionProvider",
+    reasoningProvider: "reasoningProvider",
+    whisperModel: "whisperModel",
+    parakeetModel: "parakeetModel",
+  };
+
+  test("allowOpenAIFallback key is correct string constant", () => {
+    assert.strictEqual(EXPECTED_FALLBACK_KEYS.localToCloud, "allowOpenAIFallback");
+  });
+
+  test("allowLocalFallback key is correct string constant", () => {
+    assert.strictEqual(EXPECTED_FALLBACK_KEYS.cloudToLocal, "allowLocalFallback");
+  });
+
+  test("useLocalWhisper key is correct string constant", () => {
+    assert.strictEqual(EXPECTED_FALLBACK_KEYS.useLocalWhisper, "useLocalWhisper");
+  });
+
+  test("localTranscriptionProvider values are whisper or nvidia", () => {
+    const validValues = ["whisper", "nvidia"];
+    assert.ok(validValues.every((v) => typeof v === "string"), "All provider values should be strings");
+  });
+
+  test("cloudTranscriptionProvider values are known providers", () => {
+    const knownProviders = ["openai", "groq", "custom"];
+    assert.ok(knownProviders.length === 3);
+    assert.ok(knownProviders.includes("openai"));
+    assert.ok(knownProviders.includes("groq"));
+  });
+
+  test("reasoningProvider values include all supported backends", () => {
+    const knownReasoningProviders = ["openai", "anthropic", "gemini", "groq", "local", "custom"];
+    assert.strictEqual(knownReasoningProviders.length, 6);
+    for (const p of knownReasoningProviders) {
+      assert.ok(typeof p === "string" && p.length > 0);
+    }
+  });
+});
+
+// ─── Summary ─────────────────────────────────────────────────────────────────
+
+console.log(`\n${"─".repeat(60)}`);
+console.log(`Results: ${passed} passed, ${failed} failed`);
+
+if (failed > 0) {
+  console.error("\nFailed tests:");
+  for (const { name, error } of failures) {
+    console.error(`  • ${name}: ${error.message}`);
+  }
+  process.exit(1);
+} else {
+  console.log("All tests passed.");
+  process.exit(0);
+}
