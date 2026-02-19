@@ -49,8 +49,11 @@ export function useModelDownload({
   });
   const [isCancelling, setIsCancelling] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const [failedModel, setFailedModel] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   const isCancellingRef = useRef(false);
   const lastProgressUpdateRef = useRef(0);
+  const lastSelectAfterDownloadRef = useRef<((id: string) => void) | undefined>(undefined);
 
   const { showAlertDialog } = useDialogs();
   const { toast } = useToast();
@@ -143,30 +146,30 @@ export function useModelDownload({
         return;
       }
 
+      // Clear any previous failure state when starting a fresh download
+      setFailedModel(null);
+      setLastError(null);
+      lastSelectAfterDownloadRef.current = onSelectAfterDownload;
+
       try {
         setDownloadingModel(modelId);
         setDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
         lastProgressUpdateRef.current = 0; // Reset throttle timer
 
         let success = false;
+        let errorMsg: string | undefined;
 
         if (modelType === "whisper") {
           const result = await window.electronAPI?.downloadWhisperModel(modelId);
           if (!result?.success && !result?.error?.includes("interrupted by user")) {
-            showAlertDialog({
-              title: "Download Failed",
-              description: `Failed to download model: ${result?.error}`,
-            });
+            errorMsg = result?.error;
           } else {
             success = result?.success ?? false;
           }
         } else if (modelType === "parakeet") {
           const result = await window.electronAPI?.downloadParakeetModel(modelId);
           if (!result?.success && !result?.error?.includes("interrupted by user")) {
-            showAlertDialog({
-              title: "Download Failed",
-              description: `Failed to download model: ${result?.error}`,
-            });
+            errorMsg = result?.error;
           } else {
             success = result?.success ?? false;
           }
@@ -175,13 +178,19 @@ export function useModelDownload({
             | { success: boolean; error?: string }
             | undefined;
           if (result && !result.success && result.error) {
-            showAlertDialog({
-              title: "Download Failed",
-              description: `Failed to download model: ${result.error}`,
-            });
+            errorMsg = result.error;
           } else {
             success = result?.success ?? false;
           }
+        }
+
+        if (errorMsg) {
+          setFailedModel(modelId);
+          setLastError(errorMsg);
+          showAlertDialog({
+            title: "Download Failed",
+            description: `Failed to download model: ${errorMsg}`,
+          });
         }
 
         if (success) {
@@ -199,6 +208,8 @@ export function useModelDownload({
           !errorMessage.includes("cancelled by user") &&
           !errorMessage.includes("DOWNLOAD_CANCELLED")
         ) {
+          setFailedModel(modelId);
+          setLastError(errorMessage);
           showAlertDialog({
             title: "Download Failed",
             description: `Failed to download model: ${errorMessage}`,
@@ -212,6 +223,11 @@ export function useModelDownload({
     },
     [downloadingModel, modelType, showAlertDialog, toast]
   );
+
+  const retryDownload = useCallback(() => {
+    if (!failedModel) return;
+    downloadModel(failedModel, lastSelectAfterDownloadRef.current);
+  }, [failedModel, downloadModel]);
 
   const deleteModel = useCallback(
     async (modelId: string, onComplete?: () => void) => {
@@ -292,9 +308,12 @@ export function useModelDownload({
     isDownloadingModel,
     isInstalling,
     isCancelling,
+    failedModel,
+    lastError,
     downloadModel,
     deleteModel,
     cancelDownload,
+    retryDownload,
     formatETA,
   };
 }

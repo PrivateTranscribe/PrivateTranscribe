@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Download, Trash2, Cloud, Lock, X } from "lucide-react";
+import { Download, Trash2, Cloud, Lock, X, RefreshCw, HardDrive } from "lucide-react";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { ProviderTabs } from "./ui/ProviderTabs";
 import ModelCardList from "./ui/ModelCardList";
@@ -434,6 +434,8 @@ export default function TranscriptionModelPicker({
     isInstalling,
     cancelDownload,
     isCancelling,
+    failedModel: failedWhisperModel,
+    retryDownload: retryWhisperDownload,
   } = useModelDownload({
     modelType: "whisper",
     onDownloadComplete: loadLocalModels,
@@ -448,6 +450,8 @@ export default function TranscriptionModelPicker({
     isInstalling: isInstallingParakeet,
     cancelDownload: cancelParakeetDownload,
     isCancelling: isCancellingParakeet,
+    failedModel: failedParakeetModel,
+    retryDownload: retryParakeetDownload,
   } = useModelDownload({
     modelType: "parakeet",
     onDownloadComplete: loadParakeetModels,
@@ -620,6 +624,50 @@ export default function TranscriptionModelPicker({
     isInstallingParakeet,
     useLocalWhisper,
     internalLocalProvider,
+  ]);
+
+  const diskUsageMb = useMemo(() => {
+    const whisperMb = localModels
+      .filter((m) => m.downloaded && m.size_mb)
+      .reduce((sum, m) => sum + (m.size_mb ?? 0), 0);
+    const parakeetMb = parakeetModels
+      .filter((m) => m.downloaded && m.size_mb)
+      .reduce((sum, m) => sum + (m.size_mb ?? 0), 0);
+    return whisperMb + parakeetMb;
+  }, [localModels, parakeetModels]);
+
+  const retryBanner = useMemo(() => {
+    if (!useLocalWhisper) return null;
+    const failedModel = internalLocalProvider === "whisper" ? failedWhisperModel : failedParakeetModel;
+    const retryFn = internalLocalProvider === "whisper" ? retryWhisperDownload : retryParakeetDownload;
+    if (!failedModel) return null;
+    const info =
+      internalLocalProvider === "whisper"
+        ? WHISPER_MODEL_INFO[failedModel]
+        : PARAKEET_MODEL_INFO[failedModel];
+    return (
+      <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/8 px-3 py-2">
+        <span className="text-xs text-destructive truncate">
+          Failed: {info?.name || failedModel}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2.5 text-[11px] shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+          onClick={retryFn}
+        >
+          <RefreshCw size={11} className="mr-1" />
+          Retry
+        </Button>
+      </div>
+    );
+  }, [
+    useLocalWhisper,
+    internalLocalProvider,
+    failedWhisperModel,
+    failedParakeetModel,
+    retryWhisperDownload,
+    retryParakeetDownload,
   ]);
 
   const renderLocalModels = () => {
@@ -845,10 +893,17 @@ export default function TranscriptionModelPicker({
           </div>
 
           {progressDisplay}
+          {retryBanner}
 
           <div className="p-3">
             {internalLocalProvider === "whisper" && renderLocalModels()}
             {internalLocalProvider === "nvidia" && renderParakeetModels()}
+            {diskUsageMb > 0 && (
+              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+                <HardDrive size={10} />
+                <span>{diskUsageMb} MB used</span>
+              </div>
+            )}
           </div>
         </div>
       )}
