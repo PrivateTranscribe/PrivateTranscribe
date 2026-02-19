@@ -201,6 +201,10 @@ class HardwareDetector {
           if (process.arch === "arm64") {
             gpu.vendor = "apple";
             gpu.model = "Apple Silicon";
+          } else {
+            // Intel or AMD Mac with Metal support
+            gpu.vendor = gpu.vendor || "unknown";
+            gpu.model = gpu.model || "Mac GPU (Metal)";
           }
         }
       } catch {
