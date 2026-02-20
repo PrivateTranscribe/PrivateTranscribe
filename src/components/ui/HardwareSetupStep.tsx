@@ -69,11 +69,11 @@ export default function HardwareSetupStep({
     });
     setApplied(true);
 
-    // Auto-advance after showing confirmation
+    // Auto-advance after brief confirmation display
     if (onNext) {
       setTimeout(() => {
         onNext();
-      }, 800);
+      }, 1000);
     }
   };
 
@@ -212,7 +212,7 @@ export default function HardwareSetupStep({
         </div>
 
         {/* Recommendations */}
-        {detection.recommendations ? (
+        {detection.recommendations && detection.recommendations.reasoning.length > 0 ? (
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
             <div className="flex items-start gap-2.5">
               <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
@@ -241,7 +241,7 @@ export default function HardwareSetupStep({
                 <h4 className="text-xs font-medium text-foreground">No Recommendations Available</h4>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   Hardware analysis completed but could not generate recommendations. You can configure
-                  transcription settings manually or skip this step.
+                  transcription settings manually in Settings or continue with defaults.
                 </p>
               </div>
             </div>
@@ -267,7 +267,7 @@ export default function HardwareSetupStep({
       {/* Actions */}
       {detectionState === "complete" && (
         <div className="flex items-center justify-center gap-2 pt-2">
-          {detection?.recommendations ? (
+          {detection?.recommendations && detection.recommendations.reasoning.length > 0 ? (
             <>
               {!applied ? (
                 <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
@@ -277,9 +277,7 @@ export default function HardwareSetupStep({
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">
-                    {onNext ? "Settings Applied - Continuing..." : "Settings Applied"}
-                  </span>
+                  <span className="text-sm font-medium">Settings Applied - Continuing...</span>
                 </div>
               )}
               {showSkip && !applied && onSkip && (
@@ -292,7 +290,7 @@ export default function HardwareSetupStep({
             <>
               {onNext && (
                 <Button onClick={onNext} className="h-8 px-6">
-                  Continue
+                  Continue with Defaults
                 </Button>
               )}
               {showSkip && onSkip && (

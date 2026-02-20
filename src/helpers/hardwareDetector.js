@@ -153,41 +153,12 @@ class HardwareDetector {
       const macOSSupportsMetal = darwinMajor >= 18; // macOS 10.14 Mojave (Darwin 18) minimum
       const isAppleSilicon = process.arch === "arm64";
 
-      const systemProfiler = execSync("system_profiler SPDisplaysDataType -json", {
-        encoding: "utf8",
-        timeout: 5000,
-      });
-
-      const data = JSON.parse(systemProfiler);
-      const displays = data?.SPDisplaysDataType || [];
-
-      for (const display of displays) {
-        const name = display?.sppci_model || display?._name;
-        if (name) {
-          gpu.model = name;
-          gpu.vendor = this.identifyVendor(name);
-          gpu.available = true;
-
-          // Check for Apple Silicon first (most reliable indicator)
-          if (isAppleSilicon) {
-            gpu.vendor = "apple";
-            gpu.metal.available = true;
-            gpu.metal.version = this.getMetalVersion(osRelease);
-          } else if (macOSSupportsMetal) {
-            // Intel/AMD Mac with Metal support
-            gpu.metal.available = true;
-            gpu.metal.version = this.getMetalVersion(osRelease);
-          }
-
-          break;
-        }
-      }
-
-      // If no GPU model found but we're on a Metal-capable system, set defaults
-      if (!gpu.model && macOSSupportsMetal) {
-        gpu.available = true;
+      // Set Metal defaults FIRST if supported by OS, then try to refine with system_profiler
+      if (macOSSupportsMetal) {
         gpu.metal.available = true;
         gpu.metal.version = this.getMetalVersion(osRelease);
+        gpu.available = true;
+
         if (isAppleSilicon) {
           gpu.vendor = "apple";
           gpu.model = "Apple Silicon";
@@ -196,29 +167,58 @@ class HardwareDetector {
           gpu.model = "Mac GPU (Metal)";
         }
       }
-    } catch (error) {
-      debugLogger.debug("macOS GPU detection failed", { error: error.message });
 
-      // Fallback: on any modern macOS (Darwin 18+) assume Metal is available
+      // Now try system_profiler to refine the GPU info
+      try {
+        const systemProfiler = execSync("system_profiler SPDisplaysDataType -json", {
+          encoding: "utf8",
+          timeout: 5000,
+        });
+
+        const data = JSON.parse(systemProfiler);
+        const displays = data?.SPDisplaysDataType || [];
+
+        for (const display of displays) {
+          const name = display?.sppci_model || display?._name;
+          if (name) {
+            // Only override model if we got a better name
+            gpu.model = name;
+            const identifiedVendor = this.identifyVendor(name);
+
+            // Keep Apple Silicon vendor if already detected, otherwise use identified vendor
+            if (!isAppleSilicon || identifiedVendor === "apple") {
+              gpu.vendor = identifiedVendor;
+            }
+
+            break;
+          }
+        }
+      } catch (profilerError) {
+        debugLogger.debug("system_profiler failed, using Metal defaults", { error: profilerError.message });
+        // Metal defaults are already set, so this is fine
+      }
+    } catch (error) {
+      debugLogger.warn("macOS GPU detection error", { error: error.message });
+
+      // Final fallback: try to at least detect Metal support
       try {
         const osRelease = require("os").release();
         const darwinMajor = parseFloat(osRelease);
         if (darwinMajor >= 18) {
           gpu.metal.available = true;
           gpu.metal.version = this.getMetalVersion(osRelease);
-          // Mark available so recommendations pick up Metal
           gpu.available = true;
+
           if (process.arch === "arm64") {
             gpu.vendor = "apple";
             gpu.model = "Apple Silicon";
           } else {
-            // Intel or AMD Mac with Metal support
-            gpu.vendor = gpu.vendor || "unknown";
-            gpu.model = gpu.model || "Mac GPU (Metal)";
+            gpu.vendor = "unknown";
+            gpu.model = "Mac GPU (Metal)";
           }
         }
       } catch {
-        // ignore secondary fallback failure
+        debugLogger.warn("Final Metal fallback failed - GPU detection completely failed");
       }
     }
   }
@@ -370,6 +370,12 @@ class HardwareDetector {
     };
 
     const { gpu, cpu } = detection;
+
+    // Ensure recommendations is never null - always return valid default
+    if (!gpu || !cpu) {
+      rec.reasoning.push("Unable to detect hardware - using safe CPU defaults");
+      return rec;
+    }
 
     // NVIDIA GPU with CUDA - recommend Parakeet
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
