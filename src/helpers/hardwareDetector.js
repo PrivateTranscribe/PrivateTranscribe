@@ -164,7 +164,7 @@ class HardwareDetector {
           gpu.model = "Apple Silicon";
         } else {
           // Default for Intel Macs with Metal support
-          gpu.vendor = "unknown";
+          gpu.vendor = "intel"; // More accurate default for Intel Macs
           gpu.model = "Mac GPU (Metal)";
         }
       }
@@ -192,6 +192,9 @@ class HardwareDetector {
             } else if (isAppleSilicon) {
               // Keep Apple Silicon vendor if identification failed on ARM
               gpu.vendor = "apple";
+            } else {
+              // Keep intel default for Intel Macs if identification failed
+              gpu.vendor = "intel";
             }
 
             break;
@@ -217,7 +220,7 @@ class HardwareDetector {
             gpu.vendor = "apple";
             gpu.model = "Apple Silicon";
           } else {
-            gpu.vendor = "unknown";
+            gpu.vendor = "intel";
             gpu.model = "Mac GPU (Metal)";
           }
         }
