@@ -161,11 +161,11 @@ class HardwareDetector {
 
         if (isAppleSilicon) {
           gpu.vendor = "apple";
-          gpu.model = "Apple Silicon";
+          gpu.model = "Apple Silicon GPU";
         } else {
           // Default for Intel Macs with Metal support
           gpu.vendor = "intel"; // More accurate default for Intel Macs
-          gpu.model = "Mac GPU (Metal)";
+          gpu.model = "Intel Mac GPU";
         }
       }
 
@@ -218,10 +218,10 @@ class HardwareDetector {
 
           if (process.arch === "arm64") {
             gpu.vendor = "apple";
-            gpu.model = "Apple Silicon";
+            gpu.model = "Apple Silicon GPU";
           } else {
             gpu.vendor = "intel";
-            gpu.model = "Mac GPU (Metal)";
+            gpu.model = "Intel Mac GPU";
           }
         }
       } catch {
@@ -401,6 +401,7 @@ class HardwareDetector {
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
       rec.localTranscriptionProvider = "nvidia";
       rec.parakeetModel = "parakeet-tdt-0.6b-v3";
+      rec.transcriptionProvider = "local"; // Ensure local provider for GPU case
       rec.reasoning.push("NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration");
 
       // Check VRAM for model recommendations
@@ -410,6 +411,7 @@ class HardwareDetector {
     } else {
       // CPU-only or unsupported GPU
       rec.localTranscriptionProvider = "whisper";
+      rec.transcriptionProvider = "local"; // Ensure local provider for CPU fallback
       rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
 
       // Adjust model size based on CPU cores

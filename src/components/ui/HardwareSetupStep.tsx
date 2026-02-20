@@ -69,11 +69,11 @@ export default function HardwareSetupStep({
     });
     setApplied(true);
 
-    // Auto-advance after brief confirmation display (1.5s for user to see confirmation)
+    // Auto-advance after brief confirmation display (1.2s for user to see confirmation)
     if (onNext) {
       setTimeout(() => {
         onNext();
-      }, 1500);
+      }, 1200);
     }
   };
 
@@ -220,12 +220,12 @@ export default function HardwareSetupStep({
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">
-                  {applied ? "Settings Applied" : "Recommended Setup"}
+                  {applied ? "Settings Applied - Continuing..." : "Recommended Setup"}
                 </h4>
                 <ul className="mt-1.5 space-y-1">
                   {detection.recommendations.reasoning.map((reason, idx) => (
                     <li key={idx} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
-                      <span className="text-primary mt-0.5">-</span>
+                      <span className="text-primary mt-0.5">•</span>
                       <span>{reason}</span>
                     </li>
                   ))}
