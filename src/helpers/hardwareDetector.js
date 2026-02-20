@@ -381,6 +381,19 @@ class HardwareDetector {
       return rec;
     }
 
+    // Special check: if Metal is available but we have no other GPU info, still recommend Whisper with Metal
+    if (gpu.metal?.available && !gpu.cuda?.available && gpu.vendor !== "nvidia") {
+      rec.localTranscriptionProvider = "whisper";
+      if (gpu.vendor === "apple") {
+        rec.whisperModel = "small";
+        rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
+      } else {
+        rec.whisperModel = "small";
+        rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
+      }
+      return rec;
+    }
+
     // NVIDIA GPU with CUDA - recommend Parakeet
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
       rec.localTranscriptionProvider = "nvidia";
@@ -390,15 +403,6 @@ class HardwareDetector {
       // Check VRAM for model recommendations
       if (gpu.vram && gpu.vram >= 4096) {
         rec.reasoning.push(`GPU has ${gpu.vram}MB VRAM - excellent for local transcription`);
-      }
-    } else if (gpu.metal?.available) {
-      // Apple Silicon or Intel Mac with Metal - whisper.cpp benefits from Metal acceleration
-      rec.localTranscriptionProvider = "whisper";
-      rec.whisperModel = "small"; // Metal acceleration can handle larger models
-      if (gpu.vendor === "apple") {
-        rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
-      } else {
-        rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
       }
     } else {
       // CPU-only or unsupported GPU
