@@ -365,7 +365,7 @@ class HardwareDetector {
     const rec = {
       transcriptionProvider: "local", // Always default to local
       whisperModel: "base",
-      localTranscriptionProvider: "whisper", // Default to whisper for CPU fallback
+      localTranscriptionProvider: "whisper", // Default to whisper (CPU-safe fallback)
       reasoning: [],
     };
 
@@ -381,14 +381,14 @@ class HardwareDetector {
       if (gpu.vram && gpu.vram >= 4096) {
         rec.reasoning.push(`GPU has ${gpu.vram}MB VRAM - excellent for local transcription`);
       }
-    } else if (gpu.vendor === "apple" || gpu.metal?.available) {
+    } else if (gpu.metal?.available) {
       // Apple Silicon or Intel Mac with Metal - whisper.cpp benefits from Metal acceleration
       rec.localTranscriptionProvider = "whisper";
       rec.whisperModel = "small"; // Metal acceleration can handle larger models
       if (gpu.vendor === "apple") {
         rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
       } else {
-        rec.reasoning.push("Metal-capable GPU detected - Whisper will use Metal acceleration");
+        rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
       }
     } else {
       // CPU-only or unsupported GPU

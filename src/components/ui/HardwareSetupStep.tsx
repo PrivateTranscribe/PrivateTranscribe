@@ -69,11 +69,11 @@ export default function HardwareSetupStep({
     });
     setApplied(true);
 
-    // Auto-advance after brief confirmation delay
+    // Auto-advance after showing confirmation
     if (onNext) {
       setTimeout(() => {
         onNext();
-      }, 1200);
+      }, 800);
     }
   };
 
