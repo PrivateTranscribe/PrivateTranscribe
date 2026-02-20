@@ -132,13 +132,13 @@ function initializeManagers() {
           "Run `npm run compile:globe` and rebuild the app to regenerate the listener binary."
         );
       } else {
-        detailLines.push("Try reinstalling DictateVoice or contact support if the issue persists.");
+        detailLines.push("Try reinstalling Privoca or contact support if the issue persists.");
       }
 
       dialog.showMessageBox({
         type: "warning",
         title: "Globe Hotkey Unavailable",
-        message: "DictateVoice could not activate the Globe key hotkey.",
+        message: "Privoca could not activate the Globe key hotkey.",
         detail: detailLines.join("\n\n"),
       });
     });
@@ -482,7 +482,7 @@ if (gotSingleInstanceLock) {
     startApp().catch((error) => {
       console.error("Failed to start app:", error);
       dialog.showErrorBox(
-        "DictateVoice Startup Error",
+        "Privoca Startup Error",
         `Failed to start the application:\n\n${error.message}\n\nPlease report this issue.`
       );
       app.exit(1);

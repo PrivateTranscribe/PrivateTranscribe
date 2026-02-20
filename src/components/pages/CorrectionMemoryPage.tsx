@@ -16,7 +16,7 @@ export default function CorrectionMemoryPage() {
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Train DictateVoice to remember your corrections
+          Train Privoca to remember your corrections
         </p>
       </div>
 
@@ -92,7 +92,7 @@ export default function CorrectionMemoryPage() {
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
               This feature will learn from your manual corrections and automatically apply them in
-              future transcriptions. Teach DictateVoice your preferred spellings, terminology, and
+              future transcriptions. Teach Privoca your preferred spellings, terminology, and
               phrasings.
             </p>
           </div>

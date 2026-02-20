@@ -16,12 +16,12 @@ interface SupportDropdownProps {
 export default function SupportDropdown({ className }: SupportDropdownProps) {
   const handleContactSupport = async () => {
     try {
-      const result = await window.electronAPI?.openExternal("mailto:support@dictatevoice.com");
+      const result = await window.electronAPI?.openExternal("mailto:support@Privoca.com");
       if (!result?.success) {
         console.error("Failed to open email client:", result?.error);
         // Fallback: try opening the email as a web URL
         await window.electronAPI?.openExternal(
-          "https://mail.google.com/mail/?view=cm&to=support@dictatevoice.com"
+          "https://mail.google.com/mail/?view=cm&to=support@Privoca.com"
         );
       }
     } catch (error) {
@@ -32,7 +32,7 @@ export default function SupportDropdown({ className }: SupportDropdownProps) {
   const handleSubmitBug = async () => {
     try {
       const result = await window.electronAPI?.openExternal(
-        "https://github.com/DictateVoice/dictatevoice/issues"
+        "https://github.com/Privoca/Privoca/issues"
       );
       if (!result?.success) {
         console.error("Failed to open GitHub issues:", result?.error);

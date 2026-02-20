@@ -70,8 +70,8 @@ export function useModelDownload({
 
   useEffect(() => {
     const handleModelsCleared = () => onModelsClearedRef.current?.();
-    window.addEventListener("dictatevoice-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("dictatevoice-models-cleared", handleModelsCleared);
+    window.addEventListener("Privoca-models-cleared", handleModelsCleared);
+    return () => window.removeEventListener("Privoca-models-cleared", handleModelsCleared);
   }, []);
 
   const handleWhisperProgress = useCallback(

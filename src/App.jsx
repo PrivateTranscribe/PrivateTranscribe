@@ -345,10 +345,10 @@ export default function App() {
 
   const handleContactSupport = useCallback(async () => {
     try {
-      const result = await window.electronAPI?.openExternal?.("mailto:support@dictatevoice.com");
+      const result = await window.electronAPI?.openExternal?.("mailto:support@Privoca.com");
       if (!result?.success) {
         await window.electronAPI?.openExternal?.(
-          "https://mail.google.com/mail/?view=cm&to=support@dictatevoice.com"
+          "https://mail.google.com/mail/?view=cm&to=support@Privoca.com"
         );
       }
     } finally {

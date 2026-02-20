@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 export function useTheme() {
   useEffect(() => {
-    // DictateVoice is dark-only — always apply dark class
+    // Privoca is dark-only — always apply dark class
     document.documentElement.classList.add("dark");
     document.body.classList.add("dark");
   }, []);

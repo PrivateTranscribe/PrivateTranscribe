@@ -1,7 +1,7 @@
 {
-  "name": "dictate-voice",
+  "name": "privoca",
   "version": "1.3.4",
-  "description": "Privoca desktop speech-to-text application",
+  "description": "Privoca",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -52,8 +52,8 @@
     "desktop-app"
   ],
   "author": {
-    "name": "DictateVoice Team",
-    "email": "support@dictatevoice.com"
+    "name": "Privoca Team",
+    "email": "support@Privoca.com"
   },
   "license": "MIT",
   "devDependencies": {

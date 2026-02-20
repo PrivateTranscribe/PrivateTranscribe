@@ -421,8 +421,8 @@ export default function TranscriptionModelPicker({
 
   useEffect(() => {
     const handleModelsCleared = () => loadLocalModels();
-    window.addEventListener("dictatevoice-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("dictatevoice-models-cleared", handleModelsCleared);
+    window.addEventListener("Privoca-models-cleared", handleModelsCleared);
+    return () => window.removeEventListener("Privoca-models-cleared", handleModelsCleared);
   }, [loadLocalModels]);
 
   const {

@@ -462,8 +462,8 @@ class WindowManager {
     ].filter(Boolean);
     dialog.showMessageBox({
       type: "error",
-      title: "DictateVoice failed to load",
-      message: "DictateVoice could not load its UI.",
+      title: "Privoca failed to load",
+      message: "Privoca could not load its UI.",
       detail: detailLines.join("\n"),
     });
   }

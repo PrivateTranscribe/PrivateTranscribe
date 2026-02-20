@@ -22,7 +22,7 @@ function fetchJson(url, redirectCount = 0) {
     }
 
     const headers = {
-      "User-Agent": "DictateVoice-Downloader",
+      "User-Agent": "Privoca-Downloader",
       Accept: "application/vnd.github+json",
     };
 

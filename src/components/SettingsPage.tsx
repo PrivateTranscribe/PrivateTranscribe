@@ -270,8 +270,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [isRemovingModels, setIsRemovingModels] = useState(false);
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
-      ? "%USERPROFILE%\\.cache\\dictatevoice\\whisper-models"
-      : "~/.cache/dictatevoice/whisper-models";
+      ? "%USERPROFILE%\\.cache\\Privoca\\whisper-models"
+      : "~/.cache/Privoca/whisper-models";
 
   const {
     status: updateStatus,
@@ -424,7 +424,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         showAlertDialog({
           title: "Still Running",
           description:
-            "DictateVoice didn't restart automatically. Please quit the app manually to finish installing the update.",
+            "Privoca didn't restart automatically. Please quit the app manually to finish installing the update.",
         });
       }, 10000);
     } else if (installTimeoutRef.current) {
@@ -441,7 +441,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   }, [installInitiated, showAlertDialog]);
 
   const resetAccessibilityPermissions = () => {
-    const message = `To fix accessibility permissions:\n\n1. Open System Settings > Privacy & Security > Accessibility\n2. Remove any old DictateVoice or Electron entries\n3. Click (+) and add the current DictateVoice app\n4. Make sure the checkbox is enabled\n5. Restart DictateVoice\n\nClick OK to open System Settings.`;
+    const message = `To fix accessibility permissions:\n\n1. Open System Settings > Privacy & Security > Accessibility\n2. Remove any old Privoca or Electron entries\n3. Click (+) and add the current Privoca app\n4. Make sure the checkbox is enabled\n5. Restart Privoca\n\nClick OK to open System Settings.`;
 
     showConfirmDialog({
       title: "Reset Accessibility Permissions",
@@ -474,7 +474,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               return;
             }
 
-            window.dispatchEvent(new Event("dictatevoice-models-cleared"));
+            window.dispatchEvent(new Event("Privoca-models-cleared"));
 
             showAlertDialog({
               title: "Models Removed",
@@ -507,7 +507,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Updates"
-                description="Keep DictateVoice up to date with the latest features and improvements"
+                description="Keep Privoca up to date with the latest features and improvements"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -694,7 +694,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Launch at login"
-                      description="Start DictateVoice automatically when you log in"
+                      description="Start Privoca automatically when you log in"
                     >
                       <Toggle
                         checked={autoStartEnabled}
@@ -765,7 +765,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Behavior"
-                description="Customize how DictateVoice responds after transcription"
+                description="Customize how Privoca responds after transcription"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -965,7 +965,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Reset accessibility permissions"
-                      description="Fix issues after reinstalling or rebuilding the app by removing and re-adding DictateVoice in System Settings"
+                      description="Fix issues after reinstalling or rebuilding the app by removing and re-adding Privoca in System Settings"
                     >
                       <Button
                         onClick={resetAccessibilityPermissions}
@@ -991,7 +991,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           <div className="space-y-6">
             <SectionHeader
               title="Help & Support"
-              description="Get assistance with DictateVoice and report issues"
+              description="Get assistance with Privoca and report issues"
             />
 
             <SettingsPanel>
@@ -1005,11 +1005,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     size="sm"
                     onClick={async () => {
                       try {
-                        const result = await window.electronAPI?.openExternal("mailto:support@dictatevoice.com");
+                        const result = await window.electronAPI?.openExternal("mailto:support@Privoca.com");
                         if (!result?.success) {
                           // Fallback: try opening the email as a web URL
                           await window.electronAPI?.openExternal(
-                            "https://mail.google.com/mail/?view=cm&to=support@dictatevoice.com"
+                            "https://mail.google.com/mail/?view=cm&to=support@Privoca.com"
                           );
                         }
                       } catch (error) {
@@ -1033,7 +1033,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     onClick={async () => {
                       try {
                         await window.electronAPI?.openExternal(
-                          "https://github.com/DictateVoice/dictatevoice/issues"
+                          "https://github.com/Privoca/Privoca/issues"
                         );
                       } catch (error) {
                         console.error("Error opening GitHub issues:", error);
@@ -1055,7 +1055,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       updateStatus.isDevelopment
                         ? "Running in development mode"
-                        : "Installed version of DictateVoice"
+                        : "Installed version of Privoca"
                     }
                   >
                     <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
@@ -1126,7 +1126,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           showConfirmDialog({
                             title: "Reset All App Data",
                             description:
-                              "This will permanently delete ALL DictateVoice data including:\n\n- Database and transcriptions\n- Local storage settings\n- Downloaded models\n- Environment files\n\nYou will need to manually remove app permissions in System Settings.\n\nThis action cannot be undone.",
+                              "This will permanently delete ALL Privoca data including:\n\n- Database and transcriptions\n- Local storage settings\n- Downloaded models\n- Environment files\n\nYou will need to manually remove app permissions in System Settings.\n\nThis action cannot be undone.",
                             onConfirm: () => {
                               window.electronAPI
                                 ?.cleanupApp()

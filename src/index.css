@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* DictateVoice — Luxury Minimal Dark Theme
+  /* Privoca — Luxury Minimal Dark Theme
      Single dark palette. No light mode. Every component reads these tokens. */
 
   /* Core palette */
@@ -115,7 +115,7 @@
   }
 }
 
-/* DictateVoice Typography */
+/* Privoca Typography */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-family-sans);
   font-weight: 600;

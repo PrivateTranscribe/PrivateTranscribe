@@ -29,14 +29,14 @@
 
 **macOS:**
 1. Open System Settings → Privacy & Security → Microphone
-2. Ensure OpenWhispr is listed and enabled
+2. Ensure Privoca is listed and enabled
 3. If not listed, click "Grant Access" in the app to trigger the permission prompt
 4. You can also click "Open Microphone Privacy" button in the app
 
 **Windows:**
 1. Open Settings → Privacy → Microphone
 2. Ensure "Allow apps to access your microphone" is ON
-3. Ensure OpenWhispr is listed and enabled
+3. Ensure Privoca is listed and enabled
 4. You can also click "Open Privacy Settings" button in the app
 
 **Linux:**
@@ -80,7 +80,7 @@
 3. If bundled binary fails, install via package manager:
    - macOS: `brew install whisper-cpp`
    - Linux: Build from source at https://github.com/ggml-org/whisper.cpp
-4. Clear model cache: `rm -rf ~/.cache/openwhispr/whisper-models`
+4. Clear model cache: `rm -rf ~/.cache/Privoca/whisper-models`
 5. Try cloud transcription as fallback
 
 ### Windows-Specific Issues
@@ -97,8 +97,8 @@ For detailed diagnostics, see [DEBUG.md](DEBUG.md).
 
 1. Enable debug mode and reproduce the issue
 2. Collect diagnostic output from commands above
-3. Open an issue at https://github.com/OpenWhispr/openwhispr/issues with:
+3. Open an issue at https://github.com/Privoca/Privoca/issues with:
    - OS version
-   - OpenWhispr version
+   - Privoca version
    - Relevant log sections
    - Steps to reproduce

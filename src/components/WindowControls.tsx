@@ -123,9 +123,9 @@ export default function WindowControls() {
       <Dialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Close DictateVoice?</DialogTitle>
+            <DialogTitle>Close Privoca?</DialogTitle>
             <DialogDescription>
-              DictateVoice will continue running in the system tray. Would you like to minimize to
+              Privoca will continue running in the system tray. Would you like to minimize to
               tray or quit completely?
             </DialogDescription>
           </DialogHeader>

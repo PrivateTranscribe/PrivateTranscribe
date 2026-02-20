@@ -2,7 +2,7 @@
 cd /d "%~dp0.."
 echo Cleaning dist folder...
 
-taskkill /F /IM DictateVoice.exe >nul 2>&1
+taskkill /F /IM Privoca.exe >nul 2>&1
 taskkill /F /IM electron.exe >nul 2>&1
 
 timeout /t 1 /nobreak >nul

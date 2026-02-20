@@ -78,7 +78,7 @@ export default function DictionaryPage() {
               <p className="text-[12px] font-medium text-foreground">Add a word or phrase</p>
               <div className="flex gap-2">
                 <Input
-                  placeholder="e.g. DictateVoice, Kubernetes, Dr. Martinez..."
+                  placeholder="e.g. Privoca, Kubernetes, Dr. Martinez..."
                   value={newWord}
                   onChange={(e) => setNewWord(e.target.value)}
                   onKeyDown={(e) => {

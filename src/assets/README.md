@@ -1,6 +1,6 @@
 # Assets Directory
 
-This directory contains app icons and other assets for DictateVoice.
+This directory contains app icons and other assets for Privoca.
 
 ## Required Icons
 

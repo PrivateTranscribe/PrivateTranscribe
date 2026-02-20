@@ -78,7 +78,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   } = useSettings();
 
   const [hotkey, setHotkey] = useState(dictationKey || getDefaultHotkey());
-  const agentName = "DictateVoice"; // Default agent name, editable in settings
+  const agentName = "Privoca"; // Default agent name, editable in settings
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
@@ -284,7 +284,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <div className="absolute inset-0 bg-primary/30 rounded-2xl blur-xl" />
               <img
                 src="./assets/icon.png"
-                alt="DictateVoice"
+                alt="Privoca"
                 className="relative w-16 h-16 rounded-2xl shadow-lg"
               />
             </div>
@@ -292,7 +292,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {/* Title */}
             <div className="space-y-1">
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
-                Welcome to DictateVoice
+                Welcome to Privoca
               </h2>
               <p className="text-sm text-muted-foreground">
                 Professional voice-to-text for your computer
@@ -406,7 +406,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             <div className="text-center">
               <h2 className="text-lg font-semibold text-foreground tracking-tight">Permissions</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {isMacOS ? "Required for DictateVoice to work" : "Microphone access required"}
+                {isMacOS ? "Required for Privoca to work" : "Microphone access required"}
               </p>
             </div>
 

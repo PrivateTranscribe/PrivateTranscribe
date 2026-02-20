@@ -112,8 +112,8 @@
     "identity": "HeroTools Inc. (9R85XFMH59)",
     "extendInfo": {
       "LSUIElement": false,
-      "NSMicrophoneUsageDescription": "DictateVoice needs microphone access for speech-to-text transcription.",
-      "NSAccessibilityUsageDescription": "DictateVoice needs accessibility permissions to paste transcribed text into other applications."
+      "NSMicrophoneUsageDescription": "Privoca needs microphone access for speech-to-text transcription.",
+      "NSAccessibilityUsageDescription": "Privoca needs accessibility permissions to paste transcribed text into other applications."
     }
   },
   "win": {

@@ -163,7 +163,7 @@ class WhisperManager {
       }
     }
 
-    debugLogger.info("DictateVoice dependency check", status);
+    debugLogger.info("Privoca dependency check", status);
 
     // Log a summary for easy scanning
     const serverStatus = status.whisperServer.available

@@ -5,7 +5,7 @@ class MenuManager {
     if (process.platform === "darwin") {
       const template = [
         {
-          label: "DictateVoice",
+          label: "Privoca",
           submenu: [
             { role: "about" },
             { type: "separator" },
@@ -29,7 +29,7 @@ class MenuManager {
       // On macOS, create a proper application menu
       const template = [
         {
-          label: "DictateVoice",
+          label: "Privoca",
           submenu: [
             { role: "about" },
             { type: "separator" },
@@ -93,7 +93,7 @@ class MenuManager {
               label: "Learn More",
               click: async () => {
                 const { shell } = require("electron");
-                await shell.openExternal("https://github.com/DictateVoice/dictatevoice");
+                await shell.openExternal("https://github.com/Privoca/Privoca");
               },
             },
           ],
