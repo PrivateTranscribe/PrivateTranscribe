@@ -163,12 +163,13 @@ class HardwareDetector {
           gpu.vendor = "apple";
           gpu.model = "Apple Silicon";
         } else {
+          // Default for Intel Macs with Metal support
           gpu.vendor = "unknown";
           gpu.model = "Mac GPU (Metal)";
         }
       }
 
-      // Now try system_profiler to refine the GPU info
+      // Now try system_profiler to refine the GPU info (best effort)
       try {
         const systemProfiler = execSync("system_profiler SPDisplaysDataType -json", {
           encoding: "utf8",
@@ -185,9 +186,12 @@ class HardwareDetector {
             gpu.model = name;
             const identifiedVendor = this.identifyVendor(name);
 
-            // Keep Apple Silicon vendor if already detected, otherwise use identified vendor
-            if (!isAppleSilicon || identifiedVendor === "apple") {
+            // Override vendor only if identification is successful and non-unknown
+            if (identifiedVendor !== "unknown") {
               gpu.vendor = identifiedVendor;
+            } else if (isAppleSilicon) {
+              // Keep Apple Silicon vendor if identification failed on ARM
+              gpu.vendor = "apple";
             }
 
             break;
@@ -363,7 +367,7 @@ class HardwareDetector {
    */
   generateRecommendations(detection) {
     const rec = {
-      transcriptionProvider: "local", // Always default to local
+      transcriptionProvider: "local", // Always default to local for CPU fallback
       whisperModel: "base",
       localTranscriptionProvider: "whisper", // Default to whisper (CPU-safe fallback)
       reasoning: [],
@@ -373,7 +377,7 @@ class HardwareDetector {
 
     // Ensure recommendations is never null - always return valid default
     if (!gpu || !cpu) {
-      rec.reasoning.push("Unable to detect hardware - using safe CPU defaults");
+      rec.reasoning.push("Unable to detect hardware - using safe CPU defaults with Whisper");
       return rec;
     }
 
