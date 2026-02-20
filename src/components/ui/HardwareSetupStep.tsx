@@ -68,6 +68,13 @@ export default function HardwareSetupStep({
       parakeetModel: rec.parakeetModel,
     });
     setApplied(true);
+
+    // Auto-advance after brief confirmation delay
+    if (onNext) {
+      setTimeout(() => {
+        onNext();
+      }, 1200);
+    }
   };
 
   const getGPUIcon = () => {
@@ -268,17 +275,12 @@ export default function HardwareSetupStep({
                   Apply Recommendations
                 </Button>
               ) : (
-                <>
-                  <div className="flex items-center gap-2 text-success">
-                    <Check className="w-4 h-4" />
-                    <span className="text-sm font-medium">Settings Applied</span>
-                  </div>
-                  {onNext && (
-                    <Button onClick={onNext} className="h-8 px-6 ml-2">
-                      Continue
-                    </Button>
-                  )}
-                </>
+                <div className="flex items-center gap-2 text-success">
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    {onNext ? "Settings Applied - Continuing..." : "Settings Applied"}
+                  </span>
+                </div>
               )}
               {showSkip && !applied && onSkip && (
                 <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
