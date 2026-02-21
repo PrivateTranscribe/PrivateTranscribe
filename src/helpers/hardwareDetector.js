@@ -385,16 +385,21 @@ class HardwareDetector {
     }
 
     // Special check: if Metal is available (macOS), recommend optimized Whisper settings
-    if (gpu.metal?.available) {
+    // Improved Metal detection: Check both metal.available AND gpu.available flags
+    if (gpu.metal?.available && gpu.available) {
       rec.localTranscriptionProvider = "whisper";
       rec.transcriptionProvider = "local";
 
-      if (gpu.vendor === "apple") {
+      if (gpu.vendor === "apple" || process.arch === "arm64") {
         rec.whisperModel = "small";
         rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
-      } else {
+      } else if (gpu.vendor === "intel" || gpu.vendor === "amd") {
         rec.whisperModel = "small";
         rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
+      } else {
+        // Fallback for macOS with Metal but unidentified GPU
+        rec.whisperModel = "base";
+        rec.reasoning.push("Metal GPU support detected - using Whisper with hardware acceleration");
       }
 
       // Return early for Metal - no need to check other conditions

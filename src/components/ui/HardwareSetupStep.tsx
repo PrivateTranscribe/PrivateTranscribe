@@ -69,11 +69,28 @@ export default function HardwareSetupStep({
     });
     setApplied(true);
 
-    // Auto-advance after brief confirmation display (1.2s for user to see confirmation)
+    // Auto-advance after brief confirmation display (1.5s for user to see confirmation)
     if (onNext) {
       setTimeout(() => {
         onNext();
-      }, 1200);
+      }, 1500);
+    }
+  };
+
+  const handleContinueWithDefaults = () => {
+    // Even if no recommendations, apply safe defaults
+    onApplyRecommendations({
+      useLocalWhisper: true,
+      localTranscriptionProvider: "whisper",
+      whisperModel: "base",
+    });
+    setApplied(true);
+
+    // Auto-advance after brief confirmation
+    if (onNext) {
+      setTimeout(() => {
+        onNext();
+      }, 1500);
     }
   };
 
@@ -220,7 +237,7 @@ export default function HardwareSetupStep({
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">
-                  {applied ? "Settings Applied - Continuing..." : "Recommended Setup"}
+                  {applied ? "Settings Applied" : "Recommended Setup"}
                 </h4>
                 <ul className="mt-1.5 space-y-1">
                   {detection.recommendations.reasoning.map((reason, idx) => (
@@ -240,10 +257,13 @@ export default function HardwareSetupStep({
                 <AlertCircle className="w-3.5 h-3.5 text-warning" />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-medium text-foreground">No Recommendations Available</h4>
+                <h4 className="text-xs font-medium text-foreground">
+                  {applied ? "Default Settings Applied" : "No Recommendations Available"}
+                </h4>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Hardware analysis completed but could not generate recommendations. You can configure
-                  transcription settings manually in Settings or continue with defaults.
+                  {applied
+                    ? "Using safe CPU defaults with Whisper Base model. You can adjust settings later."
+                    : "Hardware analysis completed but could not generate recommendations. Safe CPU defaults will be used."}
                 </p>
               </div>
             </div>
@@ -279,7 +299,7 @@ export default function HardwareSetupStep({
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Settings Applied - Continuing...</span>
+                  <span className="text-sm font-medium">Continuing...</span>
                 </div>
               )}
               {showSkip && !applied && onSkip && (
@@ -290,12 +310,19 @@ export default function HardwareSetupStep({
             </>
           ) : (
             <>
-              {onNext && (
-                <Button onClick={onNext} className="h-8 px-6">
-                  Continue with Defaults
-                </Button>
+              {!applied ? (
+                onNext && (
+                  <Button onClick={handleContinueWithDefaults} className="h-8 px-6">
+                    Continue with Defaults
+                  </Button>
+                )
+              ) : (
+                <div className="flex items-center gap-2 text-success">
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm font-medium">Continuing...</span>
+                </div>
               )}
-              {showSkip && onSkip && (
+              {showSkip && !applied && onSkip && (
                 <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
                   Skip
                 </Button>
