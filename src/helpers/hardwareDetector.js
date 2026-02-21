@@ -384,9 +384,11 @@ class HardwareDetector {
       return rec;
     }
 
-    // Special check: if Metal is available but we have no other GPU info, still recommend Whisper with Metal
-    if (gpu.metal?.available && !gpu.cuda?.available && gpu.vendor !== "nvidia") {
+    // Special check: if Metal is available (macOS), recommend optimized Whisper settings
+    if (gpu.metal?.available) {
       rec.localTranscriptionProvider = "whisper";
+      rec.transcriptionProvider = "local";
+
       if (gpu.vendor === "apple") {
         rec.whisperModel = "small";
         rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
@@ -394,6 +396,8 @@ class HardwareDetector {
         rec.whisperModel = "small";
         rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
       }
+
+      // Return early for Metal - no need to check other conditions
       return rec;
     }
 
