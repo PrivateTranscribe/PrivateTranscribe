@@ -3,6 +3,7 @@ import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constant
 import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
+import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
@@ -716,10 +717,11 @@ class AudioManager {
 
     try {
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const language = localStorage.getItem("preferredLanguage");
+      const rawLanguage = localStorage.getItem("preferredLanguage");
+      const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "parakeet", model);
       const options = { model };
-      if (language && language !== "auto") {
-        options.language = language;
+      if (resolvedLanguage) {
+        options.language = resolvedLanguage;
       }
       if (metadata?.originalFileName) {
         options.inputFileName = metadata.originalFileName;

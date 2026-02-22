@@ -27,7 +27,8 @@ import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
 import { SettingsRow } from "./ui/SettingsSection";
-import { LANGUAGE_OPTIONS } from "../utils/languages";
+import { LANGUAGE_OPTIONS, getLanguageLabel } from "../utils/languages";
+import { isLanguageSupported } from "../utils/languageCompat";
 
 export type SettingsSectionType =
   | "general"
@@ -317,6 +318,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     }
     return "linux";
   }, []);
+
+  /**
+   * Derived warning: shown when the active local provider is Parakeet and the
+   * user's chosen language is outside its supported set. Computed in the
+   * renderer so it reacts instantly to changes in any of the three values.
+   */
+  const languageCompatWarning = useMemo(() => {
+    if (!useLocalWhisper || localTranscriptionProvider !== "nvidia") return null;
+    const lang = preferredLanguage || "auto";
+    if (lang === "auto") return null;
+    if (isLanguageSupported(lang, "parakeet", parakeetModel)) return null;
+    return `"${getLanguageLabel(lang)}" is not supported by Parakeet. Auto-detect will be used instead.`;
+  }, [useLocalWhisper, localTranscriptionProvider, parakeetModel, preferredLanguage]);
 
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
 
@@ -761,6 +775,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       ))}
                     </select>
                   </SettingsRow>
+
+                  {languageCompatWarning && (
+                    <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                      <span aria-hidden="true" className="mt-px shrink-0">⚠</span>
+                      {languageCompatWarning}
+                    </p>
+                  )}
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
