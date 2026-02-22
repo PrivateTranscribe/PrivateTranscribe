@@ -5,6 +5,7 @@ const debugLogger = require("./debugLogger");
 const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
+const audioDuckingManager = require("./audioDuckingManager");
 
 class IPCHandlers {
   constructor(managers) {
@@ -1127,6 +1128,32 @@ class IPCHandlers {
 
     ipcMain.handle("get-update-info", async () => {
       return this.updateManager.getUpdateInfo();
+    });
+
+    // Audio ducking — mute or lower system volume during transcription
+    ipcMain.handle("duck-system-audio", async (_event, options = {}) => {
+      debugLogger.info("[IPC] duck-system-audio received", options);
+      try {
+        await audioDuckingManager.duck({
+          mode: options.mode || "duck",
+          duckLevel: typeof options.duckLevel === "number" ? options.duckLevel : 0.2,
+        });
+        return { success: true };
+      } catch (err) {
+        debugLogger.warn("[IPC] duck-system-audio failed:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("restore-system-audio", async () => {
+      debugLogger.info("[IPC] restore-system-audio received");
+      try {
+        await audioDuckingManager.restore();
+        return { success: true };
+      } catch (err) {
+        debugLogger.warn("[IPC] restore-system-audio failed:", err.message);
+        return { success: false, error: err.message };
+      }
     });
   }
 

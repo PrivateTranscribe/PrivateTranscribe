@@ -22,6 +22,20 @@ export const useAudioRecording = (toast, options = {}) => {
     audioManagerRef.current = manager;
     let disposed = false;
 
+    // ── Audio ducking helpers ────────────────────────────────────────────────
+    // Read settings directly from localStorage so this plain-JS hook doesn't
+    // need to import the TypeScript useSettings hook.
+    const duckAudio = () => {
+      const mode = localStorage.getItem("musicDuckingMode") || "off";
+      if (mode === "off") return;
+      const duckLevel = parseFloat(localStorage.getItem("musicDuckLevel") || "0.2");
+      window.electronAPI?.duckSystemAudio?.({ mode, duckLevel });
+    };
+
+    const restoreAudio = () => {
+      window.electronAPI?.restoreSystemAudio?.();
+    };
+
     manager.setCallbacks({
       onStateChange: ({ isRecording, isProcessing }) => {
         if (disposed) {
@@ -80,9 +94,11 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
+        duckAudio();
         void manager.startRecording();
       } else if (currentState.isRecording || currentState.isStartingRecording) {
         manager.stopRecording();
+        restoreAudio();
       }
     };
 
@@ -94,6 +110,7 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
+        duckAudio();
         void manager.startRecording();
       }
     };
@@ -103,6 +120,7 @@ export const useAudioRecording = (toast, options = {}) => {
       const currentState = manager.getState();
       if (currentState.isRecording || currentState.isStartingRecording) {
         manager.stopRecording();
+        restoreAudio();
       }
     };
 

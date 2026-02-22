@@ -262,8 +262,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setHistoryLimit,
     updateTranscriptionSettings,
     updateReasoningSettings,
-    language,
-    setLanguage,
+    preferredLanguage,
+    setPreferredLanguage,
+    musicDuckingMode,
+    setMusicDuckingMode,
+    musicDuckLevel,
+    setMusicDuckLevel,
   } = useSettings();
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -746,8 +750,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description="Choose a specific language or let the engine detect automatically"
                   >
                     <select
-                      value={language || "auto"}
-                      onChange={(e) => setLanguage(e.target.value)}
+                      value={preferredLanguage || "auto"}
+                      onChange={(e) => setPreferredLanguage(e.target.value)}
                       className="h-9 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
                     >
                       {LANGUAGE_OPTIONS.map((lang) => (
@@ -758,6 +762,66 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </select>
                   </SettingsRow>
                 </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Audio Ducking */}
+            <div className="border-t border-border/30 pt-8">
+              <SectionHeader
+                title="Audio Ducking"
+                description="Automatically lower or mute system audio while you are dictating"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="While recording"
+                    description="Choose what happens to system volume when you start dictating"
+                  >
+                    <div className="flex gap-1.5">
+                      {(["off", "duck", "mute"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setMusicDuckingMode(mode)}
+                          className={[
+                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                            musicDuckingMode === mode
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "bg-surface-raised border border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
+                          ].join(" ")}
+                        >
+                          {mode === "off" ? "Off" : mode === "duck" ? "Lower volume" : "Mute"}
+                        </button>
+                      ))}
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
+
+                {musicDuckingMode === "duck" && (
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Volume while recording"
+                      description={`System audio is reduced to ${Math.round(musicDuckLevel * 100)}% while your microphone is active`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={5}
+                          max={80}
+                          step={5}
+                          value={Math.round(musicDuckLevel * 100)}
+                          onChange={(e) =>
+                            setMusicDuckLevel(parseInt(e.target.value, 10) / 100)
+                          }
+                          className="w-28 accent-primary"
+                          aria-label="Duck volume level"
+                        />
+                        <span className="text-xs tabular-nums text-muted-foreground w-8">
+                          {Math.round(musicDuckLevel * 100)}%
+                        </span>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                )}
               </SettingsPanel>
             </div>
 

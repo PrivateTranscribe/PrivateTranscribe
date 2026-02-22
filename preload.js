@@ -276,4 +276,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Hardware detection
   detectHardware: () => ipcRenderer.invoke("detect-hardware"),
   clearHardwareCache: () => ipcRenderer.invoke("clear-hardware-cache"),
+
+  // Audio ducking — lower/mute system volume while transcribing
+  duckSystemAudio: (options) => ipcRenderer.invoke("duck-system-audio", options),
+  restoreSystemAudio: () => ipcRenderer.invoke("restore-system-audio"),
 });

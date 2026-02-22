@@ -252,6 +252,27 @@ export function useSettings() {
     },
   });
 
+  // Music ducking — lower/mute system audio while transcribing
+  const [musicDuckingMode, setMusicDuckingMode] = useLocalStorage<"off" | "mute" | "duck">(
+    "musicDuckingMode",
+    "off",
+    {
+      serialize: String,
+      deserialize: (value) => {
+        if (value === "mute" || value === "duck") return value;
+        return "off";
+      },
+    }
+  );
+
+  const [musicDuckLevel, setMusicDuckLevel] = useLocalStorage<number>("musicDuckLevel", 0.2, {
+    serialize: String,
+    deserialize: (value) => {
+      const num = parseFloat(value);
+      return isNaN(num) ? 0.2 : Math.max(0.05, Math.min(0.8, num));
+    },
+  });
+
   // Sync historyLimit to main process so db-save-transcription can gate on it
   // (different Electron windows have isolated localStorage, so the main process
   //  is the single source of truth for this setting at save time)
@@ -602,5 +623,9 @@ export function useSettings() {
     updateTranscriptionSettings,
     updateReasoningSettings,
     updateApiKeys,
+    musicDuckingMode,
+    setMusicDuckingMode,
+    musicDuckLevel,
+    setMusicDuckLevel,
   };
 }
