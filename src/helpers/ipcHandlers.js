@@ -7,6 +7,38 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 
+/**
+ * Allowlist of URL protocols that may be passed to shell.openExternal().
+ * - https / http  : web links
+ * - mailto        : email client links (e.g. support@privoca.com)
+ *
+ * Explicitly excluded: file://, javascript:, data:, and any unknown protocol
+ * that could be exploited on the host desktop environment.
+ */
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
+
+function isAllowedExternalUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true if the filename looks like a safe GGUF model file name.
+ * Rejects paths that contain directory separators or traversal sequences.
+ */
+function isSafeModelFilename(filename) {
+  if (typeof filename !== "string" || filename.length === 0) return false;
+  // Allow only: word characters, hyphens, dots, and spaces — no slashes or null bytes.
+  if (!/^[\w\-. ]+$/.test(filename)) return false;
+  // Reject any path traversal attempt.
+  if (filename.includes("..")) return false;
+  return true;
+}
+
 class IPCHandlers {
   constructor(managers) {
     this.environmentManager = managers.environmentManager;
@@ -132,7 +164,8 @@ class IPCHandlers {
 
     ipcMain.handle("set-history-limit", async (event, limit) => {
       const parsed = parseInt(limit, 10);
-      this.historyLimit = isNaN(parsed) ? 50 : parsed;
+      // Clamp to [0, 100 000]: 0 = disabled (no history), upper bound prevents runaway values.
+      this.historyLimit = isNaN(parsed) || parsed < 0 ? 50 : Math.min(parsed, 100_000);
       return { success: true };
     });
 
@@ -159,7 +192,8 @@ class IPCHandlers {
     });
 
     ipcMain.handle("db-get-transcriptions", async (event, limit = 50) => {
-      return this.databaseManager.getTranscriptions(limit);
+      const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 10_000));
+      return this.databaseManager.getTranscriptions(safeLimit);
     });
 
     ipcMain.handle("db-clear-transcriptions", async (event) => {
@@ -185,7 +219,8 @@ class IPCHandlers {
     });
 
     ipcMain.handle("db-trim-transcriptions", async (event, limit) => {
-      const result = this.databaseManager.trimTranscriptions(limit);
+      const safeLimit = Math.max(0, Math.min(parseInt(limit, 10) || 0, 100_000));
+      const result = this.databaseManager.trimTranscriptions(safeLimit);
       if (result?.success) {
         setImmediate(() => {
           this.broadcastToWindows("transcriptions-cleared", {
@@ -205,7 +240,16 @@ class IPCHandlers {
       if (!Array.isArray(words)) {
         throw new Error("words must be an array");
       }
-      return this.databaseManager.setDictionary(words);
+      if (words.length > 10_000) {
+        throw new Error("Dictionary too large: maximum 10,000 entries allowed");
+      }
+      // Coerce all entries to trimmed strings and drop empties.
+      // This prevents non-string values from reaching the database layer.
+      const sanitized = words
+        .filter((w) => typeof w === "string")
+        .map((w) => w.trim().substring(0, 200))
+        .filter(Boolean);
+      return this.databaseManager.setDictionary(sanitized);
     });
 
     // Stats handler
@@ -562,8 +606,12 @@ class IPCHandlers {
       return await this.windowManager.stopWindowDrag();
     });
 
-    // External link handler
+    // External link handler — only http/https URLs are permitted.
     ipcMain.handle("open-external", async (event, url) => {
+      if (!isAllowedExternalUrl(url)) {
+        debugLogger.warn("open-external blocked non-http(s) URL", { url });
+        return { success: false, error: "Only http and https URLs may be opened externally." };
+      }
       try {
         await shell.openExternal(url);
         return { success: true };
@@ -907,6 +955,14 @@ class IPCHandlers {
         const modelInfo = modelManager.findModelById(modelId);
         if (!modelInfo) {
           return { success: false, error: `Model "${modelId}" not found` };
+        }
+
+        // Guard against path traversal: model filenames must be simple names with no separators.
+        if (!isSafeModelFilename(modelInfo.model.fileName)) {
+          debugLogger.error("llama-server-start blocked unsafe model filename", {
+            fileName: modelInfo.model.fileName,
+          });
+          return { success: false, error: "Invalid model filename" };
         }
 
         const modelPath = require("path").join(modelManager.modelsDir, modelInfo.model.fileName);

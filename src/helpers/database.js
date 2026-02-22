@@ -19,6 +19,17 @@ class DatabaseManager {
 
       this.db = new Database(dbPath);
 
+      // Restrict the database file to owner read/write only.
+      // This prevents other OS users on shared systems from reading transcription history.
+      // Skipped on Windows where NTFS ACLs on the userData directory provide equivalent isolation.
+      if (process.platform !== "win32") {
+        try {
+          fs.chmodSync(dbPath, 0o600);
+        } catch (_) {
+          // Non-fatal: best-effort on exotic/networked filesystems.
+        }
+      }
+
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS transcriptions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,

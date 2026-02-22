@@ -118,28 +118,31 @@ class ClipboardManager {
     }
   }
 
-  // Check if a command exists on the system (cached)
+  // Check if a command exists on the system (cached).
+  // Uses `which` as a separate process argument — never via shell string interpolation —
+  // to eliminate any risk of command injection through the cmd value.
   commandExists(cmd) {
     const now = Date.now();
     const cached = this.commandAvailabilityCache.get(cmd);
     if (cached && now < cached.expiresAt) {
       return cached.exists;
     }
+
+    // Allowlist: command names must be simple identifiers (letters, digits, hyphens, underscores).
+    // Reject anything that looks like a path or contains shell metacharacters.
+    if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) {
+      this.commandAvailabilityCache.set(cmd, { exists: false, expiresAt: now + CACHE_TTL_MS });
+      return false;
+    }
+
     try {
-      const res = spawnSync("sh", ["-c", `command -v ${cmd}`], {
-        stdio: "ignore",
-      });
+      // Pass cmd as a distinct argument to `which` — no shell involved.
+      const res = spawnSync("which", [cmd], { stdio: "ignore" });
       const exists = res.status === 0;
-      this.commandAvailabilityCache.set(cmd, {
-        exists,
-        expiresAt: now + CACHE_TTL_MS,
-      });
+      this.commandAvailabilityCache.set(cmd, { exists, expiresAt: now + CACHE_TTL_MS });
       return exists;
     } catch {
-      this.commandAvailabilityCache.set(cmd, {
-        exists: false,
-        expiresAt: now + CACHE_TTL_MS,
-      });
+      this.commandAvailabilityCache.set(cmd, { exists: false, expiresAt: now + CACHE_TTL_MS });
       return false;
     }
   }
@@ -152,14 +155,12 @@ class ClipboardManager {
     try {
       // Save original clipboard content first
       const originalClipboard = clipboard.readText();
-      this.safeLog(
-        "💾 Saved original clipboard content:",
-        originalClipboard.substring(0, 50) + "..."
-      );
+      // Log length only — never log clipboard contents, which may contain passwords or secrets.
+      this.safeLog(`💾 Saved original clipboard content (${originalClipboard.length} chars)`);
 
       // Copy text to clipboard first - this always works
       clipboard.writeText(text);
-      this.safeLog("📋 Text copied to clipboard:", text.substring(0, 50) + "...");
+      this.safeLog(`📋 Text copied to clipboard (${text.length} chars)`);
 
       if (platform === "darwin") {
         method = "applescript";
@@ -352,14 +353,13 @@ class ClipboardManager {
         // Optimized PowerShell command:
         // - Uses [void] to suppress output (faster)
         // - WindowStyle Hidden to prevent window flash
-        // - ExecutionPolicy Bypass to skip policy checks
+        // - No -ExecutionPolicy flag: inline -Command strings are not subject to execution policy,
+        //   so Bypass is unnecessary and removing it avoids weakening the system-wide policy.
         const pasteProcess = spawn("powershell.exe", [
           "-NoProfile",
           "-NonInteractive",
           "-WindowStyle",
           "Hidden",
-          "-ExecutionPolicy",
-          "Bypass",
           "-Command",
           "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SendKeys]::SendWait('^v')",
         ]);

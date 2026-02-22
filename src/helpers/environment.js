@@ -112,6 +112,7 @@ OPENAI_API_KEY=${apiKey}
 `;
 
     fs.writeFileSync(envPath, envContent, "utf8");
+    this._restrictEnvFilePermissions(envPath);
 
     require("dotenv").config({ path: envPath });
 
@@ -164,11 +165,26 @@ OPENAI_API_KEY=${apiKey}
     }
 
     fs.writeFileSync(envPath, envContent, "utf8");
+    this._restrictEnvFilePermissions(envPath);
 
     // Reload the env file
     require("dotenv").config({ path: envPath });
 
     return { success: true, path: envPath };
+  }
+
+  /**
+   * Restricts the .env file to owner read/write only (Unix mode 0o600).
+   * Skipped on Windows because NTFS permissions work differently; the userData
+   * directory itself provides sufficient isolation there.
+   */
+  _restrictEnvFilePermissions(filePath) {
+    if (process.platform === "win32") return;
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch (_) {
+      // Non-fatal — best-effort. Failure is possible on some networked/virtual filesystems.
+    }
   }
 }
 
