@@ -59,14 +59,103 @@ export const useAudioRecording = (toast, options = {}) => {
           return;
         }
 
-        const text = result.text || "";
-        if (!text.trim()) {
+        const rawText = result.text || "";
+        if (!rawText.trim()) {
           return;
+        }
+
+        let text = rawText;
+
+        // Privacy-first variable/file snapping (local only):
+        // - Uses user dictionary + correction memory to snap phrases to exact identifiers.
+        try {
+          const enableSnapping = (localStorage.getItem("enableVariableSnapping") || "true") === "true";
+          if (enableSnapping) {
+            const { snapTranscript } = await import("../utils/tokenSnapper");
+            const dictionaryWords = (() => {
+              try {
+                const stored = localStorage.getItem("customDictionary");
+                const parsed = stored ? JSON.parse(stored) : [];
+                return Array.isArray(parsed) ? parsed : [];
+              } catch {
+                return [];
+              }
+            })();
+            const corrections = await window.electronAPI?.getCorrectionMemory?.(200);
+            text = snapTranscript({ transcript: rawText, dictionaryWords, corrections });
+          }
+        } catch {
+          // Non-fatal: snapping is best-effort.
         }
 
         setTranscript(text);
 
         await manager.safePaste(text);
+
+        // Correction memory (best-effort): if the user edits the pasted text and copies the corrected
+        // version shortly after, learn token-level replacements locally.
+        try {
+          const enableLearning = (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
+          if (enableLearning && window.electronAPI?.readClipboard && window.electronAPI?.upsertCorrection) {
+            const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
+            const insertedText = text;
+            const startedAt = Date.now();
+            const timeoutMs = 30000;
+            let lastClipboard = await window.electronAPI.readClipboard();
+
+            const intervalId = setInterval(async () => {
+              if (Date.now() - startedAt > timeoutMs) {
+                clearInterval(intervalId);
+                return;
+              }
+
+              const current = await window.electronAPI.readClipboard();
+              if (!current || current === lastClipboard) return;
+              lastClipboard = current;
+
+              const pairs = inferCorrectionPairs(insertedText, current);
+              if (pairs.length === 0) return;
+
+              for (const p of pairs) {
+                await window.electronAPI.upsertCorrection(p.source, p.target);
+              }
+
+              // Also promote identifier-like targets into the user dictionary.
+              try {
+                const dict = await window.electronAPI.getDictionary();
+                const set = new Set(Array.isArray(dict) ? dict : []);
+                let changed = false;
+                for (const p of pairs) {
+                  if (p.target && p.target.length <= 200) {
+                    if (!set.has(p.target)) {
+                      set.add(p.target);
+                      changed = true;
+                    }
+                  }
+                }
+                if (changed) {
+                  const next = Array.from(set);
+                  await window.electronAPI.setDictionary(next);
+                  localStorage.setItem("customDictionary", JSON.stringify(next));
+                }
+              } catch {
+                // ignore
+              }
+
+              // Stop after first successful learn event to avoid spamming.
+              clearInterval(intervalId);
+
+              toastRef.current?.({
+                title: "Learned correction",
+                description: "Privoca will remember that edit next time.",
+                variant: "default",
+                duration: 4000,
+              });
+            }, 750);
+          }
+        } catch {
+          // ignore
+        }
 
         // Only save to history if the user hasn't disabled history entirely
         const historyLimitRaw = localStorage.getItem("historyLimit");
