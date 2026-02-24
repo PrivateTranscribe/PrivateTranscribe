@@ -89,7 +89,16 @@
     {
       "from": "resources/bin/",
       "to": "bin/",
-      "filter": ["whisper-cpp-*", "whisper-server-*", "llama-server-*", "sherpa-onnx-*", "windows-key-listener*", "*.dylib", "*.dll", "*.so*"]
+      "filter": [
+        "whisper-cpp-*",
+        "whisper-server-*",
+        "llama-server-*",
+        "sherpa-onnx-*",
+        "windows-key-listener*",
+        "*.dylib",
+        "*.dll",
+        "*.so*"
+      ]
     }
   ],
   "mac": {
@@ -117,10 +126,7 @@
     }
   },
   "win": {
-    "target": [
-      "nsis",
-      "portable"
-    ],
+    "target": ["nsis", "portable"],
     "signAndEditExecutable": false,
     "icon": "src/assets/icon.ico",
     "executableName": "Privoca",
@@ -132,12 +138,7 @@
     ]
   },
   "linux": {
-    "target": [
-      "AppImage",
-      "deb",
-      "rpm",
-      "tar.gz"
-    ],
+    "target": ["AppImage", "deb", "tar.gz"],
     "icon": "src/assets/icon.png",
     "category": "Utility",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
@@ -164,9 +165,6 @@
   "deb": {
     "afterRemove": "resources/linux/after-remove.sh",
     "fpm": ["--deb-recommends", "xdotool", "--deb-recommends", "wtype"]
-  },
-  "rpm": {
-    "fpm": ["--rpm-tag", "Recommends: xdotool", "--rpm-tag", "Recommends: wtype"]
   },
   "nsis": {
     "oneClick": false,
