@@ -55,6 +55,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Dictionary functions
   getDictionary: () => ipcRenderer.invoke("db-get-dictionary"),
   setDictionary: (words) => ipcRenderer.invoke("db-set-dictionary", words),
+
+  // Correction memory
+  getCorrectionMemory: (limit) => ipcRenderer.invoke("db-get-correction-memory", limit),
+  upsertCorrection: (source, target) => ipcRenderer.invoke("db-upsert-correction", source, target),
+
   // Stats functions
   getStats: () => ipcRenderer.invoke("db-get-stats"),
 

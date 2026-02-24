@@ -252,6 +252,15 @@ class IPCHandlers {
       return this.databaseManager.setDictionary(sanitized);
     });
 
+    // Correction memory (local, privacy-first)
+    ipcMain.handle("db-get-correction-memory", async (event, limit = 500) => {
+      return this.databaseManager.getCorrectionMemory(limit);
+    });
+
+    ipcMain.handle("db-upsert-correction", async (event, source, target) => {
+      return this.databaseManager.upsertCorrection(source, target);
+    });
+
     // Stats handler
     ipcMain.handle("db-get-stats", async () => {
       return this.databaseManager.getStats();

@@ -47,6 +47,20 @@ class DatabaseManager {
         )
       `);
 
+      // Correction memory: learns mappings from what the model output -> what the user actually wanted.
+      // Stored locally for privacy. Used to snap future transcripts to preferred spellings / identifiers.
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS correction_memory (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source TEXT NOT NULL,
+          target TEXT NOT NULL,
+          count INTEGER DEFAULT 1,
+          last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(source, target)
+        )
+      `);
+
       // Aggregate stats table - stores running totals independent of transcription history
       // These are not sensitive (just counts/times) so they persist even when transcriptions are cleared
       this.db.exec(`
@@ -242,6 +256,47 @@ class DatabaseManager {
       return { success: true };
     } catch (error) {
       console.error("Error setting dictionary:", error.message);
+      throw error;
+    }
+  }
+
+  getCorrectionMemory(limit = 500) {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 500, 5000));
+      const stmt = this.db.prepare(
+        "SELECT source, target, count, last_seen_at, created_at FROM correction_memory ORDER BY count DESC, last_seen_at DESC LIMIT ?"
+      );
+      return stmt.all(safeLimit);
+    } catch (error) {
+      console.error("Error getting correction memory:", error.message);
+      throw error;
+    }
+  }
+
+  upsertCorrection(source, target) {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      const src = typeof source === "string" ? source.trim() : "";
+      const tgt = typeof target === "string" ? target.trim() : "";
+      if (!src || !tgt || src === tgt) {
+        return { success: false, reason: "invalid" };
+      }
+
+      const stmt = this.db.prepare(`
+        INSERT INTO correction_memory (source, target, count, last_seen_at)
+        VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+        ON CONFLICT(source, target)
+        DO UPDATE SET count = count + 1, last_seen_at = CURRENT_TIMESTAMP
+      `);
+      stmt.run(src, tgt);
+      return { success: true };
+    } catch (error) {
+      console.error("Error upserting correction:", error.message);
       throw error;
     }
   }
