@@ -287,6 +287,12 @@ class IPCHandlers {
       return this.clipboardManager.checkPasteTools();
     });
 
+    // Active app/window context (privacy-first, best-effort)
+    ipcMain.handle("get-active-window-context", async () => {
+      const { getActiveWindowContext } = require("./activeWindowContext");
+      return getActiveWindowContext();
+    });
+
     // Whisper handlers
     ipcMain.handle("transcribe-local-whisper", async (event, audioBlob, options = {}) => {
       debugLogger.log("transcribe-local-whisper called", {

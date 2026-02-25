@@ -91,6 +91,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   writeClipboard: (text) => ipcRenderer.invoke("write-clipboard", text),
   checkPasteTools: () => ipcRenderer.invoke("check-paste-tools"),
 
+  // Context capture (best-effort; returns {available:false} if unsupported)
+  getActiveWindowContext: () => ipcRenderer.invoke("get-active-window-context"),
+
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),

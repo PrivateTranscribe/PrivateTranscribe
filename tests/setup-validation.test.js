@@ -25,6 +25,10 @@ Module._load = function (request, parent, isMain) {
 
 const HardwareDetector = require(path.join(__dirname, "../src/helpers/hardwareDetector.js"));
 const { sanitizeContextText } = require(path.join(__dirname, "../src/helpers/contextSanitizer.js"));
+const { getActiveWindowContext } = require(path.join(
+  __dirname,
+  "../src/helpers/activeWindowContext.js"
+));
 
 // ─── Simple test runner ───────────────────────────────────────────────────────
 
@@ -564,6 +568,30 @@ suite("Context sanitization – privacy guardrails", () => {
     const input = "a".repeat(5000);
     const output = sanitizeContextText(input, { maxChars: 100 });
     assert.strictEqual(output.length, 100);
+  });
+});
+
+suite("ActiveWindowContext – best-effort capture", () => {
+  test("getActiveWindowContext returns a structured result without throwing", () => {
+    const result = getActiveWindowContext();
+    assert.ok(result && typeof result === "object");
+    assert.strictEqual(typeof result.available, "boolean");
+
+    // If available, ensure we don't return giant fields.
+    if (result.available) {
+      if (typeof result.windowTitle === "string") {
+        assert.ok(result.windowTitle.length <= 512);
+      }
+      if (typeof result.appName === "string") {
+        assert.ok(result.appName.length <= 128);
+      }
+      if (typeof result.appClass === "string") {
+        assert.ok(result.appClass.length <= 128);
+      }
+      if (typeof result.processName === "string") {
+        assert.ok(result.processName.length <= 128);
+      }
+    }
   });
 });
 
