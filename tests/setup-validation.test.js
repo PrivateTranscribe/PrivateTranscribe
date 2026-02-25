@@ -24,6 +24,7 @@ Module._load = function (request, parent, isMain) {
 };
 
 const HardwareDetector = require(path.join(__dirname, "../src/helpers/hardwareDetector.js"));
+const { sanitizeContextText } = require(path.join(__dirname, "../src/helpers/contextSanitizer.js"));
 
 // ─── Simple test runner ───────────────────────────────────────────────────────
 
@@ -532,6 +533,37 @@ suite("Onboarding flow – hardware step regression checks", () => {
       hardwareStepBlock.includes("<HardwareSetupStep") && hardwareStepBlock.includes("onNext="),
       "Expected HardwareSetupStep to receive an onNext prop in step 1",
     );
+  });
+});
+
+suite("Context sanitization – privacy guardrails", () => {
+  test("redacts password-like fields", () => {
+    const input = "username: alice\npassword: hunter2\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("password: [REDACTED]"));
+    assert.ok(!output.includes("hunter2"));
+  });
+
+  test("redacts apiKey-like fields", () => {
+    const input = "apiKey=abc123\napi_key: def456\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("apiKey=[REDACTED]"));
+    assert.ok(output.includes("api_key: [REDACTED]"));
+    assert.ok(!output.includes("abc123"));
+    assert.ok(!output.includes("def456"));
+  });
+
+  test("redacts Bearer tokens", () => {
+    const input = "Authorization: Bearer very.secret.token\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("Authorization: Bearer [REDACTED]"));
+    assert.ok(!output.includes("very.secret.token"));
+  });
+
+  test("truncates large content", () => {
+    const input = "a".repeat(5000);
+    const output = sanitizeContextText(input, { maxChars: 100 });
+    assert.strictEqual(output.length, 100);
   });
 });
 
