@@ -273,6 +273,25 @@ export function useSettings() {
     },
   });
 
+  // Correction memory toggles
+  const [enableVariableSnapping, setEnableVariableSnapping] = useLocalStorage<boolean>(
+    "enableVariableSnapping",
+    true,
+    {
+      serialize: String,
+      deserialize: (value) => value !== "false", // default true
+    }
+  );
+
+  const [enableCorrectionLearning, setEnableCorrectionLearning] = useLocalStorage<boolean>(
+    "enableCorrectionLearning",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true", // default false
+    }
+  );
+
   // Sync historyLimit to main process so db-save-transcription can gate on it
   // (different Electron windows have isolated localStorage, so the main process
   //  is the single source of truth for this setting at save time)
@@ -627,5 +646,9 @@ export function useSettings() {
     setMusicDuckingMode,
     musicDuckLevel,
     setMusicDuckLevel,
+    enableVariableSnapping,
+    setEnableVariableSnapping,
+    enableCorrectionLearning,
+    setEnableCorrectionLearning,
   };
 }

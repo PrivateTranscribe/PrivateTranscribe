@@ -269,6 +269,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setMusicDuckingMode,
     musicDuckLevel,
     setMusicDuckLevel,
+    enableVariableSnapping,
+    setEnableVariableSnapping,
+    enableCorrectionLearning,
+    setEnableCorrectionLearning,
   } = useSettings();
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -782,6 +786,38 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       {languageCompatWarning}
                     </p>
                   )}
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Correction Memory */}
+            <div className="border-t border-border/30 pt-8">
+              <SectionHeader
+                title="Correction Memory"
+                description="Snap dictation to your preferred spellings and learn from edits"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Variable snapping"
+                    description="Snap spoken phrases to exact identifiers from your dictionary + learned corrections"
+                  >
+                    <Toggle
+                      checked={enableVariableSnapping}
+                      onChange={(checked: boolean) => setEnableVariableSnapping(checked)}
+                    />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Correction learning"
+                    description="Learn from manual edits (currently detected via clipboard changes after dictation)"
+                  >
+                    <Toggle
+                      checked={enableCorrectionLearning}
+                      onChange={(checked: boolean) => setEnableCorrectionLearning(checked)}
+                    />
+                  </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
