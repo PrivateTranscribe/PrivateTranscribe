@@ -93,22 +93,58 @@ class HardwareDetector {
    */
   async detectWindowsGPU(gpu) {
     try {
-      // Try WMIC first for GPU info
+      // Try WMIC first for GPU info. WMIC typically returns CSV with a header like:
+      // Node,AdapterRAM,DriverVersion,Name
       const wmicOutput = execSync(
         "wmic path win32_VideoController get Name, AdapterRAM, DriverVersion /format:csv",
-        { encoding: "utf8", timeout: 5000 }
+        { encoding: "utf8", timeout: 5000 },
       );
-      
-      const lines = wmicOutput.trim().split("\n").filter(line => line.trim());
-      const dataLine = lines.find(line => line.includes("NVIDIA") || line.includes("AMD") || line.includes("Intel"));
-      
-      if (dataLine) {
-        const parts = dataLine.split(",");
-        const name = parts.find(p => p.includes("NVIDIA") || p.includes("AMD") || p.includes("Intel"));
-        if (name) {
-          gpu.model = name.trim();
-          gpu.vendor = this.identifyVendor(gpu.model);
-          gpu.available = true;
+
+      const lines = wmicOutput
+        .trim()
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      const headerLine = lines.find((l) => l.toLowerCase().includes("adapterram") && l.toLowerCase().includes("name"));
+      const headers = headerLine ? headerLine.split(",").map((h) => h.trim().toLowerCase()) : null;
+
+      const vendorLine = lines.find((line) =>
+        line.includes("NVIDIA") || line.includes("AMD") || line.includes("Intel"),
+      );
+
+      if (vendorLine) {
+        const parts = vendorLine.split(",").map((p) => p.trim());
+
+        // Prefer header-based indexing when available; otherwise use best-effort matching.
+        if (headers) {
+          const nameIdx = headers.indexOf("name");
+          const ramIdx = headers.indexOf("adapterram");
+
+          const name = nameIdx >= 0 ? parts[nameIdx] : null;
+          const adapterRam = ramIdx >= 0 ? parts[ramIdx] : null;
+
+          if (name) {
+            gpu.model = name;
+            gpu.vendor = this.identifyVendor(gpu.model);
+            gpu.available = true;
+          }
+
+          if (adapterRam) {
+            gpu.vram = this.parseVRAM(adapterRam);
+          }
+        } else {
+          const name = parts.find((p) => p.includes("NVIDIA") || p.includes("AMD") || p.includes("Intel"));
+          if (name) {
+            gpu.model = name;
+            gpu.vendor = this.identifyVendor(gpu.model);
+            gpu.available = true;
+          }
+
+          const adapterRam = parts.find((p) => /^\d+$/.test(p));
+          if (adapterRam) {
+            gpu.vram = this.parseVRAM(adapterRam);
+          }
         }
       }
     } catch (error) {
