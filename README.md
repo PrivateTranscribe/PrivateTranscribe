@@ -614,7 +614,7 @@ A: Privoca supports 58 languages including English, Spanish, French, German, Chi
 
 ## Project Status
 
-Privoca is actively maintained and ready for production use. Current version: 1.3.3
+Privoca is actively maintained and ready for production use. Current version: 1.3.4
 
 - ✅ Core functionality complete
 - ✅ Cross-platform support (macOS, Windows, Linux)
@@ -623,6 +623,7 @@ Privoca is actively maintained and ready for production use. Current version: 1.
 - ✅ Compound hotkey support
 - ✅ Windows Push-to-Talk with native key listener
 - ✅ Custom dictionary for improved transcription accuracy
+- ✅ Optional active app/window context capture for improved reasoning (privacy-first, stored locally)
 - ✅ NVIDIA Parakeet support via sherpa-onnx
 - ✅ GNOME Wayland native global shortcuts
 
