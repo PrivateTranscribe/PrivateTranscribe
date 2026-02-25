@@ -25,6 +25,61 @@ class ReasoningService extends BaseReasoningService {
     this.cacheCleanupStop = this.apiKeyCache.startAutoCleanup();
   }
 
+  private shouldIncludeActiveWindowContextInReasoning(): boolean {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    try {
+      return window.localStorage.getItem("includeActiveWindowContextInReasoning") === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  private async buildUserPrompt(text: string): Promise<string> {
+    if (!this.shouldIncludeActiveWindowContextInReasoning()) {
+      return text;
+    }
+
+    try {
+      const ctx = await window.electronAPI?.getActiveWindowContext?.();
+
+      if (!ctx || !ctx.available) {
+        logger.logReasoning("ACTIVE_WINDOW_CONTEXT_UNAVAILABLE", {
+          enabled: true,
+          reason: ctx?.reason || "unknown",
+        });
+        return text;
+      }
+
+      const lines: string[] = [];
+      if (ctx.platform) lines.push(`Platform: ${ctx.platform}`);
+      if (ctx.appName) lines.push(`App: ${ctx.appName}`);
+      if (ctx.processName) lines.push(`Process: ${ctx.processName}`);
+      if (ctx.appClass) lines.push(`App class: ${ctx.appClass}`);
+      if (ctx.windowTitle) lines.push(`Window title: ${ctx.windowTitle}`);
+
+      const contextBlock =
+        lines.length > 0
+          ? `Frontmost window context (best-effort, sanitized):\n${lines
+              .map((l) => `- ${l}`)
+              .join("\n")}\n\n`
+          : "";
+
+      logger.logReasoning("ACTIVE_WINDOW_CONTEXT_INCLUDED", {
+        enabled: true,
+        platform: ctx.platform || "unknown",
+        hasWindowTitle: !!ctx.windowTitle,
+      });
+
+      return `${contextBlock}${text}`;
+    } catch (error) {
+      logger.logReasoning("ACTIVE_WINDOW_CONTEXT_ERROR", {
+        enabled: true,
+        error: (error as Error)?.message || String(error),
+      });
+      return text;
+    }
+  }
+
   private getConfiguredOpenAIBase(): string {
     if (typeof window === "undefined" || !window.localStorage) {
       return API_ENDPOINTS.OPENAI_BASE;
@@ -262,7 +317,7 @@ class ReasoningService extends BaseReasoningService {
     providerName: string
   ): Promise<string> {
     const systemPrompt = this.getSystemPrompt(agentName);
-    const userPrompt = text;
+    const userPrompt = await this.buildUserPrompt(text);
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -484,7 +539,7 @@ class ReasoningService extends BaseReasoningService {
 
     try {
       const systemPrompt = this.getSystemPrompt(agentName);
-      const userPrompt = text;
+      const userPrompt = await this.buildUserPrompt(text);
 
       const messages = [
         { role: "system", content: systemPrompt },
@@ -797,7 +852,7 @@ class ReasoningService extends BaseReasoningService {
 
     try {
       const systemPrompt = this.getSystemPrompt(agentName);
-      const userPrompt = text;
+      const userPrompt = await this.buildUserPrompt(text);
 
       const requestBody = {
         contents: [

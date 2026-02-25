@@ -162,6 +162,21 @@ export interface PasteToolsResult {
   recommendedInstall?: string;
 }
 
+export interface ActiveWindowContextResult {
+  available: boolean;
+  reason?: string;
+
+  platform?: "darwin" | "win32" | "linux";
+  method?: string;
+
+  // Platform-specific, best-effort fields
+  appName?: string;
+  processName?: string;
+  appClass?: string;
+  windowTitle?: string;
+  windowId?: string;
+}
+
 export interface HardwareDetectionCPU {
   count: number;
   model: string;
@@ -265,6 +280,9 @@ declare global {
       readClipboard: () => Promise<string>;
       writeClipboard: (text: string) => Promise<{ success: boolean }>;
       checkPasteTools: () => Promise<PasteToolsResult>;
+
+      // Context capture (best-effort; returns {available:false} if unsupported)
+      getActiveWindowContext: () => Promise<ActiveWindowContextResult>;
 
       // Audio
       onNoAudioDetected: (callback: (event: any, data?: any) => void) => (() => void) | void;
