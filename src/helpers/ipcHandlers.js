@@ -1026,6 +1026,8 @@ class IPCHandlers {
       win32: {
         microphone: "ms-settings:privacy-microphone",
         sound: "ms-settings:sound",
+        // Windows Accessibility / Ease of Access settings
+        accessibility: "ms-settings:easeofaccess",
       },
     };
 
