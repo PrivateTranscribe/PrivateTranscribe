@@ -1,5 +1,9 @@
 const { ipcMain, app, shell, BrowserWindow } = require("electron");
 const path = require("path");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
 const AppUtils = require("../utils");
 const debugLogger = require("./debugLogger");
 const { getSystemPrompt } = require("./prompts");
@@ -1031,8 +1035,62 @@ class IPCHandlers {
       },
     };
 
+    const LINUX_SETTINGS_COMMANDS = {
+      microphone: [
+        // Most Linux distros don't have a single privacy/microphone permissions panel,
+        // so we fall back to opening sound settings where users can select an input.
+        ["gnome-control-center", ["sound"]],
+        ["systemsettings5", ["kcmshell5", "kcm_pulseaudio"]],
+        ["pavucontrol", []],
+      ],
+      sound: [
+        ["gnome-control-center", ["sound"]],
+        ["systemsettings5", ["kcmshell5", "kcm_pulseaudio"]],
+        ["pavucontrol", []],
+      ],
+      accessibility: [
+        ["gnome-control-center", ["universal-access"]],
+        ["systemsettings5", ["kcmshell5", "kcm_accessibility"]],
+      ],
+    };
+
+    const openLinuxSettings = async (settingType) => {
+      const candidates = LINUX_SETTINGS_COMMANDS[settingType] || [];
+
+      for (const [cmd, args] of candidates) {
+        try {
+          // Use execFile (no shell) to avoid command injection.
+          await execFileAsync(cmd, args, { timeout: 10_000 });
+          return { success: true };
+        } catch (error) {
+          // Keep trying next candidate.
+          debugLogger.warn(`Linux settings launcher failed: ${cmd} ${args.join(" ")}`, error);
+        }
+      }
+
+      const messages = {
+        microphone:
+          "Unable to open microphone settings automatically. Please open your system sound settings (e.g., pavucontrol) to select an input device.",
+        sound:
+          "Unable to open sound settings automatically. Please open your system sound settings (e.g., pavucontrol).",
+        accessibility:
+          "Unable to open accessibility settings automatically. Please open your desktop environment settings manually.",
+      };
+
+      return {
+        success: false,
+        error:
+          messages[settingType] || `${settingType} settings are not available on this platform.`,
+      };
+    };
+
     const openSystemSettings = async (settingType) => {
       const platform = process.platform;
+
+      if (platform === "linux") {
+        return openLinuxSettings(settingType);
+      }
+
       const urls = SYSTEM_SETTINGS_URLS[platform];
       const url = urls?.[settingType];
 
@@ -1040,7 +1098,7 @@ class IPCHandlers {
         // Platform doesn't support this settings URL
         const messages = {
           microphone: "Please open your system settings to configure microphone permissions.",
-          sound: "Please open your system sound settings (e.g., pavucontrol).",
+          sound: "Please open your system sound settings.",
           accessibility: "Accessibility settings are not applicable on this platform.",
         };
         return {
