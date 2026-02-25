@@ -542,8 +542,9 @@ class IPCHandlers {
 
       if (enabled) {
         // Entering capture mode - unregister globalShortcut so it doesn't consume key events
+        // Note: mouse side-buttons (Mouse4/Mouse5) are not valid Electron accelerators.
         const currentHotkey = hotkeyManager.getCurrentHotkey();
-        if (currentHotkey && currentHotkey !== "GLOBE") {
+        if (currentHotkey && currentHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(currentHotkey)) {
           debugLogger.log(
             `[IPC] Unregistering globalShortcut "${currentHotkey}" for hotkey capture mode`
           );
@@ -566,7 +567,8 @@ class IPCHandlers {
         }
       } else {
         // Exiting capture mode - re-register globalShortcut if not already registered
-        if (effectiveHotkey && effectiveHotkey !== "GLOBE") {
+        // (Skip mouse hotkeys; they are handled by the native WindowsKeyManager in push-to-talk.)
+        if (effectiveHotkey && effectiveHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(effectiveHotkey)) {
           const { globalShortcut } = require("electron");
           if (!globalShortcut.isRegistered(effectiveHotkey)) {
             debugLogger.log(

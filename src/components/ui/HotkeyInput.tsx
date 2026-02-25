@@ -170,6 +170,22 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
   return modifiers.length > 0 ? [...modifiers, baseKey].join("+") : baseKey;
 }
 
+export function mapMouseEventToHotkey(e: MouseEvent): string | null {
+  // Browser MouseEvent.button mapping:
+  // 0=Left, 1=Middle, 2=Right, 3=Back, 4=Forward
+  let baseKey: string | null = null;
+  if (e.button === 3) baseKey = "Mouse4";
+  if (e.button === 4) baseKey = "Mouse5";
+  if (!baseKey) return null;
+
+  const modifiers: string[] = [];
+  if (e.ctrlKey || e.metaKey) modifiers.push("CommandOrControl");
+  if (e.altKey) modifiers.push("Alt");
+  if (e.shiftKey) modifiers.push("Shift");
+
+  return modifiers.length > 0 ? [...modifiers, baseKey].join("+") : baseKey;
+}
+
 export interface HotkeyInputVariant {
   variant?: "default" | "hero";
 }
@@ -242,6 +258,39 @@ export function HotkeyInput({
       window.electronAPI?.setHotkeyListeningMode?.(false, null);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isCapturing) return;
+
+    // Allow capturing mouse side buttons (Mouse4/Mouse5) while the input is "listening".
+    // Important: preventDefault to avoid browser back/forward navigation.
+    const onMouseDown = (e: MouseEvent) => {
+      if (disabled) return;
+      const hotkey = mapMouseEventToHotkey(e);
+      if (!hotkey) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const mods = new Set<string>();
+      if (e.ctrlKey || e.metaKey) mods.add(isMac ? "Cmd" : "Ctrl");
+      if (e.altKey) mods.add(isMac ? "Option" : "Alt");
+      if (e.shiftKey) mods.add("Shift");
+      setActiveModifiers(mods);
+
+      lastCapturedHotkeyRef.current = hotkey;
+      onChange(hotkey);
+      setIsCapturing(false);
+      setActiveModifiers(new Set());
+      containerRef.current?.blur();
+    };
+
+    window.addEventListener("mousedown", onMouseDown, true);
+
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+    };
+  }, [isCapturing, disabled, isMac, onChange]);
 
   useEffect(() => {
     if (!isCapturing || !isMac) return;

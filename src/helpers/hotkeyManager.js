@@ -35,6 +35,12 @@ class HotkeyManager {
     return this.isListeningMode;
   }
 
+  isMouseHotkey(hotkey) {
+    if (!hotkey) return false;
+    const base = hotkey.includes("+") ? hotkey.split("+").pop() : hotkey;
+    return base === "Mouse4" || base === "Mouse5" || base === "XButton1" || base === "XButton2";
+  }
+
   getFailureReason(hotkey) {
     if (globalShortcut.isRegistered(hotkey)) {
       return {
@@ -98,6 +104,7 @@ class HotkeyManager {
     if (
       hotkey === this.currentHotkey &&
       hotkey !== "GLOBE" &&
+      !this.isMouseHotkey(hotkey) &&
       globalShortcut.isRegistered(hotkey)
     ) {
       debugLogger.log(
@@ -106,8 +113,8 @@ class HotkeyManager {
       return { success: true, hotkey };
     }
 
-    // Unregister the previous hotkey (if it's not GLOBE, which doesn't use globalShortcut)
-    if (this.currentHotkey && this.currentHotkey !== "GLOBE") {
+    // Unregister the previous hotkey (if it's not GLOBE or a mouse hotkey)
+    if (this.currentHotkey && this.currentHotkey !== "GLOBE" && !this.isMouseHotkey(this.currentHotkey)) {
       debugLogger.log(`[HotkeyManager] Unregistering previous hotkey: "${this.currentHotkey}"`);
       globalShortcut.unregister(this.currentHotkey);
     }
@@ -124,6 +131,21 @@ class HotkeyManager {
         this.currentHotkey = hotkey;
         debugLogger.log("[HotkeyManager] GLOBE key set successfully");
         return { success: true, hotkey };
+      }
+
+      // Mouse side buttons are not supported by Electron globalShortcut.
+      // On Windows, these are handled by the native WindowsKeyManager listener (push-to-talk).
+      if (process.platform === "win32" && this.isMouseHotkey(hotkey)) {
+        this.currentHotkey = hotkey;
+        debugLogger.log(
+          `[HotkeyManager] Mouse hotkey "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
+        );
+        return {
+          success: true,
+          hotkey,
+          message:
+            "Mouse hotkeys require Windows Push-to-Talk mode (hold-to-talk). Tap-to-talk via globalShortcut is not available for mouse buttons.",
+        };
       }
 
       const alreadyRegistered = globalShortcut.isRegistered(hotkey);
@@ -405,7 +427,10 @@ class HotkeyManager {
             "[HotkeyManager] Hotkey registered but failed to persist to localStorage"
           );
         }
-        return { success: true, message: `Hotkey updated to: ${hotkey}` };
+        return {
+          success: true,
+          message: result.message || `Hotkey updated to: ${hotkey}`,
+        };
       } else {
         return {
           success: false,

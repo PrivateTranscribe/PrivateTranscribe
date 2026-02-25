@@ -34,6 +34,12 @@ function formatModifierPart(part: string, isMac: boolean): string {
     case "Super":
     case "Meta":
       return isMac ? "Cmd" : "Win";
+    case "Mouse4":
+    case "XButton1":
+      return "Mouse 4 (Back)";
+    case "Mouse5":
+    case "XButton2":
+      return "Mouse 5 (Forward)";
     default:
       return part;
   }
@@ -72,8 +78,9 @@ export function formatHotkeyLabel(hotkey?: string | null): string {
     return formattedParts.join("+");
   }
 
-  // Single key - return as-is
-  return hotkey;
+  // Single key - format a few known non-keyboard inputs
+  const isMac = isMacPlatform();
+  return formatModifierPart(hotkey, isMac);
 }
 
 /**

@@ -58,6 +58,15 @@ Look for:
 - `Microphone Access Denied`
 - `isExecutable: false` → FFmpeg permission issue
 
+### Hotkey / Push-to-Talk Issues (Windows)
+Look for:
+- `[WindowsKeyManager] Starting key listener` (confirms the native listener is being used)
+- `Windows key listener binary not found` (fallback mode; push-to-talk reliability may be reduced)
+
+Mouse side buttons:
+- Use `Mouse4` / `Mouse5` (aka back/forward side buttons).
+- When setting the hotkey, click the hotkey field and press the mouse side button.
+
 ## Sharing Logs
 
 When reporting issues:
