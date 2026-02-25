@@ -89,6 +89,87 @@ class HardwareDetector {
   }
 
   /**
+   * Pick the best GPU candidate from WMIC win32_VideoController CSV output.
+   *
+   * WMIC often lists multiple GPUs (e.g., Intel iGPU + NVIDIA dGPU). We prefer
+   * discrete GPUs by vendor and then by VRAM.
+   *
+   * @param {string} wmicOutput
+   * @returns {{ model: string|null, vendor: string|null, vram: number|null }|null}
+   */
+  pickBestWindowsGpuFromWmicOutput(wmicOutput) {
+    if (!wmicOutput || typeof wmicOutput !== "string") return null;
+
+    const lines = wmicOutput
+      .trim()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length === 0) return null;
+
+    const headerLine = lines.find((l) =>
+      l.toLowerCase().includes("adapterram") && l.toLowerCase().includes("name"),
+    );
+
+    const headers = headerLine
+      ? headerLine.split(",").map((h) => h.trim().toLowerCase())
+      : null;
+
+    const nameIdx = headers ? headers.indexOf("name") : -1;
+    const ramIdx = headers ? headers.indexOf("adapterram") : -1;
+
+    const vendorWeight = { nvidia: 3, amd: 2, intel: 1, apple: 0, unknown: 0 };
+
+    const candidates = [];
+
+    for (const line of lines) {
+      if (headers && line === headerLine) continue;
+
+      const parts = line.split(",").map((p) => p.trim());
+      const getPart = (i) => (i >= 0 && i < parts.length ? parts[i] : null);
+
+      const name =
+        (nameIdx >= 0 ? getPart(nameIdx) : null) ||
+        parts.find((p) => p.includes("NVIDIA") || p.includes("AMD") || p.includes("Intel")) ||
+        null;
+
+      if (!name) continue;
+
+      const lowerName = name.toLowerCase();
+      if (lowerName.includes("microsoft basic display")) continue;
+
+      const vendor = this.identifyVendor(name);
+
+      const adapterRam =
+        (ramIdx >= 0 ? getPart(ramIdx) : null) ||
+        parts.find((p) => /^\d+$/.test(p)) ||
+        null;
+
+      const vram = adapterRam ? this.parseVRAM(adapterRam) : null;
+
+      candidates.push({
+        model: name,
+        vendor: vendor === "unknown" ? null : vendor,
+        vram,
+        _vendorWeight: vendorWeight[vendor] ?? 0,
+      });
+    }
+
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => {
+      if (a._vendorWeight !== b._vendorWeight) return b._vendorWeight - a._vendorWeight;
+      const av = a.vram ?? -1;
+      const bv = b.vram ?? -1;
+      return bv - av;
+    });
+
+    const best = candidates[0];
+    return { model: best.model, vendor: best.vendor, vram: best.vram };
+  }
+
+  /**
    * Detect GPU on Windows
    */
   async detectWindowsGPU(gpu) {
@@ -100,52 +181,12 @@ class HardwareDetector {
         { encoding: "utf8", timeout: 5000 },
       );
 
-      const lines = wmicOutput
-        .trim()
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
-
-      const headerLine = lines.find((l) => l.toLowerCase().includes("adapterram") && l.toLowerCase().includes("name"));
-      const headers = headerLine ? headerLine.split(",").map((h) => h.trim().toLowerCase()) : null;
-
-      const vendorLine = lines.find((line) =>
-        line.includes("NVIDIA") || line.includes("AMD") || line.includes("Intel"),
-      );
-
-      if (vendorLine) {
-        const parts = vendorLine.split(",").map((p) => p.trim());
-
-        // Prefer header-based indexing when available; otherwise use best-effort matching.
-        if (headers) {
-          const nameIdx = headers.indexOf("name");
-          const ramIdx = headers.indexOf("adapterram");
-
-          const name = nameIdx >= 0 ? parts[nameIdx] : null;
-          const adapterRam = ramIdx >= 0 ? parts[ramIdx] : null;
-
-          if (name) {
-            gpu.model = name;
-            gpu.vendor = this.identifyVendor(gpu.model);
-            gpu.available = true;
-          }
-
-          if (adapterRam) {
-            gpu.vram = this.parseVRAM(adapterRam);
-          }
-        } else {
-          const name = parts.find((p) => p.includes("NVIDIA") || p.includes("AMD") || p.includes("Intel"));
-          if (name) {
-            gpu.model = name;
-            gpu.vendor = this.identifyVendor(gpu.model);
-            gpu.available = true;
-          }
-
-          const adapterRam = parts.find((p) => /^\d+$/.test(p));
-          if (adapterRam) {
-            gpu.vram = this.parseVRAM(adapterRam);
-          }
-        }
+      const best = this.pickBestWindowsGpuFromWmicOutput(wmicOutput);
+      if (best) {
+        gpu.model = best.model;
+        gpu.vendor = best.vendor || this.identifyVendor(best.model);
+        gpu.vram = best.vram;
+        gpu.available = true;
       }
     } catch (error) {
       debugLogger.debug("WMIC GPU detection failed", { error: error.message });

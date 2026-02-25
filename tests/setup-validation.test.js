@@ -129,6 +129,38 @@ suite("HardwareDetector – utility methods", () => {
     assert.strictEqual(detector.parseVRAM("8589934592"), 8192);
   });
 
+  test("pickBestWindowsGpuFromWmicOutput prefers discrete NVIDIA over Intel iGPU", () => {
+    const wmic = [
+      "Node,AdapterRAM,DriverVersion,Name",
+      "MYPC,1073741824,31.0.101.2111,Intel(R) UHD Graphics",
+      "MYPC,8589934592,31.0.15.4648,NVIDIA GeForce RTX 3050",
+    ].join("\n");
+
+    const best = detector.pickBestWindowsGpuFromWmicOutput(wmic);
+    assert.ok(best);
+    assert.strictEqual(best.vendor, "nvidia");
+    assert.ok(best.model.includes("NVIDIA"));
+    assert.strictEqual(best.vram, 8192);
+  });
+
+  test("pickBestWindowsGpuFromWmicOutput falls back to best available row when VRAM is missing", () => {
+    const wmic = [
+      "Node,AdapterRAM,DriverVersion,Name",
+      "MYPC,,1.0.0,AMD Radeon RX 6600",
+      "MYPC,,1.0.0,Intel(R) HD Graphics 630",
+    ].join("\n");
+
+    const best = detector.pickBestWindowsGpuFromWmicOutput(wmic);
+    assert.ok(best);
+    assert.strictEqual(best.vendor, "amd");
+    assert.ok(best.model.includes("AMD"));
+  });
+
+  test("pickBestWindowsGpuFromWmicOutput returns null for empty/invalid input", () => {
+    assert.strictEqual(detector.pickBestWindowsGpuFromWmicOutput(""), null);
+    assert.strictEqual(detector.pickBestWindowsGpuFromWmicOutput(null), null);
+  });
+
   test("parseVRAM returns null for invalid input", () => {
     assert.strictEqual(detector.parseVRAM(null), null);
     assert.strictEqual(detector.parseVRAM("unknown"), null);
