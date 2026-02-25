@@ -481,6 +481,28 @@ suite("Provider fallback settings – token validation", () => {
   });
 });
 
+suite("Onboarding flow – hardware step regression checks", () => {
+  /**
+   * Regression: ensure the Hardware step can always advance.
+   *
+   * We intentionally keep this as a lightweight static check so it can run in CI
+   * without a React test framework.
+   */
+  const fs = require("fs");
+
+  test("OnboardingFlow passes onNext to HardwareSetupStep", () => {
+    const onboardingPath = path.join(__dirname, "../src/components/OnboardingFlow.tsx");
+    const contents = fs.readFileSync(onboardingPath, "utf8");
+
+    // Very small invariant: the HardwareSetupStep instance should include an onNext prop.
+    const hardwareStepBlock = contents.split("case 1")[1] || "";
+    assert.ok(
+      hardwareStepBlock.includes("<HardwareSetupStep") && hardwareStepBlock.includes("onNext="),
+      "Expected HardwareSetupStep to receive an onNext prop in step 1",
+    );
+  });
+});
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 console.log(`\n${"─".repeat(60)}`);

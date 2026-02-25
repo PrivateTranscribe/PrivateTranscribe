@@ -338,6 +338,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               });
               setHardwareRecommendationsApplied(true);
             }}
+            onNext={() => nextStep()}
             onSkip={() => nextStep()}
             showSkip={true}
           />
