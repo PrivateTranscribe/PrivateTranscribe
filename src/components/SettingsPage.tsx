@@ -273,6 +273,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    enableContextCapture,
+    setEnableContextCapture,
   } = useSettings();
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -969,6 +971,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description="Number of transcriptions to keep. Set to 0 to disable history."
                   >
                     <HistoryLimitInput value={historyLimit} onChange={setHistoryLimit} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Context capture"
+                    description="Include active app/window context to improve accuracy (beta). Kept local."
+                  >
+                    <Toggle checked={enableContextCapture} onChange={setEnableContextCapture} />
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>

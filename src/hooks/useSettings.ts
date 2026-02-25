@@ -292,6 +292,16 @@ export function useSettings() {
     }
   );
 
+  // Context capture (off by default). This is plumbing for future "active app/window context".
+  const [enableContextCapture, setEnableContextCapture] = useLocalStorage<boolean>(
+    "enableContextCapture",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
   // Sync historyLimit to main process so db-save-transcription can gate on it
   // (different Electron windows have isolated localStorage, so the main process
   //  is the single source of truth for this setting at save time)
@@ -650,5 +660,7 @@ export function useSettings() {
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    enableContextCapture,
+    setEnableContextCapture,
   };
 }
