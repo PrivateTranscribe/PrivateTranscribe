@@ -235,6 +235,32 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
     return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
 }
 
+// Monitor keyboard events even when mouse button is the target - needed to detect modifier releases
+static LRESULT CALLBACK LowLevelKeyboardProcForMouse(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && g_isMouseButton && g_isDown) {
+        KBDLLHOOKSTRUCT* kbd = (KBDLLHOOKSTRUCT*)lParam;
+        BOOL isKeyUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
+
+        if (isKeyUp) {
+            BOOL modifierReleased = FALSE;
+            if (g_requireCtrl && (kbd->vkCode == VK_CONTROL || kbd->vkCode == VK_LCONTROL || kbd->vkCode == VK_RCONTROL)) {
+                modifierReleased = TRUE;
+            }
+            if (g_requireAlt && (kbd->vkCode == VK_MENU || kbd->vkCode == VK_LMENU || kbd->vkCode == VK_RMENU)) {
+                modifierReleased = TRUE;
+            }
+            if (g_requireShift && (kbd->vkCode == VK_SHIFT || kbd->vkCode == VK_LSHIFT || kbd->vkCode == VK_RSHIFT)) {
+                modifierReleased = TRUE;
+            }
+            if (modifierReleased) {
+                EmitUp();
+            }
+        }
+    }
+
+    return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
+}
+
 static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION && g_isMouseButton) {
         MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
@@ -305,10 +331,26 @@ int main(int argc, char* argv[]) {
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
     if (g_isMouseButton) {
+        // Install mouse hook to monitor mouse button events
         g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, NULL, 0);
         if (!g_mouseHook) {
             fprintf(stderr, "Error: Failed to install mouse hook (error %lu)\n", GetLastError());
             return 1;
+        }
+
+        // If modifiers are required, also install keyboard hook to monitor modifier releases.
+        // Without this, compound mouse hotkeys like Ctrl+Mouse5 can get stuck recording if
+        // the modifier is released before the mouse button.
+        if (g_requireCtrl || g_requireAlt || g_requireShift) {
+            g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProcForMouse, NULL, 0);
+            if (!g_keyboardHook) {
+                fprintf(stderr,
+                        "Error: Failed to install keyboard hook for modifier monitoring (error %lu)\n",
+                        GetLastError());
+                UnhookWindowsHookEx(g_mouseHook);
+                g_mouseHook = NULL;
+                return 1;
+            }
         }
     } else {
         g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, NULL, 0);
