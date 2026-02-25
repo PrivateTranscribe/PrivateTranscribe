@@ -336,20 +336,51 @@ class HardwareDetector {
   }
 
   /**
-   * Parse VRAM string to MB
+   * Parse VRAM input into MiB (MB-ish) as an integer.
+   *
+   * Accepts formats like:
+   * - "8192 MiB" (nvidia-smi)
+   * - "8 GiB"
+   * - "8 GB" / "8192 MB"
+   * - "10,240 MiB" (comma-separated)
+   * - "8589934592" (bytes, e.g. WMIC AdapterRAM)
    */
-  parseVRAM(vramStr) {
-    if (!vramStr) return null;
-    
-    const match = vramStr.match(/(\d+\.?\d*)\s*(MiB|GiB|MB|GB)/i);
-    if (!match) return null;
-    
-    const value = parseFloat(match[1]);
-    const unit = match[2].toLowerCase();
-    
-    if (unit === "gib" || unit === "gb") {
-      return Math.round(value * 1024);
+  parseVRAM(vramInput) {
+    if (vramInput === null || vramInput === undefined) return null;
+
+    // If we already got a number, attempt to interpret it sensibly.
+    if (typeof vramInput === "number" && Number.isFinite(vramInput)) {
+      // Heuristic: large numbers are likely bytes.
+      if (vramInput > 1024 * 1024 * 16) {
+        return Math.round(vramInput / (1024 * 1024));
+      }
+      return Math.round(vramInput);
     }
+
+    const vramStr = String(vramInput).trim();
+    if (!vramStr) return null;
+
+    // Pure numeric string: assume bytes (WMIC AdapterRAM often returns bytes).
+    if (/^\d+$/.test(vramStr)) {
+      const bytes = Number(vramStr);
+      if (!Number.isFinite(bytes) || bytes <= 0) return null;
+      return Math.round(bytes / (1024 * 1024));
+    }
+
+    // Allow comma separators and optional whitespace between value and unit.
+    const match = vramStr.match(/(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d+))?\s*(mib|gib|mb|gb)/i);
+    if (!match) return null;
+
+    const whole = match[1].replace(/,/g, "");
+    const decimal = match[2] ? `.${match[2]}` : "";
+    const value = Number(`${whole}${decimal}`);
+    if (!Number.isFinite(value) || value <= 0) return null;
+
+    const unit = match[3].toLowerCase();
+
+    // Convert GiB/GB to MiB (binary 1024-based) for internal consistency.
+    if (unit === "gib" || unit === "gb") return Math.round(value * 1024);
+
     return Math.round(value);
   }
 

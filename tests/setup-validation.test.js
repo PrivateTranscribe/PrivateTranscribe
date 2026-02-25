@@ -120,6 +120,15 @@ suite("HardwareDetector – utility methods", () => {
     assert.strictEqual(detector.parseVRAM("8 GB"), 8192);
   });
 
+  test("parseVRAM parses comma-separated values", () => {
+    assert.strictEqual(detector.parseVRAM("10,240 MiB"), 10240);
+  });
+
+  test("parseVRAM parses byte values (WMIC AdapterRAM style)", () => {
+    // 8 GiB in bytes
+    assert.strictEqual(detector.parseVRAM("8589934592"), 8192);
+  });
+
   test("parseVRAM returns null for invalid input", () => {
     assert.strictEqual(detector.parseVRAM(null), null);
     assert.strictEqual(detector.parseVRAM("unknown"), null);
