@@ -27,7 +27,14 @@ class ReasoningService extends BaseReasoningService {
 
   private shouldIncludeActiveWindowContextInReasoning(): boolean {
     if (typeof window === "undefined" || !window.localStorage) return false;
+
     try {
+      // Preferred setting (UI: Settings → Privacy & History → Context capture)
+      const enableContextCapture = window.localStorage.getItem("enableContextCapture");
+      if (enableContextCapture === "true") return true;
+      if (enableContextCapture === "false") return false;
+
+      // Backwards compatibility: older builds used this key.
       return window.localStorage.getItem("includeActiveWindowContextInReasoning") === "true";
     } catch {
       return false;
