@@ -25,7 +25,7 @@ Module._load = function (request, parent, isMain) {
 
 const HardwareDetector = require(path.join(__dirname, "../src/helpers/hardwareDetector.js"));
 const { sanitizeContextText } = require(path.join(__dirname, "../src/helpers/contextSanitizer.js"));
-const { getActiveWindowContext } = require(path.join(
+const { getActiveWindowContext, isSensitiveAppContext } = require(path.join(
   __dirname,
   "../src/helpers/activeWindowContext.js"
 ));
@@ -595,6 +595,17 @@ suite("Context sanitization – privacy guardrails", () => {
 });
 
 suite("ActiveWindowContext – best-effort capture", () => {
+  test("isSensitiveAppContext blocks common password managers", () => {
+    assert.strictEqual(isSensitiveAppContext({ appName: "1Password" }), true);
+    assert.strictEqual(isSensitiveAppContext({ processName: "Bitwarden" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appClass: "KeePassXC" }), true);
+  });
+
+  test("isSensitiveAppContext does not block a normal browser app", () => {
+    assert.strictEqual(isSensitiveAppContext({ appName: "Google Chrome" }), false);
+    assert.strictEqual(isSensitiveAppContext({ processName: "firefox" }), false);
+  });
+
   test("getActiveWindowContext returns a structured result without throwing", () => {
     const result = getActiveWindowContext();
     assert.ok(result && typeof result === "object");

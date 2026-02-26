@@ -3,6 +3,32 @@
 const { spawnSync } = require("child_process");
 const { sanitizeContextText } = require("./contextSanitizer");
 
+function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
+  const hay = [appName, processName, appClass].join(" ").toLowerCase();
+
+  // Narrow denylist: password managers / auth apps.
+  // Keep this conservative to avoid blocking common apps (e.g., browsers).
+  const patterns = [
+    /\b1password\b/i,
+    /\bbitwarden\b/i,
+    /\blastpass\b/i,
+    /\bdashlane\b/i,
+    /\bnordpass\b/i,
+    /\bkeepass(xc)?\b/i,
+    /\bauthy\b/i,
+    /\bokta\b/i,
+  ];
+
+  if (patterns.some((p) => p.test(hay))) return true;
+
+  // Very small extra guard: if the window title itself strongly indicates a password prompt.
+  // (Avoid overly broad terms like "login" that would cause false positives.)
+  const title = (windowTitle || "").toLowerCase();
+  if (title.includes("enter password") || title.includes("master password")) return true;
+
+  return false;
+}
+
 function run(cmd, args) {
   try {
     const res = spawnSync(cmd, args, { encoding: "utf8" });
@@ -48,6 +74,10 @@ function getLinuxXdotoolContext() {
     return { available: false, reason: "no window title/class" };
   }
 
+  if (isSensitiveAppContext({ appClass, windowTitle })) {
+    return { available: false, reason: "sensitive app/window", blocked: true };
+  }
+
   return {
     available: true,
     platform: "linux",
@@ -82,6 +112,10 @@ function getMacOSContext() {
 
   if (!appName && !windowTitle) {
     return { available: false, reason: "no frontmost app/window" };
+  }
+
+  if (isSensitiveAppContext({ appName, windowTitle })) {
+    return { available: false, reason: "sensitive app/window", blocked: true };
   }
 
   return {
@@ -141,6 +175,10 @@ $pname;`;
     return { available: false, reason: "no foreground window info" };
   }
 
+  if (isSensitiveAppContext({ processName, windowTitle })) {
+    return { available: false, reason: "sensitive app/window", blocked: true };
+  }
+
   return {
     available: true,
     platform: "win32",
@@ -162,4 +200,5 @@ function getActiveWindowContext() {
 
 module.exports = {
   getActiveWindowContext,
+  isSensitiveAppContext,
 };
