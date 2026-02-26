@@ -36,6 +36,24 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bsk-[A-Za-z0-9]{20,}\b/g,
     replacement: "[REDACTED]",
   },
+  // Emails (can appear in window titles, docs, tickets, etc.)
+  {
+    name: "email",
+    regex: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+    replacement: "[REDACTED_EMAIL]",
+  },
+  // URLs with query strings (query params often contain tokens/ids/search terms)
+  {
+    name: "urlQuery",
+    regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)\?([^\s'"\n\r]+)/gi,
+    replacement: "$1?[REDACTED_QUERY]",
+  },
+  // Long hex/base64-ish tokens (hashes, ids, secrets). Keep it conservative.
+  {
+    name: "longHexToken",
+    regex: /\b[a-f0-9]{32,}\b/gi,
+    replacement: "[REDACTED]",
+  },
 ];
 
 function truncateUtf8Safe(text, maxChars) {

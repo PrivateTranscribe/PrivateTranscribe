@@ -564,8 +564,31 @@ suite("Context sanitization – privacy guardrails", () => {
     assert.ok(!output.includes("very.secret.token"));
   });
 
+  test("redacts emails", () => {
+    const input = "Contact: alice@example.com\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("Contact: [REDACTED_EMAIL]"));
+    assert.ok(!output.includes("alice@example.com"));
+  });
+
+  test("redacts URL query strings", () => {
+    const input = "Open https://example.com/path?token=abc123&email=alice@example.com\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("https://example.com/path?[REDACTED_QUERY]"));
+    assert.ok(!output.includes("token=abc123"));
+    assert.ok(!output.includes("alice@example.com"));
+  });
+
+  test("redacts long hex tokens", () => {
+    const input = "hash=0123456789abcdef0123456789abcdef\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("hash=[REDACTED]"));
+    assert.ok(!output.includes("0123456789abcdef0123456789abcdef"));
+  });
+
   test("truncates large content", () => {
-    const input = "a".repeat(5000);
+    // Use a non-hex character so token redaction patterns don't replace the payload.
+    const input = "z".repeat(5000);
     const output = sanitizeContextText(input, { maxChars: 100 });
     assert.strictEqual(output.length, 100);
   });
