@@ -977,7 +977,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Context capture"
-                    description="Include active app/window context to improve accuracy (beta). Kept local."
+                    description="Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) — always sanitized and kept local."
                   >
                     <Toggle checked={enableContextCapture} onChange={setEnableContextCapture} />
                   </SettingsRow>
