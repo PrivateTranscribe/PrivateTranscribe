@@ -42,6 +42,20 @@ test("redacts OpenAI-style sk- keys", () => {
   assert.ok(out.includes("[REDACTED]"));
 });
 
+test("redacts JWTs", () => {
+  const input = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefABCDEF_-0123456789.zyxwvutsrqponmlkjihgfedcba";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("eyJhbGci"), false);
+  assert.ok(out.includes("[REDACTED_JWT]"));
+});
+
+test("redacts AWS access key ids (AKIA...)", () => {
+  const input = "AKIA1234567890ABCDEF";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("AKIA1234567890ABCDEF"), false);
+  assert.ok(out.includes("[REDACTED_AWS_KEY]"));
+});
+
 test("redacts emails", () => {
   const input = "Contact: test.user+foo@example.com";
   const out = sanitizeContextText(input);

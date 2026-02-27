@@ -36,6 +36,18 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bsk-[A-Za-z0-9]{20,}\b/g,
     replacement: "[REDACTED]",
   },
+  // JWTs (common in auth headers, logs, debug output)
+  {
+    name: "jwt",
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+    replacement: "[REDACTED_JWT]",
+  },
+  // AWS access key ids (often pasted into terminals, logs, dashboards)
+  {
+    name: "awsAccessKeyId",
+    regex: /\bAKIA[0-9A-Z]{16}\b/g,
+    replacement: "[REDACTED_AWS_KEY]",
+  },
   // Emails (can appear in window titles, docs, tickets, etc.)
   {
     name: "email",
