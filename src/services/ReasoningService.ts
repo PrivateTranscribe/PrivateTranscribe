@@ -63,6 +63,7 @@ class ReasoningService extends BaseReasoningService {
       if (ctx.processName) lines.push(`Process: ${ctx.processName}`);
       if (ctx.appClass) lines.push(`App class: ${ctx.appClass}`);
       if (ctx.windowTitle) lines.push(`Window title: ${ctx.windowTitle}`);
+      if (ctx.uiaText) lines.push(`Focused element text: ${ctx.uiaText}`);
 
       const contextBlock =
         lines.length > 0
@@ -75,6 +76,8 @@ class ReasoningService extends BaseReasoningService {
         enabled: true,
         platform: ctx.platform || "unknown",
         hasWindowTitle: !!ctx.windowTitle,
+        hasUiaText: !!ctx.uiaText,
+        uiaMethod: ctx.uiaMethod || undefined,
       });
 
       return `${contextBlock}${text}`;

@@ -127,6 +127,49 @@ function getMacOSContext() {
   };
 }
 
+function getWindowsUiaText() {
+  // Best-effort UI Automation (UIA) focused element text.
+  // Privacy-first: sanitized + hard-limited; failures simply omit the field.
+  const ps = `[void][System.Reflection.Assembly]::LoadWithPartialName(\"UIAutomationClient\");
+try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
+if ($null -eq $el) { exit 0 }
+$txt = \"\"
+try {
+  $vp = $el.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  if ($vp -ne $null) { $txt = $vp.Current.Value }
+} catch {}
+if (-not $txt) {
+  try { $txt = $el.Current.Name } catch { $txt = \"\" }
+}
+$txt;`;
+
+  const res = run("powershell.exe", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-WindowStyle",
+    "Hidden",
+    "-Command",
+    ps,
+  ]);
+
+  if (!res.ok) return {};
+
+  const raw = (res.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const uiaText = sanitizeContextText(raw, { maxChars: 512 });
+  if (!uiaText) return {};
+
+  return {
+    uiaText,
+    uiaMethod: "uia-focusedelement",
+  };
+}
+
 function getWindowsContext() {
   // PowerShell: get foreground window title + owning process name.
   // Note: This may be blocked by AV or policy in some environments.
@@ -179,12 +222,15 @@ $pname;`;
     return { available: false, reason: "sensitive app/window", blocked: true };
   }
 
+  const uia = getWindowsUiaText();
+
   return {
     available: true,
     platform: "win32",
     method: "powershell",
     processName,
     windowTitle,
+    ...uia,
   };
 }
 
