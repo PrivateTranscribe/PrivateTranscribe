@@ -48,6 +48,30 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bAKIA[0-9A-Z]{16}\b/g,
     replacement: "[REDACTED_AWS_KEY]",
   },
+  // GitHub personal access tokens (classic + fine-grained)
+  {
+    name: "githubTokenClassic",
+    regex: /\bghp_[A-Za-z0-9]{20,}\b/g,
+    replacement: "[REDACTED_GITHUB_TOKEN]",
+  },
+  {
+    name: "githubTokenFineGrained",
+    regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    replacement: "[REDACTED_GITHUB_TOKEN]",
+  },
+  // Slack tokens (bot/user/app tokens commonly start with xox*)
+  {
+    name: "slackToken",
+    regex: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/g,
+    replacement: "[REDACTED_SLACK_TOKEN]",
+  },
+  // PEM private key blocks
+  {
+    name: "privateKeyBlock",
+    regex:
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    replacement: "[REDACTED_PRIVATE_KEY]",
+  },
   // Emails (can appear in window titles, docs, tickets, etc.)
   {
     name: "email",

@@ -56,6 +56,32 @@ test("redacts AWS access key ids (AKIA...)", () => {
   assert.ok(out.includes("[REDACTED_AWS_KEY]"));
 });
 
+test("redacts GitHub tokens (ghp_ / github_pat_)", () => {
+  const input = "token=ghp_abcdefghijklmnopqrstuvwxyzABCDE1234567890\ngithub_pat_ABC_def_1234567890_abcdefghijklmnopqrstuvwxyz";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("ghp_"), false);
+  assert.strictEqual(out.includes("github_pat_"), false);
+  assert.ok(out.includes("[REDACTED_GITHUB_TOKEN]"));
+});
+
+test("redacts Slack tokens (xox*)", () => {
+  const input = "xoxb-1234567890-abcdefghijklmnopqrstuvwxyz";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("xoxb-"), false);
+  assert.ok(out.includes("[REDACTED_SLACK_TOKEN]"));
+});
+
+test("redacts PEM private key blocks", () => {
+  const input = [
+    "-----BEGIN PRIVATE KEY-----",
+    "abcDEF123+/=",
+    "-----END PRIVATE KEY-----",
+  ].join("\n");
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("BEGIN PRIVATE KEY"), false);
+  assert.ok(out.includes("[REDACTED_PRIVATE_KEY]"));
+});
+
 test("redacts emails", () => {
   const input = "Contact: test.user+foo@example.com";
   const out = sanitizeContextText(input);
