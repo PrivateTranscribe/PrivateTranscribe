@@ -164,7 +164,18 @@ export interface PasteToolsResult {
 
 export interface ActiveWindowContextResult {
   available: boolean;
+
+  /**
+   * Human-readable reason for unavailable context.
+   * Example: "xdotool not installed" | "sensitive app/window".
+   */
   reason?: string;
+
+  /**
+   * If true, context capture was intentionally blocked for privacy reasons.
+   * (E.g., password managers, OS credential prompts.)
+   */
+  blocked?: boolean;
 
   platform?: "darwin" | "win32" | "linux";
   method?: string;
@@ -175,6 +186,10 @@ export interface ActiveWindowContextResult {
   appClass?: string;
   windowTitle?: string;
   windowId?: string;
+
+  // Windows best-effort UIA (focused element) text
+  uiaText?: string;
+  uiaMethod?: string;
 }
 
 export interface HardwareDetectionCPU {

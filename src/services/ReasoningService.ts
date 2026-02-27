@@ -50,10 +50,17 @@ class ReasoningService extends BaseReasoningService {
       const ctx = await window.electronAPI?.getActiveWindowContext?.();
 
       if (!ctx || !ctx.available) {
-        logger.logReasoning("ACTIVE_WINDOW_CONTEXT_UNAVAILABLE", {
-          enabled: true,
-          reason: ctx?.reason || "unknown",
-        });
+        if (ctx?.blocked) {
+          logger.logReasoning("ACTIVE_WINDOW_CONTEXT_BLOCKED", {
+            enabled: true,
+            reason: ctx?.reason || "blocked",
+          });
+        } else {
+          logger.logReasoning("ACTIVE_WINDOW_CONTEXT_UNAVAILABLE", {
+            enabled: true,
+            reason: ctx?.reason || "unknown",
+          });
+        }
         return text;
       }
 
