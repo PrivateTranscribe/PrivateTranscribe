@@ -616,6 +616,9 @@ suite("ActiveWindowContext – best-effort capture", () => {
     assert.strictEqual(isSensitiveAppContext({ appName: "1Password" }), true);
     assert.strictEqual(isSensitiveAppContext({ processName: "Bitwarden" }), true);
     assert.strictEqual(isSensitiveAppContext({ appClass: "KeePassXC" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appName: "Proton Pass" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appName: "Keychain Access" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appName: "Passwords" }), true);
   });
 
   test("isSensitiveAppContext does not block a normal browser app", () => {

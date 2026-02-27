@@ -16,6 +16,9 @@ function isSensitiveAppContext({ appName = "", processName = "", appClass = "", 
     /\bdashlane\b/i,
     /\bnordpass\b/i,
     /\bkeepass(xc)?\b/i,
+    /\bproton\s*pass\b/i,
+    /\bkeychain\s*access\b/i,
+    /\bpasswords\b/i, // macOS "Passwords" app
 
     // Auth tools
     /\bauthy\b/i,
