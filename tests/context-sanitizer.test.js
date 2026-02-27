@@ -69,6 +69,13 @@ test("redacts Google API keys (AIza...)", () => {
   assert.ok(out.includes("[REDACTED_GOOGLE_API_KEY]"));
 });
 
+test("redacts Google OAuth access tokens (ya29.)", () => {
+  const input = "ya29.a0AfH6SMC1uV4lRzZP6gk8aS8qT9u-0123456789ABCDEFGHIJK";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("ya29."), false);
+  assert.ok(out.includes("[REDACTED_GOOGLE_OAUTH_TOKEN]"));
+});
+
 test("redacts JWTs", () => {
   const input = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefABCDEF_-0123456789.zyxwvutsrqponmlkjihgfedcba";
   const out = sanitizeContextText(input);

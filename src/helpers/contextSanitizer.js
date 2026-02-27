@@ -60,6 +60,12 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bAIza[0-9A-Za-z_-]{30,40}\b/g,
     replacement: "[REDACTED_GOOGLE_API_KEY]",
   },
+  // Google OAuth access tokens (often start with ya29.)
+  {
+    name: "googleOAuthToken",
+    regex: /\bya29\.[0-9A-Za-z_-]{20,}\b/g,
+    replacement: "[REDACTED_GOOGLE_OAUTH_TOKEN]",
+  },
   // JWTs (common in auth headers, logs, debug output)
   {
     name: "jwt",
