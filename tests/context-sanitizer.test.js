@@ -35,6 +35,13 @@ test("redacts Authorization: Bearer tokens", () => {
   assert.ok(/Bearer\s+\[REDACTED\]/i.test(out));
 });
 
+test("redacts generic Bearer <token> fragments", () => {
+  const input = "Fetch failed: Bearer abcdefghijklmnop.qrstuv";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("abcdefghijklmnop.qrstuv"), false);
+  assert.ok(/Bearer\s+\[REDACTED\]/i.test(out));
+});
+
 test("redacts OpenAI-style sk- keys", () => {
   const input = "sk-abcdefghijklmnopqrstuvwxyz0123456789";
   const out = sanitizeContextText(input);
