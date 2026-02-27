@@ -146,6 +146,14 @@ function getWindowsUiaText() {
   const ps = `[void][System.Reflection.Assembly]::LoadWithPartialName(\"UIAutomationClient\");
 try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
 if ($null -eq $el) { exit 0 }
+
+# If the focused element is a password field, do not capture any text.
+# (UIA can expose ValuePattern/Name; even best-effort capture would be unsafe.)
+try {
+  $isPwd = $el.GetCurrentPropertyValue([System.Windows.Automation.AutomationElement]::IsPasswordProperty)
+  if ($isPwd -eq $true) { exit 0 }
+} catch {}
+
 $txt = \"\"
 try {
   $vp = $el.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
