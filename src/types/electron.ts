@@ -208,7 +208,13 @@ export interface HardwareDetectionResult {
   arch: string;
   cpu: HardwareDetectionCPU;
   gpu: HardwareDetectionGPU;
-  recommendations: HardwareRecommendations;
+  /**
+   * Recommendations are best-effort.
+   *
+   * The main process should usually provide a non-null object, but renderer UI
+   * must handle null safely (e.g. detection ran but recommendations failed).
+   */
+  recommendations: HardwareRecommendations | null;
 }
 
 export interface AggregateStats {

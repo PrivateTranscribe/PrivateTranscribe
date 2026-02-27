@@ -538,6 +538,23 @@ suite("Onboarding flow – hardware step regression checks", () => {
       "Expected HardwareSetupStep to receive an onNext prop in step 1",
     );
   });
+
+  test("HardwareSetupStep supports a null recommendations flow (no dead-end)", () => {
+    const stepPath = path.join(__dirname, "../src/components/ui/HardwareSetupStep.tsx");
+    const contents = fs.readFileSync(stepPath, "utf8");
+
+    // Lightweight invariants:
+    // - There is a safe early-return when recommendations are missing
+    // - There is a user-visible escape hatch that continues with defaults
+    assert.ok(
+      contents.includes("if (!detection?.recommendations) return"),
+      "Expected HardwareSetupStep.handleApply() to bail out when recommendations are null",
+    );
+    assert.ok(
+      contents.includes("handleContinueWithDefaults") && contents.includes("Continue with Defaults"),
+      "Expected HardwareSetupStep to provide a 'Continue with Defaults' path",
+    );
+  });
 });
 
 suite("Context sanitization – privacy guardrails", () => {
