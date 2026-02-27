@@ -28,6 +28,22 @@ test("redacts apiKey assignments (apiKey / api_key / api-key)", () => {
   assert.strictEqual(out.includes("SECRET"), false);
 });
 
+test("redacts common OAuth token fields (access_token / refresh_token / id_token)", () => {
+  const input = "access_token=AAA\nrefreshToken: BBB\nid-token: CCC";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("AAA"), false);
+  assert.strictEqual(out.includes("BBB"), false);
+  assert.strictEqual(out.includes("CCC"), false);
+  assert.ok(/access_token=\[REDACTED\]/i.test(out));
+});
+
+test("redacts client_secret assignments", () => {
+  const input = "client_secret: SUPERSECRET\nclientSecret=SUPERSECRET";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("SUPERSECRET"), false);
+  assert.ok(/client_secret:\s*\[REDACTED\]/i.test(out));
+});
+
 test("redacts Authorization: Bearer tokens", () => {
   const input = "Authorization: Bearer abc.def.ghi";
   const out = sanitizeContextText(input);

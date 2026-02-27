@@ -24,6 +24,17 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(api[_-]?key\s*[:=]\s*)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // Common OAuth-ish / auth token fields (keep narrow to avoid redacting innocent text)
+  {
+    name: "oauthTokenFields",
+    regex: /((?:access|refresh|id)[_-]?token\s*[:=]\s*)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "clientSecret",
+    regex: /(client[_-]?secret\s*[:=]\s*)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
   // Bearer tokens in logs/headers.
   {
     name: "bearerToken",
