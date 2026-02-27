@@ -6,25 +6,35 @@ const { sanitizeContextText } = require("./contextSanitizer");
 function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
   const hay = [appName, processName, appClass].join(" ").toLowerCase();
 
-  // Narrow denylist: password managers / auth apps.
+  // Narrow denylist: password managers / auth apps + OS credential prompts.
   // Keep this conservative to avoid blocking common apps (e.g., browsers).
   const patterns = [
+    // Password managers
     /\b1password\b/i,
     /\bbitwarden\b/i,
     /\blastpass\b/i,
     /\bdashlane\b/i,
     /\bnordpass\b/i,
     /\bkeepass(xc)?\b/i,
+
+    // Auth tools
     /\bauthy\b/i,
     /\bokta\b/i,
+
+    // Windows credential / secure desktop surfaces (best-effort; names vary)
+    /\bcredentialuibroker\b/i,
+    /\blogonui\b/i,
+    /\blockapp\b/i,
+    /\bconsent(\.exe)?\b/i,
   ];
 
   if (patterns.some((p) => p.test(hay))) return true;
 
-  // Very small extra guard: if the window title itself strongly indicates a password prompt.
+  // Very small extra guard: if the window title itself strongly indicates a password or OS credential prompt.
   // (Avoid overly broad terms like "login" that would cause false positives.)
   const title = (windowTitle || "").toLowerCase();
   if (title.includes("enter password") || title.includes("master password")) return true;
+  if (title.includes("windows security") || title.includes("user account control")) return true;
 
   return false;
 }

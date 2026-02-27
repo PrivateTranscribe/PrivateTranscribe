@@ -623,6 +623,13 @@ suite("ActiveWindowContext – best-effort capture", () => {
     assert.strictEqual(isSensitiveAppContext({ processName: "firefox" }), false);
   });
 
+  test("isSensitiveAppContext blocks OS credential prompts (Windows)", () => {
+    assert.strictEqual(isSensitiveAppContext({ windowTitle: "Windows Security" }), true);
+    assert.strictEqual(isSensitiveAppContext({ windowTitle: "User Account Control" }), true);
+    assert.strictEqual(isSensitiveAppContext({ processName: "CredentialUIBroker" }), true);
+    assert.strictEqual(isSensitiveAppContext({ processName: "LogonUI" }), true);
+  });
+
   test("getActiveWindowContext returns a structured result without throwing", () => {
     const result = getActiveWindowContext();
     assert.ok(result && typeof result === "object");
