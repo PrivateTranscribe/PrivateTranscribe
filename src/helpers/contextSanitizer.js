@@ -36,6 +36,30 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bsk-[A-Za-z0-9]{20,}\b/g,
     replacement: "[REDACTED]",
   },
+  // Stripe keys / secrets
+  {
+    name: "stripeSecretKey",
+    regex: /\bsk_(?:live|test)_[0-9A-Za-z]{10,}\b/g,
+    replacement: "[REDACTED_STRIPE_KEY]",
+  },
+  {
+    name: "stripePublishableKey",
+    regex: /\bpk_(?:live|test)_[0-9A-Za-z]{10,}\b/g,
+    replacement: "[REDACTED_STRIPE_KEY]",
+  },
+  {
+    name: "stripeWebhookSecret",
+    regex: /\bwhsec_[0-9A-Za-z]{10,}\b/g,
+    replacement: "[REDACTED_STRIPE_WEBHOOK_SECRET]",
+  },
+  // Google API keys (often show up in URLs/config)
+  {
+    name: "googleApiKey",
+    // Typical Google API keys are 39 chars total ("AIza" + 35), but allow
+    // a small range to avoid missing real keys.
+    regex: /\bAIza[0-9A-Za-z_-]{30,40}\b/g,
+    replacement: "[REDACTED_GOOGLE_API_KEY]",
+  },
   // JWTs (common in auth headers, logs, debug output)
   {
     name: "jwt",

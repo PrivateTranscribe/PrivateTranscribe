@@ -42,6 +42,33 @@ test("redacts OpenAI-style sk- keys", () => {
   assert.ok(out.includes("[REDACTED]"));
 });
 
+test("redacts Stripe keys (sk_live_/sk_test_/pk_live_/pk_test_)", () => {
+  const input = [
+    "sk_live_51ABCdefGHIjklMNOpqrSTUvwxYZ1234567890",
+    "sk_test_51ABCdefGHIjklMNOpqrSTUvwxYZ1234567890",
+    "pk_live_51ABCdefGHIjklMNOpqrSTUvwxYZ1234567890",
+    "pk_test_51ABCdefGHIjklMNOpqrSTUvwxYZ1234567890",
+  ].join("\n");
+  const out = sanitizeContextText(input);
+  assert.strictEqual(/\bsk_(?:live|test)_/i.test(out), false);
+  assert.strictEqual(/\bpk_(?:live|test)_/i.test(out), false);
+  assert.ok(out.includes("[REDACTED_STRIPE_KEY]"));
+});
+
+test("redacts Stripe webhook signing secrets (whsec_)", () => {
+  const input = "whsec_abcdefghijklmnopqrstuvwxyz0123456789";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("whsec_"), false);
+  assert.ok(out.includes("[REDACTED_STRIPE_WEBHOOK_SECRET]"));
+});
+
+test("redacts Google API keys (AIza...)", () => {
+  const input = "AIzaSyA-0123456789abcdefghijkLMNOPQRSTUV";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("AIza"), false);
+  assert.ok(out.includes("[REDACTED_GOOGLE_API_KEY]"));
+});
+
 test("redacts JWTs", () => {
   const input = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefABCDEF_-0123456789.zyxwvutsrqponmlkjihgfedcba";
   const out = sanitizeContextText(input);
