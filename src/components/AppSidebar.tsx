@@ -315,7 +315,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
             margin: 0,
           }}
         >
-          {currentVersion ? `v${currentVersion}` : "..."} · Open Source
+          {currentVersion ? `v${currentVersion}` : "..."}
         </p>
       </div>
     </div>
