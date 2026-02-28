@@ -71,6 +71,17 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(proxy-authorization\s*[:=]\s*basic\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // Cookie headers can contain session identifiers and auth state.
+  {
+    name: "cookieHeader",
+    regex: /(\bcookie\s*[:=]\s*)([^\n\r]+)/gi,
+    replacement: "$1[REDACTED_COOKIES]",
+  },
+  {
+    name: "setCookieHeader",
+    regex: /(\bset-cookie\s*[:=]\s*)([^\n\r]+)/gi,
+    replacement: "$1[REDACTED_COOKIES]",
+  },
   // Generic "Bearer <token>" fragments (often show up without the Authorization label).
   // Keep it conservative by requiring a token-like shape and minimum length.
   {

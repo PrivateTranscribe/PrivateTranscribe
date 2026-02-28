@@ -86,6 +86,18 @@ test("redacts generic Bearer <token> fragments", () => {
   assert.ok(/Bearer\s+\[REDACTED\]/i.test(out));
 });
 
+test("redacts Cookie/Set-Cookie header values", () => {
+  const input = [
+    "Cookie: sessionid=abc123; csrftoken=def456",
+    "Set-Cookie: sessionid=abc123; Path=/; HttpOnly",
+  ].join("\n");
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("sessionid=abc123"), false);
+  assert.strictEqual(out.includes("csrftoken=def456"), false);
+  assert.ok(/Cookie:\s*\[REDACTED_COOKIES\]/i.test(out));
+  assert.ok(/Set-Cookie:\s*\[REDACTED_COOKIES\]/i.test(out));
+});
+
 test("redacts OpenAI-style sk- keys", () => {
   const input = "sk-abcdefghijklmnopqrstuvwxyz0123456789";
   const out = sanitizeContextText(input);
