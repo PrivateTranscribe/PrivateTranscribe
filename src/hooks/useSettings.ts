@@ -557,7 +557,7 @@ export function useSettings() {
   const [copyToClipboard, setCopyToClipboard] = useLocalStorage("copyToClipboard", true, boolSerializer);
   const [showPanelOnError, setShowPanelOnError] = useLocalStorage("showPanelOnError", false, boolSerializer);
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
-  const [errorNotifications, setErrorNotifications] = useLocalStorage("errorNotifications", false, boolSerializer);
+  const [errorNotifications, setErrorNotifications] = useLocalStorage("errorNotifications", true, boolSerializer);
   const [successConfirmation, setSuccessConfirmation] = useLocalStorage("successConfirmation", false, boolSerializer);
 
   const updateBehaviorSettings = useCallback(

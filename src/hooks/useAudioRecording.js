@@ -41,6 +41,13 @@ export const useAudioRecording = (toast, options = {}) => {
       isDucked = false;
     };
 
+    // ── Audio feedback helper ─────────────────────────────────────────────────
+    const playFeedback = (sound) => {
+      const enabled = localStorage.getItem("audioFeedback") === "true";
+      if (!enabled) return;
+      import("../utils/audioFeedback").then((m) => m[sound]()).catch(() => {});
+    };
+
     manager.setCallbacks({
       onStateChange: ({ isRecording, isProcessing }) => {
         if (disposed) {
@@ -229,9 +236,11 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
+        playFeedback("playStartSound");
         duckAudio();
         void manager.startRecording();
       } else if (currentState.isRecording || currentState.isStartingRecording) {
+        playFeedback("playStopSound");
         manager.stopRecording();
         restoreAudio();
       }
@@ -245,6 +254,7 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
+        playFeedback("playStartSound");
         duckAudio();
         void manager.startRecording();
       }
@@ -254,6 +264,7 @@ export const useAudioRecording = (toast, options = {}) => {
     const handleStop = () => {
       const currentState = manager.getState();
       if (currentState.isRecording || currentState.isStartingRecording) {
+        playFeedback("playStopSound");
         manager.stopRecording();
       }
       // Always restore audio when push-to-talk key is released,
