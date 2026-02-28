@@ -54,6 +54,12 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(authorization\s*[:=]\s*bearer\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // Basic auth tokens in logs/headers.
+  {
+    name: "basicAuthToken",
+    regex: /(authorization\s*[:=]\s*basic\s+)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
   // Generic "Bearer <token>" fragments (often show up without the Authorization label).
   // Keep it conservative by requiring a token-like shape and minimum length.
   {

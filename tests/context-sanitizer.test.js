@@ -58,6 +58,13 @@ test("redacts Authorization: Bearer tokens", () => {
   assert.ok(/Bearer\s+\[REDACTED\]/i.test(out));
 });
 
+test("redacts Authorization: Basic tokens", () => {
+  const input = "Authorization: Basic dXNlcjpwYXNz";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("dXNlcjpwYXNz"), false);
+  assert.ok(/Basic\s+\[REDACTED\]/i.test(out));
+});
+
 test("redacts generic Bearer <token> fragments", () => {
   const input = "Fetch failed: Bearer abcdefghijklmnop.qrstuv";
   const out = sanitizeContextText(input);
