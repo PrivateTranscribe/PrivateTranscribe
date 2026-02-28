@@ -242,6 +242,9 @@ class AudioDuckingManager {
         /** @type {{ volume: number, muted: boolean } | null} */
         this._savedState = null;
         this._isDucked = false;
+        /** @type {Promise<void> | null} */
+        this._duckInFlight = null;
+        this._pendingRestore = false;
     }
 
     /**
@@ -254,6 +257,26 @@ class AudioDuckingManager {
             return;
         }
 
+        this._pendingRestore = false;
+        const duckPromise = this._doDuck({ mode, duckLevel });
+        this._duckInFlight = duckPromise;
+
+        try {
+            await duckPromise;
+        } finally {
+            this._duckInFlight = null;
+        }
+
+        // If restore was requested while we were ducking, do it now
+        if (this._pendingRestore) {
+            this._pendingRestore = false;
+            debugLogger.debug("[AudioDucking] Executing deferred restore after duck completed");
+            await this.restore();
+        }
+    }
+
+    /** @private */
+    async _doDuck({ mode, duckLevel }) {
         try {
             if (process.platform === "win32") {
                 // Optimised path: get + set in one PS call
@@ -295,6 +318,13 @@ class AudioDuckingManager {
      * Restore the system audio to what it was before ducking.
      */
     async restore() {
+        // If a duck is still in flight, defer the restore
+        if (this._duckInFlight) {
+            debugLogger.debug("[AudioDucking] Duck in flight — deferring restore");
+            this._pendingRestore = true;
+            return;
+        }
+
         if (!this._isDucked || !this._savedState) return;
 
         this._isDucked = false;
