@@ -146,6 +146,20 @@ test("redacts emails", () => {
   assert.ok(out.includes("[REDACTED_EMAIL]"));
 });
 
+test("redacts verification codes (otp/2fa/etc.)", () => {
+  const input = "Your verification code: 123456";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("123456"), false);
+  assert.ok(/verification code:\s*\[REDACTED_CODE\]/i.test(out));
+});
+
+test("redacts likely credit card numbers (Luhn-checked)", () => {
+  const input = "card: 4242 4242 4242 4242";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("4242 4242"), false);
+  assert.ok(out.includes("[REDACTED_CARD]"));
+});
+
 test("redacts URL query string but keeps base URL", () => {
   const input = "https://example.com/path?token=abc&email=test@example.com";
   const out = sanitizeContextText(input);

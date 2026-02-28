@@ -18,6 +18,13 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(password\s*[:=]\s*)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // 2FA / verification codes (keep narrow to avoid redacting dates/times)
+  {
+    name: "verificationCode",
+    regex:
+      /((?:verification|one[-\s]?time|security|auth|otp|2fa)\s*(?:code|passcode)\s*[:=]\s*)(\d{4,8})\b/gi,
+    replacement: "$1[REDACTED_CODE]",
+  },
   // apiKey: ... / api_key=...
   {
     name: "apiKey",
@@ -151,6 +158,39 @@ function truncateUtf8Safe(text, maxChars) {
   return text.slice(0, maxChars);
 }
 
+function luhnCheck(digits) {
+  if (typeof digits !== "string" || !/^\d+$/.test(digits)) return false;
+  let sum = 0;
+  let shouldDouble = false;
+
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let d = digits.charCodeAt(i) - 48;
+    if (shouldDouble) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    shouldDouble = !shouldDouble;
+  }
+
+  return sum % 10 === 0;
+}
+
+function redactLikelyCardNumbers(text) {
+  if (typeof text !== "string" || !text) return "";
+
+  // Look for sequences that could be PANs with optional spaces/hyphens.
+  // We Luhn-check to reduce false positives.
+  const panLike = /\b(?:\d[ -]?){13,19}\d\b/g;
+
+  return text.replace(panLike, (match) => {
+    const digits = match.replace(/[^0-9]/g, "");
+    if (digits.length < 13 || digits.length > 19) return match;
+    if (!luhnCheck(digits)) return match;
+    return "[REDACTED_CARD]";
+  });
+}
+
 /**
  * @param {string} text
  * @param {{
@@ -172,6 +212,10 @@ function sanitizeContextText(text, options = {}) {
     }
     output = output.replace(pattern.regex, pattern.replacement);
   }
+
+  // PAN-like numbers can show up in focused fields or titles. Luhn-check to
+  // reduce false positives before redacting.
+  output = redactLikelyCardNumbers(output);
 
   output = truncateUtf8Safe(output, maxChars);
   return output;
