@@ -12,6 +12,7 @@ const tabs: SettingsTab[] = [
   { id: "preferences", label: "Preferences" },
   { id: "transcription", label: "Transcription" },
   { id: "permissions", label: "Permissions" },
+  { id: "pro", label: "Privoca Pro" },
   { id: "help", label: "Help & Support" },
   { id: "developer", label: "Developer" },
 ];
@@ -30,6 +31,7 @@ export default function SettingsPageWrapper() {
       "preferences",
       "transcription",
       "permissions",
+      "pro",
       "help",
       "developer",
     ];

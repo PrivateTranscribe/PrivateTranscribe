@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Settings, Mic, Brain, User, Sparkles, Wrench, BookOpen, ShieldCheck, Sliders, HelpCircle } from "lucide-react";
+import { Settings, Mic, Brain, User, Sparkles, Wrench, BookOpen, ShieldCheck, Sliders, HelpCircle, Zap } from "lucide-react";
 import SidebarModal, { SidebarItem } from "./ui/SidebarModal";
 import SettingsPage, { SettingsSectionType } from "./SettingsPage";
 
@@ -67,6 +67,13 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
       label: "Permissions",
       icon: ShieldCheck,
       description: "System access",
+      group: "System",
+    },
+    {
+      id: "pro",
+      label: "Privoca Pro",
+      icon: Zap,
+      description: "License & features",
       group: "System",
     },
     {

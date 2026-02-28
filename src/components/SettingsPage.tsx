@@ -36,7 +36,8 @@ export type SettingsSectionType =
   | "transcription"
   | "permissions"
   | "help"
-  | "developer";
+  | "developer"
+  | "pro";
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -1471,6 +1472,101 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
+            </div>
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // PRO
+      // ───────────────────────────────────────────────────
+      case "pro":
+        return (
+          <div className="space-y-8">
+            <SectionHeader
+              title="Privoca Pro"
+              description="Unlock advanced features with a one-time license"
+            />
+
+            {/* License key entry */}
+            <SettingsPanel>
+              <SettingsPanelRow>
+                <SettingsRow
+                  label="License key"
+                  description="Enter your Privoca Pro license key to unlock all features"
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="XXXX-XXXX-XXXX-XXXX"
+                      className="h-9 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm text-foreground font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all w-56"
+                      disabled
+                    />
+                    <Button variant="default" size="sm" disabled>
+                      Activate
+                    </Button>
+                  </div>
+                </SettingsRow>
+              </SettingsPanelRow>
+            </SettingsPanel>
+
+            {/* Pro features overview */}
+            <div>
+              <SectionHeader
+                title="What's included"
+                description="Features unlocked with Privoca Pro"
+              />
+              <div className="space-y-3 mt-4">
+                {[
+                  {
+                    name: "Correction Memory",
+                    desc: "Learns from your edits and automatically corrects recurring transcription errors",
+                    available: true,
+                  },
+                  {
+                    name: "Smart Context (IDE Bridge)",
+                    desc: "Integrates with Cursor and VS Code for context-aware dictation while coding",
+                    available: false,
+                  },
+                  {
+                    name: "Action Engine",
+                    desc: "Trigger commands, shortcuts, and workflows with voice",
+                    available: false,
+                  },
+                ].map((feature) => (
+                  <div
+                    key={feature.name}
+                    className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
+                  >
+                    <div
+                      className={`shrink-0 h-2 w-2 rounded-full ${
+                        feature.available ? "bg-green-500" : "bg-muted-foreground/30"
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-medium text-foreground">{feature.name}</span>
+                      <p className="text-xs text-muted-foreground">{feature.desc}</p>
+                    </div>
+                    <span
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded ${
+                        feature.available
+                          ? "bg-green-500/10 text-green-500"
+                          : "bg-muted-foreground/10 text-muted-foreground"
+                      }`}
+                    >
+                      {feature.available ? "Ready" : "In development"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pricing info */}
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-2">
+              <p className="text-sm font-medium text-foreground">One-time purchase — no subscription</p>
+              <p className="text-xs text-muted-foreground">
+                Privoca Pro is a single payment that unlocks all current and future Pro features.
+                No recurring fees, no expiry.
+              </p>
             </div>
           </div>
         );
