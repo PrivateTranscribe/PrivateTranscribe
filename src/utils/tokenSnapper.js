@@ -1,3 +1,33 @@
+/**
+ * Simple edit distance (Levenshtein) for short strings.
+ */
+const editDistance = (a, b) => {
+  if (a === b) return 0;
+  const la = a.length, lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
+  const dp = Array.from({ length: la + 1 }, (_, i) => {
+    const row = new Array(lb + 1);
+    row[0] = i;
+    return row;
+  });
+  for (let j = 1; j <= lb; j++) dp[0][j] = j;
+  for (let i = 1; i <= la; i++) {
+    for (let j = 1; j <= lb; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[la][lb];
+};
+
+/**
+ * Consonant skeleton — strips vowels for phonetic-ish comparison.
+ * "provoker" → "prvkr", "privoca" → "prvk"
+ */
+const consonantSkeleton = (s) => s.toLowerCase().replace(/[aeiou]/g, "");
+
 const DEFAULT_MAX_CANDIDATES = 400;
 
 const looksLikeIdentifier = (word) => {
@@ -88,6 +118,57 @@ export function snapTranscript({ transcript, dictionaryWords = [], corrections =
     const parts = c.spoken.split(" ").map(escapeRegExp);
     const phraseRe = new RegExp(`\\b${parts.join("\\s+")}\\b`, "gi");
     output = output.replace(phraseRe, c.word);
+  }
+
+  // ── Fuzzy dictionary matching ──────────────────────────────────────────────
+  // For ALL dictionary words (not just identifier-like ones), check each word in
+  // the output for close phonetic/spelling similarity. This catches cases like
+  // "provoker" → "Privoca" where Whisper picks a real word that sounds similar.
+  const allDictWords = (dictionaryWords || []).filter((w) => w && w.length >= 3);
+  if (allDictWords.length > 0) {
+    const outputWords = output.split(/(\s+)/); // preserve whitespace tokens
+    for (let i = 0; i < outputWords.length; i++) {
+      const token = outputWords[i];
+      if (!token || /^\s+$/.test(token)) continue;
+      // strip trailing punctuation for matching, preserve it for replacement
+      const punctMatch = token.match(/^([a-zA-Z\u00C0-\u024F]+)([^a-zA-Z]*)$/);
+      if (!punctMatch) continue;
+      const rawWord = punctMatch[1];
+      const trailing = punctMatch[2];
+      const normWord = rawWord.toLowerCase();
+      if (normWord.length < 3) continue;
+
+      for (const dictWord of allDictWords) {
+        const normDict = dictWord.toLowerCase();
+        // Skip exact matches (already correct)
+        if (normWord === normDict) break;
+        // Only fuzzy-match words of similar length (within 3 chars)
+        if (Math.abs(normWord.length - normDict.length) > 3) continue;
+
+        // Two-signal match: regular edit distance OR consonant-skeleton distance
+        const dist = editDistance(normWord, normDict);
+        const maxDist = Math.min(3, Math.max(1, Math.floor(Math.max(normWord.length, normDict.length) * 0.3)));
+        const skelDist = editDistance(consonantSkeleton(normWord), consonantSkeleton(normDict));
+
+        // Match if: direct edit distance is close, OR consonant skeletons are very close
+        // and the words share the same starting consonants (reduces false positives).
+        // Catches phonetically similar words like "provoker" ↔ "privoca"
+        const skelWord = consonantSkeleton(normWord);
+        const skelDict = consonantSkeleton(normDict);
+        const sameStart = skelWord.length >= 2 && skelDict.length >= 2 && skelWord.slice(0, 2) === skelDict.slice(0, 2);
+        const isMatch = (dist > 0 && dist <= maxDist) || (skelDist <= 2 && dist <= 4 && normWord.length >= 4 && sameStart);
+
+        if (isMatch) {
+          // Preserve original capitalization pattern
+          const replacement = rawWord[0] === rawWord[0].toUpperCase()
+            ? dictWord[0].toUpperCase() + dictWord.slice(1)
+            : dictWord;
+          outputWords[i] = replacement + trailing;
+          break; // first match wins
+        }
+      }
+    }
+    output = outputWords.join("");
   }
 
   return output;
