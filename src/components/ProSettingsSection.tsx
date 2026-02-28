@@ -12,6 +12,16 @@ import {
 
 const PRO_FEATURES = [
   {
+    name: "AI Enhancement",
+    desc: "Automatically polish transcriptions with grammar fixes, formatting, and intelligent rewrites",
+    available: true,
+  },
+  {
+    name: "Voice Assistant",
+    desc: "Customize your AI companion with a personal name and fine-tuned system prompts",
+    available: true,
+  },
+  {
     name: "Correction Memory",
     desc: "Learns from your edits and automatically corrects recurring transcription errors",
     available: true,

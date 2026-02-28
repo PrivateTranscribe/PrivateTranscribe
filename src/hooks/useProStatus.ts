@@ -43,6 +43,8 @@ export function isFeatureUnlocked(featureId: string): boolean {
     "correction-memory",
     "smart-context",
     "action-engine",
+    "ai-enhancement",
+    "voice-assistant",
   ]);
 
   if (!PRO_FEATURES.has(featureId)) return true; // Free feature

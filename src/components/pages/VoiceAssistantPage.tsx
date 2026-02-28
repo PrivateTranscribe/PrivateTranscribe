@@ -1,8 +1,9 @@
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Lock } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import PromptStudio from "../ui/PromptStudio";
 import { useAgentName } from "../../utils/agentName";
+import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useDialogs } from "../../hooks/useDialogs";
 import { AlertDialog } from "../ui/dialog";
 
@@ -19,6 +20,7 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
 }
 
 export default function VoiceAssistantPage() {
+  const isUnlocked = isFeatureUnlocked("voice-assistant");
   const { agentName, setAgentName } = useAgentName();
   const { alertDialog, showAlertDialog, hideAlertDialog } = useDialogs();
 
@@ -37,11 +39,28 @@ export default function VoiceAssistantPage() {
         <div className="flex items-center gap-3 mb-2">
           <MessageSquare size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Voice Assistant</h1>
+          {!isUnlocked && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
+              <Lock size={10} /> Pro
+            </span>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
           Personalize your AI companion with a custom name and fine-tune system prompts
         </p>
       </div>
+
+      {!isUnlocked && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3 mb-8">
+          <Lock size={24} className="mx-auto text-primary/60" />
+          <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Customize your voice assistant with a personal name and fine-tuned system prompts for AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
+          </p>
+        </div>
+      )}
+
+      {isUnlocked && (<>
 
       {/* Agent Name Section */}
       <div className="mb-10">
@@ -142,8 +161,9 @@ export default function VoiceAssistantPage() {
             Fine-tune the AI's behavior and output style
           </p>
         </div>
-        <PromptStudio />
+                <PromptStudio />
       </div>
+      </>)}
     </div>
   );
 }

@@ -53,8 +53,8 @@ const navGroups: NavGroup[] = [
   {
     label: "INTELLIGENCE",
     items: [
-      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
-      { id: "voice-assistant", label: "Voice Assistant", icon: MessageSquare },
+      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain, badge: "Pro", badgeVariant: "pro" },
+      { id: "voice-assistant", label: "Voice Assistant", icon: MessageSquare, badge: "Pro", badgeVariant: "pro" },
     ],
   },
   {

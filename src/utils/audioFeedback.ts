@@ -9,51 +9,87 @@ function getAudioContext(): AudioContext {
   if (!audioContext) {
     audioContext = new AudioContext();
   }
+  // Resume if suspended (browsers/Electron may suspend until user gesture)
+  if (audioContext.state === "suspended") {
+    audioContext.resume();
+  }
   return audioContext;
 }
 
-function playTone(frequency: number, durationMs: number, volume = 0.15) {
+/**
+ * Play a shaped tone with smooth envelope.
+ * Uses a combination of oscillator types for a warmer, more pleasant sound.
+ */
+function playNote(
+  frequency: number,
+  durationMs: number,
+  {
+    volume = 0.12,
+    type = "sine" as OscillatorType,
+    attackMs = 10,
+    releaseMs = 60,
+    delayMs = 0,
+  } = {}
+) {
   try {
     const ctx = getAudioContext();
-    const oscillator = ctx.createOscillator();
+    const startTime = ctx.currentTime + delayMs / 1000;
+    const duration = durationMs / 1000;
+    const attack = Math.min(attackMs / 1000, duration * 0.3);
+    const release = Math.min(releaseMs / 1000, duration * 0.5);
+
+    const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    oscillator.connect(gain);
+    osc.connect(gain);
     gain.connect(ctx.destination);
 
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, startTime);
 
-    // Fade in/out to avoid clicks
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.01);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + durationMs / 1000);
+    // Smooth envelope: silence → attack → sustain → release → silence
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(volume, startTime + attack);
+    gain.gain.setValueAtTime(volume, startTime + duration - release);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + durationMs / 1000);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.05);
   } catch {
-    // Audio feedback is best-effort
+    // Audio feedback is best-effort — never crash
   }
 }
 
-/** Short ascending tone — recording started */
+/**
+ * Pleasant two-note chime — recording started.
+ * A4 → C#5 (major third, upward = "beginning")
+ */
 export function playStartSound() {
-  playTone(440, 120, 0.12);
-  setTimeout(() => playTone(587, 120, 0.12), 80);
+  playNote(440, 140, { volume: 0.10, type: "sine", attackMs: 5, releaseMs: 80 });
+  playNote(554, 160, { volume: 0.10, type: "sine", attackMs: 5, releaseMs: 100, delayMs: 90 });
 }
 
-/** Short descending tone — recording stopped */
+/**
+ * Soft descending chime — recording stopped / processing.
+ * C#5 → A4 (same interval, downward = "done")
+ */
 export function playStopSound() {
-  playTone(587, 120, 0.12);
-  setTimeout(() => playTone(440, 120, 0.12), 80);
+  playNote(554, 130, { volume: 0.08, type: "sine", attackMs: 5, releaseMs: 70 });
+  playNote(440, 170, { volume: 0.08, type: "sine", attackMs: 5, releaseMs: 110, delayMs: 80 });
 }
 
-/** Single soft beep — success */
+/**
+ * Bright success ping — transcription completed successfully.
+ * E5 with a gentle ring-out.
+ */
 export function playSuccessSound() {
-  playTone(660, 150, 0.1);
+  playNote(659, 200, { volume: 0.08, type: "sine", attackMs: 5, releaseMs: 150 });
 }
 
-/** Low tone — error */
+/**
+ * Low soft tone — error occurred.
+ * A3, longer sustain to feel distinct from the chimes.
+ */
 export function playErrorSound() {
-  playTone(220, 250, 0.12);
+  playNote(220, 300, { volume: 0.10, type: "triangle", attackMs: 10, releaseMs: 200 });
 }
