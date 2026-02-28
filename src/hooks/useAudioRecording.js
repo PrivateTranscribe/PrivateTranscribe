@@ -53,6 +53,18 @@ export const useAudioRecording = (toast, options = {}) => {
           description: error.description,
           variant: "destructive",
         });
+
+        // Error notification (system-level)
+        const showErrorNotif = localStorage.getItem("errorNotifications") === "true";
+        if (showErrorNotif && window.electronAPI?.showNotification) {
+          window.electronAPI.showNotification("Transcription Error", error.description || error.title || "Transcription failed");
+        }
+
+        // Show control panel on error
+        const openPanel = localStorage.getItem("showPanelOnError") === "true";
+        if (openPanel && window.electronAPI?.openControlPanel) {
+          window.electronAPI.openControlPanel();
+        }
       },
       onTranscriptionComplete: async (result) => {
         if (disposed || !result.success) {
@@ -90,7 +102,26 @@ export const useAudioRecording = (toast, options = {}) => {
 
         setTranscript(text);
 
-        await manager.safePaste(text);
+        // Respect behavior settings
+        const shouldPaste = (localStorage.getItem("autoPaste") ?? "true") !== "false";
+        const shouldCopy = (localStorage.getItem("copyToClipboard") ?? "true") !== "false";
+
+        if (shouldPaste) {
+          await manager.safePaste(text);
+        } else if (shouldCopy && window.electronAPI?.writeClipboard) {
+          await window.electronAPI.writeClipboard(text);
+        }
+
+        // Success confirmation notification
+        const showSuccess = localStorage.getItem("successConfirmation") === "true";
+        if (showSuccess) {
+          toastRef.current?.({
+            title: "Transcription complete",
+            description: text.length > 80 ? text.slice(0, 80) + "…" : text,
+            variant: "default",
+            duration: 2000,
+          });
+        }
 
         // Correction memory (best-effort): if the user edits the pasted text and copies the corrected
         // version shortly after, learn token-level replacements locally.
@@ -261,6 +292,10 @@ export const useAudioRecording = (toast, options = {}) => {
 
   const startRecording = useCallback(async () => {
     if (audioManagerRef.current) {
+      const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
+      if (audioFeedbackEnabled) {
+        import("../utils/audioFeedback").then((m) => m.playStartSound()).catch(() => {});
+      }
       return await audioManagerRef.current.startRecording();
     }
     return false;
@@ -268,6 +303,10 @@ export const useAudioRecording = (toast, options = {}) => {
 
   const stopRecording = useCallback(() => {
     if (audioManagerRef.current) {
+      const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
+      if (audioFeedbackEnabled) {
+        import("../utils/audioFeedback").then((m) => m.playStopSound()).catch(() => {});
+      }
       return audioManagerRef.current.stopRecording();
     }
     return false;

@@ -287,6 +287,13 @@ class IPCHandlers {
       return this.clipboardManager.writeClipboard(text);
     });
 
+    ipcMain.handle("show-notification", async (event, title, body) => {
+      const { Notification } = require("electron");
+      if (Notification.isSupported()) {
+        new Notification({ title: title || "Privoca", body: body || "" }).show();
+      }
+    });
+
     ipcMain.handle("check-paste-tools", async () => {
       return this.clipboardManager.checkPasteTools();
     });

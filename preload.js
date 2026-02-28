@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Clipboard functions
   readClipboard: () => ipcRenderer.invoke("read-clipboard"),
   writeClipboard: (text) => ipcRenderer.invoke("write-clipboard", text),
+  showNotification: (title, body) => ipcRenderer.invoke("show-notification", title, body),
   checkPasteTools: () => ipcRenderer.invoke("check-paste-tools"),
 
   // Context capture (best-effort; returns {available:false} if unsupported)
