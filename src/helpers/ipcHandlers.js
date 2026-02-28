@@ -265,6 +265,10 @@ class IPCHandlers {
       return this.databaseManager.upsertCorrection(source, target);
     });
 
+    ipcMain.handle("db-delete-correction", async (event, source) => {
+      return this.databaseManager.deleteCorrection(source);
+    });
+
     // Stats handler
     ipcMain.handle("db-get-stats", async () => {
       return this.databaseManager.getStats();

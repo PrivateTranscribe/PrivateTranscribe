@@ -1,4 +1,4 @@
-import { BookMarked, RefreshCw } from "lucide-react";
+import { BookMarked, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -28,16 +28,22 @@ function toTime(v?: string) {
   return Number.isFinite(t) ? t : 0;
 }
 
+function formatDate(v?: string) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function CorrectionMemoryPage() {
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [sortKey, setSortKey] = useState<SortKey>("count");
-
   const [source, setSource] = useState("");
   const [target, setTarget] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingSource, setDeletingSource] = useState<string | null>(null);
 
   const fetchRows = async () => {
     try {
@@ -54,7 +60,6 @@ export default function CorrectionMemoryPage() {
           created_at: safeString(r?.created_at),
         }))
         .filter((r) => r.source && r.target);
-
       setRows(normalized);
     } catch (e: any) {
       setError(e?.message || "Failed to load correction memory");
@@ -83,7 +88,6 @@ export default function CorrectionMemoryPage() {
     const s = source.trim();
     const t = target.trim();
     if (!s || !t || s === t) return;
-
     try {
       setSaving(true);
       setError(null);
@@ -98,30 +102,36 @@ export default function CorrectionMemoryPage() {
     }
   };
 
+  const handleDelete = async (src: string) => {
+    try {
+      setDeletingSource(src);
+      setError(null);
+      await window.electronAPI?.deleteCorrection?.(src);
+      setRows((prev) => prev.filter((r) => r.source !== src));
+    } catch (e: any) {
+      setError(e?.message || "Failed to delete correction");
+    } finally {
+      setDeletingSource(null);
+    }
+  };
+
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start gap-3 mb-2">
+        <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <BookMarked size={28} className="text-primary" />
-            <h1 className="text-3xl font-semibold text-foreground tracking-tight">
-              Correction Memory
-            </h1>
-            <Badge variant="outline" className="text-[10px]">
-              Local
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Privoca learns mappings like <span className="font-mono">foo bar</span> →{" "}
-            <span className="font-mono">fooBar</span> and snaps future dictations automatically.
+          <h1 className="text-3xl font-semibold text-foreground tracking-tight">
+            Correction Memory
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Privoca learns phrase corrections like{" "}
+            <span className="font-mono text-foreground">use login error</span>
+            {" → "}
+            <span className="font-mono text-primary">useLoginError</span>{" "}
+            and applies them automatically to future dictations.
           </p>
         </div>
-
-        <Button variant="outline" onClick={fetchRows} disabled={loading}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
       </div>
 
       {error && (
@@ -132,34 +142,31 @@ export default function CorrectionMemoryPage() {
 
       {/* Add correction */}
       <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
-            <p className="text-xs text-muted-foreground">
-              Example: source "is login error" → target "isLoginError"
-            </p>
-          </div>
-          <Badge variant="outline" className="text-[10px]">
-            Manual
-          </Badge>
+        <div>
+          <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Manually teach Privoca a phrase mapping.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Input
-            placeholder="Source (what you tend to say / what STT outputs)"
+            placeholder="Source — what you say / what STT outputs"
             value={source}
             onChange={(e) => setSource(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           />
           <Input
-            placeholder="Target (what you want inserted)"
+            placeholder="Target — what should be inserted"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           />
         </div>
 
         <div className="flex justify-end">
           <Button onClick={handleAdd} disabled={saving || !source.trim() || !target.trim()}>
-            {saving ? "Saving..." : "Add correction"}
+            {saving ? "Saving…" : "Add correction"}
           </Button>
         </div>
       </div>
@@ -170,7 +177,7 @@ export default function CorrectionMemoryPage() {
           <div>
             <h2 className="text-base font-semibold text-foreground">Learned corrections</h2>
             <p className="text-xs text-muted-foreground">
-              {loading ? "Loading…" : `${sorted.length} entries`}
+              {loading ? "Loading…" : `${sorted.length} ${sorted.length === 1 ? "entry" : "entries"}`}
             </p>
           </div>
 
@@ -205,22 +212,30 @@ export default function CorrectionMemoryPage() {
                 key={`${r.source}=>${r.target}-${idx}`}
                 className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-background/40 px-3 py-2"
               >
-                <div className="min-w-0">
-                  <div className="text-sm text-foreground truncate">
-                    <span className="font-mono">{r.source}</span>
-                    <span className="text-muted-foreground"> → </span>
-                    <span className="font-mono text-primary">{r.target}</span>
-                  </div>
-                  {r.last_seen_at && (
-                    <div className="text-[10px] text-muted-foreground">
-                      Last seen: {r.last_seen_at}
-                    </div>
-                  )}
+                {/* Source → Target */}
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono text-sm text-foreground">{r.source}</span>
+                  <span className="text-sm text-muted-foreground mx-2">→</span>
+                  <span className="font-mono text-sm text-primary">{r.target}</span>
                 </div>
 
-                <Badge variant="secondary" className="text-[10px] shrink-0">
-                  ×{r.count}
-                </Badge>
+                {/* Count + date + delete */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge variant="secondary" className="text-[10px]">
+                    ×{r.count}
+                    {r.last_seen_at && formatDate(r.last_seen_at)
+                      ? ` · ${formatDate(r.last_seen_at)}`
+                      : ""}
+                  </Badge>
+                  <button
+                    onClick={() => handleDelete(r.source)}
+                    disabled={deletingSource === r.source}
+                    className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                    title="Remove correction"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

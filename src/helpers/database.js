@@ -276,6 +276,17 @@ class DatabaseManager {
     }
   }
 
+  deleteCorrection(source) {
+    try {
+      const stmt = this.db.prepare("DELETE FROM correction_memory WHERE source = ?");
+      stmt.run(source);
+      return { success: true };
+    } catch (error) {
+      console.error("Error deleting correction:", error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   upsertCorrection(source, target) {
     try {
       if (!this.db) {
