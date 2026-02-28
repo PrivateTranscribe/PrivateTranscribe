@@ -14,6 +14,7 @@ export interface TranscriptionSettings {
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
   preferredLanguage: string;
+  translateToEnglish: string;
   cloudTranscriptionProvider: string;
   cloudTranscriptionModel: string;
   cloudTranscriptionBaseUrl?: string;
@@ -99,6 +100,15 @@ export function useSettings() {
     serialize: String,
     deserialize: String,
   });
+
+  const [translateToEnglish, setTranslateToEnglish] = useLocalStorage(
+    "translateToEnglish",
+    "off",
+    {
+      serialize: String,
+      deserialize: String,
+    }
+  );
 
   const [cloudTranscriptionProvider, setCloudTranscriptionProvider] = useLocalStorage(
     "cloudTranscriptionProvider",
@@ -545,6 +555,8 @@ export function useSettings() {
         setFallbackWhisperModel(settings.fallbackWhisperModel);
       if (settings.preferredLanguage !== undefined)
         setPreferredLanguage(settings.preferredLanguage);
+      if (settings.translateToEnglish !== undefined)
+        setTranslateToEnglish(settings.translateToEnglish);
       if (settings.cloudTranscriptionProvider !== undefined)
         setCloudTranscriptionProvider(settings.cloudTranscriptionProvider);
       if (settings.cloudTranscriptionModel !== undefined)
@@ -562,6 +574,7 @@ export function useSettings() {
       setAllowLocalFallback,
       setFallbackWhisperModel,
       setPreferredLanguage,
+      setTranslateToEnglish,
       setCloudTranscriptionProvider,
       setCloudTranscriptionModel,
       setCloudTranscriptionBaseUrl,
@@ -601,6 +614,7 @@ export function useSettings() {
     allowLocalFallback,
     fallbackWhisperModel,
     preferredLanguage,
+    translateToEnglish,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -623,6 +637,7 @@ export function useSettings() {
     setAllowLocalFallback,
     setFallbackWhisperModel,
     setPreferredLanguage,
+    setTranslateToEnglish,
     setCloudTranscriptionProvider,
     setCloudTranscriptionModel,
     setCloudTranscriptionBaseUrl,

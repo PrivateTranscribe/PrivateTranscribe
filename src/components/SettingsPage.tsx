@@ -267,6 +267,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     updateReasoningSettings,
     preferredLanguage,
     setPreferredLanguage,
+    translateToEnglish,
+    setTranslateToEnglish,
     musicDuckingMode,
     setMusicDuckingMode,
     musicDuckLevel,
@@ -310,6 +312,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           whisperModel,
           parakeetModel,
           preferredLanguage,
+          translateToEnglish,
           cloudTranscriptionProvider,
           cloudTranscriptionModel,
           cloudTranscriptionBaseUrl,
@@ -355,6 +358,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       whisperModel,
       parakeetModel,
       preferredLanguage,
+      translateToEnglish,
       cloudTranscriptionProvider,
       cloudTranscriptionModel,
       cloudTranscriptionBaseUrl,
@@ -415,6 +419,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
         parakeetModel: typeof s.parakeetModel === "string" ? s.parakeetModel : undefined,
         preferredLanguage: typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
+        translateToEnglish:
+          s.translateToEnglish === "on" || s.translateToEnglish === "off"
+            ? s.translateToEnglish
+            : undefined,
         cloudTranscriptionProvider:
           typeof s.cloudTranscriptionProvider === "string" ? s.cloudTranscriptionProvider : undefined,
         cloudTranscriptionModel:
@@ -970,17 +978,24 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Language"
-                description="Select the primary language for speech recognition"
+                description="Configure speech recognition language and translation"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Transcription language"
-                    description="Choose a specific language or let the engine detect automatically"
+                    label="I speak"
+                    description="The language you primarily speak. Helps the engine recognize your speech more accurately."
                   >
                     <select
                       value={preferredLanguage || "auto"}
-                      onChange={(e) => setPreferredLanguage(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPreferredLanguage(val);
+                        // Auto-disable translation if switching to English or auto
+                        if (val === "en" || val === "auto") {
+                          setTranslateToEnglish("off");
+                        }
+                      }}
                       className="h-9 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
                     >
                       {LANGUAGE_OPTIONS.map((lang) => (
@@ -990,6 +1005,32 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       ))}
                     </select>
                   </SettingsRow>
+
+                  {/* Show translate toggle only when speaking a non-English language */}
+                  {preferredLanguage && preferredLanguage !== "auto" && preferredLanguage !== "en" && (
+                    <SettingsRow
+                      label="Translate to English"
+                      description="Automatically translate your speech into English text"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTranslateToEnglish(translateToEnglish === "on" ? "off" : "on")
+                        }
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          translateToEnglish === "on"
+                            ? "bg-primary"
+                            : "bg-surface-raised border border-border-subtle"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            translateToEnglish === "on" ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </SettingsRow>
+                  )}
 
                   {languageCompatWarning && (
                     <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
