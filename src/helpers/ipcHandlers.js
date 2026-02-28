@@ -1299,6 +1299,27 @@ class IPCHandlers {
         return { success: false, error: err.message };
       }
     });
+
+    // Licensing — stable device identifier
+    ipcMain.handle("get-machine-id", async () => {
+      try {
+        const { machineIdSync } = require("node-machine-id");
+        return { id: machineIdSync(true) }; // true = original (not hashed)
+      } catch {
+        // Fallback: use a persisted random ID
+        const path = require("path");
+        const fs = require("fs");
+        const { app } = require("electron");
+        const idPath = path.join(app.getPath("userData"), ".device-id");
+        if (fs.existsSync(idPath)) {
+          return { id: fs.readFileSync(idPath, "utf-8").trim() };
+        }
+        const crypto = require("crypto");
+        const id = crypto.randomUUID();
+        fs.writeFileSync(idPath, id, "utf-8");
+        return { id };
+      }
+    });
   }
 
   broadcastToWindows(channel, payload) {

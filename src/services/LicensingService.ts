@@ -21,8 +21,8 @@ const STORAGE_PRO_STATUS = "privoca_pro_status";
  */
 async function getDeviceId(): Promise<string> {
   try {
-    const raw = await window.electronAPI?.getMachineId?.();
-    if (raw) return raw;
+    const result = await window.electronAPI?.getMachineId?.();
+    if (result?.id) return result.id;
   } catch {
     // fallback
   }

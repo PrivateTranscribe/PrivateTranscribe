@@ -25,15 +25,20 @@ export const useAudioRecording = (toast, options = {}) => {
     // ── Audio ducking helpers ────────────────────────────────────────────────
     // Read settings directly from localStorage so this plain-JS hook doesn't
     // need to import the TypeScript useSettings hook.
+    let isDucked = false;
+
     const duckAudio = () => {
       const mode = localStorage.getItem("musicDuckingMode") || "off";
       if (mode === "off") return;
       const duckLevel = parseFloat(localStorage.getItem("musicDuckLevel") || "0.2");
       window.electronAPI?.duckSystemAudio?.({ mode, duckLevel });
+      isDucked = true;
     };
 
     const restoreAudio = () => {
+      if (!isDucked) return;
       window.electronAPI?.restoreSystemAudio?.();
+      isDucked = false;
     };
 
     manager.setCallbacks({
@@ -67,6 +72,9 @@ export const useAudioRecording = (toast, options = {}) => {
         }
       },
       onTranscriptionComplete: async (result) => {
+        // Always restore audio when transcription finishes (safety net)
+        restoreAudio();
+
         if (disposed || !result.success) {
           return;
         }
@@ -247,8 +255,10 @@ export const useAudioRecording = (toast, options = {}) => {
       const currentState = manager.getState();
       if (currentState.isRecording || currentState.isStartingRecording) {
         manager.stopRecording();
-        restoreAudio();
       }
+      // Always restore audio when push-to-talk key is released,
+      // even if recording didn't fully start (quick tap race condition)
+      restoreAudio();
     };
 
     const disposeToggle = window.electronAPI.onToggleDictation(() => {

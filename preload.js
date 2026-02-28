@@ -290,4 +290,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Audio ducking — lower/mute system volume while transcribing
   duckSystemAudio: (options) => ipcRenderer.invoke("duck-system-audio", options),
   restoreSystemAudio: () => ipcRenderer.invoke("restore-system-audio"),
+
+  // Licensing
+  getMachineId: () => ipcRenderer.invoke("get-machine-id"),
 });
