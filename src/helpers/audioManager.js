@@ -122,13 +122,41 @@ class AudioManager {
   getCustomDictionaryPrompt() {
     try {
       const raw = localStorage.getItem("customDictionary");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed.join(", ");
+      const words = [];
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) words.push(...parsed);
+      }
+      // Also include high-confidence correction targets as prompt hints
+      // so whisper is more likely to recognize them
+      // (correction memory is async/IPC, so we use a cached version if available)
+      if (this._cachedCorrectionHints && this._cachedCorrectionHints.length > 0) {
+        words.push(...this._cachedCorrectionHints);
+      }
+      const unique = [...new Set(words.filter(Boolean))];
+      return unique.length > 0 ? unique.join(", ") : null;
     } catch {
       // ignore parse errors
     }
     return null;
+  }
+
+  /**
+   * Cache correction memory targets for use in whisper prompt hints.
+   * Called before transcription to avoid async IPC in the prompt builder.
+   */
+  async refreshCorrectionHints() {
+    try {
+      const corrections = await globalThis.electronAPI?.getCorrectionMemory?.(200);
+      if (Array.isArray(corrections)) {
+        // Only include corrections used more than once (higher confidence)
+        this._cachedCorrectionHints = corrections
+          .filter((r) => r?.target && (r?.count || 0) >= 2)
+          .map((r) => r.target);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   setCallbacks({ onStateChange, onError, onTranscriptionComplete }) {
@@ -632,6 +660,8 @@ class AudioManager {
     const timings = {};
 
     try {
+      // Refresh correction hints so they're included in the whisper prompt
+      await this.refreshCorrectionHints();
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
       const arrayBuffer = await audioBlob.arrayBuffer();
