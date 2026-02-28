@@ -27,7 +27,7 @@ interface NavItem {
   label: string;
   icon: typeof LayoutDashboard;
   badge?: string;
-  badgeVariant?: "new" | "soon";
+  badgeVariant?: "new" | "soon" | "pro";
 }
 
 interface NavGroup {
@@ -60,7 +60,7 @@ const navGroups: NavGroup[] = [
   {
     label: "ADVANCED",
     items: [
-      { id: "action-engine", label: "Action Engine", icon: Zap, badge: "Soon", badgeVariant: "soon" },
+      { id: "action-engine", label: "Action Engine", icon: Zap, badge: "Pro", badgeVariant: "pro" },
     ],
   },
 ];
@@ -194,8 +194,15 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                         backgroundColor:
                           item.badgeVariant === "new"
                             ? "rgba(112,255,186,0.15)"
-                            : "rgba(255,255,255,0.06)",
-                        color: item.badgeVariant === "new" ? "#70FFBA" : "#6B7370",
+                            : item.badgeVariant === "pro"
+                              ? "rgba(168,133,255,0.15)"
+                              : "rgba(255,255,255,0.06)",
+                        color:
+                          item.badgeVariant === "new"
+                            ? "#70FFBA"
+                            : item.badgeVariant === "pro"
+                              ? "#A885FF"
+                              : "#6B7370",
                       }}
                     >
                       {item.badge}
