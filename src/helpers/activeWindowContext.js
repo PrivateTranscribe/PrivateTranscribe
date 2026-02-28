@@ -42,9 +42,14 @@ function isSensitiveAppContext({ appName = "", processName = "", appClass = "", 
   return false;
 }
 
-function run(cmd, args) {
+function run(cmd, args, { timeoutMs = 2500, maxBuffer = 1024 * 1024 } = {}) {
   try {
-    const res = spawnSync(cmd, args, { encoding: "utf8" });
+    const res = spawnSync(cmd, args, {
+      encoding: "utf8",
+      timeout: timeoutMs,
+      maxBuffer,
+    });
+
     return {
       ok: res.status === 0,
       status: res.status,
@@ -164,14 +169,11 @@ if (-not $txt) {
 }
 $txt;`;
 
-  const res = run("powershell.exe", [
-    "-NoProfile",
-    "-NonInteractive",
-    "-WindowStyle",
-    "Hidden",
-    "-Command",
-    ps,
-  ]);
+  const res = run(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
+    { timeoutMs: 4000 }
+  );
 
   if (!res.ok) return {};
 
@@ -214,14 +216,11 @@ try { $pname = (Get-Process -Id $pid -ErrorAction Stop).ProcessName } catch { $p
 $sb.ToString();
 $pname;`;
 
-  const res = run("powershell.exe", [
-    "-NoProfile",
-    "-NonInteractive",
-    "-WindowStyle",
-    "Hidden",
-    "-Command",
-    ps,
-  ]);
+  const res = run(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
+    { timeoutMs: 4000 }
+  );
 
   if (!res.ok) {
     return { available: false, reason: "powershell foreground query failed" };
