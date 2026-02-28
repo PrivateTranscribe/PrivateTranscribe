@@ -4,11 +4,11 @@ const { spawnSync } = require("child_process");
 const { sanitizeContextText } = require("./contextSanitizer");
 
 function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
-  const hay = [appName, processName, appClass].join(" ").toLowerCase();
+  const appHay = [appName, processName, appClass].join(" ").toLowerCase();
 
   // Narrow denylist: password managers / auth apps + OS credential prompts.
   // Keep this conservative to avoid blocking common apps (e.g., browsers).
-  const patterns = [
+  const appPatterns = [
     // Password managers
     /\b1password\b/i,
     /\bbitwarden\b/i,
@@ -39,11 +39,16 @@ function isSensitiveAppContext({ appName = "", processName = "", appClass = "", 
     /\bconsent(\.exe)?\b/i,
   ];
 
-  if (patterns.some((p) => p.test(hay))) return true;
+  if (appPatterns.some((p) => p.test(appHay))) return true;
 
-  // Very small extra guard: if the window title itself strongly indicates a password or OS credential prompt.
-  // (Avoid overly broad terms like "login" that would cause false positives.)
+  // Window title guardrails:
+  // - Only match well-known sensitive app names (avoid generic terms like "passwords" in document titles).
+  // - Also block explicit OS credential prompt wording.
   const title = (windowTitle || "").toLowerCase();
+  const titlePatterns = appPatterns.filter((p) => p.toString() !== /\bpasswords\b/i.toString());
+  if (titlePatterns.some((p) => p.test(title))) return true;
+
+  // Avoid overly broad terms like "login" that would cause false positives.
   if (title.includes("enter password") || title.includes("master password")) return true;
   if (title.includes("windows security") || title.includes("user account control")) return true;
 

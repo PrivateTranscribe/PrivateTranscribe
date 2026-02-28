@@ -43,11 +43,20 @@ test("blocks explicit password/credential prompt titles", () => {
   assert.strictEqual(isSensitiveAppContext({ windowTitle: "User Account Control" }), true);
 });
 
+test("blocks sensitive app names when they appear in the window title", () => {
+  assert.strictEqual(isSensitiveAppContext({ windowTitle: "1Password — Vault" }), true);
+  assert.strictEqual(isSensitiveAppContext({ windowTitle: "Bitwarden" }), true);
+  assert.strictEqual(isSensitiveAppContext({ windowTitle: "KWallet Manager" }), true);
+});
+
 test("does not block common non-sensitive apps", () => {
   assert.strictEqual(isSensitiveAppContext({ appName: "Google Chrome" }), false);
   assert.strictEqual(isSensitiveAppContext({ processName: "Code" }), false);
   assert.strictEqual(isSensitiveAppContext({ appClass: "firefox" }), false);
   assert.strictEqual(isSensitiveAppContext({ windowTitle: "Slack | general" }), false);
+
+  // Guardrail: don't block generic "passwords" word in arbitrary titles.
+  assert.strictEqual(isSensitiveAppContext({ windowTitle: "Passwords are hard — blog post" }), false);
 });
 
 process.stdout.write("All active window context tests passed.\n");
