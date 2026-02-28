@@ -192,5 +192,8 @@
       "height": 380
     }
   },
-  "publish": null
+  "publish": {
+    "provider": "generic",
+    "url": "https://updates.privoca.com/win"
+  }
 }

@@ -26,10 +26,16 @@ class UpdateManager {
       return;
     }
 
-    // Auto-updater disabled - no publish repository configured
-    // To enable: create your repository and update electron-builder.json "publish" section
-    console.log("Auto-updater disabled: no update repository configured");
-    return;
+    // Configure update feed URL
+    // This points to the update manifest hosted on our CDN (Cloudflare R2 or similar).
+    // The manifest (latest.yml) and installer files must be uploaded there.
+    const UPDATE_FEED_URL = "https://updates.privoca.com/win";
+
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: UPDATE_FEED_URL,
+      useMultipleRangeRequest: false,
+    });
 
     // Disable auto-download - let user control when to download
     autoUpdater.autoDownload = false;
