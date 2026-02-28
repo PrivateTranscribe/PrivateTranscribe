@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
-import { RefreshCw, Download, Mic, Shield, FolderOpen } from "lucide-react";
+import { RefreshCw, Download, Upload, Mic, Shield, FolderOpen } from "lucide-react";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
 import MicrophoneSettings from "./ui/MicrophoneSettings";
@@ -232,6 +232,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     geminiApiKey,
     groqApiKey,
     dictationKey,
+    theme,
+    setTheme,
     activationMode,
     setActivationMode,
     preferBuiltInMic,
@@ -279,10 +281,217 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
+
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
       ? "%USERPROFILE%\\.cache\\Privoca\\whisper-models"
       : "~/.cache/Privoca/whisper-models";
+
+  // Settings export/import (privacy-first): API keys are excluded by default.
+  const [includeApiKeysInExport, setIncludeApiKeysInExport] = useState(false);
+  const [allowApiKeysOnImport, setAllowApiKeysOnImport] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const buildSettingsExport = useCallback(
+    (includeApiKeys: boolean) => {
+      const payload: any = {
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        settings: {
+          // General
+          theme,
+          historyLimit,
+          // Dictation control
+          dictationKey,
+          activationMode,
+          // Transcription
+          useLocalWhisper,
+          localTranscriptionProvider,
+          whisperModel,
+          parakeetModel,
+          preferredLanguage,
+          cloudTranscriptionProvider,
+          cloudTranscriptionModel,
+          cloudTranscriptionBaseUrl,
+          // Reasoning
+          useReasoningModel,
+          reasoningProvider,
+          reasoningModel,
+          cloudReasoningBaseUrl,
+          // Preferences
+          musicDuckingMode,
+          musicDuckLevel,
+          enableVariableSnapping,
+          enableCorrectionLearning,
+          enableContextCapture,
+          // Devices
+          preferBuiltInMic,
+          selectedMicDeviceId,
+          // Dictionary
+          customDictionary,
+        },
+      };
+
+      if (includeApiKeys) {
+        payload.settings.apiKeys = {
+          openaiApiKey,
+          anthropicApiKey,
+          geminiApiKey,
+          groqApiKey,
+          customTranscriptionApiKey,
+          customReasoningApiKey,
+        };
+      }
+
+      return payload;
+    },
+    [
+      theme,
+      historyLimit,
+      dictationKey,
+      activationMode,
+      useLocalWhisper,
+      localTranscriptionProvider,
+      whisperModel,
+      parakeetModel,
+      preferredLanguage,
+      cloudTranscriptionProvider,
+      cloudTranscriptionModel,
+      cloudTranscriptionBaseUrl,
+      useReasoningModel,
+      reasoningProvider,
+      reasoningModel,
+      cloudReasoningBaseUrl,
+      musicDuckingMode,
+      musicDuckLevel,
+      enableVariableSnapping,
+      enableCorrectionLearning,
+      enableContextCapture,
+      preferBuiltInMic,
+      selectedMicDeviceId,
+      customDictionary,
+      openaiApiKey,
+      anthropicApiKey,
+      geminiApiKey,
+      groqApiKey,
+      customTranscriptionApiKey,
+      customReasoningApiKey,
+    ]
+  );
+
+  const downloadSettings = useCallback(
+    (includeApiKeys: boolean) => {
+      const payload = buildSettingsExport(includeApiKeys);
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `privoca-settings${includeApiKeys ? "-with-keys" : ""}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    },
+    [buildSettingsExport]
+  );
+
+  const applyImportedSettings = useCallback(
+    async (data: any) => {
+      const s = data?.settings || data;
+      if (!s || typeof s !== "object") throw new Error("Invalid settings file");
+
+      if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
+      if (typeof s.historyLimit === "number") setHistoryLimit(s.historyLimit);
+      if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
+      if (s.activationMode === "tap" || s.activationMode === "push") setActivationMode(s.activationMode);
+
+      updateTranscriptionSettings({
+        useLocalWhisper: typeof s.useLocalWhisper === "boolean" ? s.useLocalWhisper : undefined,
+        localTranscriptionProvider:
+          s.localTranscriptionProvider === "nvidia" || s.localTranscriptionProvider === "whisper"
+            ? s.localTranscriptionProvider
+            : undefined,
+        whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
+        parakeetModel: typeof s.parakeetModel === "string" ? s.parakeetModel : undefined,
+        preferredLanguage: typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
+        cloudTranscriptionProvider:
+          typeof s.cloudTranscriptionProvider === "string" ? s.cloudTranscriptionProvider : undefined,
+        cloudTranscriptionModel:
+          typeof s.cloudTranscriptionModel === "string" ? s.cloudTranscriptionModel : undefined,
+        cloudTranscriptionBaseUrl:
+          typeof s.cloudTranscriptionBaseUrl === "string" ? s.cloudTranscriptionBaseUrl : undefined,
+        customDictionary: Array.isArray(s.customDictionary) ? s.customDictionary : undefined,
+      });
+
+      updateReasoningSettings({
+        useReasoningModel: typeof s.useReasoningModel === "boolean" ? s.useReasoningModel : undefined,
+        reasoningProvider: typeof s.reasoningProvider === "string" ? s.reasoningProvider : undefined,
+        reasoningModel: typeof s.reasoningModel === "string" ? s.reasoningModel : undefined,
+        cloudReasoningBaseUrl:
+          typeof s.cloudReasoningBaseUrl === "string" ? s.cloudReasoningBaseUrl : undefined,
+      });
+
+      if (s.musicDuckingMode === "off" || s.musicDuckingMode === "duck" || s.musicDuckingMode === "mute") {
+        setMusicDuckingMode(s.musicDuckingMode);
+      }
+      if (typeof s.musicDuckLevel === "number") setMusicDuckLevel(s.musicDuckLevel);
+      if (typeof s.enableVariableSnapping === "boolean") setEnableVariableSnapping(s.enableVariableSnapping);
+      if (typeof s.enableCorrectionLearning === "boolean") setEnableCorrectionLearning(s.enableCorrectionLearning);
+      if (typeof s.enableContextCapture === "boolean") setEnableContextCapture(s.enableContextCapture);
+
+      if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
+      if (typeof s.selectedMicDeviceId === "string") setSelectedMicDeviceId(s.selectedMicDeviceId);
+
+      if (allowApiKeysOnImport) {
+        const keys = s.apiKeys || {};
+        if (typeof keys.openaiApiKey === "string") setOpenaiApiKey(keys.openaiApiKey);
+        if (typeof keys.anthropicApiKey === "string") setAnthropicApiKey(keys.anthropicApiKey);
+        if (typeof keys.geminiApiKey === "string") setGeminiApiKey(keys.geminiApiKey);
+        if (typeof keys.groqApiKey === "string") setGroqApiKey(keys.groqApiKey);
+        if (typeof keys.customTranscriptionApiKey === "string")
+          setCustomTranscriptionApiKey(keys.customTranscriptionApiKey);
+        if (typeof keys.customReasoningApiKey === "string")
+          setCustomReasoningApiKey(keys.customReasoningApiKey);
+      }
+    },
+    [
+      allowApiKeysOnImport,
+      setTheme,
+      setHistoryLimit,
+      setDictationKey,
+      setActivationMode,
+      updateTranscriptionSettings,
+      updateReasoningSettings,
+      setMusicDuckingMode,
+      setMusicDuckLevel,
+      setEnableVariableSnapping,
+      setEnableCorrectionLearning,
+      setEnableContextCapture,
+      setPreferBuiltInMic,
+      setSelectedMicDeviceId,
+      setOpenaiApiKey,
+      setAnthropicApiKey,
+      setGeminiApiKey,
+      setGroqApiKey,
+      setCustomTranscriptionApiKey,
+      setCustomReasoningApiKey,
+    ]
+  );
+
+  const handleImportSettingsFile = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      let parsed: any;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error("Settings file is not valid JSON");
+      }
+      await applyImportedSettings(parsed);
+    },
+    [applyImportedSettings]
+  );
 
   const {
     status: updateStatus,
@@ -1221,6 +1430,98 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               />
 
               <div className="space-y-4">
+                {/* Settings export/import */}
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Export / Import settings"
+                      description="Move your preferences between machines. API keys are excluded by default."
+                    >
+                      <div className="flex flex-col items-end gap-2">
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+                          <input
+                            type="checkbox"
+                            checked={includeApiKeysInExport}
+                            onChange={(e) => setIncludeApiKeysInExport(e.target.checked)}
+                          />
+                          Include API keys in export
+                        </label>
+
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground select-none">
+                          <input
+                            type="checkbox"
+                            checked={allowApiKeysOnImport}
+                            onChange={(e) => setAllowApiKeysOnImport(e.target.checked)}
+                          />
+                          Allow importing API keys
+                        </label>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadSettings(includeApiKeysInExport)}
+                          >
+                            <Download className="mr-1.5 h-3.5 w-3.5" />
+                            Export
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => importFileInputRef.current?.click()}
+                          >
+                            <Upload className="mr-1.5 h-3.5 w-3.5" />
+                            Import
+                          </Button>
+                        </div>
+
+                        <input
+                          ref={importFileInputRef}
+                          type="file"
+                          accept="application/json"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+
+                            try {
+                              showConfirmDialog({
+                                title: "Import Settings",
+                                description:
+                                  "This will overwrite your current settings. Proceed?",
+                                confirmText: "Import",
+                                onConfirm: async () => {
+                                  try {
+                                    await handleImportSettingsFile(file);
+                                    showAlertDialog({
+                                      title: "Settings Imported",
+                                      description: "Your settings were imported successfully.",
+                                    });
+                                  } catch (err: any) {
+                                    showAlertDialog({
+                                      title: "Import Failed",
+                                      description: err?.message || "Could not import settings.",
+                                    });
+                                  } finally {
+                                    // reset input so selecting the same file again triggers onChange
+                                    if (importFileInputRef.current) importFileInputRef.current.value = "";
+                                  }
+                                },
+                              });
+                            } catch (err: any) {
+                              showAlertDialog({
+                                title: "Import Failed",
+                                description: err?.message || "Could not import settings.",
+                              });
+                              if (importFileInputRef.current) importFileInputRef.current.value = "";
+                            }
+                          }}
+                        />
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow label="Model cache" description={cachePathHint}>
