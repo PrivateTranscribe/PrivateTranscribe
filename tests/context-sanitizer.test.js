@@ -28,6 +28,13 @@ test("redacts apiKey assignments (apiKey / api_key / api-key)", () => {
   assert.strictEqual(out.includes("SECRET"), false);
 });
 
+test("redacts x-api-key header-style assignments", () => {
+  const input = "x-api-key: SECRET\nX_API_KEY=SECRET\nxApiKey: SECRET";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("SECRET"), false);
+  assert.ok(/x-api-key:\s*\[REDACTED\]/i.test(out));
+});
+
 test("redacts common OAuth token fields (access_token / refresh_token / id_token)", () => {
   const input = "access_token=AAA\nrefreshToken: BBB\nid-token: CCC";
   const out = sanitizeContextText(input);

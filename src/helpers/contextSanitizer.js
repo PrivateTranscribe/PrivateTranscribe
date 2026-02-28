@@ -31,6 +31,12 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(api[_-]?key\s*[:=]\s*)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // x-api-key / X_API_KEY (common header-style key name)
+  {
+    name: "xApiKey",
+    regex: /(\bx[_-]?api[_-]?key\s*[:=]\s*)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
   // Common OAuth-ish / auth token fields (keep narrow to avoid redacting innocent text)
   {
     name: "oauthTokenFields",
