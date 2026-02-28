@@ -137,8 +137,12 @@ class ClipboardManager {
 
     try {
       // Pass cmd as a distinct argument to `which` — no shell involved.
-      const res = spawnSync("which", [cmd], { stdio: "ignore" });
-      const exists = res.status === 0;
+      const res = spawnSync("which", [cmd], {
+        stdio: "ignore",
+        timeout: 1000,
+        maxBuffer: 1024 * 1024,
+      });
+      const exists = !res.error && res.status === 0;
       this.commandAvailabilityCache.set(cmd, { exists, expiresAt: now + CACHE_TTL_MS });
       return exists;
     } catch {
