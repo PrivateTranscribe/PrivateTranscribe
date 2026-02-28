@@ -47,13 +47,7 @@ const navGroups: NavGroup[] = [
     label: "SPEECH",
     items: [
       { id: "dictionary", label: "Dictionary", icon: BookOpen },
-      {
-        id: "correction-memory",
-        label: "Correction Memory",
-        icon: BookMarked,
-        badge: "Soon",
-        badgeVariant: "soon",
-      },
+      { id: "correction-memory", label: "Corrections", icon: BookMarked },
     ],
   },
   {

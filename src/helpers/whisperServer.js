@@ -507,6 +507,17 @@ class WhisperServerManager {
           `Content-Disposition: form-data; name="language"\r\n\r\n` +
           `${language}\r\n`
       );
+
+      // When a specific language is set (e.g. "en"), enable translation so that
+      // speech in other languages is translated to the target language.
+      // whisper.cpp translate mode translates any language → English.
+      if (language === "en") {
+        parts.push(
+          `--${boundary}\r\n` +
+            `Content-Disposition: form-data; name="translate"\r\n\r\n` +
+            `true\r\n`
+        );
+      }
     }
 
     // Add initial prompt for custom dictionary words
