@@ -60,6 +60,12 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(authorization\s*[:=]\s*basic\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // Token auth scheme (commonly used by GitHub and various APIs).
+  {
+    name: "tokenAuthToken",
+    regex: /(authorization\s*[:=]\s*token\s+)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
   // Proxy auth headers can also carry bearer/basic credentials.
   {
     name: "proxyBearerToken",

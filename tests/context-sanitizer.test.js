@@ -65,6 +65,13 @@ test("redacts Authorization: Basic tokens", () => {
   assert.ok(/Basic\s+\[REDACTED\]/i.test(out));
 });
 
+test("redacts Authorization: Token tokens", () => {
+  const input = "Authorization: Token ghp_abcdefghijklmnopqrstuvwxyzABCDE1234567890";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("ghp_"), false);
+  assert.ok(/Authorization:\s*Token\s+\[REDACTED\]/i.test(out));
+});
+
 test("redacts Proxy-Authorization: Bearer tokens", () => {
   const input = "Proxy-Authorization: Bearer abc.def.ghi";
   const out = sanitizeContextText(input);
