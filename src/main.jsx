@@ -5,6 +5,7 @@ import ControlPanelShell from "./components/ControlPanelShell.tsx";
 import OnboardingFlow from "./components/OnboardingFlow.tsx";
 import { ToastProvider } from "./components/ui/Toast.tsx";
 import { useTheme } from "./hooks/useTheme";
+import { refreshProStatus } from "./services/LicensingService.ts";
 import "./index.css";
 
 function AppRouter() {
@@ -37,6 +38,9 @@ function AppRouter() {
     if (isDictationPanel && !onboardingCompleted && currentStep < 4) {
       window.electronAPI?.hideWindow?.();
     }
+
+    // Validate Pro license on startup (non-blocking)
+    refreshProStatus().catch(() => {});
 
     setIsLoading(false);
   }, [isControlPanel, isDictationPanel]);

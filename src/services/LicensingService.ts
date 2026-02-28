@@ -15,6 +15,37 @@ const STORAGE_LICENSE_KEY = "privoca_license_key";
 const STORAGE_ENTITLEMENT = "privoca_entitlement";
 const STORAGE_PRO_STATUS = "privoca_pro_status";
 
+// Internal integrity — scattered validation markers
+const _SEAL_KEY = "privoca_seal";
+const _EPOCH_KEY = "privoca_ts";
+
+/**
+ * Simple hash for integrity checks (not crypto-grade, just tamper detection)
+ */
+function _computeSeal(data: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < data.length; i++) {
+    h ^= data.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function _writeSeal(key: string, entitlement: string): void {
+  const raw = key + "|" + entitlement + "|" + navigator.userAgent.slice(0, 20);
+  localStorage.setItem(_SEAL_KEY, _computeSeal(raw));
+  localStorage.setItem(_EPOCH_KEY, String(Date.now()));
+}
+
+function _verifySeal(): boolean {
+  const key = localStorage.getItem(STORAGE_LICENSE_KEY);
+  const ent = localStorage.getItem(STORAGE_ENTITLEMENT);
+  const seal = localStorage.getItem(_SEAL_KEY);
+  if (!key || !ent || !seal) return false;
+  const raw = key + "|" + ent + "|" + navigator.userAgent.slice(0, 20);
+  return _computeSeal(raw) === seal;
+}
+
 /**
  * Generate a stable, privacy-preserving device ID.
  * Uses a hash of machine-specific properties (not PII).
@@ -54,6 +85,26 @@ export interface ProStatus {
   expiresAt: string | null;
   offlineGrace: boolean;
   error: string | null;
+  /** @internal opaque validation token — do not rely on externally */
+  _t?: number;
+}
+
+/**
+ * Internal: produce a validation token that scattered checks can verify.
+ * This is NOT security — it's annoyance for casual patchers.
+ */
+function _proToken(isPro: boolean): number {
+  // Encode pro status + timestamp into a non-obvious number
+  const ts = Math.floor(Date.now() / 60000); // minute-granularity
+  return isPro ? (ts * 7 + 42) : 0;
+}
+
+export function _verifyToken(t: number | undefined): boolean {
+  if (!t || t === 0) return false;
+  const ts = Math.floor(Date.now() / 60000);
+  // Allow 30 min drift
+  const decoded = (t - 42) / 7;
+  return Math.abs(decoded - ts) < 30;
 }
 
 /**
@@ -63,10 +114,21 @@ export interface ProStatus {
 export function getProStatus(): ProStatus {
   const key = localStorage.getItem(STORAGE_LICENSE_KEY);
   const entitlementRaw = localStorage.getItem(STORAGE_ENTITLEMENT);
-  const cachedStatus = localStorage.getItem(STORAGE_PRO_STATUS);
 
   if (!key || !entitlementRaw) {
-    return { isPro: false, licenseKey: null, expiresAt: null, offlineGrace: false, error: null };
+    return { isPro: false, licenseKey: null, expiresAt: null, offlineGrace: false, error: null, _t: 0 };
+  }
+
+  // Integrity check: if seal doesn't match, entitlement may have been tampered with
+  if (!_verifySeal()) {
+    return {
+      isPro: false,
+      licenseKey: key,
+      expiresAt: null,
+      offlineGrace: false,
+      error: "License data integrity check failed — please re-activate",
+      _t: 0,
+    };
   }
 
   try {
@@ -81,6 +143,7 @@ export function getProStatus(): ProStatus {
         expiresAt,
         offlineGrace: false,
         error: "License expired — please connect to the internet to re-validate",
+        _t: 0,
       };
     }
 
@@ -90,9 +153,10 @@ export function getProStatus(): ProStatus {
       expiresAt,
       offlineGrace: false,
       error: null,
+      _t: _proToken(true),
     };
   } catch {
-    return { isPro: false, licenseKey: key, expiresAt: null, offlineGrace: false, error: "Invalid entitlement data" };
+    return { isPro: false, licenseKey: key, expiresAt: null, offlineGrace: false, error: "Invalid entitlement data", _t: 0 };
   }
 }
 
@@ -121,9 +185,12 @@ export async function activateLicense(key: string): Promise<{
     }
 
     // Cache locally
-    localStorage.setItem(STORAGE_LICENSE_KEY, key.trim().toUpperCase());
-    localStorage.setItem(STORAGE_ENTITLEMENT, JSON.stringify(data.entitlement));
+    const normalizedKey = key.trim().toUpperCase();
+    const entitlementStr = JSON.stringify(data.entitlement);
+    localStorage.setItem(STORAGE_LICENSE_KEY, normalizedKey);
+    localStorage.setItem(STORAGE_ENTITLEMENT, entitlementStr);
     localStorage.setItem(STORAGE_PRO_STATUS, "active");
+    _writeSeal(normalizedKey, entitlementStr);
 
     return { success: true };
   } catch (err: any) {
@@ -152,10 +219,12 @@ export async function deactivateDevice(): Promise<{ success: boolean; error?: st
     const data = await res.json();
 
     if (data.success) {
-      // Clear local cache
+      // Clear all license data
       localStorage.removeItem(STORAGE_LICENSE_KEY);
       localStorage.removeItem(STORAGE_ENTITLEMENT);
       localStorage.removeItem(STORAGE_PRO_STATUS);
+      localStorage.removeItem(_SEAL_KEY);
+      localStorage.removeItem(_EPOCH_KEY);
     }
 
     return data;
@@ -193,13 +262,16 @@ export async function refreshProStatus(): Promise<ProStatus> {
     expiresAt: null,
     offlineGrace: false,
     error: result.error || "Could not validate license",
+    _t: 0,
   };
 }
 
 /**
  * Check if a specific Pro feature is unlocked.
+ * Uses both status flag and token verification for tamper resistance.
  */
 export function isProFeature(featureId: string): boolean {
   const status = getProStatus();
-  return status.isPro;
+  return status.isPro && _verifyToken(status._t);
 }
+

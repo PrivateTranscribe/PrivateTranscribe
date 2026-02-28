@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getProStatus, refreshProStatus, type ProStatus } from "../services/LicensingService";
+import { getProStatus, refreshProStatus, _verifyToken, type ProStatus } from "../services/LicensingService";
 
 /**
  * React hook for checking Pro license status.
@@ -28,9 +28,16 @@ export function useProStatus() {
   };
 }
 
+// Pro feature IDs
+const PRO_FEATURES = new Set([
+  "correction-memory",
+  "smart-context",
+  "action-engine",
+]);
+
 /**
  * Check if a feature requires Pro and is currently unlocked.
- * For use outside of React components.
+ * Uses dual verification: status flag + token integrity.
  */
 export function isFeatureUnlocked(featureId: string): boolean {
   // During development / beta, all features are unlocked.
@@ -39,16 +46,9 @@ export function isFeatureUnlocked(featureId: string): boolean {
 
   if (!PRO_ENFORCEMENT_ENABLED) return true;
 
-  const PRO_FEATURES = new Set([
-    "correction-memory",
-    "smart-context",
-    "action-engine",
-    "ai-enhancement",
-    "voice-assistant",
-  ]);
-
   if (!PRO_FEATURES.has(featureId)) return true; // Free feature
 
   const status = getProStatus();
-  return status.isPro;
+  // Dual check: isPro flag AND token verification
+  return status.isPro && _verifyToken(status._t);
 }
