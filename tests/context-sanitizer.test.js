@@ -65,6 +65,20 @@ test("redacts Authorization: Basic tokens", () => {
   assert.ok(/Basic\s+\[REDACTED\]/i.test(out));
 });
 
+test("redacts Proxy-Authorization: Bearer tokens", () => {
+  const input = "Proxy-Authorization: Bearer abc.def.ghi";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("abc.def.ghi"), false);
+  assert.ok(/Proxy-Authorization:\s*Bearer\s+\[REDACTED\]/i.test(out));
+});
+
+test("redacts Proxy-Authorization: Basic tokens", () => {
+  const input = "Proxy-Authorization: Basic dXNlcjpwYXNz";
+  const out = sanitizeContextText(input);
+  assert.strictEqual(out.includes("dXNlcjpwYXNz"), false);
+  assert.ok(/Proxy-Authorization:\s*Basic\s+\[REDACTED\]/i.test(out));
+});
+
 test("redacts generic Bearer <token> fragments", () => {
   const input = "Fetch failed: Bearer abcdefghijklmnop.qrstuv";
   const out = sanitizeContextText(input);
