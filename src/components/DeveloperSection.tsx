@@ -104,8 +104,63 @@ export default function DeveloperSection() {
     }
   };
 
+  const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
+
+  const handleCopyDebugInfo = async () => {
+    try {
+      const version = await window.electronAPI?.getAppVersion?.() || "unknown";
+      const platform = navigator.platform || "unknown";
+      const userAgent = navigator.userAgent || "unknown";
+      const electronVersion = process?.versions?.electron || "unknown";
+      const debugState = await window.electronAPI?.getDebugState?.() || {};
+
+      const info = [
+        `Privoca v${version}`,
+        `Platform: ${platform}`,
+        `Electron: ${electronVersion}`,
+        `Debug logging: ${debugState.enabled ? "ON" : "OFF"}`,
+        `Log path: ${debugState.logPath || "N/A"}`,
+        `User agent: ${userAgent}`,
+        `Timestamp: ${new Date().toISOString()}`,
+      ].join("\n");
+
+      await navigator.clipboard.writeText(info);
+      setCopiedDebugInfo(true);
+      setTimeout(() => setCopiedDebugInfo(false), 2000);
+      toast({
+        title: "Copied",
+        description: "System debug info copied to clipboard",
+        variant: "success",
+        duration: 2000,
+      });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Could not copy debug info",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="space-y-8">
+      {/* Quick actions */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCopyDebugInfo}
+          className="text-xs"
+        >
+          {copiedDebugInfo ? (
+            <Check className="mr-1.5 h-3.5 w-3.5 text-green-500" />
+          ) : (
+            <Copy className="mr-1.5 h-3.5 w-3.5" />
+          )}
+          {copiedDebugInfo ? "Copied!" : "Copy system info"}
+        </Button>
+      </div>
+
       <div className="mb-5">
         <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Debug Logging</h3>
         <p className="text-[12px] text-muted-foreground mt-1 leading-relaxed">
