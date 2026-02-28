@@ -142,21 +142,16 @@ export function snapTranscript({ transcript, dictionaryWords = [], corrections =
         const normDict = dictWord.toLowerCase();
         // Skip exact matches (already correct)
         if (normWord === normDict) break;
-        // Only fuzzy-match words of similar length (within 3 chars)
-        if (Math.abs(normWord.length - normDict.length) > 3) continue;
 
-        // Two-signal match: regular edit distance OR consonant-skeleton distance
+        // Fuzzy match: edit distance relative to word length
+        // Conservative thresholds to avoid false positives (e.g. "product" ≠ "Privoca")
         const dist = editDistance(normWord, normDict);
-        const maxDist = Math.min(3, Math.max(1, Math.floor(Math.max(normWord.length, normDict.length) * 0.3)));
-        const skelDist = editDistance(consonantSkeleton(normWord), consonantSkeleton(normDict));
-
-        // Match if: direct edit distance is close, OR consonant skeletons are very close
-        // and the words share the same starting consonants (reduces false positives).
-        // Catches phonetically similar words like "provoker" ↔ "privoca"
-        const skelWord = consonantSkeleton(normWord);
-        const skelDict = consonantSkeleton(normDict);
-        const sameStart = skelWord.length >= 2 && skelDict.length >= 2 && skelWord.slice(0, 2) === skelDict.slice(0, 2);
-        const isMatch = (dist > 0 && dist <= maxDist) || (skelDist <= 2 && dist <= 4 && normWord.length >= 4 && sameStart);
+        const longer = Math.max(normWord.length, normDict.length);
+        // Allow 1 edit for short words (≤5), 2 for medium (6-8), max 2 for longer
+        const maxDist = longer <= 5 ? 1 : 2;
+        // Words must also be very similar length (within 2 chars)
+        if (Math.abs(normWord.length - normDict.length) > 2) continue;
+        const isMatch = dist > 0 && dist <= maxDist;
 
         if (isMatch) {
           // Preserve original capitalization pattern
