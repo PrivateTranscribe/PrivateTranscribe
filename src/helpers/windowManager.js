@@ -3,6 +3,7 @@ const HotkeyManager = require("./hotkeyManager");
 const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
+const debugLogger = require("./debugLogger");
 const { DEV_SERVER_PORT } = DevServerManager;
 const {
   MAIN_WINDOW_CONFIG,
@@ -23,6 +24,9 @@ class WindowManager {
     this.loadErrorShown = false;
     this.windowsPushToTalkAvailable = false;
     this.activationModeCache = "tap";
+
+    // Windows overlay stability: debounced re-apply always-on-top after blur/focus races.
+    this.mainWindowOnTopRepairTimer = null;
 
     app.on("before-quit", () => {
       this.isQuitting = true;
@@ -433,10 +437,44 @@ class WindowManager {
     });
 
     this.mainWindow.on("focus", () => {
+      debugLogger.debug("[Window] main focus");
       this.enforceMainWindowOnTop();
     });
 
+    this.mainWindow.on("blur", () => {
+      // Windows can lose always-on-top when focus shifts; re-apply after a short delay
+      // to avoid blur/focus event races.
+      debugLogger.debug("[Window] main blur");
+      if (process.platform !== "win32") return;
+
+      if (this.mainWindowOnTopRepairTimer) {
+        clearTimeout(this.mainWindowOnTopRepairTimer);
+      }
+
+      this.mainWindowOnTopRepairTimer = setTimeout(() => {
+        this.mainWindowOnTopRepairTimer = null;
+        this.enforceMainWindowOnTop();
+      }, 100);
+    });
+
+    this.mainWindow.on("minimize", () => {
+      debugLogger.debug("[Window] main minimize");
+    });
+
+    this.mainWindow.on("restore", () => {
+      debugLogger.debug("[Window] main restore");
+      this.enforceMainWindowOnTop();
+    });
+
+    this.mainWindow.on("hide", () => {
+      debugLogger.debug("[Window] main hide");
+    });
+
     this.mainWindow.on("closed", () => {
+      if (this.mainWindowOnTopRepairTimer) {
+        clearTimeout(this.mainWindowOnTopRepairTimer);
+        this.mainWindowOnTopRepairTimer = null;
+      }
       this.dragManager.cleanup();
       this.mainWindow = null;
       this.isMainWindowInteractive = false;

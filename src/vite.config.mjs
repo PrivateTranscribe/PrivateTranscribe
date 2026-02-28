@@ -38,7 +38,22 @@ export default defineConfig({
         'tar',
         'unzipper',
         '@aws-sdk/client-s3'
-      ]
+      ],
+      output: {
+        // Keep renderer builds fast + reduce the “>500 kB after minification” warning
+        // by splitting large vendor deps into predictable chunks.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('/@radix-ui/')) return 'radix'
+          if (id.includes('/lucide-react/')) return 'icons'
+          if (id.includes('/react-markdown/') || id.includes('/remark-') || id.includes('/rehype-')) {
+            return 'markdown'
+          }
+
+          return 'vendor'
+        }
+      }
     }
   }
 })

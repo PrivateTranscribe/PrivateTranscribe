@@ -103,6 +103,24 @@ export function inferCorrectionPairs(insertedText, correctedText) {
     return [{ source: aTokens[0], target: bTokens[0] }];
   }
 
+  // Heuristic v1.5: if the user corrected a multi-word phrase into a single identifier,
+  // learn the *phrase → identifier* mapping (e.g. "is login error" → "isLoginError").
+  //
+  // Notes:
+  // - We persist the normalized phrase (lowercase, spaces) as the source.
+  // - We keep the original corrected identifier (case-sensitive) as the target.
+  const correctedRaw = typeof correctedText === "string" ? correctedText.trim() : "";
+  if (
+    aTokens.length >= 2 &&
+    aTokens.length <= 8 &&
+    bTokens.length === 1 &&
+    correctedRaw &&
+    !/\s/.test(correctedRaw) &&
+    looksLikeIdentifier(correctedRaw)
+  ) {
+    return [{ source: a, target: correctedRaw }];
+  }
+
   // Heuristic v2: if same token count, learn token-level replacements.
   if (aTokens.length === bTokens.length && aTokens.length <= 30) {
     const pairs = [];

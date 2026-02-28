@@ -25,7 +25,7 @@ Module._load = function (request, parent, isMain) {
 
 const HardwareDetector = require(path.join(__dirname, "../src/helpers/hardwareDetector.js"));
 const { sanitizeContextText } = require(path.join(__dirname, "../src/helpers/contextSanitizer.js"));
-const { getActiveWindowContext } = require(path.join(
+const { getActiveWindowContext, isSensitiveAppContext } = require(path.join(
   __dirname,
   "../src/helpers/activeWindowContext.js"
 ));
@@ -538,6 +538,32 @@ suite("Onboarding flow – hardware step regression checks", () => {
       "Expected HardwareSetupStep to receive an onNext prop in step 1",
     );
   });
+
+  test("HardwareSetupStep supports a null recommendations flow (no dead-end)", () => {
+    const stepPath = path.join(__dirname, "../src/components/ui/HardwareSetupStep.tsx");
+    const contents = fs.readFileSync(stepPath, "utf8");
+
+    // Lightweight invariants (kept intentionally tolerant to formatting changes):
+    // - handleApply() has a guard that bails out when recommendations are missing
+    // - there is an explicit Continue-with-defaults action wired to the button
+
+    const hasNullRecGuard = /if\s*\(\s*!detection\?\.recommendations\s*\)\s*return\s*;?/m.test(contents);
+    assert.ok(
+      hasNullRecGuard,
+      "Expected HardwareSetupStep.handleApply() to bail out when detection.recommendations is null",
+    );
+
+    const hasDefaultsButton = /Continue with Defaults/.test(contents);
+    const hasDefaultsHandler = /function\s+HardwareSetupStep|const\s+handleContinueWithDefaults\s*=/.test(contents);
+    const hasDefaultsButtonWiring = /onClick=\{handleContinueWithDefaults\}/.test(contents);
+
+    assert.ok(hasDefaultsButton, "Expected a 'Continue with Defaults' label in HardwareSetupStep");
+    assert.ok(hasDefaultsHandler, "Expected handleContinueWithDefaults to exist in HardwareSetupStep");
+    assert.ok(
+      hasDefaultsButtonWiring,
+      "Expected the 'Continue with Defaults' button to call handleContinueWithDefaults",
+    );
+  });
 });
 
 suite("Context sanitization – privacy guardrails", () => {
@@ -564,14 +590,58 @@ suite("Context sanitization – privacy guardrails", () => {
     assert.ok(!output.includes("very.secret.token"));
   });
 
+  test("redacts emails", () => {
+    const input = "Contact: alice@example.com\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("Contact: [REDACTED_EMAIL]"));
+    assert.ok(!output.includes("alice@example.com"));
+  });
+
+  test("redacts URL query strings", () => {
+    const input = "Open https://example.com/path?token=abc123&email=alice@example.com\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("https://example.com/path?[REDACTED_QUERY]"));
+    assert.ok(!output.includes("token=abc123"));
+    assert.ok(!output.includes("alice@example.com"));
+  });
+
+  test("redacts long hex tokens", () => {
+    const input = "hash=0123456789abcdef0123456789abcdef\n";
+    const output = sanitizeContextText(input, { maxChars: 1000 });
+    assert.ok(output.includes("hash=[REDACTED]"));
+    assert.ok(!output.includes("0123456789abcdef0123456789abcdef"));
+  });
+
   test("truncates large content", () => {
-    const input = "a".repeat(5000);
+    // Use a non-hex character so token redaction patterns don't replace the payload.
+    const input = "z".repeat(5000);
     const output = sanitizeContextText(input, { maxChars: 100 });
     assert.strictEqual(output.length, 100);
   });
 });
 
 suite("ActiveWindowContext – best-effort capture", () => {
+  test("isSensitiveAppContext blocks common password managers", () => {
+    assert.strictEqual(isSensitiveAppContext({ appName: "1Password" }), true);
+    assert.strictEqual(isSensitiveAppContext({ processName: "Bitwarden" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appClass: "KeePassXC" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appName: "Proton Pass" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appName: "Keychain Access" }), true);
+    assert.strictEqual(isSensitiveAppContext({ appName: "Passwords" }), true);
+  });
+
+  test("isSensitiveAppContext does not block a normal browser app", () => {
+    assert.strictEqual(isSensitiveAppContext({ appName: "Google Chrome" }), false);
+    assert.strictEqual(isSensitiveAppContext({ processName: "firefox" }), false);
+  });
+
+  test("isSensitiveAppContext blocks OS credential prompts (Windows)", () => {
+    assert.strictEqual(isSensitiveAppContext({ windowTitle: "Windows Security" }), true);
+    assert.strictEqual(isSensitiveAppContext({ windowTitle: "User Account Control" }), true);
+    assert.strictEqual(isSensitiveAppContext({ processName: "CredentialUIBroker" }), true);
+    assert.strictEqual(isSensitiveAppContext({ processName: "LogonUI" }), true);
+  });
+
   test("getActiveWindowContext returns a structured result without throwing", () => {
     const result = getActiveWindowContext();
     assert.ok(result && typeof result === "object");

@@ -137,8 +137,12 @@ class ClipboardManager {
 
     try {
       // Pass cmd as a distinct argument to `which` — no shell involved.
-      const res = spawnSync("which", [cmd], { stdio: "ignore" });
-      const exists = res.status === 0;
+      const res = spawnSync("which", [cmd], {
+        stdio: "ignore",
+        timeout: 1000,
+        maxBuffer: 1024 * 1024,
+      });
+      const exists = !res.error && res.status === 0;
       this.commandAvailabilityCache.set(cmd, { exists, expiresAt: now + CACHE_TTL_MS });
       return exists;
     } catch {
@@ -461,7 +465,10 @@ class ClipboardManager {
         return null;
       }
       try {
-        const result = spawnSync("xdotool", ["getactivewindow"]);
+        const result = spawnSync("xdotool", ["getactivewindow"], {
+          timeout: 2000,
+          maxBuffer: 1024 * 1024,
+        });
         if (result.status !== 0) {
           return null;
         }
@@ -479,7 +486,10 @@ class ClipboardManager {
         const args = windowId
           ? ["getwindowclassname", windowId]
           : ["getactivewindow", "getwindowclassname"];
-        const result = spawnSync("xdotool", args);
+        const result = spawnSync("xdotool", args, {
+          timeout: 2000,
+          maxBuffer: 1024 * 1024,
+        });
         if (result.status !== 0) {
           return null;
         }
@@ -528,11 +538,17 @@ class ClipboardManager {
         // Try kdotool for KDE Wayland (if available)
         if (this.commandExists("kdotool")) {
           // First get the active window ID
-          const windowIdResult = spawnSync("kdotool", ["getactivewindow"]);
+          const windowIdResult = spawnSync("kdotool", ["getactivewindow"], {
+            timeout: 2000,
+            maxBuffer: 1024 * 1024,
+          });
           if (windowIdResult.status === 0) {
             const windowId = windowIdResult.stdout.toString().trim();
             // Then get the window class name
-            const classResult = spawnSync("kdotool", ["getwindowclassname", windowId]);
+            const classResult = spawnSync("kdotool", ["getwindowclassname", windowId], {
+              timeout: 2000,
+              maxBuffer: 1024 * 1024,
+            });
             if (classResult.status === 0) {
               const className = classResult.stdout.toString().toLowerCase().trim();
               const isTerminalWindow = terminalClasses.some((term) => className.includes(term));

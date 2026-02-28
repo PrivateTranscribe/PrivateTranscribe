@@ -27,7 +27,14 @@ class ReasoningService extends BaseReasoningService {
 
   private shouldIncludeActiveWindowContextInReasoning(): boolean {
     if (typeof window === "undefined" || !window.localStorage) return false;
+
     try {
+      // Preferred setting (UI: Settings → Privacy & History → Context capture)
+      const enableContextCapture = window.localStorage.getItem("enableContextCapture");
+      if (enableContextCapture === "true") return true;
+      if (enableContextCapture === "false") return false;
+
+      // Backwards compatibility: older builds used this key.
       return window.localStorage.getItem("includeActiveWindowContextInReasoning") === "true";
     } catch {
       return false;
@@ -43,10 +50,17 @@ class ReasoningService extends BaseReasoningService {
       const ctx = await window.electronAPI?.getActiveWindowContext?.();
 
       if (!ctx || !ctx.available) {
-        logger.logReasoning("ACTIVE_WINDOW_CONTEXT_UNAVAILABLE", {
-          enabled: true,
-          reason: ctx?.reason || "unknown",
-        });
+        if (ctx?.blocked) {
+          logger.logReasoning("ACTIVE_WINDOW_CONTEXT_BLOCKED", {
+            enabled: true,
+            reason: ctx?.reason || "blocked",
+          });
+        } else {
+          logger.logReasoning("ACTIVE_WINDOW_CONTEXT_UNAVAILABLE", {
+            enabled: true,
+            reason: ctx?.reason || "unknown",
+          });
+        }
         return text;
       }
 
@@ -56,6 +70,7 @@ class ReasoningService extends BaseReasoningService {
       if (ctx.processName) lines.push(`Process: ${ctx.processName}`);
       if (ctx.appClass) lines.push(`App class: ${ctx.appClass}`);
       if (ctx.windowTitle) lines.push(`Window title: ${ctx.windowTitle}`);
+      if (ctx.uiaText) lines.push(`Focused element text: ${ctx.uiaText}`);
 
       const contextBlock =
         lines.length > 0
@@ -68,6 +83,8 @@ class ReasoningService extends BaseReasoningService {
         enabled: true,
         platform: ctx.platform || "unknown",
         hasWindowTitle: !!ctx.windowTitle,
+        hasUiaText: !!ctx.uiaText,
+        uiaMethod: ctx.uiaMethod || undefined,
       });
 
       return `${contextBlock}${text}`;
