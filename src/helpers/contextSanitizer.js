@@ -231,6 +231,16 @@ function redactLikelyCardNumbers(text) {
   });
 }
 
+function redactUrlCredentials(text) {
+  if (typeof text !== "string" || !text) return "";
+
+  // Redact `scheme://user:pass@host` style credentials. Common in database URLs,
+  // cloud service DSNs, and dev configs.
+  const urlCredsRegex = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s\/:@]+):([^\s@\/]+)@/gi;
+
+  return text.replace(urlCredsRegex, "$1$2:[REDACTED]@");
+}
+
 /**
  * @param {string} text
  * @param {{
@@ -238,13 +248,17 @@ function redactLikelyCardNumbers(text) {
  *   redactionPatterns?: Array<{name?: string, regex: RegExp, replacement: string}>
  * }} [options]
  */
-function sanitizeContextText(text, options = {}) {
+function sanitizeContextText(text, options = {}) { 
   const maxChars = Number.isFinite(options.maxChars) ? options.maxChars : 8000;
   const patterns = Array.isArray(options.redactionPatterns)
     ? options.redactionPatterns
     : DEFAULT_REDACTION_PATTERNS;
 
   let output = typeof text === "string" ? text : "";
+
+  // Redact embedded URL credentials early so later patterns (like email
+  // redaction) don't partially mask/alter the URL.
+  output = redactUrlCredentials(output);
 
   for (const pattern of patterns) {
     if (!pattern || !(pattern.regex instanceof RegExp) || typeof pattern.replacement !== "string") {

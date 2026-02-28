@@ -214,7 +214,20 @@ test("redacts URL query string but keeps base URL", () => {
   assert.strictEqual(out.includes("token="), false);
 });
 
-test("redacts long hex tokens (32+ chars)", () => {
+test("redacts credentials embedded in URLs (user:pass@)", () => {
+  const input = [
+    "postgres://user:supersecret@localhost:5432/dbname",
+    "https://alice:hunter2@example.com/path",
+  ].join("\n");
+  const out = sanitizeContextText(input);
+
+  assert.strictEqual(out.includes("supersecret"), false);
+  assert.strictEqual(out.includes("hunter2"), false);
+  assert.ok(out.includes("postgres://user:[REDACTED]@localhost:5432/dbname"));
+  assert.ok(out.includes("https://alice:[REDACTED]@example.com/path"));
+});
+
+test("redacts long hex tokens (32+ chars)", () => { 
   const input = "deadbeefdeadbeefdeadbeefdeadbeef";
   const out = sanitizeContextText(input);
   assert.strictEqual(out.includes("deadbeef"), false);
