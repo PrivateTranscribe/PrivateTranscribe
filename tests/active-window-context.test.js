@@ -18,6 +18,17 @@ test("blocks common password managers by app/process name", () => {
   assert.strictEqual(isSensitiveAppContext({ appName: "1Password" }), true);
   assert.strictEqual(isSensitiveAppContext({ processName: "Bitwarden" }), true);
   assert.strictEqual(isSensitiveAppContext({ appClass: "KeePassXC" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appClass: "KeePass2" }), true);
+  assert.strictEqual(isSensitiveAppContext({ processName: "Keeper" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appName: "RoboForm" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appName: "Enpass" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appName: "Passbolt" }), true);
+});
+
+test("blocks common Linux credential stores", () => {
+  assert.strictEqual(isSensitiveAppContext({ appName: "Gnome Keyring" }), true);
+  assert.strictEqual(isSensitiveAppContext({ processName: "seahorse" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appClass: "KWalletManager" }), true);
 });
 
 test("blocks Windows secure desktop surfaces by process name", () => {
