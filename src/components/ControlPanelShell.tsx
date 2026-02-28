@@ -219,7 +219,7 @@ export default function ControlPanelShell() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <AppSidebar activePage={activePage} onPageChange={setActivePage} />
 
-        <main style={{ flex: 1, overflowY: 'auto' }}>
+        <main style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable' }}>
           {renderPage()}
         </main>
       </div>
