@@ -120,14 +120,21 @@ export const useAudioRecording = (toast, options = {}) => {
                 await window.electronAPI.upsertCorrection(p.source, p.target);
               }
 
-              // Also promote identifier-like targets into the user dictionary.
+              // Also promote identifier-like targets into the user dictionary
+              // only after enough confidence (correction seen 3+ times).
               try {
                 const dict = await window.electronAPI.getDictionary();
                 const set = new Set(Array.isArray(dict) ? dict : []);
+                const allCorrections = await window.electronAPI?.getCorrectionMemory?.(500);
+                const correctionMap = new Map();
+                for (const c of allCorrections || []) {
+                  if (c?.target) correctionMap.set(c.target, c.count || 0);
+                }
                 let changed = false;
                 for (const p of pairs) {
                   if (p.target && p.target.length <= 200) {
-                    if (!set.has(p.target)) {
+                    const correctionCount = correctionMap.get(p.target) || 0;
+                    if (!set.has(p.target) && correctionCount >= 3) {
                       set.add(p.target);
                       changed = true;
                     }

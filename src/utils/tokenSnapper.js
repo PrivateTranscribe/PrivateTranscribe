@@ -47,12 +47,15 @@ export function snapTranscript({ transcript, dictionaryWords = [], corrections =
   const original = typeof transcript === "string" ? transcript : "";
   if (!original.trim()) return original;
 
-  // Apply explicit correction pairs first.
+  // Apply explicit correction pairs first (only high-confidence: count >= 2).
   let output = original;
   for (const row of corrections || []) {
     const source = row?.source;
     const target = row?.target;
+    const count = row?.count || 0;
     if (!source || !target || source === target) continue;
+    // Skip low-confidence corrections (seen only once) to avoid false positives
+    if (count < 2) continue;
     const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "gi");
     output = output.replace(re, target);
   }
