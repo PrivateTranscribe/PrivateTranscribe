@@ -1,0 +1,84 @@
+name: Build Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Upload artifacts to R2'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download native binaries
+        run: npm run compile:native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build app
+        run: npm run build
+
+      - name: Package (Windows NSIS + Portable)
+        run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing (uncomment when cert is configured):
+          # CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: List build artifacts
+        run: dir dist\
+        shell: cmd
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: privoca-windows-setup
+          path: dist/Privoca-Setup-*.exe
+          retention-days: 30
+
+      - name: Upload portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: privoca-windows-portable
+          path: dist/Privoca-*.exe
+          retention-days: 30
+          
+      - name: Upload latest.yml (update manifest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: privoca-update-manifest
+          path: dist/latest.yml
+          retention-days: 30
+
+      # Optional: upload to Cloudflare R2
+      # Uncomment when R2 bucket and credentials are configured
+      # - name: Upload to R2
+      #   if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true'
+      #   uses: cloudflare/wrangler-action@v3
+      #   with:
+      #     command: r2 object put privoca-assets/updates/win/latest.yml --file dist/latest.yml
+      #   env:
+      #     CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
