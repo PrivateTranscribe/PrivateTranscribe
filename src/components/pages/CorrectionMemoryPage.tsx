@@ -1,8 +1,9 @@
-import { BookMarked, Trash2 } from "lucide-react";
+import { BookMarked, Trash2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { isFeatureUnlocked } from "../../hooks/useProStatus";
 
 type CorrectionRow = {
   source: string;
@@ -36,6 +37,7 @@ function formatDate(v?: string) {
 }
 
 export default function CorrectionMemoryPage() {
+  const isUnlocked = isFeatureUnlocked("correction-memory");
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,12 +136,27 @@ export default function CorrectionMemoryPage() {
         </div>
       </div>
 
-      {error && (
+      {!isUnlocked && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
+          <Lock size={24} className="mx-auto text-primary/60" />
+          <h3 className="text-base font-semibold text-foreground">
+            Available with Privoca Pro
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Correction Memory learns from your edits and automatically fixes recurring
+            transcription errors. Unlock it with a Pro license in Settings.
+          </p>
+        </div>
+      )}
+
+      {isUnlocked && error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
           {error}
         </div>
       )}
 
+      {isUnlocked && (
+        <>
       {/* Add correction */}
       <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
         <div>
@@ -241,12 +258,14 @@ export default function CorrectionMemoryPage() {
           </div>
         )}
 
-        {sorted.length > 200 && (
+                  {sorted.length > 200 && (
           <div className="text-[10px] text-muted-foreground">
             Showing first 200 entries.
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }
