@@ -244,6 +244,7 @@ class WhisperManager {
 
     const model = options.model || "base";
     const language = options.language || null;
+    const translate = options.translate || false;
     const initialPrompt = options.initialPrompt || null;
     const inputFileName = options.inputFileName || null;
     const modelPath = this.getModelPath(model);
@@ -258,11 +259,12 @@ class WhisperManager {
       model,
       language,
       initialPrompt,
-      inputFileName
+      inputFileName,
+      translate
     );
   }
 
-  async transcribeViaServer(audioBlob, model, language, initialPrompt = null, inputFileName = null) {
+  async transcribeViaServer(audioBlob, model, language, initialPrompt = null, inputFileName = null, translate = false) {
     debugLogger.info("Transcription mode: SERVER", { model, language: language || "auto" });
     const modelPath = this.getModelPath(model);
 
@@ -314,6 +316,7 @@ class WhisperManager {
     const startTime = Date.now();
     const result = await this.serverManager.transcribe(audioBuffer, {
       language,
+      translate,
       initialPrompt,
       inputFileName,
     });

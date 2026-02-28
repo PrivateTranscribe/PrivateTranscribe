@@ -636,9 +636,13 @@ class AudioManager {
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
       const arrayBuffer = await audioBlob.arrayBuffer();
       const language = localStorage.getItem("preferredLanguage");
+      const translateToEnglish = localStorage.getItem("translateToEnglish");
       const options = { model };
       if (language && language !== "auto") {
         options.language = language;
+      }
+      if (translateToEnglish === "on") {
+        options.translate = true;
       }
       if (metadata?.originalFileName) {
         options.inputFileName = metadata.originalFileName;
