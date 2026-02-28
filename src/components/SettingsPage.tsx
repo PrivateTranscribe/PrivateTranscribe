@@ -279,6 +279,18 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableCorrectionLearning,
     enableContextCapture,
     setEnableContextCapture,
+    autoPaste,
+    setAutoPaste,
+    copyToClipboard,
+    setCopyToClipboard,
+    showPanelOnError,
+    setShowPanelOnError,
+    audioFeedback,
+    setAudioFeedback,
+    errorNotifications,
+    setErrorNotifications,
+    successConfirmation,
+    setSuccessConfirmation,
   } = useSettings();
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -327,6 +339,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           enableVariableSnapping,
           enableCorrectionLearning,
           enableContextCapture,
+          // Behavior & Notifications
+          autoPaste,
+          copyToClipboard,
+          showPanelOnError,
+          audioFeedback,
+          errorNotifications,
+          successConfirmation,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -371,6 +390,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       enableVariableSnapping,
       enableCorrectionLearning,
       enableContextCapture,
+      autoPaste,
+      copyToClipboard,
+      showPanelOnError,
+      audioFeedback,
+      errorNotifications,
+      successConfirmation,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -447,6 +472,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.enableVariableSnapping === "boolean") setEnableVariableSnapping(s.enableVariableSnapping);
       if (typeof s.enableCorrectionLearning === "boolean") setEnableCorrectionLearning(s.enableCorrectionLearning);
       if (typeof s.enableContextCapture === "boolean") setEnableContextCapture(s.enableContextCapture);
+      if (typeof s.autoPaste === "boolean") setAutoPaste(s.autoPaste);
+      if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
+      if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
+      if (typeof s.audioFeedback === "boolean") setAudioFeedback(s.audioFeedback);
+      if (typeof s.errorNotifications === "boolean") setErrorNotifications(s.errorNotifications);
+      if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
       if (typeof s.selectedMicDeviceId === "string") setSelectedMicDeviceId(s.selectedMicDeviceId);
@@ -1146,7 +1177,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Auto-paste transcription"
                     description="Automatically paste text where your cursor is after transcribing"
                   >
-                    <Toggle checked={true} onChange={() => { }} disabled />
+                    <Toggle checked={autoPaste} onChange={setAutoPaste} />
                   </SettingsRow>
                 </SettingsPanelRow>
                 <SettingsPanelRow>
@@ -1154,7 +1185,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Copy to clipboard"
                     description="Also save transcription to clipboard for manual pasting"
                   >
-                    <Toggle checked={true} onChange={() => { }} disabled />
+                    <Toggle checked={copyToClipboard} onChange={setCopyToClipboard} />
                   </SettingsRow>
                 </SettingsPanelRow>
                 <SettingsPanelRow>
@@ -1162,13 +1193,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Show control panel on error"
                     description="Automatically open settings when transcription fails"
                   >
-                    <Toggle checked={false} onChange={() => { }} disabled />
+                    <Toggle checked={showPanelOnError} onChange={setShowPanelOnError} />
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
-              <p className="mt-3 text-xs text-muted-foreground/50 px-1">
-                More behavior options coming soon
-              </p>
             </div>
 
             {/* Notifications */}
@@ -1183,7 +1211,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Audio feedback"
                     description="Play sounds when starting and stopping recording"
                   >
-                    <Toggle checked={false} onChange={() => { }} disabled />
+                    <Toggle checked={audioFeedback} onChange={setAudioFeedback} />
                   </SettingsRow>
                 </SettingsPanelRow>
                 <SettingsPanelRow>
@@ -1191,7 +1219,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Error notifications"
                     description="Show system notifications when transcription fails"
                   >
-                    <Toggle checked={false} onChange={() => { }} disabled />
+                    <Toggle checked={errorNotifications} onChange={setErrorNotifications} />
                   </SettingsRow>
                 </SettingsPanelRow>
                 <SettingsPanelRow>
@@ -1199,13 +1227,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Success confirmation"
                     description="Brief notification when transcription completes successfully"
                   >
-                    <Toggle checked={false} onChange={() => { }} disabled />
+                    <Toggle checked={successConfirmation} onChange={setSuccessConfirmation} />
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
-              <p className="mt-3 text-xs text-muted-foreground/50 px-1">
-                Notification settings coming in future update
-              </p>
             </div>
 
             {/* Privacy & History */}

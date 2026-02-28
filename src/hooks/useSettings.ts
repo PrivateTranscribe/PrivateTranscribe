@@ -51,6 +51,15 @@ export interface ThemeSettings {
   theme: "light" | "dark" | "auto";
 }
 
+export interface BehaviorSettings {
+  autoPaste: boolean;
+  copyToClipboard: boolean;
+  showPanelOnError: boolean;
+  audioFeedback: boolean;
+  errorNotifications: boolean;
+  successConfirmation: boolean;
+}
+
 export function useSettings() {
   const [useLocalWhisper, setUseLocalWhisper] = useLocalStorage("useLocalWhisper", false, {
     serialize: String,
@@ -540,6 +549,29 @@ export function useSettings() {
   ]);
 
   // Batch operations
+
+  // Behavior settings
+  const boolSerializer = { serialize: String, deserialize: (v: string) => v === "true" };
+
+  const [autoPaste, setAutoPaste] = useLocalStorage("autoPaste", true, boolSerializer);
+  const [copyToClipboard, setCopyToClipboard] = useLocalStorage("copyToClipboard", true, boolSerializer);
+  const [showPanelOnError, setShowPanelOnError] = useLocalStorage("showPanelOnError", false, boolSerializer);
+  const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
+  const [errorNotifications, setErrorNotifications] = useLocalStorage("errorNotifications", false, boolSerializer);
+  const [successConfirmation, setSuccessConfirmation] = useLocalStorage("successConfirmation", false, boolSerializer);
+
+  const updateBehaviorSettings = useCallback(
+    (settings: Partial<BehaviorSettings>) => {
+      if (settings.autoPaste !== undefined) setAutoPaste(settings.autoPaste);
+      if (settings.copyToClipboard !== undefined) setCopyToClipboard(settings.copyToClipboard);
+      if (settings.showPanelOnError !== undefined) setShowPanelOnError(settings.showPanelOnError);
+      if (settings.audioFeedback !== undefined) setAudioFeedback(settings.audioFeedback);
+      if (settings.errorNotifications !== undefined) setErrorNotifications(settings.errorNotifications);
+      if (settings.successConfirmation !== undefined) setSuccessConfirmation(settings.successConfirmation);
+    },
+    [setAutoPaste, setCopyToClipboard, setShowPanelOnError, setAudioFeedback, setErrorNotifications, setSuccessConfirmation]
+  );
+
   const updateTranscriptionSettings = useCallback(
     (settings: Partial<TranscriptionSettings>) => {
       if (settings.useLocalWhisper !== undefined) setUseLocalWhisper(settings.useLocalWhisper);
@@ -677,5 +709,18 @@ export function useSettings() {
     setEnableCorrectionLearning,
     enableContextCapture,
     setEnableContextCapture,
+    autoPaste,
+    setAutoPaste,
+    copyToClipboard,
+    setCopyToClipboard,
+    showPanelOnError,
+    setShowPanelOnError,
+    audioFeedback,
+    setAudioFeedback,
+    errorNotifications,
+    setErrorNotifications,
+    successConfirmation,
+    setSuccessConfirmation,
+    updateBehaviorSettings,
   };
 }
