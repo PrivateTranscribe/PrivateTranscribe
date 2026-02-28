@@ -25,6 +25,15 @@ test("blocks common password managers by app/process name", () => {
   assert.strictEqual(isSensitiveAppContext({ appName: "Passbolt" }), true);
 });
 
+test("blocks common 2FA/auth apps by app/process name", () => {
+  assert.strictEqual(isSensitiveAppContext({ appName: "Authy" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appName: "Duo Mobile" }), true);
+  assert.strictEqual(isSensitiveAppContext({ processName: "Duo" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appName: "Google Authenticator" }), true);
+  assert.strictEqual(isSensitiveAppContext({ appName: "Microsoft Authenticator" }), true);
+  assert.strictEqual(isSensitiveAppContext({ processName: "2FAS" }), true);
+});
+
 test("blocks common Linux credential stores", () => {
   assert.strictEqual(isSensitiveAppContext({ appName: "Gnome Keyring" }), true);
   assert.strictEqual(isSensitiveAppContext({ processName: "seahorse" }), true);

@@ -28,9 +28,13 @@ function isSensitiveAppContext({ appName = "", processName = "", appClass = "", 
     /\bkde\s*wallet/i,
     /\bpasswords\b/i, // macOS "Passwords" app
 
-    // Auth tools
+    // Auth tools / 2FA
     /\bauthy\b/i,
     /\bokta\b/i,
+    /\bduo(\s*mobile)?\b/i,
+    /\bgoogle\s*authenticator\b/i,
+    /\bmicrosoft\s*authenticator\b/i,
+    /\b2fas\b/i,
 
     // Windows credential / secure desktop surfaces (best-effort; names vary)
     /\bcredentialuibroker\b/i,
