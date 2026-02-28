@@ -84,8 +84,6 @@
   ],
   "extraResources": [
     "src/assets/**/*",
-    "resources/macos-globe-listener.swift",
-    "resources/bin/macos-globe-listener",
     {
       "from": "resources/bin/",
       "to": "bin/",
@@ -94,10 +92,7 @@
         "whisper-server-*",
         "llama-server-*",
         "sherpa-onnx-*",
-        "windows-key-listener*",
-        "*.dylib",
-        "*.dll",
-        "*.so*"
+        "windows-key-listener*"
       ]
     }
   ],
@@ -119,6 +114,17 @@
     "entitlements": "resources/mac/entitlements.mac.plist",
     "entitlementsInherit": "resources/mac/entitlements.mac.plist",
     "identity": "HeroTools Inc. (9R85XFMH59)",
+    "extraResources": [
+      "resources/macos-globe-listener.swift",
+      "resources/bin/macos-globe-listener",
+      {
+        "from": "resources/bin/",
+        "to": "bin/",
+        "filter": [
+          "*.dylib"
+        ]
+      }
+    ],
     "extendInfo": {
       "LSUIElement": false,
       "NSMicrophoneUsageDescription": "Privoca needs microphone access for speech-to-text transcription.",
@@ -134,6 +140,11 @@
       {
         "from": "resources/bin/nircmd.exe",
         "to": "bin/nircmd.exe"
+      },
+      {
+        "from": "resources/bin/",
+        "to": "bin/",
+        "filter": ["*.dll"]
       }
     ]
   },
