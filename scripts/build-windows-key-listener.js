@@ -65,7 +65,7 @@ async function tryDownload() {
     return false;
   }
 
-  const result = spawnSync(process.execPath, [downloadScript, "--force"], {
+  const result = spawnSync(process.execPath, [downloadScript], {
     stdio: "inherit",
     cwd: projectRoot,
   });
