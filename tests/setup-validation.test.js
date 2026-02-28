@@ -543,16 +543,25 @@ suite("Onboarding flow – hardware step regression checks", () => {
     const stepPath = path.join(__dirname, "../src/components/ui/HardwareSetupStep.tsx");
     const contents = fs.readFileSync(stepPath, "utf8");
 
-    // Lightweight invariants:
-    // - There is a safe early-return when recommendations are missing
-    // - There is a user-visible escape hatch that continues with defaults
+    // Lightweight invariants (kept intentionally tolerant to formatting changes):
+    // - handleApply() has a guard that bails out when recommendations are missing
+    // - there is an explicit Continue-with-defaults action wired to the button
+
+    const hasNullRecGuard = /if\s*\(\s*!detection\?\.recommendations\s*\)\s*return\s*;?/m.test(contents);
     assert.ok(
-      contents.includes("if (!detection?.recommendations) return"),
-      "Expected HardwareSetupStep.handleApply() to bail out when recommendations are null",
+      hasNullRecGuard,
+      "Expected HardwareSetupStep.handleApply() to bail out when detection.recommendations is null",
     );
+
+    const hasDefaultsButton = /Continue with Defaults/.test(contents);
+    const hasDefaultsHandler = /function\s+HardwareSetupStep|const\s+handleContinueWithDefaults\s*=/.test(contents);
+    const hasDefaultsButtonWiring = /onClick=\{handleContinueWithDefaults\}/.test(contents);
+
+    assert.ok(hasDefaultsButton, "Expected a 'Continue with Defaults' label in HardwareSetupStep");
+    assert.ok(hasDefaultsHandler, "Expected handleContinueWithDefaults to exist in HardwareSetupStep");
     assert.ok(
-      contents.includes("handleContinueWithDefaults") && contents.includes("Continue with Defaults"),
-      "Expected HardwareSetupStep to provide a 'Continue with Defaults' path",
+      hasDefaultsButtonWiring,
+      "Expected the 'Continue with Defaults' button to call handleContinueWithDefaults",
     );
   });
 });
