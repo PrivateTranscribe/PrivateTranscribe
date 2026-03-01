@@ -23,6 +23,7 @@ class WindowManager {
     this.isMainWindowInteractive = false;
     this.loadErrorShown = false;
     this.windowsPushToTalkAvailable = false;
+    this._windowsKeyManagerRef = null;
     this.activationModeCache = "tap";
 
     // Windows overlay stability: debounced re-apply always-on-top after blur/focus races.
@@ -179,8 +180,16 @@ class WindowManager {
 
       // Windows push mode: always defer to windowsKeyManager and never fall back to toggle
       // while activation mode is "push", even if listener is restarting.
+      // Also check if windowsKeyManager is actively running — this is a synchronous
+      // signal that prevents race conditions during startup before cache is populated.
       if (process.platform === "win32") {
         if (this.activationModeCache === "push") {
+          return;
+        }
+
+        // If windowsKeyManager is actively listening, we're in push mode
+        // even if the cache hasn't been updated yet (startup race)
+        if (this._windowsKeyManagerRef?.isReady) {
           return;
         }
 
