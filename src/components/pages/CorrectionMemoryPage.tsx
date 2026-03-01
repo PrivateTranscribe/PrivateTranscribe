@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 
 type CorrectionRow = {
@@ -200,15 +201,16 @@ export default function CorrectionMemoryPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Sort:</span>
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="h-9 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
-            >
-              <option value="count">Most frequent</option>
-              <option value="recent">Most recent</option>
-              <option value="source">Source (A→Z)</option>
-            </select>
+            <Select value={sortKey} onValueChange={(val) => setSortKey(val as SortKey)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="count">Most frequent</SelectItem>
+                <SelectItem value="recent">Most recent</SelectItem>
+                <SelectItem value="source">Source (A→Z)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

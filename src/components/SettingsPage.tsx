@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { RefreshCw, Download, Upload, Mic, Shield, FolderOpen } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
 import MicrophoneSettings from "./ui/MicrophoneSettings";
@@ -1019,24 +1020,27 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="I speak"
                     description="The language you primarily speak. Helps the engine recognize your speech more accurately."
                   >
-                    <select
+                    <Select
                       value={preferredLanguage || "auto"}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      onValueChange={(val) => {
                         setPreferredLanguage(val);
                         // Auto-disable translation if switching to English or auto
                         if (val === "en" || val === "auto") {
                           setTranslateToEnglish("off");
                         }
                       }}
-                      className="h-9 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
                     >
-                      {LANGUAGE_OPTIONS.map((lang) => (
-                        <option key={lang.value} value={lang.value}>
-                          {lang.label}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LANGUAGE_OPTIONS.map((lang) => (
+                          <SelectItem key={lang.value} value={lang.value}>
+                            {lang.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </SettingsRow>
 
                   {/* Show translate toggle only when speaking a non-English language */}

@@ -679,9 +679,12 @@ class AudioManager {
       }
 
       // Add custom dictionary as initial prompt to help Whisper recognize specific words
-      const dictionaryPrompt = this.getCustomDictionaryPrompt();
-      if (dictionaryPrompt) {
-        options.initialPrompt = dictionaryPrompt;
+      // Skip when translating — English dictionary hints confuse whisper's translation mode
+      if (!options.translate) {
+        const dictionaryPrompt = this.getCustomDictionaryPrompt();
+        if (dictionaryPrompt) {
+          options.initialPrompt = dictionaryPrompt;
+        }
       }
 
       logger.debug(
