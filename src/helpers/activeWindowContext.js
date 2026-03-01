@@ -174,7 +174,8 @@ function getMacOSContext() {
 function getWindowsUiaText() {
   // Best-effort UI Automation (UIA) focused element text.
   // Privacy-first: sanitized + hard-limited; failures simply omit the field.
-  const ps = `[void][System.Reflection.Assembly]::LoadWithPartialName(\"UIAutomationClient\");
+  const ps = `# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
+try { Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue } catch {}
 try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
 if ($null -eq $el) { exit 0 }
 
