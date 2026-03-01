@@ -197,7 +197,16 @@ $txt;`;
 
   const res = run(
     "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-WindowStyle",
+      "Hidden",
+      "-Command",
+      ps,
+    ],
     { timeoutMs: 4000 }
   );
 
@@ -244,7 +253,16 @@ $pname;`;
 
   const res = run(
     "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-WindowStyle",
+      "Hidden",
+      "-Command",
+      ps,
+    ],
     { timeoutMs: 4000 }
   );
 
