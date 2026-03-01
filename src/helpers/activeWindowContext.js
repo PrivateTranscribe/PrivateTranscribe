@@ -187,13 +187,30 @@ try {
 } catch {}
 
 $txt = \"\"
+
+# Prefer ValuePattern for typical text inputs.
 try {
   $vp = $el.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
   if ($vp -ne $null) { $txt = $vp.Current.Value }
 } catch {}
+
+# Fallback: element Name for many controls.
 if (-not $txt) {
   try { $txt = $el.Current.Name } catch { $txt = \"\" }
 }
+
+# Fallback: TextPattern for richer controls (e.g. document views).
+# Limit to a small number of chars to stay privacy-first.
+if (-not $txt) {
+  try {
+    $tp = $el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    if ($tp -ne $null) {
+      $range = $tp.DocumentRange
+      if ($range -ne $null) { $txt = $range.GetText(512) }
+    }
+  } catch {}
+}
+
 $txt;`;
 
   const res = run(
