@@ -279,7 +279,7 @@ function redactUrlCredentials(text) {
  *   redactionPatterns?: Array<{name?: string, regex: RegExp, replacement: string}>
  * }} [options]
  */
-function sanitizeContextText(text, options = {}) { 
+function sanitizeContextText(text, options = {}) {
   const maxChars = Number.isFinite(options.maxChars) ? options.maxChars : 8000;
   const patterns = Array.isArray(options.redactionPatterns)
     ? options.redactionPatterns
