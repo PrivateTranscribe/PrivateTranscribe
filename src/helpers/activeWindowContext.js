@@ -3,6 +3,10 @@
 const { spawnSync } = require("child_process");
 const { sanitizeContextText } = require("./contextSanitizer");
 
+// Small perf guard: active-window context capture can be called frequently.
+// Cache command availability checks for the lifetime of the process.
+const commandExistsCache = new Map();
+
 function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
   const appHay = [appName, processName, appClass].join(" ").toLowerCase();
 
@@ -81,8 +85,13 @@ function run(cmd, args, { timeoutMs = 2500, maxBuffer = 1024 * 1024 } = {}) {
 function commandExists(cmd) {
   // No shell, no paths, no metacharacters.
   if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) return false;
+
+  if (commandExistsCache.has(cmd)) return commandExistsCache.get(cmd);
+
   const res = run("which", [cmd]);
-  return res.ok;
+  const ok = res.ok;
+  commandExistsCache.set(cmd, ok);
+  return ok;
 }
 
 function getLinuxXdotoolContext() {
