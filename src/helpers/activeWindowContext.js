@@ -171,7 +171,16 @@ function getMacOSContext() {
   };
 }
 
+function shouldCaptureWindowsUia() {
+  // Allow privacy- or policy-conscious users to fully disable UIA capture.
+  // Default: enabled (best-effort + privacy-first sanitization + hard limit).
+  const raw = String(process.env.PRIVOCA_DISABLE_WINDOWS_UIA || "").trim().toLowerCase();
+  return !(raw === "1" || raw === "true" || raw === "yes");
+}
+
 function getWindowsUiaText() {
+  if (!shouldCaptureWindowsUia()) return {};
+
   // Best-effort UI Automation (UIA) focused element text.
   // Privacy-first: sanitized + hard-limited; failures simply omit the field.
   const ps = `# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
@@ -329,4 +338,5 @@ function getActiveWindowContext() {
 module.exports = {
   getActiveWindowContext,
   isSensitiveAppContext,
+  shouldCaptureWindowsUia,
 };

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 // activeWindowContext is a CommonJS helper used by the Electron main process.
 // We only unit-test the privacy guardrails here.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { isSensitiveAppContext } = require("../../../src/helpers/activeWindowContext");
+const { isSensitiveAppContext, shouldCaptureWindowsUia } = require("../../../src/helpers/activeWindowContext");
 
 describe("activeWindowContext privacy guardrails", () => {
   test("blocks known password managers by app/process/class", () => {
@@ -29,5 +29,25 @@ describe("activeWindowContext privacy guardrails", () => {
         windowTitle: "Passwords in CSS: a beginner guide",
       })
     ).toBe(false);
+  });
+
+  test("can explicitly disable Windows UIA capture via env var", () => {
+    const prev = process.env.PRIVOCA_DISABLE_WINDOWS_UIA;
+    try {
+      delete process.env.PRIVOCA_DISABLE_WINDOWS_UIA;
+      expect(shouldCaptureWindowsUia()).toBe(true);
+
+      process.env.PRIVOCA_DISABLE_WINDOWS_UIA = "1";
+      expect(shouldCaptureWindowsUia()).toBe(false);
+
+      process.env.PRIVOCA_DISABLE_WINDOWS_UIA = "true";
+      expect(shouldCaptureWindowsUia()).toBe(false);
+
+      process.env.PRIVOCA_DISABLE_WINDOWS_UIA = "0";
+      expect(shouldCaptureWindowsUia()).toBe(true);
+    } finally {
+      if (typeof prev === "undefined") delete process.env.PRIVOCA_DISABLE_WINDOWS_UIA;
+      else process.env.PRIVOCA_DISABLE_WINDOWS_UIA = prev;
+    }
   });
 });
