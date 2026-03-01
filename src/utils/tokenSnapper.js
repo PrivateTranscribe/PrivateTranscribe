@@ -1,33 +1,3 @@
-/**
- * Simple edit distance (Levenshtein) for short strings.
- */
-const editDistance = (a, b) => {
-  if (a === b) return 0;
-  const la = a.length, lb = b.length;
-  if (la === 0) return lb;
-  if (lb === 0) return la;
-  const dp = Array.from({ length: la + 1 }, (_, i) => {
-    const row = new Array(lb + 1);
-    row[0] = i;
-    return row;
-  });
-  for (let j = 1; j <= lb; j++) dp[0][j] = j;
-  for (let i = 1; i <= la; i++) {
-    for (let j = 1; j <= lb; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
-    }
-  }
-  return dp[la][lb];
-};
-
-/**
- * Consonant skeleton — strips vowels for phonetic-ish comparison.
- * "provoker" → "prvkr", "privoca" → "prvk"
- */
-const consonantSkeleton = (s) => s.toLowerCase().replace(/[aeiou]/g, "");
-
 const DEFAULT_MAX_CANDIDATES = 400;
 
 const looksLikeIdentifier = (word) => {
@@ -120,51 +90,9 @@ export function snapTranscript({ transcript, dictionaryWords = [], corrections =
     output = output.replace(phraseRe, c.word);
   }
 
-  // ── Fuzzy dictionary matching ──────────────────────────────────────────────
-  // For ALL dictionary words (not just identifier-like ones), check each word in
-  // the output for close phonetic/spelling similarity. This catches cases like
-  // "provoker" → "Privoca" where Whisper picks a real word that sounds similar.
-  const allDictWords = (dictionaryWords || []).filter((w) => w && w.length >= 3);
-  if (allDictWords.length > 0) {
-    const outputWords = output.split(/(\s+)/); // preserve whitespace tokens
-    for (let i = 0; i < outputWords.length; i++) {
-      const token = outputWords[i];
-      if (!token || /^\s+$/.test(token)) continue;
-      // strip trailing punctuation for matching, preserve it for replacement
-      const punctMatch = token.match(/^([a-zA-Z\u00C0-\u024F]+)([^a-zA-Z]*)$/);
-      if (!punctMatch) continue;
-      const rawWord = punctMatch[1];
-      const trailing = punctMatch[2];
-      const normWord = rawWord.toLowerCase();
-      if (normWord.length < 3) continue;
-
-      for (const dictWord of allDictWords) {
-        const normDict = dictWord.toLowerCase();
-        // Skip exact matches (already correct)
-        if (normWord === normDict) break;
-
-        // Fuzzy match: edit distance relative to word length
-        // Conservative thresholds to avoid false positives (e.g. "product" ≠ "Privoca")
-        const dist = editDistance(normWord, normDict);
-        const longer = Math.max(normWord.length, normDict.length);
-        // Allow 1 edit for short words (≤5), 2 for medium (6-8), max 2 for longer
-        const maxDist = longer <= 5 ? 1 : 2;
-        // Words must also be very similar length (within 2 chars)
-        if (Math.abs(normWord.length - normDict.length) > 2) continue;
-        const isMatch = dist > 0 && dist <= maxDist;
-
-        if (isMatch) {
-          // Preserve original capitalization pattern
-          const replacement = rawWord[0] === rawWord[0].toUpperCase()
-            ? dictWord[0].toUpperCase() + dictWord.slice(1)
-            : dictWord;
-          outputWords[i] = replacement + trailing;
-          break; // first match wins
-        }
-      }
-    }
-    output = outputWords.join("");
-  }
+  // Dictionary words are handled via Whisper's initial_prompt hints (pre-transcription).
+  // Post-transcription fuzzy replacement was removed — it caused false positives
+  // (e.g. "product" → "Privoca"). Use Correction Memory for explicit replacements.
 
   return output;
 }
