@@ -11,11 +11,35 @@
  */
 
 const DEFAULT_REDACTION_PATTERNS = [
-  // password: hunter2 / password=hunter2
+  // password: hunter2 / password=hunter2 / password: "hunter two"
   {
     name: "password",
     // capture only the value so we can preserve the field name for usefulness
-    regex: /(password\s*[:=]\s*)([^\s'"\n\r]+)/gi,
+    // Support quoted values (including spaces) to avoid leaking real passwords
+    // in config snippets, JSON-like logs, or terminal output.
+    regex: /(password\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
+  // passwd/pwd are common shorthands
+  {
+    name: "passwd",
+    regex: /(pass(?:wd)?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "pwd",
+    regex: /(\bpwd\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
+  // Generic secret/token fields (keep narrow: require key + :=)
+  {
+    name: "secretField",
+    regex: /(\bsecret\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "tokenField",
+    regex: /(\btoken\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
   // 2FA / verification codes (keep narrow to avoid redacting dates/times)
@@ -98,7 +122,8 @@ const DEFAULT_REDACTION_PATTERNS = [
   // Common OpenAI-style keys
   {
     name: "skKey",
-    regex: /\bsk-[A-Za-z0-9]{20,}\b/g,
+    // Covers OpenAI/Anthropic-style keys like sk-..., sk-proj-..., sk-ant-...
+    regex: /\bsk-[A-Za-z0-9-]{20,}\b/g,
     replacement: "[REDACTED]",
   },
   // Stripe keys / secrets
@@ -140,7 +165,7 @@ const DEFAULT_REDACTION_PATTERNS = [
   // AWS access key ids (often pasted into terminals, logs, dashboards)
   {
     name: "awsAccessKeyId",
-    regex: /\bAKIA[0-9A-Z]{16}\b/g,
+    regex: /\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b/g,
     replacement: "[REDACTED_AWS_KEY]",
   },
   // GitHub personal access tokens (classic + fine-grained)
@@ -179,7 +204,13 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)\?([^\s'"\n\r]+)/gi,
     replacement: "$1?[REDACTED_QUERY]",
   },
-  // Long hex/base64-ish tokens (hashes, ids, secrets). Keep it conservative.
+  // Long base64-ish strings wrapped in quotes (often API keys / tokens in JSON)
+  {
+    name: "longQuotedSecret",
+    regex: /(["'])([A-Za-z0-9+/=_-]{32,})(["'])/g,
+    replacement: "$1[REDACTED_SECRET]$3",
+  },
+  // Long hex tokens (hashes, ids, secrets). Keep it conservative.
   {
     name: "longHexToken",
     regex: /\b[a-f0-9]{32,}\b/gi,
