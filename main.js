@@ -394,6 +394,14 @@ async function startApp() {
         if (isValidHotkey(currentHotkey)) {
           debugLogger.debug("[Push-to-Talk] Starting Windows key listener", { hotkey: currentHotkey });
           windowsKeyManager.start(currentHotkey);
+          // Unregister globalShortcut to prevent dual-firing
+          if (currentHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(currentHotkey)) {
+            const { globalShortcut } = require("electron");
+            if (globalShortcut.isRegistered(currentHotkey)) {
+              debugLogger.debug("[Push-to-Talk] Unregistering globalShortcut on startup (push mode)", { hotkey: currentHotkey });
+              globalShortcut.unregister(currentHotkey);
+            }
+          }
         } else {
           debugLogger.debug("[Push-to-Talk] No valid hotkey to start listener");
         }
@@ -422,7 +430,15 @@ async function startApp() {
       }
 
       if (mode === "push") {
+        // Unregister globalShortcut to prevent dual-firing with windowsKeyManager
         const currentHotkey = hotkeyManager.getCurrentHotkey();
+        if (currentHotkey && currentHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(currentHotkey)) {
+          const { globalShortcut } = require("electron");
+          if (globalShortcut.isRegistered(currentHotkey)) {
+            debugLogger.debug("[Push-to-Talk] Unregistering globalShortcut for push mode", { hotkey: currentHotkey });
+            globalShortcut.unregister(currentHotkey);
+          }
+        }
         debugLogger.debug("[Push-to-Talk] Current hotkey", { hotkey: currentHotkey });
         if (isValidHotkey(currentHotkey)) {
           debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
@@ -431,6 +447,15 @@ async function startApp() {
       } else {
         debugLogger.debug("[Push-to-Talk] Stopping listener (mode is tap)");
         windowsKeyManager.stop();
+        // Re-register globalShortcut for tap mode
+        const currentHotkey = hotkeyManager.getCurrentHotkey();
+        if (currentHotkey && currentHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(currentHotkey)) {
+          const { globalShortcut } = require("electron");
+          if (!globalShortcut.isRegistered(currentHotkey)) {
+            debugLogger.debug("[Push-to-Talk] Re-registering globalShortcut for tap mode", { hotkey: currentHotkey });
+            globalShortcut.register(currentHotkey, windowManager.createHotkeyCallback());
+          }
+        }
       }
     });
 
