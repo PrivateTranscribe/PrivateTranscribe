@@ -13,6 +13,7 @@ import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
+import { isFeatureUnlocked } from "../hooks/useProStatus";
 import { useAgentName } from "../utils/agentName";
 import ProSettingsSection from "./ProSettingsSection";
 import { useWhisper } from "../hooks/useWhisper";
@@ -295,6 +296,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     successConfirmation,
     setSuccessConfirmation,
   } = useSettings();
+
+  const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -1100,11 +1103,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Correction learning"
-                    description="Learn from manual edits (currently detected via clipboard changes after dictation)"
+                    description={
+                      correctionMemoryUnlocked
+                        ? "Learn from manual edits (currently detected via clipboard changes after dictation)"
+                        : "Pro feature — unlock in Settings → Pro to enable correction learning"
+                    }
                   >
                     <Toggle
                       checked={enableCorrectionLearning}
                       onChange={(checked: boolean) => setEnableCorrectionLearning(checked)}
+                      disabled={!correctionMemoryUnlocked}
                     />
                   </SettingsRow>
                 </SettingsPanelRow>
