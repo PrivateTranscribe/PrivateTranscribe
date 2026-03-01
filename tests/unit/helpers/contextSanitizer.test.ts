@@ -121,6 +121,22 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("national ID / SSN redaction", () => {
+    it("redacts cpr: field (DK CPR format)", () => {
+      const input = "cpr: 010203-1234";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("cpr: [REDACTED_NATIONAL_ID]");
+      expect(output).not.toContain("010203-1234");
+    });
+
+    it("redacts ssn= field", () => {
+      const input = "ssn=123-45-6789";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("ssn=[REDACTED_NATIONAL_ID]");
+      expect(output).not.toContain("123-45-6789");
+    });
+  });
+
   describe("AWS key redaction", () => {
     it("redacts AWS access key IDs (multiple prefixes)", () => {
       expect(sanitizeContextText("key: AKIAIOSFODNN7EXAMPLE")).toContain("[REDACTED_AWS_KEY]");

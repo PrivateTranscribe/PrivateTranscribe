@@ -50,6 +50,14 @@ const DEFAULT_REDACTION_PATTERNS = [
       /(\b(?:phone|mobile|tel(?:ephone)?)\s*[:=]\s*)("[^"]*"|'[^']*'|[+\d][0-9 ()-]{6,}[0-9])/gi,
     replacement: "$1[REDACTED_PHONE]",
   },
+  // National IDs / SSNs are personally identifying; redact only when clearly labeled
+  // to reduce false positives (dates, invoice numbers, etc.). Includes DK CPR.
+  {
+    name: "nationalIdField",
+    regex:
+      /(\b(?:ssn|social\s*security|national\s*(?:id|identification)|cpr)\s*[:=]\s*)("[^"]*"|'[^']*'|\d{6}[- ]?\d{4}|[0-9][0-9 ()-]{6,}[0-9])\b/gi,
+    replacement: "$1[REDACTED_NATIONAL_ID]",
+  },
   // 2FA / verification codes (keep narrow to avoid redacting dates/times)
   {
     name: "verificationCode",
