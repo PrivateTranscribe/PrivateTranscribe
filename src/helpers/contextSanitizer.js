@@ -42,6 +42,14 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(\btoken\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
+  // Phone numbers are personally identifying; only redact when clearly labeled
+  // to reduce false positives.
+  {
+    name: "phoneField",
+    regex:
+      /(\b(?:phone|mobile|tel(?:ephone)?)\s*[:=]\s*)("[^"]*"|'[^']*'|[+\d][0-9 ()-]{6,}[0-9])/gi,
+    replacement: "$1[REDACTED_PHONE]",
+  },
   // 2FA / verification codes (keep narrow to avoid redacting dates/times)
   {
     name: "verificationCode",

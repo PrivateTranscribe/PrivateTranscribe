@@ -104,6 +104,23 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("phone number redaction", () => {
+    it("redacts phone: field", () => {
+      const input = "phone: +45 12 34 56 78";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("phone: [REDACTED_PHONE]");
+      expect(output).not.toContain("+45");
+      expect(output).not.toContain("12345678");
+    });
+
+    it("redacts tel= field", () => {
+      const input = "tel=+1 (555) 123-4567";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("tel=[REDACTED_PHONE]");
+      expect(output).not.toContain("555");
+    });
+  });
+
   describe("AWS key redaction", () => {
     it("redacts AWS access key IDs (multiple prefixes)", () => {
       expect(sanitizeContextText("key: AKIAIOSFODNN7EXAMPLE")).toContain("[REDACTED_AWS_KEY]");
