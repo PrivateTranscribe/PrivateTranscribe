@@ -85,13 +85,13 @@ function run(cmd, args, { timeoutMs = 2500, maxBuffer = 1024 * 1024 } = {}) {
   }
 }
 
-function isExecutableFile(p) {
+function isExecutableFileForPlatform(p, platform) {
   try {
     const stat = fs.statSync(p);
     if (!stat.isFile()) return false;
 
     // On Windows, existence is usually sufficient (PATHEXT controls runnable types).
-    if (process.platform === "win32") return true;
+    if (platform === "win32") return true;
 
     fs.accessSync(p, fs.constants.X_OK);
     return true;
@@ -100,41 +100,58 @@ function isExecutableFile(p) {
   }
 }
 
-function resolveOnPath(cmd) {
-  const envPath = String(process.env.PATH || "");
-  const dirs = envPath.split(path.delimiter).filter(Boolean);
+function resolveOnPathForPlatform(cmd, { platform, envPath, pathext } = {}) {
+  const rawPath = typeof envPath === "string" ? envPath : String(process.env.PATH || "");
+  const delimiter = platform === "win32" ? ";" : path.delimiter;
+  const dirs = rawPath.split(delimiter).filter(Boolean);
 
-  // Windows: respect PATHEXT for runnable suffixes.
-  const pathext = process.platform === "win32" ? String(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM") : "";
+  const rawPathext =
+    platform === "win32"
+      ? (typeof pathext === "string" ? pathext : String(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM"))
+      : "";
+
   const exts =
-    process.platform === "win32"
-      ? pathext
-          .split(";")
-          .map((e) => e.trim())
-          .filter(Boolean)
-          .map((e) => (e.startsWith(".") ? e : `.${e}`))
+    platform === "win32"
+      ? Array.from(
+          new Set(
+            rawPathext
+              .split(";")
+              .map((e) => e.trim())
+              .filter(Boolean)
+              .map((e) => (e.startsWith(".") ? e : `.${e}`))
+              // PATHEXT is case-insensitive on Windows.
+              // On case-sensitive file systems (tests/CI), also try lowercase variants.
+              .flatMap((e) => [e, e.toLowerCase()])
+          )
+        )
       : [""];
 
-  const cmdExt = process.platform === "win32" ? path.extname(cmd) : "";
-  const hasKnownExt = process.platform === "win32" && cmdExt && exts.some((e) => e.toLowerCase() === cmdExt.toLowerCase());
+  const cmdExt = platform === "win32" ? path.extname(cmd) : "";
+  const hasKnownExt =
+    platform === "win32" &&
+    cmdExt &&
+    exts.some((e) => e.toLowerCase() === cmdExt.toLowerCase());
 
   for (const dir of dirs) {
-    // Avoid interpreting relative dirs; PATH entries can be relative but that's uncommon.
     const base = path.join(dir, cmd);
 
     // If cmd already includes a PATHEXT extension (e.g. "powershell.exe"), try it directly first.
-    if (process.platform === "win32" && hasKnownExt) {
-      if (isExecutableFile(base)) return base;
+    if (platform === "win32" && hasKnownExt) {
+      if (isExecutableFileForPlatform(base, platform)) return base;
       continue;
     }
 
     for (const ext of exts) {
-      const candidate = process.platform === "win32" ? `${base}${ext}` : base;
-      if (isExecutableFile(candidate)) return candidate;
+      const candidate = platform === "win32" ? `${base}${ext}` : base;
+      if (isExecutableFileForPlatform(candidate, platform)) return candidate;
     }
   }
 
   return null;
+}
+
+function resolveOnPath(cmd) {
+  return resolveOnPathForPlatform(cmd, { platform: process.platform });
 }
 
 function commandExists(cmd) {
@@ -408,4 +425,5 @@ module.exports = {
   isSensitiveAppContext,
   shouldCaptureContextCapture,
   shouldCaptureWindowsUia,
+  __test: { resolveOnPathForPlatform, isExecutableFileForPlatform },
 };
