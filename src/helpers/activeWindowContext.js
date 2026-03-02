@@ -10,6 +10,36 @@ const { sanitizeContextText } = require("./contextSanitizer");
 // Cache command availability checks for the lifetime of the process.
 const commandExistsCache = new Map();
 
+function readBoundedIntEnv(name, { defaultValue, min = 1, max = 8000 } = {}) {
+  const raw = String(process.env[name] || "").trim();
+  if (!raw) return defaultValue;
+
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return defaultValue;
+  if (n < min || n > max) return defaultValue;
+  return n;
+}
+
+function getWindowTitleMaxChars() {
+  // Privacy lever: allow users to reduce how many characters we keep from
+  // window titles. Lower is safer; higher is more useful.
+  return readBoundedIntEnv("PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE", {
+    defaultValue: 512,
+    min: 32,
+    max: 8000,
+  });
+}
+
+function getUiaTextMaxChars() {
+  // Privacy lever: allow users to reduce how many characters we keep from
+  // Windows UIA focused-element text.
+  return readBoundedIntEnv("PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT", {
+    defaultValue: 512,
+    min: 32,
+    max: 8000,
+  });
+}
+
 function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
   const appHay = [appName, processName, appClass].join(" ").toLowerCase();
 
@@ -193,7 +223,9 @@ function getLinuxXdotoolContext() {
   const nameRes = run("xdotool", ["getwindowname", windowId]);
   const classRes = run("xdotool", ["getwindowclassname", windowId]);
 
-  const windowTitle = sanitizeContextText((nameRes.stdout || "").trim(), { maxChars: 512 });
+  const windowTitle = sanitizeContextText((nameRes.stdout || "").trim(), {
+    maxChars: getWindowTitleMaxChars(),
+  });
   const appClass = sanitizeContextText((classRes.stdout || "").trim(), { maxChars: 128 });
 
   if (!windowTitle && !appClass) {
@@ -234,7 +266,9 @@ function getMacOSContext() {
 
   const [appNameRaw, winRaw] = (res.stdout || "").split("\n");
   const appName = sanitizeContextText((appNameRaw || "").trim(), { maxChars: 128 });
-  const windowTitle = sanitizeContextText((winRaw || "").trim(), { maxChars: 512 });
+  const windowTitle = sanitizeContextText((winRaw || "").trim(), {
+    maxChars: getWindowTitleMaxChars(),
+  });
 
   if (!appName && !windowTitle) {
     return { available: false, reason: "no frontmost app/window" };
@@ -350,7 +384,7 @@ $txt;`;
     .join(" ")
     .trim();
 
-  const uiaText = sanitizeContextText(raw, { maxChars: 512 });
+  const uiaText = sanitizeContextText(raw, { maxChars: getUiaTextMaxChars() });
   if (!uiaText) return {};
 
   return {
@@ -406,7 +440,7 @@ $pname;`;
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const windowTitle = sanitizeContextText(lines[0] || "", { maxChars: 512 });
+  const windowTitle = sanitizeContextText(lines[0] || "", { maxChars: getWindowTitleMaxChars() });
   const processName = sanitizeContextText(lines[1] || "", { maxChars: 128 });
 
   if (!windowTitle && !processName) {
@@ -449,5 +483,11 @@ module.exports = {
   shouldCaptureContextCapture,
   shouldCaptureWindowsUia,
   shouldCaptureWindowsUiaTextPattern,
-  __test: { resolveOnPathForPlatform, isExecutableFileForPlatform },
+  __test: {
+    resolveOnPathForPlatform,
+    isExecutableFileForPlatform,
+    readBoundedIntEnv,
+    getWindowTitleMaxChars,
+    getUiaTextMaxChars,
+  },
 };

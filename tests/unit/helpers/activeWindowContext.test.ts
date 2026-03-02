@@ -8,6 +8,7 @@ const {
   shouldCaptureContextCapture,
   shouldCaptureWindowsUia,
   shouldCaptureWindowsUiaTextPattern,
+  __test,
 } = require("../../../src/helpers/activeWindowContext");
 
 describe("activeWindowContext privacy guardrails", () => {
@@ -93,6 +94,42 @@ describe("activeWindowContext privacy guardrails", () => {
     } finally {
       if (typeof prev === "undefined") delete process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN;
       else process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN = prev;
+    }
+  });
+
+  test("can tune captured window-title and UIA text max chars via env vars", () => {
+    const prevTitle = process.env.PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE;
+    const prevUia = process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT;
+
+    try {
+      delete process.env.PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE;
+      delete process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT;
+
+      expect(__test.getWindowTitleMaxChars()).toBe(512);
+      expect(__test.getUiaTextMaxChars()).toBe(512);
+
+      process.env.PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE = "128";
+      expect(__test.getWindowTitleMaxChars()).toBe(128);
+
+      process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT = "256";
+      expect(__test.getUiaTextMaxChars()).toBe(256);
+
+      // Invalid values should fall back to defaults.
+      process.env.PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE = "-1";
+      expect(__test.getWindowTitleMaxChars()).toBe(512);
+
+      process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT = "not-a-number";
+      expect(__test.getUiaTextMaxChars()).toBe(512);
+
+      // Too small: keep a minimum to preserve some usefulness.
+      process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT = "8";
+      expect(__test.getUiaTextMaxChars()).toBe(512);
+    } finally {
+      if (typeof prevTitle === "undefined") delete process.env.PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE;
+      else process.env.PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE = prevTitle;
+
+      if (typeof prevUia === "undefined") delete process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT;
+      else process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT = prevUia;
     }
   });
 });
