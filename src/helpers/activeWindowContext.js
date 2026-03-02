@@ -40,6 +40,43 @@ function getUiaTextMaxChars() {
   });
 }
 
+function parseSensitivePatternsEnv(raw) {
+  const items = String(raw || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const out = [];
+
+  for (const item of items) {
+    // Support regex literals like: /bitwarden|1password/i
+    if (item.startsWith("/") && item.lastIndexOf("/") > 0) {
+      const lastSlash = item.lastIndexOf("/");
+      const body = item.slice(1, lastSlash);
+      const flags = item.slice(lastSlash + 1) || "i";
+      try {
+        out.push(new RegExp(body, flags));
+        continue;
+      } catch {
+        // Fall through to substring match if regex parsing fails.
+      }
+    }
+
+    // Default: treat as a case-insensitive substring.
+    // Escape regex chars to avoid accidental regex behavior.
+    const escaped = item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out.push(new RegExp(escaped, "i"));
+  }
+
+  return out;
+}
+
+function getExtraSensitivePatterns() {
+  // User-configurable denylist.
+  // Example: PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS="/okta/i, yubikey, proton"
+  return parseSensitivePatternsEnv(process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS);
+}
+
 function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
   const appHay = [appName, processName, appClass].join(" ").toLowerCase();
 
@@ -80,7 +117,10 @@ function isSensitiveAppContext({ appName = "", processName = "", appClass = "", 
     /\bconsent(\.exe)?\b/i,
   ];
 
+  const extraPatterns = getExtraSensitivePatterns();
+
   if (appPatterns.some((p) => p.test(appHay))) return true;
+  if (extraPatterns.some((p) => p.test(appHay))) return true;
 
   // Window title guardrails:
   // - Only match well-known sensitive app names (avoid generic terms like "passwords" in document titles).
@@ -88,6 +128,7 @@ function isSensitiveAppContext({ appName = "", processName = "", appClass = "", 
   const title = (windowTitle || "").toLowerCase();
   const titlePatterns = appPatterns.filter((p) => p.toString() !== /\bpasswords\b/i.toString());
   if (titlePatterns.some((p) => p.test(title))) return true;
+  if (extraPatterns.some((p) => p.test(title))) return true;
 
   // Avoid overly broad terms like "login" that would cause false positives.
   if (title.includes("enter password") || title.includes("master password")) return true;

@@ -1,6 +1,14 @@
 const { isSensitiveAppContext, shouldCaptureWindowsUia } = require("../src/helpers/activeWindowContext");
 
 describe("isSensitiveAppContext", () => {
+  const envKey = "PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS";
+  const original = process.env[envKey];
+
+  afterEach(() => {
+    if (typeof original === "undefined") delete process.env[envKey];
+    else process.env[envKey] = original;
+  });
+
   it("blocks well-known password managers by app/process", () => {
     expect(isSensitiveAppContext({ appName: "1Password" })).toBe(true);
     expect(isSensitiveAppContext({ processName: "bitwarden" })).toBe(true);
@@ -10,6 +18,16 @@ describe("isSensitiveAppContext", () => {
   it("blocks OS credential prompts by process name", () => {
     expect(isSensitiveAppContext({ processName: "LogonUI" })).toBe(true);
     expect(isSensitiveAppContext({ processName: "CredentialUIBroker" })).toBe(true);
+  });
+
+  it("supports extra denylist patterns via env var", () => {
+    process.env[envKey] = "yubikey, /proton\\s*pass/i";
+
+    expect(isSensitiveAppContext({ appName: "YubiKey Manager" })).toBe(true);
+    expect(isSensitiveAppContext({ processName: "proton pass" })).toBe(true);
+
+    // Also applies to window titles.
+    expect(isSensitiveAppContext({ windowTitle: "Proton Pass — Unlock" })).toBe(true);
   });
 
   it("does not block generic window titles that merely mention passwords", () => {
