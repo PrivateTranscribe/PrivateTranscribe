@@ -1,4 +1,4 @@
-const { isSensitiveAppContext } = require("../src/helpers/activeWindowContext");
+const { isSensitiveAppContext, shouldCaptureWindowsUia } = require("../src/helpers/activeWindowContext");
 
 describe("isSensitiveAppContext", () => {
   it("blocks well-known password managers by app/process", () => {
@@ -21,5 +21,34 @@ describe("isSensitiveAppContext", () => {
   it("does block explicit credential prompt phrasing", () => {
     expect(isSensitiveAppContext({ windowTitle: "Enter password to unlock" })).toBe(true);
     expect(isSensitiveAppContext({ windowTitle: "Windows Security" })).toBe(true);
+  });
+});
+
+describe("shouldCaptureWindowsUia", () => {
+  const key = "PRIVOCA_DISABLE_WINDOWS_UIA";
+  const original = process.env[key];
+
+  afterEach(() => {
+    if (typeof original === "undefined") delete process.env[key];
+    else process.env[key] = original;
+  });
+
+  it("defaults to enabled when env var is unset", () => {
+    delete process.env[key];
+    expect(shouldCaptureWindowsUia()).toBe(true);
+  });
+
+  it("disables UIA capture when env var is set to true-ish values", () => {
+    for (const v of ["1", "true", "yes", " TRUE ", "Yes"]) {
+      process.env[key] = v;
+      expect(shouldCaptureWindowsUia()).toBe(false);
+    }
+  });
+
+  it("keeps UIA capture enabled for other values", () => {
+    for (const v of ["0", "false", "no", "", "random"]) {
+      process.env[key] = v;
+      expect(shouldCaptureWindowsUia()).toBe(true);
+    }
   });
 });
