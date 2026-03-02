@@ -115,9 +115,18 @@ function resolveOnPath(cmd) {
           .map((e) => (e.startsWith(".") ? e : `.${e}`))
       : [""];
 
+  const cmdExt = process.platform === "win32" ? path.extname(cmd) : "";
+  const hasKnownExt = process.platform === "win32" && cmdExt && exts.some((e) => e.toLowerCase() === cmdExt.toLowerCase());
+
   for (const dir of dirs) {
     // Avoid interpreting relative dirs; PATH entries can be relative but that's uncommon.
     const base = path.join(dir, cmd);
+
+    // If cmd already includes a PATHEXT extension (e.g. "powershell.exe"), try it directly first.
+    if (process.platform === "win32" && hasKnownExt) {
+      if (isExecutableFile(base)) return base;
+      continue;
+    }
 
     for (const ext of exts) {
       const candidate = process.platform === "win32" ? `${base}${ext}` : base;
@@ -130,7 +139,10 @@ function resolveOnPath(cmd) {
 
 function commandExists(cmd) {
   // No shell, no paths, no metacharacters.
-  if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) return false;
+  // Windows: allow an extension (e.g. "foo.exe") while still forbidding paths.
+  const pattern = process.platform === "win32" ? /^[a-zA-Z0-9_.-]+$/ : /^[a-zA-Z0-9_-]+$/;
+  if (!pattern.test(cmd)) return false;
+  if (cmd.includes("/") || cmd.includes("\\")) return false;
 
   if (commandExistsCache.has(cmd)) return commandExistsCache.get(cmd);
 
