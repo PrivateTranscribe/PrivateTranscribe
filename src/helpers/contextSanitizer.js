@@ -220,6 +220,12 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)\?([^\s'"\n\r]+)/gi,
     replacement: "$1?[REDACTED_QUERY]",
   },
+  // URLs with fragments (OAuth implicit flow tokens sometimes appear after #)
+  {
+    name: "urlFragment",
+    regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)#([^\s'"\n\r]+)/gi,
+    replacement: "$1#[REDACTED_FRAGMENT]",
+  },
   // Long base64-ish strings wrapped in quotes (often API keys / tokens in JSON)
   {
     name: "longQuotedSecret",

@@ -146,6 +146,24 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("URL redaction", () => {
+    it("redacts URL query strings", () => {
+      const input = "See https://example.com/callback?token=abc123&state=xyz";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("https://example.com/callback?[REDACTED_QUERY]");
+      expect(output).not.toContain("token=abc123");
+      expect(output).not.toContain("state=xyz");
+    });
+
+    it("redacts URL fragments", () => {
+      const input = "See https://example.com/callback#access_token=abc123&token_type=bearer";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("https://example.com/callback#[REDACTED_FRAGMENT]");
+      expect(output).not.toContain("access_token=abc123");
+      expect(output).not.toContain("token_type=bearer");
+    });
+  });
+
   describe("long secret redaction", () => {
     it("redacts long quoted strings that look like secrets", () => {
       const input = '"abcdefghijklmnopqrstuvwxyz1234567890ABCD"';
