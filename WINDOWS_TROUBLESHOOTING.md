@@ -27,7 +27,18 @@
 - Antivirus/EDR flags PowerShell/UI Automation usage
 - You want to disable UI Automation context capture for privacy/policy reasons
 
-**Solution:** Disable Windows UIA capture via env var.
+**Solutions:**
+
+Option A — Disable *all* active-window context capture (strongest privacy / most compatible):
+
+In `%APPDATA%\Privoca\.env` add:
+
+```ini
+# Disable ALL active-window context capture (window title + UIA)
+PRIVOCA_DISABLE_CONTEXT_CAPTURE=true
+```
+
+Option B — Disable only Windows UIA focused-element text capture:
 
 In `%APPDATA%\Privoca\.env` add:
 

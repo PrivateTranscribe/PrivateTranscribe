@@ -171,6 +171,13 @@ function getMacOSContext() {
   };
 }
 
+function shouldCaptureContextCapture() {
+  // Allow privacy- or policy-conscious users to fully disable *all* active-window context capture.
+  // Default: enabled (best-effort + privacy-first sanitization + hard limits).
+  const raw = String(process.env.PRIVOCA_DISABLE_CONTEXT_CAPTURE || "").trim().toLowerCase();
+  return !(raw === "1" || raw === "true" || raw === "yes");
+}
+
 function shouldCaptureWindowsUia() {
   // Allow privacy- or policy-conscious users to fully disable UIA capture.
   // Default: enabled (best-effort + privacy-first sanitization + hard limit).
@@ -327,6 +334,10 @@ $pname;`;
 
 function getActiveWindowContext() {
   try {
+    if (!shouldCaptureContextCapture()) {
+      return { available: false, reason: "context capture disabled by env", disabled: true };
+    }
+
     if (process.platform === "darwin") return getMacOSContext();
     if (process.platform === "win32") return getWindowsContext();
     return getLinuxXdotoolContext();
@@ -338,5 +349,6 @@ function getActiveWindowContext() {
 module.exports = {
   getActiveWindowContext,
   isSensitiveAppContext,
+  shouldCaptureContextCapture,
   shouldCaptureWindowsUia,
 };
