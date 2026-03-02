@@ -102,6 +102,20 @@ describe("sanitizeContextText (real implementation)", () => {
       expect(output).toContain("token=[REDACTED]");
       expect(output).not.toContain("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
     });
+
+    it("redacts authorization_code fields", () => {
+      const input = "authorization_code=abc123xyz";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("authorization_code=[REDACTED]");
+      expect(output).not.toContain("abc123xyz");
+    });
+
+    it("redacts oauth code phrases", () => {
+      const input = "oauth code: 9f1a2b3c4d";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("oauth code: [REDACTED]");
+      expect(output).not.toContain("9f1a2b3c4d");
+    });
   });
 
   describe("phone number redaction", () => {

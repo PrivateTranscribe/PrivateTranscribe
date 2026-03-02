@@ -65,6 +65,17 @@ const DEFAULT_REDACTION_PATTERNS = [
       /((?:verification|one[-\s]?time|security|auth|otp|2fa)\s*(?:code|passcode)\s*[:=]\s*)(\d{4,8})\b/gi,
     replacement: "$1[REDACTED_CODE]",
   },
+  // OAuth authorization codes can grant access (keep narrow: require explicit auth/oauth wording).
+  {
+    name: "oauthAuthorizationCode",
+    regex: /(\b(?:authorization[_-]?code|auth[_-]?code)\s*[:=]\s*)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "oauthAuthCodePhrase",
+    regex: /(\b(?:oauth|authorization)\s*code\s*[:=]\s*)([^\s'"\n\r]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
   // apiKey: ... / api_key=...
   {
     name: "apiKey",
