@@ -176,6 +176,29 @@ describe("sanitizeContextText (real implementation)", () => {
       expect(output).not.toContain("access_token=abc123");
       expect(output).not.toContain("token_type=bearer");
     });
+
+    it("redacts URL embedded credentials (scheme://user:pass@host)", () => {
+      const input = "postgres://db_user:supersecret@localhost:5432/mydb";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("postgres://db_user:[REDACTED]@localhost:5432/mydb");
+      expect(output).not.toContain("supersecret");
+    });
+  });
+
+  describe("credit card redaction (PAN-like numbers)", () => {
+    it("redacts Luhn-valid card numbers (with spaces)", () => {
+      // 4242 4242 4242 4242 is a common Stripe test number and Luhn-valid.
+      const input = "card: 4242 4242 4242 4242";
+      const output = sanitizeContextText(input);
+      expect(output).toContain("card: [REDACTED_CARD]");
+      expect(output).not.toContain("4242 4242 4242 4242");
+    });
+
+    it("does not redact digit sequences that fail Luhn check", () => {
+      const input = "id: 1111 1111 1111 1111";
+      const output = sanitizeContextText(input);
+      expect(output).toBe(input);
+    });
   });
 
   describe("long secret redaction", () => {
