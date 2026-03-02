@@ -1,6 +1,9 @@
 "use strict";
 
 const { spawnSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+
 const { sanitizeContextText } = require("./contextSanitizer");
 
 // Small perf guard: active-window context capture can be called frequently.
@@ -82,14 +85,56 @@ function run(cmd, args, { timeoutMs = 2500, maxBuffer = 1024 * 1024 } = {}) {
   }
 }
 
+function isExecutableFile(p) {
+  try {
+    const stat = fs.statSync(p);
+    if (!stat.isFile()) return false;
+
+    // On Windows, existence is usually sufficient (PATHEXT controls runnable types).
+    if (process.platform === "win32") return true;
+
+    fs.accessSync(p, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveOnPath(cmd) {
+  const envPath = String(process.env.PATH || "");
+  const dirs = envPath.split(path.delimiter).filter(Boolean);
+
+  // Windows: respect PATHEXT for runnable suffixes.
+  const pathext = process.platform === "win32" ? String(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM") : "";
+  const exts =
+    process.platform === "win32"
+      ? pathext
+          .split(";")
+          .map((e) => e.trim())
+          .filter(Boolean)
+          .map((e) => (e.startsWith(".") ? e : `.${e}`))
+      : [""];
+
+  for (const dir of dirs) {
+    // Avoid interpreting relative dirs; PATH entries can be relative but that's uncommon.
+    const base = path.join(dir, cmd);
+
+    for (const ext of exts) {
+      const candidate = process.platform === "win32" ? `${base}${ext}` : base;
+      if (isExecutableFile(candidate)) return candidate;
+    }
+  }
+
+  return null;
+}
+
 function commandExists(cmd) {
   // No shell, no paths, no metacharacters.
   if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) return false;
 
   if (commandExistsCache.has(cmd)) return commandExistsCache.get(cmd);
 
-  const res = run("which", [cmd]);
-  const ok = res.ok;
+  const ok = !!resolveOnPath(cmd);
   commandExistsCache.set(cmd, ok);
   return ok;
 }
