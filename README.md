@@ -480,6 +480,14 @@ GROQ_API_KEY=your_groq_api_key_here
 
 # Optional: Debug mode
 DEBUG=false
+
+# Optional (privacy): disable all active-window context capture (window title + focused UI text)
+# Useful for stricter privacy, or if AV/EDR blocks UI Automation / window inspection.
+PRIVOCA_DISABLE_CONTEXT_CAPTURE=false
+
+# Optional (privacy, Windows-only): disable UI Automation (UIA) focused-element capture while
+# still allowing basic window title/app context when available.
+PRIVOCA_DISABLE_WINDOWS_UIA=false
 ```
 
 ### Local Whisper Setup
