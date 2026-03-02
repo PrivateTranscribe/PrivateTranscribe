@@ -1,4 +1,4 @@
-import { BookMarked, Trash2, Lock } from "lucide-react";
+import { BookMarked, Trash2, Lock, Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -86,6 +86,12 @@ export default function CorrectionMemoryPage() {
     }
     return list;
   }, [rows, sortKey]);
+
+  const existingForSource = useMemo(() => {
+    const s = source.trim();
+    if (!s) return null;
+    return rows.find((r) => r.source === s) || null;
+  }, [rows, source]);
 
   const handleAdd = async () => {
     const s = source.trim();
@@ -182,9 +188,14 @@ export default function CorrectionMemoryPage() {
           />
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-xs text-muted-foreground">
+            {existingForSource && target.trim() && existingForSource.target !== target.trim()
+              ? `Updating “${existingForSource.source}” will overwrite the current target.`
+              : null}
+          </div>
           <Button onClick={handleAdd} disabled={saving || !source.trim() || !target.trim()}>
-            {saving ? "Saving…" : "Add correction"}
+            {saving ? "Saving…" : existingForSource ? "Update correction" : "Add correction"}
           </Button>
         </div>
       </div>
@@ -246,6 +257,18 @@ export default function CorrectionMemoryPage() {
                       ? ` · ${formatDate(r.last_seen_at)}`
                       : ""}
                   </Badge>
+                  <button
+                    onClick={() => {
+                      setSource(r.source);
+                      setTarget(r.target);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                    title="Edit correction"
+                  >
+                    <Pencil size={14} />
+                  </button>
+
                   <button
                     onClick={() => handleDelete(r.source)}
                     disabled={deletingSource === r.source}
