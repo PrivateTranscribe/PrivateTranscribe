@@ -103,7 +103,15 @@ function isExecutableFileForPlatform(p, platform) {
 function resolveOnPathForPlatform(cmd, { platform, envPath, pathext } = {}) {
   const rawPath = typeof envPath === "string" ? envPath : String(process.env.PATH || "");
   const delimiter = platform === "win32" ? ";" : path.delimiter;
-  const dirs = rawPath.split(delimiter).filter(Boolean);
+
+  // Windows PATH entries can be quoted when they contain spaces.
+  // Be liberal in what we accept (quotes are not part of the actual directory).
+  const stripOuterQuotes = (s) => s.replace(/^\s*"|"\s*$/g, "").trim();
+
+  const dirs = rawPath
+    .split(delimiter)
+    .map((d) => stripOuterQuotes(String(d || "")))
+    .filter(Boolean);
 
   const rawPathext =
     platform === "win32"

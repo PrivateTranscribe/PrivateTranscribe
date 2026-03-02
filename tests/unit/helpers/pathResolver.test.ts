@@ -61,4 +61,20 @@ describe("activeWindowContext PATH resolver", () => {
       })
     ).toBe(exe);
   });
+
+  test("win32: supports quoted PATH entries", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "privoca path-"));
+    const exe = path.join(dir, "quoted.exe");
+    fs.writeFileSync(exe, "", "utf8");
+
+    const envPath = `"${dir}"`;
+
+    expect(
+      resolveOnPathForPlatform("quoted", {
+        platform: "win32",
+        envPath,
+        pathext: ".EXE",
+      })
+    ).toBe(exe);
+  });
 });
