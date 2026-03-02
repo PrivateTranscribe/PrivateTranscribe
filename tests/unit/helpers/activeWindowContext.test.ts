@@ -132,4 +132,34 @@ describe("activeWindowContext privacy guardrails", () => {
       else process.env.PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT = prevUia;
     }
   });
+
+  test("supports env-configured sensitive app patterns (regex + substring)", () => {
+    const prev = process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS;
+
+    try {
+      process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS = "/okta/i, yubikey, /(unclosed/";
+
+      // Regex literal should match.
+      expect(isSensitiveAppContext({ appName: "Okta Verify" })).toBe(true);
+
+      // Substring entries should match (case-insensitive).
+      expect(isSensitiveAppContext({ processName: "YubiKey Manager" })).toBe(true);
+
+      // Invalid regex literal should safely degrade to literal substring matching.
+      // (We don't want crashes or accidental broad patterns.)
+      expect(isSensitiveAppContext({ appName: "My /(unclosed/ app" })).toBe(true);
+
+      // And ensure normal apps stay unblocked.
+      expect(isSensitiveAppContext({ appName: "Visual Studio Code", windowTitle: "notes" })).toBe(false);
+
+      // Parsing helper should return RegExp objects and never throw.
+      const patterns = __test.parseSensitivePatternsEnv(process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS);
+      expect(Array.isArray(patterns)).toBe(true);
+      expect(patterns.length).toBeGreaterThan(0);
+      for (const p of patterns) expect(p).toBeInstanceOf(RegExp);
+    } finally {
+      if (typeof prev === "undefined") delete process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS;
+      else process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS = prev;
+    }
+  });
 });

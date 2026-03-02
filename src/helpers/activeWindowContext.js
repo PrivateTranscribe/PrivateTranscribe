@@ -530,5 +530,6 @@ module.exports = {
     readBoundedIntEnv,
     getWindowTitleMaxChars,
     getUiaTextMaxChars,
+    parseSensitivePatternsEnv,
   },
 };
