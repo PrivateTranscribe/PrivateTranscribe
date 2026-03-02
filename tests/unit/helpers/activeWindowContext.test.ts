@@ -7,6 +7,7 @@ const {
   isSensitiveAppContext,
   shouldCaptureContextCapture,
   shouldCaptureWindowsUia,
+  shouldCaptureWindowsUiaTextPattern,
 } = require("../../../src/helpers/activeWindowContext");
 
 describe("activeWindowContext privacy guardrails", () => {
@@ -72,6 +73,26 @@ describe("activeWindowContext privacy guardrails", () => {
     } finally {
       if (typeof prev === "undefined") delete process.env.PRIVOCA_DISABLE_WINDOWS_UIA;
       else process.env.PRIVOCA_DISABLE_WINDOWS_UIA = prev;
+    }
+  });
+
+  test("can explicitly disable Windows UIA TextPattern fallback via env var", () => {
+    const prev = process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN;
+    try {
+      delete process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN;
+      expect(shouldCaptureWindowsUiaTextPattern()).toBe(true);
+
+      process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN = "1";
+      expect(shouldCaptureWindowsUiaTextPattern()).toBe(false);
+
+      process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN = "true";
+      expect(shouldCaptureWindowsUiaTextPattern()).toBe(false);
+
+      process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN = "0";
+      expect(shouldCaptureWindowsUiaTextPattern()).toBe(true);
+    } finally {
+      if (typeof prev === "undefined") delete process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN;
+      else process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN = prev;
     }
   });
 });

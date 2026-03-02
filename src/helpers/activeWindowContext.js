@@ -267,11 +267,38 @@ function shouldCaptureWindowsUia() {
   return !(raw === "1" || raw === "true" || raw === "yes");
 }
 
+function shouldCaptureWindowsUiaTextPattern() {
+  // TextPattern can expose richer document text, which may be undesirable in some environments.
+  // Default: enabled (used only as a last-resort fallback, still sanitized + hard-limited).
+  const raw = String(process.env.PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN || "")
+    .trim()
+    .toLowerCase();
+  return !(raw === "1" || raw === "true" || raw === "yes");
+}
+
 function getWindowsUiaText() {
   if (!shouldCaptureWindowsUia()) return {};
 
   // Best-effort UI Automation (UIA) focused element text.
   // Privacy-first: sanitized + hard-limited; failures simply omit the field.
+  const textPatternBlock = shouldCaptureWindowsUiaTextPattern()
+    ? `
+# Fallback: TextPattern for richer controls (e.g. document views).
+# Limit to a small number of chars to stay privacy-first.
+if (-not $txt) {
+  try {
+    $tp = $el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    if ($tp -ne $null) {
+      $range = $tp.DocumentRange
+      if ($range -ne $null) { $txt = $range.GetText(512) }
+    }
+  } catch {}
+}
+`
+    : `
+# TextPattern fallback disabled via env var (PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN).
+`;
+
   const ps = `# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
 try { Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue } catch {}
 try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
@@ -296,19 +323,7 @@ try {
 if (-not $txt) {
   try { $txt = $el.Current.Name } catch { $txt = \"\" }
 }
-
-# Fallback: TextPattern for richer controls (e.g. document views).
-# Limit to a small number of chars to stay privacy-first.
-if (-not $txt) {
-  try {
-    $tp = $el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
-    if ($tp -ne $null) {
-      $range = $tp.DocumentRange
-      if ($range -ne $null) { $txt = $range.GetText(512) }
-    }
-  } catch {}
-}
-
+${textPatternBlock}
 $txt;`;
 
   const res = run(
@@ -433,5 +448,6 @@ module.exports = {
   isSensitiveAppContext,
   shouldCaptureContextCapture,
   shouldCaptureWindowsUia,
+  shouldCaptureWindowsUiaTextPattern,
   __test: { resolveOnPathForPlatform, isExecutableFileForPlatform },
 };

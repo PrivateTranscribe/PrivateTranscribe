@@ -30,17 +30,31 @@ describe("Windows UIA context capture script invariants", () => {
   test("UIA snippet prefers ValuePattern then Name, before TextPattern", () => {
     const src = readActiveWindowContextSource();
 
-    const idxValuePattern = src.indexOf("ValuePattern");
-    const idxNameFallback = src.indexOf("$el.Current.Name");
-    const idxTextPattern = src.indexOf("TextPattern");
+    const textPatternBlockStart = src.indexOf("const textPatternBlock");
+    const psStart = src.indexOf("const ps = `");
+    expect(textPatternBlockStart).toBeGreaterThan(-1);
+    expect(psStart).toBeGreaterThan(textPatternBlockStart);
 
-    // If the snippet changes significantly these indices can move, but the ordering
-    // should remain stable: typical text inputs -> control name -> document/text views.
+    const psEnd = src.indexOf("$txt;`", psStart);
+    expect(psEnd).toBeGreaterThan(psStart);
+
+    const ps = src.slice(psStart, psEnd);
+
+    // In the executed snippet, TextPattern is injected via ${textPatternBlock}.
+    // Enforce ordering as: ValuePattern -> Name fallback -> injection point.
+    const idxValuePattern = ps.indexOf("ValuePattern");
+    const idxNameFallback = ps.indexOf("$el.Current.Name");
+    const idxTextPatternInjection = ps.indexOf("${textPatternBlock}");
+
     expect(idxValuePattern).toBeGreaterThan(-1);
     expect(idxNameFallback).toBeGreaterThan(-1);
-    expect(idxTextPattern).toBeGreaterThan(-1);
+    expect(idxTextPatternInjection).toBeGreaterThan(-1);
 
     expect(idxValuePattern).toBeLessThan(idxNameFallback);
-    expect(idxNameFallback).toBeLessThan(idxTextPattern);
+    expect(idxNameFallback).toBeLessThan(idxTextPatternInjection);
+
+    // And ensure the TextPattern block still contains the actual UIA TextPattern code.
+    const between = src.slice(textPatternBlockStart, psStart);
+    expect(between).toContain("[System.Windows.Automation.TextPattern]::Pattern");
   });
 });
