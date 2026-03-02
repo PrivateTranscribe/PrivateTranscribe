@@ -488,6 +488,22 @@ PRIVOCA_DISABLE_CONTEXT_CAPTURE=false
 # Optional (privacy, Windows-only): disable UI Automation (UIA) focused-element capture while
 # still allowing basic window title/app context when available.
 PRIVOCA_DISABLE_WINDOWS_UIA=false
+
+# Optional (privacy, Windows-only): disable the UIA TextPattern fallback.
+# TextPattern can expose richer document text (still hard-limited + sanitized), so some
+# environments may prefer to fully disable it.
+PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN=false
+
+# Optional (privacy): tune how much context can ever be captured.
+# These limits apply BEFORE the app uses the text in prompts, and captured text is still
+# passed through sanitization.
+PRIVOCA_CONTEXT_MAX_CHARS_WINDOW_TITLE=512
+PRIVOCA_CONTEXT_MAX_CHARS_UIA_TEXT=512
+
+# Optional (privacy): add your own sensitive app/window patterns (comma-separated).
+# Supports both substrings and regex literals like /okta/i.
+# Matching contexts are blocked (no capture).
+PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS=""
 ```
 
 ### Local Whisper Setup
