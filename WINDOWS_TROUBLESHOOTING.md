@@ -20,6 +20,24 @@
 2. Verify mic is selected: Sound settings → Input
 3. Test recording in Windows Voice Recorder first
 
+### Active Window Context / UI Automation (UIA) Issues
+
+**Symptoms:**
+- Privoca is slow/stutters when typing
+- Antivirus/EDR flags PowerShell/UI Automation usage
+- You want to disable UI Automation context capture for privacy/policy reasons
+
+**Solution:** Disable Windows UIA capture via env var.
+
+In `%APPDATA%\Privoca\.env` add:
+
+```ini
+# Disable Windows UI Automation (focused element text) capture
+PRIVOCA_DISABLE_WINDOWS_UIA=true
+```
+
+Restart Privoca after changing `.env`.
+
 ### whisper.cpp Not Working
 
 **Symptoms:** Local transcription fails
