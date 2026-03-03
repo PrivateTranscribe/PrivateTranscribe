@@ -98,15 +98,30 @@ export function snapTranscript({ transcript, dictionaryWords = [], corrections =
 }
 
 export function inferCorrectionPairs(insertedText, correctedText) {
+  // Raw/trim checks first: normalizeSpoken would turn empty into "" anyway, but we
+  // want to explicitly treat "cleared" clipboard/text as a non-learning event.
+  const correctedRaw = typeof correctedText === "string" ? correctedText.trim() : "";
+  if (!correctedRaw) return [];
+
   const a = normalizeSpoken(insertedText);
   const b = normalizeSpoken(correctedText);
   if (!a || !b || a === b) return [];
 
   // Guardrail: only learn when the "corrected" text is clearly derived from the inserted text.
-  // This avoids poisoning Correction Memory when the user simply undoes/reverts the paste
-  // (or copies unrelated clipboard content during the learning window).
+  // This avoids poisoning Correction Memory when the user simply undoes/reverts the paste,
+  // selects-all + deletes, or copies unrelated clipboard content during the learning window.
   const aTok0 = a.split(" ").filter(Boolean);
   const bTok0 = b.split(" ").filter(Boolean);
+
+  // Guardrail: mass-deletion heuristic.
+  // If the "corrected" text removes most of the original, it's probably a user clearing the field,
+  // not an intended correction.
+  // Exception: very short inserts (<= 3 tokens) can legitimately be corrected into a shorter form.
+  if (aTok0.length > 3) {
+    const removalRatio = (aTok0.length - bTok0.length) / Math.max(1, aTok0.length);
+    if (removalRatio >= 0.6) return [];
+  }
+
   const aSet = new Set(aTok0);
   let common = 0;
   for (const t of bTok0) if (aSet.has(t)) common++;
