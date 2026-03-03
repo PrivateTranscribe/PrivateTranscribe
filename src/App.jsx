@@ -18,7 +18,9 @@ import { useToast } from "./components/ui/Toast";
 import { LoadingDots } from "./components/ui/LoadingDots";
 import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
+import { useHotkey } from "./hooks/useHotkey";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
+import { formatHotkeyLabel } from "./utils/hotkeys";
 
 const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
@@ -115,6 +117,7 @@ export default function App() {
   const buttonRef = useRef(null);
   const { toast, toastCount } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
+  const { hotkey } = useHotkey();
 
   const setWindowInteractivity = useCallback((shouldCapture) => {
     window.electronAPI?.setMainWindowInteractivity?.(shouldCapture);
@@ -455,7 +458,7 @@ export default function App() {
 
       <div className="fixed bottom-6 right-6 z-50">
         <div
-          className="relative flex items-center gap-2"
+          className="relative flex flex-col items-end gap-2"
           onMouseEnter={() => {
             setIsHovered(true);
             setWindowInteractivity(true);
@@ -467,25 +470,26 @@ export default function App() {
             }
           }}
         >
-          {(isRecording || isProcessing) && isHovered && (
-            <button
-              aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                isRecording ? cancelRecording() : cancelProcessing();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
-            >
-              <X size={10} strokeWidth={2.5} color="white" />
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {(isRecording || isProcessing) && isHovered && (
+              <button
+                aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  isRecording ? cancelRecording() : cancelProcessing();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
+              >
+                <X size={10} strokeWidth={2.5} color="white" />
+              </button>
+            )}
 
-          <button
+            <button
             ref={buttonRef}
             aria-label="Dictation overlay"
             onMouseDown={(e) => {
@@ -572,6 +576,18 @@ export default function App() {
               <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
             )}
           </button>
+          </div>
+
+          {isHovered && !isRecording && !isProcessing && (
+            <div
+              className="text-[11px] text-white/50 font-medium tracking-wide transition-opacity duration-200"
+              style={{
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+              }}
+            >
+              Press {formatHotkeyLabel(hotkey)}
+            </div>
+          )}
 
           {isCommandMenuOpen && (
             <div
