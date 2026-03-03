@@ -102,6 +102,20 @@ export function inferCorrectionPairs(insertedText, correctedText) {
   const b = normalizeSpoken(correctedText);
   if (!a || !b || a === b) return [];
 
+  // Guardrail: only learn when the "corrected" text is clearly derived from the inserted text.
+  // This avoids poisoning Correction Memory when the user simply undoes/reverts the paste
+  // (or copies unrelated clipboard content during the learning window).
+  const aTok0 = a.split(" ").filter(Boolean);
+  const bTok0 = b.split(" ").filter(Boolean);
+  const aSet = new Set(aTok0);
+  let common = 0;
+  for (const t of bTok0) if (aSet.has(t)) common++;
+  const denom = Math.max(1, Math.min(aTok0.length, bTok0.length));
+  const overlap = common / denom;
+
+  // Require at least 50% token overlap (fairly lenient for small edits, but blocks full reverts).
+  if (overlap < 0.5) return [];
+
   // Heuristic v1: if both are single "identifier-like" tokens, learn that mapping.
   const aTokens = a.split(" ").filter(Boolean);
   const bTokens = b.split(" ").filter(Boolean);
