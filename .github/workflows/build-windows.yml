@@ -17,7 +17,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,21 +56,21 @@ jobs:
         with:
           name: privoca-windows-setup
           path: dist/Privoca-Setup-*.exe
-          retention-days: 30
+          retention-days: 7
 
       - name: Upload portable
         uses: actions/upload-artifact@v4
         with:
           name: privoca-windows-portable
           path: dist/Privoca-*.exe
-          retention-days: 30
-          
+          retention-days: 7
+
       - name: Upload latest.yml (update manifest)
         uses: actions/upload-artifact@v4
         with:
           name: privoca-update-manifest
           path: dist/latest.yml
-          retention-days: 30
+          retention-days: 7
 
       # Optional: upload to Cloudflare R2
       # Uncomment when R2 bucket and credentials are configured
