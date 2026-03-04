@@ -439,35 +439,44 @@ export default function App() {
     }
   };
 
-  // Compute menu horizontal alignment based on screen position to stay on-screen.
-  // Called at render time so it reflects current drag position.
-  const getMenuPositionStyle = () => {
-    if (!buttonRef.current) return { left: 0 };
-    const rect = buttonRef.current.getBoundingClientRect();
-    const centerScreenX = (window.screenX ?? 0) + rect.left + rect.width / 2;
-    const screenWidth = window.screen?.width ?? 1920;
-    const menuWidth = 248;
-    const edge = 20;
-    if (centerScreenX + menuWidth / 2 > screenWidth - edge) {
-      // Near right edge: align menu's right edge to button's right edge
-      return { right: 0 };
-    }
-    if (centerScreenX - menuWidth / 2 < edge) {
-      // Near left edge: align menu's left edge to button's left edge
-      return { left: 0 };
-    }
-    // Default: centered above the button
-    return { left: "50%", transform: "translateX(-50%)" };
-  };
+  // Compute fixed-window positions for cancel button and context menu,
+  // clamped so neither element clips outside the BrowserWindow.
+  const { menuStyle, cancelStyle } = (() => {
+    const btn = buttonRef.current;
+    if (!btn) return { menuStyle: null, cancelStyle: null };
+    const rect = btn.getBoundingClientRect();
+    const iW = window.innerWidth;
+    const iH = window.innerHeight;
+    const edge = 8;
 
-  // Prefer cancel button to the left of the icon; fall back to right if near left screen edge.
-  const getCancelSide = () => {
-    if (!buttonRef.current) return "left";
-    const rect = buttonRef.current.getBoundingClientRect();
-    const screenX = (window.screenX ?? 0) + rect.left;
-    // Need ~52px clearance to the left (20px cancel + 8px gap + some margin)
-    return screenX >= 52 ? "left" : "right";
-  };
+    // Context menu: centered above the button, clamped horizontally
+    const menuWidth = 248;
+    const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
+    const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
+    const menuBottom = iH - rect.top + 12;
+
+    // Cancel button: prefer left of icon, fall back to right
+    const cancelSize = 20;
+    const gap = 8;
+    const preferLeft = rect.left - gap - cancelSize;
+    const cancelLeft = preferLeft >= edge ? preferLeft : rect.right + gap;
+    const cancelTop = rect.top + rect.height / 2 - cancelSize / 2;
+
+    return {
+      menuStyle: {
+        position: "absolute",
+        left: menuLeft,
+        bottom: menuBottom,
+        pointerEvents: "auto",
+      },
+      cancelStyle: {
+        position: "absolute",
+        left: cancelLeft,
+        top: cancelTop,
+        pointerEvents: "auto",
+      },
+    };
+  })();
 
   return (
     <div className="dictation-window">
@@ -506,33 +515,6 @@ export default function App() {
             }
           }}
         >
-          {/* Cancel button: absolutely positioned beside the icon — never pushes it */}
-          {(isRecording || isProcessing) && isHovered && (
-            <button
-              aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                isRecording ? cancelRecording() : cancelProcessing();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
-              style={{
-                position: "absolute",
-                top: "50%",
-                transform: "translateY(-50%)",
-                ...(getCancelSide() === "left"
-                  ? { right: "calc(100% + 8px)" }
-                  : { left: "calc(100% + 8px)" }),
-              }}
-            >
-              <X size={10} strokeWidth={2.5} color="white" />
-            </button>
-          )}
-
           <button
             ref={buttonRef}
             aria-label="Dictation overlay"
@@ -622,126 +604,148 @@ export default function App() {
               <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
             )}
           </button>
-
-          {/* Context menu: absolutely positioned above the icon, edge-aware horizontal alignment */}
-          {isCommandMenuOpen && (
-            <div
-              ref={commandMenuRef}
-              className="w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
-              style={{
-                position: "absolute",
-                bottom: "calc(100% + 12px)",
-                animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
-                ...getMenuPositionStyle(),
-              }}
-              onMouseEnter={() => setWindowInteractivity(true)}
-            >
-              {activeSubmenu !== "root" && (
-                <button
-                  onClick={() => setActiveSubmenu("root")}
-                  className="w-full mb-1 px-2 py-1.5 rounded-lg hover:bg-white/6 transition-colors text-left text-[12px] text-white/75 flex items-center gap-2"
-                >
-                  <ArrowLeft size={13} />
-                  Back
-                </button>
-              )}
-
-              {activeSubmenu === "root" && (
-                <>
-                  <MenuRow icon={Clock3} label="Hide this for 1 hour" onClick={handleHideForHour} />
-                  <MenuRow
-                    icon={MessageCircle}
-                    label="Talk to support"
-                    onClick={() => void handleContactSupport()}
-                  />
-                  <MenuRow
-                    icon={Settings}
-                    label="Go to settings"
-                    onClick={() =>
-                      void openControlPanel({ page: "settings", settingsTab: "general" })
-                    }
-                  />
-
-                  <div className="h-px bg-white/10 mx-1 my-1.5" />
-
-                  <MenuRow
-                    icon={Mic2}
-                    label="Change microphone"
-                    trailing="chevron"
-                    onClick={() => setActiveSubmenu("audio")}
-                  />
-                  <MenuRow
-                    icon={Languages}
-                    label="Select language"
-                    hint={getLanguageLabel(selectedLanguage)}
-                    trailing="chevron"
-                    onClick={() => setActiveSubmenu("language")}
-                  />
-
-                  <div className="h-px bg-white/10 mx-1 my-1.5" />
-
-                  <MenuRow
-                    icon={History}
-                    label="View transcript history"
-                    onClick={() => void openControlPanel({ page: "history" })}
-                  />
-                  <MenuRow
-                    icon={Clipboard}
-                    label="Paste last transcript"
-                    hint="alt + shift + z"
-                    disabled={!lastTranscript}
-                    onClick={() => void handlePasteLastTranscript()}
-                  />
-                </>
-              )}
-
-              {activeSubmenu === "audio" && (
-                <>
-                  <MenuRow
-                    icon={AudioLines}
-                    label="Open audio input settings"
-                    onClick={() => void openAudioInputSettings()}
-                  />
-                  <MenuRow
-                    icon={Mic2}
-                    label="Open microphone privacy"
-                    onClick={() => void openMicrophonePermissions()}
-                  />
-                  <MenuRow
-                    icon={Settings}
-                    label="Open Privoca microphone settings"
-                    onClick={() =>
-                      void openControlPanel({ page: "settings", settingsTab: "general" })
-                    }
-                  />
-                </>
-              )}
-
-              {activeSubmenu === "language" && (
-                <>
-                  {quickLanguages.map((language) => (
-                    <MenuRow
-                      key={language.value}
-                      icon={Languages}
-                      label={language.label}
-                      trailing={selectedLanguage === language.value ? "check" : undefined}
-                      onClick={() => handleSelectLanguage(language.value)}
-                    />
-                  ))}
-                  <div className="h-px bg-white/10 mx-1 my-1.5" />
-                  <MenuRow
-                    icon={Settings}
-                    label="More languages in settings"
-                    trailing="chevron"
-                    onClick={() =>
-                      void openControlPanel({ page: "settings", settingsTab: "preferences" })
-                    }
-                  />
-                </>
-              )}
-            </div>
-          )}
         </div>
+
+        {/* Cancel button: positioned relative to full window, clamped to stay in bounds */}
+        {(isRecording || isProcessing) && isHovered && cancelStyle && (
+          <button
+            aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              isRecording ? cancelRecording() : cancelProcessing();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseEnter={() => {
+              setIsHovered(true);
+              setWindowInteractivity(true);
+            }}
+            className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
+            style={cancelStyle}
+          >
+            <X size={10} strokeWidth={2.5} color="white" />
+          </button>
+        )}
+
+        {/* Context menu: positioned relative to full window, clamped to stay in bounds */}
+        {isCommandMenuOpen && menuStyle && (
+          <div
+            ref={commandMenuRef}
+            className="w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
+            style={{
+              animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+              ...menuStyle,
+            }}
+            onMouseEnter={() => setWindowInteractivity(true)}
+          >
+            {activeSubmenu !== "root" && (
+              <button
+                onClick={() => setActiveSubmenu("root")}
+                className="w-full mb-1 px-2 py-1.5 rounded-lg hover:bg-white/6 transition-colors text-left text-[12px] text-white/75 flex items-center gap-2"
+              >
+                <ArrowLeft size={13} />
+                Back
+              </button>
+            )}
+
+            {activeSubmenu === "root" && (
+              <>
+                <MenuRow icon={Clock3} label="Hide this for 1 hour" onClick={handleHideForHour} />
+                <MenuRow
+                  icon={MessageCircle}
+                  label="Talk to support"
+                  onClick={() => void handleContactSupport()}
+                />
+                <MenuRow
+                  icon={Settings}
+                  label="Go to settings"
+                  onClick={() =>
+                    void openControlPanel({ page: "settings", settingsTab: "general" })
+                  }
+                />
+
+                <div className="h-px bg-white/10 mx-1 my-1.5" />
+
+                <MenuRow
+                  icon={Mic2}
+                  label="Change microphone"
+                  trailing="chevron"
+                  onClick={() => setActiveSubmenu("audio")}
+                />
+                <MenuRow
+                  icon={Languages}
+                  label="Select language"
+                  hint={getLanguageLabel(selectedLanguage)}
+                  trailing="chevron"
+                  onClick={() => setActiveSubmenu("language")}
+                />
+
+                <div className="h-px bg-white/10 mx-1 my-1.5" />
+
+                <MenuRow
+                  icon={History}
+                  label="View transcript history"
+                  onClick={() => void openControlPanel({ page: "history" })}
+                />
+                <MenuRow
+                  icon={Clipboard}
+                  label="Paste last transcript"
+                  hint="alt + shift + z"
+                  disabled={!lastTranscript}
+                  onClick={() => void handlePasteLastTranscript()}
+                />
+              </>
+            )}
+
+            {activeSubmenu === "audio" && (
+              <>
+                <MenuRow
+                  icon={AudioLines}
+                  label="Open audio input settings"
+                  onClick={() => void openAudioInputSettings()}
+                />
+                <MenuRow
+                  icon={Mic2}
+                  label="Open microphone privacy"
+                  onClick={() => void openMicrophonePermissions()}
+                />
+                <MenuRow
+                  icon={Settings}
+                  label="Open Privoca microphone settings"
+                  onClick={() =>
+                    void openControlPanel({ page: "settings", settingsTab: "general" })
+                  }
+                />
+              </>
+            )}
+
+            {activeSubmenu === "language" && (
+              <>
+                {quickLanguages.map((language) => (
+                  <MenuRow
+                    key={language.value}
+                    icon={Languages}
+                    label={language.label}
+                    trailing={selectedLanguage === language.value ? "check" : undefined}
+                    onClick={() => handleSelectLanguage(language.value)}
+                  />
+                ))}
+                <div className="h-px bg-white/10 mx-1 my-1.5" />
+                <MenuRow
+                  icon={Settings}
+                  label="More languages in settings"
+                  trailing="chevron"
+                  onClick={() =>
+                    void openControlPanel({ page: "settings", settingsTab: "preferences" })
+                  }
+                />
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
