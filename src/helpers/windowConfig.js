@@ -90,7 +90,8 @@ class WindowPositionUtil {
     const { width, height } = customSize || WINDOW_SIZES.BASE;
     const MARGIN = 24;
     const workArea = display.workArea || display.bounds;
-    const x = Math.max(0, workArea.x + workArea.width - width - MARGIN);
+    // Position at bottom-left corner with margin
+    const x = Math.max(0, workArea.x + MARGIN);
     const y = Math.max(0, workArea.y + workArea.height - height - MARGIN);
     return { x, y, width, height };
   }
