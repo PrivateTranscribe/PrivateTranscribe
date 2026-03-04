@@ -429,42 +429,25 @@ export default function App() {
     }
   };
 
-  // Compute fixed-window positions for cancel button and context menu,
-  // clamped so neither element clips outside the BrowserWindow.
-  const { menuStyle, cancelStyle } = (() => {
+  // Compute fixed-window position for context menu, clamped to stay in bounds.
+  const menuStyle = (() => {
     const btn = buttonRef.current;
-    if (!btn) return { menuStyle: null, cancelStyle: null };
+    if (!btn) return null;
     const rect = btn.getBoundingClientRect();
     const iW = window.innerWidth;
     const iH = window.innerHeight;
     const edge = 8;
 
-    // Context menu: centered above the button, clamped horizontally
     const menuWidth = 248;
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
     const menuBottom = iH - rect.top + 12;
 
-    // Cancel button: prefer left of icon, fall back to right
-    const cancelSize = 20;
-    const gap = 8;
-    const preferLeft = rect.left - gap - cancelSize;
-    const cancelLeft = preferLeft >= edge ? preferLeft : rect.right + gap;
-    const cancelTop = rect.top + rect.height / 2 - cancelSize / 2;
-
     return {
-      menuStyle: {
-        position: "absolute",
-        left: menuLeft,
-        bottom: menuBottom,
-        pointerEvents: "auto",
-      },
-      cancelStyle: {
-        position: "absolute",
-        left: cancelLeft,
-        top: cancelTop,
-        pointerEvents: "auto",
-      },
+      position: "absolute",
+      left: menuLeft,
+      bottom: menuBottom,
+      pointerEvents: "auto",
     };
   })();
 
@@ -491,9 +474,24 @@ export default function App() {
         elements (cancel button, menu) entering or leaving the DOM.
       */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}>
-        {/* Icon anchor — the only element that touches the layout; nothing inside moves it */}
+        {/*
+          Hover container: 16px padding around icon expands the hit-area so moving
+          the cursor toward the cancel button doesn't immediately leave hover state.
+          bottom: 8 + padding 16 = icon visually at bottom:24 (unchanged).
+          left:   8 + padding 16 = icon visually at left:24  (unchanged).
+          Cancel button lives inside via flexbox — no gap to cross when moving right.
+        */}
         <div
-          style={{ position: "absolute", bottom: 24, left: 24, pointerEvents: "auto" }}
+          style={{
+            position: "absolute",
+            bottom: 8,
+            left: 8,
+            padding: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            pointerEvents: "auto",
+          }}
           onMouseEnter={() => {
             setIsHovered(true);
             setWindowInteractivity(true);
@@ -569,6 +567,7 @@ export default function App() {
               ...getMicButtonStyles(),
               cursor:
                 micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
+              flexShrink: 0,
             }}
           >
             {micState === "idle" || micState === "hover" ? (
@@ -590,31 +589,27 @@ export default function App() {
               <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
             )}
           </button>
-        </div>
 
-        {/* Cancel button: positioned relative to full window, clamped to stay in bounds */}
-        {(isRecording || isProcessing) && isHovered && cancelStyle && (
-          <button
-            aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              isRecording ? cancelRecording() : cancelProcessing();
-            }}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onMouseEnter={() => {
-              setIsHovered(true);
-              setWindowInteractivity(true);
-            }}
-            className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
-            style={cancelStyle}
-          >
-            <X size={10} strokeWidth={2.5} color="white" />
-          </button>
-        )}
+          {/* Cancel button inside hover container — cursor moving from icon to here stays hovered */}
+          {(isRecording || isProcessing) && isHovered && (
+            <button
+              aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isRecording ? cancelRecording() : cancelProcessing();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
+              style={{ pointerEvents: "auto", flexShrink: 0 }}
+            >
+              <X size={10} strokeWidth={2.5} color="white" />
+            </button>
+          )}
+        </div>
 
         {/* Context menu: positioned relative to full window, clamped to stay in bounds */}
         {isCommandMenuOpen && menuStyle && (
