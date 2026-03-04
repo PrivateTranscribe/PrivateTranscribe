@@ -89,9 +89,9 @@ class WindowPositionUtil {
   static getMainWindowPosition(display, customSize = null) {
     const { width, height } = customSize || WINDOW_SIZES.BASE;
     const workArea = display.workArea || display.bounds;
-    // Default: centered on the display workArea
+    // Default: bottom-center of the display workArea
     const x = Math.round(workArea.x + (workArea.width - width) / 2);
-    const y = Math.round(workArea.y + (workArea.height - height) / 2);
+    const y = Math.round(workArea.y + workArea.height - height);
     return { x, y, width, height };
   }
 
