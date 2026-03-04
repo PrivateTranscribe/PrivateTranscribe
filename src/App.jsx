@@ -439,6 +439,36 @@ export default function App() {
     }
   };
 
+  // Compute menu horizontal alignment based on screen position to stay on-screen.
+  // Called at render time so it reflects current drag position.
+  const getMenuPositionStyle = () => {
+    if (!buttonRef.current) return { left: 0 };
+    const rect = buttonRef.current.getBoundingClientRect();
+    const centerScreenX = (window.screenX ?? 0) + rect.left + rect.width / 2;
+    const screenWidth = window.screen?.width ?? 1920;
+    const menuWidth = 248;
+    const edge = 20;
+    if (centerScreenX + menuWidth / 2 > screenWidth - edge) {
+      // Near right edge: align menu's right edge to button's right edge
+      return { right: 0 };
+    }
+    if (centerScreenX - menuWidth / 2 < edge) {
+      // Near left edge: align menu's left edge to button's left edge
+      return { left: 0 };
+    }
+    // Default: centered above the button
+    return { left: "50%", transform: "translateX(-50%)" };
+  };
+
+  // Prefer cancel button to the left of the icon; fall back to right if near left screen edge.
+  const getCancelSide = () => {
+    if (!buttonRef.current) return "left";
+    const rect = buttonRef.current.getBoundingClientRect();
+    const screenX = (window.screenX ?? 0) + rect.left;
+    // Need ~52px clearance to the left (20px cancel + 8px gap + some margin)
+    return screenX >= 52 ? "left" : "right";
+  };
+
   return (
     <div className="dictation-window">
       <style>{`
@@ -454,9 +484,17 @@ export default function App() {
         }
       `}</style>
 
-      <div className="fixed bottom-6 left-6 z-50">
+      {/*
+        Absolute-position root: fills the entire Electron window.
+        pointer-events: none on the root so transparent areas stay click-through;
+        pointer-events: auto re-enabled on the icon anchor only.
+        This ensures the icon at bottom: 24 / left: 24 never shifts due to sibling
+        elements (cancel button, menu) entering or leaving the DOM.
+      */}
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}>
+        {/* Icon anchor — the only element that touches the layout; nothing inside moves it */}
         <div
-          className="relative flex flex-col items-end gap-2"
+          style={{ position: "absolute", bottom: 24, left: 24, pointerEvents: "auto" }}
           onMouseEnter={() => {
             setIsHovered(true);
             setWindowInteractivity(true);
@@ -468,121 +506,134 @@ export default function App() {
             }
           }}
         >
-          <div className="flex items-center gap-2">
-            {(isRecording || isProcessing) && isHovered && (
-              <button
-                aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  isRecording ? cancelRecording() : cancelProcessing();
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
-              >
-                <X size={10} strokeWidth={2.5} color="white" />
-              </button>
-            )}
-
+          {/* Cancel button: absolutely positioned beside the icon — never pushes it */}
+          {(isRecording || isProcessing) && isHovered && (
             <button
-              ref={buttonRef}
-              aria-label="Dictation overlay"
+              aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
               onMouseDown={(e) => {
-                if (e.button !== 0) {
-                  return;
-                }
-                closeContextMenu(false);
-                setDragStartPos({ x: e.clientX, y: e.clientY });
-                setHasDragged(false);
-                dragInitiatedRef.current = false;
-                suppressClickAfterDragRef.current = false;
-              }}
-              onMouseMove={(e) => {
-                if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
-                  const distance = Math.sqrt(
-                    Math.pow(e.clientX - dragStartPos.x, 2) +
-                      Math.pow(e.clientY - dragStartPos.y, 2)
-                  );
-                  if (distance > 5 && !dragInitiatedRef.current) {
-                    dragInitiatedRef.current = true;
-                    setHasDragged(true);
-                    handleMouseDown(e);
-                  }
-                }
-              }}
-              onMouseUp={(e) => {
-                const didDrag = dragInitiatedRef.current || hasDragged;
-                if (dragInitiatedRef.current) {
-                  handleMouseUp(e);
-                }
-                dragInitiatedRef.current = false;
-                setDragStartPos(null);
-                setHasDragged(false);
-
-                if (didDrag) {
-                  suppressClickAfterDragRef.current = true;
-                  setTimeout(() => {
-                    suppressClickAfterDragRef.current = false;
-                  }, 0);
-                }
+                e.preventDefault();
+                e.stopPropagation();
+                isRecording ? cancelRecording() : cancelProcessing();
               }}
               onClick={(e) => {
-                if (suppressClickAfterDragRef.current) {
-                  e.preventDefault();
-                  return;
-                }
-
-                if (!hasDragged) {
-                  closeContextMenu(false);
-                  toggleListening();
-                }
                 e.preventDefault();
+                e.stopPropagation();
               }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                if (!hasDragged) {
-                  setWindowInteractivity(true);
-                  setActiveSubmenu("root");
-                  setIsCommandMenuOpen((prev) => !prev);
-                }
-              }}
-              onFocus={() => setIsHovered(true)}
-              onBlur={() => setIsHovered(false)}
+              className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
               style={{
-                ...getMicButtonStyles(),
-                cursor:
-                  micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
+                position: "absolute",
+                top: "50%",
+                transform: "translateY(-50%)",
+                ...(getCancelSide() === "left"
+                  ? { right: "calc(100% + 8px)" }
+                  : { left: "calc(100% + 8px)" }),
               }}
             >
-              {micState === "idle" || micState === "hover" ? (
-                <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
-              ) : micState === "recording" ? (
-                <LoadingDots />
-              ) : micState === "processing" ? (
-                <VoiceWaveIndicator isListening={true} />
-              ) : null}
-
-              {micState === "recording" && (
-                <div
-                  className="absolute inset-0 rounded-full border-2 border-[#70FFBA]/40"
-                  style={{ animation: "ring-pulse 2s ease-in-out infinite" }}
-                />
-              )}
-
-              {micState === "processing" && (
-                <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
-              )}
+              <X size={10} strokeWidth={2.5} color="white" />
             </button>
-          </div>
+          )}
 
+          <button
+            ref={buttonRef}
+            aria-label="Dictation overlay"
+            onMouseDown={(e) => {
+              if (e.button !== 0) {
+                return;
+              }
+              closeContextMenu(false);
+              setDragStartPos({ x: e.clientX, y: e.clientY });
+              setHasDragged(false);
+              dragInitiatedRef.current = false;
+              suppressClickAfterDragRef.current = false;
+            }}
+            onMouseMove={(e) => {
+              if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
+                const distance = Math.sqrt(
+                  Math.pow(e.clientX - dragStartPos.x, 2) +
+                    Math.pow(e.clientY - dragStartPos.y, 2)
+                );
+                if (distance > 5 && !dragInitiatedRef.current) {
+                  dragInitiatedRef.current = true;
+                  setHasDragged(true);
+                  handleMouseDown(e);
+                }
+              }
+            }}
+            onMouseUp={(e) => {
+              const didDrag = dragInitiatedRef.current || hasDragged;
+              if (dragInitiatedRef.current) {
+                handleMouseUp(e);
+              }
+              dragInitiatedRef.current = false;
+              setDragStartPos(null);
+              setHasDragged(false);
+
+              if (didDrag) {
+                suppressClickAfterDragRef.current = true;
+                setTimeout(() => {
+                  suppressClickAfterDragRef.current = false;
+                }, 0);
+              }
+            }}
+            onClick={(e) => {
+              if (suppressClickAfterDragRef.current) {
+                e.preventDefault();
+                return;
+              }
+
+              if (!hasDragged) {
+                closeContextMenu(false);
+                toggleListening();
+              }
+              e.preventDefault();
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              if (!hasDragged) {
+                setWindowInteractivity(true);
+                setActiveSubmenu("root");
+                setIsCommandMenuOpen((prev) => !prev);
+              }
+            }}
+            onFocus={() => setIsHovered(true)}
+            onBlur={() => setIsHovered(false)}
+            style={{
+              ...getMicButtonStyles(),
+              cursor:
+                micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
+            }}
+          >
+            {micState === "idle" || micState === "hover" ? (
+              <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
+            ) : micState === "recording" ? (
+              <LoadingDots />
+            ) : micState === "processing" ? (
+              <VoiceWaveIndicator isListening={true} />
+            ) : null}
+
+            {micState === "recording" && (
+              <div
+                className="absolute inset-0 rounded-full border-2 border-[#70FFBA]/40"
+                style={{ animation: "ring-pulse 2s ease-in-out infinite" }}
+              />
+            )}
+
+            {micState === "processing" && (
+              <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
+            )}
+          </button>
+
+          {/* Context menu: absolutely positioned above the icon, edge-aware horizontal alignment */}
           {isCommandMenuOpen && (
             <div
               ref={commandMenuRef}
-              className="absolute bottom-full left-0 mb-3 w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
-              style={{ animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)" }}
+              className="w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
+              style={{
+                position: "absolute",
+                bottom: "calc(100% + 12px)",
+                animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+                ...getMenuPositionStyle(),
+              }}
               onMouseEnter={() => setWindowInteractivity(true)}
             >
               {activeSubmenu !== "root" && (
