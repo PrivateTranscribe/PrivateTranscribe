@@ -554,7 +554,7 @@ export default function App() {
                 suppressClickAfterDragRef.current = true;
                 setTimeout(() => {
                   suppressClickAfterDragRef.current = false;
-                }, 0);
+                }, 250);
               }
             }}
             onClick={(e) => {

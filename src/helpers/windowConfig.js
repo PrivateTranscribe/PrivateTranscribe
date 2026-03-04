@@ -88,12 +88,17 @@ const CONTROL_PANEL_CONFIG = {
 class WindowPositionUtil {
   static getMainWindowPosition(display, customSize = null) {
     const { width, height } = customSize || WINDOW_SIZES.BASE;
-    const MARGIN = 24;
     const workArea = display.workArea || display.bounds;
-    // Position at bottom-left corner with margin
-    const x = Math.max(0, workArea.x + MARGIN);
-    const y = Math.max(0, workArea.y + workArea.height - height - MARGIN);
+    // Default: centered on the display workArea
+    const x = Math.round(workArea.x + (workArea.width - width) / 2);
+    const y = Math.round(workArea.y + (workArea.height - height) / 2);
     return { x, y, width, height };
+  }
+
+  static clampPosition(x, y, width, height, workArea) {
+    const cx = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - width));
+    const cy = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - height));
+    return { x: cx, y: cy };
   }
 
   static setupAlwaysOnTop(window) {

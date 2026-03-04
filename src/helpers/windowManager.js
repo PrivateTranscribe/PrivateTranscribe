@@ -1,3 +1,5 @@
+const path = require("path");
+const fs = require("fs");
 const { app, screen, BrowserWindow, dialog } = require("electron");
 const HotkeyManager = require("./hotkeyManager");
 const DragManager = require("./dragManager");
@@ -29,6 +31,10 @@ class WindowManager {
     // Windows overlay stability: debounced re-apply always-on-top after blur/focus races.
     this.mainWindowOnTopRepairTimer = null;
 
+    // Position persistence
+    this._positionFile = null;
+    this._positionSaveTimer = null;
+
     app.on("before-quit", () => {
       this.isQuitting = true;
     });
@@ -42,9 +48,53 @@ class WindowManager {
     this.activationModeCache = mode === "push" ? "push" : "tap";
   }
 
+  _getPositionFile() {
+    if (!this._positionFile) {
+      this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
+    }
+    return this._positionFile;
+  }
+
+  _loadSavedPosition() {
+    try {
+      const raw = fs.readFileSync(this._getPositionFile(), "utf8");
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+        return parsed;
+      }
+    } catch {
+      // No saved position or parse error — use default
+    }
+    return null;
+  }
+
+  _scheduleSavePosition(x, y) {
+    if (this._positionSaveTimer) {
+      clearTimeout(this._positionSaveTimer);
+    }
+    this._positionSaveTimer = setTimeout(() => {
+      this._positionSaveTimer = null;
+      try {
+        fs.writeFileSync(this._getPositionFile(), JSON.stringify({ x, y }), "utf8");
+      } catch (err) {
+        debugLogger.debug("[Window] Failed to save overlay position:", err.message);
+      }
+    }, 500);
+  }
+
   async createMainWindow() {
     const display = screen.getPrimaryDisplay();
-    const position = WindowPositionUtil.getMainWindowPosition(display);
+    const { width, height } = WINDOW_SIZES.BASE;
+    const workArea = display.workArea || display.bounds;
+
+    const saved = this._loadSavedPosition();
+    let position;
+    if (saved) {
+      const clamped = WindowPositionUtil.clampPosition(saved.x, saved.y, width, height, workArea);
+      position = { ...clamped, width, height };
+    } else {
+      position = WindowPositionUtil.getMainWindowPosition(display);
+    }
 
     this.mainWindow = new BrowserWindow({
       ...MAIN_WINDOW_CONFIG,
@@ -482,10 +532,21 @@ class WindowManager {
       debugLogger.debug("[Window] main hide");
     });
 
+    this.mainWindow.on("moved", () => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        const [x, y] = this.mainWindow.getPosition();
+        this._scheduleSavePosition(x, y);
+      }
+    });
+
     this.mainWindow.on("closed", () => {
       if (this.mainWindowOnTopRepairTimer) {
         clearTimeout(this.mainWindowOnTopRepairTimer);
         this.mainWindowOnTopRepairTimer = null;
+      }
+      if (this._positionSaveTimer) {
+        clearTimeout(this._positionSaveTimer);
+        this._positionSaveTimer = null;
       }
       this.dragManager.cleanup();
       this.mainWindow = null;
