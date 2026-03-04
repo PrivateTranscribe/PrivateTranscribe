@@ -117,18 +117,15 @@ class WindowManager {
     const newSize = WINDOW_SIZES[sizeKey] || WINDOW_SIZES.BASE;
     const currentBounds = this.mainWindow.getBounds();
 
-    // Anchor at bottom-left corner when resizing
-    const bottomLeftX = currentBounds.x;
-    const bottomLeftY = currentBounds.y + currentBounds.height;
+    const bottomRightX = currentBounds.x + currentBounds.width;
+    const bottomRightY = currentBounds.y + currentBounds.height;
 
-    const display = screen.getDisplayNearestPoint({ x: bottomLeftX, y: bottomLeftY });
+    const display = screen.getDisplayNearestPoint({ x: bottomRightX, y: bottomRightY });
     const workArea = display.workArea || display.bounds;
 
-    // Keep same X (left edge), adjust Y to maintain bottom alignment
-    let newX = bottomLeftX;
-    let newY = bottomLeftY - newSize.height;
+    let newX = bottomRightX - newSize.width;
+    let newY = bottomRightY - newSize.height;
 
-    // Clamp within viewport bounds (prevent off-screen drift)
     newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - newSize.width));
     newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - newSize.height));
 
