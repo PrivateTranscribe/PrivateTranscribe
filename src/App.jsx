@@ -20,7 +20,6 @@ import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
-import { formatHotkeyLabel } from "./utils/hotkeys";
 
 const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
@@ -177,10 +176,16 @@ export default function App() {
     closeContextMenu();
   }, [closeContextMenu]);
 
-  const { isRecording, isProcessing, transcript, toggleListening, cancelRecording, cancelProcessing } =
-    useAudioRecording(toast, {
-      onToggle: handleDictationToggle,
-    });
+  const {
+    isRecording,
+    isProcessing,
+    transcript,
+    toggleListening,
+    cancelRecording,
+    cancelProcessing,
+  } = useAudioRecording(toast, {
+    onToggle: handleDictationToggle,
+  });
 
   useEffect(() => {
     setWindowInteractivity(false);
@@ -216,14 +221,7 @@ export default function App() {
     } else if (!isHovered) {
       setWindowInteractivity(false);
     }
-  }, [
-    isCommandMenuOpen,
-    isHovered,
-    toastCount,
-    isRecording,
-    isProcessing,
-    setWindowInteractivity,
-  ]);
+  }, [isCommandMenuOpen, isHovered, toastCount, isRecording, isProcessing, setWindowInteractivity]);
 
   useEffect(() => {
     const resizeWindow = () => {
@@ -456,7 +454,7 @@ export default function App() {
         }
       `}</style>
 
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-6 left-6 z-50">
         <div
           className="relative flex flex-col items-end gap-2"
           onMouseEnter={() => {
@@ -490,109 +488,100 @@ export default function App() {
             )}
 
             <button
-            ref={buttonRef}
-            aria-label="Dictation overlay"
-            onMouseDown={(e) => {
-              if (e.button !== 0) {
-                return;
-              }
-              closeContextMenu(false);
-              setDragStartPos({ x: e.clientX, y: e.clientY });
-              setHasDragged(false);
-              dragInitiatedRef.current = false;
-              suppressClickAfterDragRef.current = false;
-            }}
-            onMouseMove={(e) => {
-              if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
-                const distance = Math.sqrt(
-                  Math.pow(e.clientX - dragStartPos.x, 2) + Math.pow(e.clientY - dragStartPos.y, 2)
-                );
-                if (distance > 5 && !dragInitiatedRef.current) {
-                  dragInitiatedRef.current = true;
-                  setHasDragged(true);
-                  handleMouseDown(e);
+              ref={buttonRef}
+              aria-label="Dictation overlay"
+              onMouseDown={(e) => {
+                if (e.button !== 0) {
+                  return;
                 }
-              }
-            }}
-            onMouseUp={(e) => {
-              const didDrag = dragInitiatedRef.current || hasDragged;
-              if (dragInitiatedRef.current) {
-                handleMouseUp(e);
-              }
-              dragInitiatedRef.current = false;
-              setDragStartPos(null);
-              setHasDragged(false);
-
-              if (didDrag) {
-                suppressClickAfterDragRef.current = true;
-                setTimeout(() => {
-                  suppressClickAfterDragRef.current = false;
-                }, 0);
-              }
-            }}
-            onClick={(e) => {
-              if (suppressClickAfterDragRef.current) {
-                e.preventDefault();
-                return;
-              }
-
-              if (!hasDragged) {
                 closeContextMenu(false);
-                toggleListening();
-              }
-              e.preventDefault();
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              if (!hasDragged) {
-                setWindowInteractivity(true);
-                setActiveSubmenu("root");
-                setIsCommandMenuOpen((prev) => !prev);
-              }
-            }}
-            onFocus={() => setIsHovered(true)}
-            onBlur={() => setIsHovered(false)}
-            style={{
-              ...getMicButtonStyles(),
-              cursor: micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
-            }}
-          >
-            {micState === "idle" || micState === "hover" ? (
-              <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
-            ) : micState === "recording" ? (
-              <LoadingDots />
-            ) : micState === "processing" ? (
-              <VoiceWaveIndicator isListening={true} />
-            ) : null}
+                setDragStartPos({ x: e.clientX, y: e.clientY });
+                setHasDragged(false);
+                dragInitiatedRef.current = false;
+                suppressClickAfterDragRef.current = false;
+              }}
+              onMouseMove={(e) => {
+                if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
+                  const distance = Math.sqrt(
+                    Math.pow(e.clientX - dragStartPos.x, 2) +
+                      Math.pow(e.clientY - dragStartPos.y, 2)
+                  );
+                  if (distance > 5 && !dragInitiatedRef.current) {
+                    dragInitiatedRef.current = true;
+                    setHasDragged(true);
+                    handleMouseDown(e);
+                  }
+                }
+              }}
+              onMouseUp={(e) => {
+                const didDrag = dragInitiatedRef.current || hasDragged;
+                if (dragInitiatedRef.current) {
+                  handleMouseUp(e);
+                }
+                dragInitiatedRef.current = false;
+                setDragStartPos(null);
+                setHasDragged(false);
 
-            {micState === "recording" && (
-              <div
-                className="absolute inset-0 rounded-full border-2 border-[#70FFBA]/40"
-                style={{ animation: "ring-pulse 2s ease-in-out infinite" }}
-              />
-            )}
+                if (didDrag) {
+                  suppressClickAfterDragRef.current = true;
+                  setTimeout(() => {
+                    suppressClickAfterDragRef.current = false;
+                  }, 0);
+                }
+              }}
+              onClick={(e) => {
+                if (suppressClickAfterDragRef.current) {
+                  e.preventDefault();
+                  return;
+                }
 
-            {micState === "processing" && (
-              <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
-            )}
-          </button>
-          </div>
-
-          {isHovered && !isRecording && !isProcessing && (
-            <div
-              className="text-[11px] text-white/50 font-medium tracking-wide transition-opacity duration-200"
+                if (!hasDragged) {
+                  closeContextMenu(false);
+                  toggleListening();
+                }
+                e.preventDefault();
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!hasDragged) {
+                  setWindowInteractivity(true);
+                  setActiveSubmenu("root");
+                  setIsCommandMenuOpen((prev) => !prev);
+                }
+              }}
+              onFocus={() => setIsHovered(true)}
+              onBlur={() => setIsHovered(false)}
               style={{
-                textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+                ...getMicButtonStyles(),
+                cursor:
+                  micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
               }}
             >
-              Press {formatHotkeyLabel(hotkey)}
-            </div>
-          )}
+              {micState === "idle" || micState === "hover" ? (
+                <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
+              ) : micState === "recording" ? (
+                <LoadingDots />
+              ) : micState === "processing" ? (
+                <VoiceWaveIndicator isListening={true} />
+              ) : null}
+
+              {micState === "recording" && (
+                <div
+                  className="absolute inset-0 rounded-full border-2 border-[#70FFBA]/40"
+                  style={{ animation: "ring-pulse 2s ease-in-out infinite" }}
+                />
+              )}
+
+              {micState === "processing" && (
+                <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
+              )}
+            </button>
+          </div>
 
           {isCommandMenuOpen && (
             <div
               ref={commandMenuRef}
-              className="absolute bottom-full right-0 mb-3 w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
+              className="absolute bottom-full left-0 mb-3 w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
               style={{ animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)" }}
               onMouseEnter={() => setWindowInteractivity(true)}
             >
@@ -608,11 +597,7 @@ export default function App() {
 
               {activeSubmenu === "root" && (
                 <>
-                  <MenuRow
-                    icon={Clock3}
-                    label="Hide this for 1 hour"
-                    onClick={handleHideForHour}
-                  />
+                  <MenuRow icon={Clock3} label="Hide this for 1 hour" onClick={handleHideForHour} />
                   <MenuRow
                     icon={MessageCircle}
                     label="Talk to support"
