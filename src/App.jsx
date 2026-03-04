@@ -107,8 +107,8 @@ export default function App() {
   const [lastTranscript, setLastTranscript] = useState(
     () => localStorage.getItem(LAST_TRANSCRIPT_KEY) || ""
   );
-  const [dragStartPos, setDragStartPos] = useState(null);
-  const [hasDragged, setHasDragged] = useState(false);
+  const dragStartPosRef = useRef(null);
+  const didMoveRef = useRef(false);
   const dragInitiatedRef = useRef(false);
   const suppressClickAfterDragRef = useRef(false);
 
@@ -258,16 +258,6 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isCommandMenuOpen, closeContextMenu]);
 
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      dragInitiatedRef.current = false;
-      setDragStartPos(null);
-      setHasDragged(false);
-    };
-
-    document.addEventListener("mouseup", handleGlobalMouseUp, true);
-    return () => document.removeEventListener("mouseup", handleGlobalMouseUp, true);
-  }, []);
 
   useEffect(() => {
     const handleKeyPress = (e) => {
@@ -523,55 +513,51 @@ export default function App() {
                 return;
               }
               closeContextMenu(false);
-              setDragStartPos({ x: e.clientX, y: e.clientY });
-              setHasDragged(false);
+              dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+              didMoveRef.current = false;
               dragInitiatedRef.current = false;
               suppressClickAfterDragRef.current = false;
             }}
             onMouseMove={(e) => {
-              if (dragStartPos && !hasDragged && (e.buttons & 1) === 1) {
-                const distance = Math.sqrt(
-                  Math.pow(e.clientX - dragStartPos.x, 2) +
-                    Math.pow(e.clientY - dragStartPos.y, 2)
-                );
-                if (distance > 5 && !dragInitiatedRef.current) {
-                  dragInitiatedRef.current = true;
-                  setHasDragged(true);
-                  handleMouseDown(e);
+              if (dragStartPosRef.current && (e.buttons & 1) === 1) {
+                const dx = e.clientX - dragStartPosRef.current.x;
+                const dy = e.clientY - dragStartPosRef.current.y;
+                if (dx * dx + dy * dy > 25) {
+                  didMoveRef.current = true;
+                  if (!dragInitiatedRef.current) {
+                    dragInitiatedRef.current = true;
+                    handleMouseDown(e);
+                  }
                 }
               }
             }}
             onMouseUp={(e) => {
-              const didDrag = dragInitiatedRef.current || hasDragged;
               if (dragInitiatedRef.current) {
                 handleMouseUp(e);
               }
               dragInitiatedRef.current = false;
-              setDragStartPos(null);
-              setHasDragged(false);
+              dragStartPosRef.current = null;
 
-              if (didDrag) {
+              if (didMoveRef.current) {
                 suppressClickAfterDragRef.current = true;
                 setTimeout(() => {
                   suppressClickAfterDragRef.current = false;
-                }, 250);
+                  didMoveRef.current = false;
+                }, 400);
               }
             }}
             onClick={(e) => {
-              if (suppressClickAfterDragRef.current) {
+              if (suppressClickAfterDragRef.current || didMoveRef.current || dragInitiatedRef.current) {
                 e.preventDefault();
                 return;
               }
-
-              if (!hasDragged) {
-                closeContextMenu(false);
-                toggleListening();
-              }
+              closeContextMenu(false);
+              toggleListening();
               e.preventDefault();
             }}
             onContextMenu={(e) => {
               e.preventDefault();
-              if (!hasDragged) {
+              if (!didMoveRef.current && !suppressClickAfterDragRef.current) {
                 setWindowInteractivity(true);
                 setActiveSubmenu("root");
                 setIsCommandMenuOpen((prev) => !prev);
