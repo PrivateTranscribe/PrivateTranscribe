@@ -64,6 +64,15 @@ class WhisperManager {
       const { localTranscriptionProvider, whisperModel } = settings;
 
       if (
+        typeof settings.whisperServerIdleTimeoutMinutes === "number" &&
+        Number.isFinite(settings.whisperServerIdleTimeoutMinutes)
+      ) {
+        // 0 => disable auto-stop
+        const minutes = Math.max(0, settings.whisperServerIdleTimeoutMinutes);
+        this.serverManager.setIdleTimeoutMs(minutes * 60 * 1000);
+      }
+
+      if (
         localTranscriptionProvider === "whisper" &&
         whisperModel &&
         this.serverManager.isAvailable()
@@ -207,6 +216,14 @@ class WhisperManager {
   async stopServer() {
     await this.serverManager.stop();
     this.currentServerModel = null;
+  }
+
+  setServerIdleTimeoutMinutes(minutes) {
+    const parsed = Number(minutes);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error("Invalid idle timeout minutes");
+    }
+    return this.serverManager.setIdleTimeoutMs(parsed * 60 * 1000);
   }
 
   getServerStatus() {

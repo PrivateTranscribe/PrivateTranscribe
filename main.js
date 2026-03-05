@@ -181,6 +181,12 @@ async function startApp() {
   const whisperSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     whisperModel: process.env.LOCAL_WHISPER_MODEL,
+    whisperServerIdleTimeoutMinutes: (() => {
+      // Important: "0" is a valid value (disable idle auto-stop), so we can't use a truthy check.
+      if (process.env.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES === undefined) return undefined;
+      const raw = parseInt(process.env.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES, 10);
+      return Number.isFinite(raw) && raw >= 0 ? raw : undefined;
+    })(),
   };
   whisperManager.initializeAtStartup(whisperSettings).catch((err) => {
     // Whisper not being available at startup is not critical

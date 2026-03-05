@@ -293,6 +293,7 @@ declare global {
         useLocalWhisper: boolean;
         localTranscriptionProvider: LocalTranscriptionProvider;
         model?: string;
+        whisperServerIdleTimeoutMinutes?: number;
         reasoningProvider: string;
         reasoningModel?: string;
       }) => Promise<void>;
@@ -330,6 +331,12 @@ declare global {
         message?: string;
         error?: string;
       }>;
+
+      // whisper-server operations (persistent local server for fast repeat transcriptions)
+      whisperServerStart: (modelName: string) => Promise<any>;
+      whisperServerStop: () => Promise<any>;
+      whisperServerStatus: () => Promise<any>;
+      whisperServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
 
       // Parakeet operations (NVIDIA via sherpa-onnx)
       transcribeLocalParakeet: (

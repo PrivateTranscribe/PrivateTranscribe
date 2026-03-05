@@ -223,6 +223,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     whisperModel,
     localTranscriptionProvider,
     parakeetModel,
+    whisperServerIdleTimeoutMinutes,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -248,6 +249,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperModel,
     setLocalTranscriptionProvider,
     setParakeetModel,
+    setWhisperServerIdleTimeoutMinutes,
     setCloudTranscriptionProvider,
     setCloudTranscriptionModel,
     setCloudTranscriptionBaseUrl,
@@ -302,6 +304,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
 
+  // Whisper-server idle shutdown setting (minutes) has a draft state to avoid snapping
+  // while typing (e.g. clearing the field).
+  const [whisperIdleDraft, setWhisperIdleDraft] = useState<string>(
+    String(whisperServerIdleTimeoutMinutes)
+  );
+  useEffect(() => {
+    setWhisperIdleDraft(String(whisperServerIdleTimeoutMinutes));
+  }, [whisperServerIdleTimeoutMinutes]);
+
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
       ? "%USERPROFILE%\\.cache\\Privoca\\whisper-models"
@@ -329,6 +340,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           localTranscriptionProvider,
           whisperModel,
           parakeetModel,
+          whisperServerIdleTimeoutMinutes,
           preferredLanguage,
           translateToEnglish,
           cloudTranscriptionProvider,
@@ -449,6 +461,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             : undefined,
         whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
         parakeetModel: typeof s.parakeetModel === "string" ? s.parakeetModel : undefined,
+        whisperServerIdleTimeoutMinutes:
+          typeof s.whisperServerIdleTimeoutMinutes === "number"
+            ? s.whisperServerIdleTimeoutMinutes
+            : undefined,
         preferredLanguage: typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
         translateToEnglish:
           s.translateToEnglish === "on" || s.translateToEnglish === "off"
@@ -1319,6 +1335,51 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               setCloudTranscriptionBaseUrl={setCloudTranscriptionBaseUrl}
               variant="settings"
             />
+
+            {useLocalWhisper && localTranscriptionProvider === "whisper" && (
+              <div className="mt-6">
+                <SectionHeader
+                  title="Local Whisper performance"
+                  description="Tune how the local whisper-server behaves after you stop dictating"
+                />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Idle shutdown (minutes)"
+                      description="Stops the local whisper-server after being idle to free RAM/VRAM. Set to 0 to keep it running."
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={240}
+                          step={1}
+                          value={whisperIdleDraft}
+                          onChange={(e) => {
+                            setWhisperIdleDraft(e.target.value);
+                          }}
+                          onBlur={() => {
+                            const raw = parseInt(whisperIdleDraft, 10);
+                            const next = Number.isFinite(raw)
+                              ? Math.max(0, Math.min(240, raw))
+                              : whisperServerIdleTimeoutMinutes;
+
+                            setWhisperIdleDraft(String(next));
+                            updateTranscriptionSettings({ whisperServerIdleTimeoutMinutes: next });
+
+                            // Best-effort: apply immediately if the server is already running.
+                            window.electronAPI?.whisperServerSetIdleTimeoutMinutes(next)?.catch(() => {});
+                          }}
+                          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          aria-label="Whisper server idle shutdown minutes"
+                        />
+                        <span className="text-xs text-muted-foreground">min</span>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+            )}
           </div>
         );
 

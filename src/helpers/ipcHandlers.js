@@ -430,6 +430,14 @@ class IPCHandlers {
       return this.whisperManager.getServerStatus();
     });
 
+    ipcMain.handle("whisper-server-set-idle-timeout-minutes", async (_event, minutes) => {
+      try {
+        return this.whisperManager.setServerIdleTimeoutMinutes(minutes);
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
     ipcMain.handle("check-ffmpeg-availability", async (event) => {
       return this.whisperManager.checkFFmpegAvailability();
     });
@@ -835,6 +843,18 @@ class IPCHandlers {
     ipcMain.handle("sync-startup-preferences", async (event, prefs) => {
       const setVars = {};
       const clearVars = [];
+
+      if (
+        typeof prefs.whisperServerIdleTimeoutMinutes === "number" &&
+        Number.isFinite(prefs.whisperServerIdleTimeoutMinutes)
+      ) {
+        // Persist as env var so it applies at next cold start / pre-warm.
+        setVars.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES = String(
+          Math.max(0, Math.floor(prefs.whisperServerIdleTimeoutMinutes))
+        );
+      } else {
+        clearVars.push("WHISPER_SERVER_IDLE_TIMEOUT_MINUTES");
+      }
 
       if (prefs.useLocalWhisper && prefs.model) {
         // Local mode with model selected - set provider and model for pre-warming

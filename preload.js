@@ -120,6 +120,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("whisper-server-start", modelName),
   whisperServerStop: () => ipcRenderer.invoke("whisper-server-stop"),
   whisperServerStatus: () => ipcRenderer.invoke("whisper-server-status"),
+  whisperServerSetIdleTimeoutMinutes: (minutes) =>
+    ipcRenderer.invoke("whisper-server-set-idle-timeout-minutes", minutes),
 
   // Local Parakeet (NVIDIA) functions
   transcribeLocalParakeet: (audioBlob, options) =>

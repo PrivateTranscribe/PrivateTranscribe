@@ -10,6 +10,8 @@ export interface TranscriptionSettings {
   whisperModel: string;
   localTranscriptionProvider: LocalTranscriptionProvider;
   parakeetModel: string;
+  /** Minutes before whisper-server is auto-stopped to free memory. 0 = never. */
+  whisperServerIdleTimeoutMinutes: number;
   allowOpenAIFallback: boolean;
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
@@ -81,6 +83,18 @@ export function useSettings() {
     serialize: String,
     deserialize: String,
   });
+
+  const [whisperServerIdleTimeoutMinutes, setWhisperServerIdleTimeoutMinutes] = useLocalStorage(
+    "whisperServerIdleTimeoutMinutes",
+    30,
+    {
+      serialize: String,
+      deserialize: (value) => {
+        const n = parseInt(value, 10);
+        return Number.isFinite(n) && n >= 0 ? n : 30;
+      },
+    }
+  );
 
   const [allowOpenAIFallback, setAllowOpenAIFallback] = useLocalStorage(
     "allowOpenAIFallback",
@@ -535,6 +549,7 @@ export function useSettings() {
         useLocalWhisper,
         localTranscriptionProvider,
         model: model || undefined,
+        whisperServerIdleTimeoutMinutes,
         reasoningProvider,
         reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
       })
@@ -544,6 +559,7 @@ export function useSettings() {
     localTranscriptionProvider,
     whisperModel,
     parakeetModel,
+    whisperServerIdleTimeoutMinutes,
     reasoningProvider,
     reasoningModel,
   ]);
@@ -579,6 +595,8 @@ export function useSettings() {
       if (settings.localTranscriptionProvider !== undefined)
         setLocalTranscriptionProvider(settings.localTranscriptionProvider);
       if (settings.parakeetModel !== undefined) setParakeetModel(settings.parakeetModel);
+      if (settings.whisperServerIdleTimeoutMinutes !== undefined)
+        setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
       if (settings.allowOpenAIFallback !== undefined)
         setAllowOpenAIFallback(settings.allowOpenAIFallback);
       if (settings.allowLocalFallback !== undefined)
@@ -602,6 +620,7 @@ export function useSettings() {
       setWhisperModel,
       setLocalTranscriptionProvider,
       setParakeetModel,
+      setWhisperServerIdleTimeoutMinutes,
       setAllowOpenAIFallback,
       setAllowLocalFallback,
       setFallbackWhisperModel,
@@ -642,6 +661,7 @@ export function useSettings() {
     whisperModel,
     localTranscriptionProvider,
     parakeetModel,
+    whisperServerIdleTimeoutMinutes,
     allowOpenAIFallback,
     allowLocalFallback,
     fallbackWhisperModel,
@@ -665,6 +685,7 @@ export function useSettings() {
     setWhisperModel,
     setLocalTranscriptionProvider,
     setParakeetModel,
+    setWhisperServerIdleTimeoutMinutes,
     setAllowOpenAIFallback,
     setAllowLocalFallback,
     setFallbackWhisperModel,

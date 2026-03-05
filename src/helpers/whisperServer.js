@@ -42,7 +42,7 @@ function resolveTempInputExtension(inputFileName) {
 }
 
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 class WhisperServerManager {
   constructor() {
@@ -60,6 +60,9 @@ class WhisperServerManager {
     this.lastUsedTime = 0;
     this.idleCheckTimeout = null;
     this.stoppedDueToIdle = false;
+
+    // Configurable idle timeout (ms). Set to 0 to disable auto-stop.
+    this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
   }
 
   getFFmpegPath() {
@@ -428,7 +431,12 @@ class WhisperServerManager {
 
     const now = Date.now();
     const idleForMs = now - this.lastUsedTime;
-    const remainingMs = Math.max(0, IDLE_TIMEOUT_MS - idleForMs);
+    const effectiveTimeout = this.idleTimeoutMs || 0;
+
+    // Disabled => never schedule.
+    if (effectiveTimeout <= 0) return;
+
+    const remainingMs = Math.max(0, effectiveTimeout - idleForMs);
 
     this.idleCheckTimeout = setTimeout(() => {
       // Fire-and-forget. If it errors, we just log.
@@ -446,7 +454,10 @@ class WhisperServerManager {
     const last = this.lastUsedTime || 0;
     const idleForMs = now - last;
 
-    if (idleForMs < IDLE_TIMEOUT_MS) {
+    const effectiveTimeout = this.idleTimeoutMs || 0;
+    if (effectiveTimeout <= 0) return false;
+
+    if (idleForMs < effectiveTimeout) {
       // Still active enough; reschedule next check.
       this._scheduleIdleCheck();
       return false;
@@ -454,12 +465,31 @@ class WhisperServerManager {
 
     debugLogger.info("Stopping whisper-server due to inactivity", {
       idleForMs,
-      idleTimeoutMs: IDLE_TIMEOUT_MS,
+      idleTimeoutMs: effectiveTimeout,
     });
 
     this.stoppedDueToIdle = true;
     await this.stop();
     return true;
+  }
+
+  setIdleTimeoutMs(ms) {
+    const parsed = Number(ms);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error("Invalid idle timeout");
+    }
+    this.idleTimeoutMs = parsed;
+
+    // Reschedule with new timeout immediately.
+    if (this.process && this.ready) {
+      this._scheduleIdleCheck();
+    }
+
+    debugLogger.info("Updated whisper-server idle timeout", {
+      idleTimeoutMs: this.idleTimeoutMs,
+    });
+
+    return { success: true, idleTimeoutMs: this.idleTimeoutMs };
   }
 
   async transcribe(audioBuffer, options = {}) {
