@@ -45,6 +45,12 @@ class WindowManager {
   }
 
   _flushPendingOverlayPosition(reason) {
+    // Cancel any scheduled debounce so it can't fire after we flush (and null _pendingPosition).
+    if (this._positionSaveTimer) {
+      clearTimeout(this._positionSaveTimer);
+      this._positionSaveTimer = null;
+    }
+
     if (!this._pendingPosition) return;
 
     try {
@@ -103,11 +109,17 @@ class WindowManager {
     try {
       const raw = fs.readFileSync(this._getPositionFile(), "utf8");
       const parsed = JSON.parse(raw);
-      if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+      if (parsed && typeof parsed.x === "number" && typeof parsed.y === "number") {
         debugLogger.info("[Window] Loaded saved overlay position:", parsed);
         return parsed;
       }
-      debugLogger.warn("[Window] Overlay position file present but invalid:", parsed);
+
+      debugLogger.warn("[Window] Overlay position file invalid, resetting:", parsed);
+      try {
+        fs.unlinkSync(this._getPositionFile());
+      } catch {
+        // ignore
+      }
     } catch (err) {
       debugLogger.info("[Window] No saved overlay position (yet):", err?.message || err);
       // No saved position or parse error — use default
@@ -126,6 +138,12 @@ class WindowManager {
       this._positionSaveTimer = null;
       const pos = this._pendingPosition;
       this._pendingPosition = null;
+
+      // If we already flushed (or never had a valid position), don't write junk like `null`.
+      if (!pos || typeof pos.x !== "number" || typeof pos.y !== "number") {
+        return;
+      }
+
       try {
         fs.writeFileSync(this._getPositionFile(), JSON.stringify(pos), "utf8");
       } catch (err) {
