@@ -38,6 +38,21 @@ class WindowManager {
 
     app.on("before-quit", () => {
       this.isQuitting = true;
+
+      // Best-effort flush of overlay position on quit (covers cases where the window
+      // doesn't emit a clean `closed` event before the process exits).
+      if (this._pendingPosition) {
+        try {
+          fs.writeFileSync(
+            this._getPositionFile(),
+            JSON.stringify(this._pendingPosition),
+            "utf8",
+          );
+        } catch (err) {
+          debugLogger.debug("[Window] Failed to flush overlay position on before-quit:", err.message);
+        }
+        this._pendingPosition = null;
+      }
     });
   }
 
@@ -52,6 +67,7 @@ class WindowManager {
   _getPositionFile() {
     if (!this._positionFile) {
       this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
+      debugLogger.debug("[Window] Overlay position file:", this._positionFile);
     }
     return this._positionFile;
   }
@@ -61,9 +77,12 @@ class WindowManager {
       const raw = fs.readFileSync(this._getPositionFile(), "utf8");
       const parsed = JSON.parse(raw);
       if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+        debugLogger.debug("[Window] Loaded saved overlay position:", parsed);
         return parsed;
       }
-    } catch {
+      debugLogger.debug("[Window] Overlay position file present but invalid:", parsed);
+    } catch (err) {
+      debugLogger.debug("[Window] No saved overlay position (yet):", err?.message || err);
       // No saved position or parse error — use default
     }
     return null;
