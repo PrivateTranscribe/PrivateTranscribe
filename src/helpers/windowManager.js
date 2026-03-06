@@ -34,6 +34,7 @@ class WindowManager {
     // Position persistence
     this._positionFile = null;
     this._positionSaveTimer = null;
+    this._pendingPosition = null;
 
     app.on("before-quit", () => {
       this.isQuitting = true;
@@ -69,13 +70,18 @@ class WindowManager {
   }
 
   _scheduleSavePosition(x, y) {
+    // Keep the last seen position around so we can flush it on close even if the debounce hasn't fired.
+    this._pendingPosition = { x, y };
+
     if (this._positionSaveTimer) {
       clearTimeout(this._positionSaveTimer);
     }
     this._positionSaveTimer = setTimeout(() => {
       this._positionSaveTimer = null;
+      const pos = this._pendingPosition;
+      this._pendingPosition = null;
       try {
-        fs.writeFileSync(this._getPositionFile(), JSON.stringify({ x, y }), "utf8");
+        fs.writeFileSync(this._getPositionFile(), JSON.stringify(pos), "utf8");
       } catch (err) {
         debugLogger.debug("[Window] Failed to save overlay position:", err.message);
       }
@@ -547,6 +553,20 @@ class WindowManager {
       if (this._positionSaveTimer) {
         clearTimeout(this._positionSaveTimer);
         this._positionSaveTimer = null;
+
+        // If we were mid-debounce when the app is closed, flush the last seen position immediately.
+        if (this._pendingPosition) {
+          try {
+            fs.writeFileSync(
+              this._getPositionFile(),
+              JSON.stringify(this._pendingPosition),
+              "utf8",
+            );
+          } catch (err) {
+            debugLogger.debug("[Window] Failed to flush overlay position on close:", err.message);
+          }
+          this._pendingPosition = null;
+        }
       }
       this.dragManager.cleanup();
       this.mainWindow = null;
