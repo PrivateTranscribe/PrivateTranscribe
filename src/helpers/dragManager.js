@@ -6,10 +6,15 @@ class DragManager {
     this.dragOffset = { x: 0, y: 0 };
     this.mouseTrackingInterval = null;
     this.targetWindow = null;
+    this._positionChangeCallback = null;
   }
 
   setTargetWindow(window) {
     this.targetWindow = window;
+  }
+
+  setPositionChangeCallback(callback) {
+    this._positionChangeCallback = typeof callback === "function" ? callback : null;
   }
 
   async startWindowDrag() {
@@ -99,6 +104,13 @@ class DragManager {
       );
 
       this.targetWindow.setPosition(constrainedX, constrainedY);
+
+      // Note: BrowserWindow's `moved` event is not guaranteed to fire for programmatic
+      // setPosition() on all platforms. Notify our consumer (WindowManager) so it can
+      // persist the last known position reliably.
+      if (this._positionChangeCallback) {
+        this._positionChangeCallback(constrainedX, constrainedY);
+      }
     } catch (error) {
       console.error("Error updating window position:", error);
       this.stopWindowDrag();

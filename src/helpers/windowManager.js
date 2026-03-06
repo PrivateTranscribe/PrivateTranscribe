@@ -195,6 +195,7 @@ class WindowManager {
     await this.loadMainWindow();
     await this.initializeHotkey();
     this.dragManager.setTargetWindow(this.mainWindow);
+    this.dragManager.setPositionChangeCallback((x, y) => this._scheduleSavePosition(x, y));
     MenuManager.setupMainMenu();
   }
 
@@ -384,7 +385,13 @@ class WindowManager {
   }
 
   async stopWindowDrag() {
-    return await this.dragManager.stopWindowDrag();
+    const result = await this.dragManager.stopWindowDrag();
+
+    // Flush immediately — don't wait for the debounce — so the position is persisted even if
+    // the app is force-quit/crashes shortly after the user releases the drag.
+    this._flushPendingOverlayPosition("stopWindowDrag");
+
+    return result;
   }
 
   async createControlPanelWindow() {
