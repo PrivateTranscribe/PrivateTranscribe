@@ -36,24 +36,51 @@ class WindowManager {
     this._positionSaveTimer = null;
     this._pendingPosition = null;
 
+    this._registerExitHandlers();
+
     app.on("before-quit", () => {
       this.isQuitting = true;
-
-      // Best-effort flush of overlay position on quit (covers cases where the window
-      // doesn't emit a clean `closed` event before the process exits).
-      if (this._pendingPosition) {
-        try {
-          fs.writeFileSync(
-            this._getPositionFile(),
-            JSON.stringify(this._pendingPosition),
-            "utf8",
-          );
-        } catch (err) {
-          debugLogger.debug("[Window] Failed to flush overlay position on before-quit:", err.message);
-        }
-        this._pendingPosition = null;
-      }
+      this._flushPendingOverlayPosition("before-quit");
     });
+  }
+
+  _flushPendingOverlayPosition(reason) {
+    if (!this._pendingPosition) return;
+
+    try {
+      fs.writeFileSync(this._getPositionFile(), JSON.stringify(this._pendingPosition), "utf8");
+      debugLogger.info("[Window] Flushed overlay position:", {
+        reason,
+        position: this._pendingPosition,
+      });
+    } catch (err) {
+      debugLogger.warn("[Window] Failed to flush overlay position:", {
+        reason,
+        error: err?.message || String(err),
+      });
+    }
+
+    this._pendingPosition = null;
+  }
+
+  _registerExitHandlers() {
+    // In dev, the app is often stopped via Ctrl+C, which triggers SIGINT/SIGTERM.
+    // Ensure we flush the last known overlay position before exiting.
+    const handle = (signal) => {
+      try {
+        this._flushPendingOverlayPosition(signal);
+      } finally {
+        // Ensure Electron gets a chance to shutdown cleanly.
+        try {
+          app.quit();
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    process.once("SIGINT", () => handle("SIGINT"));
+    process.once("SIGTERM", () => handle("SIGTERM"));
   }
 
   setWindowsPushToTalkAvailable(available) {
@@ -67,7 +94,7 @@ class WindowManager {
   _getPositionFile() {
     if (!this._positionFile) {
       this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
-      debugLogger.debug("[Window] Overlay position file:", this._positionFile);
+      debugLogger.info("[Window] Overlay position file:", this._positionFile);
     }
     return this._positionFile;
   }
@@ -77,12 +104,12 @@ class WindowManager {
       const raw = fs.readFileSync(this._getPositionFile(), "utf8");
       const parsed = JSON.parse(raw);
       if (typeof parsed.x === "number" && typeof parsed.y === "number") {
-        debugLogger.debug("[Window] Loaded saved overlay position:", parsed);
+        debugLogger.info("[Window] Loaded saved overlay position:", parsed);
         return parsed;
       }
-      debugLogger.debug("[Window] Overlay position file present but invalid:", parsed);
+      debugLogger.warn("[Window] Overlay position file present but invalid:", parsed);
     } catch (err) {
-      debugLogger.debug("[Window] No saved overlay position (yet):", err?.message || err);
+      debugLogger.info("[Window] No saved overlay position (yet):", err?.message || err);
       // No saved position or parse error — use default
     }
     return null;
@@ -574,18 +601,7 @@ class WindowManager {
         this._positionSaveTimer = null;
 
         // If we were mid-debounce when the app is closed, flush the last seen position immediately.
-        if (this._pendingPosition) {
-          try {
-            fs.writeFileSync(
-              this._getPositionFile(),
-              JSON.stringify(this._pendingPosition),
-              "utf8",
-            );
-          } catch (err) {
-            debugLogger.debug("[Window] Failed to flush overlay position on close:", err.message);
-          }
-          this._pendingPosition = null;
-        }
+        this._flushPendingOverlayPosition("closed");
       }
       this.dragManager.cleanup();
       this.mainWindow = null;
