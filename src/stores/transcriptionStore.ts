@@ -8,10 +8,14 @@ let transcriptions: TranscriptionItem[] = [];
 let hasBoundIpcListeners = false;
 const DEFAULT_LIMIT = 50;
 let currentLimit = DEFAULT_LIMIT;
+let version = 0;
 
 const emit = () => {
+  version++;
   listeners.forEach((listener) => listener());
 };
+
+const getVersion = () => version;
 
 const subscribe = (listener: Listener) => {
   listeners.add(listener);
@@ -95,4 +99,8 @@ export function clearTranscriptions() {
 
 export function useTranscriptions() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function useTranscriptionsVersion() {
+  return useSyncExternalStore(subscribe, getVersion, getVersion);
 }

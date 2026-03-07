@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Mic, Settings, Upload, Activity } from "lucide-react";
 import { PageId } from "../AppSidebar";
-import { useTranscriptions, initializeTranscriptions } from "../../stores/transcriptionStore";
+import { useTranscriptions, useTranscriptionsVersion, initializeTranscriptions } from "../../stores/transcriptionStore";
 import { useSettings } from "../../hooks/useSettings";
 import TranscriptionItem from "../ui/TranscriptionItem";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
@@ -65,6 +65,7 @@ function formatSpeakingTime(totalSeconds: number): string {
 
 export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const transcriptions = useTranscriptions();
+  const transcriptionsVersion = useTranscriptionsVersion();
   const {
     whisperModel,
     preferredLanguage,
@@ -99,7 +100,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     fetchStats();
   }, [historyLimit]);
 
-  // Re-fetch stats when transcriptions change (new one added)
+  // Re-fetch stats whenever any transcription mutation occurs (add/delete/clear)
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -107,12 +108,12 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         if (dbStats) {
           setStats(dbStats);
         }
-      } catch (error) {
+      } catch {
         // Silently fail
       }
     };
     fetchStats();
-  }, [transcriptions.length]);
+  }, [transcriptionsVersion]);
 
   const streak = useMemo(() => computeStreak(transcriptions), [transcriptions]);
   const recentFive = useMemo(() => transcriptions.slice(0, 5), [transcriptions]);

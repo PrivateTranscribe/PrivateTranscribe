@@ -145,7 +145,6 @@ export function inferCorrectionPairs(insertedText, correctedText) {
   // Notes:
   // - We persist the normalized phrase (lowercase, spaces) as the source.
   // - We keep the original corrected identifier (case-sensitive) as the target.
-  const correctedRaw = typeof correctedText === "string" ? correctedText.trim() : "";
   if (
     aTokens.length >= 2 &&
     aTokens.length <= 8 &&
