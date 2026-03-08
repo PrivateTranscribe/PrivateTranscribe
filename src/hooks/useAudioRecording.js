@@ -374,5 +374,6 @@ export const useAudioRecording = (toast, options = {}) => {
     cancelRecording,
     cancelProcessing,
     toggleListening,
+    audioManagerRef,
   };
 };

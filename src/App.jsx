@@ -15,10 +15,10 @@ import {
   AudioLines,
 } from "lucide-react";
 import { useToast } from "./components/ui/Toast";
-import { LoadingDots } from "./components/ui/LoadingDots";
 import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
+import { useMicLevel } from "./hooks/useMicLevel";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 
 const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
@@ -43,6 +43,79 @@ const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
         style={{ width: size * 0.2, height: size * 0.52, backgroundColor: color }}
       />
     </div>
+  );
+};
+
+/**
+ * VoiceBars — voice-reactive bar visualiser rendered inside the recording button.
+ *
+ * Four bars, symmetric, heights driven by micLevel (0–1). Each bar has a
+ * subtle phase offset for a natural "breathing" feel when level is low.
+ * Colors are dark (primary-foreground) since the button background is mint.
+ */
+const VoiceBars = ({ micLevel }) => {
+  // Pseudo-random phase offsets so bars don't move in perfect unison at low levels
+  const phases = [0, Math.PI * 0.6, Math.PI * 0.6, 0];
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+  // Bar height: idle floor + driven component
+  const barHeights = phases.map((phase, i) => {
+    const driven = micLevel * (i % 2 === 0 ? 10 : 13); // outer bars shorter
+    const idle = 2.5 + Math.sin((now / 1000) * 1.2 * Math.PI + phase) * 0.8;
+    return Math.max(2, idle + driven);
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2.5, pointerEvents: "none" }}>
+      {barHeights.map((h, i) => (
+        <div
+          key={i}
+          style={{
+            width: 2,
+            height: h,
+            borderRadius: 2,
+            backgroundColor: "#080908",
+            // Fast transition keeps it responsive; easing keeps it elegant
+            transition: "height 60ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+/**
+ * MicHalo — the outer ambient glow rendered *around* (not inside) the button.
+ *
+ * A radial gradient disc that scales and brightens with micLevel, creating a
+ * soft "breathing" halo effect. Positioned absolutely; pointer-events: none so
+ * it never intercepts click/drag events on the button.
+ */
+const MicHalo = ({ micLevel }) => {
+  const scale = 1 + micLevel * 0.55;
+  const opacity = 0.08 + micLevel * 0.52;
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        // Slightly larger than the 44px button; centered with negative inset
+        width: 68,
+        height: 68,
+        top: -12,
+        left: -12,
+        borderRadius: "50%",
+        background:
+          "radial-gradient(circle, rgba(112,255,186,0.85) 0%, rgba(112,255,186,0.3) 45%, transparent 72%)",
+        transform: `scale(${scale})`,
+        opacity,
+        // 80ms transition matches the mic level smoothing without fighting it
+        transition: "transform 80ms ease-out, opacity 80ms ease-out",
+        pointerEvents: "none",
+        zIndex: -1,
+      }}
+    />
   );
 };
 
@@ -183,9 +256,12 @@ export default function App() {
     toggleListening,
     cancelRecording,
     cancelProcessing,
+    audioManagerRef,
   } = useAudioRecording(toast, {
     onToggle: handleDictationToggle,
   });
+
+  const micLevel = useMicLevel(audioManagerRef, isRecording);
 
   useEffect(() => {
     setWindowInteractivity(false);
@@ -503,92 +579,106 @@ export default function App() {
             }
           }}
         >
-          <button
-            ref={buttonRef}
-            aria-label="Dictation overlay"
-            onMouseDown={(e) => {
-              if (e.button !== 0) {
-                return;
-              }
-              closeContextMenu(false);
-              dragStartPosRef.current = { x: e.clientX, y: e.clientY };
-              didMoveRef.current = false;
-              dragInitiatedRef.current = false;
-              suppressClickAfterDragRef.current = false;
-            }}
-            onMouseMove={(e) => {
-              if (dragStartPosRef.current && (e.buttons & 1) === 1) {
-                const dx = e.clientX - dragStartPosRef.current.x;
-                const dy = e.clientY - dragStartPosRef.current.y;
-                if (dx * dx + dy * dy > 25) {
-                  didMoveRef.current = true;
-                  if (!dragInitiatedRef.current) {
-                    dragInitiatedRef.current = true;
-                    handleMouseDown(e);
+          {/* Wrapper needed for MicHalo to sit outside the overflow:hidden button */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            {micState === "recording" && <MicHalo micLevel={micLevel} />}
+
+            <button
+              ref={buttonRef}
+              aria-label="Dictation overlay"
+              onMouseDown={(e) => {
+                if (e.button !== 0) {
+                  return;
+                }
+                closeContextMenu(false);
+                dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+                didMoveRef.current = false;
+                dragInitiatedRef.current = false;
+                suppressClickAfterDragRef.current = false;
+              }}
+              onMouseMove={(e) => {
+                if (dragStartPosRef.current && (e.buttons & 1) === 1) {
+                  const dx = e.clientX - dragStartPosRef.current.x;
+                  const dy = e.clientY - dragStartPosRef.current.y;
+                  if (dx * dx + dy * dy > 25) {
+                    didMoveRef.current = true;
+                    if (!dragInitiatedRef.current) {
+                      dragInitiatedRef.current = true;
+                      handleMouseDown(e);
+                    }
                   }
                 }
-              }
-            }}
-            onMouseUp={(e) => {
-              if (dragInitiatedRef.current) {
-                handleMouseUp(e);
-              }
-              dragInitiatedRef.current = false;
-              dragStartPosRef.current = null;
+              }}
+              onMouseUp={(e) => {
+                if (dragInitiatedRef.current) {
+                  handleMouseUp(e);
+                }
+                dragInitiatedRef.current = false;
+                dragStartPosRef.current = null;
 
-              if (didMoveRef.current) {
-                suppressClickAfterDragRef.current = true;
-                setTimeout(() => {
-                  suppressClickAfterDragRef.current = false;
-                  didMoveRef.current = false;
-                }, 400);
-              }
-            }}
-            onClick={(e) => {
-              if (suppressClickAfterDragRef.current || didMoveRef.current || dragInitiatedRef.current) {
+                if (didMoveRef.current) {
+                  suppressClickAfterDragRef.current = true;
+                  setTimeout(() => {
+                    suppressClickAfterDragRef.current = false;
+                    didMoveRef.current = false;
+                  }, 400);
+                }
+              }}
+              onClick={(e) => {
+                if (
+                  suppressClickAfterDragRef.current ||
+                  didMoveRef.current ||
+                  dragInitiatedRef.current
+                ) {
+                  e.preventDefault();
+                  return;
+                }
+                closeContextMenu(false);
+                toggleListening();
                 e.preventDefault();
-                return;
-              }
-              closeContextMenu(false);
-              toggleListening();
-              e.preventDefault();
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              if (!didMoveRef.current && !suppressClickAfterDragRef.current) {
-                setWindowInteractivity(true);
-                setActiveSubmenu("root");
-                setIsCommandMenuOpen((prev) => !prev);
-              }
-            }}
-            onFocus={() => setIsHovered(true)}
-            onBlur={() => setIsHovered(false)}
-            style={{
-              ...getMicButtonStyles(),
-              cursor:
-                micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
-              flexShrink: 0,
-            }}
-          >
-            {micState === "idle" || micState === "hover" ? (
-              <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
-            ) : micState === "recording" ? (
-              <LoadingDots />
-            ) : micState === "processing" ? (
-              <VoiceWaveIndicator isListening={true} />
-            ) : null}
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!didMoveRef.current && !suppressClickAfterDragRef.current) {
+                  setWindowInteractivity(true);
+                  setActiveSubmenu("root");
+                  setIsCommandMenuOpen((prev) => !prev);
+                }
+              }}
+              onFocus={() => setIsHovered(true)}
+              onBlur={() => setIsHovered(false)}
+              style={{
+                ...getMicButtonStyles(),
+                cursor:
+                  micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
+              }}
+            >
+              {micState === "idle" || micState === "hover" ? (
+                <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
+              ) : micState === "recording" ? (
+                <VoiceBars micLevel={micLevel} />
+              ) : micState === "processing" ? (
+                <VoiceWaveIndicator isListening={true} />
+              ) : null}
 
-            {micState === "recording" && (
-              <div
-                className="absolute inset-0 rounded-full border-2 border-[#70FFBA]/40"
-                style={{ animation: "ring-pulse 2s ease-in-out infinite" }}
-              />
-            )}
+              {micState === "recording" && (
+                <div
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    border: `1.5px solid rgba(112,255,186,${0.25 + micLevel * 0.4})`,
+                    // Subtle scale-pulse at baseline; micLevel adds static lift on top
+                    animation: "ring-pulse 2.4s ease-in-out infinite",
+                    // Translate ring-pulse scale relative to current halo scale
+                    transformOrigin: "center",
+                  }}
+                />
+              )}
 
-            {micState === "processing" && (
-              <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
-            )}
-          </button>
+              {micState === "processing" && (
+                <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
+              )}
+            </button>
+          </div>
 
           {/* Cancel button inside hover container — cursor moving from icon to here stays hovered */}
           {(isRecording || isProcessing) && isHovered && (
