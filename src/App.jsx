@@ -180,6 +180,7 @@ export default function App() {
     isRecording,
     isProcessing,
     transcript,
+    audioLevel,
     toggleListening,
     cancelRecording,
     cancelProcessing,
@@ -410,13 +411,17 @@ export default function App() {
           border: "1.5px solid rgba(112, 255, 186, 0.28)",
           boxShadow: "none",
         };
-      case "recording":
+      case "recording": {
+        // Reactive glow: scales from 0 px at silence to ~28 px at loud speech
+        const glowPx = Math.round(audioLevel * 28);
+        const glowAlpha = (0.12 + audioLevel * 0.28).toFixed(2);
         return {
           ...base,
           backgroundColor: "#70FFBA",
           border: "1.5px solid rgba(112, 255, 186, 0.5)",
-          boxShadow: "0 0 18px rgba(112, 255, 186, 0.24)",
+          boxShadow: `0 0 ${glowPx}px rgba(112, 255, 186, ${glowAlpha})`,
         };
+      }
       case "processing":
         return {
           ...base,
@@ -578,12 +583,25 @@ export default function App() {
               <VoiceWaveIndicator isListening={true} />
             ) : null}
 
-            {micState === "recording" && (
-              <div
-                className="absolute inset-0 rounded-full border-2 border-[#70FFBA]/40"
-                style={{ animation: "ring-pulse 2s ease-in-out infinite" }}
-              />
-            )}
+            {micState === "recording" && (() => {
+              // Audio-reactive ring: scale and opacity driven by mic level.
+              // At silence: very subtle (scale 1.0, low opacity).
+              // At conversational speech: clearly visible expansion.
+              // At loud speech: approaches max without looking cheap.
+              const ringScale = (1 + audioLevel * 0.42).toFixed(3);
+              const ringOpacity = (0.12 + audioLevel * 0.52).toFixed(2);
+              return (
+                <div
+                  className="absolute inset-0 rounded-full border-2 border-[#70FFBA]"
+                  style={{
+                    transform: `scale(${ringScale})`,
+                    opacity: ringOpacity,
+                    transition: "transform 60ms linear, opacity 60ms linear",
+                    pointerEvents: "none",
+                  }}
+                />
+              );
+            })()}
 
             {micState === "processing" && (
               <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />

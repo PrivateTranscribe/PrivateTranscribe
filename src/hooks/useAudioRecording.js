@@ -5,6 +5,7 @@ export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [audioLevel, setAudioLevel] = useState(0);
   const audioManagerRef = useRef(null);
   const toastRef = useRef(toast);
   const onToggleRef = useRef(options.onToggle);
@@ -55,6 +56,9 @@ export const useAudioRecording = (toast, options = {}) => {
         }
         setIsRecording(isRecording);
         setIsProcessing(isProcessing);
+      },
+      onAudioLevel: (level) => {
+        if (!disposed) setAudioLevel(level);
       },
       onError: (error) => {
         if (disposed) {
@@ -369,6 +373,7 @@ export const useAudioRecording = (toast, options = {}) => {
     isRecording,
     isProcessing,
     transcript,
+    audioLevel,
     startRecording,
     stopRecording,
     cancelRecording,

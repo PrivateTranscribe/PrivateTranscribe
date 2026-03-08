@@ -117,6 +117,12 @@ class AudioManager {
     this.discardCurrentRecording = false;
     this.reasoningAvailabilityCache = { value: false, expiresAt: 0 };
     this.cachedReasoningPreference = null;
+    // Audio level metering
+    this.onAudioLevel = null;
+    this._levelAudioContext = null;
+    this._levelAnalyser = null;
+    this._levelAnimFrame = null;
+    this._levelSmoothed = 0;
   }
 
   getCustomDictionaryPrompt() {
@@ -159,10 +165,89 @@ class AudioManager {
     }
   }
 
-  setCallbacks({ onStateChange, onError, onTranscriptionComplete }) {
+  setCallbacks({ onStateChange, onError, onTranscriptionComplete, onAudioLevel }) {
     this.onStateChange = onStateChange;
     this.onError = onError;
     this.onTranscriptionComplete = onTranscriptionComplete;
+    if (onAudioLevel !== undefined) this.onAudioLevel = onAudioLevel;
+  }
+
+  // ── Audio level metering ───────────────────────────────────────────────────
+
+  _startLevelMeter(stream) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      // 256 bins — small enough to be cheap, large enough to cover voice band
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0; // we do our own smoothing
+      source.connect(analyser);
+
+      this._levelAudioContext = ctx;
+      this._levelAnalyser = analyser;
+      this._levelSmoothed = 0;
+
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+
+      const tick = () => {
+        if (!this._levelAnalyser) return;
+        this._levelAnimFrame = requestAnimationFrame(tick);
+
+        analyser.getByteFrequencyData(buf);
+
+        // RMS over the frequency-domain magnitude data (proxy for loudness)
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = buf[i] / 255; // normalise to 0–1
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / buf.length);
+
+        // 1. Noise floor subtraction — suppress hiss/hum below ~1.5% full-scale
+        const NOISE_FLOOR = 0.015;
+        const denoised = Math.max(0, rms - NOISE_FLOOR) / (1 - NOISE_FLOOR);
+
+        // 2. Non-linear response curve: gamma < 1 lifts mid-range sensitivity
+        //    so conversational speech at ~0.5m maps to a clearly visible level.
+        const GAMMA = 0.5;
+        const curved = Math.pow(denoised, GAMMA);
+
+        // 3. Asymmetric attack / decay smoothing (per frame, ~16 ms)
+        //    Fast attack: tracks rising signals quickly (feels responsive)
+        //    Slow decay:  holds the ring up briefly after each syllable
+        const ATTACK = 0.6;
+        const DECAY = 0.1;
+        const s = this._levelSmoothed;
+        this._levelSmoothed =
+          curved > s ? s + (curved - s) * ATTACK : s + (curved - s) * DECAY;
+
+        // 4. Hard ceiling — very loud speech maps to 1.0, not beyond
+        const level = Math.min(1, this._levelSmoothed);
+
+        this.onAudioLevel?.(level);
+      };
+
+      tick();
+    } catch {
+      // Level metering is best-effort; recording still works without it.
+    }
+  }
+
+  _stopLevelMeter() {
+    if (this._levelAnimFrame) {
+      cancelAnimationFrame(this._levelAnimFrame);
+      this._levelAnimFrame = null;
+    }
+    this._levelAnalyser = null;
+    try {
+      this._levelAudioContext?.close();
+    } catch {
+      // ignore
+    }
+    this._levelAudioContext = null;
+    this._levelSmoothed = 0;
+    this.onAudioLevel?.(0);
   }
 
   emitStateChange() {
@@ -197,6 +282,7 @@ class AudioManager {
 
   releaseMediaRecorder() {
     this.clearRecorderStopWatchdog();
+    this._stopLevelMeter();
 
     if (this.mediaRecorder) {
       this.mediaRecorder.ondataavailable = null;
@@ -370,6 +456,7 @@ class AudioManager {
 
       this.recordingStream = stream;
       this.mediaRecorder = new MediaRecorder(stream);
+      this._startLevelMeter(stream);
       const sessionId = ++this.recordingSessionCounter;
       this.activeRecordingSessionId = sessionId;
       this.audioChunks = [];
