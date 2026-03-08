@@ -10,6 +10,7 @@ import {
   Zap,
   Settings,
 } from "lucide-react";
+import { shouldShowProBadge } from "../hooks/useProStatus";
 
 export type PageId =
   | "home"
@@ -85,6 +86,13 @@ interface AppSidebarProps {
 export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps) {
   const [hotkey, setHotkey] = useState("`");
   const [currentVersion, setCurrentVersion] = useState("");
+  // Re-render when the Pro preview toggle changes so badges update immediately.
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const handler = () => forceUpdate((n) => n + 1);
+    window.addEventListener("privoca-pro-preview-changed", handler);
+    return () => window.removeEventListener("privoca-pro-preview-changed", handler);
+  }, []);
 
   useEffect(() => {
     const savedHotkey = localStorage.getItem("dictationKey");
@@ -195,7 +203,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                     }}
                   />
                   <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.badge && (
+                  {item.badge && (item.badgeVariant !== "pro" || shouldShowProBadge(item.id)) && (
                     <span
                       style={{
                         fontSize: "9px",

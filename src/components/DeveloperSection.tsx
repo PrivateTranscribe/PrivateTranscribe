@@ -3,8 +3,10 @@ import { Button } from "./ui/button";
 import { FolderOpen, Copy, Check } from "lucide-react";
 import { useToast } from "./ui/Toast";
 import { Toggle } from "./ui/toggle";
+import { useProPreview, type ProPreviewMode } from "../hooks/useProStatus";
 
 export default function DeveloperSection() {
+  const [proPreview, setProPreview] = useProPreview();
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [logPath, setLogPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,11 +110,11 @@ export default function DeveloperSection() {
 
   const handleCopyDebugInfo = async () => {
     try {
-      const version = await window.electronAPI?.getAppVersion?.() || "unknown";
+      const version = (await window.electronAPI?.getAppVersion?.()) || "unknown";
       const platform = navigator.platform || "unknown";
       const userAgent = navigator.userAgent || "unknown";
       const electronVersion = process?.versions?.electron || "unknown";
-      const debugState = await window.electronAPI?.getDebugState?.() || {};
+      const debugState = (await window.electronAPI?.getDebugState?.()) || {};
 
       const info = [
         `Privoca v${version}`,
@@ -142,16 +144,63 @@ export default function DeveloperSection() {
     }
   };
 
+  const proPreviewOptions: { value: ProPreviewMode; label: string; description: string }[] = [
+    { value: null, label: "Default", description: "Real license state" },
+    { value: "free", label: "Free", description: "No Pro features unlocked" },
+    { value: "pro", label: "Pro", description: "All Pro features unlocked" },
+  ];
+
   return (
     <div className="space-y-8">
+      {/* ── Pro Preview (temporary internal toggle) ── */}
+      <div>
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-[15px] font-semibold text-foreground tracking-tight">
+              Pro Preview
+            </h3>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/20">
+              INTERNAL
+            </span>
+          </div>
+          <p className="text-[12px] text-muted-foreground leading-relaxed">
+            Temporarily preview Free or Pro UI state without changing your license. Affects sidebar
+            badges, page headers, and feature gating.
+          </p>
+        </div>
+        <div className="rounded-xl border border-border-subtle bg-surface-2 divide-y divide-border-subtle">
+          {proPreviewOptions.map(({ value, label, description }) => {
+            const isSelected = proPreview === value;
+            return (
+              <button
+                key={String(value)}
+                onClick={() => setProPreview(value)}
+                className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left transition-colors hover:bg-surface-raised/40"
+              >
+                <div className="min-w-0">
+                  <p
+                    className={`text-[13px] font-medium ${isSelected ? "text-foreground" : "text-muted-foreground"}`}
+                  >
+                    {label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/60 mt-0.5">{description}</p>
+                </div>
+                <div
+                  className={`shrink-0 h-4 w-4 rounded-full border-2 transition-colors ${
+                    isSelected
+                      ? "border-primary bg-primary"
+                      : "border-muted-foreground/30 bg-transparent"
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Quick actions */}
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleCopyDebugInfo}
-          className="text-xs"
-        >
+        <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} className="text-xs">
           {copiedDebugInfo ? (
             <Check className="mr-1.5 h-3.5 w-3.5 text-green-500" />
           ) : (
