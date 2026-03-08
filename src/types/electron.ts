@@ -265,7 +265,9 @@ declare global {
       getTranscriptions: (limit?: number) => Promise<TranscriptionItem[]>;
       clearTranscriptions: () => Promise<{ cleared: number; success: boolean }>;
       deleteTranscription: (id: number) => Promise<{ success: boolean }>;
-      trimTranscriptions?: (limit: number) => Promise<{ trimmed?: number; cleared?: number; success: boolean }>;
+      trimTranscriptions?: (
+        limit: number
+      ) => Promise<{ trimmed?: number; cleared?: number; success: boolean }>;
       setHistoryLimit?: (limit: number) => Promise<{ success: boolean }>;
 
       // Dictionary operations
@@ -274,6 +276,7 @@ declare global {
 
       // Stats operations
       getStats: () => Promise<AggregateStats>;
+      resetStats: () => Promise<{ success: boolean }>;
 
       // Database event listeners
       onTranscriptionAdded?: (callback: (item: TranscriptionItem) => void) => (() => void) | void;

@@ -83,14 +83,16 @@ class DatabaseManager {
       // Migration: Add average_wpm column if it doesn't exist (for existing databases)
       try {
         const columns = this.db.prepare("PRAGMA table_info(stats)").all();
-        const hasAverageWpm = columns.some(col => col.name === 'average_wpm');
+        const hasAverageWpm = columns.some((col) => col.name === "average_wpm");
         if (!hasAverageWpm) {
           console.log("Migrating stats table: adding average_wpm column");
           this.db.exec(`ALTER TABLE stats ADD COLUMN average_wpm REAL DEFAULT 0`);
           // Calculate initial WPM from existing data
-          const stats = this.db.prepare("SELECT total_words, total_seconds FROM stats WHERE id = 1").get();
+          const stats = this.db
+            .prepare("SELECT total_words, total_seconds FROM stats WHERE id = 1")
+            .get();
           if (stats && stats.total_seconds > 0) {
-            const averageWpm = (stats.total_words / (stats.total_seconds / 60));
+            const averageWpm = stats.total_words / (stats.total_seconds / 60);
             this.db.prepare("UPDATE stats SET average_wpm = ? WHERE id = 1").run(averageWpm);
           }
         }
@@ -123,9 +125,8 @@ class DatabaseManager {
         const wordCount = text.split(/\s+/).filter(Boolean).length;
 
         // Use actual recording duration if available, otherwise estimate at 150 WPM
-        const actualSeconds = durationSeconds && durationSeconds > 0
-          ? durationSeconds
-          : (wordCount / 150) * 60;
+        const actualSeconds =
+          durationSeconds && durationSeconds > 0 ? durationSeconds : (wordCount / 150) * 60;
 
         // Get current stats to calculate cumulative average WPM
         const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
@@ -133,7 +134,7 @@ class DatabaseManager {
         const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
 
         // Calculate average WPM: (total words / total minutes)
-        const averageWPM = newTotalSeconds > 0 ? (newTotalWords / (newTotalSeconds / 60)) : 0;
+        const averageWPM = newTotalSeconds > 0 ? newTotalWords / (newTotalSeconds / 60) : 0;
 
         const updateStats = this.db.prepare(`
           UPDATE stats 
@@ -323,6 +324,31 @@ class DatabaseManager {
     } catch (error) {
       console.error("Error getting stats:", error.message);
       return { total_words: 0, total_transcriptions: 0, total_seconds: 0 };
+    }
+  }
+
+  resetStats() {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      this.db
+        .prepare(
+          `
+        UPDATE stats
+        SET total_words = 0,
+            total_transcriptions = 0,
+            total_seconds = 0,
+            average_wpm = 0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+      `
+        )
+        .run();
+      return { success: true };
+    } catch (error) {
+      console.error("Error resetting stats:", error.message);
+      throw error;
     }
   }
 

@@ -269,9 +269,13 @@ class IPCHandlers {
       return this.databaseManager.deleteCorrection(source);
     });
 
-    // Stats handler
+    // Stats handlers
     ipcMain.handle("db-get-stats", async () => {
       return this.databaseManager.getStats();
+    });
+
+    ipcMain.handle("db-reset-stats", async () => {
+      return this.databaseManager.resetStats();
     });
 
     // Clipboard handlers
@@ -569,7 +573,11 @@ class IPCHandlers {
         // Entering capture mode - unregister globalShortcut so it doesn't consume key events
         // Note: mouse side-buttons (Mouse4/Mouse5) are not valid Electron accelerators.
         const currentHotkey = hotkeyManager.getCurrentHotkey();
-        if (currentHotkey && currentHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(currentHotkey)) {
+        if (
+          currentHotkey &&
+          currentHotkey !== "GLOBE" &&
+          !hotkeyManager.isMouseHotkey(currentHotkey)
+        ) {
           debugLogger.log(
             `[IPC] Unregistering globalShortcut "${currentHotkey}" for hotkey capture mode`
           );
@@ -593,7 +601,11 @@ class IPCHandlers {
       } else {
         // Exiting capture mode - re-register globalShortcut if not already registered
         // (Skip mouse hotkeys; they are handled by the native WindowsKeyManager in push-to-talk.)
-        if (effectiveHotkey && effectiveHotkey !== "GLOBE" && !hotkeyManager.isMouseHotkey(effectiveHotkey)) {
+        if (
+          effectiveHotkey &&
+          effectiveHotkey !== "GLOBE" &&
+          !hotkeyManager.isMouseHotkey(effectiveHotkey)
+        ) {
           const { globalShortcut } = require("electron");
           if (!globalShortcut.isRegistered(effectiveHotkey)) {
             debugLogger.log(
@@ -944,8 +956,8 @@ class IPCHandlers {
             }
             throw new Error(
               errorData.error?.message ||
-              errorData.error ||
-              `Anthropic API error: ${response.status}`
+                errorData.error ||
+                `Anthropic API error: ${response.status}`
             );
           }
 

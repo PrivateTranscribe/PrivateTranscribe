@@ -87,13 +87,7 @@ function SectionHeader({ title, description }: { title: string; description?: st
 
 // ── History limit input — free-type with inline confirm when lowering ──
 
-function HistoryLimitInput({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) {
+function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [raw, setRaw] = React.useState(String(value));
   // Pending is set when the user tries to lower the limit — awaiting confirmation
   const [pending, setPending] = React.useState<number | null>(null);
@@ -179,8 +173,10 @@ function HistoryLimitInput({
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs space-y-2">
           <p className="text-amber-700 dark:text-amber-400 font-medium">
             ⚠️ This will permanently delete history older than{" "}
-            {pending === 0 ? "all entries" : `the newest ${pending} item${pending === 1 ? "" : "s"}`}.
-            Records deleted this way cannot be recovered.
+            {pending === 0
+              ? "all entries"
+              : `the newest ${pending} item${pending === 1 ? "" : "s"}`}
+            . Records deleted this way cannot be recovered.
           </p>
           <div className="flex gap-2">
             <button
@@ -197,9 +193,7 @@ function HistoryLimitInput({
               Cancel
             </button>
           </div>
-          {trimError && (
-            <p className="text-red-600 dark:text-red-400">{trimError}</p>
-          )}
+          {trimError && <p className="text-red-600 dark:text-red-400">{trimError}</p>}
         </div>
       )}
     </div>
@@ -451,7 +445,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
       if (typeof s.historyLimit === "number") setHistoryLimit(s.historyLimit);
       if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
-      if (s.activationMode === "tap" || s.activationMode === "push") setActivationMode(s.activationMode);
+      if (s.activationMode === "tap" || s.activationMode === "push")
+        setActivationMode(s.activationMode);
 
       updateTranscriptionSettings({
         useLocalWhisper: typeof s.useLocalWhisper === "boolean" ? s.useLocalWhisper : undefined,
@@ -465,13 +460,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           typeof s.whisperServerIdleTimeoutMinutes === "number"
             ? s.whisperServerIdleTimeoutMinutes
             : undefined,
-        preferredLanguage: typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
+        preferredLanguage:
+          typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
         translateToEnglish:
           s.translateToEnglish === "on" || s.translateToEnglish === "off"
             ? s.translateToEnglish
             : undefined,
         cloudTranscriptionProvider:
-          typeof s.cloudTranscriptionProvider === "string" ? s.cloudTranscriptionProvider : undefined,
+          typeof s.cloudTranscriptionProvider === "string"
+            ? s.cloudTranscriptionProvider
+            : undefined,
         cloudTranscriptionModel:
           typeof s.cloudTranscriptionModel === "string" ? s.cloudTranscriptionModel : undefined,
         cloudTranscriptionBaseUrl:
@@ -480,20 +478,29 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       });
 
       updateReasoningSettings({
-        useReasoningModel: typeof s.useReasoningModel === "boolean" ? s.useReasoningModel : undefined,
-        reasoningProvider: typeof s.reasoningProvider === "string" ? s.reasoningProvider : undefined,
+        useReasoningModel:
+          typeof s.useReasoningModel === "boolean" ? s.useReasoningModel : undefined,
+        reasoningProvider:
+          typeof s.reasoningProvider === "string" ? s.reasoningProvider : undefined,
         reasoningModel: typeof s.reasoningModel === "string" ? s.reasoningModel : undefined,
         cloudReasoningBaseUrl:
           typeof s.cloudReasoningBaseUrl === "string" ? s.cloudReasoningBaseUrl : undefined,
       });
 
-      if (s.musicDuckingMode === "off" || s.musicDuckingMode === "duck" || s.musicDuckingMode === "mute") {
+      if (
+        s.musicDuckingMode === "off" ||
+        s.musicDuckingMode === "duck" ||
+        s.musicDuckingMode === "mute"
+      ) {
         setMusicDuckingMode(s.musicDuckingMode);
       }
       if (typeof s.musicDuckLevel === "number") setMusicDuckLevel(s.musicDuckLevel);
-      if (typeof s.enableVariableSnapping === "boolean") setEnableVariableSnapping(s.enableVariableSnapping);
-      if (typeof s.enableCorrectionLearning === "boolean") setEnableCorrectionLearning(s.enableCorrectionLearning);
-      if (typeof s.enableContextCapture === "boolean") setEnableContextCapture(s.enableContextCapture);
+      if (typeof s.enableVariableSnapping === "boolean")
+        setEnableVariableSnapping(s.enableVariableSnapping);
+      if (typeof s.enableCorrectionLearning === "boolean")
+        setEnableCorrectionLearning(s.enableCorrectionLearning);
+      if (typeof s.enableContextCapture === "boolean")
+        setEnableContextCapture(s.enableContextCapture);
       if (typeof s.autoPaste === "boolean") setAutoPaste(s.autoPaste);
       if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
       if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
@@ -1063,34 +1070,38 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   </SettingsRow>
 
                   {/* Show translate toggle only when speaking a non-English language */}
-                  {preferredLanguage && preferredLanguage !== "auto" && preferredLanguage !== "en" && (
-                    <SettingsRow
-                      label="Translate to English"
-                      description="Automatically translate your speech into English text"
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setTranslateToEnglish(translateToEnglish === "on" ? "off" : "on")
-                        }
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          translateToEnglish === "on"
-                            ? "bg-primary"
-                            : "bg-surface-raised border border-border-subtle"
-                        }`}
+                  {preferredLanguage &&
+                    preferredLanguage !== "auto" &&
+                    preferredLanguage !== "en" && (
+                      <SettingsRow
+                        label="Translate to English"
+                        description="Automatically translate your speech into English text"
                       >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            translateToEnglish === "on" ? "translate-x-6" : "translate-x-1"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTranslateToEnglish(translateToEnglish === "on" ? "off" : "on")
+                          }
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            translateToEnglish === "on"
+                              ? "bg-primary"
+                              : "bg-surface-raised border border-border-subtle"
                           }`}
-                        />
-                      </button>
-                    </SettingsRow>
-                  )}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              translateToEnglish === "on" ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                      </SettingsRow>
+                    )}
 
                   {languageCompatWarning && (
                     <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                      <span aria-hidden="true" className="mt-px shrink-0">⚠</span>
+                      <span aria-hidden="true" className="mt-px shrink-0">
+                        ⚠
+                      </span>
                       {languageCompatWarning}
                     </p>
                   )}
@@ -1179,9 +1190,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           max={80}
                           step={5}
                           value={Math.round(musicDuckLevel * 100)}
-                          onChange={(e) =>
-                            setMusicDuckLevel(parseInt(e.target.value, 10) / 100)
-                          }
+                          onChange={(e) => setMusicDuckLevel(parseInt(e.target.value, 10) / 100)}
                           className="w-28 accent-primary"
                           aria-label="Duck volume level"
                         />
@@ -1368,7 +1377,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                             updateTranscriptionSettings({ whisperServerIdleTimeoutMinutes: next });
 
                             // Best-effort: apply immediately if the server is already running.
-                            window.electronAPI?.whisperServerSetIdleTimeoutMinutes(next)?.catch(() => {});
+                            window.electronAPI
+                              ?.whisperServerSetIdleTimeoutMinutes(next)
+                              ?.catch(() => {});
                           }}
                           className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                           aria-label="Whisper server idle shutdown minutes"
@@ -1487,7 +1498,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     size="sm"
                     onClick={async () => {
                       try {
-                        const result = await window.electronAPI?.openExternal("mailto:support@Privoca.com");
+                        const result = await window.electronAPI?.openExternal(
+                          "mailto:support@Privoca.com"
+                        );
                         if (!result?.success) {
                           // Fallback: try opening the email as a web URL
                           await window.electronAPI?.openExternal(
@@ -1581,7 +1594,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div className="border-t border-border/30 pt-8">
               <SectionHeader
                 title="Data & Storage"
-                description="Manage cached files, models, and application data"
+                description="Manage settings, statistics, model cache, and application data"
               />
 
               <div className="space-y-4">
@@ -1589,28 +1602,30 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Export / Import settings"
-                      description="Move your preferences between machines. API keys are excluded by default."
+                      label="Settings backup"
+                      description="Export your preferences to a file or restore from a backup. API keys are excluded by default."
                     >
-                      <div className="flex flex-col items-end gap-2">
-                        <label className="flex items-center gap-2 text-xs text-muted-foreground select-none">
-                          <input
-                            type="checkbox"
-                            checked={includeApiKeysInExport}
-                            onChange={(e) => setIncludeApiKeysInExport(e.target.checked)}
-                          />
-                          Include API keys in export
-                        </label>
-
-                        <label className="flex items-center gap-2 text-xs text-muted-foreground select-none">
-                          <input
-                            type="checkbox"
-                            checked={allowApiKeysOnImport}
-                            onChange={(e) => setAllowApiKeysOnImport(e.target.checked)}
-                          />
-                          Allow importing API keys
-                        </label>
-
+                      <div className="flex flex-col items-end gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground select-none cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="rounded"
+                              checked={includeApiKeysInExport}
+                              onChange={(e) => setIncludeApiKeysInExport(e.target.checked)}
+                            />
+                            Include API keys in export
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground select-none cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="rounded"
+                              checked={allowApiKeysOnImport}
+                              onChange={(e) => setAllowApiKeysOnImport(e.target.checked)}
+                            />
+                            Allow importing API keys
+                          </label>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
@@ -1629,7 +1644,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                             Import
                           </Button>
                         </div>
-
                         <input
                           ref={importFileInputRef}
                           type="file"
@@ -1638,12 +1652,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
-
                             try {
                               showConfirmDialog({
                                 title: "Import Settings",
-                                description:
-                                  "This will overwrite your current settings. Proceed?",
+                                description: "This will overwrite your current settings. Proceed?",
                                 confirmText: "Import",
                                 onConfirm: async () => {
                                   try {
@@ -1658,8 +1670,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                       description: err?.message || "Could not import settings.",
                                     });
                                   } finally {
-                                    // reset input so selecting the same file again triggers onChange
-                                    if (importFileInputRef.current) importFileInputRef.current.value = "";
+                                    if (importFileInputRef.current)
+                                      importFileInputRef.current.value = "";
                                   }
                                 },
                               });
@@ -1673,6 +1685,46 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           }}
                         />
                       </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Reset statistics"
+                      description="Clear all aggregate stats — words dictated, session count, time, and WPM. Transcript history and settings are not affected."
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:border-destructive"
+                        onClick={() => {
+                          showConfirmDialog({
+                            title: "Reset Statistics",
+                            description:
+                              "This will permanently clear your dictation statistics (words, sessions, time, WPM). Your transcript history and settings will not be affected.\n\nThis action cannot be undone.",
+                            confirmText: "Reset Statistics",
+                            variant: "destructive",
+                            onConfirm: async () => {
+                              try {
+                                await window.electronAPI?.resetStats?.();
+                                showAlertDialog({
+                                  title: "Statistics Reset",
+                                  description: "Your dictation statistics have been cleared.",
+                                });
+                              } catch (err: any) {
+                                showAlertDialog({
+                                  title: "Reset Failed",
+                                  description: err?.message || "Could not reset statistics.",
+                                });
+                              }
+                            },
+                          });
+                        }}
+                      >
+                        Reset
+                      </Button>
                     </SettingsRow>
                   </SettingsPanelRow>
                 </SettingsPanel>
@@ -1701,7 +1753,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </SettingsRow>
                   </SettingsPanelRow>
                 </SettingsPanel>
-
 
                 <SettingsPanel>
                   <SettingsPanelRow>
@@ -1776,7 +1827,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         onOpenChange={(open) => !open && hideAlertDialog()}
         title={alertDialog.title}
         description={alertDialog.description}
-        onOk={() => { }}
+        onOk={() => {}}
       />
 
       {renderSectionContent()}
