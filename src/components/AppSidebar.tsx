@@ -53,8 +53,20 @@ const navGroups: NavGroup[] = [
   {
     label: "INTELLIGENCE",
     items: [
-      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain, badge: "Pro", badgeVariant: "pro" },
-      { id: "voice-assistant", label: "Voice Assistant", icon: MessageSquare, badge: "Pro", badgeVariant: "pro" },
+      {
+        id: "ai-enhancement",
+        label: "AI Enhancement",
+        icon: Brain,
+        badge: "Pro",
+        badgeVariant: "pro",
+      },
+      {
+        id: "voice-assistant",
+        label: "Voice Assistant",
+        icon: MessageSquare,
+        badge: "Pro",
+        badgeVariant: "pro",
+      },
     ],
   },
   {
@@ -84,7 +96,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
       try {
         const result = await window.electronAPI?.getAppVersion?.();
         if (result && result.version) setCurrentVersion(result.version);
-      } catch { }
+      } catch {}
     };
     getVersion();
   }, []);
@@ -277,46 +289,40 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
       {/* Footer */}
       <div
         style={{
-          padding: "12px",
+          padding: "12px 16px 14px",
           borderTop: "1px solid #1A1D1A",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
         }}
       >
-        {/* Pro tip */}
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: "8px",
-            backgroundColor: "rgba(112,255,186,0.04)",
-            border: "1px solid rgba(112,255,186,0.08)",
-            marginBottom: "10px",
-          }}
-        >
-          <p style={{ fontSize: "10px", color: "#6B7370", margin: 0, lineHeight: 1.5 }}>
-            Press{" "}
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                color: "#70FFBA",
-                fontWeight: 500,
-              }}
-            >
-              {formatHotkey(hotkey)}
-            </span>{" "}
-            anywhere to start dictating
-          </p>
-        </div>
+        {/* Hotkey hint */}
+        <p style={{ fontSize: "11px", color: "#4A4F4C", margin: 0, lineHeight: 1.5 }}>
+          Press{" "}
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              color: "#5E6B64",
+              fontWeight: 500,
+            }}
+          >
+            {formatHotkey(hotkey)}
+          </span>{" "}
+          to dictate
+        </p>
 
         {/* Version */}
-        <p
-          style={{
-            fontSize: "10px",
-            color: "#3D423F",
-            textAlign: "center",
-            margin: 0,
-          }}
-        >
-          {currentVersion ? `v${currentVersion}` : "..."}
-        </p>
+        {currentVersion && (
+          <p
+            style={{
+              fontSize: "10px",
+              color: "#2E332F",
+              margin: 0,
+            }}
+          >
+            v{currentVersion}
+          </p>
+        )}
       </div>
     </div>
   );
