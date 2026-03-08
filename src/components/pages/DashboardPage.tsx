@@ -11,31 +11,75 @@ interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
 }
 
+function toLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseTranscriptionTimestamp(timestamp: string): Date | null {
+  if (!timestamp) return null;
+
+  // SQLite DATETIME commonly arrives as "YYYY-MM-DD HH:MM:SS" (UTC-ish text without timezone).
+  // Parsing that with the Date constructor is inconsistent across environments, and forcing a `Z`
+  // can shift entries onto the wrong local day. Parse the parts manually and treat them as local
+  // wall-clock time so streaks are counted by the user's calendar day.
+  const sqliteMatch = timestamp.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+
+  if (sqliteMatch) {
+    const [, year, month, day, hour = "0", minute = "0", second = "0"] = sqliteMatch;
+    const parsed = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(timestamp);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function computeStreak(transcriptions: TranscriptionItemType[]): number {
   if (transcriptions.length === 0) return 0;
 
-  // Build a set of date strings (YYYY-MM-DD in local time) that have transcriptions
   const datesWithTranscriptions = new Set<string>();
   for (const t of transcriptions) {
-    const src = t.timestamp.endsWith("Z") ? t.timestamp : `${t.timestamp}Z`;
-    const d = new Date(src);
-    if (!Number.isNaN(d.getTime())) {
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      datesWithTranscriptions.add(dateStr);
+    const parsed = parseTranscriptionTimestamp(t.timestamp);
+    if (parsed) {
+      datesWithTranscriptions.add(toLocalDateKey(parsed));
     }
   }
 
-  // Count consecutive days backwards from today
+  if (datesWithTranscriptions.size === 0) return 0;
+
+  // Grace-window daily streak:
+  // - activity today => streak is anchored today
+  // - otherwise activity yesterday => streak is still alive and anchored yesterday
+  // - otherwise streak is broken
+  const today = new Date();
+  const todayKey = toLocalDateKey(today);
+
+  const anchor = new Date(today);
+  if (!datesWithTranscriptions.has(todayKey)) {
+    anchor.setDate(anchor.getDate() - 1);
+    const yesterdayKey = toLocalDateKey(anchor);
+    if (!datesWithTranscriptions.has(yesterdayKey)) {
+      return 0;
+    }
+  }
+
   let streak = 0;
-  const cursor = new Date();
   for (let i = 0; i < 365; i++) {
-    const dateStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
-    if (datesWithTranscriptions.has(dateStr)) {
-      streak++;
-      cursor.setDate(cursor.getDate() - 1);
-    } else {
+    const key = toLocalDateKey(anchor);
+    if (!datesWithTranscriptions.has(key)) {
       break;
     }
+    streak++;
+    anchor.setDate(anchor.getDate() - 1);
   }
 
   return streak;
