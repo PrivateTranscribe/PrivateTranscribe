@@ -1711,7 +1711,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                 await window.electronAPI?.resetStats?.();
                                 showAlertDialog({
                                   title: "Statistics Reset",
-                                  description: "Your dictation statistics have been cleared.",
+                                  description: "Your dictation statistics and streak baseline have been cleared. Transcript history is preserved.",
                                 });
                               } catch (err: any) {
                                 showAlertDialog({

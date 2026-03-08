@@ -67,6 +67,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("transcriptions-cleared", listener);
     return () => ipcRenderer.removeListener("transcriptions-cleared", listener);
   },
+  onTranscriptionsReloaded: (callback) => {
+    const listener = (_event, items) => callback?.(items);
+    ipcRenderer.on("transcriptions-reloaded", listener);
+    return () => ipcRenderer.removeListener("transcriptions-reloaded", listener);
+  },
 
   // Environment variables
   getOpenAIKey: () => ipcRenderer.invoke("get-openai-key"),

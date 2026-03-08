@@ -285,6 +285,9 @@ declare global {
       onTranscriptionsCleared?: (
         callback: (payload: { cleared: number }) => void
       ) => (() => void) | void;
+      onTranscriptionsReloaded?: (
+        callback: (items: TranscriptionItem[]) => void
+      ) => (() => void) | void;
 
       // API key management
       getOpenAIKey: () => Promise<string>;

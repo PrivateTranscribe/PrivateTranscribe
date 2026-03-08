@@ -60,6 +60,16 @@ function ensureIpcListeners() {
     }
   }
 
+  if (window.electronAPI?.onTranscriptionsReloaded) {
+    const dispose = window.electronAPI.onTranscriptionsReloaded((items) => {
+      transcriptions = Array.isArray(items) ? items : [];
+      emit();
+    });
+    if (typeof dispose === "function") {
+      disposers.push(dispose);
+    }
+  }
+
   hasBoundIpcListeners = true;
 
   window.addEventListener("beforeunload", () => {

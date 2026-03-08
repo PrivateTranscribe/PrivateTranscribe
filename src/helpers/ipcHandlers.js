@@ -274,8 +274,13 @@ class IPCHandlers {
       return this.databaseManager.getStats();
     });
 
-    ipcMain.handle("db-reset-stats", async () => {
-      return this.databaseManager.resetStats();
+    ipcMain.handle("db-reset-stats", async (event) => {
+      const result = this.databaseManager.resetStats();
+      if (result?.success) {
+        const refreshed = this.databaseManager.getTranscriptions();
+        event.sender.send("transcriptions-reloaded", refreshed);
+      }
+      return result;
     });
 
     // Clipboard handlers

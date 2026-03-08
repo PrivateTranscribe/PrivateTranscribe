@@ -349,19 +349,29 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      this.db
-        .prepare(
-          `
-        UPDATE stats
-        SET total_words = 0,
-            total_transcriptions = 0,
-            total_seconds = 0,
-            average_wpm = 0,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = 1
-      `
-        )
-        .run();
+
+      const tx = this.db.transaction(() => {
+        this.db
+          .prepare(
+            `
+          UPDATE stats
+          SET total_words = 0,
+              total_transcriptions = 0,
+              total_seconds = 0,
+              average_wpm = 0,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = 1
+        `
+          )
+          .run();
+
+        // Reset the streak basis as well by marking all existing history entries as
+        // excluded from aggregate/streak calculations. This preserves transcript history
+        // while giving the user a true "fresh stats" reset.
+        this.db.prepare(`UPDATE transcriptions SET include_in_stats = 0 WHERE include_in_stats != 0`).run();
+      });
+
+      tx();
       return { success: true };
     } catch (error) {
       console.error("Error resetting stats:", error.message);
