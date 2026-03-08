@@ -35,10 +35,16 @@ export function useProStatus() {
   };
 }
 
-// Pro feature IDs (hard enforcement gate)
-const PRO_FEATURES = new Set(["correction-memory", "smart-context", "action-engine"]);
+// Features that require a Pro entitlement (controls lock gating)
+const PRO_FEATURES = new Set([
+  "correction-memory",
+  "smart-context",
+  "action-engine",
+  "ai-enhancement",
+  "voice-assistant",
+]);
 
-// Items that carry a "Pro" badge in the sidebar / page headers
+// Subset of PRO_FEATURES that also carry a visible badge in the sidebar/page headers
 const SIDEBAR_PRO_ITEMS = new Set(["ai-enhancement", "voice-assistant", "action-engine"]);
 
 // localStorage key and custom event used by the temporary preview toggle
@@ -116,41 +122,55 @@ export function useProPreview(): [ProPreviewMode, (mode: ProPreviewMode) => void
   return [preview, setProPreview];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Effective Entitlement — single source of truth for all gating + badge logic
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Whether to show a "Pro" badge/label on a given sidebar or page-header item.
+ * [TEMPORARY — dev/internal override only]
  *
- * - Pro preview (or real Pro license) → false  — badges are visual clutter once unlocked
- * - Free preview → true                        — badges serve as upsell indicators
- * - Default (no preview, DEV)  → true          — preserves existing visual behavior
- * - Default (no preview, PROD) → depends on actual license
+ * Returns the effective entitlement used by all feature gating and badge
+ * rendering.  Resolution order:
+ *   1. Internal override (Pro Preview toggle in Developer Settings)
+ *   2. Real Pro license (verified token + status flag)
+ *   3. Dev mode with enforcement disabled → treat as Pro so contributors
+ *      can work without a license
+ *   4. Default → Free
+ *
+ * This is the ONLY place entitlement resolution logic should live.
+ * `isFeatureUnlocked()` and `shouldShowProBadge()` both delegate here.
  */
-export function shouldShowProBadge(featureId: string): boolean {
-  if (!SIDEBAR_PRO_ITEMS.has(featureId)) return false;
-
+export function getEffectiveEntitlement(): "free" | "pro" {
+  // 1. Internal override (Pro Preview toggle)
   const preview = getProPreview();
-  if (preview === "pro") return false;
-  if (preview === "free") return true;
+  if (preview === "pro") return "pro";
+  if (preview === "free") return "free";
 
-  // Default: keep existing behavior — show badge unless user has a verified Pro license
-  if (!isProEnforcementEnabled()) return true; // DEV: always show (current static behavior)
+  // 2. Dev mode — contributors get Pro access without a license
+  if (!isProEnforcementEnabled()) return "pro";
+
+  // 3. Real license — dual check: status flag + tamper-resistant token
   const status = getProStatus();
-  return !(status.isPro && _verifyToken(status._t));
+  if (status.isPro && _verifyToken(status._t)) return "pro";
+
+  // 4. Default
+  return "free";
 }
 
 /**
- * Check if a feature requires Pro and is currently unlocked.
- * Uses dual verification: status flag + token integrity.
- * Respects the Pro preview override so Free/Pro UI states can be previewed.
+ * Whether to show a "Pro" badge on a sidebar/page-header item.
+ * Badges are hidden once the effective entitlement is Pro (visual clutter).
+ */
+export function shouldShowProBadge(featureId: string): boolean {
+  if (!SIDEBAR_PRO_ITEMS.has(featureId)) return false;
+  return getEffectiveEntitlement() === "free";
+}
+
+/**
+ * Whether a Pro-gated feature is accessible.
+ * Non-Pro features always return true.  Pro features gate on effective entitlement.
  */
 export function isFeatureUnlocked(featureId: string): boolean {
-  const preview = getProPreview();
-  if (preview === "pro") return true;
-  if (preview === "free" && PRO_FEATURES.has(featureId)) return false;
-
-  if (!isProEnforcementEnabled()) return true;
-  if (!PRO_FEATURES.has(featureId)) return true; // Free feature
-
-  const status = getProStatus();
-  // Dual check: isPro flag AND token verification
-  return status.isPro && _verifyToken(status._t);
+  if (!PRO_FEATURES.has(featureId)) return true;
+  return getEffectiveEntitlement() === "pro";
 }
