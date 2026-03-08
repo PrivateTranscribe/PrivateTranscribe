@@ -5,6 +5,7 @@ export interface TranscriptionItem {
   text: string;
   timestamp: string;
   created_at: string;
+  include_in_stats: number; // 1 = real dictation (counts toward streak/stats), 0 = file upload etc.
 }
 
 export interface WhisperCheckResult {

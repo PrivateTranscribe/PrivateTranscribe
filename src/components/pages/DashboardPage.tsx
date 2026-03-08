@@ -48,6 +48,10 @@ function computeStreak(transcriptions: TranscriptionItemType[]): number {
 
   const datesWithTranscriptions = new Set<string>();
   for (const t of transcriptions) {
+    // Only count real dictation sessions — skip file uploads and other non-stats entries.
+    // include_in_stats is stored as SQLite integer (1/0); treat missing/undefined as 1 for
+    // backward-compatibility with any records that predate the column migration.
+    if (t.include_in_stats === 0) continue;
     const parsed = parseTranscriptionTimestamp(t.timestamp);
     if (parsed) {
       datesWithTranscriptions.add(toLocalDateKey(parsed));

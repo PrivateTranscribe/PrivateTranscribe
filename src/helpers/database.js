@@ -35,7 +35,8 @@ class DatabaseManager {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           text TEXT NOT NULL,
           timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          include_in_stats INTEGER NOT NULL DEFAULT 1
         )
       `);
 
@@ -80,6 +81,20 @@ class DatabaseManager {
         VALUES (1, 0, 0, 0, 0)
       `);
 
+      // Migration: Add include_in_stats column if it doesn't exist (for existing databases)
+      try {
+        const txnColumns = this.db.prepare("PRAGMA table_info(transcriptions)").all();
+        const hasIncludeInStats = txnColumns.some((col) => col.name === "include_in_stats");
+        if (!hasIncludeInStats) {
+          console.log("Migrating transcriptions table: adding include_in_stats column");
+          this.db.exec(
+            `ALTER TABLE transcriptions ADD COLUMN include_in_stats INTEGER NOT NULL DEFAULT 1`
+          );
+        }
+      } catch (migrationError) {
+        console.error("Migration warning:", migrationError.message);
+      }
+
       // Migration: Add average_wpm column if it doesn't exist (for existing databases)
       try {
         const columns = this.db.prepare("PRAGMA table_info(stats)").all();
@@ -112,13 +127,15 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      const stmt = this.db.prepare("INSERT INTO transcriptions (text) VALUES (?)");
-      const result = stmt.run(text);
+      const includeInStats = options?.includeInStats !== false;
+
+      const stmt = this.db.prepare(
+        "INSERT INTO transcriptions (text, include_in_stats) VALUES (?, ?)"
+      );
+      const result = stmt.run(text, includeInStats ? 1 : 0);
 
       const fetchStmt = this.db.prepare("SELECT * FROM transcriptions WHERE id = ?");
       const transcription = fetchStmt.get(result.lastInsertRowid);
-
-      const includeInStats = options?.includeInStats !== false;
 
       if (includeInStats) {
         // Update aggregate stats
