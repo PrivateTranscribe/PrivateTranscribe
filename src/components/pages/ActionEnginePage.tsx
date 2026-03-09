@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Zap,
   Lock,
@@ -15,6 +15,9 @@ import {
   CheckCircle2,
   XCircle,
   History,
+  Search,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -100,6 +103,181 @@ const DEFAULT_CONFIG_FOR_TYPE: Record<ActionType, ActionConfig> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AppActionFields — config UI for the "Open application" action type
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface InstalledApp {
+  name: string;
+  path: string;
+}
+
+function AppActionFields({
+  actionConfig,
+  onChange,
+}: {
+  actionConfig: ActionConfig;
+  onChange: (config: ActionConfig) => void;
+}) {
+  const platform = window.electronAPI?.getPlatform?.() ?? "linux";
+  const placeholder =
+    platform === "darwin"
+      ? "/Applications/Terminal.app"
+      : platform === "win32"
+        ? "C:\\Program Files\\app\\app.exe"
+        : "/usr/bin/code";
+  const helpText =
+    platform === "darwin"
+      ? "Path to a .app bundle. Choose from installed apps below, browse, or type directly."
+      : platform === "win32"
+        ? "Path to an .exe or .lnk file. Choose from installed apps below, browse, or type directly."
+        : "Full path to the executable. Choose from installed apps below, browse, or type directly.";
+
+  const [apps, setApps] = useState<InstalledApp[]>([]);
+  const [loadingApps, setLoadingApps] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const loadedRef = useRef(false);
+
+  const loadApps = useCallback(async () => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    setLoadingApps(true);
+    try {
+      const res = await window.electronAPI?.actionEngineListApps?.();
+      if (res?.success && res.apps) {
+        setApps(res.apps);
+      }
+    } finally {
+      setLoadingApps(false);
+    }
+  }, []);
+
+  const togglePicker = () => {
+    const next = !pickerOpen;
+    setPickerOpen(next);
+    if (next) loadApps();
+  };
+
+  const handleBrowse = async () => {
+    const filters =
+      platform === "win32"
+        ? [
+            { name: "Applications", extensions: ["exe", "lnk", "bat"] },
+            { name: "All Files", extensions: ["*"] },
+          ]
+        : platform === "darwin"
+          ? [
+              { name: "Applications", extensions: ["app"] },
+              { name: "All Files", extensions: ["*"] },
+            ]
+          : [{ name: "All Files", extensions: ["*"] }];
+    const result = await window.electronAPI?.showOpenDialog?.({
+      title: "Select application",
+      properties: ["openFile"],
+      filters,
+    });
+    if (result && !result.canceled && result.filePaths[0]) {
+      onChange({ ...actionConfig, appPath: result.filePaths[0] });
+    }
+  };
+
+  const queryLower = query.trim().toLowerCase();
+  const filtered =
+    queryLower.length === 0
+      ? apps
+      : apps.filter((a) => a.name.toLowerCase().includes(queryLower));
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs text-muted-foreground">Application path</Label>
+      <div className="flex gap-2">
+        <Input
+          placeholder={placeholder}
+          value={actionConfig.appPath ?? ""}
+          onChange={(e) => onChange({ ...actionConfig, appPath: e.target.value })}
+          className="flex-1"
+        />
+        <Button type="button" variant="outline" size="sm" onClick={handleBrowse}>
+          Browse…
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">{helpText}</p>
+
+      {/* Installed app picker */}
+      <div className="rounded-md border border-border">
+        <button
+          type="button"
+          onClick={togglePicker}
+          className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted/50 rounded-md"
+        >
+          <span className="flex items-center gap-1.5">
+            <FolderOpen size={13} />
+            {loadingApps ? "Scanning installed apps…" : "Choose from installed apps"}
+            {apps.length > 0 && !loadingApps && (
+              <span className="text-muted-foreground font-normal">({apps.length} found)</span>
+            )}
+          </span>
+          {pickerOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
+
+        {pickerOpen && (
+          <div className="border-t border-border px-2 pb-2 pt-1.5">
+            {/* Search input */}
+            <div className="relative mb-1.5">
+              <Search
+                size={12}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              />
+              <Input
+                className="h-7 pl-7 text-xs"
+                placeholder="Filter apps…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            {/* App list */}
+            <div className="max-h-52 overflow-y-auto rounded-sm">
+              {loadingApps ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  Scanning…
+                </p>
+              ) : filtered.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  {apps.length === 0 ? "No installed apps found." : "No apps match your search."}
+                </p>
+              ) : (
+                filtered.map((app) => {
+                  const selected = actionConfig.appPath === app.path;
+                  return (
+                    <button
+                      key={app.path}
+                      type="button"
+                      onClick={() => {
+                        onChange({ ...actionConfig, appPath: app.path });
+                        setPickerOpen(false);
+                        setQuery("");
+                      }}
+                      className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-muted/60 ${
+                        selected ? "bg-muted font-medium" : ""
+                      }`}
+                    >
+                      <span className="truncate">{app.name}</span>
+                      {selected && <CheckCircle2 size={11} className="ml-1 shrink-0 text-primary" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ActionConfigFields — dynamic config inputs per action type
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -143,62 +321,8 @@ function ActionConfigFields({
         </div>
       );
 
-    case "app": {
-      const platform = window.electronAPI?.getPlatform?.() ?? "linux";
-      const placeholder =
-        platform === "darwin"
-          ? "/Applications/Terminal.app"
-          : platform === "win32"
-            ? "C:\\Program Files\\app\\app.exe"
-            : "/usr/bin/code";
-      const helpText =
-        platform === "darwin"
-          ? "Path to a .app bundle. Click Browse to pick, or type directly."
-          : platform === "win32"
-            ? "Path to an .exe or .lnk file. Click Browse to pick, or type directly."
-            : "Full path to the executable. Click Browse to pick, or type directly.";
-
-      const handleBrowse = async () => {
-        const filters =
-          platform === "win32"
-            ? [
-                { name: "Applications", extensions: ["exe", "lnk", "bat"] },
-                { name: "All Files", extensions: ["*"] },
-              ]
-            : platform === "darwin"
-              ? [
-                  { name: "Applications", extensions: ["app"] },
-                  { name: "All Files", extensions: ["*"] },
-                ]
-              : [{ name: "All Files", extensions: ["*"] }];
-        const result = await window.electronAPI?.showOpenDialog?.({
-          title: "Select application",
-          properties: ["openFile"],
-          filters,
-        });
-        if (result && !result.canceled && result.filePaths[0]) {
-          onChange({ ...actionConfig, appPath: result.filePaths[0] });
-        }
-      };
-
-      return (
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Application path</Label>
-          <div className="flex gap-2">
-            <Input
-              placeholder={placeholder}
-              value={actionConfig.appPath ?? ""}
-              onChange={(e) => onChange({ ...actionConfig, appPath: e.target.value })}
-              className="flex-1"
-            />
-            <Button type="button" variant="outline" size="sm" onClick={handleBrowse}>
-              Browse…
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">{helpText}</p>
-        </div>
-      );
-    }
+    case "app":
+      return <AppActionFields actionConfig={actionConfig} onChange={onChange} />;
 
     case "dictation-mode":
       return (

@@ -586,6 +586,12 @@ declare global {
         error?: string;
       }>;
       actionEngineRunsClear?: () => Promise<{ success: boolean; error?: string }>;
+      /** Returns a sorted list of installed apps for the "Open application" action picker. */
+      actionEngineListApps?: () => Promise<{
+        success: boolean;
+        apps?: Array<{ name: string; path: string }>;
+        error?: string;
+      }>;
     };
 
     api?: {

@@ -291,4 +291,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Action run history
   actionEngineRunsList: (limit) => ipcRenderer.invoke("action-engine-runs-list", limit),
   actionEngineRunsClear: () => ipcRenderer.invoke("action-engine-runs-clear"),
+  // Installed app discovery for the "Open application" action picker
+  actionEngineListApps: () => ipcRenderer.invoke("action-engine-list-apps"),
 });

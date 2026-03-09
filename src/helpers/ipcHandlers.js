@@ -1471,6 +1471,16 @@ class IPCHandlers {
         return { success: false, error: err.message };
       }
     });
+
+    ipcMain.handle("action-engine-list-apps", async () => {
+      try {
+        const { listInstalledApps } = require("./appDiscovery");
+        const apps = listInstalledApps();
+        return { success: true, apps };
+      } catch (err) {
+        return { success: false, error: err.message, apps: [] };
+      }
+    });
   }
 
   broadcastToWindows(channel, payload) {
