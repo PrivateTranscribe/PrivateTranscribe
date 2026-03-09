@@ -531,6 +531,14 @@ declare global {
       }>;
       clearHardwareCache?: () => Promise<{ success: boolean }>;
 
+      // Native file-open dialog
+      showOpenDialog?: (options?: {
+        title?: string;
+        defaultPath?: string;
+        properties?: Array<"openFile" | "openDirectory" | "multiSelections">;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<{ canceled: boolean; filePaths: string[] }>;
+
       // Action Engine (Pro feature)
       actionEngineList?: () => Promise<{
         success: boolean;

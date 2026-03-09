@@ -142,16 +142,23 @@ function validateActionPayload(raw: unknown): {
       break;
     }
     case "url": {
-      const url = typeof rawConfig.url === "string" ? rawConfig.url.trim() : "";
-      if (!url) throw new Error("URL action requires a non-empty url.");
+      let url = typeof rawConfig.url === "string" ? rawConfig.url.trim() : "";
+      if (!url) throw new Error("URL action requires a non-empty URL.");
+      if (!url.includes("://")) {
+        url = "https://" + url;
+        rawConfig.url = url;
+      }
       let parsed: URL;
       try {
         parsed = new URL(url);
       } catch {
-        throw new Error("URL action has an invalid url value.");
+        throw new Error(`"${url}" is not a valid URL. Example: https://example.com`);
       }
       if (!["https:", "http:"].includes(parsed.protocol)) {
-        throw new Error("URL action only allows http:// or https:// URLs.");
+        throw new Error(
+          `Only https:// and http:// URLs are supported (got "${parsed.protocol.replace(":", "")}://"). ` +
+            `Update the URL to start with https://`
+        );
       }
       break;
     }
@@ -513,7 +520,17 @@ describe("validateActionPayload", () => {
     it("throws when url is empty", () => {
       expect(() =>
         validateActionPayload({ ...base, actionType: "url", actionConfig: { url: "" } })
-      ).toThrow("non-empty url");
+      ).toThrow("non-empty URL");
+    });
+
+    it("auto-prepends https:// when protocol is missing", () => {
+      const payload = {
+        ...base,
+        actionType: "url",
+        actionConfig: { url: "example.com" },
+      };
+      const result = validateActionPayload(payload);
+      expect((result.actionConfig as { url: string }).url).toBe("https://example.com");
     });
 
     it("throws when url uses a non-http scheme", () => {
@@ -523,7 +540,7 @@ describe("validateActionPayload", () => {
           actionType: "url",
           actionConfig: { url: "ftp://example.com" },
         })
-      ).toThrow("http");
+      ).toThrow("Only https:// and http://");
     });
 
     it("throws when appPath is empty", () => {

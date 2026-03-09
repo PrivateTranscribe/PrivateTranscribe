@@ -1,4 +1,4 @@
-const { ipcMain, app, shell, BrowserWindow } = require("electron");
+const { ipcMain, app, shell, dialog, BrowserWindow } = require("electron");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
@@ -1361,6 +1361,21 @@ class IPCHandlers {
         fs.writeFileSync(idPath, id, "utf-8");
         return { id };
       }
+    });
+
+    // Native file-open dialog — used by Action Engine "Open application" and other pickers.
+    // The dialog is always shown as a sheet attached to the requesting window, so the user
+    // explicitly chooses a path; no sensitive data is exposed without interaction.
+    ipcMain.handle("show-open-dialog", async (event, options) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const safeOptions = {
+        title: typeof options?.title === "string" ? options.title : "Select file",
+        defaultPath: typeof options?.defaultPath === "string" ? options.defaultPath : undefined,
+        properties: Array.isArray(options?.properties) ? options.properties : ["openFile"],
+        filters: Array.isArray(options?.filters) ? options.filters : [],
+      };
+      const result = await dialog.showOpenDialog(win ?? undefined, safeOptions);
+      return result; // { canceled: boolean; filePaths: string[] }
     });
 
     if (this.actionEngineManager) {

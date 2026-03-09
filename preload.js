@@ -275,6 +275,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
 
+  // Native file-open dialog (used by Action Engine app-picker and other UI)
+  showOpenDialog: (options) => ipcRenderer.invoke("show-open-dialog", options),
+
   // Action Engine (Pro feature)
   actionEngineList: () => ipcRenderer.invoke("action-engine-list"),
   actionEngineCreate: (payload) => ipcRenderer.invoke("action-engine-create", payload),

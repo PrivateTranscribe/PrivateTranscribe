@@ -12,7 +12,6 @@ import {
   Mic,
   ToggleLeft,
   ToggleRight,
-  ChevronDown,
   CheckCircle2,
   XCircle,
   History,
@@ -138,21 +137,68 @@ function ActionConfigFields({
             value={actionConfig.url ?? ""}
             onChange={(e) => onChange({ ...actionConfig, url: e.target.value })}
           />
-          <p className="text-[11px] text-muted-foreground">Must be an http:// or https:// URL.</p>
+          <p className="text-[11px] text-muted-foreground">
+            http:// or https:// URL. If you omit the protocol, https:// is added automatically.
+          </p>
         </div>
       );
 
-    case "app":
+    case "app": {
+      const platform = window.electronAPI?.getPlatform?.() ?? "linux";
+      const placeholder =
+        platform === "darwin"
+          ? "/Applications/Terminal.app"
+          : platform === "win32"
+            ? "C:\\Program Files\\app\\app.exe"
+            : "/usr/bin/code";
+      const helpText =
+        platform === "darwin"
+          ? "Path to a .app bundle. Click Browse to pick, or type directly."
+          : platform === "win32"
+            ? "Path to an .exe or .lnk file. Click Browse to pick, or type directly."
+            : "Full path to the executable. Click Browse to pick, or type directly.";
+
+      const handleBrowse = async () => {
+        const filters =
+          platform === "win32"
+            ? [
+                { name: "Applications", extensions: ["exe", "lnk", "bat"] },
+                { name: "All Files", extensions: ["*"] },
+              ]
+            : platform === "darwin"
+              ? [
+                  { name: "Applications", extensions: ["app"] },
+                  { name: "All Files", extensions: ["*"] },
+                ]
+              : [{ name: "All Files", extensions: ["*"] }];
+        const result = await window.electronAPI?.showOpenDialog?.({
+          title: "Select application",
+          properties: ["openFile"],
+          filters,
+        });
+        if (result && !result.canceled && result.filePaths[0]) {
+          onChange({ ...actionConfig, appPath: result.filePaths[0] });
+        }
+      };
+
       return (
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Application path</Label>
-          <Input
-            placeholder="/Applications/Terminal.app"
-            value={actionConfig.appPath ?? ""}
-            onChange={(e) => onChange({ ...actionConfig, appPath: e.target.value })}
-          />
+          <div className="flex gap-2">
+            <Input
+              placeholder={placeholder}
+              value={actionConfig.appPath ?? ""}
+              onChange={(e) => onChange({ ...actionConfig, appPath: e.target.value })}
+              className="flex-1"
+            />
+            <Button type="button" variant="outline" size="sm" onClick={handleBrowse}>
+              Browse…
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{helpText}</p>
         </div>
       );
+    }
 
     case "dictation-mode":
       return (
@@ -492,14 +538,12 @@ const ACTION_TYPE_ICON_SMALL: Record<
 };
 
 interface RunHistoryPanelProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   runs: ActionRun[];
   runsLoading: boolean;
   onClear: () => Promise<void>;
 }
 
-function RunHistoryPanel({ open, onOpenChange, runs, runsLoading, onClear }: RunHistoryPanelProps) {
+function RunHistoryPanel({ runs, runsLoading, onClear }: RunHistoryPanelProps) {
   const [clearing, setClearing] = useState(false);
 
   const handleClear = async () => {
@@ -513,125 +557,104 @@ function RunHistoryPanel({ open, onOpenChange, runs, runsLoading, onClear }: Run
 
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-3">
-      <button
-        className="w-full flex items-center justify-between text-sm font-medium text-foreground"
-        onClick={() => onOpenChange(!open)}
-        aria-expanded={open}
-      >
-        <span className="flex items-center gap-2">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="flex items-center gap-2 text-sm font-medium text-foreground">
           <History size={14} className="text-muted-foreground" />
           Run history
-        </span>
-        <ChevronDown
-          size={14}
-          className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div className="space-y-3">
-          {/* Header row */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              {runsLoading
-                ? "Loading…"
-                : runs.length === 0
-                  ? "No runs recorded yet."
-                  : `${runs.length} recent ${runs.length === 1 ? "run" : "runs"}`}
-            </p>
-            {runs.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleClear}
-                disabled={clearing}
-                className="h-6 px-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
-              >
-                {clearing ? "Clearing…" : "Clear history"}
-              </Button>
-            )}
-          </div>
-
-          {/* Run list */}
-          {runsLoading ? (
-            <div className="space-y-1.5">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="skeleton h-10 w-full rounded-lg" />
-              ))}
-            </div>
-          ) : runs.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <History size={24} className="text-muted-foreground/30" />
-              <p className="text-xs text-muted-foreground">
-                Run an action to see its history here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
-              {runs.map((run) => {
-                const Icon = ACTION_TYPE_ICON_SMALL[run.actionType] ?? Zap;
-                return (
-                  <div
-                    key={run.id}
-                    className="flex items-start gap-2.5 rounded-lg border border-border-subtle/50 bg-background/40 px-3 py-2 text-xs"
-                  >
-                    {/* Status icon */}
-                    {run.success ? (
-                      <CheckCircle2
-                        size={13}
-                        className="mt-0.5 shrink-0 text-green-500"
-                        aria-label="Success"
-                      />
-                    ) : (
-                      <XCircle
-                        size={13}
-                        className="mt-0.5 shrink-0 text-red-400"
-                        aria-label="Failed"
-                      />
-                    )}
-
-                    {/* Main info */}
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <Icon size={11} className="shrink-0 text-muted-foreground" />
-                        <span className="font-medium text-foreground truncate">
-                          {run.actionName}
-                        </span>
-                        <span
-                          className={`ml-auto shrink-0 rounded px-1 py-px font-mono text-[10px] ${
-                            run.triggeredBy === "transcript"
-                              ? "bg-primary/10 text-primary"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {run.triggeredBy === "transcript" ? "voice" : "manual"}
-                        </span>
-                      </div>
-
-                      {/* Trigger text or error */}
-                      {run.triggerText && (
-                        <p className="text-muted-foreground truncate">
-                          &ldquo;{run.triggerText}&rdquo;
-                        </p>
-                      )}
-                      {!run.success && run.error && (
-                        <p className="text-red-400/80 truncate">{run.error}</p>
-                      )}
-                      {run.success && run.output && (
-                        <p className="text-muted-foreground truncate font-mono">{run.output}</p>
-                      )}
-                    </div>
-
-                    {/* Meta: duration + time */}
-                    <div className="shrink-0 text-right text-muted-foreground space-y-0.5">
-                      <p>{formatRunTime(run.triggeredAt)}</p>
-                      <p className="font-mono">{run.durationMs}ms</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {runsLoading
+              ? "Loading…"
+              : runs.length === 0
+                ? "No runs yet"
+                : `${runs.length} recent ${runs.length === 1 ? "run" : "runs"}`}
+          </span>
+          {runs.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleClear}
+              disabled={clearing}
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+            >
+              {clearing ? "Clearing…" : "Clear"}
+            </Button>
           )}
+        </div>
+      </div>
+
+      {/* Run list */}
+      {runsLoading ? (
+        <div className="space-y-1.5">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton h-10 w-full rounded-lg" />
+          ))}
+        </div>
+      ) : runs.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <History size={24} className="text-muted-foreground/30" />
+          <p className="text-xs text-muted-foreground">Run an action to see its history here.</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5 max-h-72 overflow-y-auto">
+          {runs.map((run) => {
+            const Icon = ACTION_TYPE_ICON_SMALL[run.actionType] ?? Zap;
+            return (
+              <div
+                key={run.id}
+                className="flex items-start gap-2.5 rounded-lg border border-border-subtle/50 bg-background/40 px-3 py-2 text-xs"
+              >
+                {/* Status icon */}
+                {run.success ? (
+                  <CheckCircle2
+                    size={13}
+                    className="mt-0.5 shrink-0 text-green-500"
+                    aria-label="Success"
+                  />
+                ) : (
+                  <XCircle size={13} className="mt-0.5 shrink-0 text-red-400" aria-label="Failed" />
+                )}
+
+                {/* Main info */}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Icon size={11} className="shrink-0 text-muted-foreground" />
+                    <span className="font-medium text-foreground truncate">{run.actionName}</span>
+                    <span
+                      className={`ml-auto shrink-0 rounded px-1 py-px font-mono text-[10px] ${
+                        run.triggeredBy === "transcript"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {run.triggeredBy === "transcript" ? "voice" : "manual"}
+                    </span>
+                  </div>
+
+                  {/* Trigger text or error */}
+                  {run.triggerText && (
+                    <p className="text-muted-foreground truncate">
+                      &ldquo;{run.triggerText}&rdquo;
+                    </p>
+                  )}
+                  {!run.success && run.error && (
+                    <p className="text-red-400/80 truncate">{run.error}</p>
+                  )}
+                  {run.success && run.output && (
+                    <p className="text-muted-foreground truncate font-mono">{run.output}</p>
+                  )}
+                </div>
+
+                {/* Meta: duration + time */}
+                <div className="shrink-0 text-right text-muted-foreground space-y-0.5">
+                  <p>{formatRunTime(run.triggeredAt)}</p>
+                  <p className="font-mono">{run.durationMs}ms</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -664,13 +687,10 @@ export default function ActionEnginePage() {
   const [editTarget, setEditTarget] = useState<Action | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Action | null>(null);
 
-  // Run history panel state
-  const [runsOpen, setRunsOpen] = useState(false);
-
-  // Load runs when the panel is first opened
+  // Load run history on mount so the panel is populated immediately
   useEffect(() => {
-    if (runsOpen) void loadRuns(50);
-  }, [runsOpen, loadRuns]);
+    void loadRuns(50);
+  }, [loadRuns]);
 
   // Run feedback
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -711,8 +731,8 @@ export default function ActionEnginePage() {
     setLastResult(resultEntry);
     setRunningId(null);
     setTimeout(() => setLastResult((prev) => (prev?.id === action.id ? null : prev)), 4_000);
-    // Refresh run history if the panel is open so the new run appears immediately.
-    if (runsOpen) void loadRuns(50);
+    // Refresh run history so the new run appears immediately.
+    void loadRuns(50);
   };
 
   return (
@@ -869,17 +889,8 @@ export default function ActionEnginePage() {
 
           {/* How it works */}
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-3">
-            <button
-              className="w-full flex items-center justify-between text-sm font-medium text-foreground"
-              onClick={(e) => {
-                const next = e.currentTarget.nextElementSibling as HTMLElement | null;
-                next?.classList.toggle("hidden");
-              }}
-            >
-              <span>How triggers work</span>
-              <ChevronDown size={14} className="text-muted-foreground" />
-            </button>
-            <div className="hidden space-y-2 text-xs text-muted-foreground leading-relaxed">
+            <p className="text-sm font-medium text-foreground">How triggers work</p>
+            <div className="space-y-2 text-xs text-muted-foreground leading-relaxed">
               <p>
                 <strong className="text-foreground">Contains</strong> — matches if the transcribed
                 text includes the trigger phrase anywhere (case-insensitive). Best for natural
@@ -906,8 +917,6 @@ export default function ActionEnginePage() {
 
           {/* Run History */}
           <RunHistoryPanel
-            open={runsOpen}
-            onOpenChange={setRunsOpen}
             runs={runs}
             runsLoading={runsLoading}
             onClear={async () => {
@@ -926,8 +935,9 @@ export default function ActionEnginePage() {
         onSubmit={handleCreate}
       />
 
-      {/* Edit dialog */}
+      {/* Edit dialog — key forces remount when target changes, ensuring form is hydrated */}
       <ActionFormDialog
+        key={editTarget?.id ?? "__edit__"}
         open={editTarget !== null}
         onOpenChange={(open) => {
           if (!open) setEditTarget(null);

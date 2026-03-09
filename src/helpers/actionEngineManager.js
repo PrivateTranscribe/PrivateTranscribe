@@ -188,16 +188,28 @@ function validateActionConfig(actionType, config) {
     }
 
     case "url": {
-      const url = typeof config.url === "string" ? config.url.trim() : "";
-      if (!url) throw new Error("URL action requires a non-empty url.");
+      let url = typeof config.url === "string" ? config.url.trim() : "";
+      if (!url) throw new Error("URL action requires a non-empty URL.");
+
+      // Auto-normalize: if the user omitted the protocol entirely, prepend https://.
+      // Only do this when no "://" is present at all (e.g. "example.com").
+      // If a different scheme is present (e.g. "ftp://"), reject with a clear message.
+      if (!url.includes("://")) {
+        url = "https://" + url;
+        config.url = url;
+      }
+
       let parsed;
       try {
         parsed = new URL(url);
       } catch {
-        throw new Error("URL action has an invalid url value.");
+        throw new Error(`"${url}" is not a valid URL. Example: https://example.com`);
       }
       if (!["https:", "http:"].includes(parsed.protocol)) {
-        throw new Error("URL action only allows http:// or https:// URLs.");
+        throw new Error(
+          `Only https:// and http:// URLs are supported (got "${parsed.protocol.replace(":", "")}://"). ` +
+            `Update the URL to start with https://`
+        );
       }
       break;
     }
