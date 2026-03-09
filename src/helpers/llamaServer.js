@@ -14,6 +14,7 @@ const HEALTH_CHECK_INTERVAL_MS = 5000;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const STARTUP_POLL_INTERVAL_MS = 500;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
+const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
 
 class LlamaServerManager {
   constructor() {
@@ -25,6 +26,10 @@ class LlamaServerManager {
     this.healthCheckInterval = null;
     this.healthCheckFailures = 0;
     this.cachedServerBinaryPath = null;
+    this.lastUsedTime = null;
+    this.idleCheckTimeout = null;
+    this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MINUTES * 60 * 1000;
+    this.stoppedDueToIdle = false;
   }
 
   getServerBinaryPath() {
@@ -184,6 +189,9 @@ class LlamaServerManager {
 
     await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
     this.startHealthCheck();
+    this.stoppedDueToIdle = false;
+    this.lastUsedTime = Date.now();
+    this._scheduleIdleCheck();
 
     debugLogger.info("llama-server started successfully", {
       port: this.port,
@@ -242,6 +250,50 @@ class LlamaServerManager {
       });
       req.end();
     });
+  }
+
+  setIdleTimeoutMs(ms) {
+    this.idleTimeoutMs = ms;
+    // Reschedule with new timeout if server is running
+    if (this.ready && this.process) {
+      this._scheduleIdleCheck();
+    }
+  }
+
+  _scheduleIdleCheck() {
+    if (this.idleCheckTimeout) {
+      clearTimeout(this.idleCheckTimeout);
+      this.idleCheckTimeout = null;
+    }
+
+    if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
+
+    const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : 0;
+    const remaining = Math.max(0, this.idleTimeoutMs - elapsed);
+
+    this.idleCheckTimeout = setTimeout(() => {
+      this.checkIdleAndStop().catch((err) => {
+        debugLogger.error("llama-server idle check error", { error: err.message });
+      });
+    }, remaining);
+  }
+
+  async checkIdleAndStop() {
+    if (!this.ready || !this.process) return;
+    if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
+
+    const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : Infinity;
+    if (elapsed < this.idleTimeoutMs) {
+      // Not idle yet — reschedule for the remaining window
+      this._scheduleIdleCheck();
+      return;
+    }
+
+    debugLogger.info("llama-server idle timeout reached — stopping server", {
+      idleMinutes: Math.round(elapsed / 60000),
+    });
+    this.stoppedDueToIdle = true;
+    await this.stop();
   }
 
   startHealthCheck() {
@@ -324,6 +376,8 @@ class LlamaServerManager {
               const response = JSON.parse(data);
               // Extract text from OpenAI-compatible response
               const text = response.choices?.[0]?.message?.content || "";
+              this.lastUsedTime = Date.now();
+              this._scheduleIdleCheck();
               resolve(text.trim());
             } catch (e) {
               reject(new Error(`Failed to parse llama-server response: ${e.message}`));
@@ -347,6 +401,11 @@ class LlamaServerManager {
 
   async stop() {
     this.stopHealthCheck();
+
+    if (this.idleCheckTimeout) {
+      clearTimeout(this.idleCheckTimeout);
+      this.idleCheckTimeout = null;
+    }
 
     if (!this.process) {
       this.ready = false;
@@ -393,6 +452,8 @@ class LlamaServerManager {
       port: this.port,
       modelPath: this.modelPath,
       modelName: this.modelPath ? path.basename(this.modelPath, ".gguf") : null,
+      idleTimeoutMinutes: this.idleTimeoutMs > 0 ? this.idleTimeoutMs / 60000 : 0,
+      lastUsedTime: this.lastUsedTime,
     };
   }
 }

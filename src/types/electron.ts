@@ -309,6 +309,8 @@ declare global {
         localTranscriptionProvider: LocalTranscriptionProvider;
         model?: string;
         whisperServerIdleTimeoutMinutes?: number;
+        parakeetServerIdleTimeoutMinutes?: number;
+        llamaServerIdleTimeoutMinutes?: number;
         reasoningProvider: string;
         reasoningModel?: string;
       }) => Promise<void>;
@@ -352,6 +354,9 @@ declare global {
       whisperServerStop: () => Promise<any>;
       whisperServerStatus: () => Promise<any>;
       whisperServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
+
+      parakeetServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
+      llamaServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
 
       // Parakeet operations (NVIDIA via sherpa-onnx)
       transcribeLocalParakeet: (

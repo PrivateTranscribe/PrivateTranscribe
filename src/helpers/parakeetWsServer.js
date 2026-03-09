@@ -16,6 +16,7 @@ const PORT_RANGE_END = 6029;
 const STARTUP_TIMEOUT_MS = 60000;
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const TRANSCRIPTION_TIMEOUT_MS = 300000;
+const DEFAULT_IDLE_TIMEOUT_MINUTES = 30;
 
 class ParakeetWsServer {
   constructor() {
@@ -28,6 +29,10 @@ class ParakeetWsServer {
     this.healthCheckInterval = null;
     this.transcribing = false;
     this.cachedWsBinaryPath = null;
+    this.lastUsedTime = null;
+    this.idleCheckTimeout = null;
+    this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MINUTES * 60 * 1000;
+    this.stoppedDueToIdle = false;
   }
 
   getWsBinaryPath() {
@@ -130,6 +135,9 @@ class ParakeetWsServer {
     });
 
     await this._warmUp();
+    this.stoppedDueToIdle = false;
+    this.lastUsedTime = Date.now();
+    this._scheduleIdleCheck();
   }
 
   async _warmUp() {
@@ -167,6 +175,53 @@ class ParakeetWsServer {
 
     this.ready = true;
     debugLogger.debug("parakeet-ws ready", { startupTimeMs: Date.now() - startTime });
+  }
+
+  setIdleTimeoutMs(ms) {
+    this.idleTimeoutMs = ms;
+    if (this.ready && this.process) {
+      this._scheduleIdleCheck();
+    }
+  }
+
+  _scheduleIdleCheck() {
+    if (this.idleCheckTimeout) {
+      clearTimeout(this.idleCheckTimeout);
+      this.idleCheckTimeout = null;
+    }
+
+    if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
+
+    const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : 0;
+    const remaining = Math.max(0, this.idleTimeoutMs - elapsed);
+
+    this.idleCheckTimeout = setTimeout(() => {
+      this.checkIdleAndStop().catch((err) => {
+        debugLogger.error("parakeet-ws idle check error", { error: err.message });
+      });
+    }, remaining);
+  }
+
+  async checkIdleAndStop() {
+    if (!this.ready || !this.process) return;
+    if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
+    if (this.transcribing) {
+      // Delay check until transcription is done
+      this._scheduleIdleCheck();
+      return;
+    }
+
+    const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : Infinity;
+    if (elapsed < this.idleTimeoutMs) {
+      this._scheduleIdleCheck();
+      return;
+    }
+
+    debugLogger.info("parakeet-ws idle timeout reached — stopping server", {
+      idleMinutes: Math.round(elapsed / 60000),
+    });
+    this.stoppedDueToIdle = true;
+    await this.stop();
   }
 
   _isProcessAlive() {
@@ -215,9 +270,13 @@ class ParakeetWsServer {
       let result = "";
 
       const done =
-        (fn) =>
+        (fn, updateLastUsed = false) =>
         (...args) => {
           this.transcribing = false;
+          if (updateLastUsed) {
+            this.lastUsedTime = Date.now();
+            this._scheduleIdleCheck();
+          }
           fn(...args);
         };
 
@@ -268,9 +327,9 @@ class ParakeetWsServer {
 
         try {
           const parsed = JSON.parse(result);
-          done(resolve)({ text: (parsed.text || "").trim(), elapsed });
+          done(resolve, true)({ text: (parsed.text || "").trim(), elapsed });
         } catch {
-          done(resolve)({ text: result.trim(), elapsed });
+          done(resolve, true)({ text: result.trim(), elapsed });
         }
       });
 
@@ -283,6 +342,11 @@ class ParakeetWsServer {
 
   async stop() {
     this.stopHealthCheck();
+
+    if (this.idleCheckTimeout) {
+      clearTimeout(this.idleCheckTimeout);
+      this.idleCheckTimeout = null;
+    }
 
     if (!this.process) {
       this.ready = false;
@@ -310,6 +374,8 @@ class ParakeetWsServer {
       running: this.ready && this.process !== null,
       port: this.port,
       modelName: this.modelName,
+      idleTimeoutMinutes: this.idleTimeoutMs > 0 ? this.idleTimeoutMs / 60000 : 0,
+      lastUsedTime: this.lastUsedTime,
     };
   }
 }

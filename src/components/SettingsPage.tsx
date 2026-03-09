@@ -218,6 +218,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     localTranscriptionProvider,
     parakeetModel,
     whisperServerIdleTimeoutMinutes,
+    parakeetServerIdleTimeoutMinutes,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -226,6 +227,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     useReasoningModel,
     reasoningModel,
     reasoningProvider,
+    llamaServerIdleTimeoutMinutes,
     openaiApiKey,
     anthropicApiKey,
     geminiApiKey,
@@ -307,6 +309,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperIdleDraft(String(whisperServerIdleTimeoutMinutes));
   }, [whisperServerIdleTimeoutMinutes]);
 
+  const [parakeetIdleDraft, setParakeetIdleDraft] = useState<string>(
+    String(parakeetServerIdleTimeoutMinutes)
+  );
+  useEffect(() => {
+    setParakeetIdleDraft(String(parakeetServerIdleTimeoutMinutes));
+  }, [parakeetServerIdleTimeoutMinutes]);
+
+  const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
+    String(llamaServerIdleTimeoutMinutes)
+  );
+  useEffect(() => {
+    setLlamaIdleDraft(String(llamaServerIdleTimeoutMinutes));
+  }, [llamaServerIdleTimeoutMinutes]);
+
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
       ? "%USERPROFILE%\\.cache\\Privoca\\whisper-models"
@@ -335,6 +351,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           whisperModel,
           parakeetModel,
           whisperServerIdleTimeoutMinutes,
+          parakeetServerIdleTimeoutMinutes,
           preferredLanguage,
           translateToEnglish,
           cloudTranscriptionProvider,
@@ -345,6 +362,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           reasoningProvider,
           reasoningModel,
           cloudReasoningBaseUrl,
+          llamaServerIdleTimeoutMinutes,
           // Preferences
           musicDuckingMode,
           musicDuckLevel,
@@ -460,6 +478,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           typeof s.whisperServerIdleTimeoutMinutes === "number"
             ? s.whisperServerIdleTimeoutMinutes
             : undefined,
+        parakeetServerIdleTimeoutMinutes:
+          typeof s.parakeetServerIdleTimeoutMinutes === "number"
+            ? s.parakeetServerIdleTimeoutMinutes
+            : undefined,
         preferredLanguage:
           typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
         translateToEnglish:
@@ -485,6 +507,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         reasoningModel: typeof s.reasoningModel === "string" ? s.reasoningModel : undefined,
         cloudReasoningBaseUrl:
           typeof s.cloudReasoningBaseUrl === "string" ? s.cloudReasoningBaseUrl : undefined,
+        llamaServerIdleTimeoutMinutes:
+          typeof s.llamaServerIdleTimeoutMinutes === "number"
+            ? s.llamaServerIdleTimeoutMinutes
+            : undefined,
       });
 
       if (
@@ -1383,6 +1409,53 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           }}
                           className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                           aria-label="Whisper server idle shutdown minutes"
+                        />
+                        <span className="text-xs text-muted-foreground">min</span>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+            )}
+
+            {useLocalWhisper && localTranscriptionProvider === "nvidia" && (
+              <div className="mt-6">
+                <SectionHeader
+                  title="Parakeet server performance"
+                  description="Tune how the local Parakeet server behaves after you stop dictating"
+                />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Idle shutdown (minutes)"
+                      description="Stops the Parakeet server after being idle to free RAM. Set to 0 to keep it running."
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={240}
+                          step={1}
+                          value={parakeetIdleDraft}
+                          onChange={(e) => {
+                            setParakeetIdleDraft(e.target.value);
+                          }}
+                          onBlur={() => {
+                            const raw = parseInt(parakeetIdleDraft, 10);
+                            const next = Number.isFinite(raw)
+                              ? Math.max(0, Math.min(240, raw))
+                              : parakeetServerIdleTimeoutMinutes;
+
+                            setParakeetIdleDraft(String(next));
+                            updateTranscriptionSettings({ parakeetServerIdleTimeoutMinutes: next });
+
+                            // Best-effort: apply immediately if the server is already running.
+                            window.electronAPI
+                              ?.parakeetServerSetIdleTimeoutMinutes(next)
+                              ?.catch(() => {});
+                          }}
+                          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          aria-label="Parakeet server idle shutdown minutes"
                         />
                         <span className="text-xs text-muted-foreground">min</span>
                       </div>

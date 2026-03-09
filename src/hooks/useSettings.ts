@@ -12,6 +12,8 @@ export interface TranscriptionSettings {
   parakeetModel: string;
   /** Minutes before whisper-server is auto-stopped to free memory. 0 = never. */
   whisperServerIdleTimeoutMinutes: number;
+  /** Minutes before parakeet-ws server is auto-stopped to free memory. 0 = never. */
+  parakeetServerIdleTimeoutMinutes: number;
   allowOpenAIFallback: boolean;
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
@@ -28,6 +30,8 @@ export interface ReasoningSettings {
   reasoningModel: string;
   reasoningProvider: string;
   cloudReasoningBaseUrl?: string;
+  /** Minutes before llama-server is auto-stopped to free memory. 0 = never. */
+  llamaServerIdleTimeoutMinutes: number;
 }
 
 export interface HotkeySettings {
@@ -86,6 +90,18 @@ export function useSettings() {
 
   const [whisperServerIdleTimeoutMinutes, setWhisperServerIdleTimeoutMinutes] = useLocalStorage(
     "whisperServerIdleTimeoutMinutes",
+    30,
+    {
+      serialize: String,
+      deserialize: (value) => {
+        const n = parseInt(value, 10);
+        return Number.isFinite(n) && n >= 0 ? n : 30;
+      },
+    }
+  );
+
+  const [parakeetServerIdleTimeoutMinutes, setParakeetServerIdleTimeoutMinutes] = useLocalStorage(
+    "parakeetServerIdleTimeoutMinutes",
     30,
     {
       serialize: String,
@@ -245,6 +261,18 @@ export function useSettings() {
     serialize: String,
     deserialize: String,
   });
+
+  const [llamaServerIdleTimeoutMinutes, setLlamaServerIdleTimeoutMinutes] = useLocalStorage(
+    "llamaServerIdleTimeoutMinutes",
+    10,
+    {
+      serialize: String,
+      deserialize: (value) => {
+        const n = parseInt(value, 10);
+        return Number.isFinite(n) && n >= 0 ? n : 10;
+      },
+    }
+  );
 
   // API keys - localStorage for UI, synced to Electron IPC for persistence
   const [openaiApiKey, setOpenaiApiKeyLocal] = useLocalStorage("openaiApiKey", "", {
@@ -550,6 +578,8 @@ export function useSettings() {
         localTranscriptionProvider,
         model: model || undefined,
         whisperServerIdleTimeoutMinutes,
+        parakeetServerIdleTimeoutMinutes,
+        llamaServerIdleTimeoutMinutes,
         reasoningProvider,
         reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
       })
@@ -560,6 +590,8 @@ export function useSettings() {
     whisperModel,
     parakeetModel,
     whisperServerIdleTimeoutMinutes,
+    parakeetServerIdleTimeoutMinutes,
+    llamaServerIdleTimeoutMinutes,
     reasoningProvider,
     reasoningModel,
   ]);
@@ -597,6 +629,8 @@ export function useSettings() {
       if (settings.parakeetModel !== undefined) setParakeetModel(settings.parakeetModel);
       if (settings.whisperServerIdleTimeoutMinutes !== undefined)
         setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
+      if (settings.parakeetServerIdleTimeoutMinutes !== undefined)
+        setParakeetServerIdleTimeoutMinutes(settings.parakeetServerIdleTimeoutMinutes);
       if (settings.allowOpenAIFallback !== undefined)
         setAllowOpenAIFallback(settings.allowOpenAIFallback);
       if (settings.allowLocalFallback !== undefined)
@@ -621,6 +655,7 @@ export function useSettings() {
       setLocalTranscriptionProvider,
       setParakeetModel,
       setWhisperServerIdleTimeoutMinutes,
+      setParakeetServerIdleTimeoutMinutes,
       setAllowOpenAIFallback,
       setAllowLocalFallback,
       setFallbackWhisperModel,
@@ -642,8 +677,10 @@ export function useSettings() {
         setReasoningProvider(settings.reasoningProvider);
       if (settings.cloudReasoningBaseUrl !== undefined)
         setCloudReasoningBaseUrl(settings.cloudReasoningBaseUrl);
+      if (settings.llamaServerIdleTimeoutMinutes !== undefined)
+        setLlamaServerIdleTimeoutMinutes(settings.llamaServerIdleTimeoutMinutes);
     },
-    [setUseReasoningModel, setReasoningModel, setReasoningProvider, setCloudReasoningBaseUrl]
+    [setUseReasoningModel, setReasoningModel, setReasoningProvider, setCloudReasoningBaseUrl, setLlamaServerIdleTimeoutMinutes]
   );
 
   const updateApiKeys = useCallback(
@@ -662,6 +699,7 @@ export function useSettings() {
     localTranscriptionProvider,
     parakeetModel,
     whisperServerIdleTimeoutMinutes,
+    parakeetServerIdleTimeoutMinutes,
     allowOpenAIFallback,
     allowLocalFallback,
     fallbackWhisperModel,
@@ -675,6 +713,7 @@ export function useSettings() {
     useReasoningModel,
     reasoningModel,
     reasoningProvider,
+    llamaServerIdleTimeoutMinutes,
     openaiApiKey,
     anthropicApiKey,
     geminiApiKey,
@@ -686,6 +725,7 @@ export function useSettings() {
     setLocalTranscriptionProvider,
     setParakeetModel,
     setWhisperServerIdleTimeoutMinutes,
+    setParakeetServerIdleTimeoutMinutes,
     setAllowOpenAIFallback,
     setAllowLocalFallback,
     setFallbackWhisperModel,
@@ -699,6 +739,7 @@ export function useSettings() {
     setUseReasoningModel,
     setReasoningModel,
     setReasoningProvider,
+    setLlamaServerIdleTimeoutMinutes,
     setOpenaiApiKey,
     setAnthropicApiKey,
     setGeminiApiKey,

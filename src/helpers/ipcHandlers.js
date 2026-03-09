@@ -448,6 +448,24 @@ class IPCHandlers {
       }
     });
 
+    ipcMain.handle("parakeet-server-set-idle-timeout-minutes", async (_event, minutes) => {
+      try {
+        if (!this.parakeetManager) return { success: false, error: "Parakeet manager not available" };
+        return this.parakeetManager.setServerIdleTimeoutMinutes(minutes);
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("llama-server-set-idle-timeout-minutes", async (_event, minutes) => {
+      try {
+        const modelManager = require("../helpers/modelManagerBridge").default;
+        return modelManager.setServerIdleTimeoutMinutes(minutes);
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
     ipcMain.handle("check-ffmpeg-availability", async (event) => {
       return this.whisperManager.checkFFmpegAvailability();
     });
@@ -872,6 +890,43 @@ class IPCHandlers {
         );
       } else {
         clearVars.push("WHISPER_SERVER_IDLE_TIMEOUT_MINUTES");
+      }
+
+      if (
+        typeof prefs.parakeetServerIdleTimeoutMinutes === "number" &&
+        Number.isFinite(prefs.parakeetServerIdleTimeoutMinutes)
+      ) {
+        setVars.PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES = String(
+          Math.max(0, Math.floor(prefs.parakeetServerIdleTimeoutMinutes))
+        );
+        // Apply immediately if the parakeet manager is running.
+        if (this.parakeetManager) {
+          this.parakeetManager.setServerIdleTimeoutMinutes(
+            Math.max(0, Math.floor(prefs.parakeetServerIdleTimeoutMinutes))
+          );
+        }
+      } else {
+        clearVars.push("PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES");
+      }
+
+      if (
+        typeof prefs.llamaServerIdleTimeoutMinutes === "number" &&
+        Number.isFinite(prefs.llamaServerIdleTimeoutMinutes)
+      ) {
+        setVars.LLAMA_SERVER_IDLE_TIMEOUT_MINUTES = String(
+          Math.max(0, Math.floor(prefs.llamaServerIdleTimeoutMinutes))
+        );
+        // Apply immediately if the llama server is running.
+        try {
+          const modelManager = require("../helpers/modelManagerBridge").default;
+          modelManager.setServerIdleTimeoutMinutes(
+            Math.max(0, Math.floor(prefs.llamaServerIdleTimeoutMinutes))
+          );
+        } catch {
+          // Non-fatal: manager may not be initialized yet
+        }
+      } else {
+        clearVars.push("LLAMA_SERVER_IDLE_TIMEOUT_MINUTES");
       }
 
       if (prefs.useLocalWhisper && prefs.model) {

@@ -126,6 +126,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   parakeetServerStart: (modelName) => ipcRenderer.invoke("parakeet-server-start", modelName),
   parakeetServerStop: () => ipcRenderer.invoke("parakeet-server-stop"),
   parakeetServerStatus: () => ipcRenderer.invoke("parakeet-server-status"),
+  parakeetServerSetIdleTimeoutMinutes: (minutes) =>
+    ipcRenderer.invoke("parakeet-server-set-idle-timeout-minutes", minutes),
+
+  // Local llama-server functions
+  llamaServerSetIdleTimeoutMinutes: (minutes) =>
+    ipcRenderer.invoke("llama-server-set-idle-timeout-minutes", minutes),
 
   // Window control functions
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),

@@ -204,6 +204,11 @@ async function startApp() {
   const parakeetSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     parakeetModel: process.env.PARAKEET_MODEL,
+    parakeetServerIdleTimeoutMinutes: (() => {
+      if (process.env.PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES === undefined) return undefined;
+      const raw = parseInt(process.env.PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES, 10);
+      return Number.isFinite(raw) && raw >= 0 ? raw : undefined;
+    })(),
   };
   parakeetManager.initializeAtStartup(parakeetSettings).catch((err) => {
     // Parakeet not being available at startup is not critical
@@ -216,6 +221,12 @@ async function startApp() {
   // - LOCAL_REASONING_MODEL=qwen3-8b-q4_k_m (or another model ID)
   if (process.env.REASONING_PROVIDER === "local" && process.env.LOCAL_REASONING_MODEL) {
     const modelManager = require("./src/helpers/modelManagerBridge").default;
+    const llamaIdleRaw = parseInt(process.env.LLAMA_SERVER_IDLE_TIMEOUT_MINUTES, 10);
+    const llamaIdleMinutes =
+      Number.isFinite(llamaIdleRaw) && llamaIdleRaw >= 0 ? llamaIdleRaw : undefined;
+    if (llamaIdleMinutes !== undefined) {
+      modelManager.setServerIdleTimeoutMinutes(llamaIdleMinutes);
+    }
     modelManager.prewarmServer(process.env.LOCAL_REASONING_MODEL).catch((err) => {
       debugLogger.debug("llama-server pre-warm error (non-fatal)", { error: err.message });
     });

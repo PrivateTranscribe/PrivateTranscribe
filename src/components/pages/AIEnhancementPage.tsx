@@ -1,4 +1,5 @@
 import { Brain, Lock } from "lucide-react";
+import { useState, useEffect } from "react";
 import ReasoningModelSelector from "../ReasoningModelSelector";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
@@ -26,10 +27,18 @@ export default function AIEnhancementPage() {
     setGroqApiKey,
     customReasoningApiKey,
     setCustomReasoningApiKey,
+    llamaServerIdleTimeoutMinutes,
     updateReasoningSettings,
   } = useSettings();
 
   const { alertDialog, showAlertDialog, hideAlertDialog } = useDialogs();
+
+  const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
+    String(llamaServerIdleTimeoutMinutes)
+  );
+  useEffect(() => {
+    setLlamaIdleDraft(String(llamaServerIdleTimeoutMinutes));
+  }, [llamaServerIdleTimeoutMinutes]);
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -120,6 +129,51 @@ export default function AIEnhancementPage() {
         setCustomReasoningApiKey={setCustomReasoningApiKey}
                 showAlertDialog={showAlertDialog}
       />
+
+      {/* Local llama-server idle shutdown — only relevant when local provider is selected */}
+      {reasoningProvider === "local" && (
+        <div className="mt-6 rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
+          <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-4">
+            Local model server performance
+          </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">Idle shutdown (minutes)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Stops the local llama-server after being idle to free RAM/VRAM. Set to 0 to keep it
+                running.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <input
+                type="number"
+                min={0}
+                max={240}
+                step={1}
+                value={llamaIdleDraft}
+                onChange={(e) => {
+                  setLlamaIdleDraft(e.target.value);
+                }}
+                onBlur={() => {
+                  const raw = parseInt(llamaIdleDraft, 10);
+                  const next = Number.isFinite(raw)
+                    ? Math.max(0, Math.min(240, raw))
+                    : llamaServerIdleTimeoutMinutes;
+
+                  setLlamaIdleDraft(String(next));
+                  updateReasoningSettings({ llamaServerIdleTimeoutMinutes: next });
+
+                  // Best-effort: apply immediately if the server is already running.
+                  window.electronAPI?.llamaServerSetIdleTimeoutMinutes(next)?.catch(() => {});
+                }}
+                className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                aria-label="Llama server idle shutdown minutes"
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+            </div>
+          </div>
+        </div>
+      )}
       </>)}
     </div>
   );

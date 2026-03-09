@@ -167,6 +167,12 @@ class ParakeetServerManager {
     await this.wsServer.stop();
   }
 
+  setServerIdleTimeoutMinutes(minutes) {
+    const ms = Number.isFinite(minutes) && minutes >= 0 ? Math.floor(minutes) * 60 * 1000 : 0;
+    this.wsServer.setIdleTimeoutMs(ms);
+    return { success: true };
+  }
+
   getServerStatus() {
     return this.wsServer.getStatus();
   }

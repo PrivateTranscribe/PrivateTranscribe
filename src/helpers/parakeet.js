@@ -59,7 +59,16 @@ class ParakeetManager {
 
       await this.logDependencyStatus();
 
-      const { localTranscriptionProvider, parakeetModel } = settings;
+      const { localTranscriptionProvider, parakeetModel, parakeetServerIdleTimeoutMinutes } = settings;
+
+      if (
+        typeof parakeetServerIdleTimeoutMinutes === "number" &&
+        Number.isFinite(parakeetServerIdleTimeoutMinutes)
+      ) {
+        this.serverManager.setServerIdleTimeoutMinutes(
+          Math.max(0, parakeetServerIdleTimeoutMinutes)
+        );
+      }
 
       if (
         localTranscriptionProvider === "nvidia" &&
@@ -168,6 +177,10 @@ class ParakeetManager {
 
   async stopServer() {
     await this.serverManager.stopServer();
+  }
+
+  setServerIdleTimeoutMinutes(minutes) {
+    return this.serverManager.setServerIdleTimeoutMinutes(minutes);
   }
 
   getServerStatus() {
