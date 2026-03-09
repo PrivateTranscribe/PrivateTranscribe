@@ -927,7 +927,11 @@ class IPCHandlers {
             throw new Error("Anthropic API key not configured");
           }
 
-          const systemPrompt = getSystemPrompt(agentName, this._getDictionarySafe());
+          const systemPrompt = getSystemPrompt(
+            agentName,
+            this._getDictionarySafe(),
+            config?.dictationMode
+          );
           const userPrompt = text;
 
           if (!modelId) {

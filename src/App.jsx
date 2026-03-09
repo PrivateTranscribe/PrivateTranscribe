@@ -303,6 +303,10 @@ export default function App() {
     const unsubscribe = window.electronAPI?.onActionEngineDictationMode?.((mode) => {
       const normalised = typeof mode === "string" ? mode.trim() : "";
       setActiveDictationMode(normalised || null);
+      // Persist to localStorage so AudioManager (a plain-JS class) can read the
+      // active mode without requiring React state to be threaded through the audio
+      // pipeline.  Empty string signals "no active mode override".
+      localStorage.setItem("activeDictationMode", normalised || "");
       toast({
         title: normalised ? "Dictation mode activated" : "Dictation mode cleared",
         description: normalised ? `Now using "${normalised}" mode.` : "Returned to default mode.",

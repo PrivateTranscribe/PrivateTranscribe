@@ -4,6 +4,8 @@ export interface ReasoningConfig {
   maxTokens?: number;
   temperature?: number;
   contextSize?: number;
+  /** Active dictation mode set by an Action Engine "dictation-mode" action. */
+  dictationMode?: string;
 }
 
 export abstract class BaseReasoningService {
@@ -21,8 +23,8 @@ export abstract class BaseReasoningService {
     }
   }
 
-  protected getSystemPrompt(agentName: string | null): string {
-    return getSystemPrompt(agentName, this.getCustomDictionary());
+  protected getSystemPrompt(agentName: string | null, dictationMode?: string): string {
+    return getSystemPrompt(agentName, this.getCustomDictionary(), dictationMode);
   }
 
   protected calculateMaxTokens(

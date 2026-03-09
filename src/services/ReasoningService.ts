@@ -333,7 +333,7 @@ class ReasoningService extends BaseReasoningService {
     config: ReasoningConfig,
     providerName: string
   ): Promise<string> {
-    const systemPrompt = this.getSystemPrompt(agentName);
+    const systemPrompt = this.getSystemPrompt(agentName, config.dictationMode);
     const userPrompt = await this.buildUserPrompt(text);
 
     const messages = [
@@ -555,7 +555,7 @@ class ReasoningService extends BaseReasoningService {
     this.isProcessing = true;
 
     try {
-      const systemPrompt = this.getSystemPrompt(agentName);
+      const systemPrompt = this.getSystemPrompt(agentName, config.dictationMode);
       const userPrompt = await this.buildUserPrompt(text);
 
       const messages = [
@@ -868,7 +868,7 @@ class ReasoningService extends BaseReasoningService {
     this.isProcessing = true;
 
     try {
-      const systemPrompt = this.getSystemPrompt(agentName);
+      const systemPrompt = this.getSystemPrompt(agentName, config.dictationMode);
       const userPrompt = await this.buildUserPrompt(text);
 
       const requestBody = {

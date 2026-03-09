@@ -82,9 +82,9 @@ const resolveUploadFileName = (originalFileName, mimeType) => {
   const baseName =
     originalFileName && typeof originalFileName === "string"
       ? originalFileName
-        .trim()
-        .replace(/[\\/:*?"<>|]/g, "_")
-        .replace(/\.[^./\\]+$/, "")
+          .trim()
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .replace(/\.[^./\\]+$/, "")
       : "";
 
   const safeBase = baseName || "upload";
@@ -259,11 +259,7 @@ class AudioManager {
       this.emitStateChange();
 
       if (!discard && audioBlob.size === 0) {
-        logger.warn(
-          "Forced finalize produced empty audio blob",
-          { chunksCount },
-          "audio"
-        );
+        logger.warn("Forced finalize produced empty audio blob", { chunksCount }, "audio");
       }
       return true;
     }
@@ -408,7 +404,9 @@ class AudioManager {
         this.clearRecorderStopWatchdog();
         const shouldDiscard = this.discardCurrentRecording;
         const durationSeconds = this.getRecordingDurationSeconds();
-        const audioBlob = new Blob(this.audioChunks, { type: this.recordingMimeType || "audio/webm" });
+        const audioBlob = new Blob(this.audioChunks, {
+          type: this.recordingMimeType || "audio/webm",
+        });
         const chunksCount = this.audioChunks.length;
 
         this.audioChunks = [];
@@ -428,7 +426,6 @@ class AudioManager {
 
         this.isProcessing = true;
         this.emitStateChange();
-
 
         // Debug: Log audio blob info
         logger.info(
@@ -970,17 +967,18 @@ class AudioManager {
     return new Blob([arrayBuffer], { type: "audio/wav" });
   }
 
-  async processWithReasoningModel(text, model, agentName) {
+  async processWithReasoningModel(text, model, agentName, config = {}) {
     logger.logReasoning("CALLING_REASONING_SERVICE", {
       model,
       agentName,
       textLength: text.length,
+      dictationMode: config.dictationMode || null,
     });
 
     const startTime = Date.now();
 
     try {
-      const result = await ReasoningService.processText(text, model, agentName);
+      const result = await ReasoningService.processText(text, model, agentName, config);
 
       const processingTime = Date.now() - startTime;
 
@@ -1093,6 +1091,13 @@ class AudioManager {
       typeof window !== "undefined" && window.localStorage
         ? localStorage.getItem("agentName") || null
         : null;
+    // Active dictation mode set by an Action Engine "dictation-mode" action.
+    // Persisted to localStorage so this plain-JS class can read it without
+    // requiring React state to be threaded down.
+    const dictationMode =
+      typeof window !== "undefined" && window.localStorage
+        ? localStorage.getItem("activeDictationMode") || undefined
+        : undefined;
     if (!reasoningModel) {
       logger.logReasoning("REASONING_SKIPPED", {
         reason: "No reasoning model selected",
@@ -1107,6 +1112,7 @@ class AudioManager {
       reasoningModel,
       reasoningProvider,
       agentName,
+      dictationMode: dictationMode || null,
     });
 
     if (useReasoning) {
@@ -1115,12 +1121,14 @@ class AudioManager {
           preparedTextLength: normalizedText.length,
           model: reasoningModel,
           provider: reasoningProvider,
+          dictationMode: dictationMode || null,
         });
 
         const result = await this.processWithReasoningModel(
           normalizedText,
           reasoningModel,
-          agentName
+          agentName,
+          { dictationMode }
         );
 
         logger.logReasoning("REASONING_SUCCESS", {

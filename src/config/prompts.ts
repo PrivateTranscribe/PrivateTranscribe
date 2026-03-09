@@ -9,7 +9,11 @@ export function buildPrompt(text: string, agentName: string | null): string {
   return UNIFIED_SYSTEM_PROMPT.replace(/\{\{agentName\}\}/g, name).replace(/\{\{text\}\}/g, text);
 }
 
-export function getSystemPrompt(agentName: string | null, customDictionary?: string[]): string {
+export function getSystemPrompt(
+  agentName: string | null,
+  customDictionary?: string[],
+  dictationMode?: string
+): string {
   const name = agentName?.trim() || "Assistant";
 
   let promptTemplate = UNIFIED_SYSTEM_PROMPT;
@@ -28,6 +32,10 @@ export function getSystemPrompt(agentName: string | null, customDictionary?: str
 
   if (customDictionary && customDictionary.length > 0) {
     prompt += DICTIONARY_SUFFIX + customDictionary.join(", ");
+  }
+
+  if (dictationMode && dictationMode.trim()) {
+    prompt += `\n\nCurrent dictation mode: ${dictationMode.trim()}. Adjust your output style and formatting to suit this mode.`;
   }
 
   return prompt;
