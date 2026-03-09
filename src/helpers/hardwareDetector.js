@@ -46,7 +46,7 @@ class HardwareDetector {
     try {
       const os = require("os");
       const cpus = os.cpus();
-      
+
       return {
         count: cpus.length,
         model: cpus[0]?.model || "Unknown",
@@ -108,13 +108,11 @@ class HardwareDetector {
 
     if (lines.length === 0) return null;
 
-    const headerLine = lines.find((l) =>
-      l.toLowerCase().includes("adapterram") && l.toLowerCase().includes("name"),
+    const headerLine = lines.find(
+      (l) => l.toLowerCase().includes("adapterram") && l.toLowerCase().includes("name")
     );
 
-    const headers = headerLine
-      ? headerLine.split(",").map((h) => h.trim().toLowerCase())
-      : null;
+    const headers = headerLine ? headerLine.split(",").map((h) => h.trim().toLowerCase()) : null;
 
     const nameIdx = headers ? headers.indexOf("name") : -1;
     const ramIdx = headers ? headers.indexOf("adapterram") : -1;
@@ -142,9 +140,7 @@ class HardwareDetector {
       const vendor = this.identifyVendor(name);
 
       const adapterRam =
-        (ramIdx >= 0 ? getPart(ramIdx) : null) ||
-        parts.find((p) => /^\d+$/.test(p)) ||
-        null;
+        (ramIdx >= 0 ? getPart(ramIdx) : null) || parts.find((p) => /^\d+$/.test(p)) || null;
 
       const vram = adapterRam ? this.parseVRAM(adapterRam) : null;
 
@@ -178,7 +174,7 @@ class HardwareDetector {
       // Node,AdapterRAM,DriverVersion,Name
       const wmicOutput = execSync(
         "wmic path win32_VideoController get Name, AdapterRAM, DriverVersion /format:csv",
-        { encoding: "utf8", timeout: 5000 },
+        { encoding: "utf8", timeout: 5000 }
       );
 
       const best = this.pickBestWindowsGpuFromWmicOutput(wmicOutput);
@@ -194,13 +190,19 @@ class HardwareDetector {
 
     // Check for CUDA
     try {
-      const cudaOutput = execSync("nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader", {
-        encoding: "utf8",
-        timeout: 5000,
-      });
-      
+      const cudaOutput = execSync(
+        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader",
+        {
+          encoding: "utf8",
+          timeout: 5000,
+        }
+      );
+
       if (cudaOutput) {
-        const parts = cudaOutput.trim().split(",").map(p => p.trim());
+        const parts = cudaOutput
+          .trim()
+          .split(",")
+          .map((p) => p.trim());
         if (parts.length >= 3) {
           gpu.model = parts[0];
           gpu.vendor = "nvidia";
@@ -278,7 +280,9 @@ class HardwareDetector {
           }
         }
       } catch (profilerError) {
-        debugLogger.debug("system_profiler failed, using Metal defaults", { error: profilerError.message });
+        debugLogger.debug("system_profiler failed, using Metal defaults", {
+          error: profilerError.message,
+        });
         // Metal defaults are already set, so this is fine
       }
     } catch (error) {
@@ -313,26 +317,35 @@ class HardwareDetector {
   async detectLinuxGPU(gpu) {
     // Try nvidia-smi first for NVIDIA GPUs
     try {
-      const nvidiaOutput = execSync("nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader", {
-        encoding: "utf8",
-        timeout: 5000,
-      });
-      
+      const nvidiaOutput = execSync(
+        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader",
+        {
+          encoding: "utf8",
+          timeout: 5000,
+        }
+      );
+
       if (nvidiaOutput) {
-        const parts = nvidiaOutput.trim().split(",").map(p => p.trim());
+        const parts = nvidiaOutput
+          .trim()
+          .split(",")
+          .map((p) => p.trim());
         if (parts.length >= 3) {
           gpu.model = parts[0];
           gpu.vendor = "nvidia";
           gpu.vram = this.parseVRAM(parts[1]);
           gpu.available = true;
           gpu.cuda.available = true;
-          
+
           // Try to get CUDA version
           try {
-            const cudaVersion = execSync("nvcc --version 2>/dev/null | grep release | sed 's/.*release //' | sed 's/,.*//'", {
-              encoding: "utf8",
-              timeout: 3000,
-            });
+            const cudaVersion = execSync(
+              "nvcc --version 2>/dev/null | grep release | sed 's/.*release //' | sed 's/,.*//'",
+              {
+                encoding: "utf8",
+                timeout: 3000,
+              }
+            );
             if (cudaVersion) {
               gpu.cuda.version = cudaVersion.trim();
             }
@@ -348,11 +361,14 @@ class HardwareDetector {
     // Try ROCm for AMD GPUs if no NVIDIA GPU found
     if (!gpu.available) {
       try {
-        const rocmOutput = execSync("rocm-smi --showproductname --showmeminfo vram --csv 2>/dev/null", {
-          encoding: "utf8",
-          timeout: 5000,
-        });
-        
+        const rocmOutput = execSync(
+          "rocm-smi --showproductname --showmeminfo vram --csv 2>/dev/null",
+          {
+            encoding: "utf8",
+            timeout: 5000,
+          }
+        );
+
         if (rocmOutput && rocmOutput.includes("AMD")) {
           gpu.vendor = "amd";
           gpu.available = true;
@@ -370,7 +386,7 @@ class HardwareDetector {
           encoding: "utf8",
           timeout: 5000,
         });
-        
+
         if (lspciOutput) {
           const line = lspciOutput.split("\n")[0];
           if (line.includes("NVIDIA")) {
@@ -383,7 +399,7 @@ class HardwareDetector {
             gpu.vendor = "intel";
             gpu.available = true;
           }
-          
+
           const match = line.match(/\[([^\]]+)\]/);
           if (match) {
             gpu.model = match[1];
@@ -400,11 +416,21 @@ class HardwareDetector {
    */
   identifyVendor(model) {
     const lower = model.toLowerCase();
-    if (lower.includes("nvidia") || lower.includes("geforce") || lower.includes("rtx") || lower.includes("gtx")) {
+    if (
+      lower.includes("nvidia") ||
+      lower.includes("geforce") ||
+      lower.includes("rtx") ||
+      lower.includes("gtx")
+    ) {
       return "nvidia";
     } else if (lower.includes("amd") || lower.includes("radeon") || lower.includes("ati")) {
       return "amd";
-    } else if (lower.includes("intel") || lower.includes("arc") || lower.includes("iris") || lower.includes("hd graphics")) {
+    } else if (
+      lower.includes("intel") ||
+      lower.includes("arc") ||
+      lower.includes("iris") ||
+      lower.includes("hd graphics")
+    ) {
       return "intel";
     } else if (lower.includes("apple")) {
       return "apple";
@@ -479,7 +505,7 @@ class HardwareDetector {
   generateRecommendations(detection) {
     const rec = {
       transcriptionProvider: "local", // Always default to local for CPU fallback
-      whisperModel: "base",
+      whisperModel: "turbo",
       localTranscriptionProvider: "whisper", // Default to whisper (CPU-safe fallback)
       reasoning: [],
     };
@@ -500,7 +526,9 @@ class HardwareDetector {
 
       if (gpu.vendor === "apple" || process.arch === "arm64") {
         rec.whisperModel = "small";
-        rec.reasoning.push("Apple Silicon detected - using optimized Whisper with Metal acceleration");
+        rec.reasoning.push(
+          "Apple Silicon detected - using optimized Whisper with Metal acceleration"
+        );
       } else if (gpu.vendor === "intel" || gpu.vendor === "amd") {
         rec.whisperModel = "small";
         rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
@@ -519,7 +547,9 @@ class HardwareDetector {
       rec.localTranscriptionProvider = "nvidia";
       rec.parakeetModel = "parakeet-tdt-0.6b-v3";
       rec.transcriptionProvider = "local"; // Ensure local provider for GPU case
-      rec.reasoning.push("NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration");
+      rec.reasoning.push(
+        "NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration"
+      );
 
       // Check VRAM for model recommendations
       if (gpu.vram && gpu.vram >= 4096) {
@@ -533,11 +563,13 @@ class HardwareDetector {
 
       // Adjust model size based on CPU cores
       if (cpu.count >= 8) {
-        rec.whisperModel = "small";
-        rec.reasoning.push(`Multi-core CPU (${cpu.count} cores) - Small model recommended`);
+        rec.whisperModel = "turbo";
+        rec.reasoning.push(
+          `Multi-core CPU (${cpu.count} cores) - Turbo model recommended for best quality`
+        );
       } else if (cpu.count >= 4) {
         rec.whisperModel = "base";
-        rec.reasoning.push(`Quad-core CPU (${cpu.count} cores) - Base model recommended`);
+        rec.reasoning.push(`Quad-core CPU (${cpu.count} cores) - Base model recommended for speed`);
       } else {
         rec.whisperModel = "tiny";
         rec.reasoning.push(`Limited CPU cores (${cpu.count}) - Tiny model recommended for speed`);

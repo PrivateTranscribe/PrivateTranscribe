@@ -9,7 +9,7 @@ describe("HardwareDetector.generateRecommendations", () => {
     expect(rec).toBeTruthy();
     expect(rec.transcriptionProvider).toBe("local");
     expect(rec.localTranscriptionProvider).toBe("whisper");
-    expect(rec.whisperModel).toBe("base");
+    expect(rec.whisperModel).toBe("turbo");
     expect(Array.isArray(rec.reasoning)).toBe(true);
     expect(rec.reasoning.length).toBeGreaterThan(0);
   });

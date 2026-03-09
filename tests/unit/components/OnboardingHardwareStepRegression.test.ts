@@ -11,12 +11,7 @@ import { describe, it, expect } from "vitest";
 
 describe("Onboarding flow – hardware step regression checks", () => {
   it("OnboardingFlow passes onNext to HardwareSetupStep", () => {
-    const onboardingPath = path.join(
-      process.cwd(),
-      "src",
-      "components",
-      "OnboardingFlow.tsx"
-    );
+    const onboardingPath = path.join(process.cwd(), "src", "components", "OnboardingFlow.tsx");
 
     const contents = fs.readFileSync(onboardingPath, "utf8");
 
@@ -28,13 +23,7 @@ describe("Onboarding flow – hardware step regression checks", () => {
   });
 
   it("HardwareSetupStep supports a null recommendations flow (no dead-end)", () => {
-    const stepPath = path.join(
-      process.cwd(),
-      "src",
-      "components",
-      "ui",
-      "HardwareSetupStep.tsx"
-    );
+    const stepPath = path.join(process.cwd(), "src", "components", "ui", "HardwareSetupStep.tsx");
 
     const contents = fs.readFileSync(stepPath, "utf8");
 
@@ -42,7 +31,9 @@ describe("Onboarding flow – hardware step regression checks", () => {
     // - handleApply() has a guard that bails out when recommendations are missing
     // - there is an explicit Continue-with-defaults action wired to the button
 
-    const hasNullRecGuard = /if\s*\(\s*!detection\?\.recommendations\s*\)\s*return\s*;?/m.test(contents);
+    const hasNullRecGuard = /if\s*\(\s*!detection\?\.recommendations\s*\)\s*return\s*;?/m.test(
+      contents
+    );
     expect(hasNullRecGuard).toBe(true);
 
     const hasDefaultsButtonText = /Continue with Defaults/.test(contents);
@@ -53,5 +44,43 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     const hasDefaultsButtonWiring = /onClick=\{handleContinueWithDefaults\}/.test(contents);
     expect(hasDefaultsButtonWiring).toBe(true);
+  });
+
+  it("HardwareSetupStep uses turbo as the default whisper model fallback", () => {
+    const stepPath = path.join(process.cwd(), "src", "components", "ui", "HardwareSetupStep.tsx");
+
+    const contents = fs.readFileSync(stepPath, "utf8");
+
+    // The handleContinueWithDefaults function must set whisperModel to "turbo"
+    // (not "base") so new users get the best-quality default out of the box.
+    const hasTurboDefault = /whisperModel:\s*["']turbo["']/.test(contents);
+    expect(hasTurboDefault).toBe(true);
+  });
+
+  it("modelRegistryData.json marks turbo as the sole recommended whisper model", () => {
+    const registryPath = path.join(process.cwd(), "src", "models", "modelRegistryData.json");
+
+    const data = JSON.parse(fs.readFileSync(registryPath, "utf8")) as {
+      whisperModels: Record<string, { recommended?: boolean }>;
+    };
+    const whisperModels = data.whisperModels;
+
+    expect(whisperModels["turbo"]?.recommended).toBe(true);
+
+    const otherRecommended = Object.entries(whisperModels)
+      .filter(([id, m]) => id !== "turbo" && m.recommended === true)
+      .map(([id]) => id);
+    expect(otherRecommended).toEqual([]);
+  });
+
+  it("useSettings.ts defaults whisperModel to turbo", () => {
+    const settingsPath = path.join(process.cwd(), "src", "hooks", "useSettings.ts");
+    const contents = fs.readFileSync(settingsPath, "utf8");
+
+    // The useLocalStorage call for whisperModel must default to "turbo"
+    const hasTurboDefault = /useLocalStorage\s*\(\s*["']whisperModel["']\s*,\s*["']turbo["']/.test(
+      contents
+    );
+    expect(hasTurboDefault).toBe(true);
   });
 });

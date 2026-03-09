@@ -72,7 +72,7 @@ export function useSettings() {
     deserialize: (value) => value === "true",
   });
 
-  const [whisperModel, setWhisperModel] = useLocalStorage("whisperModel", "base", {
+  const [whisperModel, setWhisperModel] = useLocalStorage("whisperModel", "turbo", {
     serialize: String,
     deserialize: String,
   });
@@ -140,14 +140,10 @@ export function useSettings() {
     deserialize: String,
   });
 
-  const [translateToEnglish, setTranslateToEnglish] = useLocalStorage(
-    "translateToEnglish",
-    "off",
-    {
-      serialize: String,
-      deserialize: String,
-    }
-  );
+  const [translateToEnglish, setTranslateToEnglish] = useLocalStorage("translateToEnglish", "off", {
+    serialize: String,
+    deserialize: String,
+  });
 
   const [cloudTranscriptionProvider, setCloudTranscriptionProvider] = useLocalStorage(
     "cloudTranscriptionProvider",
@@ -602,11 +598,27 @@ export function useSettings() {
   const boolSerializer = { serialize: String, deserialize: (v: string) => v === "true" };
 
   const [autoPaste, setAutoPaste] = useLocalStorage("autoPaste", true, boolSerializer);
-  const [copyToClipboard, setCopyToClipboard] = useLocalStorage("copyToClipboard", true, boolSerializer);
-  const [showPanelOnError, setShowPanelOnError] = useLocalStorage("showPanelOnError", false, boolSerializer);
+  const [copyToClipboard, setCopyToClipboard] = useLocalStorage(
+    "copyToClipboard",
+    true,
+    boolSerializer
+  );
+  const [showPanelOnError, setShowPanelOnError] = useLocalStorage(
+    "showPanelOnError",
+    false,
+    boolSerializer
+  );
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", true, boolSerializer);
-  const [errorNotifications, setErrorNotifications] = useLocalStorage("errorNotifications", true, boolSerializer);
-  const [successConfirmation, setSuccessConfirmation] = useLocalStorage("successConfirmation", false, boolSerializer);
+  const [errorNotifications, setErrorNotifications] = useLocalStorage(
+    "errorNotifications",
+    true,
+    boolSerializer
+  );
+  const [successConfirmation, setSuccessConfirmation] = useLocalStorage(
+    "successConfirmation",
+    false,
+    boolSerializer
+  );
 
   const updateBehaviorSettings = useCallback(
     (settings: Partial<BehaviorSettings>) => {
@@ -614,10 +626,19 @@ export function useSettings() {
       if (settings.copyToClipboard !== undefined) setCopyToClipboard(settings.copyToClipboard);
       if (settings.showPanelOnError !== undefined) setShowPanelOnError(settings.showPanelOnError);
       if (settings.audioFeedback !== undefined) setAudioFeedback(settings.audioFeedback);
-      if (settings.errorNotifications !== undefined) setErrorNotifications(settings.errorNotifications);
-      if (settings.successConfirmation !== undefined) setSuccessConfirmation(settings.successConfirmation);
+      if (settings.errorNotifications !== undefined)
+        setErrorNotifications(settings.errorNotifications);
+      if (settings.successConfirmation !== undefined)
+        setSuccessConfirmation(settings.successConfirmation);
     },
-    [setAutoPaste, setCopyToClipboard, setShowPanelOnError, setAudioFeedback, setErrorNotifications, setSuccessConfirmation]
+    [
+      setAutoPaste,
+      setCopyToClipboard,
+      setShowPanelOnError,
+      setAudioFeedback,
+      setErrorNotifications,
+      setSuccessConfirmation,
+    ]
   );
 
   const updateTranscriptionSettings = useCallback(
@@ -680,7 +701,13 @@ export function useSettings() {
       if (settings.llamaServerIdleTimeoutMinutes !== undefined)
         setLlamaServerIdleTimeoutMinutes(settings.llamaServerIdleTimeoutMinutes);
     },
-    [setUseReasoningModel, setReasoningModel, setReasoningProvider, setCloudReasoningBaseUrl, setLlamaServerIdleTimeoutMinutes]
+    [
+      setUseReasoningModel,
+      setReasoningModel,
+      setReasoningProvider,
+      setCloudReasoningBaseUrl,
+      setLlamaServerIdleTimeoutMinutes,
+    ]
   );
 
   const updateApiKeys = useCallback(

@@ -39,26 +39,34 @@
     }
   },
   "whisperModels": {
+    "turbo": {
+      "name": "Turbo",
+      "description": "Best quality for most users — fast and accurate",
+      "size": "1.6GB",
+      "sizeMb": 1600,
+      "fileName": "ggml-large-v3-turbo.bin",
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+      "recommended": true
+    },
+    "base": {
+      "name": "Base",
+      "description": "Lightweight option for older or slower hardware",
+      "size": "142MB",
+      "sizeMb": 142,
+      "fileName": "ggml-base.bin",
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+    },
     "tiny": {
       "name": "Tiny",
-      "description": "Fastest, lower quality",
+      "description": "Smallest download, lowest quality",
       "size": "75MB",
       "sizeMb": 75,
       "fileName": "ggml-tiny.bin",
       "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
     },
-    "base": {
-      "name": "Base",
-      "description": "Good balance",
-      "size": "142MB",
-      "sizeMb": 142,
-      "fileName": "ggml-base.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-      "recommended": true
-    },
     "small": {
       "name": "Small",
-      "description": "Better quality, slower",
+      "description": "Better quality, slower than Base",
       "size": "466MB",
       "sizeMb": 466,
       "fileName": "ggml-small.bin",
@@ -74,19 +82,11 @@
     },
     "large": {
       "name": "Large",
-      "description": "Best quality, slowest",
+      "description": "Highest quality, slowest",
       "size": "3GB",
       "sizeMb": 3000,
       "fileName": "ggml-large-v3.bin",
       "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
-    },
-    "turbo": {
-      "name": "Turbo",
-      "description": "Fast with good quality",
-      "size": "1.6GB",
-      "sizeMb": 1600,
-      "fileName": "ggml-large-v3-turbo.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
     }
   },
   "transcriptionProviders": [

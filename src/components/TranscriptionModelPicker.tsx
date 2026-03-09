@@ -270,6 +270,7 @@ export default function TranscriptionModelPicker({
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
   const [internalLocalProvider, setInternalLocalProvider] = useState(selectedLocalProvider);
+  const [showAllWhisperModels, setShowAllWhisperModels] = useState(false);
   const hasLoadedRef = useRef(false);
   const hasLoadedParakeetRef = useRef(false);
 
@@ -638,8 +639,10 @@ export default function TranscriptionModelPicker({
 
   const retryBanner = useMemo(() => {
     if (!useLocalWhisper) return null;
-    const failedModel = internalLocalProvider === "whisper" ? failedWhisperModel : failedParakeetModel;
-    const retryFn = internalLocalProvider === "whisper" ? retryWhisperDownload : retryParakeetDownload;
+    const failedModel =
+      internalLocalProvider === "whisper" ? failedWhisperModel : failedParakeetModel;
+    const retryFn =
+      internalLocalProvider === "whisper" ? retryWhisperDownload : retryParakeetDownload;
     if (!failedModel) return null;
     const info =
       internalLocalProvider === "whisper"
@@ -671,7 +674,7 @@ export default function TranscriptionModelPicker({
   ]);
 
   const renderLocalModels = () => {
-    const modelsToRender =
+    const allModelEntries =
       localModels.length === 0
         ? Object.entries(WHISPER_MODEL_INFO).map(([modelId, info]) => ({
             model: modelId,
@@ -680,9 +683,26 @@ export default function TranscriptionModelPicker({
           }))
         : localModels;
 
+    // In onboarding mode, show only the recommended model + tiny (lightweight option)
+    // plus the currently selected model (so it's never hidden). Settings mode shows all.
+    const isOnboarding = variant === "onboarding";
+    const ALWAYS_SHOW_IDS = new Set(["turbo", "base", "tiny"]);
+
+    const visibleModels =
+      isOnboarding && !showAllWhisperModels
+        ? allModelEntries.filter(
+            (m) =>
+              ALWAYS_SHOW_IDS.has(m.model) ||
+              m.model === selectedLocalModel ||
+              (WHISPER_MODEL_INFO[m.model]?.recommended ?? false)
+          )
+        : allModelEntries;
+
+    const hiddenCount = allModelEntries.length - visibleModels.length;
+
     return (
       <div className="space-y-1">
-        {modelsToRender.map((model) => {
+        {visibleModels.map((model) => {
           const modelId = model.model;
           const info = WHISPER_MODEL_INFO[modelId] || {
             name: modelId,
@@ -712,6 +732,15 @@ export default function TranscriptionModelPicker({
             />
           );
         })}
+        {isOnboarding && hiddenCount > 0 && !showAllWhisperModels && (
+          <button
+            type="button"
+            onClick={() => setShowAllWhisperModels(true)}
+            className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground py-1 transition-colors"
+          >
+            Show {hiddenCount} more {hiddenCount === 1 ? "option" : "options"}
+          </button>
+        )}
       </div>
     );
   };

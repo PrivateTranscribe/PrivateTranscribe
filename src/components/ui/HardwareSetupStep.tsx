@@ -82,7 +82,7 @@ export default function HardwareSetupStep({
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "base",
+      whisperModel: "turbo",
     });
     setApplied(true);
 
@@ -188,7 +188,10 @@ export default function HardwareSetupStep({
                 )}
               >
                 <MonitorSmartphone
-                  className={cn("w-3.5 h-3.5", hasCuda || hasMetal ? "text-success" : "text-primary")}
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    hasCuda || hasMetal ? "text-success" : "text-primary"
+                  )}
                 />
               </div>
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -241,7 +244,10 @@ export default function HardwareSetupStep({
                 </h4>
                 <ul className="mt-1.5 space-y-1">
                   {detection.recommendations.reasoning.map((reason, idx) => (
-                    <li key={idx} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                    <li
+                      key={idx}
+                      className="text-[11px] text-muted-foreground flex items-start gap-1.5"
+                    >
                       <span className="text-primary mt-0.5">•</span>
                       <span>{reason}</span>
                     </li>
