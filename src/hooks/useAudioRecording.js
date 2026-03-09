@@ -69,7 +69,10 @@ export const useAudioRecording = (toast, options = {}) => {
         // Error notification (system-level)
         const showErrorNotif = localStorage.getItem("errorNotifications") === "true";
         if (showErrorNotif && window.electronAPI?.showNotification) {
-          window.electronAPI.showNotification("Transcription Error", error.description || error.title || "Transcription failed");
+          window.electronAPI.showNotification(
+            "Transcription Error",
+            error.description || error.title || "Transcription failed"
+          );
         }
 
         // Show control panel on error
@@ -96,7 +99,8 @@ export const useAudioRecording = (toast, options = {}) => {
         // Privacy-first variable/file snapping (local only):
         // - Uses user dictionary + correction memory to snap phrases to exact identifiers.
         try {
-          const enableSnapping = (localStorage.getItem("enableVariableSnapping") || "true") === "true";
+          const enableSnapping =
+            (localStorage.getItem("enableVariableSnapping") || "true") === "true";
           if (enableSnapping) {
             const { snapTranscript } = await import("../utils/tokenSnapper");
             const dictionaryWords = (() => {
@@ -117,19 +121,64 @@ export const useAudioRecording = (toast, options = {}) => {
 
         setTranscript(text);
 
+        // ── Action Engine ──────────────────────────────────────────────────────
+        // Check whether the final transcript triggers any user-configured action.
+        // When one or more actions match, execute them and suppress the default
+        // paste/copy behaviour — the utterance was a voice command, not dictation
+        // content.  If the IPC call is unavailable or throws, fall through to the
+        // normal paste path so that dictation is never silently blocked.
+        let actionHandled = false;
+        try {
+          if (window.electronAPI?.actionEngineMatch) {
+            const matchResult = await window.electronAPI.actionEngineMatch(text);
+            if (
+              matchResult?.success &&
+              Array.isArray(matchResult.matches) &&
+              matchResult.matches.length > 0
+            ) {
+              actionHandled = true;
+              for (const { action } of matchResult.matches) {
+                // eslint-disable-next-line no-await-in-loop
+                const execResult = await window.electronAPI?.actionEngineExecute?.(action.id);
+                if (execResult && !execResult.success) {
+                  toastRef.current?.({
+                    title: `Action failed: ${action.name}`,
+                    description: execResult.error || "Unknown error.",
+                    variant: "destructive",
+                    duration: 4000,
+                  });
+                }
+              }
+              const names = matchResult.matches.map(({ action }) => action.name).join(", ");
+              toastRef.current?.({
+                title: "Action triggered",
+                description: names,
+                variant: "default",
+                duration: 2000,
+              });
+            }
+          }
+        } catch {
+          // Non-fatal: action engine errors must never block dictation.
+        }
+        // ── End Action Engine ──────────────────────────────────────────────────
+
         // Respect behavior settings
         const shouldPaste = (localStorage.getItem("autoPaste") ?? "true") !== "false";
         const shouldCopy = (localStorage.getItem("copyToClipboard") ?? "true") !== "false";
 
-        if (shouldPaste) {
-          await manager.safePaste(text);
-        } else if (shouldCopy && window.electronAPI?.writeClipboard) {
-          await window.electronAPI.writeClipboard(text);
+        if (!actionHandled) {
+          if (shouldPaste) {
+            await manager.safePaste(text);
+          } else if (shouldCopy && window.electronAPI?.writeClipboard) {
+            await window.electronAPI.writeClipboard(text);
+          }
         }
 
-        // Success confirmation notification
+        // Success confirmation notification (skipped for action triggers — those
+        // show their own "Action triggered" toast above)
         const showSuccess = localStorage.getItem("successConfirmation") === "true";
-        if (showSuccess) {
+        if (showSuccess && !actionHandled) {
           toastRef.current?.({
             title: "Transcription complete",
             description: text.length > 80 ? text.slice(0, 80) + "…" : text,
@@ -141,8 +190,13 @@ export const useAudioRecording = (toast, options = {}) => {
         // Correction memory (best-effort): if the user edits the pasted text and copies the corrected
         // version shortly after, learn token-level replacements locally.
         try {
-          const enableLearning = (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
-          if (enableLearning && window.electronAPI?.readClipboard && window.electronAPI?.upsertCorrection) {
+          const enableLearning =
+            (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
+          if (
+            enableLearning &&
+            window.electronAPI?.readClipboard &&
+            window.electronAPI?.upsertCorrection
+          ) {
             const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
             const insertedText = text;
             const startedAt = Date.now();

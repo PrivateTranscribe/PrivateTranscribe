@@ -174,6 +174,9 @@ export default function App() {
   const [isHovered, setIsHovered] = useState(false);
   const [isCommandMenuOpen, setIsCommandMenuOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState("root");
+  // Active dictation mode set by an Action Engine "dictation-mode" action.
+  // null means default (no override active).
+  const [activeDictationMode, setActiveDictationMode] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState(
     () => localStorage.getItem("preferredLanguage") || "en"
   );
@@ -291,6 +294,25 @@ export default function App() {
     };
   }, [toast]);
 
+  // ── Action Engine: dictation-mode events ─────────────────────────────────────
+  // A "dictation-mode" action broadcasts this event to switch the active mode
+  // profile for subsequent transcriptions.  We surface it as a toast so the
+  // user has clear visual feedback, and store it in state for future use
+  // (e.g. passing it to the reasoning service).
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onActionEngineDictationMode?.((mode) => {
+      const normalised = typeof mode === "string" ? mode.trim() : "";
+      setActiveDictationMode(normalised || null);
+      toast({
+        title: normalised ? "Dictation mode activated" : "Dictation mode cleared",
+        description: normalised ? `Now using "${normalised}" mode.` : "Returned to default mode.",
+        duration: 3000,
+      });
+    });
+    return () => unsubscribe?.();
+  }, [toast]);
+  // ── End Action Engine ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (isCommandMenuOpen || toastCount > 0 || isRecording || isProcessing) {
       setWindowInteractivity(true);
@@ -333,7 +355,6 @@ export default function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isCommandMenuOpen, closeContextMenu]);
-
 
   useEffect(() => {
     const handleKeyPress = (e) => {
@@ -679,6 +700,17 @@ export default function App() {
               )}
             </button>
           </div>
+
+          {/* Active dictation mode badge — shown when an Action Engine mode override is in effect */}
+          {activeDictationMode && !isRecording && !isProcessing && (
+            <div
+              className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/10 text-white/55 border border-white/8 whitespace-nowrap"
+              style={{ pointerEvents: "none", flexShrink: 0 }}
+              title={`Active dictation mode: ${activeDictationMode}`}
+            >
+              {activeDictationMode}
+            </div>
+          )}
 
           {/* Cancel button inside hover container — cursor moving from icon to here stays hovered */}
           {(isRecording || isProcessing) && isHovered && (
