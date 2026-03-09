@@ -23,11 +23,32 @@ import type {
 // If the production implementations change, update these copies too.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Verbatim copy of normalizeForMatching() from actionEngineManager.js. */
+function normalizeForMatching(text: string): string {
+  return text
+    .trim()
+    .replace(/[,.!?;:]/g, "") // strip common STT punctuation artifacts
+    .replace(/\s+/g, " ") // collapse runs of whitespace
+    .trim() // re-trim (leading punctuation may leave a leading space)
+    .toLowerCase();
+}
+
 function matchesTrigger(transcript: string, action: Action): boolean {
   if (!action.enabled) return false;
-  const hay = typeof transcript === "string" ? transcript.trim().toLowerCase() : "";
+
+  if (action.triggerMode === "regex") {
+    try {
+      return new RegExp(action.triggerPhrase, "i").test(
+        typeof transcript === "string" ? transcript.trim() : ""
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  const hay = typeof transcript === "string" ? normalizeForMatching(transcript) : "";
   const needle =
-    typeof action.triggerPhrase === "string" ? action.triggerPhrase.trim().toLowerCase() : "";
+    typeof action.triggerPhrase === "string" ? normalizeForMatching(action.triggerPhrase) : "";
   if (!needle) return false;
 
   switch (action.triggerMode) {
@@ -37,13 +58,6 @@ function matchesTrigger(transcript: string, action: Action): boolean {
       return hay.startsWith(needle);
     case "contains":
       return hay.includes(needle);
-    case "regex": {
-      try {
-        return new RegExp(action.triggerPhrase, "i").test(transcript.trim());
-      } catch {
-        return false;
-      }
-    }
     default:
       return false;
   }
@@ -303,6 +317,176 @@ describe("matchesTrigger", () => {
       // @ts-expect-error intentional non-string for robustness test
       expect(matchesTrigger(null, action)).toBe(false);
     });
+  });
+
+  // ── Punctuation / STT-noise normalization ─────────────────────────────────
+  // These tests cover the core bug: speech-to-text engines insert punctuation
+  // (most commonly commas and periods) that should not prevent a trigger from
+  // firing.  The fix normalises both the transcript and the stored trigger
+  // phrase before comparison so that the match is punctuation-agnostic for
+  // exact / prefix / contains modes.
+  describe("punctuation normalization (STT artifact tolerance)", () => {
+    describe("contains mode — the reported bug scenario", () => {
+      const action = makeAction({
+        triggerMode: "contains",
+        triggerPhrase: "Open NordicFuture",
+        actionType: "url",
+        actionConfig: { url: "https://nordicfuture.com" },
+      });
+
+      it("matches when STT inserts a comma between words", () => {
+        // Spoken: "Open NordicFuture" → transcribed: "Open, NordicFuture"
+        expect(matchesTrigger("Open, NordicFuture", action)).toBe(true);
+      });
+
+      it("matches when STT appends a trailing period", () => {
+        expect(matchesTrigger("Open NordicFuture.", action)).toBe(true);
+      });
+
+      it("matches when STT adds a comma AND a trailing period", () => {
+        expect(matchesTrigger("Open, NordicFuture.", action)).toBe(true);
+      });
+
+      it("matches when STT adds a trailing exclamation mark", () => {
+        expect(matchesTrigger("Open NordicFuture!", action)).toBe(true);
+      });
+
+      it("matches when STT adds a trailing question mark", () => {
+        expect(matchesTrigger("Open NordicFuture?", action)).toBe(true);
+      });
+
+      it("matches when multiple commas are present", () => {
+        expect(matchesTrigger("please, Open, NordicFuture, now", action)).toBe(true);
+      });
+
+      it("still rejects a transcript that lacks the trigger phrase entirely", () => {
+        expect(matchesTrigger("Close, SomethingElse.", action)).toBe(false);
+      });
+    });
+
+    describe("exact mode — punctuation stripped before comparison", () => {
+      const action = makeAction({
+        triggerMode: "exact",
+        triggerPhrase: "open terminal",
+      });
+
+      it("matches when STT appends a period", () => {
+        expect(matchesTrigger("open terminal.", action)).toBe(true);
+      });
+
+      it("matches when STT appends a comma", () => {
+        // Edge case: comma after last word
+        expect(matchesTrigger("open terminal,", action)).toBe(true);
+      });
+
+      it("still rejects extended text even after normalization", () => {
+        expect(matchesTrigger("please open terminal now", action)).toBe(false);
+      });
+    });
+
+    describe("prefix mode — punctuation stripped before comparison", () => {
+      const action = makeAction({
+        triggerMode: "prefix",
+        triggerPhrase: "open",
+      });
+
+      it("matches when STT inserts comma after trigger word", () => {
+        expect(matchesTrigger("open, terminal now", action)).toBe(true);
+      });
+
+      it("still rejects when phrase does not start with trigger", () => {
+        expect(matchesTrigger("please, open terminal", action)).toBe(false);
+      });
+    });
+
+    describe("extra whitespace normalization", () => {
+      const action = makeAction({
+        triggerMode: "contains",
+        triggerPhrase: "open terminal",
+      });
+
+      it("matches when transcript has extra internal spaces", () => {
+        expect(matchesTrigger("open  terminal", action)).toBe(true);
+      });
+
+      it("matches when punctuation removal leaves a double-space gap", () => {
+        // "open, terminal" → strip comma → "open  terminal" → collapse → "open terminal"
+        expect(matchesTrigger("open, terminal", action)).toBe(true);
+      });
+    });
+
+    describe("regex mode — normalization NOT applied", () => {
+      it("regex pattern matches the raw (non-normalized) transcript", () => {
+        // The user explicitly wrote a regex; normalization must not interfere.
+        const action = makeAction({
+          triggerMode: "regex",
+          triggerPhrase: "^open terminal$",
+        });
+        expect(matchesTrigger("open terminal", action)).toBe(true);
+        // The regex does NOT account for the comma, so this should NOT match —
+        // proving that regex mode bypasses normalization.
+        expect(matchesTrigger("open, terminal", action)).toBe(false);
+      });
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// normalizeForMatching (standalone unit tests)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("normalizeForMatching", () => {
+  it("strips commas", () => {
+    expect(normalizeForMatching("Open, NordicFuture")).toBe("open nordicfuture");
+  });
+
+  it("strips trailing periods", () => {
+    expect(normalizeForMatching("open terminal.")).toBe("open terminal");
+  });
+
+  it("strips exclamation marks", () => {
+    expect(normalizeForMatching("open terminal!")).toBe("open terminal");
+  });
+
+  it("strips question marks", () => {
+    expect(normalizeForMatching("open terminal?")).toBe("open terminal");
+  });
+
+  it("strips semicolons and colons", () => {
+    expect(normalizeForMatching("open; terminal: now")).toBe("open terminal now");
+  });
+
+  it("collapses runs of whitespace left after punctuation removal", () => {
+    // comma removal leaves two adjacent spaces
+    expect(normalizeForMatching("open,  terminal")).toBe("open terminal");
+  });
+
+  it("lowercases the result", () => {
+    expect(normalizeForMatching("OPEN TERMINAL")).toBe("open terminal");
+  });
+
+  it("trims leading and trailing whitespace", () => {
+    expect(normalizeForMatching("  open terminal  ")).toBe("open terminal");
+  });
+
+  it("preserves apostrophes in contractions", () => {
+    expect(normalizeForMatching("don't open this")).toBe("don't open this");
+  });
+
+  it("preserves hyphens in compound words", () => {
+    expect(normalizeForMatching("push-to-talk mode")).toBe("push-to-talk mode");
+  });
+
+  it("handles an already-clean string without mutation", () => {
+    expect(normalizeForMatching("open terminal")).toBe("open terminal");
+  });
+
+  it("handles an empty string", () => {
+    expect(normalizeForMatching("")).toBe("");
+  });
+
+  it("handles punctuation-only input (edge case)", () => {
+    expect(normalizeForMatching(",.!?;:")).toBe("");
   });
 });
 

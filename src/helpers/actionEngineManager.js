@@ -37,8 +37,49 @@ const VALID_ACTION_TYPES = new Set(["shell", "url", "app", "dictation-mode"]);
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Normalize a speech-transcription string or trigger phrase for fuzzy matching.
+ *
+ * Speech-to-text engines routinely insert punctuation that the speaker did not
+ * intend as part of a command (e.g. "Open, NordicFuture" for "Open NordicFuture").
+ * This function strips those artifact characters so that trigger-phrase matching
+ * is not broken by transcription noise.
+ *
+ * Rules applied (in order):
+ *   1. Trim leading/trailing whitespace.
+ *   2. Remove common STT punctuation artifacts: , . ! ? ; :
+ *      These are stripped (not replaced) because they carry no semantic meaning
+ *      in voice-command phrases and are the characters most frequently inserted
+ *      by transcription engines between words.
+ *   3. Collapse runs of whitespace to a single space (handles gaps left after
+ *      punctuation removal).
+ *   4. Re-trim (a leading punctuation strip can leave a leading space).
+ *   5. Lowercase.
+ *
+ * Characters deliberately NOT stripped:
+ *   - Apostrophes  (') — preserve contractions such as "don't", "can't".
+ *   - Hyphens      (-) — preserve compound phrases such as "push-to-talk".
+ *   - All other characters — conservative; avoids surprising behaviour.
+ *
+ * This function is NOT applied for `regex` mode — the user's pattern governs
+ * matching in full.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizeForMatching(text) {
+  return text
+    .trim()
+    .replace(/[,.!?;:]/g, "") // strip common STT punctuation artifacts
+    .replace(/\s+/g, " ") // collapse runs of whitespace
+    .trim() // re-trim (leading punctuation may leave a leading space)
+    .toLowerCase();
+}
+
+/**
  * Returns true if `transcript` satisfies the trigger condition for `action`.
- * Comparison is always case-insensitive.  Disabled actions never match.
+ * Comparison is always case-insensitive and punctuation-normalized for
+ * non-regex modes so that STT artifacts (e.g. stray commas) do not prevent
+ * an expected trigger phrase from firing.
  *
  * @param {string} transcript
  * @param {import('../types/actionEngine').Action} action
@@ -47,9 +88,21 @@ const VALID_ACTION_TYPES = new Set(["shell", "url", "app", "dictation-mode"]);
 function matchesTrigger(transcript, action) {
   if (!action.enabled) return false;
 
-  const hay = typeof transcript === "string" ? transcript.trim().toLowerCase() : "";
+  if (action.triggerMode === "regex") {
+    // Regex mode: the caller controls the pattern in full — no normalization.
+    try {
+      return new RegExp(action.triggerPhrase, "i").test(
+        typeof transcript === "string" ? transcript.trim() : ""
+      );
+    } catch {
+      // Malformed stored regex — treat as no match rather than crashing.
+      return false;
+    }
+  }
+
+  const hay = typeof transcript === "string" ? normalizeForMatching(transcript) : "";
   const needle =
-    typeof action.triggerPhrase === "string" ? action.triggerPhrase.trim().toLowerCase() : "";
+    typeof action.triggerPhrase === "string" ? normalizeForMatching(action.triggerPhrase) : "";
 
   if (!needle) return false;
 
@@ -62,15 +115,6 @@ function matchesTrigger(transcript, action) {
 
     case "contains":
       return hay.includes(needle);
-
-    case "regex": {
-      try {
-        return new RegExp(action.triggerPhrase, "i").test(transcript.trim());
-      } catch {
-        // Malformed stored regex — treat as no match rather than crashing.
-        return false;
-      }
-    }
 
     default:
       return false;
@@ -697,6 +741,7 @@ class ActionEngineManager {
 module.exports = {
   ActionEngineManager,
   // Pure helpers exported for unit testing
+  normalizeForMatching,
   matchesTrigger,
   findMatches,
   validateActionPayload,
