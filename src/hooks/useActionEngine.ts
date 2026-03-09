@@ -10,6 +10,7 @@ import type {
   Action,
   ActionCreatePayload,
   ActionExecuteResult,
+  ActionRun,
   ActionUpdatePayload,
 } from "../types/actionEngine";
 
@@ -41,12 +42,27 @@ export interface UseActionEngineResult {
    * Returns the execution result without throwing (errors surfaced via result.error).
    */
   executeAction: (id: string) => Promise<ActionExecuteResult>;
+
+  // ── Run History ────────────────────────────────────────────────────────────
+
+  /** Recent action runs (newest first). */
+  runs: ActionRun[];
+  /** True while runs are being fetched. */
+  runsLoading: boolean;
+
+  /** Fetch the most recent `limit` runs (default 50). */
+  loadRuns: (limit?: number) => Promise<void>;
+
+  /** Permanently delete all run history records. */
+  clearRuns: () => Promise<boolean>;
 }
 
 export function useActionEngine(): UseActionEngineResult {
   const [actions, setActions] = useState<Action[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [runs, setRuns] = useState<ActionRun[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -145,13 +161,40 @@ export function useActionEngine(): UseActionEngineResult {
 
   const executeAction = useCallback(async (id: string): Promise<ActionExecuteResult> => {
     try {
-      const result = await window.electronAPI?.actionEngineExecute?.(id);
+      const result = await window.electronAPI?.actionEngineExecute?.(id, { triggeredBy: "manual" });
       return result ?? { success: false, error: "Action Engine unavailable." };
     } catch (err: unknown) {
       return {
         success: false,
         error: err instanceof Error ? err.message : "Execution failed.",
       };
+    }
+  }, []);
+
+  const loadRuns = useCallback(async (limit = 50): Promise<void> => {
+    try {
+      setRunsLoading(true);
+      const result = await window.electronAPI?.actionEngineRunsList?.(limit);
+      if (result?.success && Array.isArray(result.runs)) {
+        setRuns(result.runs);
+      }
+    } catch {
+      // Non-fatal: run history is observability-only.
+    } finally {
+      setRunsLoading(false);
+    }
+  }, []);
+
+  const clearRuns = useCallback(async (): Promise<boolean> => {
+    try {
+      const result = await window.electronAPI?.actionEngineRunsClear?.();
+      if (result?.success) {
+        setRuns([]);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
     }
   }, []);
 
@@ -165,5 +208,9 @@ export function useActionEngine(): UseActionEngineResult {
     deleteAction,
     toggleEnabled,
     executeAction,
+    runs,
+    runsLoading,
+    loadRuns,
+    clearRuns,
   };
 }

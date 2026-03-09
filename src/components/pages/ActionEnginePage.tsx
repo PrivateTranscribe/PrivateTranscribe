@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Zap,
   Lock,
@@ -13,6 +13,9 @@ import {
   ToggleLeft,
   ToggleRight,
   ChevronDown,
+  CheckCircle2,
+  XCircle,
+  History,
 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -33,6 +36,7 @@ import type {
   Action,
   ActionConfig,
   ActionCreatePayload,
+  ActionRun,
   ActionType,
   TriggerMode,
 } from "../../types/actionEngine";
@@ -459,6 +463,182 @@ function ActionRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RunHistoryPanel
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Format an ISO timestamp as a short relative or absolute string. */
+function formatRunTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return isoStr;
+
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+const ACTION_TYPE_ICON_SMALL: Record<
+  string,
+  React.ComponentType<{ size?: number; className?: string }>
+> = {
+  shell: Terminal,
+  url: Globe,
+  app: FolderOpen,
+  "dictation-mode": Mic,
+};
+
+interface RunHistoryPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  runs: ActionRun[];
+  runsLoading: boolean;
+  onClear: () => Promise<void>;
+}
+
+function RunHistoryPanel({ open, onOpenChange, runs, runsLoading, onClear }: RunHistoryPanelProps) {
+  const [clearing, setClearing] = useState(false);
+
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      await onClear();
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-3">
+      <button
+        className="w-full flex items-center justify-between text-sm font-medium text-foreground"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2">
+          <History size={14} className="text-muted-foreground" />
+          Run history
+        </span>
+        <ChevronDown
+          size={14}
+          className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="space-y-3">
+          {/* Header row */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {runsLoading
+                ? "Loading…"
+                : runs.length === 0
+                  ? "No runs recorded yet."
+                  : `${runs.length} recent ${runs.length === 1 ? "run" : "runs"}`}
+            </p>
+            {runs.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleClear}
+                disabled={clearing}
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+              >
+                {clearing ? "Clearing…" : "Clear history"}
+              </Button>
+            )}
+          </div>
+
+          {/* Run list */}
+          {runsLoading ? (
+            <div className="space-y-1.5">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="skeleton h-10 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : runs.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <History size={24} className="text-muted-foreground/30" />
+              <p className="text-xs text-muted-foreground">
+                Run an action to see its history here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {runs.map((run) => {
+                const Icon = ACTION_TYPE_ICON_SMALL[run.actionType] ?? Zap;
+                return (
+                  <div
+                    key={run.id}
+                    className="flex items-start gap-2.5 rounded-lg border border-border-subtle/50 bg-background/40 px-3 py-2 text-xs"
+                  >
+                    {/* Status icon */}
+                    {run.success ? (
+                      <CheckCircle2
+                        size={13}
+                        className="mt-0.5 shrink-0 text-green-500"
+                        aria-label="Success"
+                      />
+                    ) : (
+                      <XCircle
+                        size={13}
+                        className="mt-0.5 shrink-0 text-red-400"
+                        aria-label="Failed"
+                      />
+                    )}
+
+                    {/* Main info */}
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Icon size={11} className="shrink-0 text-muted-foreground" />
+                        <span className="font-medium text-foreground truncate">
+                          {run.actionName}
+                        </span>
+                        <span
+                          className={`ml-auto shrink-0 rounded px-1 py-px font-mono text-[10px] ${
+                            run.triggeredBy === "transcript"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {run.triggeredBy === "transcript" ? "voice" : "manual"}
+                        </span>
+                      </div>
+
+                      {/* Trigger text or error */}
+                      {run.triggerText && (
+                        <p className="text-muted-foreground truncate">
+                          &ldquo;{run.triggerText}&rdquo;
+                        </p>
+                      )}
+                      {!run.success && run.error && (
+                        <p className="text-red-400/80 truncate">{run.error}</p>
+                      )}
+                      {run.success && run.output && (
+                        <p className="text-muted-foreground truncate font-mono">{run.output}</p>
+                      )}
+                    </div>
+
+                    {/* Meta: duration + time */}
+                    <div className="shrink-0 text-right text-muted-foreground space-y-0.5">
+                      <p>{formatRunTime(run.triggeredAt)}</p>
+                      <p className="font-mono">{run.durationMs}ms</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ActionEnginePage
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -473,12 +653,24 @@ export default function ActionEnginePage() {
     deleteAction,
     toggleEnabled,
     executeAction,
+    runs,
+    runsLoading,
+    loadRuns,
+    clearRuns,
   } = useActionEngine();
 
   // Dialog state
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Action | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Action | null>(null);
+
+  // Run history panel state
+  const [runsOpen, setRunsOpen] = useState(false);
+
+  // Load runs when the panel is first opened
+  useEffect(() => {
+    if (runsOpen) void loadRuns(50);
+  }, [runsOpen, loadRuns]);
 
   // Run feedback
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -519,6 +711,8 @@ export default function ActionEnginePage() {
     setLastResult(resultEntry);
     setRunningId(null);
     setTimeout(() => setLastResult((prev) => (prev?.id === action.id ? null : prev)), 4_000);
+    // Refresh run history if the panel is open so the new run appears immediately.
+    if (runsOpen) void loadRuns(50);
   };
 
   return (
@@ -709,6 +903,17 @@ export default function ActionEnginePage() {
               </p>
             </div>
           </div>
+
+          {/* Run History */}
+          <RunHistoryPanel
+            open={runsOpen}
+            onOpenChange={setRunsOpen}
+            runs={runs}
+            runsLoading={runsLoading}
+            onClear={async () => {
+              await clearRuns();
+            }}
+          />
         </>
       )}
 

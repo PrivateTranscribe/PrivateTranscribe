@@ -350,6 +350,50 @@ function _executeDictationMode(config, context) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Run record builder (pure — exported for unit tests)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a run record object ready to be inserted into `action_runs`.
+ * This is a pure function so it can be tested without any database or Electron
+ * dependency.
+ *
+ * @param {import('../types/actionEngine').Action} action - The action that was executed.
+ * @param {import('../types/actionEngine').ActionExecuteResult} result - Execution outcome.
+ * @param {'manual' | 'transcript'} triggeredBy - How the run was initiated.
+ * @param {string | null} triggerText - Transcript text for 'transcript' runs, null otherwise.
+ * @param {number} durationMs - Wall-clock execution time in milliseconds.
+ * @returns {{
+ *   id: string,
+ *   actionId: string,
+ *   actionName: string,
+ *   actionType: string,
+ *   triggerText: string | null,
+ *   triggeredBy: string,
+ *   success: boolean,
+ *   output: string | null,
+ *   error: string | null,
+ *   durationMs: number,
+ *   triggeredAt: string,
+ * }}
+ */
+function buildRunRecord(action, result, triggeredBy, triggerText, durationMs) {
+  return {
+    id: crypto.randomUUID(),
+    actionId: action.id,
+    actionName: action.name,
+    actionType: action.actionType,
+    triggerText: triggerText ?? null,
+    triggeredBy: triggeredBy === "transcript" ? "transcript" : "manual",
+    success: result.success,
+    output: typeof result.output === "string" ? result.output : null,
+    error: typeof result.error === "string" ? result.error : null,
+    durationMs: Math.round(Math.max(0, durationMs)),
+    triggeredAt: new Date().toISOString(),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Database row ↔ Action conversion helpers (pure)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -379,6 +423,28 @@ function _rowToAction(row) {
     enabled: row.enabled !== 0,
     createdAt: String(row.created_at || ""),
     updatedAt: String(row.updated_at || ""),
+  };
+}
+
+/**
+ * Convert a raw `action_runs` database row to an ActionRun object.
+ *
+ * @param {Record<string, unknown>} row
+ * @returns {import('../types/actionEngine').ActionRun}
+ */
+function _rowToRun(row) {
+  return {
+    id: String(row.id),
+    actionId: String(row.action_id),
+    actionName: String(row.action_name || ""),
+    actionType: String(row.action_type || ""),
+    triggerText: row.trigger_text != null ? String(row.trigger_text) : null,
+    triggeredBy: /** @type {'manual' | 'transcript'} */ (String(row.triggered_by || "manual")),
+    success: row.success !== 0,
+    output: row.output != null ? String(row.output) : undefined,
+    error: row.error != null ? String(row.error) : undefined,
+    durationMs: Number(row.duration_ms) || 0,
+    triggeredAt: String(row.triggered_at || ""),
   };
 }
 
@@ -535,18 +601,80 @@ class ActionEngineManager {
   // ── Execution ─────────────────────────────────────────────────────────────
 
   /**
-   * Execute an action by its ID.
+   * Execute an action by its ID and record the outcome in `action_runs`.
    * Returns a failure result (does not throw) if the action is not found or disabled.
    *
    * @param {string} id
    * @param {{ windowManager?: any }} [context]
+   * @param {{ triggeredBy?: 'manual' | 'transcript', triggerText?: string | null }} [runOptions]
    * @returns {Promise<import('../types/actionEngine').ActionExecuteResult>}
    */
-  async executeById(id, context = {}) {
+  async executeById(id, context = {}, runOptions = {}) {
     const action = this.getAction(id);
     if (!action) return { success: false, error: `Action not found: ${id}` };
     if (!action.enabled) return { success: false, error: "Action is disabled." };
-    return executeAction(action, context);
+
+    const triggeredBy = runOptions.triggeredBy === "transcript" ? "transcript" : "manual";
+    const triggerText = runOptions.triggerText ?? null;
+
+    const startMs = Date.now();
+    const result = await executeAction(action, context);
+    const durationMs = Date.now() - startMs;
+
+    // Persist the run record. Errors here must never surface to the caller —
+    // observability must not break functionality.
+    try {
+      const run = buildRunRecord(action, result, triggeredBy, triggerText, durationMs);
+      this.db
+        .prepare(
+          `INSERT INTO action_runs
+             (id, action_id, action_name, action_type, trigger_text,
+              triggered_by, success, output, error, duration_ms, triggered_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          run.id,
+          run.actionId,
+          run.actionName,
+          run.actionType,
+          run.triggerText,
+          run.triggeredBy,
+          run.success ? 1 : 0,
+          run.output ?? null,
+          run.error ?? null,
+          run.durationMs,
+          run.triggeredAt
+        );
+    } catch (dbErr) {
+      console.error("[ActionEngine] Failed to record run:", dbErr?.message ?? dbErr);
+    }
+
+    return result;
+  }
+
+  // ── Run History ───────────────────────────────────────────────────────────
+
+  /**
+   * Return recent action runs, newest first.
+   *
+   * @param {number} [limit=50] - Maximum number of records to return.
+   * @returns {import('../types/actionEngine').ActionRun[]}
+   */
+  listRuns(limit = 50) {
+    const safeLimit = Math.max(1, Math.min(500, Math.round(Number(limit) || 50)));
+    const rows = this.db
+      .prepare("SELECT * FROM action_runs ORDER BY triggered_at DESC LIMIT ?")
+      .all(safeLimit);
+    return rows.map(_rowToRun);
+  }
+
+  /**
+   * Permanently delete all run history records.
+   * @returns {{ success: boolean }}
+   */
+  clearRuns() {
+    this.db.prepare("DELETE FROM action_runs").run();
+    return { success: true };
   }
 }
 
@@ -561,4 +689,5 @@ module.exports = {
   findMatches,
   validateActionPayload,
   tokenizeCommand,
+  buildRunRecord,
 };

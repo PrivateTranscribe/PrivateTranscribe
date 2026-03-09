@@ -1418,9 +1418,13 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("action-engine-execute", async (_event, id) => {
+    ipcMain.handle("action-engine-execute", async (_event, id, runOptions) => {
       try {
-        const result = await mgr.executeById(id, { windowManager: this.windowManager });
+        const result = await mgr.executeById(
+          id,
+          { windowManager: this.windowManager },
+          runOptions || {}
+        );
         return result;
       } catch (err) {
         return { success: false, error: err.message };
@@ -1431,6 +1435,23 @@ class IPCHandlers {
       try {
         const matches = mgr.matchTranscript(transcript);
         return { success: true, matches };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-runs-list", (_event, limit) => {
+      try {
+        const runs = mgr.listRuns(limit ?? 50);
+        return { success: true, runs };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-runs-clear", () => {
+      try {
+        return mgr.clearRuns();
       } catch (err) {
         return { success: false, error: err.message };
       }

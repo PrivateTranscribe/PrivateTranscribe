@@ -559,7 +559,10 @@ declare global {
         action?: import("./actionEngine").Action;
         error?: string;
       }>;
-      actionEngineExecute?: (id: string) => Promise<import("./actionEngine").ActionExecuteResult>;
+      actionEngineExecute?: (
+        id: string,
+        runOptions?: { triggeredBy?: "manual" | "transcript"; triggerText?: string | null }
+      ) => Promise<import("./actionEngine").ActionExecuteResult>;
       actionEngineMatch?: (transcript: string) => Promise<{
         success: boolean;
         matches?: import("./actionEngine").ActionMatchResult[];
@@ -568,6 +571,13 @@ declare global {
       onActionEngineDictationMode?: (
         callback: (event: unknown, mode: string) => void
       ) => () => void;
+      // Action run history
+      actionEngineRunsList?: (limit?: number) => Promise<{
+        success: boolean;
+        runs?: import("./actionEngine").ActionRun[];
+        error?: string;
+      }>;
+      actionEngineRunsClear?: () => Promise<{ success: boolean; error?: string }>;
     };
 
     api?: {

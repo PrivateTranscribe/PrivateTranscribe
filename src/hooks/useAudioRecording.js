@@ -139,7 +139,10 @@ export const useAudioRecording = (toast, options = {}) => {
               actionHandled = true;
               for (const { action } of matchResult.matches) {
                 // eslint-disable-next-line no-await-in-loop
-                const execResult = await window.electronAPI?.actionEngineExecute?.(action.id);
+                const execResult = await window.electronAPI?.actionEngineExecute?.(action.id, {
+                  triggeredBy: "transcript",
+                  triggerText: text,
+                });
                 if (execResult && !execResult.success) {
                   toastRef.current?.({
                     title: `Action failed: ${action.name}`,

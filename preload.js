@@ -281,7 +281,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   actionEngineUpdate: (id, patch) => ipcRenderer.invoke("action-engine-update", id, patch),
   actionEngineDelete: (id) => ipcRenderer.invoke("action-engine-delete", id),
   actionEngineToggle: (id, enabled) => ipcRenderer.invoke("action-engine-toggle", id, enabled),
-  actionEngineExecute: (id) => ipcRenderer.invoke("action-engine-execute", id),
+  actionEngineExecute: (id, runOptions) =>
+    ipcRenderer.invoke("action-engine-execute", id, runOptions),
   actionEngineMatch: (transcript) => ipcRenderer.invoke("action-engine-match", transcript),
   onActionEngineDictationMode: registerListener("action-engine-dictation-mode"),
+  // Action run history
+  actionEngineRunsList: (limit) => ipcRenderer.invoke("action-engine-runs-list", limit),
+  actionEngineRunsClear: () => ipcRenderer.invoke("action-engine-runs-clear"),
 });

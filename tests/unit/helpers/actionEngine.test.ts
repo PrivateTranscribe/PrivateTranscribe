@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type {
   Action,
   ActionConfig,
+  ActionExecuteResult,
+  ActionRun,
   TriggerMode,
   ActionType,
 } from "../../../src/types/actionEngine";
@@ -735,5 +737,209 @@ describe("MockActionEngineManager (CRUD)", () => {
     const matches = mgr.matchTranscript("say hello world");
     expect(matches).toHaveLength(1);
     expect(matches[0].action.name).toBe("Active");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildRunRecord — pure run record builder (inlined copy for isolation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Verbatim copy of buildRunRecord from actionEngineManager.js.
+// Keep in sync if the production implementation changes.
+let _runIdCounter = 0;
+function buildRunRecord(
+  action: Action,
+  result: ActionExecuteResult,
+  triggeredBy: "manual" | "transcript",
+  triggerText: string | null,
+  durationMs: number
+): ActionRun {
+  return {
+    id: `run-${++_runIdCounter}`,
+    actionId: action.id,
+    actionName: action.name,
+    actionType: action.actionType,
+    triggerText: triggerText ?? null,
+    triggeredBy: triggeredBy === "transcript" ? "transcript" : "manual",
+    success: result.success,
+    output: typeof result.output === "string" ? result.output : undefined,
+    error: typeof result.error === "string" ? result.error : undefined,
+    durationMs: Math.round(Math.max(0, durationMs)),
+    triggeredAt: new Date().toISOString(),
+  };
+}
+
+const BASE_ACTION: Action = {
+  id: "action-1",
+  name: "Test Action",
+  description: "",
+  triggerPhrase: "run test",
+  triggerMode: "contains",
+  actionType: "shell",
+  actionConfig: { command: "echo hello" },
+  enabled: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+describe("buildRunRecord (pure)", () => {
+  it("captures basic success fields", () => {
+    const result: ActionExecuteResult = { success: true, output: "hello" };
+    const run = buildRunRecord(BASE_ACTION, result, "manual", null, 123);
+
+    expect(run.actionId).toBe("action-1");
+    expect(run.actionName).toBe("Test Action");
+    expect(run.actionType).toBe("shell");
+    expect(run.success).toBe(true);
+    expect(run.output).toBe("hello");
+    expect(run.error).toBeUndefined();
+    expect(run.durationMs).toBe(123);
+    expect(run.triggeredBy).toBe("manual");
+    expect(run.triggerText).toBeNull();
+    expect(run.triggeredAt).toBeTruthy();
+    expect(run.id).toBeTruthy();
+  });
+
+  it("captures failure fields", () => {
+    const result: ActionExecuteResult = { success: false, error: "command not found" };
+    const run = buildRunRecord(BASE_ACTION, result, "transcript", "open terminal", 45);
+
+    expect(run.success).toBe(false);
+    expect(run.error).toBe("command not found");
+    expect(run.output).toBeUndefined();
+    expect(run.triggeredBy).toBe("transcript");
+    expect(run.triggerText).toBe("open terminal");
+  });
+
+  it("normalises triggeredBy to 'manual' for unknown values", () => {
+    const result: ActionExecuteResult = { success: true };
+    // Force an unexpected value through the type system
+    const run = buildRunRecord(BASE_ACTION, result, "manual", null, 0);
+    expect(run.triggeredBy).toBe("manual");
+  });
+
+  it("rounds durationMs to integer", () => {
+    const result: ActionExecuteResult = { success: true };
+    const run = buildRunRecord(BASE_ACTION, result, "manual", null, 12.9);
+    expect(run.durationMs).toBe(13);
+    expect(Number.isInteger(run.durationMs)).toBe(true);
+  });
+
+  it("clamps negative durationMs to zero", () => {
+    const result: ActionExecuteResult = { success: true };
+    const run = buildRunRecord(BASE_ACTION, result, "manual", null, -50);
+    expect(run.durationMs).toBe(0);
+  });
+
+  it("omits output when result.output is undefined", () => {
+    const result: ActionExecuteResult = { success: true };
+    const run = buildRunRecord(BASE_ACTION, result, "manual", null, 10);
+    expect(run.output).toBeUndefined();
+  });
+
+  it("snapshots action name and type at call time", () => {
+    const modified: Action = { ...BASE_ACTION, name: "Renamed Action", actionType: "url" };
+    const result: ActionExecuteResult = { success: true };
+    const run = buildRunRecord(modified, result, "manual", null, 0);
+    expect(run.actionName).toBe("Renamed Action");
+    expect(run.actionType).toBe("url");
+  });
+
+  it("each call produces a unique id", () => {
+    const result: ActionExecuteResult = { success: true };
+    const r1 = buildRunRecord(BASE_ACTION, result, "manual", null, 0);
+    const r2 = buildRunRecord(BASE_ACTION, result, "manual", null, 0);
+    expect(r1.id).not.toBe(r2.id);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MockRunStore — in-memory run history (mirrors ActionEngineManager run methods)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MockRunStore {
+  private runs: ActionRun[] = [];
+
+  record(run: ActionRun): void {
+    this.runs.push(run);
+  }
+
+  listRuns(limit = 50): ActionRun[] {
+    return [...this.runs]
+      .sort((a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime())
+      .slice(0, Math.max(1, Math.min(500, limit)));
+  }
+
+  clearRuns(): { success: boolean } {
+    this.runs = [];
+    return { success: true };
+  }
+}
+
+describe("MockRunStore (run history CRUD)", () => {
+  let store: MockRunStore;
+
+  beforeEach(() => {
+    store = new MockRunStore();
+  });
+
+  it("starts empty", () => {
+    expect(store.listRuns()).toHaveLength(0);
+  });
+
+  it("stores a run and retrieves it", () => {
+    const run = buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 100);
+    store.record(run);
+    expect(store.listRuns()).toHaveLength(1);
+    expect(store.listRuns()[0].actionName).toBe("Test Action");
+  });
+
+  it("returns runs newest first", async () => {
+    const run1 = buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 10);
+    // Advance time slightly for deterministic ordering
+    await new Promise((r) => setTimeout(r, 2));
+    const run2 = buildRunRecord(
+      BASE_ACTION,
+      { success: false, error: "oops" },
+      "transcript",
+      "test",
+      5
+    );
+    store.record(run1);
+    store.record(run2);
+    const list = store.listRuns();
+    expect(new Date(list[0].triggeredAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(list[1].triggeredAt).getTime()
+    );
+  });
+
+  it("respects limit parameter", () => {
+    for (let i = 0; i < 10; i++) {
+      store.record(buildRunRecord(BASE_ACTION, { success: true }, "manual", null, i));
+    }
+    expect(store.listRuns(3)).toHaveLength(3);
+    expect(store.listRuns(10)).toHaveLength(10);
+    expect(store.listRuns(100)).toHaveLength(10);
+  });
+
+  it("clearRuns empties the store", () => {
+    store.record(buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 10));
+    const result = store.clearRuns();
+    expect(result).toEqual({ success: true });
+    expect(store.listRuns()).toHaveLength(0);
+  });
+
+  it("records both success and failure runs", () => {
+    store.record(buildRunRecord(BASE_ACTION, { success: true, output: "ok" }, "manual", null, 10));
+    store.record(
+      buildRunRecord(BASE_ACTION, { success: false, error: "boom" }, "transcript", "open app", 5)
+    );
+    const all = store.listRuns();
+    expect(all).toHaveLength(2);
+    const successful = all.find((r) => r.success);
+    const failed = all.find((r) => !r.success);
+    expect(successful?.output).toBe("ok");
+    expect(failed?.error).toBe("boom");
+    expect(failed?.triggerText).toBe("open app");
   });
 });

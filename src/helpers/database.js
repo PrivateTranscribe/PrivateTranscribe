@@ -93,6 +93,26 @@ class DatabaseManager {
         )
       `);
 
+      // Action run history — append-only log of every action execution.
+      // action_id / action_name / action_type are snapshotted at execution time so
+      // that records remain useful even after the source action is deleted.
+      // trigger_text is NULL for manual (test) executions triggered from the UI.
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS action_runs (
+          id TEXT PRIMARY KEY,
+          action_id TEXT NOT NULL,
+          action_name TEXT NOT NULL,
+          action_type TEXT NOT NULL,
+          trigger_text TEXT,
+          triggered_by TEXT NOT NULL DEFAULT 'manual',
+          success INTEGER NOT NULL,
+          output TEXT,
+          error TEXT,
+          duration_ms INTEGER NOT NULL DEFAULT 0,
+          triggered_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       // Ensure stats row exists
       this.db.exec(`
         INSERT OR IGNORE INTO stats (id, total_words, total_transcriptions, total_seconds, average_wpm)
