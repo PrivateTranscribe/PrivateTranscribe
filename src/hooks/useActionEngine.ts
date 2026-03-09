@@ -14,6 +14,19 @@ import type {
   ActionUpdatePayload,
 } from "../types/actionEngine";
 
+/** localStorage key that stores the global Action Engine kill-switch state. */
+export const ACTION_ENGINE_ENABLED_KEY = "actionEngineEnabled";
+
+/**
+ * Pure helper — resolves whether the Action Engine is globally enabled from a
+ * raw localStorage value.  A missing / null value defaults to `true` (opt-in
+ * is already done at the feature-unlock level); only the explicit string
+ * `"false"` disables it.
+ */
+export function resolveActionEngineEnabled(raw: string | null): boolean {
+  return raw !== "false";
+}
+
 export interface UseActionEngineResult {
   /** Ordered list of all actions (oldest first, matching DB order). */
   actions: Action[];
@@ -21,6 +34,11 @@ export interface UseActionEngineResult {
   loading: boolean;
   /** Last error message, or null when healthy. */
   error: string | null;
+
+  /** Whether the Action Engine is globally enabled (kill-switch state). */
+  globalEnabled: boolean;
+  /** Toggle the global kill-switch and persist to localStorage. */
+  setGlobalEnabled: (enabled: boolean) => void;
 
   /** Re-fetch the action list from the main process. */
   refresh: () => Promise<void>;
@@ -63,6 +81,14 @@ export function useActionEngine(): UseActionEngineResult {
   const [error, setError] = useState<string | null>(null);
   const [runs, setRuns] = useState<ActionRun[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
+  const [globalEnabled, setGlobalEnabledState] = useState<boolean>(() =>
+    resolveActionEngineEnabled(localStorage.getItem(ACTION_ENGINE_ENABLED_KEY))
+  );
+
+  const setGlobalEnabled = useCallback((enabled: boolean) => {
+    localStorage.setItem(ACTION_ENGINE_ENABLED_KEY, enabled ? "true" : "false");
+    setGlobalEnabledState(enabled);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -202,6 +228,8 @@ export function useActionEngine(): UseActionEngineResult {
     actions,
     loading,
     error,
+    globalEnabled,
+    setGlobalEnabled,
     refresh,
     createAction,
     updateAction,

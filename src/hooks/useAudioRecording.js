@@ -129,7 +129,8 @@ export const useAudioRecording = (toast, options = {}) => {
         // normal paste path so that dictation is never silently blocked.
         let actionHandled = false;
         try {
-          if (window.electronAPI?.actionEngineMatch) {
+          const aeEnabled = localStorage.getItem("actionEngineEnabled") !== "false";
+          if (aeEnabled && window.electronAPI?.actionEngineMatch) {
             const matchResult = await window.electronAPI.actionEngineMatch(text);
             if (
               matchResult?.success &&

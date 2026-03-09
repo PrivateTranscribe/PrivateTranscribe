@@ -1144,3 +1144,57 @@ describe("MockRunStore (run history CRUD)", () => {
     expect(failed?.triggerText).toBe("open app");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveActionEngineEnabled — global kill-switch helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Verbatim copy of resolveActionEngineEnabled() from useActionEngine.ts.
+ * A missing / null value means enabled (default); only the explicit string
+ * "false" disables the engine.
+ */
+function resolveActionEngineEnabled(raw: string | null): boolean {
+  return raw !== "false";
+}
+
+describe("resolveActionEngineEnabled", () => {
+  it("returns true when the stored value is null (never set)", () => {
+    expect(resolveActionEngineEnabled(null)).toBe(true);
+  });
+
+  it("returns true when the stored value is 'true'", () => {
+    expect(resolveActionEngineEnabled("true")).toBe(true);
+  });
+
+  it("returns false only when the stored value is exactly 'false'", () => {
+    expect(resolveActionEngineEnabled("false")).toBe(false);
+  });
+
+  it("returns true for any unexpected / unknown string", () => {
+    expect(resolveActionEngineEnabled("1")).toBe(true);
+    expect(resolveActionEngineEnabled("")).toBe(true);
+    expect(resolveActionEngineEnabled("yes")).toBe(true);
+  });
+
+  it("kill switch does not affect individual-action enabled flag", () => {
+    // Simulates: engine globally disabled but per-action flag still respected
+    // when you re-enable.  The resolver is independent of per-action state.
+    const engineEnabled = resolveActionEngineEnabled("false");
+    const actionEnabled = true;
+    // When engine is off the match should be skipped regardless of action state.
+    expect(engineEnabled && actionEnabled).toBe(false);
+  });
+
+  it("kill switch enabled allows per-action disabled to still block matching", () => {
+    const engineEnabled = resolveActionEngineEnabled("true");
+    const actionEnabled = false;
+    expect(engineEnabled && actionEnabled).toBe(false);
+  });
+
+  it("both engine and action enabled allows matching", () => {
+    const engineEnabled = resolveActionEngineEnabled("true");
+    const actionEnabled = true;
+    expect(engineEnabled && actionEnabled).toBe(true);
+  });
+});

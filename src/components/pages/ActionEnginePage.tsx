@@ -671,6 +671,8 @@ export default function ActionEnginePage() {
     actions,
     loading,
     error,
+    globalEnabled,
+    setGlobalEnabled,
     createAction,
     updateAction,
     deleteAction,
@@ -831,6 +833,38 @@ export default function ActionEnginePage() {
               {error}
             </div>
           )}
+
+          {/* Global kill switch */}
+          <div
+            className={`rounded-xl border p-4 flex items-center justify-between gap-4 transition-colors ${
+              globalEnabled
+                ? "border-border-subtle/50 bg-surface-raised/30"
+                : "border-amber-500/30 bg-amber-500/5"
+            }`}
+          >
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Action Engine {globalEnabled ? "active" : "paused"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {globalEnabled
+                  ? "Voice commands are being matched and executed during dictation."
+                  : "Voice command matching is suspended. Dictation will paste text as usual."}
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label={globalEnabled ? "Disable Action Engine" : "Enable Action Engine"}
+              onClick={() => setGlobalEnabled(!globalEnabled)}
+              className="shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+            >
+              {globalEnabled ? (
+                <ToggleRight size={32} className="text-primary" />
+              ) : (
+                <ToggleLeft size={32} className="text-muted-foreground" />
+              )}
+            </button>
+          </div>
 
           {/* Action list */}
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-4">
