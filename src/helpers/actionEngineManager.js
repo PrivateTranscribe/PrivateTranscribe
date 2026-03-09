@@ -406,6 +406,40 @@ function _executeDictationMode(config, context) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Run history pruning (pure — exported for unit tests)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Delete the oldest action runs so that at most `maxRuns` rows remain.
+ * A `maxRuns` value of 0 (or any non-positive number) means "unlimited" and
+ * returns 0 immediately without touching the database.
+ *
+ * This is a pure-ish function (takes the db handle as a parameter) so it can
+ * be unit-tested against an in-memory mock without constructing a full
+ * ActionEngineManager instance.
+ *
+ * @param {{ prepare: (sql: string) => { run: (...args: unknown[]) => { changes: number } } }} db
+ *   A better-sqlite3 Database handle (or a compatible mock).
+ * @param {number} maxRuns
+ *   Maximum number of runs to retain.  0 = unlimited.
+ * @returns {number} Number of rows deleted.
+ */
+function pruneRunsToLimit(db, maxRuns) {
+  const safeMax = Math.round(Number(maxRuns) || 0);
+  if (safeMax <= 0) return 0; // 0 or negative → unlimited, nothing to prune
+
+  const result = db
+    .prepare(
+      `DELETE FROM action_runs
+       WHERE id NOT IN (
+         SELECT id FROM action_runs ORDER BY triggered_at DESC LIMIT ?
+       )`
+    )
+    .run(safeMax);
+  return result.changes;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Run record builder (pure — exported for unit tests)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -732,6 +766,18 @@ class ActionEngineManager {
     this.db.prepare("DELETE FROM action_runs").run();
     return { success: true };
   }
+
+  /**
+   * Delete the oldest runs so that at most `maxRuns` records remain.
+   * Passing 0 (or any non-positive value) means "unlimited" — no rows deleted.
+   *
+   * @param {number} maxRuns  Maximum rows to keep.  0 = unlimited.
+   * @returns {{ success: boolean, pruned: number }}
+   */
+  pruneRuns(maxRuns) {
+    const pruned = pruneRunsToLimit(this.db, maxRuns);
+    return { success: true, pruned };
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -747,4 +793,5 @@ module.exports = {
   validateActionPayload,
   tokenizeCommand,
   buildRunRecord,
+  pruneRunsToLimit,
 };

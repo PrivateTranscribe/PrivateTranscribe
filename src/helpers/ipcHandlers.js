@@ -1472,6 +1472,14 @@ class IPCHandlers {
       }
     });
 
+    ipcMain.handle("action-engine-runs-prune", (_event, maxRuns) => {
+      try {
+        return mgr.pruneRuns(maxRuns ?? 0);
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
     ipcMain.handle("action-engine-list-apps", async () => {
       try {
         const { listInstalledApps } = require("./appDiscovery");

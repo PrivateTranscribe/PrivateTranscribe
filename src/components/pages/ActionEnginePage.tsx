@@ -661,13 +661,29 @@ const ACTION_TYPE_ICON_SMALL: Record<
   "dictation-mode": Mic,
 };
 
+const RETENTION_OPTIONS: { value: number; label: string }[] = [
+  { value: 50, label: "Keep 50" },
+  { value: 100, label: "Keep 100" },
+  { value: 200, label: "Keep 200" },
+  { value: 500, label: "Keep 500" },
+  { value: 0, label: "Keep all" },
+];
+
 interface RunHistoryPanelProps {
   runs: ActionRun[];
   runsLoading: boolean;
   onClear: () => Promise<void>;
+  retentionLimit: number;
+  onRetentionChange: (limit: number) => void;
 }
 
-function RunHistoryPanel({ runs, runsLoading, onClear }: RunHistoryPanelProps) {
+function RunHistoryPanel({
+  runs,
+  runsLoading,
+  onClear,
+  retentionLimit,
+  onRetentionChange,
+}: RunHistoryPanelProps) {
   const [clearing, setClearing] = useState(false);
 
   const handleClear = async () => {
@@ -682,12 +698,27 @@ function RunHistoryPanel({ runs, runsLoading, onClear }: RunHistoryPanelProps) {
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="flex items-center gap-2 text-sm font-medium text-foreground">
           <History size={14} className="text-muted-foreground" />
           Run history
         </p>
         <div className="flex items-center gap-2">
+          <Select
+            value={String(retentionLimit)}
+            onValueChange={(v) => onRetentionChange(Number(v))}
+          >
+            <SelectTrigger className="h-6 w-[90px] text-xs px-2 py-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RETENTION_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <span className="text-xs text-muted-foreground">
             {runsLoading
               ? "Loading…"
@@ -806,6 +837,8 @@ export default function ActionEnginePage() {
     runsLoading,
     loadRuns,
     clearRuns,
+    runsRetentionLimit,
+    setRunsRetentionLimit,
   } = useActionEngine();
 
   // Dialog state
@@ -813,10 +846,11 @@ export default function ActionEnginePage() {
   const [editTarget, setEditTarget] = useState<Action | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Action | null>(null);
 
-  // Load run history on mount so the panel is populated immediately
+  // Load run history on mount so the panel is populated immediately.
+  // Use the retention limit (or 200 if unlimited) so we don't over-fetch.
   useEffect(() => {
-    void loadRuns(50);
-  }, [loadRuns]);
+    void loadRuns(runsRetentionLimit > 0 ? runsRetentionLimit : 200);
+  }, [loadRuns, runsRetentionLimit]);
 
   // Run feedback
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -858,7 +892,7 @@ export default function ActionEnginePage() {
     setRunningId(null);
     setTimeout(() => setLastResult((prev) => (prev?.id === action.id ? null : prev)), 4_000);
     // Refresh run history so the new run appears immediately.
-    void loadRuns(50);
+    void loadRuns(runsRetentionLimit > 0 ? runsRetentionLimit : 200);
   };
 
   return (
@@ -1080,6 +1114,8 @@ export default function ActionEnginePage() {
             onClear={async () => {
               await clearRuns();
             }}
+            retentionLimit={runsRetentionLimit}
+            onRetentionChange={(limit) => void setRunsRetentionLimit(limit)}
           />
         </>
       )}

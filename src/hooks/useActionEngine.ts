@@ -17,6 +17,9 @@ import type {
 /** localStorage key that stores the global Action Engine kill-switch state. */
 export const ACTION_ENGINE_ENABLED_KEY = "actionEngineEnabled";
 
+/** localStorage key that stores the run-history retention limit. */
+export const RUNS_RETENTION_LIMIT_KEY = "actionEngineRunsRetentionLimit";
+
 /**
  * Pure helper — resolves whether the Action Engine is globally enabled from a
  * raw localStorage value.  A missing / null value defaults to `true` (opt-in
@@ -25,6 +28,16 @@ export const ACTION_ENGINE_ENABLED_KEY = "actionEngineEnabled";
  */
 export function resolveActionEngineEnabled(raw: string | null): boolean {
   return raw !== "false";
+}
+
+/**
+ * Pure helper — resolves the run-history retention limit from a raw localStorage
+ * value.  Returns 0 for "unlimited" (the default when the value is missing or
+ * invalid).  Any stored positive integer is returned as-is.
+ */
+export function resolveRunsRetentionLimit(raw: string | null): number {
+  const n = parseInt(raw ?? "", 10);
+  return isNaN(n) || n < 0 ? 0 : n;
 }
 
 export interface UseActionEngineResult {
@@ -73,6 +86,16 @@ export interface UseActionEngineResult {
 
   /** Permanently delete all run history records. */
   clearRuns: () => Promise<boolean>;
+
+  /**
+   * Maximum number of run records to retain in the database.
+   * 0 means unlimited (no automatic pruning).
+   */
+  runsRetentionLimit: number;
+  /** Persist a new retention limit and immediately prune older runs. */
+  setRunsRetentionLimit: (limit: number) => Promise<void>;
+  /** Explicitly prune old runs to the given limit. 0 = unlimited (no-op). */
+  pruneRuns: (maxRuns: number) => Promise<{ success: boolean; pruned?: number }>;
 }
 
 export function useActionEngine(): UseActionEngineResult {
@@ -83,6 +106,9 @@ export function useActionEngine(): UseActionEngineResult {
   const [runsLoading, setRunsLoading] = useState(false);
   const [globalEnabled, setGlobalEnabledState] = useState<boolean>(() =>
     resolveActionEngineEnabled(localStorage.getItem(ACTION_ENGINE_ENABLED_KEY))
+  );
+  const [runsRetentionLimit, setRunsRetentionLimitState] = useState<number>(() =>
+    resolveRunsRetentionLimit(localStorage.getItem(RUNS_RETENTION_LIMIT_KEY))
   );
 
   const setGlobalEnabled = useCallback((enabled: boolean) => {
@@ -224,6 +250,33 @@ export function useActionEngine(): UseActionEngineResult {
     }
   }, []);
 
+  const pruneRuns = useCallback(
+    async (maxRuns: number): Promise<{ success: boolean; pruned?: number }> => {
+      try {
+        const result = await window.electronAPI?.actionEngineRunsPrune?.(maxRuns);
+        return result ?? { success: false };
+      } catch {
+        return { success: false };
+      }
+    },
+    []
+  );
+
+  const setRunsRetentionLimit = useCallback(
+    async (limit: number): Promise<void> => {
+      const safeLimit = Math.max(0, Math.round(limit));
+      localStorage.setItem(RUNS_RETENTION_LIMIT_KEY, String(safeLimit));
+      setRunsRetentionLimitState(safeLimit);
+      // Immediately prune to the new limit so the DB stays consistent.
+      if (safeLimit > 0) {
+        await pruneRuns(safeLimit);
+        // Re-fetch so the UI reflects what was pruned.
+        await loadRuns(safeLimit);
+      }
+    },
+    [pruneRuns, loadRuns]
+  );
+
   return {
     actions,
     loading,
@@ -240,5 +293,8 @@ export function useActionEngine(): UseActionEngineResult {
     runsLoading,
     loadRuns,
     clearRuns,
+    runsRetentionLimit,
+    setRunsRetentionLimit,
+    pruneRuns,
   };
 }

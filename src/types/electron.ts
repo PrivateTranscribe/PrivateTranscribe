@@ -586,6 +586,8 @@ declare global {
         error?: string;
       }>;
       actionEngineRunsClear?: () => Promise<{ success: boolean; error?: string }>;
+      /** Delete oldest runs so that at most maxRuns records remain. 0 = unlimited (no-op). */
+      actionEngineRunsPrune?: (maxRuns: number) => Promise<{ success: boolean; pruned?: number; error?: string }>;
       /** Returns a sorted list of installed apps for the "Open application" action picker. */
       actionEngineListApps?: () => Promise<{
         success: boolean;

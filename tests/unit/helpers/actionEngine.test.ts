@@ -1146,6 +1146,264 @@ describe("MockRunStore (run history CRUD)", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// pruneRunsToLimit — run-history retention helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * In-memory mock database compatible with pruneRunsToLimit's expected interface.
+ * Stores run rows as objects with an `id` and `triggered_at` field.
+ */
+class MockPruneDb {
+  rows: Array<{ id: string; triggered_at: string }> = [];
+
+  prepare(sql: string) {
+    const self = this;
+    return {
+      run(maxRuns: number) {
+        // Simulate: DELETE FROM action_runs WHERE id NOT IN (SELECT id ... LIMIT ?)
+        const sorted = [...self.rows].sort(
+          (a, b) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime()
+        );
+        const keep = new Set(sorted.slice(0, maxRuns).map((r) => r.id));
+        const before = self.rows.length;
+        self.rows = self.rows.filter((r) => keep.has(r.id));
+        return { changes: before - self.rows.length };
+      },
+    };
+  }
+
+  /** Helper: add a run with a timestamp offset (ms from epoch). */
+  addRun(id: string, triggeredAt: Date): void {
+    this.rows.push({ id, triggered_at: triggeredAt.toISOString() });
+  }
+}
+
+/**
+ * Verbatim copy of pruneRunsToLimit() from actionEngineManager.js.
+ */
+function pruneRunsToLimit(
+  db: { prepare: (sql: string) => { run: (maxRuns: number) => { changes: number } } },
+  maxRuns: number
+): number {
+  const safeMax = Math.round(Number(maxRuns) || 0);
+  if (safeMax <= 0) return 0;
+  const result = db
+    .prepare(
+      `DELETE FROM action_runs WHERE id NOT IN (SELECT id FROM action_runs ORDER BY triggered_at DESC LIMIT ?)`
+    )
+    .run(safeMax);
+  return result.changes;
+}
+
+describe("pruneRunsToLimit", () => {
+  it("returns 0 immediately when maxRuns is 0 (unlimited)", () => {
+    const db = new MockPruneDb();
+    db.addRun("a", new Date(1000));
+    db.addRun("b", new Date(2000));
+    expect(pruneRunsToLimit(db, 0)).toBe(0);
+    expect(db.rows).toHaveLength(2);
+  });
+
+  it("returns 0 immediately when maxRuns is negative", () => {
+    const db = new MockPruneDb();
+    db.addRun("a", new Date(1000));
+    expect(pruneRunsToLimit(db, -5)).toBe(0);
+    expect(db.rows).toHaveLength(1);
+  });
+
+  it("returns 0 when the store has fewer rows than maxRuns", () => {
+    const db = new MockPruneDb();
+    db.addRun("a", new Date(1000));
+    db.addRun("b", new Date(2000));
+    expect(pruneRunsToLimit(db, 10)).toBe(0);
+    expect(db.rows).toHaveLength(2);
+  });
+
+  it("prunes excess rows, keeping the newest", () => {
+    const db = new MockPruneDb();
+    const t = Date.now();
+    db.addRun("old1", new Date(t - 3000));
+    db.addRun("old2", new Date(t - 2000));
+    db.addRun("new1", new Date(t - 1000));
+    db.addRun("new2", new Date(t));
+    const deleted = pruneRunsToLimit(db, 2);
+    expect(deleted).toBe(2);
+    expect(db.rows).toHaveLength(2);
+    const remainingIds = db.rows.map((r) => r.id);
+    expect(remainingIds).toContain("new1");
+    expect(remainingIds).toContain("new2");
+    expect(remainingIds).not.toContain("old1");
+    expect(remainingIds).not.toContain("old2");
+  });
+
+  it("prunes to exactly maxRuns rows", () => {
+    const db = new MockPruneDb();
+    for (let i = 0; i < 10; i++) {
+      db.addRun(`run-${i}`, new Date(i * 1000));
+    }
+    pruneRunsToLimit(db, 3);
+    expect(db.rows).toHaveLength(3);
+  });
+
+  it("returns 0 when store is empty", () => {
+    const db = new MockPruneDb();
+    expect(pruneRunsToLimit(db, 5)).toBe(0);
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it("handles maxRuns equal to current row count (no-op)", () => {
+    const db = new MockPruneDb();
+    db.addRun("a", new Date(1000));
+    db.addRun("b", new Date(2000));
+    db.addRun("c", new Date(3000));
+    expect(pruneRunsToLimit(db, 3)).toBe(0);
+    expect(db.rows).toHaveLength(3);
+  });
+
+  it("rounds non-integer maxRuns", () => {
+    const db = new MockPruneDb();
+    for (let i = 0; i < 5; i++) db.addRun(`r${i}`, new Date(i * 1000));
+    // 2.7 should round to 3
+    pruneRunsToLimit(db, 2.7);
+    expect(db.rows).toHaveLength(3);
+  });
+
+  it("treats NaN as 0 (unlimited — no-op)", () => {
+    const db = new MockPruneDb();
+    db.addRun("a", new Date(1000));
+    expect(pruneRunsToLimit(db, NaN)).toBe(0);
+    expect(db.rows).toHaveLength(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pruneRuns — MockRunStore extension
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MockRunStoreWithPrune extends MockRunStore {
+  pruneRuns(maxRuns: number): { success: boolean; pruned: number } {
+    const safeMax = Math.round(Number(maxRuns) || 0);
+    if (safeMax <= 0) return { success: true, pruned: 0 };
+    const sorted = [...(this as any).runs].sort(
+      (a: ActionRun, b: ActionRun) =>
+        new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime()
+    );
+    const keep = new Set(sorted.slice(0, safeMax).map((r: ActionRun) => r.id));
+    const before = (this as any).runs.length;
+    (this as any).runs = (this as any).runs.filter((r: ActionRun) => keep.has(r.id));
+    return { success: true, pruned: before - (this as any).runs.length };
+  }
+}
+
+describe("MockRunStore.pruneRuns (retention behaviour)", () => {
+  let store: MockRunStoreWithPrune;
+
+  beforeEach(() => {
+    store = new MockRunStoreWithPrune();
+  });
+
+  it("returns pruned=0 and leaves store intact when maxRuns=0 (unlimited)", () => {
+    store.record(buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 10));
+    store.record(buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 20));
+    const result = store.pruneRuns(0);
+    expect(result).toEqual({ success: true, pruned: 0 });
+    expect(store.listRuns()).toHaveLength(2);
+  });
+
+  it("returns pruned=0 when store is below limit", () => {
+    store.record(buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 10));
+    const result = store.pruneRuns(5);
+    expect(result).toEqual({ success: true, pruned: 0 });
+    expect(store.listRuns()).toHaveLength(1);
+  });
+
+  it("prunes oldest runs, keeping newest N", async () => {
+    const run1 = buildRunRecord(BASE_ACTION, { success: true }, "manual", null, 10);
+    await new Promise((r) => setTimeout(r, 2));
+    const run2 = buildRunRecord(BASE_ACTION, { success: false, error: "e" }, "manual", null, 5);
+    await new Promise((r) => setTimeout(r, 2));
+    const run3 = buildRunRecord(BASE_ACTION, { success: true }, "transcript", "hi", 8);
+    store.record(run1);
+    store.record(run2);
+    store.record(run3);
+    const result = store.pruneRuns(2);
+    expect(result.pruned).toBe(1);
+    const remaining = store.listRuns(10);
+    expect(remaining).toHaveLength(2);
+    const ids = remaining.map((r) => r.id);
+    expect(ids).toContain(run3.id);
+    expect(ids).toContain(run2.id);
+    expect(ids).not.toContain(run1.id);
+  });
+
+  it("pruning to exactly current count is a no-op", () => {
+    for (let i = 0; i < 4; i++) {
+      store.record(buildRunRecord(BASE_ACTION, { success: true }, "manual", null, i * 10));
+    }
+    const result = store.pruneRuns(4);
+    expect(result).toEqual({ success: true, pruned: 0 });
+    expect(store.listRuns(10)).toHaveLength(4);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// resolveRunsRetentionLimit — retention-limit localStorage helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Verbatim copy of resolveRunsRetentionLimit() from useActionEngine.ts.
+ * Returns 0 for "unlimited" (default), or the stored non-negative integer.
+ */
+function resolveRunsRetentionLimit(raw: string | null): number {
+  const n = parseInt(raw ?? "", 10);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
+
+describe("resolveRunsRetentionLimit", () => {
+  it("returns 0 when the stored value is null (never set — unlimited)", () => {
+    expect(resolveRunsRetentionLimit(null)).toBe(0);
+  });
+
+  it("returns 0 for an empty string", () => {
+    expect(resolveRunsRetentionLimit("")).toBe(0);
+  });
+
+  it("returns 0 for a non-numeric string", () => {
+    expect(resolveRunsRetentionLimit("unlimited")).toBe(0);
+    expect(resolveRunsRetentionLimit("all")).toBe(0);
+    expect(resolveRunsRetentionLimit("abc")).toBe(0);
+  });
+
+  it("returns 0 for a negative stored value", () => {
+    expect(resolveRunsRetentionLimit("-1")).toBe(0);
+    expect(resolveRunsRetentionLimit("-100")).toBe(0);
+  });
+
+  it("returns 0 when stored as '0' (explicit unlimited)", () => {
+    expect(resolveRunsRetentionLimit("0")).toBe(0);
+  });
+
+  it("returns the correct limit for common preset values", () => {
+    expect(resolveRunsRetentionLimit("50")).toBe(50);
+    expect(resolveRunsRetentionLimit("100")).toBe(100);
+    expect(resolveRunsRetentionLimit("200")).toBe(200);
+    expect(resolveRunsRetentionLimit("500")).toBe(500);
+  });
+
+  it("parses an arbitrary positive integer", () => {
+    expect(resolveRunsRetentionLimit("42")).toBe(42);
+    expect(resolveRunsRetentionLimit("999")).toBe(999);
+  });
+
+  it("returns 0 for NaN-producing strings even with numeric prefix", () => {
+    // parseInt("12abc") === 12, which is valid — that's expected JS parseInt behaviour
+    expect(resolveRunsRetentionLimit("12abc")).toBe(12);
+    // Pure non-numeric
+    expect(resolveRunsRetentionLimit("abc12")).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // resolveActionEngineEnabled — global kill-switch helper
 // ─────────────────────────────────────────────────────────────────────────────
 
