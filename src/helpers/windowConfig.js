@@ -119,12 +119,26 @@ class WindowPositionUtil {
     } else if (process.platform === "win32") {
       window.setAlwaysOnTop(true, "pop-up-menu");
     } else {
-      // Linux and other platforms
+      // Linux — "screen-saver" is the highest named level Electron exposes for X11/Wayland.
+      // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should
+      // keep the overlay above normal application windows.  However the compositor is not
+      // obliged to honour it when a fullscreen or override-redirect window takes focus
+      // (e.g. a Unity game running at native resolution).  Known constraints:
+      //   • X11/Unity: topmost is advisory — fullscreen windows or those with
+      //     _NET_WM_STATE_FULLSCREEN may still occlude the overlay.
+      //   • Wayland: no equivalent global always-on-top protocol; "screen-saver" is
+      //     passed as a hint but compositor behaviour is undefined.
+      //   • GNOME Shell (X11 or Wayland): generally respects the level.
+      // Mitigation: a debounced re-apply is triggered on every blur event (windowManager.js).
       window.setAlwaysOnTop(true, "screen-saver");
+
+      // Unconditionally push to front so the Z-order is refreshed even when the window
+      // manager deferred the _NET_WM_STATE update to the next event-loop tick.
+      window.moveTop();
     }
 
-    // Bring window to front if visible
-    if (window.isVisible()) {
+    // Bring window to front if visible (macOS / Windows path falls through here)
+    if (window.isVisible() && process.platform !== "linux") {
       window.moveTop();
     }
   }

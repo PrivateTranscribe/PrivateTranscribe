@@ -28,7 +28,9 @@ class WindowManager {
     this._windowsKeyManagerRef = null;
     this.activationModeCache = "tap";
 
-    // Windows overlay stability: debounced re-apply always-on-top after blur/focus races.
+    // Overlay stability: debounced re-apply always-on-top after blur/focus races.
+    // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt — the
+    // "floating" panel level is managed reliably by the compositor there.
     this.mainWindowOnTopRepairTimer = null;
 
     // Position persistence
@@ -581,10 +583,19 @@ class WindowManager {
     });
 
     this.mainWindow.on("blur", () => {
-      // Windows can lose always-on-top when focus shifts; re-apply after a short delay
-      // to avoid blur/focus event races.
-      debugLogger.debug("[Window] main blur");
-      if (process.platform !== "win32") return;
+      // Windows and Linux (including Unity desktop with Compiz/Mutter) can lose
+      // always-on-top when focus shifts to another window.  Re-apply after a short
+      // delay to avoid blur/focus event races.
+      // macOS is exempt: the "floating" panel level is maintained by the compositor.
+      if (process.platform === "linux") {
+        const desktop = process.env.XDG_CURRENT_DESKTOP || "unknown";
+        const session = process.env.XDG_SESSION_TYPE || "unknown";
+        debugLogger.debug(`[Window] main blur (linux desktop=${desktop} session=${session})`);
+      } else {
+        debugLogger.debug("[Window] main blur");
+      }
+
+      if (process.platform === "darwin") return;
 
       if (this.mainWindowOnTopRepairTimer) {
         clearTimeout(this.mainWindowOnTopRepairTimer);
