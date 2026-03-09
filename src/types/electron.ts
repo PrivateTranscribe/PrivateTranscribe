@@ -218,12 +218,29 @@ export interface HardwareDetectionGPU {
   rocm: { available: boolean; version: string | null };
 }
 
+export type HardwareGpuCategory =
+  | "nvidia_cuda" // NVIDIA GPU + CUDA runtime available → Parakeet recommended
+  | "nvidia_no_cuda" // NVIDIA GPU detected but CUDA not usable → recovery steps provided
+  | "non_nvidia_gpu" // AMD/Intel/other GPU → Whisper on CPU
+  | "metal" // macOS Metal GPU (Apple Silicon or Intel Mac) → Whisper with Metal
+  | "cpu_only"; // No usable GPU → Whisper on CPU
+
 export interface HardwareRecommendations {
   transcriptionProvider: string;
   localTranscriptionProvider: "whisper" | "nvidia";
   whisperModel: string;
   parakeetModel?: string;
+  /**
+   * Classifies the detected GPU/acceleration scenario.
+   * Used by the UI to render distinct setup states and recovery guidance.
+   */
+  gpuCategory: HardwareGpuCategory;
   reasoning: string[];
+  /**
+   * Actionable recovery steps shown when gpuCategory === 'nvidia_no_cuda'.
+   * Empty array for all other categories.
+   */
+  recoverySteps: string[];
 }
 
 export interface HardwareDetectionResult {
@@ -592,7 +609,9 @@ declare global {
       }>;
       actionEngineRunsClear?: () => Promise<{ success: boolean; error?: string }>;
       /** Delete oldest runs so that at most maxRuns records remain. 0 = unlimited (no-op). */
-      actionEngineRunsPrune?: (maxRuns: number) => Promise<{ success: boolean; pruned?: number; error?: string }>;
+      actionEngineRunsPrune?: (
+        maxRuns: number
+      ) => Promise<{ success: boolean; pruned?: number; error?: string }>;
       /** Returns a sorted list of installed apps for the "Open application" action picker. */
       actionEngineListApps?: () => Promise<{
         success: boolean;

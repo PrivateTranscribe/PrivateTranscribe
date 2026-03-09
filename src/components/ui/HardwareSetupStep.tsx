@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { Button } from "./button";
-import { Cpu, MonitorSmartphone, RefreshCw, Check, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Cpu,
+  MonitorSmartphone,
+  RefreshCw,
+  Check,
+  AlertCircle,
+  Loader2,
+  Wrench,
+} from "lucide-react";
 import { cn } from "../lib/utils";
 import type {
   HardwareDetectionResult,
@@ -148,6 +156,9 @@ export default function HardwareSetupStep({
     const gpuVendor = getGPUIcon();
     const hasCuda = detection.gpu.cuda.available;
     const hasMetal = detection.gpu.metal.available;
+    const gpuCategory = detection.recommendations?.gpuCategory;
+    const isNvidiaNocuda = gpuCategory === "nvidia_no_cuda";
+    const recoverySteps = detection.recommendations?.recoverySteps ?? [];
 
     return (
       <div className="space-y-3">
@@ -176,7 +187,9 @@ export default function HardwareSetupStep({
               detection.gpu.available
                 ? hasCuda || hasMetal
                   ? "border-success/30 bg-success/5"
-                  : "border-border-subtle bg-surface-1"
+                  : isNvidiaNocuda
+                    ? "border-warning/30 bg-warning/5"
+                    : "border-border-subtle bg-surface-1"
                 : "border-border-subtle bg-surface-1"
             )}
           >
@@ -184,13 +197,21 @@ export default function HardwareSetupStep({
               <div
                 className={cn(
                   "w-7 h-7 rounded-md flex items-center justify-center",
-                  hasCuda || hasMetal ? "bg-success/10" : "bg-primary/10"
+                  hasCuda || hasMetal
+                    ? "bg-success/10"
+                    : isNvidiaNocuda
+                      ? "bg-warning/10"
+                      : "bg-primary/10"
                 )}
               >
                 <MonitorSmartphone
                   className={cn(
                     "w-3.5 h-3.5",
-                    hasCuda || hasMetal ? "text-success" : "text-primary"
+                    hasCuda || hasMetal
+                      ? "text-success"
+                      : isNvidiaNocuda
+                        ? "text-warning"
+                        : "text-primary"
                   )}
                 />
               </div>
@@ -212,6 +233,9 @@ export default function HardwareSetupStep({
                   )}
                   {hasMetal && (
                     <span className="text-[10px] text-success font-medium">Metal Ready</span>
+                  )}
+                  {isNvidiaNocuda && !hasCuda && (
+                    <span className="text-[10px] text-warning font-medium">CUDA Not Ready</span>
                   )}
                   {detection.gpu.vram && (
                     <span className="text-[10px] text-muted-foreground">
@@ -271,6 +295,33 @@ export default function HardwareSetupStep({
                     ? "Using safe CPU defaults with Whisper Base model. You can adjust settings later."
                     : "Hardware analysis completed but could not generate recommendations. Safe CPU defaults will be used."}
                 </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recovery steps — shown when NVIDIA GPU is detected but CUDA is not usable */}
+        {isNvidiaNocuda && recoverySteps.length > 0 && !applied && (
+          <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+            <div className="flex items-start gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-warning/10 flex items-center justify-center shrink-0 mt-0.5">
+                <Wrench className="w-3.5 h-3.5 text-warning" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-medium text-foreground">
+                  To enable GPU acceleration later:
+                </h4>
+                <ol className="mt-1.5 space-y-1 list-none">
+                  {recoverySteps.map((step, idx) => (
+                    <li
+                      key={idx}
+                      className="text-[11px] text-muted-foreground flex items-start gap-1.5"
+                    >
+                      <span className="text-warning font-medium mt-0.5 shrink-0">{idx + 1}.</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
           </div>

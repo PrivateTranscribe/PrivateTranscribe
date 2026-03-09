@@ -500,27 +500,34 @@ class HardwareDetector {
   }
 
   /**
-   * Generate recommendations based on hardware detection
+   * Generate recommendations based on hardware detection.
+   *
+   * Returns a recommendation object with:
+   * - gpuCategory: 'nvidia_cuda' | 'nvidia_no_cuda' | 'non_nvidia_gpu' | 'metal' | 'cpu_only'
+   * - recoverySteps: actionable steps to enable GPU acceleration (populated for 'nvidia_no_cuda')
+   * - reasoning: human-readable explanation bullets shown in onboarding UI
    */
   generateRecommendations(detection) {
     const rec = {
-      transcriptionProvider: "local", // Always default to local for CPU fallback
+      transcriptionProvider: "local",
       whisperModel: "turbo",
-      localTranscriptionProvider: "whisper", // Default to whisper (CPU-safe fallback)
+      localTranscriptionProvider: "whisper",
+      gpuCategory: "cpu_only",
       reasoning: [],
+      recoverySteps: [],
     };
 
     const { gpu, cpu } = detection;
 
-    // Ensure recommendations is never null - always return valid default
+    // Always return valid defaults — never null
     if (!gpu || !cpu) {
       rec.reasoning.push("Unable to detect hardware - using safe CPU defaults with Whisper");
       return rec;
     }
 
-    // Special check: if Metal is available (macOS), recommend optimized Whisper settings
-    // Improved Metal detection: Check both metal.available AND gpu.available flags
+    // ── macOS Metal (early return — Whisper with Metal acceleration) ─────────
     if (gpu.metal?.available && gpu.available) {
+      rec.gpuCategory = "metal";
       rec.localTranscriptionProvider = "whisper";
       rec.transcriptionProvider = "local";
 
@@ -533,47 +540,73 @@ class HardwareDetector {
         rec.whisperModel = "small";
         rec.reasoning.push("Metal GPU detected - Whisper will use Metal acceleration");
       } else {
-        // Fallback for macOS with Metal but unidentified GPU
         rec.whisperModel = "base";
         rec.reasoning.push("Metal GPU support detected - using Whisper with hardware acceleration");
       }
 
-      // Return early for Metal - no need to check other conditions
       return rec;
     }
 
-    // NVIDIA GPU with CUDA - recommend Parakeet
+    // ── NVIDIA + CUDA — recommend Parakeet GPU acceleration ─────────────────
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
+      rec.gpuCategory = "nvidia_cuda";
       rec.localTranscriptionProvider = "nvidia";
       rec.parakeetModel = "parakeet-tdt-0.6b-v3";
-      rec.transcriptionProvider = "local"; // Ensure local provider for GPU case
+      rec.transcriptionProvider = "local";
       rec.reasoning.push(
         "NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration"
       );
 
-      // Check VRAM for model recommendations
       if (gpu.vram && gpu.vram >= 4096) {
         rec.reasoning.push(`GPU has ${gpu.vram}MB VRAM - excellent for local transcription`);
       }
-    } else {
-      // CPU-only or unsupported GPU
-      rec.localTranscriptionProvider = "whisper";
-      rec.transcriptionProvider = "local"; // Ensure local provider for CPU fallback
-      rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
 
-      // Adjust model size based on CPU cores
-      if (cpu.count >= 8) {
-        rec.whisperModel = "turbo";
-        rec.reasoning.push(
-          `Multi-core CPU (${cpu.count} cores) - Turbo model recommended for best quality`
-        );
-      } else if (cpu.count >= 4) {
-        rec.whisperModel = "base";
-        rec.reasoning.push(`Quad-core CPU (${cpu.count} cores) - Base model recommended for speed`);
-      } else {
-        rec.whisperModel = "tiny";
-        rec.reasoning.push(`Limited CPU cores (${cpu.count}) - Tiny model recommended for speed`);
-      }
+      return rec;
+    }
+
+    // ── NVIDIA GPU present but CUDA runtime unavailable ──────────────────────
+    // (e.g. drivers missing, GPU detected via lspci but nvidia-smi failed)
+    if (gpu.vendor === "nvidia" && gpu.available) {
+      rec.gpuCategory = "nvidia_no_cuda";
+      rec.localTranscriptionProvider = "whisper";
+      rec.transcriptionProvider = "local";
+      rec.reasoning.push(
+        `NVIDIA GPU detected (${gpu.model || "GPU"}) but CUDA runtime is not available — falling back to CPU with Whisper`
+      );
+      rec.recoverySteps = [
+        "Install or update your NVIDIA drivers (version 520 or later recommended) from nvidia.com/drivers",
+        "Modern NVIDIA drivers include the CUDA runtime — a separate CUDA Toolkit install is usually not needed",
+        "After updating drivers, restart Privoca to re-detect hardware and enable Parakeet GPU acceleration",
+      ];
+    } else if (gpu.available && gpu.vendor && gpu.vendor !== "unknown") {
+      // ── Non-NVIDIA GPU (AMD, Intel, etc.) — no current CUDA acceleration path ─
+      rec.gpuCategory = "non_nvidia_gpu";
+      rec.localTranscriptionProvider = "whisper";
+      rec.transcriptionProvider = "local";
+      const vendorName = gpu.vendor.charAt(0).toUpperCase() + gpu.vendor.slice(1);
+      rec.reasoning.push(
+        `${vendorName} GPU detected — Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA)`
+      );
+    } else {
+      // ── CPU-only (no usable GPU) ─────────────────────────────────────────────
+      rec.gpuCategory = "cpu_only";
+      rec.localTranscriptionProvider = "whisper";
+      rec.transcriptionProvider = "local";
+      rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
+    }
+
+    // CPU-core-based model sizing for all non-GPU-accelerated paths
+    if (cpu.count >= 8) {
+      rec.whisperModel = "turbo";
+      rec.reasoning.push(
+        `Multi-core CPU (${cpu.count} cores) - Turbo model recommended for best quality`
+      );
+    } else if (cpu.count >= 4) {
+      rec.whisperModel = "base";
+      rec.reasoning.push(`Quad-core CPU (${cpu.count} cores) - Base model recommended for speed`);
+    } else {
+      rec.whisperModel = "tiny";
+      rec.reasoning.push(`Limited CPU cores (${cpu.count}) - Tiny model recommended for speed`);
     }
 
     return rec;

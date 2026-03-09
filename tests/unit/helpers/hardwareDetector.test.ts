@@ -189,4 +189,198 @@ describe("HardwareDetector.generateRecommendations", () => {
       });
     });
   });
+
+  // ── gpuCategory classification ────────────────────────────────────────────
+
+  describe("gpuCategory classification", () => {
+    it("nvidia_cuda for NVIDIA + CUDA", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "nvidia",
+            model: "RTX 4080",
+            vram: 16384,
+            cuda: { available: true, version: "12.3" },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      expect(rec.gpuCategory).toBe("nvidia_cuda");
+    });
+
+    it("nvidia_no_cuda for NVIDIA GPU without CUDA runtime", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "nvidia",
+            model: "GTX 1050",
+            vram: 4096,
+            cuda: { available: false, version: null },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      expect(rec.gpuCategory).toBe("nvidia_no_cuda");
+    });
+
+    it("non_nvidia_gpu for AMD GPU", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "amd",
+            model: "Radeon RX 6800",
+            vram: 16384,
+            cuda: { available: false, version: null },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      expect(rec.gpuCategory).toBe("non_nvidia_gpu");
+    });
+
+    it("non_nvidia_gpu for Intel GPU", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "intel",
+            model: "Intel Arc A770",
+            vram: 16384,
+            cuda: { available: false, version: null },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      expect(rec.gpuCategory).toBe("non_nvidia_gpu");
+    });
+
+    it("cpu_only when no GPU detected", () => {
+      const rec = detector.generateRecommendations(makeDetection({ cpu: { count: 8 } }));
+      expect(rec.gpuCategory).toBe("cpu_only");
+    });
+
+    it("metal for Apple Silicon GPU", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "apple",
+            model: "Apple M2",
+            vram: null,
+            cuda: { available: false, version: null },
+            metal: { available: true, version: "3.1" },
+          },
+        })
+      );
+      expect(rec.gpuCategory).toBe("metal");
+    });
+
+    it("cpu_only for null hardware data", () => {
+      const rec = detector.generateRecommendations({ gpu: null, cpu: null });
+      expect(rec.gpuCategory).toBe("cpu_only");
+    });
+  });
+
+  // ── NVIDIA-no-CUDA recovery steps ─────────────────────────────────────────
+
+  describe("NVIDIA GPU without CUDA — recovery steps", () => {
+    function nvidiaNocudaDetection() {
+      return makeDetection({
+        gpu: {
+          available: true,
+          vendor: "nvidia",
+          model: "GTX 970",
+          vram: 4096,
+          cuda: { available: false, version: null },
+          metal: { available: false, version: null },
+        },
+      });
+    }
+
+    it("provides non-empty recoverySteps for nvidia_no_cuda", () => {
+      const rec = detector.generateRecommendations(nvidiaNocudaDetection());
+      expect(Array.isArray(rec.recoverySteps)).toBe(true);
+      expect((rec.recoverySteps as string[]).length).toBeGreaterThan(0);
+    });
+
+    it("recovery steps mention drivers or CUDA", () => {
+      const rec = detector.generateRecommendations(nvidiaNocudaDetection());
+      const combined = (rec.recoverySteps as string[]).join(" ").toLowerCase();
+      expect(combined).toMatch(/driver|cuda/);
+    });
+
+    it("falls back to Whisper (not Parakeet) for nvidia_no_cuda", () => {
+      const rec = detector.generateRecommendations(nvidiaNocudaDetection());
+      expect(rec.localTranscriptionProvider).toBe("whisper");
+      expect(rec.parakeetModel).toBeUndefined();
+    });
+
+    it("includes GPU name in reasoning for nvidia_no_cuda", () => {
+      const rec = detector.generateRecommendations(nvidiaNocudaDetection());
+      const combined = (rec.reasoning as string[]).join(" ");
+      expect(combined).toContain("GTX 970");
+    });
+
+    it("recoverySteps is empty for nvidia_cuda (no recovery needed)", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "nvidia",
+            model: "RTX 3080",
+            vram: 10240,
+            cuda: { available: true, version: "12.0" },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      expect((rec.recoverySteps as string[]).length).toBe(0);
+    });
+
+    it("recoverySteps is empty for cpu_only", () => {
+      const rec = detector.generateRecommendations(makeDetection({ cpu: { count: 8 } }));
+      expect((rec.recoverySteps as string[]).length).toBe(0);
+    });
+  });
+
+  // ── Non-NVIDIA GPU messaging ──────────────────────────────────────────────
+
+  describe("non-NVIDIA GPU messaging", () => {
+    it("mentions vendor name in AMD GPU reasoning", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "amd",
+            model: "Radeon RX 7900",
+            vram: 24576,
+            cuda: { available: false, version: null },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      const combined = (rec.reasoning as string[]).join(" ");
+      expect(combined).toMatch(/AMD/i);
+    });
+
+    it("non-NVIDIA GPU uses Whisper (CPU path), not Parakeet", () => {
+      const rec = detector.generateRecommendations(
+        makeDetection({
+          gpu: {
+            available: true,
+            vendor: "amd",
+            model: "Radeon RX 7900",
+            vram: 24576,
+            cuda: { available: false, version: null },
+            metal: { available: false, version: null },
+          },
+        })
+      );
+      expect(rec.localTranscriptionProvider).toBe("whisper");
+      expect(rec.gpuCategory).toBe("non_nvidia_gpu");
+    });
+  });
 });
