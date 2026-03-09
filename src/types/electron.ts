@@ -1,5 +1,13 @@
 export type LocalTranscriptionProvider = "whisper" | "nvidia";
 
+export type {
+  Action,
+  ActionCreatePayload,
+  ActionUpdatePayload,
+  ActionMatchResult,
+  ActionExecuteResult,
+} from "./actionEngine";
+
 export interface TranscriptionItem {
   id: number;
   text: string;
@@ -522,6 +530,44 @@ declare global {
         error?: string;
       }>;
       clearHardwareCache?: () => Promise<{ success: boolean }>;
+
+      // Action Engine (Pro feature)
+      actionEngineList?: () => Promise<{
+        success: boolean;
+        actions?: import("./actionEngine").Action[];
+        error?: string;
+      }>;
+      actionEngineCreate?: (payload: import("./actionEngine").ActionCreatePayload) => Promise<{
+        success: boolean;
+        action?: import("./actionEngine").Action;
+        error?: string;
+      }>;
+      actionEngineUpdate?: (
+        id: string,
+        patch: import("./actionEngine").ActionUpdatePayload
+      ) => Promise<{
+        success: boolean;
+        action?: import("./actionEngine").Action;
+        error?: string;
+      }>;
+      actionEngineDelete?: (id: string) => Promise<{ success: boolean; error?: string }>;
+      actionEngineToggle?: (
+        id: string,
+        enabled: boolean
+      ) => Promise<{
+        success: boolean;
+        action?: import("./actionEngine").Action;
+        error?: string;
+      }>;
+      actionEngineExecute?: (id: string) => Promise<import("./actionEngine").ActionExecuteResult>;
+      actionEngineMatch?: (transcript: string) => Promise<{
+        success: boolean;
+        matches?: import("./actionEngine").ActionMatchResult[];
+        error?: string;
+      }>;
+      onActionEngineDictationMode?: (
+        callback: (event: unknown, mode: string) => void
+      ) => () => void;
     };
 
     api?: {

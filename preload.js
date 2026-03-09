@@ -274,4 +274,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
+
+  // Action Engine (Pro feature)
+  actionEngineList: () => ipcRenderer.invoke("action-engine-list"),
+  actionEngineCreate: (payload) => ipcRenderer.invoke("action-engine-create", payload),
+  actionEngineUpdate: (id, patch) => ipcRenderer.invoke("action-engine-update", id, patch),
+  actionEngineDelete: (id) => ipcRenderer.invoke("action-engine-delete", id),
+  actionEngineToggle: (id, enabled) => ipcRenderer.invoke("action-engine-toggle", id, enabled),
+  actionEngineExecute: (id) => ipcRenderer.invoke("action-engine-execute", id),
+  actionEngineMatch: (transcript) => ipcRenderer.invoke("action-engine-match", transcript),
+  onActionEngineDictationMode: registerListener("action-engine-dictation-mode"),
 });

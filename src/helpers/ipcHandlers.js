@@ -53,6 +53,7 @@ class IPCHandlers {
     this.windowManager = managers.windowManager;
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
+    this.actionEngineManager = managers.actionEngineManager || null;
     this.hardwareDetector = new HardwareDetector();
     // Current history limit — synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
@@ -1355,6 +1356,79 @@ class IPCHandlers {
         const id = crypto.randomUUID();
         fs.writeFileSync(idPath, id, "utf-8");
         return { id };
+      }
+    });
+
+    if (this.actionEngineManager) {
+      this._setupActionEngineHandlers();
+    }
+  }
+
+  // ── Action Engine (Pro feature) ──────────────────────────────────────────
+  // Called from setupHandlers() only when actionEngineManager is present.
+
+  _setupActionEngineHandlers() {
+    const mgr = this.actionEngineManager;
+
+    ipcMain.handle("action-engine-list", () => {
+      try {
+        return { success: true, actions: mgr.listActions() };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-create", (_event, payload) => {
+      try {
+        const action = mgr.createAction(payload);
+        return { success: true, action };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-update", (_event, id, patch) => {
+      try {
+        const action = mgr.updateAction(id, patch);
+        return { success: true, action };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-delete", (_event, id) => {
+      try {
+        const result = mgr.deleteAction(id);
+        return { success: result.success };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-toggle", (_event, id, enabled) => {
+      try {
+        const action = mgr.setActionEnabled(id, enabled);
+        return { success: true, action };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-execute", async (_event, id) => {
+      try {
+        const result = await mgr.executeById(id, { windowManager: this.windowManager });
+        return result;
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("action-engine-match", (_event, transcript) => {
+      try {
+        const matches = mgr.matchTranscript(transcript);
+        return { success: true, matches };
+      } catch (err) {
+        return { success: false, error: err.message };
       }
     });
   }

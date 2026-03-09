@@ -75,6 +75,24 @@ class DatabaseManager {
         )
       `);
 
+      // User-defined voice actions for the Action Engine (Pro feature).
+      // CRUD is handled by ActionEngineManager; this table is created here so
+      // that all schema lives in one place and migrations can reference it.
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS actions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          trigger_phrase TEXT NOT NULL,
+          trigger_mode TEXT NOT NULL DEFAULT 'contains',
+          action_type TEXT NOT NULL,
+          action_config TEXT NOT NULL DEFAULT '{}',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       // Ensure stats row exists
       this.db.exec(`
         INSERT OR IGNORE INTO stats (id, total_words, total_transcriptions, total_seconds, average_wpm)
@@ -368,7 +386,9 @@ class DatabaseManager {
         // Reset the streak basis as well by marking all existing history entries as
         // excluded from aggregate/streak calculations. This preserves transcript history
         // while giving the user a true "fresh stats" reset.
-        this.db.prepare(`UPDATE transcriptions SET include_in_stats = 0 WHERE include_in_stats != 0`).run();
+        this.db
+          .prepare(`UPDATE transcriptions SET include_in_stats = 0 WHERE include_in_stats != 0`)
+          .run();
       });
 
       tx();
