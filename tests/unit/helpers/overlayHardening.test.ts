@@ -1,0 +1,174 @@
+/**
+ * Source-level invariant tests for overlay hardening edge cases.
+ *
+ * These tests read production source files as text and assert that key
+ * behavioural invariants are present.  They run without Electron / JSDOM,
+ * so no environment mocking is required.
+ */
+import { describe, expect, test } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+
+function readHelper(name: string): string {
+  return fs.readFileSync(path.resolve(__dirname, "../../../src/helpers", name), "utf8");
+}
+
+function readSrc(relPath: string): string {
+  return fs.readFileSync(path.resolve(__dirname, "../../../src", relPath), "utf8");
+}
+
+const windowManager = readHelper("windowManager.js");
+const windowConfig = readHelper("windowConfig.js");
+const appJsx = readSrc("App.jsx");
+const toastTsx = readSrc("components/ui/Toast.tsx");
+
+// ─── Multi-monitor position clamping ─────────────────────────────────────────
+
+describe("windowManager.js — multi-monitor position clamping", () => {
+  test("saved position is clamped against the display nearest to the saved coords", () => {
+    // Must use getDisplayNearestPoint to find the correct display when clamping a
+    // saved overlay position, otherwise secondary-monitor positions get snapped to
+    // the primary display bounds on next launch.
+    expect(windowManager).toContain("getDisplayNearestPoint");
+  });
+
+  test("clamping uses the saved position as the nearest-point query", () => {
+    // The nearest-point lookup must reference the saved x/y, not a hardcoded point.
+    // We verify that getDisplayNearestPoint is called with an object containing x/y.
+    const idx = windowManager.indexOf("getDisplayNearestPoint");
+    expect(idx).toBeGreaterThan(-1);
+    const snippet = windowManager.slice(idx, idx + 60);
+    expect(snippet).toContain("saved.x");
+    expect(snippet).toContain("saved.y");
+  });
+
+  test("primary display lookup is still used as fallback when no saved position", () => {
+    // The initial default position still anchors to the primary display.
+    expect(windowManager).toContain("getPrimaryDisplay");
+  });
+
+  test("resizeMainWindow clamps X and Y to prevent off-screen drift", () => {
+    // resizeMainWindow must call Math.max and Math.min to clamp both axes.
+    const idx = windowManager.indexOf("resizeMainWindow");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 900);
+    expect(block).toContain("Math.max");
+    expect(block).toContain("Math.min");
+    expect(block).toContain("workArea.x");
+  });
+});
+
+// ─── Toast positioning — no stale state after drag ───────────────────────────
+
+describe("Toast.tsx — toastOnLeft computed inline", () => {
+  test("toastOnLeft is a plain const derived from window.screenX, not a useState", () => {
+    // Replacing state+effect with an inline const ensures the value is always
+    // current after the user drags the overlay (no resize event fires on drag).
+    expect(toastTsx).toContain("const toastOnLeft =");
+    // The value must read window.screenX synchronously (not from a state variable).
+    const idx = toastTsx.indexOf("const toastOnLeft =");
+    const line = toastTsx.slice(idx, idx + 80);
+    expect(line).toContain("window.screenX");
+  });
+
+  test("toastOnLeft does NOT use useState for its value", () => {
+    // There must be no useState call whose setter is setToastOnLeft.
+    expect(toastTsx).not.toContain("setToastOnLeft");
+  });
+
+  test("toast viewport still applies left-anchor class when toastOnLeft is true", () => {
+    expect(toastTsx).toContain("left-0");
+  });
+
+  test("toast viewport applies right-anchor class when toastOnLeft is false", () => {
+    expect(toastTsx).toContain("right-6");
+  });
+});
+
+// ─── Escape key handling during recording ────────────────────────────────────
+
+describe("App.jsx — Escape key during recording/processing", () => {
+  test("Escape cancels recording when isRecording is true", () => {
+    // The Escape handler must call cancelRecording() when isRecording is set.
+    // Use a larger slice since the handler body spans several hundred characters.
+    const escIdx = appJsx.indexOf('"Escape"');
+    expect(escIdx).toBeGreaterThan(-1);
+    const block = appJsx.slice(escIdx, escIdx + 700);
+    expect(block).toContain("isRecording");
+    expect(block).toContain("cancelRecording");
+  });
+
+  test("Escape cancels processing when isProcessing is true", () => {
+    const escIdx = appJsx.indexOf('"Escape"');
+    const block = appJsx.slice(escIdx, escIdx + 700);
+    expect(block).toContain("isProcessing");
+    expect(block).toContain("cancelProcessing");
+  });
+
+  test("Escape does not hide overlay when recording is active", () => {
+    // hideWindow must not appear BEFORE the isRecording/isProcessing guard in the
+    // Escape branch — i.e. hideWindow is only called in the idle else branch.
+    const escIdx = appJsx.indexOf('"Escape"');
+    const block = appJsx.slice(escIdx, escIdx + 700);
+    const hideIdx = block.indexOf("hideWindow");
+    const recordingIdx = block.indexOf("isRecording");
+    // hideWindow must come after the recording guard (higher offset in the block)
+    expect(recordingIdx).toBeGreaterThan(-1);
+    expect(hideIdx).toBeGreaterThan(recordingIdx);
+  });
+
+  test("keydown handler depends on isRecording and isProcessing for fresh state", () => {
+    // The dep array of the keydown useEffect must include isRecording and isProcessing
+    // so the handler always captures the current values.
+    const idx = appJsx.indexOf('document.addEventListener("keydown"');
+    expect(idx).toBeGreaterThan(-1);
+    // The dep array follows the event listener removal in the return cleanup
+    const block = appJsx.slice(idx, idx + 400);
+    expect(block).toContain("isRecording");
+    expect(block).toContain("isProcessing");
+  });
+});
+
+// ─── Language submenu overflow prevention ────────────────────────────────────
+
+describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => {
+  test("quickLanguages is sliced to at most 7 entries", () => {
+    // Without a cap, a non-preferred selected language adds an 8th entry, making
+    // the language submenu taller than the WITH_MENU window allows.
+    expect(appJsx).toContain(".slice(0, 7)");
+  });
+
+  test("cap is applied after deduplication", () => {
+    // The order must be: Set dedup → slice, not slice → Set.
+    const idx = appJsx.indexOf(".slice(0, 7)");
+    expect(idx).toBeGreaterThan(-1);
+    const beforeSlice = appJsx.slice(0, idx);
+    // new Set must appear before .slice in the quickLanguages memo
+    const setIdx = beforeSlice.lastIndexOf("new Set(");
+    expect(setIdx).toBeGreaterThan(-1);
+  });
+});
+
+// ─── Window size constants — sanity checks ───────────────────────────────────
+
+describe("windowConfig.js — window size constants", () => {
+  test("WITH_TOAST width is narrower than EXPANDED to minimise right-edge shift", () => {
+    // Extract numeric widths from WINDOW_SIZES declaration
+    const withToastMatch = windowConfig.match(/WITH_TOAST:\s*\{\s*width:\s*(\d+)/);
+    const expandedMatch = windowConfig.match(/EXPANDED:\s*\{\s*width:\s*(\d+)/);
+    expect(withToastMatch).not.toBeNull();
+    expect(expandedMatch).not.toBeNull();
+    const withToastWidth = parseInt(withToastMatch![1], 10);
+    const expandedWidth = parseInt(expandedMatch![1], 10);
+    expect(withToastWidth).toBeLessThan(expandedWidth);
+  });
+
+  test("WITH_MENU height leaves room for context menu content", () => {
+    // WITH_MENU must be tall enough to show the root submenu (≈240px content +
+    // button clearance ≈80px = ≈320px minimum).
+    const match = windowConfig.match(/WITH_MENU:\s*\{\s*width:\s*\d+,\s*height:\s*(\d+)/);
+    expect(match).not.toBeNull();
+    const height = parseInt(match![1], 10);
+    expect(height).toBeGreaterThanOrEqual(320);
+  });
+});
