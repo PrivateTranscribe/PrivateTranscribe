@@ -183,9 +183,7 @@ function AppActionFields({
 
   const queryLower = query.trim().toLowerCase();
   const filtered =
-    queryLower.length === 0
-      ? apps
-      : apps.filter((a) => a.name.toLowerCase().includes(queryLower));
+    queryLower.length === 0 ? apps : apps.filter((a) => a.name.toLowerCase().includes(queryLower));
 
   return (
     <div className="space-y-2">
@@ -240,9 +238,7 @@ function AppActionFields({
             {/* App list */}
             <div className="max-h-52 overflow-y-auto rounded-sm">
               {loadingApps ? (
-                <p className="py-4 text-center text-xs text-muted-foreground">
-                  Scanning…
-                </p>
+                <p className="py-4 text-center text-xs text-muted-foreground">Scanning…</p>
               ) : filtered.length === 0 ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">
                   {apps.length === 0 ? "No installed apps found." : "No apps match your search."}
@@ -264,7 +260,9 @@ function AppActionFields({
                       }`}
                     >
                       <span className="truncate">{app.name}</span>
-                      {selected && <CheckCircle2 size={11} className="ml-1 shrink-0 text-primary" />}
+                      {selected && (
+                        <CheckCircle2 size={11} className="ml-1 shrink-0 text-primary" />
+                      )}
                     </button>
                   );
                 })
@@ -484,15 +482,19 @@ function ActionFormDialog({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              role="switch"
+              aria-checked={form.enabled}
               onClick={() => patch({ enabled: !form.enabled })}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                form.enabled ? "bg-primary" : "bg-muted-foreground/25"
+              }`}
               aria-label={form.enabled ? "Disable action" : "Enable action"}
             >
-              {form.enabled ? (
-                <ToggleRight size={22} className="text-primary" />
-              ) : (
-                <ToggleLeft size={22} />
-              )}
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  form.enabled ? "translate-x-4.5" : "translate-x-0.75"
+                }`}
+              />
             </button>
             <span className="text-sm text-muted-foreground">
               {form.enabled ? "Enabled" : "Disabled"}
@@ -1012,15 +1014,19 @@ export default function ActionEnginePage() {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-checked={globalEnabled}
               aria-label={globalEnabled ? "Disable Action Engine" : "Enable Action Engine"}
               onClick={() => setGlobalEnabled(!globalEnabled)}
-              className="shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                globalEnabled ? "bg-primary" : "bg-muted-foreground/25"
+              }`}
             >
-              {globalEnabled ? (
-                <ToggleRight size={32} className="text-primary" />
-              ) : (
-                <ToggleLeft size={32} className="text-muted-foreground" />
-              )}
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  globalEnabled ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
             </button>
           </div>
 
