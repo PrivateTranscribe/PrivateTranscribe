@@ -149,22 +149,13 @@ const ToastViewport: React.FC<{
   // In the dictation overlay the window may be positioned near the right screen edge.
   // When a toast expands the window width, the window manager clamps the window leftward
   // to keep it on-screen.  After clamping, a right-6 toast is still aligned to the
-  // (now shifted) window right — but this can look wrong.  Instead, detect which side of
-  // the screen the overlay is on and anchor the toast to the NEAR edge so it always stays
-  // close to the mic button and within the visible window area.
-  const [toastOnLeft, setToastOnLeft] = React.useState(false);
-  React.useEffect(() => {
-    if (!isDictationPanel) return;
-    const update = () => {
-      // window.screenX is the overlay window's left edge in screen coordinates.
-      // If we're past the midpoint of the screen, anchor the toast to the left
-      // so it stays within the window bounds after right-edge clamping.
-      setToastOnLeft(window.screenX > window.screen.width / 2);
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [isDictationPanel]);
+  // (now shifted) window right — but this can look wrong.  Instead, anchor the toast
+  // to the NEAR edge so it always stays close to the mic button.
+  //
+  // Computed inline (not stored in state) so it is always fresh even after the user
+  // drags the overlay without triggering a resize event.  window.screenX is the
+  // overlay window's left edge in screen coordinates; past the screen midpoint → left anchor.
+  const toastOnLeft = isDictationPanel && window.screenX > window.screen.width / 2;
 
   if (toasts.length === 0) return null;
 
@@ -195,11 +186,7 @@ const ToastViewport: React.FC<{
 const variantConfig = {
   default: {
     icon: Info,
-    containerClass: cn(
-      "bg-surface-2/95",
-      "border border-border-subtle",
-      "shadow-elevated"
-    ),
+    containerClass: cn("bg-surface-2/95", "border border-border-subtle", "shadow-elevated"),
     iconClass: "text-muted-foreground",
     titleClass: "text-foreground",
     descClass: "text-muted-foreground",
@@ -207,11 +194,7 @@ const variantConfig = {
   },
   destructive: {
     icon: AlertCircle,
-    containerClass: cn(
-      "bg-[#FF6B6B]/10",
-      "border border-[#FF6B6B]/20",
-      "shadow-elevated"
-    ),
+    containerClass: cn("bg-[#FF6B6B]/10", "border border-[#FF6B6B]/20", "shadow-elevated"),
     iconClass: "text-[#FF6B6B]",
     titleClass: "text-[#FF6B6B]",
     descClass: "text-[#FF6B6B]/80",
@@ -219,11 +202,7 @@ const variantConfig = {
   },
   success: {
     icon: CheckCircle2,
-    containerClass: cn(
-      "bg-primary/10",
-      "border border-primary/20",
-      "shadow-elevated"
-    ),
+    containerClass: cn("bg-primary/10", "border border-primary/20", "shadow-elevated"),
     iconClass: "text-primary",
     titleClass: "text-primary",
     descClass: "text-primary/80",
