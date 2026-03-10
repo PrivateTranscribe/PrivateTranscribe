@@ -162,7 +162,18 @@ class WindowManager {
     const saved = this._loadSavedPosition();
     let position;
     if (saved) {
-      const clamped = WindowPositionUtil.clampPosition(saved.x, saved.y, width, height, workArea);
+      // Clamp against the display that *contains* the saved position, not always the primary.
+      // Without this, an overlay saved on a secondary monitor gets snapped to the primary
+      // display bounds on the next launch, causing it to jump across monitors.
+      const savedDisplay = screen.getDisplayNearestPoint({ x: saved.x, y: saved.y });
+      const savedWorkArea = savedDisplay.workArea || savedDisplay.bounds;
+      const clamped = WindowPositionUtil.clampPosition(
+        saved.x,
+        saved.y,
+        width,
+        height,
+        savedWorkArea
+      );
       position = { ...clamped, width, height };
     } else {
       position = WindowPositionUtil.getMainWindowPosition(display);
