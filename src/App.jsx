@@ -173,6 +173,11 @@ const MenuRow = ({ icon: Icon, label, hint, trailing, disabled = false, onClick 
 export default function App() {
   const [isHovered, setIsHovered] = useState(false);
   const [isCommandMenuOpen, setIsCommandMenuOpen] = useState(false);
+  // cancelReady: only true after recording/processing has been stable for ≥400ms.
+  // Prevents the cancel button from flashing during quick push-to-talk taps where
+  // the recording+processing cycle completes faster than the user can react.
+  const [cancelReady, setCancelReady] = useState(false);
+  const cancelReadyTimerRef = useRef(null);
   const [activeSubmenu, setActiveSubmenu] = useState("root");
   // Active dictation mode set by an Action Engine "dictation-mode" action.
   // null means default (no override active).
@@ -324,6 +329,19 @@ export default function App() {
       setWindowInteractivity(false);
     }
   }, [isCommandMenuOpen, isHovered, toastCount, isRecording, isProcessing, setWindowInteractivity]);
+
+  // Debounce cancel-button visibility to prevent flash on quick push-to-talk taps.
+  // The button only becomes visible after the active state has been held for 400ms.
+  // It hides immediately when the state ends (no delay on hide).
+  useEffect(() => {
+    clearTimeout(cancelReadyTimerRef.current);
+    if (isRecording || isProcessing) {
+      cancelReadyTimerRef.current = setTimeout(() => setCancelReady(true), 400);
+    } else {
+      setCancelReady(false);
+    }
+    return () => clearTimeout(cancelReadyTimerRef.current);
+  }, [isRecording, isProcessing]);
 
   useEffect(() => {
     const resizeWindow = () => {
@@ -716,8 +734,10 @@ export default function App() {
             </div>
           )}
 
-          {/* Cancel button inside hover container — cursor moving from icon to here stays hovered */}
-          {(isRecording || isProcessing) && isHovered && (
+          {/* Cancel button inside hover container — cursor moving from icon to here stays hovered.
+              Only shown after 400ms in active state (cancelReady) to prevent flashing on quick
+              push-to-talk taps where recording+processing resolves faster than user perception. */}
+          {cancelReady && isHovered && (
             <button
               aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
               onMouseDown={(e) => {
