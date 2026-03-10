@@ -387,6 +387,14 @@ export default function App() {
           } else {
             closeContextMenu();
           }
+        } else if (isRecording || isProcessing) {
+          // Cancel the active recording/processing rather than hiding the overlay.
+          // Hiding while recording would leave the audio pipeline running invisibly.
+          if (isRecording) {
+            cancelRecording();
+          } else {
+            cancelProcessing();
+          }
         } else {
           window.electronAPI?.hideWindow?.();
         }
@@ -400,7 +408,16 @@ export default function App() {
 
     document.addEventListener("keydown", handleKeyPress);
     return () => document.removeEventListener("keydown", handleKeyPress);
-  }, [isCommandMenuOpen, activeSubmenu, closeContextMenu, handlePasteLastTranscript]);
+  }, [
+    isCommandMenuOpen,
+    activeSubmenu,
+    closeContextMenu,
+    handlePasteLastTranscript,
+    isRecording,
+    isProcessing,
+    cancelRecording,
+    cancelProcessing,
+  ]);
 
   useEffect(() => {
     const hiddenUntil = Number(localStorage.getItem(OVERLAY_HIDDEN_UNTIL_KEY) || "0");
@@ -434,7 +451,10 @@ export default function App() {
   const quickLanguages = useMemo(() => {
     const preferred = ["auto", "en", "es", "fr", "de", "pt", "ja"];
     const languageCodes = [selectedLanguage, ...preferred];
-    const uniqueCodes = [...new Set(languageCodes)];
+    // Cap at 7 unique entries so the language submenu never overflows the WITH_MENU
+    // window height (360 px).  The selected language always appears first; if it is
+    // already in the preferred list it merely moves to the top and the count stays ≤ 7.
+    const uniqueCodes = [...new Set(languageCodes)].slice(0, 7);
     return uniqueCodes
       .map((code) => LANGUAGE_OPTIONS.find((option) => option.value === code))
       .filter(Boolean);
