@@ -32,18 +32,22 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
     let cancelled = false;
 
-    // Small delay to ensure AudioManager has set recordingStream before we read it.
-    const startTimer = setTimeout(() => {
+    const setupAnalyser = (stream) => {
       if (cancelled) return;
-
-      const stream = audioManagerRef.current?.recordingStream;
-      if (!stream || !stream.active) return;
 
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!AudioCtx) return;
 
         const ctx = new AudioCtx();
+
+        // Chromium/Electron may create the AudioContext in "suspended" state when
+        // the constructor is not invoked synchronously from a user-gesture handler.
+        // The isRecording state arrives via IPC → React re-render, one hop removed
+        // from the original keypress, so suspension can occur intermittently.
+        // Resume unconditionally — it is a no-op when already "running".
+        ctx.resume().catch(() => {});
+
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
 
@@ -57,7 +61,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
         const dataArray = new Float32Array(analyser.fftSize);
 
         const ATTACK = 0.35; // fast rise so peaks feel responsive
-        const DECAY = 0.10; // slow fall so it feels elegant not jittery
+        const DECAY = 0.1; // slow fall so it feels elegant not jittery
         // Speech RMS typically 0.01–0.25; 0.25 normalizes loud speech to ~1.0
         const SCALE = 0.25;
 
@@ -96,6 +100,29 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // Web Audio API unavailable or stream already closed — fail silently.
         // Visualization degrades to static state, recording is unaffected.
       }
+    };
+
+    // Small delay to ensure AudioManager has set recordingStream before we read it.
+    const startTimer = setTimeout(() => {
+      if (cancelled) return;
+
+      const stream = audioManagerRef.current?.recordingStream;
+      if (!stream || !stream.active) {
+        // Stream not ready yet — retry once after a further 100ms.  This handles the
+        // rare race where getUserMedia resolves and sets isRecording=true before
+        // recordingStream is stored in audioManagerRef (e.g. on slow getUserMedia paths).
+        const retryTimer = setTimeout(() => {
+          if (cancelled) return;
+          const retryStream = audioManagerRef.current?.recordingStream;
+          if (!retryStream || !retryStream.active) return;
+          setupAnalyser(retryStream);
+        }, 100);
+        // Ensure the retry timer is cancelled if the effect cleans up first.
+        cleanupRef.current = () => clearTimeout(retryTimer);
+        return;
+      }
+
+      setupAnalyser(stream);
     }, 60);
 
     return () => {
