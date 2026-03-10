@@ -3,7 +3,11 @@ const path = require("path");
 const WINDOW_SIZES = {
   BASE: { width: 96, height: 96 },
   WITH_MENU: { width: 300, height: 360 },
-  WITH_TOAST: { width: 400, height: 500 },
+  // WITH_TOAST: narrower and shorter than before — the toast only needs ~180px of height
+  // (toast ~70px + bottom button clearance ~90px + gap) and the width just needs to fit
+  // the 320px toast with its 6px margin.  Keeping it tighter reduces the visual jolt when
+  // the window expands near the right screen edge.
+  WITH_TOAST: { width: 380, height: 180 },
   EXPANDED: { width: 400, height: 500 },
 };
 

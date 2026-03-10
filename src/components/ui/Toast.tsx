@@ -146,6 +146,26 @@ const ToastViewport: React.FC<{
     );
   }, []);
 
+  // In the dictation overlay the window may be positioned near the right screen edge.
+  // When a toast expands the window width, the window manager clamps the window leftward
+  // to keep it on-screen.  After clamping, a right-6 toast is still aligned to the
+  // (now shifted) window right — but this can look wrong.  Instead, detect which side of
+  // the screen the overlay is on and anchor the toast to the NEAR edge so it always stays
+  // close to the mic button and within the visible window area.
+  const [toastOnLeft, setToastOnLeft] = React.useState(false);
+  React.useEffect(() => {
+    if (!isDictationPanel) return;
+    const update = () => {
+      // window.screenX is the overlay window's left edge in screen coordinates.
+      // If we're past the midpoint of the screen, anchor the toast to the left
+      // so it stays within the window bounds after right-edge clamping.
+      setToastOnLeft(window.screenX > window.screen.width / 2);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [isDictationPanel]);
+
   if (toasts.length === 0) return null;
 
   return (
@@ -153,7 +173,9 @@ const ToastViewport: React.FC<{
       className={cn(
         "fixed z-50 flex flex-col gap-1.5 pointer-events-none",
         isDictationPanel
-          ? "bottom-20 right-6" // Above mic button in dictation panel
+          ? toastOnLeft
+            ? "bottom-20 left-0" // right-edge overlay: toast anchors to left (always on-screen after clamping)
+            : "bottom-20 right-6" // left/center overlay: toast anchors to right as usual
           : "bottom-5 right-5" // Standard position in control panel
       )}
     >
@@ -248,8 +270,9 @@ const Toast: React.FC<
   return (
     <div
       className={cn(
-        // Layout
-        "pointer-events-auto relative flex items-start gap-2.5 w-[320px]",
+        // Layout — fixed ideal width but responsive so it can't overflow a narrow window
+        // (relevant in the dictation overlay where the window may be narrower than 320px)
+        "pointer-events-auto relative flex items-start gap-2.5 w-[320px] max-w-[calc(100vw-48px)]",
         "px-3 py-2.5 pr-8 overflow-hidden",
         // Tight radius matching buttons
         "rounded-[6px]",
