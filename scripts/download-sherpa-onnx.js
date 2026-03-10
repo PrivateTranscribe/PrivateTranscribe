@@ -10,7 +10,8 @@ const {
   cleanupFiles,
 } = require("./lib/download-utils");
 
-const SHERPA_ONNX_VERSION = "1.12.23";
+// Version can be pinned via environment variable for reproducible builds
+const SHERPA_ONNX_VERSION = process.env.SHERPA_ONNX_VERSION || "1.12.23";
 const GITHUB_RELEASE_URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_ONNX_VERSION}`;
 
 // Binary configurations for each platform
@@ -154,7 +155,8 @@ async function downloadBinary(platformArch, config) {
 }
 
 async function main() {
-  console.log(`\nDownloading sherpa-onnx binaries (v${SHERPA_ONNX_VERSION})...\n`);
+  const versionSource = process.env.SHERPA_ONNX_VERSION ? " (from SHERPA_ONNX_VERSION)" : "";
+  console.log(`\nDownloading sherpa-onnx binaries (v${SHERPA_ONNX_VERSION}${versionSource})...\n`);
 
   fs.mkdirSync(BIN_DIR, { recursive: true });
 
