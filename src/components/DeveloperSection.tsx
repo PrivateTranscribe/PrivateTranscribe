@@ -84,11 +84,19 @@ export default function DeveloperSection() {
     }
   };
 
+  const writeToClipboard = async (text: string): Promise<void> => {
+    if (window.electronAPI?.writeClipboard) {
+      await window.electronAPI.writeClipboard(text);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+  };
+
   const handleCopyPath = async () => {
     if (!logPath) return;
 
     try {
-      await navigator.clipboard.writeText(logPath);
+      await writeToClipboard(logPath);
       setCopiedPath(true);
       toast({
         title: "Copied",
@@ -126,7 +134,7 @@ export default function DeveloperSection() {
         `Timestamp: ${new Date().toISOString()}`,
       ].join("\n");
 
-      await navigator.clipboard.writeText(info);
+      await writeToClipboard(info);
       setCopiedDebugInfo(true);
       setTimeout(() => setCopiedDebugInfo(false), 2000);
       toast({
