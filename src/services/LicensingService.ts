@@ -96,7 +96,7 @@ export interface ProStatus {
 function _proToken(isPro: boolean): number {
   // Encode pro status + timestamp into a non-obvious number
   const ts = Math.floor(Date.now() / 60000); // minute-granularity
-  return isPro ? (ts * 7 + 42) : 0;
+  return isPro ? ts * 7 + 42 : 0;
 }
 
 export function _verifyToken(t: number | undefined): boolean {
@@ -116,7 +116,14 @@ export function getProStatus(): ProStatus {
   const entitlementRaw = localStorage.getItem(STORAGE_ENTITLEMENT);
 
   if (!key || !entitlementRaw) {
-    return { isPro: false, licenseKey: null, expiresAt: null, offlineGrace: false, error: null, _t: 0 };
+    return {
+      isPro: false,
+      licenseKey: null,
+      expiresAt: null,
+      offlineGrace: false,
+      error: null,
+      _t: 0,
+    };
   }
 
   // Integrity check: if seal doesn't match, entitlement may have been tampered with
@@ -156,7 +163,14 @@ export function getProStatus(): ProStatus {
       _t: _proToken(true),
     };
   } catch {
-    return { isPro: false, licenseKey: key, expiresAt: null, offlineGrace: false, error: "Invalid entitlement data", _t: 0 };
+    return {
+      isPro: false,
+      licenseKey: key,
+      expiresAt: null,
+      offlineGrace: false,
+      error: "Invalid entitlement data",
+      _t: 0,
+    };
   }
 }
 
@@ -194,7 +208,10 @@ export async function activateLicense(key: string): Promise<{
 
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: "Could not connect to licensing server. Check your internet connection." };
+    return {
+      success: false,
+      error: "Could not connect to licensing server. Check your internet connection.",
+    };
   }
 }
 
@@ -275,3 +292,10 @@ export function isProFeature(featureId: string): boolean {
   return status.isPro && _verifyToken(status._t);
 }
 
+/**
+ * Whether the licensing backend is configured and ready to accept activations.
+ * Returns false when LICENSING_BASE_URL is not yet set (pre-launch / dev builds).
+ */
+export function isLicensingConfigured(): boolean {
+  return LICENSING_BASE_URL.length > 0;
+}

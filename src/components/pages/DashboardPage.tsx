@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Mic, Settings, Upload, Activity } from "lucide-react";
 import { PageId } from "../AppSidebar";
-import { useTranscriptions, useTranscriptionsVersion, initializeTranscriptions } from "../../stores/transcriptionStore";
+import {
+  useTranscriptions,
+  useTranscriptionsVersion,
+  initializeTranscriptions,
+} from "../../stores/transcriptionStore";
 import { useSettings } from "../../hooks/useSettings";
 import TranscriptionItem from "../ui/TranscriptionItem";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
-import type { TranscriptionItem as TranscriptionItemType, AggregateStats } from "../../types/electron";
+import type {
+  TranscriptionItem as TranscriptionItemType,
+  AggregateStats,
+} from "../../types/electron";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
@@ -119,6 +126,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     preferredLanguage,
     useLocalWhisper,
     localTranscriptionProvider,
+    cloudTranscriptionProvider,
     historyLimit,
   } = useSettings();
 
@@ -172,10 +180,16 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   }, [preferredLanguage]);
 
   const modelLabel = useMemo(() => {
-    if (!useLocalWhisper) return "Cloud (OpenAI)";
+    if (!useLocalWhisper) {
+      if (cloudTranscriptionProvider === "groq") return "Cloud (Groq)";
+      if (cloudTranscriptionProvider === "custom") return "Cloud (Custom)";
+      return "Cloud (OpenAI)";
+    }
     if (localTranscriptionProvider === "nvidia") return "NVIDIA Parakeet";
-    return whisperModel ? `Whisper ${whisperModel.charAt(0).toUpperCase() + whisperModel.slice(1)}` : "Whisper";
-  }, [useLocalWhisper, localTranscriptionProvider, whisperModel]);
+    return whisperModel
+      ? `Whisper ${whisperModel.charAt(0).toUpperCase() + whisperModel.slice(1)}`
+      : "Whisper";
+  }, [useLocalWhisper, cloudTranscriptionProvider, localTranscriptionProvider, whisperModel]);
 
   const handleCopy = async (text: string) => {
     try {
@@ -208,9 +222,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       <div className="p-8 space-y-8">
         {/* Welcome Header */}
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Dashboard
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Dashboard</h1>
         </div>
 
         {/* Stats + Config Row */}
@@ -230,9 +242,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <span className="text-5xl font-bold tracking-tight text-foreground tabular-nums">
                 {formatNumber(stats.total_words)}
               </span>
-              <span className="ml-2 text-lg text-muted-foreground italic font-light">
-                words
-              </span>
+              <span className="ml-2 text-lg text-muted-foreground italic font-light">words</span>
             </div>
 
             {/* Sub-stat Pills */}
@@ -288,9 +298,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
                 <Settings size={14} className="text-primary" />
               </div>
-              <span className="text-sm font-semibold text-foreground">
-                Active Config
-              </span>
+              <span className="text-sm font-semibold text-foreground">Active Config</span>
             </div>
 
             {/* Config Rows */}
@@ -321,9 +329,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-border-subtle">
             <div className="flex items-center gap-3">
-              <h2 className="text-base font-semibold text-foreground">
-                Recent History
-              </h2>
+              <h2 className="text-base font-semibold text-foreground">Recent History</h2>
               <span className="inline-flex items-center justify-center min-w-[28px] h-5 px-2 rounded-full bg-primary/10 text-primary text-[11px] font-semibold tabular-nums">
                 {transcriptions.length}
               </span>
@@ -357,11 +363,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-surface-raised border border-border-subtle mb-5">
                 <Mic size={24} className="text-muted-foreground" />
               </div>
-              <p className="text-sm font-medium text-foreground mb-1.5">
-                No transcriptions yet
-              </p>
+              <p className="text-sm font-medium text-foreground mb-1.5">No transcriptions yet</p>
               <p className="text-xs text-muted-foreground text-center max-w-[280px] mb-5">
-                Start dictating with your hotkey or upload an audio file to see your transcription history here.
+                Start dictating with your hotkey or upload an audio file to see your transcription
+                history here.
               </p>
               <button
                 onClick={() => onNavigate("transcribe")}

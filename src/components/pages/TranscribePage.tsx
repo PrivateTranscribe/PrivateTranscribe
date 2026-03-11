@@ -241,7 +241,7 @@ export default function TranscribePage() {
 
     if (files.length > 1) {
       setStatus("error");
-      setErrorMessage("Please upload one file at a time in this version.");
+      setErrorMessage("Please upload one file at a time.");
       return;
     }
 
@@ -356,14 +356,11 @@ export default function TranscribePage() {
             <div className="w-20 h-20 rounded-2xl bg-destructive/10 flex items-center justify-center mb-6 shadow-lg">
               <AlertCircle size={32} className="text-destructive" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Could not transcribe file</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Could not transcribe file
+            </h3>
             <p className="text-sm text-muted-foreground mb-5 max-w-2xl">{errorMessage}</p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleBrowse}
-              data-prevent-browse="true"
-            >
+            <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
               Choose another file
             </Button>
           </>
@@ -378,7 +375,12 @@ export default function TranscribePage() {
               {formatBytes(selectedFileSize)}
             </p>
             <div className="flex items-center gap-2" data-prevent-browse="true">
-              <Button size="sm" variant="outline" onClick={copyTranscript} data-prevent-browse="true">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={copyTranscript}
+                data-prevent-browse="true"
+              >
                 <Copy size={14} />
                 {copied ? "Copied" : "Copy transcript"}
               </Button>
@@ -423,7 +425,9 @@ export default function TranscribePage() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{transcript}</p>
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+            {transcript}
+          </p>
         </div>
       )}
 
@@ -436,7 +440,9 @@ export default function TranscribePage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">Model</p>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">
+              Model
+            </p>
             <p className="text-foreground">{activeModelLabel}</p>
           </div>
           <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">
@@ -450,7 +456,9 @@ export default function TranscribePage() {
               AI Enhancement
             </p>
             <p className="text-foreground">
-              {useReasoningModel ? `Enabled${reasoningModel ? ` (${reasoningModel})` : ""}` : "Disabled"}
+              {useReasoningModel
+                ? `Enabled${reasoningModel ? ` (${reasoningModel})` : ""}`
+                : "Disabled"}
             </p>
           </div>
           <div className="rounded-lg border border-border-subtle/70 bg-surface-raised/40 px-3 py-2">

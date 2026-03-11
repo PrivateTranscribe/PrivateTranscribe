@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Zap, Check, X, RefreshCw } from "lucide-react";
+import { Check, X, RefreshCw, Mail } from "lucide-react";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/Toast";
 import {
@@ -7,6 +7,7 @@ import {
   activateLicense,
   deactivateDevice,
   refreshProStatus,
+  isLicensingConfigured,
   type ProStatus,
 } from "../services/LicensingService";
 
@@ -27,16 +28,18 @@ const PRO_FEATURES = [
     available: true,
   },
   {
+    name: "Action Engine",
+    desc: "Trigger custom voice commands to launch apps, run scripts, and automate workflows",
+    available: true,
+  },
+  {
     name: "Smart Context (IDE Bridge)",
     desc: "Integrates with Cursor and VS Code for context-aware dictation while coding",
     available: false,
   },
-  {
-    name: "Action Engine",
-    desc: "Trigger commands, shortcuts, and workflows with voice",
-    available: false,
-  },
 ];
+
+const licensingReady = isLicensingConfigured();
 
 export default function ProSettingsSection() {
   const [status, setStatus] = useState<ProStatus>(getProStatus());
@@ -123,7 +126,10 @@ export default function ProSettingsSection() {
 
   // Format key input with dashes
   const handleKeyChange = (value: string) => {
-    const clean = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
+    const clean = value
+      .replace(/[^A-Za-z0-9]/g, "")
+      .toUpperCase()
+      .slice(0, 16);
     const parts = clean.match(/.{1,4}/g) || [];
     setKeyInput(parts.join("-"));
   };
@@ -138,9 +144,7 @@ export default function ProSettingsSection() {
             <p className="text-sm font-medium text-foreground">Privoca Pro — Active</p>
             <p className="text-xs text-muted-foreground mt-1">
               License: <span className="font-mono">{status.licenseKey}</span>
-              {status.offlineGrace && (
-                <span className="ml-2 text-amber-500">(offline mode)</span>
-              )}
+              {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
             </p>
             {status.expiresAt && (
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -170,7 +174,7 @@ export default function ProSettingsSection() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : licensingReady ? (
         <>
           {/* License key entry */}
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-4">
@@ -208,15 +212,55 @@ export default function ProSettingsSection() {
             )}
           </div>
         </>
+      ) : (
+        <>
+          {/* Licensing not yet live — early access CTA */}
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Get Privoca Pro</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Privoca Pro is launching soon. Join the early-access list and be the first to know
+                when licenses are available.
+              </p>
+            </div>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() =>
+                window.electronAPI?.openExternal?.(
+                  "mailto:support@privoca.com?subject=Privoca%20Pro%20Early%20Access"
+                )
+              }
+              className="gap-2"
+            >
+              <Mail size={14} />
+              Request early access
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Already have a key?{" "}
+              <a
+                href="mailto:support@privoca.com"
+                className="text-primary hover:underline"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.electronAPI?.openExternal?.(
+                    "mailto:support@privoca.com?subject=Privoca%20Pro%20Activation"
+                  );
+                }}
+              >
+                Contact support
+              </a>{" "}
+              for activation help.
+            </p>
+          </div>
+        </>
       )}
 
       {/* Pro features overview */}
       <div className="space-y-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">What's included</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Features unlocked with Privoca Pro
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Features unlocked with Privoca Pro</p>
         </div>
 
         {PRO_FEATURES.map((feature) => (
@@ -247,15 +291,25 @@ export default function ProSettingsSection() {
       </div>
 
       {/* Pricing info */}
-      {!status.isPro && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-2">
-          <p className="text-sm font-medium text-foreground">
-            One-time purchase — no subscription
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Privoca Pro is a single payment that unlocks all current and future Pro features.
-            No recurring fees, no expiry.
-          </p>
+      {!status.isPro && licensingReady && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              One-time purchase — no subscription
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Privoca Pro is a single payment that unlocks all current Pro features. No recurring
+              fees, no expiry.
+            </p>
+          </div>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => window.electronAPI?.openExternal?.("https://privoca.com/pro")}
+            className="gap-2"
+          >
+            Get Privoca Pro →
+          </Button>
         </div>
       )}
     </div>
