@@ -9,76 +9,38 @@ import {
 import { useSettings } from "../../hooks/useSettings";
 import TranscriptionItem from "../ui/TranscriptionItem";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
-import type {
-  TranscriptionItem as TranscriptionItemType,
-  AggregateStats,
-} from "../../types/electron";
+import type { AggregateStats } from "../../types/electron";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
 }
 
-function toLocalDateKey(date: Date): string {
+export function toLocalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function parseTranscriptionTimestamp(timestamp: string): Date | null {
-  if (!timestamp) return null;
+/**
+ * Compute the current streak from a set of "YYYY-MM-DD" date keys that had real dictation.
+ *
+ * The date keys come from the database (via getStreakDates) which returns ALL qualifying days
+ * rather than the paginated in-memory history list. This prevents the streak from resetting
+ * when the display history window (e.g. 50 items) fills up and evicts older entries.
+ *
+ * Grace-window rules:
+ *  - activity today → anchor on today, count backwards
+ *  - no activity today but activity yesterday → streak still alive, anchor on yesterday
+ *  - otherwise → streak is broken (returns 0)
+ */
+export function computeStreak(activeDates: Set<string>): number {
+  if (activeDates.size === 0) return 0;
 
-  // SQLite DATETIME commonly arrives as "YYYY-MM-DD HH:MM:SS" (UTC-ish text without timezone).
-  // Parsing that with the Date constructor is inconsistent across environments, and forcing a `Z`
-  // can shift entries onto the wrong local day. Parse the parts manually and treat them as local
-  // wall-clock time so streaks are counted by the user's calendar day.
-  const sqliteMatch = timestamp.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/
-  );
-
-  if (sqliteMatch) {
-    const [, year, month, day, hour = "0", minute = "0", second = "0"] = sqliteMatch;
-    const parsed = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second)
-    );
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  const parsed = new Date(timestamp);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function computeStreak(transcriptions: TranscriptionItemType[]): number {
-  if (transcriptions.length === 0) return 0;
-
-  const datesWithTranscriptions = new Set<string>();
-  for (const t of transcriptions) {
-    // Only count real dictation sessions — skip file uploads and other non-stats entries.
-    // include_in_stats is stored as SQLite integer (1/0); treat missing/undefined as 1 for
-    // backward-compatibility with any records that predate the column migration.
-    if (t.include_in_stats === 0) continue;
-    const parsed = parseTranscriptionTimestamp(t.timestamp);
-    if (parsed) {
-      datesWithTranscriptions.add(toLocalDateKey(parsed));
-    }
-  }
-
-  if (datesWithTranscriptions.size === 0) return 0;
-
-  // Grace-window daily streak:
-  // - activity today => streak is anchored today
-  // - otherwise activity yesterday => streak is still alive and anchored yesterday
-  // - otherwise streak is broken
   const today = new Date();
   const todayKey = toLocalDateKey(today);
 
   const anchor = new Date(today);
-  if (!datesWithTranscriptions.has(todayKey)) {
+  if (!activeDates.has(todayKey)) {
     anchor.setDate(anchor.getDate() - 1);
-    const yesterdayKey = toLocalDateKey(anchor);
-    if (!datesWithTranscriptions.has(yesterdayKey)) {
+    if (!activeDates.has(toLocalDateKey(anchor))) {
       return 0;
     }
   }
@@ -86,7 +48,7 @@ function computeStreak(transcriptions: TranscriptionItemType[]): number {
   let streak = 0;
   for (let i = 0; i < 365; i++) {
     const key = toLocalDateKey(anchor);
-    if (!datesWithTranscriptions.has(key)) {
+    if (!activeDates.has(key)) {
       break;
     }
     streak++;
@@ -137,6 +99,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     total_seconds: 0,
     average_wpm: 0,
   });
+  const [streakDates, setStreakDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Fetch transcriptions based on history limit setting
@@ -156,7 +119,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     fetchStats();
   }, [historyLimit]);
 
-  // Re-fetch stats whenever any transcription mutation occurs (add/delete/clear)
+  // Re-fetch stats and streak dates whenever any transcription mutation occurs (add/delete/clear).
+  // Streak dates are fetched from the database independently of the paginated history list so
+  // that adding many transcriptions today cannot evict yesterday's data from the in-memory
+  // window and incorrectly reset the streak counter.
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -168,10 +134,21 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         // Silently fail
       }
     };
+    const fetchStreakDates = async () => {
+      try {
+        const dates = await window.electronAPI?.getStreakDates?.();
+        if (Array.isArray(dates)) {
+          setStreakDates(new Set(dates));
+        }
+      } catch {
+        // Silently fail
+      }
+    };
     fetchStats();
+    fetchStreakDates();
   }, [transcriptionsVersion]);
 
-  const streak = useMemo(() => computeStreak(transcriptions), [transcriptions]);
+  const streak = useMemo(() => computeStreak(streakDates), [streakDates]);
   const recentFive = useMemo(() => transcriptions.slice(0, 5), [transcriptions]);
 
   const languageLabel = useMemo(() => {

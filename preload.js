@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Stats functions
   getStats: () => ipcRenderer.invoke("db-get-stats"),
   resetStats: () => ipcRenderer.invoke("db-reset-stats"),
+  getStreakDates: () => ipcRenderer.invoke("db-get-streak-dates"),
 
   onTranscriptionAdded: (callback) => {
     const listener = (_event, transcription) => callback?.(transcription);

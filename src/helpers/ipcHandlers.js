@@ -275,6 +275,10 @@ class IPCHandlers {
       return this.databaseManager.getStats();
     });
 
+    ipcMain.handle("db-get-streak-dates", async () => {
+      return this.databaseManager.getStreakDates();
+    });
+
     ipcMain.handle("db-reset-stats", async (event) => {
       const result = this.databaseManager.resetStats();
       if (result?.success) {

@@ -303,6 +303,8 @@ declare global {
       // Stats operations
       getStats: () => Promise<AggregateStats>;
       resetStats: () => Promise<{ success: boolean }>;
+      /** Returns distinct "YYYY-MM-DD" date strings for real dictation sessions (last 366 days). */
+      getStreakDates: () => Promise<string[]>;
 
       // Database event listeners
       onTranscriptionAdded?: (callback: (item: TranscriptionItem) => void) => (() => void) | void;
