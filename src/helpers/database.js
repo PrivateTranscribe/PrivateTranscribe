@@ -387,16 +387,16 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      // Return distinct "YYYY-MM-DD" date strings for all real dictation sessions in the last
-      // 366 days. substr() extracts the date portion from the stored UTC-formatted timestamp
-      // string, consistent with how the renderer parses timestamps (treating them as wall-clock
-      // local time). Streak computation in the renderer uses toLocalDateKey(new Date()) for
-      // today, so both sides apply the same UTC-as-local approximation.
+      // Return distinct "YYYY-MM-DD" date strings for ALL real dictation sessions — no lookback
+      // cap so the streak can grow indefinitely with daily use. substr() extracts the date
+      // portion from the stored UTC-formatted timestamp string, consistent with how the renderer
+      // parses timestamps (treating them as wall-clock local time). Streak computation in the
+      // renderer uses toLocalDateKey(new Date()) for today, so both sides apply the same
+      // UTC-as-local approximation.
       const stmt = this.db.prepare(`
         SELECT DISTINCT substr(timestamp, 1, 10) AS date_key
         FROM transcriptions
         WHERE include_in_stats = 1
-          AND timestamp >= date('now', '-366 days')
         ORDER BY date_key DESC
       `);
       return stmt.all().map((r) => r.date_key);

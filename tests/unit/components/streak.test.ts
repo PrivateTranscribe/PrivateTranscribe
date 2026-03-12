@@ -91,6 +91,22 @@ describe("computeStreak", () => {
     expect(computeStreak(dates)).toBe(30);
   });
 
+  it("streak is not capped at 365 — grows beyond a full year", () => {
+    const dates = new Set<string>();
+    for (let i = 0; i < 400; i++) {
+      dates.add(dateKeyOffset(-i));
+    }
+    expect(computeStreak(dates)).toBe(400);
+  });
+
+  it("streak is not capped at 366 — 500 consecutive days returns 500", () => {
+    const dates = new Set<string>();
+    for (let i = 0; i < 500; i++) {
+      dates.add(dateKeyOffset(-i));
+    }
+    expect(computeStreak(dates)).toBe(500);
+  });
+
   // Regression: streak must NOT reset when the paginated history window fills up.
   // Previously computeStreak operated on the in-memory TranscriptionItem list which
   // was capped at currentLimit (default 50). Adding many transcriptions today could
