@@ -6,7 +6,7 @@ on:
       - 'resources/windows-key-listener.c'
       - '.github/workflows/build-windows-key-listener.yml'
     branches:
-      - main
+      - production
   workflow_dispatch:
     inputs:
       version:
