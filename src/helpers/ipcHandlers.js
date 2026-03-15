@@ -1252,6 +1252,31 @@ class IPCHandlers {
       }
     });
 
+    ipcMain.handle("open-uninstall-location", async () => {
+      try {
+        if (process.platform === "win32") {
+          await shell.openExternal("ms-settings:appsfeatures");
+          return { success: true };
+        }
+
+        if (process.platform === "darwin") {
+          const result = await shell.openPath("/Applications");
+          if (result) {
+            return { success: false, error: result };
+          }
+          return { success: true };
+        }
+
+        return {
+          success: false,
+          error: "Please use your package manager or software center to uninstall Privoca.",
+        };
+      } catch (error) {
+        debugLogger.error("Failed to open uninstall location:", error);
+        return { success: false, error: error.message };
+      }
+    });
+
     // Debug logging handlers
     ipcMain.handle("get-debug-state", async () => {
       try {

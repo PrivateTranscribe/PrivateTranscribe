@@ -1784,7 +1784,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                 await window.electronAPI?.resetStats?.();
                                 showAlertDialog({
                                   title: "Statistics Reset",
-                                  description: "Your dictation statistics and streak baseline have been cleared. Transcript history is preserved.",
+                                  description:
+                                    "Your dictation statistics and streak baseline have been cleared. Transcript history is preserved.",
                                 });
                               } catch (err: any) {
                                 showAlertDialog({
@@ -1869,6 +1870,42 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       >
                         Reset
                       </Button>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Uninstall Privoca"
+                      description={
+                        platform === "win32"
+                          ? "Remove Privoca via Windows Settings → Apps & features. To also remove downloaded models and app data, use Reset app data first."
+                          : platform === "darwin"
+                            ? "Quit Privoca, then drag it from your Applications folder to the Trash. To also remove downloaded models and app data, use Reset app data first."
+                            : "Use your system package manager (apt, dnf, pacman) or software center to remove Privoca. To also remove downloaded models and app data, use Reset app data first."
+                      }
+                    >
+                      {(platform === "win32" || platform === "darwin") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-foreground/70 hover:text-foreground"
+                          onClick={async () => {
+                            const result = await window.electronAPI?.openUninstallLocation?.();
+                            if (!result?.success) {
+                              showAlertDialog({
+                                title: "Could not open uninstall location",
+                                description:
+                                  result?.error ||
+                                  "Please open your system uninstall location manually.",
+                              });
+                            }
+                          }}
+                        >
+                          {platform === "win32" ? "Open Apps & Features" : "Open Applications"}
+                        </Button>
+                      )}
                     </SettingsRow>
                   </SettingsPanelRow>
                 </SettingsPanel>
