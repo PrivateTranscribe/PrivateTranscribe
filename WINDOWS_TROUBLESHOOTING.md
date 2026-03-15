@@ -104,10 +104,22 @@ Right-click → Run as administrator (or set in Properties → Compatibility)
 
 ## Complete Reset
 
+**Recommended path:**
+1. Uninstall Privoca from **Settings -> Apps**
+2. Run the full cleanup helper:
+
 ```batch
-# Uninstall Privoca first, then:
+npm run uninstall:full:windows
+```
+
+That removes Privoca data, caches, logs, and legacy DictateVoice leftovers.
+
+**Manual fallback:**
+
+```batch
 rd /s /q "%APPDATA%\Privoca"
 rd /s /q "%LOCALAPPDATA%\Privoca"
+rd /s /q "%USERPROFILE%\.cache\Privoca"
 ```
 
 Then reinstall.

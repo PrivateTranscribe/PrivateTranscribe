@@ -45,6 +45,9 @@
     "format:check": "eslint . && cd src && eslint . && prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "preview": "cd src && vite preview",
     "clean": "node cleanup.js",
+    "uninstall:full:mac": "bash scripts/complete-uninstall.sh",
+    "uninstall:full:linux": "bash scripts/complete-uninstall-linux.sh",
+    "uninstall:full:windows": "scripts\\complete-uninstall-windows.bat",
     "audit:branding": "node scripts/audit-branding.js"
   },
   "keywords": [

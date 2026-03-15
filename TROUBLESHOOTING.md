@@ -93,6 +93,16 @@ See [WINDOWS_TROUBLESHOOTING.md](WINDOWS_TROUBLESHOOTING.md) for:
 
 For detailed diagnostics, see [DEBUG.md](DEBUG.md).
 
+## Full Reset / Clean Uninstall
+
+Use the OS uninstall flow first, then run the matching full cleanup helper if you want to remove leftover data too.
+
+- **macOS:** `npm run uninstall:full:mac`
+- **Linux:** `npm run uninstall:full:linux`
+- **Windows:** `npm run uninstall:full:windows`
+
+These helpers remove Privoca data, caches, logs, and legacy DictateVoice leftovers. They are meant for support/reset cases, not routine upgrades.
+
 ## Getting Help
 
 1. Enable debug mode and reproduce the issue

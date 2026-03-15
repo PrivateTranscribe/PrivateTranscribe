@@ -286,10 +286,25 @@ npm run build:linux  # Linux
 - **Settings**: Configure API keys, customize hotkeys, and manage permissions
 
 ### Uninstall & Cache Cleanup
-- **In-App**: Use *Settings → General → Local Model Storage → Remove Downloaded Models* to clear `~/.cache/Privoca/whisper-models` (or `%USERPROFILE%\.cache\Privoca\whisper-models` on Windows).
-- **Windows Uninstall**: The NSIS uninstaller automatically deletes the same cache directory.
-- **Linux Packages**: `deb`/`rpm` post-uninstall scripts also remove cached models.
-- **macOS**: If you uninstall manually, remove `~/Library/Caches` or `~/.cache/Privoca/whisper-models` if desired.
+Privoca now has a **two-level uninstall story**:
+
+- **Normal uninstall**: use the OS/package-manager uninstall flow first.
+- **Full cleanup**: use the platform helper below if you want to remove leftover data, caches, logs, and legacy DictateVoice paths too.
+
+**Normal uninstall**
+- **Windows**: uninstall from **Settings → Apps**. The NSIS uninstaller automatically removes Privoca model caches.
+- **macOS**: remove **Privoca.app** from Applications (or the install location).
+- **Linux**: uninstall with the same format you installed with (`apt`, `dnf`, `rpm`, `flatpak`, etc.). Package uninstall removes bundled app files; cache cleanup may vary by format.
+
+**Full cleanup helpers**
+- **macOS**: `npm run uninstall:full:mac`
+- **Linux**: `npm run uninstall:full:linux`
+- **Windows**: `npm run uninstall:full:windows`
+
+These helpers remove app data, caches, logs, and old **DictateVoice** leftovers. They are intentionally separate from the normal uninstall path so user data is not deleted silently.
+
+**In-app cleanup**
+- Use *Settings → General → Local Model Storage → Remove Downloaded Models* to clear cached local models without uninstalling the app.
 
 ### Agent Naming & AI Processing
 Once you've named your agent during setup, you can interact with it using multiple AI providers:
