@@ -58,30 +58,16 @@ describe("windowManager.js — multi-monitor position clamping", () => {
   });
 });
 
-// ─── Toast positioning — no stale state after drag ───────────────────────────
+// ─── Toast positioning — centered above mic in tiny overlay ─────────────────
 
-describe("Toast.tsx — toastOnLeft computed inline", () => {
-  test("toastOnLeft is a plain const derived from window.screenX, not a useState", () => {
-    // Replacing state+effect with an inline const ensures the value is always
-    // current after the user drags the overlay (no resize event fires on drag).
-    expect(toastTsx).toContain("const toastOnLeft =");
-    // The value must read window.screenX synchronously (not from a state variable).
-    const idx = toastTsx.indexOf("const toastOnLeft =");
-    const line = toastTsx.slice(idx, idx + 80);
-    expect(line).toContain("window.screenX");
+describe("Toast.tsx — centered toast viewport for dictation overlay", () => {
+  test("dictation overlay toasts are centered above the mic", () => {
+    expect(toastTsx).toContain("left-1/2 -translate-x-1/2 bottom-20 items-center");
   });
 
-  test("toastOnLeft does NOT use useState for its value", () => {
-    // There must be no useState call whose setter is setToastOnLeft.
-    expect(toastTsx).not.toContain("setToastOnLeft");
-  });
-
-  test("toast viewport still applies left-anchor class when toastOnLeft is true", () => {
-    expect(toastTsx).toContain("left-0");
-  });
-
-  test("toast viewport applies right-anchor class when toastOnLeft is false", () => {
-    expect(toastTsx).toContain("right-6");
+  test("old edge-anchored dictation classes are gone", () => {
+    expect(toastTsx).not.toContain('"bottom-20 left-0"');
+    expect(toastTsx).not.toContain('"bottom-20 right-6"');
   });
 });
 

@@ -146,17 +146,8 @@ const ToastViewport: React.FC<{
     );
   }, []);
 
-  // In the dictation overlay the window may be positioned near the right screen edge.
-  // When a toast expands the window width, the window manager clamps the window leftward
-  // to keep it on-screen.  After clamping, a right-6 toast is still aligned to the
-  // (now shifted) window right — but this can look wrong.  Instead, anchor the toast
-  // to the NEAR edge so it always stays close to the mic button.
-  //
-  // Computed inline (not stored in state) so it is always fresh even after the user
-  // drags the overlay without triggering a resize event.  window.screenX is the
-  // overlay window's left edge in screen coordinates; past the screen midpoint → left anchor.
-  const toastOnLeft = isDictationPanel && window.screenX > window.screen.width / 2;
-
+  // In the tiny dictation overlay, edge-anchored toasts can get clipped or look detached.
+  // Keep them centered above the mic button instead.
   if (toasts.length === 0) return null;
 
   return (
@@ -164,9 +155,7 @@ const ToastViewport: React.FC<{
       className={cn(
         "fixed z-50 flex flex-col gap-1.5 pointer-events-none",
         isDictationPanel
-          ? toastOnLeft
-            ? "bottom-20 left-0" // right-edge overlay: toast anchors to left (always on-screen after clamping)
-            : "bottom-20 right-6" // left/center overlay: toast anchors to right as usual
+          ? "left-1/2 -translate-x-1/2 bottom-20 items-center"
           : "bottom-5 right-5" // Standard position in control panel
       )}
     >
@@ -251,7 +240,7 @@ const Toast: React.FC<
       className={cn(
         // Layout — fixed ideal width but responsive so it can't overflow a narrow window
         // (relevant in the dictation overlay where the window may be narrower than 320px)
-        "pointer-events-auto relative flex items-start gap-2.5 w-[320px] max-w-[calc(100vw-48px)]",
+        "pointer-events-auto relative flex items-start gap-2.5 w-[320px] max-w-[min(320px,calc(100vw-24px))]",
         "px-3 py-2.5 pr-8 overflow-hidden",
         // Tight radius matching buttons
         "rounded-[6px]",
