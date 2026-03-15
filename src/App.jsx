@@ -349,9 +349,9 @@ export default function App() {
         window.electronAPI?.resizeMainWindow?.("EXPANDED");
       } else if (isCommandMenuOpen) {
         window.electronAPI?.resizeMainWindow?.("WITH_MENU");
+      } else if (toastCount > 0) {
+        window.electronAPI?.resizeMainWindow?.("WITH_TOAST");
       } else {
-        // Do not resize the normal dictation overlay just because a toast exists.
-        // That causes the overlay to shift position, especially near the screen edge.
         window.electronAPI?.resizeMainWindow?.("BASE");
       }
     };

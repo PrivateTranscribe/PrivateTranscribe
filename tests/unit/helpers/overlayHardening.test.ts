@@ -51,7 +51,7 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     // resizeMainWindow must call Math.max and Math.min to clamp both axes.
     const idx = windowManager.indexOf("resizeMainWindow");
     expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 900);
+    const block = windowManager.slice(idx, idx + 1400);
     expect(block).toContain("Math.max");
     expect(block).toContain("Math.min");
     expect(block).toContain("workArea.x");
