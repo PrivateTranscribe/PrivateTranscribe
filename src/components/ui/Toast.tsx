@@ -146,8 +146,10 @@ const ToastViewport: React.FC<{
     );
   }, []);
 
-  // In the tiny dictation overlay, edge-anchored toasts can get clipped or look detached.
-  // Keep them centered above the mic button instead.
+  // In the dictation overlay, place the toast on the side with available room.
+  // Near the right screen edge, the toast should expand to the left of the mic.
+  const toastOnLeft = isDictationPanel && window.screenX + 380 > window.screen.width;
+
   if (toasts.length === 0) return null;
 
   return (
@@ -155,7 +157,9 @@ const ToastViewport: React.FC<{
       className={cn(
         "fixed z-50 flex flex-col gap-1.5 pointer-events-none",
         isDictationPanel
-          ? "left-1/2 -translate-x-1/2 bottom-20 items-center"
+          ? toastOnLeft
+            ? "bottom-20 left-6 items-start"
+            : "bottom-20 right-6 items-end"
           : "bottom-5 right-5" // Standard position in control panel
       )}
     >

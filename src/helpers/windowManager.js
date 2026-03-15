@@ -252,15 +252,20 @@ class WindowManager {
     const currentBounds = this.mainWindow.getBounds();
 
     // Keep the overlay visually stable by preserving bottom alignment.
-    // For toast-only expansion, preserve the bottom-center so the mic button stays put.
+    // For toast-only expansion, expand to the right by default, but if we're near
+    // the right screen edge, expand to the left instead.
     const bottomY = currentBounds.y + currentBounds.height;
-    const centerX = currentBounds.x + currentBounds.width / 2;
     const bottomLeftX = currentBounds.x;
+    const bottomRightX = currentBounds.x + currentBounds.width;
 
     const display = screen.getDisplayNearestPoint({ x: currentBounds.x, y: bottomY });
     const workArea = display.workArea || display.bounds;
 
-    let newX = sizeKey === "WITH_TOAST" ? Math.round(centerX - newSize.width / 2) : bottomLeftX;
+    const wouldOverflowRight = bottomLeftX + newSize.width > workArea.x + workArea.width;
+    let newX =
+      sizeKey === "WITH_TOAST" && wouldOverflowRight
+        ? Math.round(bottomRightX - newSize.width)
+        : bottomLeftX;
     let newY = bottomY - newSize.height;
 
     // Clamp within viewport bounds (prevent off-screen drift)

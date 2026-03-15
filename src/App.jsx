@@ -590,6 +590,11 @@ export default function App() {
     };
   })();
 
+  const toastWidthDelta = 380 - 96;
+  const toastWouldOverflowRight =
+    typeof window !== "undefined" && window.screenX + 380 > window.screen.width;
+  const keepMicAnchoredRight = !isCommandMenuOpen && toastCount > 0 && toastWouldOverflowRight;
+
   return (
     <div className="dictation-window">
       <style>{`
@@ -624,7 +629,7 @@ export default function App() {
           style={{
             position: "absolute",
             bottom: 8,
-            left: 8,
+            left: keepMicAnchoredRight ? 8 + toastWidthDelta : 8,
             padding: 16,
             display: "flex",
             alignItems: "center",

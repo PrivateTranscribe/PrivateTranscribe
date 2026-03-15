@@ -58,16 +58,17 @@ describe("windowManager.js — multi-monitor position clamping", () => {
   });
 });
 
-// ─── Toast positioning — centered above mic in tiny overlay ─────────────────
+// ─── Toast positioning — adaptive side placement in tiny overlay ────────────
 
-describe("Toast.tsx — centered toast viewport for dictation overlay", () => {
-  test("dictation overlay toasts are centered above the mic", () => {
-    expect(toastTsx).toContain("left-1/2 -translate-x-1/2 bottom-20 items-center");
+describe("Toast.tsx — adaptive toast placement for dictation overlay", () => {
+  test("dictation overlay computes toastOnLeft from screen edge proximity", () => {
+    expect(toastTsx).toContain("const toastOnLeft =");
+    expect(toastTsx).toContain("window.screenX + 380 > window.screen.width");
   });
 
-  test("old edge-anchored dictation classes are gone", () => {
-    expect(toastTsx).not.toContain('"bottom-20 left-0"');
-    expect(toastTsx).not.toContain('"bottom-20 right-6"');
+  test("dictation overlay supports both left and right toast placements", () => {
+    expect(toastTsx).toContain("bottom-20 left-6 items-start");
+    expect(toastTsx).toContain("bottom-20 right-6 items-end");
   });
 });
 
