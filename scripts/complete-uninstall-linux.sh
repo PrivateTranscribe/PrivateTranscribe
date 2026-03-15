@@ -54,18 +54,29 @@ if [[ "$remove_flatpak" =~ ^[Yy]$ ]] && command_exists flatpak; then
   flatpak uninstall -y com.dictatevoice.app 2>/dev/null || true
 fi
 
-echo "Removing user data, caches, logs, and legacy DictateVoice paths..."
+echo "Removing user data, logs, and legacy DictateVoice paths..."
 remove_target "$HOME/.config/Privoca"
 remove_target "$HOME/.config/Privoca-dev"
 remove_target "$HOME/.config/dictate-voice"
 remove_target "$HOME/.config/DictateVoice"
-remove_target "$HOME/.cache/Privoca"
-remove_target "$HOME/.cache/dictatevoice"
-remove_target "$HOME/.cache/whisper"
 remove_target "$HOME/.local/share/Privoca"
 remove_target "$HOME/.local/share/DictateVoice"
 remove_target "$HOME/.local/state/Privoca"
 remove_target "$HOME/.local/state/DictateVoice"
+
+echo "Cleaning /tmp Privoca/DictateVoice temp files..."
+shopt -s nullglob
+for tmp in /tmp/Privoca* /tmp/privoca* /tmp/DictateVoice* /tmp/dictatevoice*; do
+  remove_target "$tmp"
+done
+shopt -u nullglob
+
+read -r -p "Remove downloaded model caches (~/.cache/Privoca — Whisper, Parakeet, GGUF)? [y/N]: " wipe_models
+if [[ "$wipe_models" =~ ^[Yy]$ ]]; then
+  remove_target "$HOME/.cache/Privoca"
+  remove_target "$HOME/.cache/dictatevoice"
+  remove_target "$HOME/.cache/whisper"
+fi
 
 read -r -p "Remove local project .env file at $PROJECT_ROOT/.env if present? [y/N]: " wipe_env
 if [[ "$wipe_env" =~ ^[Yy]$ ]]; then

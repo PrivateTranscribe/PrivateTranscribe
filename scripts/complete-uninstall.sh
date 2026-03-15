@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 
+# macOS full uninstall helper.
+# On Linux, run scripts/complete-uninstall-linux.sh instead (npm run uninstall:full:linux).
+
 set -euo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "This script is for macOS only."
+  echo "On Linux, run: bash scripts/complete-uninstall-linux.sh"
+  exit 1
+fi
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -15,7 +24,16 @@ remove_target() {
   local target="$1"
   if [[ -e "$target" ]]; then
     echo "Removing $target"
-    rm -rf "$target" 2>/dev/null || sudo rm -rf "$target"
+    rm -rf "$target"
+  fi
+}
+
+# Use sudo only for /Applications bundles where ownership may be root.
+remove_app_bundle() {
+  local target="$1"
+  if [[ -e "$target" ]]; then
+    echo "Removing $target (may require admin password)..."
+    sudo rm -rf "$target"
   fi
 }
 
@@ -27,8 +45,8 @@ pkill -f "Electron Helper.*Privoca" 2>/dev/null || true
 pkill -f "Electron Helper.*DictateVoice" 2>/dev/null || true
 
 echo "Removing /Applications/Privoca.app and legacy DictateVoice.app (requires admin)..."
-remove_target "/Applications/Privoca.app"
-remove_target "/Applications/DictateVoice.app"
+remove_app_bundle "/Applications/Privoca.app"
+remove_app_bundle "/Applications/DictateVoice.app"
 
 echo "Purging Application Support data..."
 remove_target "$HOME/Library/Application Support/Privoca"
@@ -60,17 +78,23 @@ shopt -s nullglob
 for tmp in /tmp/Privoca* /tmp/dictatevoice*; do
   remove_target "$tmp"
 done
-for crash in "$HOME/Library/Application Support/CrashReporter"/Privoca_* "$HOME/Library/Application Support/CrashReporter"/DictateVoice_*; do
+for crash in "$HOME/Library/Application Support/CrashReporter"/Privoca_* \
+             "$HOME/Library/Application Support/CrashReporter"/DictateVoice_*; do
   remove_target "$crash"
 done
 shopt -u nullglob
 
-read -r -p "Remove downloaded Whisper models and caches (~/.cache/whisper, ~/Library/Application Support/whisper)? [y/N]: " wipe_models
+read -r -p "Remove all downloaded model caches (~/.cache/Privoca — Whisper, Parakeet, GGUF)? [y/N]: " wipe_models
 if [[ "$wipe_models" =~ ^[Yy]$ ]]; then
+  remove_target "$HOME/.cache/Privoca/whisper-models"
+  remove_target "$HOME/.cache/Privoca/parakeet-models"
+  remove_target "$HOME/.cache/Privoca/models"
+  # Legacy model cache paths
   remove_target "$HOME/.cache/whisper"
   remove_target "$HOME/Library/Application Support/whisper"
   remove_target "$HOME/Library/Application Support/Privoca/models"
   remove_target "$HOME/Library/Application Support/DictateVoice/models"
+  rmdir "$HOME/.cache/Privoca" 2>/dev/null || true
 fi
 
 ENV_FILE="$PROJECT_ROOT/.env"

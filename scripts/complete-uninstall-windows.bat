@@ -11,14 +11,23 @@ taskkill /F /IM Privoca.exe >nul 2>&1
 taskkill /F /IM DictateVoice.exe >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $_.ProcessName -match 'Privoca|DictateVoice|dictate-voice' } | Stop-Process -Force" >nul 2>&1
 
-echo Removing app data and caches...
+echo Removing app data...
 if exist "%APPDATA%\Privoca" rd /s /q "%APPDATA%\Privoca"
 if exist "%LOCALAPPDATA%\Privoca" rd /s /q "%LOCALAPPDATA%\Privoca"
 if exist "%APPDATA%\dictate-voice" rd /s /q "%APPDATA%\dictate-voice"
 if exist "%LOCALAPPDATA%\dictate-voice" rd /s /q "%LOCALAPPDATA%\dictate-voice"
+rem Legacy DictateVoice AppData paths
+if exist "%APPDATA%\DictateVoice" rd /s /q "%APPDATA%\DictateVoice"
+if exist "%LOCALAPPDATA%\DictateVoice" rd /s /q "%LOCALAPPDATA%\DictateVoice"
+
+echo.
+echo Model caches can be several GB (Whisper, Parakeet, GGUF models).
+choice /M "Remove downloaded model caches (~\.cache\Privoca and legacy paths)"
+if errorlevel 2 goto done_models
 if exist "%USERPROFILE%\.cache\Privoca" rd /s /q "%USERPROFILE%\.cache\Privoca"
 if exist "%USERPROFILE%\.cache\dictatevoice" rd /s /q "%USERPROFILE%\.cache\dictatevoice"
 if exist "%USERPROFILE%\.cache\whisper" rd /s /q "%USERPROFILE%\.cache\whisper"
+:done_models
 
 set PROJECT_ENV=%~dp0..\.env
 choice /M "Remove local project .env file if present"
