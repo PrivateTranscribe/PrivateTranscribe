@@ -153,6 +153,20 @@ class DatabaseManager {
         console.error("Migration warning:", migrationError.message);
       }
 
+      // Migration: Add confirmed column to correction_memory if it doesn't exist.
+      // confirmed=1 means the user explicitly added/confirmed the correction via the UI,
+      // so it should apply immediately regardless of count.
+      try {
+        const cmColumns = this.db.prepare("PRAGMA table_info(correction_memory)").all();
+        const hasConfirmed = cmColumns.some((col) => col.name === "confirmed");
+        if (!hasConfirmed) {
+          console.log("Migrating correction_memory table: adding confirmed column");
+          this.db.exec(`ALTER TABLE correction_memory ADD COLUMN confirmed INTEGER DEFAULT 0`);
+        }
+      } catch (migrationError) {
+        console.error("Migration warning (correction_memory.confirmed):", migrationError.message);
+      }
+
       return true;
     } catch (error) {
       console.error("Database initialization failed:", error.message);
@@ -323,7 +337,7 @@ class DatabaseManager {
       }
       const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 500, 5000));
       const stmt = this.db.prepare(
-        "SELECT source, target, count, last_seen_at, created_at FROM correction_memory ORDER BY count DESC, last_seen_at DESC LIMIT ?"
+        "SELECT source, target, count, confirmed, last_seen_at, created_at FROM correction_memory ORDER BY count DESC, last_seen_at DESC LIMIT ?"
       );
       return stmt.all(safeLimit);
     } catch (error) {
@@ -343,7 +357,7 @@ class DatabaseManager {
     }
   }
 
-  upsertCorrection(source, target) {
+  upsertCorrection(source, target, confirmed = false) {
     try {
       if (!this.db) {
         throw new Error("Database not initialized");
@@ -354,16 +368,50 @@ class DatabaseManager {
         return { success: false, reason: "invalid" };
       }
 
+      const confirmedInt = confirmed ? 1 : 0;
       const stmt = this.db.prepare(`
-        INSERT INTO correction_memory (source, target, count, last_seen_at)
-        VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+        INSERT INTO correction_memory (source, target, count, confirmed, last_seen_at)
+        VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(source, target)
-        DO UPDATE SET count = count + 1, last_seen_at = CURRENT_TIMESTAMP
+        DO UPDATE SET
+          count = count + 1,
+          last_seen_at = CURRENT_TIMESTAMP,
+          confirmed = MAX(confirmed, excluded.confirmed)
+      `);
+      stmt.run(src, tgt, confirmedInt);
+      return { success: true };
+    } catch (error) {
+      console.error("Error upserting correction:", error.message);
+      throw error;
+    }
+  }
+
+  confirmCorrection(source, target) {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      const src = typeof source === "string" ? source.trim() : "";
+      const tgt = typeof target === "string" ? target.trim() : "";
+      if (!src || !tgt || src === tgt) {
+        return { success: false, reason: "invalid" };
+      }
+
+      // Insert with count=2 and confirmed=1 so the correction applies immediately
+      // (snapTranscript requires count>=2 OR confirmed=1).
+      // On conflict: bump count if already >=2, otherwise lift to 2; always mark confirmed.
+      const stmt = this.db.prepare(`
+        INSERT INTO correction_memory (source, target, count, confirmed, last_seen_at)
+        VALUES (?, ?, 2, 1, CURRENT_TIMESTAMP)
+        ON CONFLICT(source, target)
+        DO UPDATE SET count = CASE WHEN count < 2 THEN 2 ELSE count + 1 END,
+                      confirmed = 1,
+                      last_seen_at = CURRENT_TIMESTAMP
       `);
       stmt.run(src, tgt);
       return { success: true };
     } catch (error) {
-      console.error("Error upserting correction:", error.message);
+      console.error("Error confirming correction:", error.message);
       throw error;
     }
   }

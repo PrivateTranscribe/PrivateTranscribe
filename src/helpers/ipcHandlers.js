@@ -266,6 +266,10 @@ class IPCHandlers {
       return this.databaseManager.upsertCorrection(source, target);
     });
 
+    ipcMain.handle("db-confirm-correction", async (event, source, target) => {
+      return this.databaseManager.confirmCorrection(source, target);
+    });
+
     ipcMain.handle("db-delete-correction", async (event, source) => {
       return this.databaseManager.deleteCorrection(source);
     });

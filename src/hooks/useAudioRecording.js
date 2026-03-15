@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import AudioManager from "../helpers/audioManager";
 
 export const useAudioRecording = (toast, options = {}) => {
@@ -191,78 +191,85 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
-        // Correction memory (best-effort): if the user edits the pasted text and copies the corrected
-        // version shortly after, learn token-level replacements locally.
+        // Correction memory: use an explicit learn action instead of fragile clipboard polling.
         try {
           const enableLearning =
             (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
           if (
             enableLearning &&
             window.electronAPI?.readClipboard &&
-            window.electronAPI?.upsertCorrection
+            window.electronAPI?.confirmCorrection
           ) {
-            const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
             const insertedText = text;
-            const startedAt = Date.now();
-            const timeoutMs = 30000;
-            let lastClipboard = await window.electronAPI.readClipboard();
+            toastRef.current?.({
+              title: "Teach Correction Memory",
+              description:
+                "If you corrected the pasted text, copy the corrected version and click Learn.",
+              duration: 12000,
+              action: React.createElement(
+                "button",
+                {
+                  className:
+                    "rounded-[6px] border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15",
+                  onClick: async () => {
+                    try {
+                      const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
+                      const current = await window.electronAPI.readClipboard();
+                      const pairs = inferCorrectionPairs(insertedText, current);
 
-            const intervalId = setInterval(async () => {
-              if (Date.now() - startedAt > timeoutMs) {
-                clearInterval(intervalId);
-                return;
-              }
+                      if (pairs.length === 0) {
+                        toastRef.current?.({
+                          title: "No correction detected",
+                          description:
+                            "Copy the corrected text first, then try Learn again.",
+                          variant: "default",
+                          duration: 4000,
+                        });
+                        return;
+                      }
 
-              const current = await window.electronAPI.readClipboard();
-              if (!current || current === lastClipboard) return;
-              lastClipboard = current;
+                      for (const p of pairs) {
+                        await window.electronAPI.confirmCorrection(p.source, p.target);
+                      }
 
-              const pairs = inferCorrectionPairs(insertedText, current);
-              if (pairs.length === 0) return;
+                      try {
+                        const dict = await window.electronAPI.getDictionary();
+                        const set = new Set(Array.isArray(dict) ? dict : []);
+                        let changed = false;
+                        for (const p of pairs) {
+                          if (p.target && p.target.length <= 200 && !set.has(p.target)) {
+                            set.add(p.target);
+                            changed = true;
+                          }
+                        }
+                        if (changed) {
+                          const next = Array.from(set);
+                          await window.electronAPI.setDictionary(next);
+                          localStorage.setItem("customDictionary", JSON.stringify(next));
+                        }
+                      } catch {
+                        // ignore dictionary promotion failures
+                      }
 
-              for (const p of pairs) {
-                await window.electronAPI.upsertCorrection(p.source, p.target);
-              }
-
-              // Also promote identifier-like targets into the user dictionary
-              // only after enough confidence (correction seen 3+ times).
-              try {
-                const dict = await window.electronAPI.getDictionary();
-                const set = new Set(Array.isArray(dict) ? dict : []);
-                const allCorrections = await window.electronAPI?.getCorrectionMemory?.(500);
-                const correctionMap = new Map();
-                for (const c of allCorrections || []) {
-                  if (c?.target) correctionMap.set(c.target, c.count || 0);
-                }
-                let changed = false;
-                for (const p of pairs) {
-                  if (p.target && p.target.length <= 200) {
-                    const correctionCount = correctionMap.get(p.target) || 0;
-                    if (!set.has(p.target) && correctionCount >= 3) {
-                      set.add(p.target);
-                      changed = true;
+                      toastRef.current?.({
+                        title: "Learned correction",
+                        description: "Privoca will use that correction next time.",
+                        variant: "success",
+                        duration: 4000,
+                      });
+                    } catch {
+                      toastRef.current?.({
+                        title: "Could not learn correction",
+                        description: "Try again after copying the corrected text.",
+                        variant: "destructive",
+                        duration: 4000,
+                      });
                     }
-                  }
-                }
-                if (changed) {
-                  const next = Array.from(set);
-                  await window.electronAPI.setDictionary(next);
-                  localStorage.setItem("customDictionary", JSON.stringify(next));
-                }
-              } catch {
-                // ignore
-              }
-
-              // Stop after first successful learn event to avoid spamming.
-              clearInterval(intervalId);
-
-              toastRef.current?.({
-                title: "Learned correction",
-                description: "Privoca will remember that edit next time.",
-                variant: "default",
-                duration: 4000,
-              });
-            }, 750);
+                  },
+                },
+                "Learn"
+              ),
+            });
           }
         } catch {
           // ignore

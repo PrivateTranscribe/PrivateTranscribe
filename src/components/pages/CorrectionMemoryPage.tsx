@@ -100,7 +100,7 @@ export default function CorrectionMemoryPage() {
     try {
       setSaving(true);
       setError(null);
-      await window.electronAPI?.upsertCorrection?.(s, t);
+      await window.electronAPI?.confirmCorrection?.(s, t);
       setSource("");
       setTarget("");
       await fetchRows();
@@ -134,11 +134,11 @@ export default function CorrectionMemoryPage() {
             Correction Memory
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Privoca learns phrase corrections like{" "}
+            Correction Memory stores explicit phrase fixes like{" "}
             <span className="font-mono text-foreground">use login error</span>
             {" → "}
             <span className="font-mono text-primary">useLoginError</span>{" "}
-            and applies them automatically to future dictations.
+            and applies them automatically to future dictations. Your Dictionary is still for names, terms, and preferred words.
           </p>
         </div>
       </div>
