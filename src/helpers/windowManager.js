@@ -253,7 +253,8 @@ class WindowManager {
 
     // Keep the overlay visually stable by preserving bottom alignment.
     // For toast-only expansion, expand to the right by default, but if we're near
-    // the right screen edge, expand to the left instead.
+    // the right screen edge, expand to the left instead. When collapsing back from
+    // a left-expanded toast, preserve the bottom-right edge so the mic stays put.
     const bottomY = currentBounds.y + currentBounds.height;
     const bottomLeftX = currentBounds.x;
     const bottomRightX = currentBounds.x + currentBounds.width;
@@ -262,10 +263,21 @@ class WindowManager {
     const workArea = display.workArea || display.bounds;
 
     const wouldOverflowRight = bottomLeftX + newSize.width > workArea.x + workArea.width;
-    let newX =
-      sizeKey === "WITH_TOAST" && wouldOverflowRight
-        ? Math.round(bottomRightX - newSize.width)
-        : bottomLeftX;
+    const expandToastLeft = sizeKey === "WITH_TOAST" && wouldOverflowRight;
+    if (sizeKey === "WITH_TOAST") {
+      this._toastExpandedLeft = expandToastLeft;
+    }
+
+    let newX = bottomLeftX;
+    if (expandToastLeft) {
+      newX = Math.round(bottomRightX - newSize.width);
+    } else if (sizeKey === "BASE" && this._toastExpandedLeft) {
+      newX = Math.round(bottomRightX - newSize.width);
+      this._toastExpandedLeft = false;
+    } else if (sizeKey !== "WITH_TOAST") {
+      this._toastExpandedLeft = false;
+    }
+
     let newY = bottomY - newSize.height;
 
     // Clamp within viewport bounds (prevent off-screen drift)
