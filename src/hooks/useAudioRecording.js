@@ -191,7 +191,8 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
-        // Correction memory: use an explicit learn action instead of fragile clipboard polling.
+        // Correction memory: only surface the learn action after the user has actually
+        // copied a changed version, not after every transcription.
         try {
           const enableLearning =
             (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
@@ -200,76 +201,82 @@ export const useAudioRecording = (toast, options = {}) => {
             window.electronAPI?.readClipboard &&
             window.electronAPI?.confirmCorrection
           ) {
+            const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
             const insertedText = text;
-            toastRef.current?.({
-              title: "Teach Correction Memory",
-              description:
-                "If you corrected the pasted text, copy the corrected version and click Learn.",
-              duration: 12000,
-              action: React.createElement(
-                "button",
-                {
-                  className:
-                    "rounded-[6px] border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15",
-                  onClick: async () => {
-                    try {
-                      const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
-                      const current = await window.electronAPI.readClipboard();
-                      const pairs = inferCorrectionPairs(insertedText, current);
+            const startedAt = Date.now();
+            const timeoutMs = 30000;
+            let lastClipboard = await window.electronAPI.readClipboard();
+            let prompted = false;
 
-                      if (pairs.length === 0) {
+            const intervalId = setInterval(async () => {
+              if (Date.now() - startedAt > timeoutMs || prompted) {
+                clearInterval(intervalId);
+                return;
+              }
+
+              const current = await window.electronAPI.readClipboard();
+              if (!current || current === lastClipboard) return;
+              lastClipboard = current;
+
+              const pairs = inferCorrectionPairs(insertedText, current);
+              if (pairs.length === 0) return;
+              prompted = true;
+              clearInterval(intervalId);
+
+              toastRef.current?.({
+                title: "Teach Correction Memory",
+                description: "Copied correction detected. Click Learn to save it.",
+                duration: 12000,
+                action: React.createElement(
+                  "button",
+                  {
+                    className:
+                      "rounded-[6px] border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15",
+                    onClick: async () => {
+                      try {
+                        for (const p of pairs) {
+                          await window.electronAPI.confirmCorrection(p.source, p.target);
+                        }
+
+                        try {
+                          const dict = await window.electronAPI.getDictionary();
+                          const set = new Set(Array.isArray(dict) ? dict : []);
+                          let changed = false;
+                          for (const p of pairs) {
+                            if (p.target && p.target.length <= 200 && !set.has(p.target)) {
+                              set.add(p.target);
+                              changed = true;
+                            }
+                          }
+                          if (changed) {
+                            const next = Array.from(set);
+                            await window.electronAPI.setDictionary(next);
+                            localStorage.setItem("customDictionary", JSON.stringify(next));
+                          }
+                        } catch {
+                          // ignore dictionary promotion failures
+                        }
+
                         toastRef.current?.({
-                          title: "No correction detected",
-                          description:
-                            "Copy the corrected text first, then try Learn again.",
-                          variant: "default",
+                          title: "Learned correction",
+                          description: "Privoca will use that correction next time.",
+                          variant: "success",
                           duration: 4000,
                         });
-                        return;
-                      }
-
-                      for (const p of pairs) {
-                        await window.electronAPI.confirmCorrection(p.source, p.target);
-                      }
-
-                      try {
-                        const dict = await window.electronAPI.getDictionary();
-                        const set = new Set(Array.isArray(dict) ? dict : []);
-                        let changed = false;
-                        for (const p of pairs) {
-                          if (p.target && p.target.length <= 200 && !set.has(p.target)) {
-                            set.add(p.target);
-                            changed = true;
-                          }
-                        }
-                        if (changed) {
-                          const next = Array.from(set);
-                          await window.electronAPI.setDictionary(next);
-                          localStorage.setItem("customDictionary", JSON.stringify(next));
-                        }
                       } catch {
-                        // ignore dictionary promotion failures
+                        toastRef.current?.({
+                          title: "Could not learn correction",
+                          description: "Try again after copying the corrected text.",
+                          variant: "destructive",
+                          duration: 4000,
+                        });
                       }
-
-                      toastRef.current?.({
-                        title: "Learned correction",
-                        description: "Privoca will use that correction next time.",
-                        variant: "success",
-                        duration: 4000,
-                      });
-                    } catch {
-                      toastRef.current?.({
-                        title: "Could not learn correction",
-                        description: "Try again after copying the corrected text.",
-                        variant: "destructive",
-                        duration: 4000,
-                      });
-                    }
+                    },
                   },
-                },
-                "Learn"
-              ),
-            });
+                  "Learn"
+                ),
+              });
+            }, 750);
           }
         } catch {
           // ignore
