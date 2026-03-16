@@ -6,6 +6,8 @@ export interface ReasoningConfig {
   contextSize?: number;
   /** Active dictation mode set by an Action Engine "dictation-mode" action. */
   dictationMode?: string;
+  /** User's preferred output language (BCP-47 code, e.g. "en", "fr"). Null/undefined/"auto" = no constraint. */
+  preferredLanguage?: string | null;
 }
 
 export abstract class BaseReasoningService {
@@ -23,8 +25,12 @@ export abstract class BaseReasoningService {
     }
   }
 
-  protected getSystemPrompt(agentName: string | null, dictationMode?: string): string {
-    return getSystemPrompt(agentName, this.getCustomDictionary(), dictationMode);
+  protected getSystemPrompt(
+    agentName: string | null,
+    dictationMode?: string,
+    preferredLanguage?: string | null
+  ): string {
+    return getSystemPrompt(agentName, this.getCustomDictionary(), dictationMode, preferredLanguage);
   }
 
   protected calculateMaxTokens(

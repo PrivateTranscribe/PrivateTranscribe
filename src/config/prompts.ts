@@ -12,7 +12,8 @@ export function buildPrompt(text: string, agentName: string | null): string {
 export function getSystemPrompt(
   agentName: string | null,
   customDictionary?: string[],
-  dictationMode?: string
+  dictationMode?: string,
+  preferredLanguage?: string | null
 ): string {
   const name = agentName?.trim() || "Assistant";
 
@@ -36,6 +37,10 @@ export function getSystemPrompt(
 
   if (dictationMode && dictationMode.trim()) {
     prompt += `\n\nCurrent dictation mode: ${dictationMode.trim()}. Adjust your output style and formatting to suit this mode.`;
+  }
+
+  if (preferredLanguage && preferredLanguage !== "auto") {
+    prompt += `\n\nOUTPUT LANGUAGE: The user's preferred output language is "${preferredLanguage}" (BCP-47 code). Always write your final output in this language. If the transcribed text appears to be in a different language, treat the language mismatch as a transcription error and output in "${preferredLanguage}" instead.`;
   }
 
   return prompt;

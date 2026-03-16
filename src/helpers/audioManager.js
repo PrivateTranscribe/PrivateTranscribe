@@ -1122,6 +1122,13 @@ class AudioManager {
       typeof window !== "undefined" && window.localStorage
         ? localStorage.getItem("activeDictationMode") || undefined
         : undefined;
+    // User's preferred output language (BCP-47, e.g. "en"). Passed to the
+    // reasoning service so it can instruct the LLM to output in the correct
+    // language even when the transcription engine auto-detected the wrong one.
+    const preferredLanguage =
+      typeof window !== "undefined" && window.localStorage
+        ? localStorage.getItem("preferredLanguage") || null
+        : null;
     if (!reasoningModel) {
       logger.logReasoning("REASONING_SKIPPED", {
         reason: "No reasoning model selected",
@@ -1137,6 +1144,7 @@ class AudioManager {
       reasoningProvider,
       agentName,
       dictationMode: dictationMode || null,
+      preferredLanguage: preferredLanguage || null,
     });
 
     if (useReasoning) {
@@ -1146,13 +1154,14 @@ class AudioManager {
           model: reasoningModel,
           provider: reasoningProvider,
           dictationMode: dictationMode || null,
+          preferredLanguage: preferredLanguage || null,
         });
 
         const result = await this.processWithReasoningModel(
           normalizedText,
           reasoningModel,
           agentName,
-          { dictationMode }
+          { dictationMode, preferredLanguage }
         );
 
         logger.logReasoning("REASONING_SUCCESS", {

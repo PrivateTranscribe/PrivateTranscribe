@@ -19,7 +19,8 @@ const DICTIONARY_SUFFIX = "\n\nCustom Dictionary: ";
 function getSystemPrompt(
   agentName: string | null,
   customDictionary?: string[],
-  dictationMode?: string
+  dictationMode?: string,
+  preferredLanguage?: string | null
 ): string {
   const name = (agentName && agentName.trim()) || "Assistant";
   let prompt = BASE_PROMPT.replace(/\{\{agentName\}\}/g, name);
@@ -30,6 +31,10 @@ function getSystemPrompt(
 
   if (dictationMode && typeof dictationMode === "string" && dictationMode.trim()) {
     prompt += `\n\nCurrent dictation mode: ${dictationMode.trim()}. Adjust your output style and formatting to suit this mode.`;
+  }
+
+  if (preferredLanguage && preferredLanguage !== "auto") {
+    prompt += `\n\nOUTPUT LANGUAGE: The user's preferred output language is "${preferredLanguage}" (BCP-47 code). Always write your final output in this language. If the transcribed text appears to be in a different language, treat the language mismatch as a transcription error and output in "${preferredLanguage}" instead.`;
   }
 
   return prompt;
@@ -127,6 +132,60 @@ describe("getSystemPrompt — dictation mode", () => {
   it("works with capitalised mode names", () => {
     const prompt = getSystemPrompt("Bob", [], "Email");
     expect(prompt).toContain("Current dictation mode: Email.");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: preferred language injection
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("getSystemPrompt — preferred language", () => {
+  it("appends OUTPUT LANGUAGE block when a specific language code is given", () => {
+    const prompt = getSystemPrompt("Alice", [], undefined, "en");
+    expect(prompt).toContain('OUTPUT LANGUAGE');
+    expect(prompt).toContain('"en"');
+  });
+
+  it("includes the BCP-47 code in the language instruction", () => {
+    const prompt = getSystemPrompt("Alice", [], undefined, "fr");
+    expect(prompt).toContain('"fr"');
+    expect(prompt).toContain('BCP-47 code');
+  });
+
+  it("does NOT append language block when preferredLanguage is 'auto'", () => {
+    const prompt = getSystemPrompt("Alice", [], undefined, "auto");
+    expect(prompt).not.toContain('OUTPUT LANGUAGE');
+  });
+
+  it("does NOT append language block when preferredLanguage is null", () => {
+    const prompt = getSystemPrompt("Alice", [], undefined, null);
+    expect(prompt).not.toContain('OUTPUT LANGUAGE');
+  });
+
+  it("does NOT append language block when preferredLanguage is undefined", () => {
+    const prompt = getSystemPrompt("Alice", [], undefined, undefined);
+    expect(prompt).not.toContain('OUTPUT LANGUAGE');
+  });
+
+  it("appends language block AFTER dictation mode line", () => {
+    const prompt = getSystemPrompt("Alice", [], "code", "en");
+    const modeIdx = prompt.indexOf("Current dictation mode");
+    const langIdx = prompt.indexOf("OUTPUT LANGUAGE");
+    expect(modeIdx).toBeGreaterThan(-1);
+    expect(langIdx).toBeGreaterThan(modeIdx);
+  });
+
+  it("appends language block AFTER custom dictionary suffix", () => {
+    const prompt = getSystemPrompt("Alice", ["word1"], undefined, "de");
+    const dictIdx = prompt.indexOf(DICTIONARY_SUFFIX);
+    const langIdx = prompt.indexOf("OUTPUT LANGUAGE");
+    expect(dictIdx).toBeGreaterThan(-1);
+    expect(langIdx).toBeGreaterThan(dictIdx);
+  });
+
+  it("instructs AI to treat language mismatch as a transcription error", () => {
+    const prompt = getSystemPrompt("Alice", [], undefined, "en");
+    expect(prompt).toContain("transcription error");
   });
 });
 
