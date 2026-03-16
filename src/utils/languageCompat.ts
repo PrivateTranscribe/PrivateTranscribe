@@ -10,6 +10,7 @@
  */
 
 import { getParakeetModelInfo } from "../models/ModelRegistry";
+import logger from "./logger";
 
 export type TranscriptionModelType = "whisper" | "parakeet";
 
@@ -87,13 +88,20 @@ export function resolveTranscriptionLanguage(
 
     if (!isLanguageSupported(language, modelType, modelId)) {
         const modelLabel = modelId ? `${modelType} model "${modelId}"` : modelType;
-        console.warn(
-            `[Privoca] Language "${language}" is not supported by ${modelLabel}. ` +
-            `Falling back to auto-detect. ` +
-            `Supported languages: ${getModelSupportedLanguages(modelType, modelId)?.join(", ") ?? "all"}.`
+        const supportedList =
+            getModelSupportedLanguages(modelType, modelId)?.join(", ") ?? "all";
+        logger.warn(
+            `Language "${language}" not supported by ${modelLabel}; falling back to auto-detect`,
+            { language, modelType, modelId: modelId ?? null, supportedLanguages: supportedList },
+            "transcription"
         );
         return null;
     }
 
+    logger.debug(
+        "Language resolved for transcription",
+        { language, modelType, modelId: modelId ?? null },
+        "transcription"
+    );
     return language;
 }

@@ -662,11 +662,12 @@ class AudioManager {
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const language = localStorage.getItem("preferredLanguage");
+      const rawLanguage = localStorage.getItem("preferredLanguage");
       const translateToEnglish = localStorage.getItem("translateToEnglish");
+      const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
       const options = { model };
-      if (language && language !== "auto") {
-        options.language = language;
+      if (resolvedLanguage) {
+        options.language = resolvedLanguage;
       }
       if (translateToEnglish === "on") {
         options.translate = true;
@@ -674,6 +675,18 @@ class AudioManager {
       if (metadata?.originalFileName) {
         options.inputFileName = metadata.originalFileName;
       }
+
+      logger.info(
+        "Language resolved for local Whisper",
+        {
+          preferredLanguage: rawLanguage || "(not set)",
+          translateToEnglish: translateToEnglish || "off",
+          resolvedLanguage: resolvedLanguage || "(auto-detect)",
+          fallbackToAuto: !!rawLanguage && rawLanguage !== "auto" && !resolvedLanguage,
+          model,
+        },
+        "transcription"
+      );
 
       // Add custom dictionary as initial prompt to help Whisper recognize specific words
       // Skip when translating — English dictionary hints confuse whisper's translation mode
@@ -760,6 +773,17 @@ class AudioManager {
       if (metadata?.originalFileName) {
         options.inputFileName = metadata.originalFileName;
       }
+
+      logger.info(
+        "Language resolved for Parakeet",
+        {
+          preferredLanguage: rawLanguage || "(not set)",
+          resolvedLanguage: resolvedLanguage || "(auto-detect)",
+          fallbackToAuto: !!rawLanguage && rawLanguage !== "auto" && !resolvedLanguage,
+          model,
+        },
+        "transcription"
+      );
 
       logger.debug(
         "Parakeet transcription starting",
@@ -1075,7 +1099,7 @@ class AudioManager {
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {
       source,
       textLength: normalizedText.length,
-      textPreview: normalizedText.substring(0, 100) + (normalizedText.length > 100 ? "..." : ""),
+      rawSttText: normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
       timestamp: new Date().toISOString(),
     });
 
@@ -1328,6 +1352,19 @@ class AudioManager {
 
       const model = this.getTranscriptionModel();
       const provider = localStorage.getItem("cloudTranscriptionProvider") || "openai";
+
+      const effectiveLanguage = !language || language === "auto" ? null : language;
+      logger.info(
+        "Language resolved for cloud transcription",
+        {
+          preferredLanguage: language || "(not set)",
+          effectiveLanguage: effectiveLanguage || "(auto-detect)",
+          fallbackToAuto: !!language && language !== "auto" && !effectiveLanguage,
+          provider,
+          model,
+        },
+        "transcription"
+      );
 
       logger.debug(
         "Transcription request starting",
