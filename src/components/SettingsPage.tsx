@@ -13,8 +13,14 @@ import {
   ExternalLink,
   Loader2,
   AlertCircle,
+  Zap,
+  Timer,
 } from "lucide-react";
-import type { HardwareDetectionResult, HardwareGpuCategory } from "../types/electron";
+import type {
+  HardwareDetectionResult,
+  HardwareGpuCategory,
+  BenchmarkResult,
+} from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
@@ -121,10 +127,50 @@ const GPU_CATEGORY_VARIANT: Record<
   cpu_only: "secondary",
 };
 
+function formatRealtimeFactor(factor: number): string {
+  if (!Number.isFinite(factor) || factor <= 0) return "—";
+  if (factor >= 100) return `${Math.round(factor)}x`;
+  if (factor >= 10) return `${factor.toFixed(1)}x`;
+  return `${factor.toFixed(2)}x`;
+}
+
+function formatBenchmarkDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+type BenchmarkState = "idle" | "running" | "done" | "error";
+
 function GpuStatusCard() {
   const [detectState, setDetectState] = useState<GpuDetectState>("idle");
   const [detection, setDetection] = useState<HardwareDetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Benchmark state
+  const [benchState, setBenchState] = useState<BenchmarkState>("idle");
+  const [benchResult, setBenchResult] = useState<BenchmarkResult | null>(null);
+  const [benchError, setBenchError] = useState<string | null>(null);
+
+  const settings = useSettings();
+
+  // Load latest benchmark on mount
+  useEffect(() => {
+    window.electronAPI?.benchmarkGetLatest?.().then((res) => {
+      if (res?.success && res.result) {
+        setBenchResult(res.result);
+        setBenchState("done");
+      }
+    });
+  }, []);
 
   const runDetect = async (clearCache = false) => {
     setDetectState("detecting");
@@ -142,6 +188,30 @@ function GpuStatusCard() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setDetectState("error");
+    }
+  };
+
+  const runBenchmark = async () => {
+    setBenchState("running");
+    setBenchError(null);
+    try {
+      const provider = settings.localTranscriptionProvider === "nvidia" ? "nvidia" : "whisper";
+      const model =
+        provider === "nvidia"
+          ? settings.parakeetModel || "parakeet-tdt-0.6b-v3"
+          : settings.whisperModel || "turbo";
+
+      const res = await window.electronAPI?.benchmarkRun?.({ provider, model });
+      if (res?.success && res.result) {
+        setBenchResult(res.result);
+        setBenchState("done");
+      } else {
+        setBenchError(res?.error || "Speed test failed");
+        setBenchState("error");
+      }
+    } catch (e) {
+      setBenchError(e instanceof Error ? e.message : "Unknown error");
+      setBenchState("error");
     }
   };
 
@@ -229,6 +299,45 @@ function GpuStatusCard() {
             </div>
           )}
 
+          {/* ── Speed Test / Benchmark section ────────────────── */}
+          {benchState === "done" && benchResult && (
+            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Zap className="w-3.5 h-3.5 text-primary" />
+                <p className="text-[11px] font-medium text-foreground">Transcription Speed</p>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-lg font-semibold text-foreground tabular-nums">
+                  {formatRealtimeFactor(benchResult.realtimeFactor)}
+                </span>
+                <span className="text-[11px] text-muted-foreground">real-time</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Measured on this device ·{" "}
+                {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} ({benchResult.model}) ·{" "}
+                {(benchResult.elapsedMs / 1000).toFixed(1)}s for {benchResult.audioDurationSec}s
+                audio
+                {benchResult.createdAt ? ` · ${formatBenchmarkDate(benchResult.createdAt)}` : ""}
+              </p>
+            </div>
+          )}
+
+          {benchState === "running" && (
+            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Running speed test — transcribing a 10-second sample…
+              </div>
+            </div>
+          )}
+
+          {benchState === "error" && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
+              <AlertCircle className="w-3 h-3" />
+              Speed test failed: {benchError}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             {detectState === "idle" && (
               <Button
@@ -252,6 +361,16 @@ function GpuStatusCard() {
                 Re-detect Hardware
               </Button>
             )}
+            <Button
+              onClick={runBenchmark}
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-[11px]"
+              disabled={benchState === "running"}
+            >
+              <Timer className="w-3 h-3" />
+              {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
+            </Button>
           </div>
         </div>
       </div>

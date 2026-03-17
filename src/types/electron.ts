@@ -258,6 +258,23 @@ export interface HardwareDetectionResult {
   recommendations: HardwareRecommendations | null;
 }
 
+export interface BenchmarkResult {
+  id: string;
+  provider: "whisper" | "nvidia";
+  model: string;
+  gpuCategory: HardwareGpuCategory;
+  /** Duration of the test audio sample in seconds. */
+  audioDurationSec: number;
+  /** Wall-clock time for the transcription engine to process the sample. */
+  elapsedMs: number;
+  /** audio seconds / processing seconds — higher is faster. */
+  realtimeFactor: number;
+  gpuModel: string | null;
+  cpuModel: string | null;
+  cpuCores: number | null;
+  createdAt: string;
+}
+
 export interface AggregateStats {
   total_words: number;
   total_transcriptions: number;
@@ -559,6 +576,15 @@ declare global {
         error?: string;
       }>;
       clearHardwareCache?: () => Promise<{ success: boolean }>;
+
+      // Benchmark (transcription speed test)
+      benchmarkRun?: (options: {
+        provider: "whisper" | "nvidia";
+        model?: string;
+      }) => Promise<{ success: boolean; result?: BenchmarkResult; error?: string }>;
+      benchmarkGetLatest?: (
+        provider?: string
+      ) => Promise<{ success: boolean; result?: BenchmarkResult | null; error?: string }>;
 
       // Native file-open dialog
       showOpenDialog?: (options?: {

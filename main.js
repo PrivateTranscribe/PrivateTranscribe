@@ -54,6 +54,8 @@ const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
 const { ActionEngineManager } = require("./src/helpers/actionEngineManager");
+const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
+const HardwareDetector = require("./src/helpers/hardwareDetector");
 
 // Manager instances - initialized after app.whenReady()
 let debugLogger = null;
@@ -69,6 +71,7 @@ let updateManager = null;
 let globeKeyManager = null;
 let windowsKeyManager = null;
 let actionEngineManager = null;
+let benchmarkManager = null;
 let globeKeyAlertShown = false;
 
 // Set up PATH for production builds to find system tools (whisper.cpp, ffmpeg)
@@ -118,6 +121,15 @@ function initializeManagers() {
   windowsKeyManager = new WindowsKeyManager();
   windowManager._windowsKeyManagerRef = windowsKeyManager;
 
+  // Benchmark manager — measures local transcription speed
+  const hardwareDetector = new HardwareDetector();
+  benchmarkManager = new BenchmarkManager(
+    databaseManager,
+    whisperManager,
+    parakeetManager,
+    hardwareDetector
+  );
+
   // Set up Globe key error handler on macOS
   if (process.platform === "darwin") {
     globeKeyManager.on("error", (error) => {
@@ -159,6 +171,7 @@ function initializeManagers() {
     updateManager,
     windowsKeyManager,
     actionEngineManager,
+    benchmarkManager,
   });
 }
 

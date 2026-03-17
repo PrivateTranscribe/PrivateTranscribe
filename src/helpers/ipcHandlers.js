@@ -54,6 +54,7 @@ class IPCHandlers {
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
     this.actionEngineManager = managers.actionEngineManager || null;
+    this.benchmarkManager = managers.benchmarkManager || null;
     this.hardwareDetector = new HardwareDetector();
     // Current history limit — synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
@@ -458,7 +459,8 @@ class IPCHandlers {
 
     ipcMain.handle("parakeet-server-set-idle-timeout-minutes", async (_event, minutes) => {
       try {
-        if (!this.parakeetManager) return { success: false, error: "Parakeet manager not available" };
+        if (!this.parakeetManager)
+          return { success: false, error: "Parakeet manager not available" };
         return this.parakeetManager.setServerIdleTimeoutMinutes(minutes);
       } catch (error) {
         return { success: false, error: error.message };
@@ -1378,6 +1380,28 @@ class IPCHandlers {
       this.hardwareDetector.clearCache();
       return { success: true };
     });
+
+    // Benchmark (transcription speed test)
+    if (this.benchmarkManager) {
+      ipcMain.handle("benchmark-run", async (_event, options) => {
+        try {
+          const result = await this.benchmarkManager.run(options);
+          return { success: true, result };
+        } catch (error) {
+          debugLogger.error("Benchmark failed:", error);
+          return { success: false, error: error.message };
+        }
+      });
+
+      ipcMain.handle("benchmark-get-latest", async (_event, provider) => {
+        try {
+          const result = this.benchmarkManager.getLatest(provider || undefined);
+          return { success: true, result };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      });
+    }
 
     // Update handlers
     ipcMain.handle("check-for-updates", async () => {

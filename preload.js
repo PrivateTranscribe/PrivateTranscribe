@@ -46,7 +46,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Correction memory
   getCorrectionMemory: (limit) => ipcRenderer.invoke("db-get-correction-memory", limit),
   upsertCorrection: (source, target) => ipcRenderer.invoke("db-upsert-correction", source, target),
-  confirmCorrection: (source, target) => ipcRenderer.invoke("db-confirm-correction", source, target),
+  confirmCorrection: (source, target) =>
+    ipcRenderer.invoke("db-confirm-correction", source, target),
   deleteCorrection: (source) => ipcRenderer.invoke("db-delete-correction", source),
 
   // Stats functions
@@ -276,6 +277,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Hardware detection
   detectHardware: () => ipcRenderer.invoke("detect-hardware"),
   clearHardwareCache: () => ipcRenderer.invoke("clear-hardware-cache"),
+
+  // Benchmark (transcription speed test)
+  benchmarkRun: (options) => ipcRenderer.invoke("benchmark-run", options),
+  benchmarkGetLatest: (provider) => ipcRenderer.invoke("benchmark-get-latest", provider),
 
   // Audio ducking — lower/mute system volume while transcribing
   duckSystemAudio: (options) => ipcRenderer.invoke("duck-system-audio", options),
