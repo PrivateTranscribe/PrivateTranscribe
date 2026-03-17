@@ -6,6 +6,9 @@ const {
   computeRealtimeFactor,
   buildBenchmarkRecord,
   formatRealtimeFactor,
+  computeSpeedup,
+  buildComparisonRecord,
+  formatSpeedup,
   BENCHMARK_AUDIO_DURATION_SEC,
 } = require("../../../src/helpers/benchmarkManager");
 
@@ -193,6 +196,125 @@ describe("formatRealtimeFactor", () => {
     expect(formatRealtimeFactor(-1)).toBe("—");
     expect(formatRealtimeFactor(NaN)).toBe("—");
     expect(formatRealtimeFactor(Infinity)).toBe("—");
+  });
+});
+
+// ── computeSpeedup ───────────────────────────────────────────────────────
+
+describe("computeSpeedup", () => {
+  it("computes correct speedup ratio", () => {
+    // GPU is 5x faster than CPU: 50x / 10x = 5
+    expect(computeSpeedup(10, 50)).toBe(5);
+  });
+
+  it("handles GPU being slower than CPU", () => {
+    // GPU 2x, CPU 5x → speedup = 0.4
+    expect(computeSpeedup(5, 2)).toBe(0.4);
+  });
+
+  it("rounds to 2 decimal places", () => {
+    // 30 / 7 = 4.2857... → 4.29
+    expect(computeSpeedup(7, 30)).toBe(4.29);
+  });
+
+  it("returns 0 for zero CPU factor", () => {
+    expect(computeSpeedup(0, 10)).toBe(0);
+  });
+
+  it("returns 0 for negative CPU factor", () => {
+    expect(computeSpeedup(-5, 10)).toBe(0);
+  });
+
+  it("returns 0 for non-finite inputs", () => {
+    expect(computeSpeedup(NaN, 10)).toBe(0);
+    expect(computeSpeedup(10, NaN)).toBe(0);
+    expect(computeSpeedup(Infinity, 10)).toBe(0);
+  });
+
+  it("handles equal speeds", () => {
+    expect(computeSpeedup(5, 5)).toBe(1);
+  });
+});
+
+// ── buildComparisonRecord ────────────────────────────────────────────────
+
+describe("buildComparisonRecord", () => {
+  const cpuResult = buildBenchmarkRecord({
+    provider: "whisper",
+    model: "turbo",
+    gpuCategory: "nvidia_cuda",
+    audioDurationSec: 10,
+    elapsedMs: 2000,
+    cpuModel: "Intel i7",
+    cpuCores: 8,
+  });
+
+  const gpuResult = buildBenchmarkRecord({
+    provider: "nvidia",
+    model: "parakeet-tdt-0.6b-v3",
+    gpuCategory: "nvidia_cuda",
+    audioDurationSec: 10,
+    elapsedMs: 400,
+    gpuModel: "RTX 4090",
+    cpuModel: "Intel i7",
+    cpuCores: 8,
+  });
+
+  it("builds a record with all required fields", () => {
+    const comp = buildComparisonRecord({ cpuResult, gpuResult });
+
+    expect(comp.id).toBeTruthy();
+    expect(comp.cpuResult).toBe(cpuResult);
+    expect(comp.gpuResult).toBe(gpuResult);
+    expect(comp.speedup).toBeGreaterThan(0);
+    expect(comp.createdAt).toBeTruthy();
+  });
+
+  it("computes correct speedup from embedded results", () => {
+    const comp = buildComparisonRecord({ cpuResult, gpuResult });
+    // CPU: 10/2 = 5x, GPU: 10/0.4 = 25x → speedup = 25/5 = 5
+    expect(comp.speedup).toBe(5);
+  });
+
+  it("generates unique IDs", () => {
+    const a = buildComparisonRecord({ cpuResult, gpuResult });
+    const b = buildComparisonRecord({ cpuResult, gpuResult });
+    expect(a.id).not.toBe(b.id);
+  });
+});
+
+// ── formatSpeedup ────────────────────────────────────────────────────────
+
+describe("formatSpeedup", () => {
+  it("formats high speedups without decimals", () => {
+    expect(formatSpeedup(150)).toBe("150x faster");
+    expect(formatSpeedup(100)).toBe("100x faster");
+  });
+
+  it("formats medium speedups with 1 decimal", () => {
+    expect(formatSpeedup(12.34)).toBe("12.3x faster");
+    expect(formatSpeedup(10)).toBe("10.0x faster");
+  });
+
+  it("formats low speedups with 2 decimals", () => {
+    expect(formatSpeedup(3.456)).toBe("3.46x faster");
+    expect(formatSpeedup(1.5)).toBe("1.50x faster");
+  });
+
+  it("returns 'about the same speed' for near-1x speedups", () => {
+    expect(formatSpeedup(1.0)).toBe("about the same speed");
+    expect(formatSpeedup(1.04)).toBe("about the same speed");
+  });
+
+  it("formats speedups just above threshold", () => {
+    expect(formatSpeedup(1.05)).toBe("1.05x faster");
+  });
+
+  it("returns dash for invalid values", () => {
+    expect(formatSpeedup(0)).toBe("—");
+    expect(formatSpeedup(-1)).toBe("—");
+    expect(formatSpeedup(NaN)).toBe("—");
+    expect(formatSpeedup(Infinity)).toBe("—");
   });
 });
 

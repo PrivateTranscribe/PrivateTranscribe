@@ -15,11 +15,13 @@ import {
   AlertCircle,
   Zap,
   Timer,
+  ArrowRight,
 } from "lucide-react";
 import type {
   HardwareDetectionResult,
   HardwareGpuCategory,
   BenchmarkResult,
+  ComparisonBenchmarkResult,
 } from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -160,14 +162,25 @@ function GpuStatusCard() {
   const [benchResult, setBenchResult] = useState<BenchmarkResult | null>(null);
   const [benchError, setBenchError] = useState<string | null>(null);
 
+  // Comparison benchmark state
+  const [compState, setCompState] = useState<BenchmarkState>("idle");
+  const [compResult, setCompResult] = useState<ComparisonBenchmarkResult | null>(null);
+  const [compError, setCompError] = useState<string | null>(null);
+
   const settings = useSettings();
 
-  // Load latest benchmark on mount
+  // Load latest benchmark and comparison on mount
   useEffect(() => {
     window.electronAPI?.benchmarkGetLatest?.().then((res) => {
       if (res?.success && res.result) {
         setBenchResult(res.result);
         setBenchState("done");
+      }
+    });
+    window.electronAPI?.benchmarkGetLatestComparison?.().then((res) => {
+      if (res?.success && res.result) {
+        setCompResult(res.result);
+        setCompState("done");
       }
     });
   }, []);
@@ -212,6 +225,30 @@ function GpuStatusCard() {
     } catch (e) {
       setBenchError(e instanceof Error ? e.message : "Unknown error");
       setBenchState("error");
+    }
+  };
+
+  const runComparison = async () => {
+    setCompState("running");
+    setCompError(null);
+    try {
+      const res = await window.electronAPI?.benchmarkRunComparison?.({
+        cpuModel: settings.whisperModel || "turbo",
+        gpuModel: settings.parakeetModel || "parakeet-tdt-0.6b-v3",
+      });
+      if (res?.success && res.result) {
+        setCompResult(res.result);
+        setCompState("done");
+        // Also update the single-engine benchmark display with the GPU result
+        setBenchResult(res.result.gpuResult);
+        setBenchState("done");
+      } else {
+        setCompError(res?.error || "Comparison failed");
+        setCompState("error");
+      }
+    } catch (e) {
+      setCompError(e instanceof Error ? e.message : "Unknown error");
+      setCompState("error");
     }
   };
 
@@ -299,8 +336,80 @@ function GpuStatusCard() {
             </div>
           )}
 
-          {/* ── Speed Test / Benchmark section ────────────────── */}
-          {benchState === "done" && benchResult && (
+          {/* ── CPU vs GPU Comparison section ─────────────────── */}
+          {compState === "done" && compResult && (
+            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-3.5 h-3.5 text-primary" />
+                <p className="text-[11px] font-medium text-foreground">
+                  CPU vs GPU Speed Comparison
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* CPU result */}
+                <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
+                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
+                    CPU (Whisper)
+                  </p>
+                  <p className="text-sm font-semibold text-foreground tabular-nums">
+                    {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
+                  </p>
+                  <p className="text-[9px] text-muted-foreground">{compResult.cpuResult.model}</p>
+                </div>
+                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                {/* GPU result */}
+                <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
+                  <p className="text-[10px] font-medium text-primary mb-0.5">GPU (Parakeet)</p>
+                  <p className="text-sm font-semibold text-foreground tabular-nums">
+                    {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
+                  </p>
+                  <p className="text-[9px] text-muted-foreground">{compResult.gpuResult.model}</p>
+                </div>
+              </div>
+              {/* Speedup summary */}
+              {compResult.speedup >= 1.05 && (
+                <div className="mt-2 flex items-center justify-center gap-1.5">
+                  <span className="text-xs font-semibold text-primary tabular-nums">
+                    {compResult.speedup >= 10
+                      ? `${compResult.speedup.toFixed(1)}x`
+                      : `${compResult.speedup.toFixed(2)}x`}{" "}
+                    faster with GPU
+                  </span>
+                </div>
+              )}
+              {compResult.speedup > 0 && compResult.speedup < 1.05 && (
+                <div className="mt-2 flex items-center justify-center">
+                  <span className="text-[11px] text-muted-foreground">
+                    About the same speed on this device
+                  </span>
+                </div>
+              )}
+              <p className="text-[9px] text-muted-foreground mt-2 text-center">
+                Measured on this device · Different engines (Whisper CPU vs Parakeet GPU) — not a
+                same-engine comparison
+                {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
+              </p>
+            </div>
+          )}
+
+          {compState === "running" && (
+            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Running CPU vs GPU comparison — testing both engines on a 10-second sample…
+              </div>
+            </div>
+          )}
+
+          {compState === "error" && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
+              <AlertCircle className="w-3 h-3" />
+              Comparison failed: {compError}
+            </div>
+          )}
+
+          {/* ── Single-engine Speed Test section ─────────────────── */}
+          {benchState === "done" && benchResult && compState !== "done" && (
             <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <Zap className="w-3.5 h-3.5 text-primary" />
@@ -366,11 +475,23 @@ function GpuStatusCard() {
               variant="outline"
               size="sm"
               className="h-7 gap-1.5 text-[11px]"
-              disabled={benchState === "running"}
+              disabled={benchState === "running" || compState === "running"}
             >
               <Timer className="w-3 h-3" />
               {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
             </Button>
+            {gpuCategory === "nvidia_cuda" && (
+              <Button
+                onClick={runComparison}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-[11px]"
+                disabled={benchState === "running" || compState === "running"}
+              >
+                <Zap className="w-3 h-3" />
+                {compResult ? "Re-run CPU vs GPU" : "Compare CPU vs GPU"}
+              </Button>
+            )}
           </div>
         </div>
       </div>

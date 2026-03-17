@@ -281,6 +281,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Benchmark (transcription speed test)
   benchmarkRun: (options) => ipcRenderer.invoke("benchmark-run", options),
   benchmarkGetLatest: (provider) => ipcRenderer.invoke("benchmark-get-latest", provider),
+  benchmarkRunComparison: (options) => ipcRenderer.invoke("benchmark-run-comparison", options),
+  benchmarkGetLatestComparison: () => ipcRenderer.invoke("benchmark-get-latest-comparison"),
 
   // Audio ducking — lower/mute system volume while transcribing
   duckSystemAudio: (options) => ipcRenderer.invoke("duck-system-audio", options),

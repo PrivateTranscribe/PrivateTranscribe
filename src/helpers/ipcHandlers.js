@@ -1401,6 +1401,25 @@ class IPCHandlers {
           return { success: false, error: error.message };
         }
       });
+
+      ipcMain.handle("benchmark-run-comparison", async (_event, options) => {
+        try {
+          const result = await this.benchmarkManager.runComparison(options || {});
+          return { success: true, result };
+        } catch (error) {
+          debugLogger.error("Comparison benchmark failed:", error);
+          return { success: false, error: error.message };
+        }
+      });
+
+      ipcMain.handle("benchmark-get-latest-comparison", async () => {
+        try {
+          const result = this.benchmarkManager.getLatestComparison();
+          return { success: true, result };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      });
     }
 
     // Update handlers

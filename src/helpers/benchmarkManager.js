@@ -111,6 +111,54 @@ function formatRealtimeFactor(factor) {
   return `${factor.toFixed(2)}x real-time`;
 }
 
+/**
+ * Compute the speedup ratio between two real-time factors.
+ * Returns how many times faster the GPU result is compared to the CPU result.
+ * @param {number} cpuRealtimeFactor
+ * @param {number} gpuRealtimeFactor
+ * @returns {number} speedup (e.g. 5.2 means GPU is 5.2x faster)
+ */
+function computeSpeedup(cpuRealtimeFactor, gpuRealtimeFactor) {
+  if (
+    !Number.isFinite(cpuRealtimeFactor) ||
+    !Number.isFinite(gpuRealtimeFactor) ||
+    cpuRealtimeFactor <= 0
+  ) {
+    return 0;
+  }
+  return Math.round((gpuRealtimeFactor / cpuRealtimeFactor) * 100) / 100;
+}
+
+/**
+ * Build a comparison benchmark record from a CPU result and a GPU result.
+ * @param {object} params
+ * @param {object} params.cpuResult - benchmark record from CPU (whisper) run
+ * @param {object} params.gpuResult - benchmark record from GPU (nvidia) run
+ * @returns {object}
+ */
+function buildComparisonRecord({ cpuResult, gpuResult }) {
+  return {
+    id: randomUUID(),
+    cpuResult,
+    gpuResult,
+    speedup: computeSpeedup(cpuResult.realtimeFactor, gpuResult.realtimeFactor),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Format a speedup ratio for display (e.g., "5.2x faster").
+ * @param {number} speedup
+ * @returns {string}
+ */
+function formatSpeedup(speedup) {
+  if (!Number.isFinite(speedup) || speedup <= 0) return "—";
+  if (speedup < 1.05) return "about the same speed";
+  if (speedup >= 100) return `${Math.round(speedup)}x faster`;
+  if (speedup >= 10) return `${speedup.toFixed(1)}x faster`;
+  return `${speedup.toFixed(2)}x faster`;
+}
+
 // ── BenchmarkManager class ───────────────────────────────────────────────
 
 const BENCHMARK_AUDIO_DURATION_SEC = 10;
@@ -130,6 +178,7 @@ class BenchmarkManager {
     this._running = false;
 
     this._ensureTable();
+    this._ensureComparisonTable();
   }
 
   _ensureTable() {
@@ -151,6 +200,24 @@ class BenchmarkManager {
       `);
     } catch (err) {
       debugLogger.warn("Failed to create benchmarks table", { error: err.message });
+    }
+  }
+
+  _ensureComparisonTable() {
+    try {
+      this.databaseManager.db.exec(`
+        CREATE TABLE IF NOT EXISTS benchmark_comparisons (
+          id TEXT PRIMARY KEY,
+          cpu_benchmark_id TEXT NOT NULL,
+          gpu_benchmark_id TEXT NOT NULL,
+          speedup REAL NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (cpu_benchmark_id) REFERENCES benchmarks(id),
+          FOREIGN KEY (gpu_benchmark_id) REFERENCES benchmarks(id)
+        )
+      `);
+    } catch (err) {
+      debugLogger.warn("Failed to create benchmark_comparisons table", { error: err.message });
     }
   }
 
@@ -291,6 +358,159 @@ class BenchmarkManager {
     }
   }
 
+  /**
+   * Run a CPU vs GPU comparison benchmark.
+   * Runs whisper (CPU) and parakeet (GPU) sequentially on the same audio,
+   * then stores the individual results and the comparison.
+   * @param {object} [options]
+   * @param {string} [options.cpuModel] - whisper model (default: "turbo")
+   * @param {string} [options.gpuModel] - parakeet model (default: "parakeet-tdt-0.6b-v3")
+   * @returns {Promise<object>} comparison record with cpuResult, gpuResult, speedup
+   */
+  async runComparison({ cpuModel, gpuModel } = {}) {
+    if (this._running) {
+      throw new Error("A benchmark is already running");
+    }
+    this._running = true;
+
+    try {
+      debugLogger.info("Comparison benchmark starting", { cpuModel, gpuModel });
+
+      // Generate a single audio sample used for both engines
+      const audioBuffer = generateSilentWav(BENCHMARK_AUDIO_DURATION_SEC);
+
+      // Detect hardware once
+      let detection = null;
+      try {
+        detection = await this.hardwareDetector.detectHardware();
+      } catch {
+        // Non-fatal
+      }
+
+      const hwContext = {
+        gpuCategory: detection?.recommendations?.gpuCategory || "cpu_only",
+        gpuModelName: detection?.gpu?.model || null,
+        cpuModelName: detection?.cpu?.model || null,
+        cpuCores: detection?.cpu?.count || null,
+      };
+
+      // ── Run CPU (Whisper) benchmark ──
+      const cpuModelName = cpuModel || "turbo";
+      const cpuStart = Date.now();
+      await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
+        model: cpuModelName,
+        inputFileName: "benchmark.wav",
+      });
+      const cpuElapsed = Date.now() - cpuStart;
+
+      const cpuRecord = buildBenchmarkRecord({
+        provider: "whisper",
+        model: cpuModelName,
+        gpuCategory: hwContext.gpuCategory,
+        audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
+        elapsedMs: cpuElapsed,
+        gpuModel: hwContext.gpuModelName,
+        cpuModel: hwContext.cpuModelName,
+        cpuCores: hwContext.cpuCores,
+      });
+      this._saveResult(cpuRecord);
+
+      // ── Run GPU (Parakeet) benchmark ──
+      const gpuModelName = gpuModel || "parakeet-tdt-0.6b-v3";
+      const gpuStart = Date.now();
+      await this.parakeetManager.transcribeLocalParakeet(audioBuffer, {
+        model: gpuModelName,
+      });
+      const gpuElapsed = Date.now() - gpuStart;
+
+      const gpuRecord = buildBenchmarkRecord({
+        provider: "nvidia",
+        model: gpuModelName,
+        gpuCategory: hwContext.gpuCategory,
+        audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
+        elapsedMs: gpuElapsed,
+        gpuModel: hwContext.gpuModelName,
+        cpuModel: hwContext.cpuModelName,
+        cpuCores: hwContext.cpuCores,
+      });
+      this._saveResult(gpuRecord);
+
+      // ── Build and persist comparison ──
+      const comparison = buildComparisonRecord({
+        cpuResult: cpuRecord,
+        gpuResult: gpuRecord,
+      });
+      this._saveComparison(comparison);
+
+      debugLogger.info("Comparison benchmark completed", {
+        cpuRealtimeFactor: cpuRecord.realtimeFactor,
+        gpuRealtimeFactor: gpuRecord.realtimeFactor,
+        speedup: comparison.speedup,
+      });
+
+      return comparison;
+    } finally {
+      this._running = false;
+    }
+  }
+
+  _saveComparison(comparison) {
+    try {
+      const stmt = this.databaseManager.db.prepare(`
+        INSERT INTO benchmark_comparisons (id, cpu_benchmark_id, gpu_benchmark_id, speedup, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        comparison.id,
+        comparison.cpuResult.id,
+        comparison.gpuResult.id,
+        comparison.speedup,
+        comparison.createdAt
+      );
+    } catch (err) {
+      debugLogger.warn("Failed to save comparison result", { error: err.message });
+    }
+  }
+
+  /**
+   * Get the most recent comparison benchmark result.
+   * Joins with the individual benchmark records to return full context.
+   * @returns {object|null}
+   */
+  getLatestComparison() {
+    try {
+      const row = this.databaseManager.db
+        .prepare(
+          `SELECT c.id, c.cpu_benchmark_id, c.gpu_benchmark_id, c.speedup, c.created_at
+           FROM benchmark_comparisons c
+           ORDER BY c.created_at DESC LIMIT 1`
+        )
+        .get();
+
+      if (!row) return null;
+
+      const cpuRow = this.databaseManager.db
+        .prepare("SELECT * FROM benchmarks WHERE id = ?")
+        .get(row.cpu_benchmark_id);
+      const gpuRow = this.databaseManager.db
+        .prepare("SELECT * FROM benchmarks WHERE id = ?")
+        .get(row.gpu_benchmark_id);
+
+      if (!cpuRow || !gpuRow) return null;
+
+      return {
+        id: row.id,
+        cpuResult: this._rowToRecord(cpuRow),
+        gpuResult: this._rowToRecord(gpuRow),
+        speedup: row.speedup,
+        createdAt: row.created_at,
+      };
+    } catch (err) {
+      debugLogger.warn("Failed to get comparison result", { error: err.message });
+      return null;
+    }
+  }
+
   /** @returns {boolean} */
   isRunning() {
     return this._running;
@@ -320,5 +540,8 @@ module.exports = {
   computeRealtimeFactor,
   buildBenchmarkRecord,
   formatRealtimeFactor,
+  computeSpeedup,
+  buildComparisonRecord,
+  formatSpeedup,
   BENCHMARK_AUDIO_DURATION_SEC,
 };

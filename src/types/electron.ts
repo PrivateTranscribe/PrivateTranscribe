@@ -275,6 +275,15 @@ export interface BenchmarkResult {
   createdAt: string;
 }
 
+export interface ComparisonBenchmarkResult {
+  id: string;
+  cpuResult: BenchmarkResult;
+  gpuResult: BenchmarkResult;
+  /** GPU real-time factor / CPU real-time factor — how many times faster GPU is. */
+  speedup: number;
+  createdAt: string;
+}
+
 export interface AggregateStats {
   total_words: number;
   total_transcriptions: number;
@@ -585,6 +594,16 @@ declare global {
       benchmarkGetLatest?: (
         provider?: string
       ) => Promise<{ success: boolean; result?: BenchmarkResult | null; error?: string }>;
+      benchmarkRunComparison?: (options?: { cpuModel?: string; gpuModel?: string }) => Promise<{
+        success: boolean;
+        result?: ComparisonBenchmarkResult;
+        error?: string;
+      }>;
+      benchmarkGetLatestComparison?: () => Promise<{
+        success: boolean;
+        result?: ComparisonBenchmarkResult | null;
+        error?: string;
+      }>;
 
       // Native file-open dialog
       showOpenDialog?: (options?: {
