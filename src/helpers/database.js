@@ -435,14 +435,16 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      // Return distinct "YYYY-MM-DD" date strings for ALL real dictation sessions — no lookback
-      // cap so the streak can grow indefinitely with daily use. substr() extracts the date
-      // portion from the stored UTC-formatted timestamp string, consistent with how the renderer
-      // parses timestamps (treating them as wall-clock local time). Streak computation in the
-      // renderer uses toLocalDateKey(new Date()) for today, so both sides apply the same
-      // UTC-as-local approximation.
+      // Return distinct local-calendar "YYYY-MM-DD" date strings for ALL real dictation
+      // sessions — no lookback cap so the streak can grow indefinitely with daily use.
+      //
+      // Important: SQLite CURRENT_TIMESTAMP stores UTC. The renderer computes streak anchors
+      // using the user's local day (toLocalDateKey(new Date())). If we simply substr() the raw
+      // stored timestamp, dictations just after local midnight can still appear under the prior
+      // UTC date and collapse a 2-day local streak into 1. Convert to localtime here so the DB
+      // date keys match the renderer's local day boundary.
       const stmt = this.db.prepare(`
-        SELECT DISTINCT substr(timestamp, 1, 10) AS date_key
+        SELECT DISTINCT strftime('%Y-%m-%d', datetime(timestamp, 'localtime')) AS date_key
         FROM transcriptions
         WHERE include_in_stats = 1
         ORDER BY date_key DESC

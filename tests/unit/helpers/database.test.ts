@@ -16,6 +16,7 @@ interface Transcription {
   text: string;
   timestamp: string;
   created_at: string;
+  include_in_stats: number;
 }
 
 interface DictionaryEntry {
@@ -72,16 +73,17 @@ class MockDatabaseManager {
     }
 
     const now = new Date().toISOString();
+    const includeInStats = options?.includeInStats !== false;
+
     const transcription: Transcription = {
       id: this.nextTranscriptionId++,
       text,
       timestamp: now,
       created_at: now,
+      include_in_stats: includeInStats ? 1 : 0,
     };
 
     this.transcriptions.push(transcription);
-
-    const includeInStats = options?.includeInStats !== false;
 
     if (includeInStats) {
       const wordCount = text.split(/\s+/).filter(Boolean).length;
@@ -217,6 +219,47 @@ class MockDatabaseManager {
     return { ...this.stats };
   }
 
+  private toLocalDateKey(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  private parseStoredTimestampAsUtc(timestamp: string): Date {
+    // Production stores SQLite CURRENT_TIMESTAMP values like "YYYY-MM-DD HH:MM:SS" in UTC.
+    // Our tests also allow ISO strings; both should map onto the user's local calendar day.
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+      return new Date(timestamp.replace(" ", "T") + "Z");
+    }
+    return new Date(timestamp);
+  }
+
+  getStreakDates(): string[] {
+    const distinct = new Set<string>();
+    for (const transcription of this.transcriptions) {
+      if (transcription.include_in_stats !== 1) continue;
+      const parsed = this.parseStoredTimestampAsUtc(transcription.timestamp);
+      distinct.add(this.toLocalDateKey(parsed));
+    }
+    return Array.from(distinct).sort().reverse();
+  }
+
+  insertTestTranscription({
+    text,
+    timestamp,
+    includeInStats = true,
+  }: {
+    text: string;
+    timestamp: string;
+    includeInStats?: boolean;
+  }): void {
+    this.transcriptions.push({
+      id: this.nextTranscriptionId++,
+      text,
+      timestamp,
+      created_at: timestamp,
+      include_in_stats: includeInStats ? 1 : 0,
+    });
+  }
+
   // Test helper to reset state
   reset(): void {
     this.transcriptions = [];
@@ -325,6 +368,53 @@ describe("DatabaseManager", () => {
     it("returns empty array when no transcriptions exist", () => {
       const results = db.getTranscriptions();
       expect(results).toEqual([]);
+    });
+  });
+
+  describe("getStreakDates", () => {
+    it("returns distinct local-calendar dates for included transcriptions", () => {
+      db.insertTestTranscription({ text: "A", timestamp: "2026-03-17 08:00:00" });
+      db.insertTestTranscription({ text: "B", timestamp: "2026-03-17 09:00:00" });
+      db.insertTestTranscription({ text: "C", timestamp: "2026-03-16 09:00:00" });
+
+      expect(db.getStreakDates()).toEqual(["2026-03-17", "2026-03-16"]);
+    });
+
+    it("converts UTC timestamps to local dates so just-after-midnight sessions count for the new day", () => {
+      const timezoneOffsetMinutes = new Date().getTimezoneOffset();
+      if (timezoneOffsetMinutes === 0) {
+        // In UTC this boundary bug cannot be reproduced because UTC and local dates match.
+        return;
+      }
+
+      // 23:30 UTC and 00:30 UTC on consecutive UTC days. In UTC+1 (e.g. Copenhagen in winter)
+      // these land on different local dates even though the raw UTC date extraction would be
+      // 2026-03-16 and 2026-03-17. The test computes expected local dates dynamically so it also
+      // stays valid in DST-aware environments.
+      db.insertTestTranscription({ text: "late night", timestamp: "2026-03-16 23:30:00" });
+      db.insertTestTranscription({ text: "after midnight", timestamp: "2026-03-17 00:30:00" });
+
+      const expected = [
+        new Date("2026-03-17T00:30:00Z"),
+        new Date("2026-03-16T23:30:00Z"),
+      ]
+        .map((d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
+        .filter((value, index, arr) => arr.indexOf(value) === index)
+        .sort()
+        .reverse();
+
+      expect(db.getStreakDates()).toEqual(expected);
+    });
+
+    it("ignores transcriptions excluded from stats", () => {
+      db.insertTestTranscription({ text: "count me", timestamp: "2026-03-17 08:00:00" });
+      db.insertTestTranscription({
+        text: "skip me",
+        timestamp: "2026-03-16 08:00:00",
+        includeInStats: false,
+      });
+
+      expect(db.getStreakDates()).toEqual(["2026-03-17"]);
     });
   });
 
