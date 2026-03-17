@@ -412,6 +412,24 @@ class HardwareDetector {
   }
 
   /**
+   * Return a properly-capitalised display name for an internal vendor key.
+   *
+   * Internal keys are lowercase (nvidia, amd, intel, apple, unknown).
+   * The UI should always call this rather than naively title-casing the raw key,
+   * because "amd".charAt(0).toUpperCase() + "amd".slice(1) === "Amd" which is wrong.
+   */
+  getVendorDisplayName(vendor) {
+    const names = {
+      nvidia: "NVIDIA",
+      amd: "AMD",
+      intel: "Intel",
+      apple: "Apple",
+      unknown: "Unknown",
+    };
+    return names[vendor] ?? (vendor ? vendor.charAt(0).toUpperCase() + vendor.slice(1) : "Unknown");
+  }
+
+  /**
    * Identify GPU vendor from model string
    */
   identifyVendor(model) {
@@ -558,7 +576,9 @@ class HardwareDetector {
       );
 
       if (gpu.vram && gpu.vram >= 4096) {
-        rec.reasoning.push(`GPU has ${gpu.vram}MB VRAM - excellent for local transcription`);
+        const vramDisplay =
+          gpu.vram >= 1024 ? `${(gpu.vram / 1024).toFixed(1)} GB` : `${gpu.vram} MB`;
+        rec.reasoning.push(`GPU has ${vramDisplay} VRAM — excellent for local transcription`);
       }
 
       return rec;
@@ -574,16 +594,16 @@ class HardwareDetector {
         `NVIDIA GPU detected (${gpu.model || "GPU"}) but CUDA runtime is not available — falling back to CPU with Whisper`
       );
       rec.recoverySteps = [
-        "Install or update your NVIDIA drivers (version 520 or later recommended) from nvidia.com/drivers",
-        "Modern NVIDIA drivers include the CUDA runtime — a separate CUDA Toolkit install is usually not needed",
-        "After updating drivers, restart Privoca to re-detect hardware and enable Parakeet GPU acceleration",
+        "Update or install NVIDIA drivers (v520 or later recommended) — download from nvidia.com/drivers",
+        "Modern NVIDIA drivers (v450+) bundle the CUDA runtime libraries that Parakeet requires — no separate CUDA Toolkit install is needed for transcription",
+        "After updating drivers, use 'Re-detect Hardware' in Privoca Settings → Transcription, or restart the app to enable Parakeet GPU acceleration",
       ];
     } else if (gpu.available && gpu.vendor && gpu.vendor !== "unknown") {
       // ── Non-NVIDIA GPU (AMD, Intel, etc.) — no current CUDA acceleration path ─
       rec.gpuCategory = "non_nvidia_gpu";
       rec.localTranscriptionProvider = "whisper";
       rec.transcriptionProvider = "local";
-      const vendorName = gpu.vendor.charAt(0).toUpperCase() + gpu.vendor.slice(1);
+      const vendorName = this.getVendorDisplayName(gpu.vendor);
       rec.reasoning.push(
         `${vendorName} GPU detected — Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA)`
       );

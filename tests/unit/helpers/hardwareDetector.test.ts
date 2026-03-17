@@ -384,3 +384,157 @@ describe("HardwareDetector.generateRecommendations", () => {
     });
   });
 });
+
+// ── parseVRAM ──────────────────────────────────────────────────────────────
+
+describe("HardwareDetector.parseVRAM", () => {
+  let detector: { parseVRAM: (v: unknown) => number | null };
+
+  beforeEach(() => {
+    detector = new HardwareDetector();
+  });
+
+  it("parses '8192 MiB' → 8192", () => {
+    expect(detector.parseVRAM("8192 MiB")).toBe(8192);
+  });
+
+  it("parses '8 GiB' → 8192", () => {
+    expect(detector.parseVRAM("8 GiB")).toBe(8192);
+  });
+
+  it("parses '8 GB' → 8192", () => {
+    expect(detector.parseVRAM("8 GB")).toBe(8192);
+  });
+
+  it("parses '10,240 MiB' (comma separator) → 10240", () => {
+    expect(detector.parseVRAM("10,240 MiB")).toBe(10240);
+  });
+
+  it("parses pure byte string (WMIC style) → MiB", () => {
+    // 8 GiB in bytes = 8 * 1024 * 1024 * 1024 = 8589934592
+    expect(detector.parseVRAM("8589934592")).toBe(8192);
+  });
+
+  it("parses numeric bytes (number type) → MiB", () => {
+    expect(detector.parseVRAM(8589934592)).toBe(8192);
+  });
+
+  it("returns null for null input", () => {
+    expect(detector.parseVRAM(null)).toBeNull();
+  });
+
+  it("returns null for undefined input", () => {
+    expect(detector.parseVRAM(undefined)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(detector.parseVRAM("")).toBeNull();
+  });
+
+  it("returns null for non-numeric string", () => {
+    expect(detector.parseVRAM("no vram")).toBeNull();
+  });
+
+  it("parses '4096 MB' → 4096", () => {
+    expect(detector.parseVRAM("4096 MB")).toBe(4096);
+  });
+
+  it("passes through small integer values (already MiB)", () => {
+    // Values <= 16 * 1024 * 1024 (16 TiB) are treated as MiB
+    expect(detector.parseVRAM(4096)).toBe(4096);
+  });
+});
+
+// ── getVendorDisplayName ───────────────────────────────────────────────────
+
+describe("HardwareDetector.getVendorDisplayName", () => {
+  let detector: { getVendorDisplayName: (v: string) => string };
+
+  beforeEach(() => {
+    detector = new HardwareDetector();
+  });
+
+  it("returns 'NVIDIA' for 'nvidia'", () => {
+    expect(detector.getVendorDisplayName("nvidia")).toBe("NVIDIA");
+  });
+
+  it("returns 'AMD' for 'amd' (not 'Amd')", () => {
+    expect(detector.getVendorDisplayName("amd")).toBe("AMD");
+  });
+
+  it("returns 'Intel' for 'intel'", () => {
+    expect(detector.getVendorDisplayName("intel")).toBe("Intel");
+  });
+
+  it("returns 'Apple' for 'apple'", () => {
+    expect(detector.getVendorDisplayName("apple")).toBe("Apple");
+  });
+
+  it("returns 'Unknown' for 'unknown'", () => {
+    expect(detector.getVendorDisplayName("unknown")).toBe("Unknown");
+  });
+
+  it("non-NVIDIA AMD GPU uses AMD display name in reasoning", () => {
+    const genRec = new HardwareDetector();
+    const rec = genRec.generateRecommendations(
+      makeDetection({
+        gpu: {
+          available: true,
+          vendor: "amd",
+          model: "Radeon RX 7900",
+          vram: 24576,
+          cuda: { available: false, version: null },
+          metal: { available: false, version: null },
+        },
+      })
+    );
+    // Must be "AMD", not "Amd"
+    expect((rec.reasoning as string[]).join(" ")).toContain("AMD");
+    expect((rec.reasoning as string[]).join(" ")).not.toMatch(/\bAmd\b/);
+  });
+});
+
+// ── VRAM display in reasoning ──────────────────────────────────────────────
+
+describe("VRAM display in NVIDIA CUDA reasoning", () => {
+  let detector: { generateRecommendations: (d: unknown) => Record<string, unknown> };
+
+  beforeEach(() => {
+    detector = new HardwareDetector();
+  });
+
+  it("shows GB notation for VRAM >= 1024 MiB", () => {
+    const rec = detector.generateRecommendations(
+      makeDetection({
+        gpu: {
+          available: true,
+          vendor: "nvidia",
+          model: "RTX 4090",
+          vram: 24576, // 24 GiB
+          cuda: { available: true, version: "12.3" },
+          metal: { available: false, version: null },
+        },
+      })
+    );
+    const combined = (rec.reasoning as string[]).join(" ");
+    expect(combined).toMatch(/\d+(\.\d+)?\s*GB/);
+    expect(combined).not.toMatch(/24576\s*MB/);
+  });
+
+  it("VRAM reasoning includes 'GB' for 4096 MiB (4 GB)", () => {
+    const rec = detector.generateRecommendations(
+      makeDetection({
+        gpu: {
+          available: true,
+          vendor: "nvidia",
+          model: "RTX 3080",
+          vram: 4096,
+          cuda: { available: true, version: "12.0" },
+          metal: { available: false, version: null },
+        },
+      })
+    );
+    const combined = (rec.reasoning as string[]).join(" ");
+    expect(combined).toContain("4.0 GB");
+  });
+});
