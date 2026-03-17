@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { FolderOpen, Copy, Check } from "lucide-react";
+import { FolderOpen, Copy, Check, Mail } from "lucide-react";
 import { useToast } from "./ui/Toast";
 import { Toggle } from "./ui/toggle";
 import { useProPreview, type ProPreviewMode } from "../hooks/useProStatus";
@@ -116,23 +116,27 @@ export default function DeveloperSection() {
 
   const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
 
+  const buildDebugInfo = async () => {
+    const version = (await window.electronAPI?.getAppVersion?.()) || "unknown";
+    const platform = navigator.platform || "unknown";
+    const userAgent = navigator.userAgent || "unknown";
+    const electronVersion = process?.versions?.electron || "unknown";
+    const debugState = (await window.electronAPI?.getDebugState?.()) || {};
+
+    return [
+      `Privoca v${version}`,
+      `Platform: ${platform}`,
+      `Electron: ${electronVersion}`,
+      `Debug logging: ${debugState.enabled ? "ON" : "OFF"}`,
+      `Log path: ${debugState.logPath || "N/A"}`,
+      `User agent: ${userAgent}`,
+      `Timestamp: ${new Date().toISOString()}`,
+    ].join("\n");
+  };
+
   const handleCopyDebugInfo = async () => {
     try {
-      const version = (await window.electronAPI?.getAppVersion?.()) || "unknown";
-      const platform = navigator.platform || "unknown";
-      const userAgent = navigator.userAgent || "unknown";
-      const electronVersion = process?.versions?.electron || "unknown";
-      const debugState = (await window.electronAPI?.getDebugState?.()) || {};
-
-      const info = [
-        `Privoca v${version}`,
-        `Platform: ${platform}`,
-        `Electron: ${electronVersion}`,
-        `Debug logging: ${debugState.enabled ? "ON" : "OFF"}`,
-        `Log path: ${debugState.logPath || "N/A"}`,
-        `User agent: ${userAgent}`,
-        `Timestamp: ${new Date().toISOString()}`,
-      ].join("\n");
+      const info = await buildDebugInfo();
 
       await writeToClipboard(info);
       setCopiedDebugInfo(true);
@@ -147,6 +151,36 @@ export default function DeveloperSection() {
       toast({
         title: "Copy failed",
         description: "Could not copy debug info",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSendLogs = async () => {
+    try {
+      const info = await buildDebugInfo();
+      const mailto = `mailto:support@Privoca.com?subject=${encodeURIComponent("Privoca debug logs")}&body=${encodeURIComponent(
+        `${info}\n\nIssue description:\n\n\nIf logs are enabled, please attach the current log file or zip the logs folder before sending.`
+      )}`;
+
+      const result = await window.electronAPI?.openExternal?.(mailto);
+      if (result && "success" in result && !result.success) {
+        await window.electronAPI?.openExternal?.(
+          `https://mail.google.com/mail/?view=cm&to=support@Privoca.com&su=${encodeURIComponent("Privoca debug logs")}&body=${encodeURIComponent(
+            `${info}\n\nIssue description:\n\n\nIf logs are enabled, please attach the current log file or zip the logs folder before sending.`
+          )}`
+        );
+      }
+
+      toast({
+        title: "Email draft opened",
+        description: "Support email drafted with system info and log path",
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Could not open email",
+        description: `Failed to prepare support email: ${error}`,
         variant: "destructive",
       });
     }
@@ -207,7 +241,7 @@ export default function DeveloperSection() {
       </div>
 
       {/* Quick actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} className="text-xs">
           {copiedDebugInfo ? (
             <Check className="mr-1.5 h-3.5 w-3.5 text-green-500" />
@@ -215,6 +249,10 @@ export default function DeveloperSection() {
             <Copy className="mr-1.5 h-3.5 w-3.5" />
           )}
           {copiedDebugInfo ? "Copied!" : "Copy system info"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleSendLogs} className="text-xs">
+          <Mail className="mr-1.5 h-3.5 w-3.5" />
+          Send logs
         </Button>
       </div>
 
