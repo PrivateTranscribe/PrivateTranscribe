@@ -2,7 +2,20 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
-import { RefreshCw, Download, Upload, Mic, Shield, FolderOpen } from "lucide-react";
+import {
+  RefreshCw,
+  Download,
+  Upload,
+  Mic,
+  Shield,
+  FolderOpen,
+  MonitorSmartphone,
+  ExternalLink,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import type { HardwareDetectionResult, HardwareGpuCategory } from "../types/electron";
+import { openExternalLink } from "../utils/externalLinks";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
@@ -81,6 +94,167 @@ function SectionHeader({ title, description }: { title: string; description?: st
       {description && (
         <p className="text-sm text-muted-foreground/80 mt-1.5 leading-relaxed">{description}</p>
       )}
+    </div>
+  );
+}
+
+// ── GPU Status card — shown in Transcription settings ──────────────────
+
+type GpuDetectState = "idle" | "detecting" | "done" | "error";
+
+const GPU_CATEGORY_LABELS: Record<HardwareGpuCategory, string> = {
+  nvidia_cuda: "NVIDIA + CUDA ready",
+  nvidia_no_cuda: "NVIDIA GPU — CUDA not ready",
+  non_nvidia_gpu: "Non-NVIDIA GPU",
+  metal: "Apple Metal ready",
+  cpu_only: "CPU only",
+};
+
+const GPU_CATEGORY_VARIANT: Record<
+  HardwareGpuCategory,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
+  nvidia_cuda: "default",
+  metal: "default",
+  nvidia_no_cuda: "outline",
+  non_nvidia_gpu: "secondary",
+  cpu_only: "secondary",
+};
+
+function GpuStatusCard() {
+  const [detectState, setDetectState] = useState<GpuDetectState>("idle");
+  const [detection, setDetection] = useState<HardwareDetectionResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runDetect = async (clearCache = false) => {
+    setDetectState("detecting");
+    setError(null);
+    try {
+      if (clearCache) await window.electronAPI?.clearHardwareCache?.();
+      const result = await window.electronAPI?.detectHardware?.();
+      if (result?.success && result.detection) {
+        setDetection(result.detection);
+        setDetectState("done");
+      } else {
+        setError(result?.error || "Detection failed");
+        setDetectState("error");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setDetectState("error");
+    }
+  };
+
+  const rec = detection?.recommendations;
+  const gpuCategory = rec?.gpuCategory;
+  const isNvidiaNoCuda = gpuCategory === "nvidia_no_cuda";
+
+  return (
+    <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
+      <div className="p-4 flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+          <MonitorSmartphone className="w-4 h-4 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-medium text-foreground">GPU Acceleration Status</p>
+            {gpuCategory && (
+              <Badge variant={GPU_CATEGORY_VARIANT[gpuCategory]} className="text-[10px] shrink-0">
+                {GPU_CATEGORY_LABELS[gpuCategory]}
+              </Badge>
+            )}
+          </div>
+
+          {detectState === "idle" && (
+            <p className="text-xs text-muted-foreground mt-1 mb-2">
+              Check whether your GPU is ready for local acceleration.
+            </p>
+          )}
+
+          {detectState === "detecting" && (
+            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Scanning hardware…
+            </div>
+          )}
+
+          {detectState === "error" && (
+            <div className="flex items-center gap-2 mt-2 text-xs text-destructive">
+              <AlertCircle className="w-3 h-3" />
+              {error}
+            </div>
+          )}
+
+          {detectState === "done" && detection && (
+            <div className="mt-2 space-y-1">
+              {detection.gpu.available ? (
+                <p className="text-xs text-muted-foreground">
+                  {detection.gpu.model ?? "GPU detected"}
+                  {detection.gpu.vram
+                    ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
+                    : ""}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No discrete GPU detected — CPU transcription only
+                </p>
+              )}
+              {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
+                <div className="mt-2 rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5">
+                  <p className="text-[11px] font-medium text-foreground">
+                    To enable GPU acceleration:
+                  </p>
+                  <ol className="space-y-1 list-none">
+                    {rec.recoverySteps.map((step, i) => (
+                      <li
+                        key={i}
+                        className="text-[11px] text-muted-foreground flex items-start gap-1.5"
+                      >
+                        <span className="text-warning font-medium mt-0.5 shrink-0">{i + 1}.</span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <Button
+                    onClick={() => openExternalLink("https://www.nvidia.com/drivers")}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px] mt-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Download NVIDIA Drivers
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {detectState === "idle" && (
+              <Button
+                onClick={() => runDetect(false)}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-[11px]"
+              >
+                <MonitorSmartphone className="w-3 h-3" />
+                Check GPU Status
+              </Button>
+            )}
+            {(detectState === "done" || detectState === "error") && (
+              <Button
+                onClick={() => runDetect(true)}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-[11px]"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Re-detect Hardware
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1462,6 +1636,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </SettingsRow>
                   </SettingsPanelRow>
                 </SettingsPanel>
+              </div>
+            )}
+
+            {/* GPU Status — always visible in Transcription tab for local users */}
+            {useLocalWhisper && (
+              <div className="mt-6">
+                <SectionHeader
+                  title="GPU acceleration"
+                  description="Check whether your system supports GPU-accelerated transcription"
+                />
+                <GpuStatusCard />
               </div>
             )}
           </div>

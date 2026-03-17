@@ -8,7 +8,9 @@ import {
   AlertCircle,
   Loader2,
   Wrench,
+  ExternalLink,
 } from "lucide-react";
+import { openExternalLink } from "../../utils/externalLinks";
 import { cn } from "../lib/utils";
 import type {
   HardwareDetectionResult,
@@ -41,11 +43,14 @@ export default function HardwareSetupStep({
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
 
-  const runDetection = async () => {
+  const runDetection = async (clearCache = false) => {
     setDetectionState("detecting");
     setError(null);
 
     try {
+      if (clearCache) {
+        await window.electronAPI?.clearHardwareCache?.();
+      }
       const result = await window.electronAPI?.detectHardware?.();
       if (result?.success && result.detection) {
         setDetection(result.detection);
@@ -59,6 +64,8 @@ export default function HardwareSetupStep({
       setDetectionState("error");
     }
   };
+
+  const handleRedetect = () => runDetection(true);
 
   // Auto-run detection on mount
   useEffect(() => {
@@ -308,9 +315,7 @@ export default function HardwareSetupStep({
                 <Wrench className="w-3.5 h-3.5 text-warning" />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-medium text-foreground">
-                  To enable GPU acceleration later:
-                </h4>
+                <h4 className="text-xs font-medium text-foreground">To enable GPU acceleration:</h4>
                 <ol className="mt-1.5 space-y-1 list-none">
                   {recoverySteps.map((step, idx) => (
                     <li
@@ -322,6 +327,26 @@ export default function HardwareSetupStep({
                     </li>
                   ))}
                 </ol>
+                <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                  <Button
+                    onClick={() => openExternalLink("https://www.nvidia.com/drivers")}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px]"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Download NVIDIA Drivers
+                  </Button>
+                  <Button
+                    onClick={handleRedetect}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px]"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Re-detect Hardware
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
