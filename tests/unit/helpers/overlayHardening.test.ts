@@ -56,6 +56,17 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(block).toContain("Math.min");
     expect(block).toContain("workArea.x");
   });
+
+  test("toast expansion preserves the original base X anchor for collapse/edge flips", () => {
+    // The overlay should remember its base-size X position before temporary
+    // expansions so right-edge toast flips don't leave the mic shifted.
+    const idx = windowManager.indexOf("resizeMainWindow");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 2600);
+    expect(block).toContain("this._originalBaseX");
+    expect(block).toContain("WINDOW_SIZES.BASE.width");
+    expect(block).toContain("?? bottomLeftX");
+  });
 });
 
 // ─── Toast positioning — adaptive side placement in tiny overlay ────────────
