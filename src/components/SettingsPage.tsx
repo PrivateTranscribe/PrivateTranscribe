@@ -710,6 +710,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   } = useSettings();
 
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
+  const smartContextUnlocked = isFeatureUnlocked("smart-context");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -1731,9 +1732,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Context capture"
-                    description="Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) — always sanitized and kept local."
+                    description={
+                      smartContextUnlocked
+                        ? "Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) — always sanitized and kept local."
+                        : "Pro feature — unlock in Settings → Pro to enable Smart Context / context capture"
+                    }
                   >
-                    <Toggle checked={enableContextCapture} onChange={setEnableContextCapture} />
+                    <Toggle
+                      checked={enableContextCapture}
+                      onChange={setEnableContextCapture}
+                      disabled={!smartContextUnlocked}
+                    />
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>

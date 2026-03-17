@@ -6,6 +6,7 @@ import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../c
 import { UNIFIED_SYSTEM_PROMPT, LEGACY_PROMPTS } from "../config/prompts";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
+import { getEffectiveEntitlement } from "../hooks/useProStatus";
 
 /**
  * @deprecated Use UNIFIED_SYSTEM_PROMPT from ../config/prompts instead
@@ -29,6 +30,10 @@ class ReasoningService extends BaseReasoningService {
     if (typeof window === "undefined" || !window.localStorage) return false;
 
     try {
+      // Smart Context is a Pro feature. Even if the local flag was previously
+      // enabled, keep runtime behavior aligned with the current entitlement.
+      if (getEffectiveEntitlement() !== "pro") return false;
+
       // Preferred setting (UI: Settings → Privacy & History → Context capture)
       const enableContextCapture = window.localStorage.getItem("enableContextCapture");
       if (enableContextCapture === "true") return true;
