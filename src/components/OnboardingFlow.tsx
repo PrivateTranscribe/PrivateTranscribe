@@ -547,19 +547,23 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {/* Heading */}
             <div className="space-y-1.5">
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
-                You&apos;re all set
+                Setup complete.
               </h2>
               <p className="text-sm text-muted-foreground">
-                Privoca is configured and ready to use
+                Press{" "}
+                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
+                  {readableHotkey}
+                </kbd>{" "}
+                to start dictating into any app.
               </p>
             </div>
 
             {/* Next Steps */}
             <div className="text-left rounded-xl border border-border-subtle bg-surface-1 p-5 shadow-sm space-y-4">
               <p className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> Ready for your first dictation
+                <Sparkles className="w-3.5 h-3.5" /> How it works
               </p>
-              
+
               <div className="space-y-4">
                 <div className="flex items-start gap-3.5">
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
@@ -567,28 +571,31 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
-                      Press{" "}
-                      <kbd className="px-2 py-0.5 mx-1 rounded-md border border-border bg-muted/50 text-foreground font-mono text-[11px] shadow-sm">
+                      Place your cursor, then press{" "}
+                      <kbd className="px-2 py-0.5 mx-0.5 rounded-md border border-border bg-muted/50 text-foreground font-mono text-[11px] shadow-sm">
                         {readableHotkey}
-                      </kbd>{" "}
-                      from any app
+                      </kbd>
                     </p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      This dashboard will minimize to the system tray. Try it right now by pressing the shortcut—Privoca works instantly in your browser, code editor, or messaging app.
+                      Works in any text field — browser, code editor, chat app. This dashboard closes to the system tray and stays out of your way.
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start gap-3.5">
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
                     <span className="text-xs font-bold text-primary">2</span>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
-                      Speak, then release the hotkey
+                      {activationMode === "push"
+                        ? "Hold and speak — release to transcribe"
+                        : "Speak, then press the hotkey again to transcribe"}
                     </p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      A small overlay shows your microphone is active. As soon as you release the hotkey, your text is instantly typed out.
+                      {activationMode === "push"
+                        ? "A small overlay confirms the mic is live. Release the key and your words appear instantly."
+                        : "A small overlay confirms the mic is live. Press the hotkey a second time and your words appear instantly."}
                     </p>
                   </div>
                 </div>
@@ -598,11 +605,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     <span className="text-xs font-bold text-primary">3</span>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Access settings later
-                    </p>
+                    <p className="text-sm font-medium text-foreground">Return anytime via system tray</p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      Need to change models or your hotkey? Just click the Privoca icon in your system tray to reopen this dashboard.
+                      Click the Privoca icon in your system tray to reopen this dashboard, change models, or adjust settings.
                     </p>
                   </div>
                 </div>
@@ -733,8 +738,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 variant="success"
                 className="h-8 px-6 rounded-full text-xs"
               >
-                <Check className="w-3.5 h-3.5" />
-                Complete
+                Start Dictating
+                <ArrowRight className="w-3.5 h-3.5" />
               </Button>
             ) : (
               <Button
