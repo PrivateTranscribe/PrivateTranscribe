@@ -586,6 +586,8 @@ class IPCHandlers {
     ipcMain.handle("cleanup-app", async (event) => {
       try {
         AppUtils.cleanup(this.windowManager.mainWindow);
+        require("electron").app.relaunch();
+        require("electron").app.exit(0);
         return { success: true, message: "Cleanup completed successfully" };
       } catch (error) {
         throw error;

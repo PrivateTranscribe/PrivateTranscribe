@@ -2281,10 +2281,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                   showAlertDialog({
                                     title: "Reset Complete",
                                     description:
-                                      "All app data has been removed. The app will reload.",
+                                      "All app data has been removed. The app will restart.",
                                   });
                                   setTimeout(() => {
-                                    window.location.reload();
+                                    // App handles relaunch automatically
                                   }, 1000);
                                 })
                                 .catch((error) => {
