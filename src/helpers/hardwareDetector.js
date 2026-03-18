@@ -593,26 +593,46 @@ class HardwareDetector {
       rec.reasoning.push(
         `NVIDIA GPU detected (${gpu.model || "GPU"}) but CUDA runtime is not available — falling back to CPU with Whisper`
       );
-      rec.recoverySteps = [
-        "Update or install NVIDIA drivers (v520 or later recommended) — download from nvidia.com/drivers",
-        "Modern NVIDIA drivers (v450+) bundle the CUDA runtime libraries that Parakeet requires — no separate CUDA Toolkit install is needed for transcription",
-        "After updating drivers, use 'Re-detect Hardware' in Privoca Settings → Transcription, or restart the app to enable Parakeet GPU acceleration",
-      ];
+      if (process.platform === "linux") {
+        rec.recoverySteps = [
+          "Install NVIDIA drivers via your package manager — e.g. `sudo apt install nvidia-driver-535` (Ubuntu/Debian) or `sudo dnf install akmod-nvidia` (Fedora/RHEL)",
+          "Modern NVIDIA drivers (v450+) bundle the CUDA runtime Parakeet needs — no separate CUDA Toolkit install is required",
+          "After installing drivers, restart your system, then use 'Re-detect Hardware' in Privoca Settings → Transcription to enable Parakeet GPU acceleration",
+        ];
+      } else {
+        rec.recoverySteps = [
+          "Update or install NVIDIA drivers (v520 or later recommended) — download from nvidia.com/drivers",
+          "Modern NVIDIA drivers (v450+) bundle the CUDA runtime libraries that Parakeet requires — no separate CUDA Toolkit install is needed for transcription",
+          "After updating drivers, use 'Re-detect Hardware' in Privoca Settings → Transcription, or restart the app to enable Parakeet GPU acceleration",
+        ];
+      }
     } else if (gpu.available && gpu.vendor && gpu.vendor !== "unknown") {
       // ── Non-NVIDIA GPU (AMD, Intel, etc.) — no current CUDA acceleration path ─
       rec.gpuCategory = "non_nvidia_gpu";
       rec.localTranscriptionProvider = "whisper";
       rec.transcriptionProvider = "local";
       const vendorName = this.getVendorDisplayName(gpu.vendor);
-      rec.reasoning.push(
-        `${vendorName} GPU detected — Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA)`
-      );
+      if (process.platform === "linux") {
+        rec.reasoning.push(
+          `${vendorName} GPU detected — Whisper will run on CPU (Parakeet GPU acceleration requires NVIDIA CUDA; AMD ROCm is not yet supported)`
+        );
+      } else {
+        rec.reasoning.push(
+          `${vendorName} GPU detected — Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA)`
+        );
+      }
     } else {
       // ── CPU-only (no usable GPU) ─────────────────────────────────────────────
       rec.gpuCategory = "cpu_only";
       rec.localTranscriptionProvider = "whisper";
       rec.transcriptionProvider = "local";
-      rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
+      if (process.platform === "linux") {
+        rec.reasoning.push(
+          "No GPU detected — Whisper runs well on CPU and is fully supported on Linux"
+        );
+      } else {
+        rec.reasoning.push("No GPU acceleration available - using Whisper on CPU");
+      }
     }
 
     // CPU-core-based model sizing for all non-GPU-accelerated paths

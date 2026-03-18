@@ -94,10 +94,11 @@ export default function HardwareSetupStep({
 
   const handleContinueWithDefaults = () => {
     // Even if no recommendations, apply safe defaults
+    // Use "base" rather than "turbo" — it's lighter and appropriate when we don't know CPU capability
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "turbo",
+      whisperModel: "base",
     });
     setApplied(true);
 
@@ -140,18 +141,35 @@ export default function HardwareSetupStep({
 
     if (detectionState === "error") {
       return (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-              <AlertCircle className="w-5 h-5 text-destructive" />
+        <div className="space-y-3">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-destructive" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-foreground">Detection Failed</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
+              </div>
+              <Button onClick={runDetection} variant="outline" size="sm" className="h-7 gap-1.5">
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </Button>
             </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-foreground">Detection Failed</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
-            </div>
-            <Button onClick={runDetection} variant="outline" size="sm" className="h-7 gap-1.5">
-              <RefreshCw className="w-3 h-3" />
-              Retry
+          </div>
+          <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
+            <p className="text-[11px] text-muted-foreground">
+              Can't detect hardware? You can continue with safe CPU defaults — Whisper Base model
+              works well on most machines and can be changed later in Settings.
+            </p>
+            <Button
+              onClick={handleContinueWithDefaults}
+              variant="outline"
+              size="sm"
+              className="mt-2 h-7 gap-1.5 text-[11px]"
+            >
+              <Check className="w-3 h-3" />
+              Continue with Safe Defaults
             </Button>
           </div>
         </div>
