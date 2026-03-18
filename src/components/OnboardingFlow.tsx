@@ -12,6 +12,7 @@ import {
   Command,
   Sparkles,
   Cpu,
+  ArrowRight,
 } from "lucide-react";
 import TitleBar from "./TitleBar";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
@@ -37,8 +38,8 @@ interface OnboardingFlowProps {
 }
 
 export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
-  // Max valid step index for the current onboarding flow (5 steps, index 0-4)
-  const MAX_STEP = 4;
+  // Max valid step index for the current onboarding flow (6 steps, index 0-5)
+  const MAX_STEP = 5;
 
   const [currentStep, setCurrentStep, removeCurrentStep] = useLocalStorage(
     "onboardingCurrentStep",
@@ -107,6 +108,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     { title: "Setup", icon: Settings },
     { title: "Permissions", icon: Shield },
     { title: "Activation", icon: Command },
+    { title: "Complete", icon: Check },
   ];
 
   useEffect(() => {
@@ -531,6 +533,84 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           </div>
         );
 
+      case 5: // Completion
+        return (
+          <div className="text-center space-y-6">
+            {/* Success mark */}
+            <div className="relative w-16 h-16 mx-auto">
+              <div className="absolute inset-0 bg-green-500/20 rounded-full blur-xl" />
+              <div className="relative w-16 h-16 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+                <Check className="w-7 h-7 text-green-500" />
+              </div>
+            </div>
+
+            {/* Heading */}
+            <div className="space-y-1.5">
+              <h2 className="text-xl font-semibold text-foreground tracking-tight">
+                You&apos;re all set
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Privoca is configured and ready to use
+              </p>
+            </div>
+
+            {/* Next Steps */}
+            <div className="text-left rounded-xl border border-border-subtle bg-surface-1 p-5 shadow-sm space-y-4">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" /> Ready for your first dictation
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
+                    <span className="text-xs font-bold text-primary">1</span>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Press{" "}
+                      <kbd className="px-2 py-0.5 mx-1 rounded-md border border-border bg-muted/50 text-foreground font-mono text-[11px] shadow-sm">
+                        {readableHotkey}
+                      </kbd>{" "}
+                      from any app
+                    </p>
+                    <p className="text-xs text-muted-foreground/90 leading-relaxed">
+                      This dashboard will minimize to the system tray. Try it right now by pressing the shortcut—Privoca works instantly in your browser, code editor, or messaging app.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
+                    <span className="text-xs font-bold text-primary">2</span>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Speak, then release the hotkey
+                    </p>
+                    <p className="text-xs text-muted-foreground/90 leading-relaxed">
+                      A small overlay shows your microphone is active. As soon as you release the hotkey, your text is instantly typed out.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
+                    <span className="text-xs font-bold text-primary">3</span>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Access settings later
+                    </p>
+                    <p className="text-xs text-muted-foreground/90 leading-relaxed">
+                      Need to change models or your hotkey? Just click the Privoca icon in your system tray to reopen this dashboard.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -573,7 +653,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return true;
       }
       case 4:
-        return hotkey.trim() !== ""; // Activation step (final)
+        return hotkey.trim() !== ""; // Activation step
+      case 5:
+        return true; // Completion screen — always ready to finish
       default:
         return false;
     }
