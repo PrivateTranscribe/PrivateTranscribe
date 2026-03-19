@@ -16,6 +16,10 @@ import {
   Zap,
   Timer,
   ArrowRight,
+  Lock,
+  MessageSquare,
+  Sparkles,
+  BookOpen,
 } from "lucide-react";
 import type {
   HardwareDetectionResult,
@@ -58,6 +62,10 @@ export type SettingsSectionType =
   | "general"
   | "preferences"
   | "transcription"
+  | "dictionary"
+  | "aiModels"
+  | "agentConfig"
+  | "prompts"
   | "permissions"
   | "help"
   | "developer"
@@ -711,6 +719,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
+  const aiEnhancementUnlocked = isFeatureUnlocked("ai-enhancement");
+  const voiceAssistantUnlocked = isFeatureUnlocked("voice-assistant");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -1680,6 +1690,31 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </SettingsPanel>
             </div>
 
+            {/* Dictionary */}
+            <div>
+              <SectionHeader
+                title="Dictionary"
+                description="Manage your custom vocabulary in the Dictionary section. Add product names, people, acronyms, and other words you want Privoca to recognize more reliably."
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-foreground">Custom vocabulary has its own home now</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Manage your custom vocabulary in the <span className="text-foreground font-medium">Dictionary</span> section for a cleaner workflow.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
             {/* Behavior */}
             <div>
               <SectionHeader
@@ -1931,6 +1966,318 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   description="Check whether your system supports GPU-accelerated transcription"
                 />
                 <GpuStatusCard />
+              </div>
+            )}
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // DICTIONARY
+      // ───────────────────────────────────────────────────
+      case "dictionary":
+        return (
+          <div className="space-y-8">
+            <SectionHeader
+              title="Dictionary"
+              description="Teach Privoca the words that matter to you — names, products, acronyms, and specialist terms."
+            />
+
+            <SettingsPanel>
+              <SettingsPanelRow>
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add a custom word or phrase"
+                      value={newDictionaryWord}
+                      onChange={(e) => setNewDictionaryWord(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddDictionaryWord();
+                        }
+                      }}
+                    />
+                    <Button onClick={handleAddDictionaryWord} disabled={!newDictionaryWord.trim()}>
+                      Add
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Privoca uses this list to better recognize spellings that generic speech models often miss.
+                  </p>
+                </div>
+              </SettingsPanelRow>
+
+              <SettingsPanelRow>
+                {customDictionary.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {customDictionary.map((word) => (
+                      <Badge
+                        key={word}
+                        variant="secondary"
+                        className="px-2.5 py-1 text-xs cursor-pointer hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        onClick={() => handleRemoveDictionaryWord(word)}
+                        title="Click to remove"
+                      >
+                        {word} ×
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border-subtle bg-surface-raised/20 px-4 py-6 text-center">
+                    <p className="text-sm font-medium text-foreground">Your dictionary is ready</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Add words above to improve recognition for names, jargon, and niche terms.
+                    </p>
+                  </div>
+                )}
+              </SettingsPanelRow>
+            </SettingsPanel>
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // AI MODELS
+      // ───────────────────────────────────────────────────
+      case "aiModels":
+        return (
+          <div className="space-y-8">
+            <SectionHeader
+              title="AI Enhancement"
+              description="Configure AI text cleanup and polish"
+            />
+
+            {!aiEnhancementUnlocked && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
+                <Lock size={24} className="mx-auto text-primary/60" />
+                <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  AI Enhancement automatically polishes your transcriptions — fixing grammar, formatting text, and handling intelligent rewrites. Unlock it with a Pro license in Settings.
+                </p>
+              </div>
+            )}
+
+            {aiEnhancementUnlocked && (
+              <>
+                <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
+                  <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-4">
+                    How it works
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground/50 mb-2">Before (raw dictation)</p>
+                      <div className="rounded-lg bg-surface-1/50 border border-border-subtle/30 p-3">
+                        <p className="text-[12px] text-muted-foreground leading-relaxed italic">
+                          &quot;so basically what i was thinking is that we should probably schedule a meeting for next week um to discuss the uh the budget for q2&quot;
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-primary/60 mb-2">After (AI enhanced)</p>
+                      <div className="rounded-lg bg-primary/5 border border-primary/10 p-3">
+                        <p className="text-[12px] text-foreground leading-relaxed">
+                          &quot;We should schedule a meeting next week to discuss the Q2 budget.&quot;
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <ReasoningModelSelector
+                  useReasoningModel={useReasoningModel}
+                  setUseReasoningModel={(value) => {
+                    setUseReasoningModel(value);
+                    updateReasoningSettings({ useReasoningModel: value });
+                  }}
+                  setCloudReasoningBaseUrl={setCloudReasoningBaseUrl}
+                  cloudReasoningBaseUrl={cloudReasoningBaseUrl}
+                  reasoningModel={reasoningModel}
+                  setReasoningModel={setReasoningModel}
+                  localReasoningProvider={reasoningProvider}
+                  setLocalReasoningProvider={setReasoningProvider}
+                  openaiApiKey={openaiApiKey}
+                  setOpenaiApiKey={setOpenaiApiKey}
+                  anthropicApiKey={anthropicApiKey}
+                  setAnthropicApiKey={setAnthropicApiKey}
+                  geminiApiKey={geminiApiKey}
+                  setGeminiApiKey={setGeminiApiKey}
+                  groqApiKey={groqApiKey}
+                  setGroqApiKey={setGroqApiKey}
+                  customReasoningApiKey={customReasoningApiKey}
+                  setCustomReasoningApiKey={setCustomReasoningApiKey}
+                  showAlertDialog={showAlertDialog}
+                />
+
+                {reasoningProvider === "local" && (
+                  <SettingsPanel>
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="Idle shutdown (minutes)"
+                        description="Stops the local llama-server after being idle to free RAM/VRAM. Set to 0 to keep it running."
+                      >
+                        <div className="flex items-center gap-2 shrink-0">
+                          <input
+                            type="number"
+                            min={0}
+                            max={240}
+                            step={1}
+                            value={llamaIdleDraft}
+                            onChange={(e) => {
+                              setLlamaIdleDraft(e.target.value);
+                            }}
+                            onBlur={() => {
+                              const raw = parseInt(llamaIdleDraft, 10);
+                              const next = Number.isFinite(raw)
+                                ? Math.max(0, Math.min(240, raw))
+                                : llamaServerIdleTimeoutMinutes;
+
+                              setLlamaIdleDraft(String(next));
+                              updateReasoningSettings({ llamaServerIdleTimeoutMinutes: next });
+                              window.electronAPI?.llamaServerSetIdleTimeoutMinutes(next)?.catch(() => {});
+                            }}
+                            className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            aria-label="Llama server idle shutdown minutes"
+                          />
+                          <span className="text-xs text-muted-foreground">min</span>
+                        </div>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  </SettingsPanel>
+                )}
+              </>
+            )}
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // AGENT CONFIG
+      // ───────────────────────────────────────────────────
+      case "agentConfig":
+        return (
+          <div className="space-y-8">
+            <SectionHeader
+              title="Voice Assistant"
+              description="Configure your AI agent's name and behavior"
+            />
+
+            {!voiceAssistantUnlocked && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
+                <Lock size={24} className="mx-auto text-primary/60" />
+                <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  Customize your voice assistant with a personal name and fine-tuned system prompts for AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
+                </p>
+              </div>
+            )}
+
+            {voiceAssistantUnlocked && (
+              <>
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Agent name"
+                      description="Pick something short and natural to say aloud."
+                    >
+                      <div className="flex gap-2 w-full max-w-sm">
+                        <Input
+                          placeholder="e.g. Jarvis, Nova, Atlas..."
+                          value={agentName}
+                          onChange={(e) => setAgentName(e.target.value)}
+                          className="flex-1 text-center text-base font-mono"
+                        />
+                        <Button
+                          onClick={() => {
+                            setAgentName(agentName.trim());
+                            showAlertDialog({
+                              title: "Agent Name Updated",
+                              description: `Your agent is now named "${agentName.trim()}". Address it by saying "Hey ${agentName.trim()}" followed by your instructions.`,
+                            });
+                          }}
+                          disabled={!agentName.trim()}
+                          size="sm"
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-primary" />
+                        <p className="text-sm font-medium text-foreground">How instruction mode works</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        When you say <span className="font-medium text-foreground">&quot;Hey {agentName}&quot;</span> followed by an instruction, Privoca switches from cleanup mode to assistant mode. Without the trigger phrase, it simply polishes your dictation.
+                      </p>
+                    </div>
+                  </SettingsPanelRow>
+                  <SettingsPanelRow>
+                    <div className="space-y-2.5">
+                      {[
+                        `Hey ${agentName}, write a formal email about the budget`,
+                        `Hey ${agentName}, make this more professional`,
+                        `Hey ${agentName}, convert this to bullet points`,
+                      ].map((example) => (
+                        <div key={example} className="flex items-start gap-3">
+                          <span className="shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded bg-primary/15 text-primary">
+                            Instruction
+                          </span>
+                          <p className="text-[12px] text-muted-foreground leading-relaxed">&quot;{example}&quot;</p>
+                        </div>
+                      ))}
+                    </div>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </>
+            )}
+          </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // PROMPTS
+      // ───────────────────────────────────────────────────
+      case "prompts":
+        return (
+          <div className="space-y-8">
+            <SectionHeader
+              title="System Prompts"
+              description="Shape how Privoca interprets instructions, formats output, and responds to your voice assistant workflows."
+            />
+
+            {voiceAssistantUnlocked ? (
+              <PromptStudio />
+            ) : (
+              <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 shadow-[0_0_40px_rgba(112,255,186,0.08)] overflow-hidden relative">
+                <div className="absolute top-4 right-4">
+                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">
+                    Coming soon
+                  </Badge>
+                </div>
+                <div className="max-w-2xl space-y-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center shadow-[0_0_24px_rgba(112,255,186,0.12)]">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">A dedicated prompt workspace</h3>
+                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                      This section will become the control room for system instructions — letting you tune tone, cleanup rules, command behavior, and reusable prompt presets with more precision.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {[
+                      "Preset prompt profiles for different workflows",
+                      "Fine-grained instruction layers for cleanup vs assistant mode",
+                      "Safer testing before prompts affect live dictation",
+                    ].map((item) => (
+                      <div key={item} className="rounded-xl border border-border-subtle/50 bg-surface-raised/40 px-4 py-3 text-sm text-muted-foreground">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>
