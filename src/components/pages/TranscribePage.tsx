@@ -18,6 +18,7 @@ import {
   Copy,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
+import { getEffectiveEntitlement } from "../../hooks/useProStatus";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { useToast } from "../ui/Toast";
@@ -75,7 +76,9 @@ export default function TranscribePage() {
   } = useSettings();
 
   useEffect(() => {
-    audioManagerRef.current = new AudioManager();
+    const mgr = new AudioManager();
+    mgr._checkProEntitlement = () => getEffectiveEntitlement() === "pro";
+    audioManagerRef.current = mgr;
     return () => {
       audioManagerRef.current?.cleanup();
       audioManagerRef.current = null;

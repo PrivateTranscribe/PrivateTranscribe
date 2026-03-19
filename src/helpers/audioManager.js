@@ -658,7 +658,13 @@ class AudioManager {
 
     try {
       // Refresh correction hints so they're included in the whisper prompt
-      await this.refreshCorrectionHints();
+      // (Pro feature — only inject hints when Pro entitlement is active)
+      const proEnabled = typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
+      if (proEnabled) {
+        await this.refreshCorrectionHints();
+      } else {
+        this._cachedCorrectionHints = [];
+      }
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
       const arrayBuffer = await audioBlob.arrayBuffer();

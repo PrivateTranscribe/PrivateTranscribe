@@ -19,6 +19,14 @@ export const useAudioRecording = (toast, options = {}) => {
 
   useEffect(() => {
     const manager = new AudioManager();
+    // Wire Pro entitlement check so correction hints are gated
+    manager._checkProEntitlement = () => {
+      try {
+        // Dynamic import avoids circular dependency with TS hooks
+        const { getEffectiveEntitlement } = require("../hooks/useProStatus");
+        return getEffectiveEntitlement() === "pro";
+      } catch { return false; }
+    };
     audioManagerRef.current = manager;
     let disposed = false;
 
