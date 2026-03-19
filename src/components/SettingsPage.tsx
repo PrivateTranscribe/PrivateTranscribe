@@ -1056,6 +1056,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     return `"${getLanguageLabel(lang)}" is not supported by Parakeet. Auto-detect will be used instead.`;
   }, [useLocalWhisper, localTranscriptionProvider, parakeetModel, preferredLanguage]);
 
+  /**
+   * Derived warning: shown when the user enables "Translate to English" but
+   * the active Whisper model is Turbo, which silently ignores the translate
+   * flag and returns the original language.
+   */
+  const translationModelWarning = useMemo(() => {
+    if (!useLocalWhisper) return null;
+    if (localTranscriptionProvider === "nvidia") return null; // Parakeet has its own compat warnings
+    if (translateToEnglish !== "on") return null;
+    if (whisperModel !== "turbo") return null;
+    return true;
+  }, [useLocalWhisper, localTranscriptionProvider, translateToEnglish, whisperModel]);
+
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
 
   const handleAddDictionaryWord = useCallback(() => {
@@ -1537,6 +1550,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         </button>
                       </SettingsRow>
                     )}
+
+                  {translationModelWarning && (
+                    <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+                      <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                        <span aria-hidden="true" className="mt-px shrink-0">⚠</span>
+                        <span>
+                          <strong>Whisper Turbo does not support translation.</strong>{" "}
+                          It will transcribe in the spoken language instead of translating to English.
+                          Switch to <strong>Large</strong> or <strong>Medium</strong> from the model
+                          picker on the home screen for reliable translation.
+                        </span>
+                      </p>
+                    </div>
+                  )}
 
                   {languageCompatWarning && (
                     <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
