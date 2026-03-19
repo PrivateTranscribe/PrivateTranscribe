@@ -1099,8 +1099,40 @@ class AudioManager {
     }
   }
 
+  /**
+   * Apply custom dictionary word replacements to raw STT output.
+   * Whisper's initialPrompt is a hint, not a guarantee — it can still mis-transcribe
+   * or mis-capitalise custom words. This does a case-insensitive whole-word scan and
+   * replaces any match with the exact casing stored in the dictionary.
+   *
+   * Example: dictionary has "Privoca", Whisper outputs "provoca" → fixed to "Privoca".
+   *
+   * Replacements are whole-word only (word boundaries) so "unprovocative" is untouched.
+   */
+  applyDictionaryReplacements(text) {
+    try {
+      const raw = localStorage.getItem("customDictionary");
+      if (!raw) return text;
+      const words = JSON.parse(raw);
+      if (!Array.isArray(words) || words.length === 0) return text;
+
+      let result = text;
+      for (const word of words) {
+        if (!word || typeof word !== "string") continue;
+        // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
+        const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(`\\b${escaped}\\b`, "gi");
+        result = result.replace(regex, word);
+      }
+      return result;
+    } catch {
+      return text;
+    }
+  }
+
   async processTranscription(text, source) {
-    const normalizedText = typeof text === "string" ? text.trim() : "";
+    const withDictionary = this.applyDictionaryReplacements(typeof text === "string" ? text.trim() : "");
+    const normalizedText = withDictionary;
 
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {
       source,

@@ -136,9 +136,15 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     };
     const fetchStreakDates = async () => {
       try {
-        const dates = await window.electronAPI?.getStreakDates?.();
-        if (Array.isArray(dates)) {
-          setStreakDates(new Set(dates));
+        const timestamps = await window.electronAPI?.getStreakDates?.();
+        if (Array.isArray(timestamps)) {
+          // Convert raw UTC timestamps to local date keys in JS (reliable cross-platform).
+          // SQLite's 'localtime' modifier can be a no-op on some Linux builds, so we avoid
+          // doing the TZ conversion in SQL and do it here with JS Date instead.
+          const localDateKeys = new Set(
+            timestamps.map((ts) => toLocalDateKey(new Date(ts)))
+          );
+          setStreakDates(localDateKeys);
         }
       } catch {
         // Silently fail
