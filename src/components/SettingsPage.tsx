@@ -1057,17 +1057,21 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   }, [useLocalWhisper, localTranscriptionProvider, parakeetModel, preferredLanguage]);
 
   /**
-   * Derived warning: shown when the user enables "Translate to English" but
-   * the active Whisper model is Turbo, which silently ignores the translate
-   * flag and returns the original language.
+   * Whether the current model supports translation.
+   * Whisper Turbo silently ignores the translate flag.
    */
-  const translationModelWarning = useMemo(() => {
-    if (!useLocalWhisper) return null;
-    if (localTranscriptionProvider === "nvidia") return null; // Parakeet has its own compat warnings
-    if (translateToEnglish !== "on") return null;
-    if (whisperModel !== "turbo") return null;
-    return true;
-  }, [useLocalWhisper, localTranscriptionProvider, translateToEnglish, whisperModel]);
+  const translationSupported = useMemo(() => {
+    if (!useLocalWhisper) return true; // cloud providers handle their own
+    if (localTranscriptionProvider === "nvidia") return false; // Parakeet doesn't translate
+    return whisperModel !== "turbo";
+  }, [useLocalWhisper, localTranscriptionProvider, whisperModel]);
+
+  // Auto-disable translation when switching to a model that doesn't support it
+  useEffect(() => {
+    if (!translationSupported && translateToEnglish === "on") {
+      setTranslateToEnglish("off");
+    }
+  }, [translationSupported, translateToEnglish, setTranslateToEnglish]);
 
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
 
@@ -1498,7 +1502,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="I speak"
-                    description="The language you primarily speak. Helps the engine recognize your speech more accurately."
+                    description="The language you speak. Whisper transcribes in this language — set it to match what you actually speak for best accuracy."
                   >
                     <Select
                       value={preferredLanguage || "auto"}
@@ -1527,43 +1531,47 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   {preferredLanguage &&
                     preferredLanguage !== "auto" &&
                     preferredLanguage !== "en" && (
-                      <SettingsRow
-                        label="Translate to English"
-                        description="Automatically translate your speech into English text"
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setTranslateToEnglish(translateToEnglish === "on" ? "off" : "on")
+                      <>
+                        <SettingsRow
+                          label="Translate to English"
+                          description={
+                            translationSupported
+                              ? "Automatically translate your speech into English text"
+                              : "Not available with the current model"
                           }
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            translateToEnglish === "on"
-                              ? "bg-primary"
-                              : "bg-surface-raised border border-border-subtle"
-                          }`}
                         >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              translateToEnglish === "on" ? "translate-x-6" : "translate-x-1"
+                          <button
+                            type="button"
+                            disabled={!translationSupported}
+                            onClick={() =>
+                              translationSupported &&
+                              setTranslateToEnglish(translateToEnglish === "on" ? "off" : "on")
+                            }
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              !translationSupported
+                                ? "opacity-40 cursor-not-allowed bg-surface-raised border border-border-subtle"
+                                : translateToEnglish === "on"
+                                  ? "bg-primary"
+                                  : "bg-surface-raised border border-border-subtle"
                             }`}
-                          />
-                        </button>
-                      </SettingsRow>
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                translateToEnglish === "on" && translationSupported ? "translate-x-6" : "translate-x-1"
+                              }`}
+                            />
+                          </button>
+                        </SettingsRow>
+                        {!translationSupported && (
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            Your current model doesn't support translation.
+                            Switch to <strong className="text-foreground">Large</strong> or{" "}
+                            <strong className="text-foreground">Medium</strong> from the model picker
+                            on the home screen to enable this.
+                          </p>
+                        )}
+                      </>
                     )}
-
-                  {translationModelWarning && (
-                    <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
-                      <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                        <span aria-hidden="true" className="mt-px shrink-0">⚠</span>
-                        <span>
-                          <strong>Whisper Turbo does not support translation.</strong>{" "}
-                          It will transcribe in the spoken language instead of translating to English.
-                          Switch to <strong>Large</strong> or <strong>Medium</strong> from the model
-                          picker on the home screen for reliable translation.
-                        </span>
-                      </p>
-                    </div>
-                  )}
 
                   {languageCompatWarning && (
                     <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
