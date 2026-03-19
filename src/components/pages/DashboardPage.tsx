@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Mic, Settings, Upload, Activity } from "lucide-react";
+import { Mic, Settings, Upload, Activity, Command } from "lucide-react";
 import { PageId } from "../AppSidebar";
 import {
   useTranscriptions,
@@ -9,6 +9,7 @@ import {
 import { useSettings } from "../../hooks/useSettings";
 import TranscriptionItem from "../ui/TranscriptionItem";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
+import { formatHotkeyLabel } from "../../utils/hotkeys";
 import type { AggregateStats } from "../../types/electron";
 
 interface DashboardPageProps {
@@ -88,6 +89,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     localTranscriptionProvider,
     cloudTranscriptionProvider,
     historyLimit,
+    dictationKey,
   } = useSettings();
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -148,6 +150,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const streak = useMemo(() => computeStreak(streakDates), [streakDates]);
   const recentFive = useMemo(() => transcriptions.slice(0, 5), [transcriptions]);
+  const readableHotkey = useMemo(() => formatHotkeyLabel(dictationKey), [dictationKey]);
 
   const languageLabel = useMemo(() => {
     const match = LANGUAGE_OPTIONS.find((l) => l.value === preferredLanguage);
@@ -336,19 +339,22 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           ) : (
             <div className="flex flex-col items-center justify-center py-16 px-8">
               <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-surface-raised border border-border-subtle mb-5">
-                <Mic size={24} className="text-muted-foreground" />
+                <Command size={24} className="text-primary" />
               </div>
-              <p className="text-sm font-medium text-foreground mb-1.5">No transcriptions yet</p>
-              <p className="text-xs text-muted-foreground text-center max-w-[280px] mb-5">
-                Start dictating with your hotkey or upload an audio file to see your transcription
-                history here.
+              <p className="text-sm font-medium text-foreground mb-1.5">Ready to dictate</p>
+              <p className="text-xs text-muted-foreground text-center max-w-[320px] mb-5">
+                Press{" "}
+                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
+                  {readableHotkey}
+                </kbd>{" "}
+                anywhere to start dictating. Your transcription history will appear here.
               </p>
               <button
                 onClick={() => onNavigate("transcribe")}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background text-xs font-semibold hover:bg-primary/90 transition-colors duration-200"
               >
                 <Upload size={14} />
-                Upload a File
+                Or Upload a File
               </button>
             </div>
           )}
