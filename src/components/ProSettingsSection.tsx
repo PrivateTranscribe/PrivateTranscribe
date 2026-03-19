@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, X, RefreshCw, Mail } from "lucide-react";
+import { Check, X, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/Toast";
 import {
@@ -11,31 +11,29 @@ import {
   type ProStatus,
 } from "../services/LicensingService";
 
-const PRO_FEATURES = [
+const PRO_FEATURES_AVAILABLE = [
+  {
+    name: "Correction Memory",
+    desc: "Learns from your edits and automatically corrects recurring transcription errors",
+  },
   {
     name: "AI Enhancement",
     desc: "Automatically polish transcriptions with grammar fixes, formatting, and intelligent rewrites",
-    available: true,
   },
   {
     name: "Voice Assistant",
     desc: "Customize your AI companion with a personal name and fine-tuned system prompts",
-    available: true,
-  },
-  {
-    name: "Correction Memory",
-    desc: "Learns from your edits and automatically corrects recurring transcription errors",
-    available: true,
   },
   {
     name: "Action Engine",
     desc: "Trigger custom voice commands to launch apps, run scripts, and automate workflows",
-    available: true,
   },
+];
+
+const PRO_FEATURES_COMING = [
   {
-    name: "Smart Context (IDE Bridge)",
-    desc: "Integrates with Cursor and VS Code for context-aware dictation while coding",
-    available: false,
+    name: "Smart Context",
+    desc: "Context-aware dictation integrated with Cursor and VS Code — NDA-safe, no screenshots",
   },
 ];
 
@@ -214,27 +212,24 @@ export default function ProSettingsSection() {
         </>
       ) : (
         <>
-          {/* Licensing not yet live — early access CTA */}
+          {/* Licensing not yet live — purchase CTA */}
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 space-y-4">
             <div>
               <h3 className="text-base font-semibold text-foreground">Get Privoca Pro</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Privoca Pro is launching soon. Join the early-access list and be the first to know
-                when licenses are available.
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                One-time purchase. Unlock all Pro features permanently — no subscription, no
+                recurring fees.
               </p>
             </div>
             <Button
               variant="default"
               size="sm"
               onClick={() =>
-                window.electronAPI?.openExternal?.(
-                  "mailto:support@privoca.com?subject=Privoca%20Pro%20Early%20Access"
-                )
+                window.electronAPI?.openExternal?.("https://privoca.com/pro")
               }
               className="gap-2"
             >
-              <Mail size={14} />
-              Request early access
+              Get Privoca Pro — €29 →
             </Button>
             <p className="text-xs text-muted-foreground">
               Already have a key?{" "}
@@ -260,34 +255,41 @@ export default function ProSettingsSection() {
       <div className="space-y-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">What's included</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Features unlocked with Privoca Pro</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Everything unlocked with Privoca Pro</p>
         </div>
 
-        {PRO_FEATURES.map((feature) => (
+        {PRO_FEATURES_AVAILABLE.map((feature) => (
           <div
             key={feature.name}
             className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
           >
-            <div
-              className={`shrink-0 h-2 w-2 rounded-full ${
-                feature.available ? "bg-green-500" : "bg-muted-foreground/30"
-              }`}
-            />
+            <Check size={14} className="shrink-0 text-green-500" />
             <div className="min-w-0 flex-1">
               <span className="text-sm font-medium text-foreground">{feature.name}</span>
               <p className="text-xs text-muted-foreground">{feature.desc}</p>
             </div>
-            <span
-              className={`text-[10px] font-medium px-2 py-0.5 rounded ${
-                feature.available
-                  ? "bg-green-500/10 text-green-500"
-                  : "bg-muted-foreground/10 text-muted-foreground"
-              }`}
-            >
-              {feature.available ? "Ready" : "In development"}
-            </span>
           </div>
         ))}
+
+        {PRO_FEATURES_COMING.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Coming later</p>
+            {PRO_FEATURES_COMING.map((feature) => (
+              <div
+                key={feature.name}
+                className="flex items-center gap-3 rounded-lg border border-border-subtle/50 bg-background/20 px-4 py-3 opacity-60"
+              >
+                <div className="shrink-0 h-3.5 w-3.5 rounded-full border border-muted-foreground/30 flex items-center justify-center">
+                  <div className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-foreground">{feature.name}</span>
+                  <p className="text-xs text-muted-foreground">{feature.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Pricing info */}
