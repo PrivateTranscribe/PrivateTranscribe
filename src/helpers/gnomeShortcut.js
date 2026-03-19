@@ -5,8 +5,7 @@ const DBUS_SERVICE_NAME = "com.Privoca.App";
 const DBUS_OBJECT_PATH = "/com/Privoca/App";
 const DBUS_INTERFACE = "com.Privoca.App";
 
-const KEYBINDING_PATH =
-  "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/Privoca/";
+const KEYBINDING_PATH = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/Privoca/";
 const KEYBINDING_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 
 // Valid pattern for GNOME shortcut format (e.g., "<Alt>r", "<Control><Shift>space")

@@ -65,8 +65,8 @@ function playNote(
  * A4 → C#5 (major third, upward = "beginning")
  */
 export function playStartSound() {
-  playNote(440, 140, { volume: 0.10, type: "sine", attackMs: 5, releaseMs: 80 });
-  playNote(554, 160, { volume: 0.10, type: "sine", attackMs: 5, releaseMs: 100, delayMs: 90 });
+  playNote(440, 140, { volume: 0.1, type: "sine", attackMs: 5, releaseMs: 80 });
+  playNote(554, 160, { volume: 0.1, type: "sine", attackMs: 5, releaseMs: 100, delayMs: 90 });
 }
 
 /**
@@ -91,5 +91,5 @@ export function playSuccessSound() {
  * A3, longer sustain to feel distinct from the chimes.
  */
 export function playErrorSound() {
-  playNote(220, 300, { volume: 0.10, type: "triangle", attackMs: 10, releaseMs: 200 });
+  playNote(220, 300, { volume: 0.1, type: "triangle", attackMs: 10, releaseMs: 200 });
 }

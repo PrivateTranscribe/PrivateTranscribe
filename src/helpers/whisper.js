@@ -281,7 +281,14 @@ class WhisperManager {
     );
   }
 
-  async transcribeViaServer(audioBlob, model, language, initialPrompt = null, inputFileName = null, translate = false) {
+  async transcribeViaServer(
+    audioBlob,
+    model,
+    language,
+    initialPrompt = null,
+    inputFileName = null,
+    translate = false
+  ) {
     debugLogger.info("Transcription mode: SERVER", { model, language: language || "auto" });
     const modelPath = this.getModelPath(model);
 

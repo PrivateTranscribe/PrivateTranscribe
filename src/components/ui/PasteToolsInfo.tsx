@@ -41,9 +41,7 @@ export default function PasteToolsInfo({
           <div className="flex items-center gap-3">
             <Terminal className="w-6 h-6 text-success" />
             <div>
-              <h3 className="font-semibold text-success">
-                Automatic Pasting Ready
-              </h3>
+              <h3 className="font-semibold text-success">Automatic Pasting Ready</h3>
               <p className="text-sm text-success">
                 Windows supports automatic pasting out of the box. No setup required!
               </p>
@@ -69,9 +67,7 @@ export default function PasteToolsInfo({
           <div className="flex items-center gap-3">
             <Terminal className="w-6 h-6 text-success" />
             <div>
-              <h3 className="font-semibold text-success">
-                Automatic Pasting Ready
-              </h3>
+              <h3 className="font-semibold text-success">Automatic Pasting Ready</h3>
               <p className="text-sm text-success">
                 Using <code className="bg-success/20 px-1 rounded">{method}</code> for automatic
                 text pasting{methodSuffix}
@@ -145,8 +141,8 @@ export default function PasteToolsInfo({
               </>
             ) : (
               <p className="text-sm text-warning mt-1">
-                Automatic pasting isn't available on this Wayland session. Privoca will copy text
-                to your clipboard so you can paste manually with{" "}
+                Automatic pasting isn't available on this Wayland session. Privoca will copy text to
+                your clipboard so you can paste manually with{" "}
                 <kbd className="bg-warning/20 px-1 rounded text-xs">Ctrl+V</kbd>.
               </p>
             )}

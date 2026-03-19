@@ -577,7 +577,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       </kbd>
                     </p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      Works in any text field — browser, code editor, chat app. This dashboard closes to the system tray and stays out of your way.
+                      Works in any text field — browser, code editor, chat app. This dashboard
+                      closes to the system tray and stays out of your way.
                     </p>
                   </div>
                 </div>
@@ -605,9 +606,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     <span className="text-xs font-bold text-primary">3</span>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">Return anytime via system tray</p>
+                    <p className="text-sm font-medium text-foreground">
+                      Return anytime via system tray
+                    </p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      Click the Privoca icon in your system tray to reopen this dashboard, change models, or adjust settings.
+                      Click the Privoca icon in your system tray to reopen this dashboard, change
+                      models, or adjust settings.
                     </p>
                   </div>
                 </div>

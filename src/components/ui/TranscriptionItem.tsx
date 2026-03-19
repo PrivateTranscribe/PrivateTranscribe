@@ -30,11 +30,11 @@ export default function TranscriptionItem({
   const formattedTimestamp = Number.isNaN(timestampDate.getTime())
     ? item.timestamp
     : timestampDate.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 
   const isLongText = item.text.length > TEXT_PREVIEW_LENGTH;
   const displayText =
@@ -68,9 +68,7 @@ export default function TranscriptionItem({
 
           {/* Metadata row */}
           <div className="flex items-center gap-3 mt-2.5">
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {formattedTimestamp}
-            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">{formattedTimestamp}</span>
             {isLongText && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}

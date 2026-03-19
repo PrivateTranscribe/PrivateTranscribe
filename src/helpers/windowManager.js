@@ -253,7 +253,10 @@ class WindowManager {
 
     // Preserve the original BASE position so we can restore it accurately after
     // any temporary expansion (toast, menu, etc.).
-    if (currentBounds.width === WINDOW_SIZES.BASE.width && currentBounds.height === WINDOW_SIZES.BASE.height) {
+    if (
+      currentBounds.width === WINDOW_SIZES.BASE.width &&
+      currentBounds.height === WINDOW_SIZES.BASE.height
+    ) {
       this._originalBaseX = currentBounds.x;
       this._originalBaseY = currentBounds.y;
     }
@@ -267,13 +270,16 @@ class WindowManager {
     const display = screen.getDisplayNearestPoint({ x: currentBounds.x, y: bottomY });
     const workArea = display.workArea || display.bounds;
 
-    const wouldOverflowRight = (this._originalBaseX ?? bottomLeftX) + newSize.width > workArea.x + workArea.width;
+    const wouldOverflowRight =
+      (this._originalBaseX ?? bottomLeftX) + newSize.width > workArea.x + workArea.width;
     const expandToastLeft = sizeKey === "WITH_TOAST" && wouldOverflowRight;
 
     let newX = this._originalBaseX ?? bottomLeftX;
     if (expandToastLeft) {
       // Anchor to right: original right edge minus new width
-      newX = Math.round((this._originalBaseX ?? bottomLeftX) + WINDOW_SIZES.BASE.width - newSize.width);
+      newX = Math.round(
+        (this._originalBaseX ?? bottomLeftX) + WINDOW_SIZES.BASE.width - newSize.width
+      );
     }
 
     let newY = bottomY - newSize.height;

@@ -125,8 +125,8 @@ export default function WindowControls() {
           <DialogHeader>
             <DialogTitle>Close Privoca?</DialogTitle>
             <DialogDescription>
-              Privoca will continue running in the system tray. Would you like to minimize to
-              tray or quit completely?
+              Privoca will continue running in the system tray. Would you like to minimize to tray
+              or quit completely?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">

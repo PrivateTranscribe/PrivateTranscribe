@@ -11,9 +11,7 @@ export const Toggle = ({ checked, onChange, disabled = false }: ToggleProps) => 
     if (disabled) {
       return checked ? "bg-primary/40" : "bg-muted";
     }
-    return checked
-      ? "bg-primary hover:bg-primary/90"
-      : "bg-surface-raised hover:bg-surface-3";
+    return checked ? "bg-primary hover:bg-primary/90" : "bg-surface-raised hover:bg-surface-3";
   };
 
   return (

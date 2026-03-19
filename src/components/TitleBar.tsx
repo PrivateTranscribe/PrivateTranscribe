@@ -44,14 +44,12 @@ export default function TitleBar({
           {/* Brand Logo */}
           <span
             className="text-[10px] font-medium tracking-wide text-white/50 uppercase"
-            style={{ fontSize: '10px' }}
+            style={{ fontSize: "10px" }}
           >
             Privoca
           </span>
           {platform !== "darwin" ? (
-            <>
-              {getActionsContent()}
-            </>
+            <>{getActionsContent()}</>
           ) : (
             <>
               {showTitle && title && (
@@ -68,9 +66,7 @@ export default function TitleBar({
               <WindowControls />
             </>
           ) : (
-            <>
-              {actions}
-            </>
+            <>{actions}</>
           )}
         </div>
       </div>

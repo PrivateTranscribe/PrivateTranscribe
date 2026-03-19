@@ -59,7 +59,8 @@ class ParakeetManager {
 
       await this.logDependencyStatus();
 
-      const { localTranscriptionProvider, parakeetModel, parakeetServerIdleTimeoutMinutes } = settings;
+      const { localTranscriptionProvider, parakeetModel, parakeetServerIdleTimeoutMinutes } =
+        settings;
 
       if (
         typeof parakeetServerIdleTimeoutMinutes === "number" &&

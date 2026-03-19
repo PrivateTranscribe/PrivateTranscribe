@@ -21,13 +21,8 @@ import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 export default function ControlPanelShell() {
   const [activePage, setActivePage] = useState<PageId>("home");
   const { toast } = useToast();
-  const {
-    confirmDialog,
-    alertDialog,
-    showConfirmDialog,
-    hideConfirmDialog,
-    hideAlertDialog,
-  } = useDialogs();
+  const { confirmDialog, alertDialog, showConfirmDialog, hideConfirmDialog, hideAlertDialog } =
+    useDialogs();
   const {
     status: updateStatus,
     downloadProgress,
@@ -176,7 +171,10 @@ export default function ControlPanelShell() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }} className="bg-background">
+    <div
+      style={{ display: "flex", flexDirection: "column", height: "100vh" }}
+      className="bg-background"
+    >
       <ConfirmDialog
         open={confirmDialog.open}
         onOpenChange={hideConfirmDialog}
@@ -191,7 +189,7 @@ export default function ControlPanelShell() {
         onOpenChange={hideAlertDialog}
         title={alertDialog.title}
         description={alertDialog.description}
-        onOk={() => { }}
+        onOk={() => {}}
       />
 
       <TitleBar
@@ -216,10 +214,10 @@ export default function ControlPanelShell() {
         }
       />
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <AppSidebar activePage={activePage} onPageChange={setActivePage} />
 
-        <main style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable' }}>
+        <main style={{ flex: 1, overflowY: "auto", scrollbarGutter: "stable" }}>
           {renderPage()}
         </main>
       </div>

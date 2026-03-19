@@ -62,11 +62,7 @@ function groupTranscriptions(
 export default function HistoryPage() {
   const transcriptions = useTranscriptions();
   const { toast } = useToast();
-  const {
-    confirmDialog,
-    showConfirmDialog,
-    hideConfirmDialog,
-  } = useDialogs();
+  const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const { historyLimit } = useSettings();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -90,9 +86,17 @@ export default function HistoryPage() {
     async (text: string) => {
       try {
         await navigator.clipboard.writeText(text);
-        toast({ title: "Copied", description: "Transcription copied to clipboard", variant: "success" });
+        toast({
+          title: "Copied",
+          description: "Transcription copied to clipboard",
+          variant: "success",
+        });
       } catch {
-        toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
+        toast({
+          title: "Error",
+          description: "Failed to copy to clipboard",
+          variant: "destructive",
+        });
       }
     },
     [toast]
@@ -102,7 +106,8 @@ export default function HistoryPage() {
     (id: number) => {
       showConfirmDialog({
         title: "Delete transcription",
-        description: "This transcription will be permanently removed. This action cannot be undone.",
+        description:
+          "This transcription will be permanently removed. This action cannot be undone.",
         confirmText: "Delete",
         variant: "destructive",
         onConfirm: async () => {
@@ -110,7 +115,11 @@ export default function HistoryPage() {
             await window.electronAPI?.deleteTranscription?.(id);
             toast({ title: "Deleted", description: "Transcription removed", variant: "success" });
           } catch {
-            toast({ title: "Error", description: "Failed to delete transcription", variant: "destructive" });
+            toast({
+              title: "Error",
+              description: "Failed to delete transcription",
+              variant: "destructive",
+            });
           }
         },
       });
@@ -121,8 +130,7 @@ export default function HistoryPage() {
   const handleClearAll = useCallback(() => {
     showConfirmDialog({
       title: "Clear all history",
-      description:
-        "This will permanently delete all transcriptions. This action cannot be undone.",
+      description: "This will permanently delete all transcriptions. This action cannot be undone.",
       confirmText: "Clear All",
       variant: "destructive",
       onConfirm: async () => {
@@ -202,9 +210,7 @@ export default function HistoryPage() {
               <Mic size={28} className="text-primary/60" />
             </div>
             <div className="text-center space-y-1.5">
-              <p className="text-lg font-medium text-foreground">
-                No transcriptions yet
-              </p>
+              <p className="text-lg font-medium text-foreground">No transcriptions yet</p>
               <p className="text-sm text-muted-foreground max-w-xs">
                 Start dictating to see your history here
               </p>
@@ -217,12 +223,8 @@ export default function HistoryPage() {
           <div className="flex flex-col items-center justify-center h-48 gap-3 select-none">
             <Search size={24} className="text-muted-foreground/40" />
             <div className="text-center space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">
-                No matches found
-              </p>
-              <p className="text-xs text-muted-foreground/60">
-                Try a different search term
-              </p>
+              <p className="text-sm font-medium text-muted-foreground">No matches found</p>
+              <p className="text-xs text-muted-foreground/60">Try a different search term</p>
             </div>
           </div>
         )}
@@ -247,14 +249,10 @@ export default function HistoryPage() {
                 <div className="rounded-xl border border-border-subtle bg-surface-1/40 overflow-hidden">
                   {group.items.map((item, idx) => (
                     <div key={item.id}>
-                      {idx > 0 && (
-                        <div className="mx-6 h-px bg-border-subtle/50" />
-                      )}
+                      {idx > 0 && <div className="mx-6 h-px bg-border-subtle/50" />}
                       <TranscriptionItem
                         item={item}
-                        index={
-                          transcriptions.findIndex((t) => t.id === item.id)
-                        }
+                        index={transcriptions.findIndex((t) => t.id === item.id)}
                         total={transcriptions.length}
                         onCopy={handleCopy}
                         onDelete={handleDelete}

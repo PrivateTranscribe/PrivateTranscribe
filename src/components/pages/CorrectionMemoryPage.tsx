@@ -137,8 +137,9 @@ export default function CorrectionMemoryPage() {
             Correction Memory stores explicit phrase fixes like{" "}
             <span className="font-mono text-foreground">use login error</span>
             {" → "}
-            <span className="font-mono text-primary">useLoginError</span>{" "}
-            and applies them automatically to future dictations. Your Dictionary is still for names, terms, and preferred words.
+            <span className="font-mono text-primary">useLoginError</span> and applies them
+            automatically to future dictations. Your Dictionary is still for names, terms, and
+            preferred words.
           </p>
         </div>
       </div>
@@ -146,12 +147,10 @@ export default function CorrectionMemoryPage() {
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">
-            Available with Privoca Pro
-          </h3>
+          <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Correction Memory learns from your edits and automatically fixes recurring
-            transcription errors. Unlock it with a Pro license in Settings.
+            Correction Memory learns from your edits and automatically fixes recurring transcription
+            errors. Unlock it with a Pro license in Settings.
           </p>
         </div>
       )}
@@ -164,131 +163,131 @@ export default function CorrectionMemoryPage() {
 
       {isUnlocked && (
         <>
-      {/* Add correction */}
-      <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Manually teach Privoca a phrase mapping.
-          </p>
-        </div>
+          {/* Add correction */}
+          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Manually teach Privoca a phrase mapping.
+              </p>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Input
-            placeholder="Source — what you say / what STT outputs"
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          />
-          <Input
-            placeholder="Target — what should be inserted"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          />
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Input
+                placeholder="Source — what you say / what STT outputs"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+              <Input
+                placeholder="Target — what should be inserted"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+            </div>
 
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-xs text-muted-foreground">
-            {existingForSource && target.trim() && existingForSource.target !== target.trim()
-              ? `Updating “${existingForSource.source}” will overwrite the current target.`
-              : null}
-          </div>
-          <Button onClick={handleAdd} disabled={saving || !source.trim() || !target.trim()}>
-            {saving ? "Saving…" : existingForSource ? "Update correction" : "Add correction"}
-          </Button>
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">Learned corrections</h2>
-            <p className="text-xs text-muted-foreground">
-              {loading ? "Loading…" : `${sorted.length} ${sorted.length === 1 ? "entry" : "entries"}`}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Sort:</span>
-            <Select value={sortKey} onValueChange={(val) => setSortKey(val as SortKey)}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="count">Most frequent</SelectItem>
-                <SelectItem value="recent">Most recent</SelectItem>
-                <SelectItem value="source">Source (A→Z)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="space-y-2">
-            <div className="skeleton h-10 w-full" />
-            <div className="skeleton h-10 w-full" />
-            <div className="skeleton h-10 w-full" />
-          </div>
-        ) : sorted.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            No corrections yet. Enable learning in Settings or add one manually above.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {sorted.slice(0, 200).map((r, idx) => (
-              <div
-                key={`${r.source}=>${r.target}-${idx}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-background/40 px-3 py-2"
-              >
-                {/* Source → Target */}
-                <div className="min-w-0 flex-1">
-                  <span className="font-mono text-sm text-foreground">{r.source}</span>
-                  <span className="text-sm text-muted-foreground mx-2">→</span>
-                  <span className="font-mono text-sm text-primary">{r.target}</span>
-                </div>
-
-                {/* Count + date + delete */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant="secondary" className="text-[10px]">
-                    ×{r.count}
-                    {r.last_seen_at && formatDate(r.last_seen_at)
-                      ? ` · ${formatDate(r.last_seen_at)}`
-                      : ""}
-                  </Badge>
-                  <button
-                    onClick={() => {
-                      setSource(r.source);
-                      setTarget(r.target);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-                    title="Edit correction"
-                  >
-                    <Pencil size={14} />
-                  </button>
-
-                  <button
-                    onClick={() => handleDelete(r.source)}
-                    disabled={deletingSource === r.source}
-                    className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
-                    title="Remove correction"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-xs text-muted-foreground">
+                {existingForSource && target.trim() && existingForSource.target !== target.trim()
+                  ? `Updating “${existingForSource.source}” will overwrite the current target.`
+                  : null}
               </div>
-            ))}
+              <Button onClick={handleAdd} disabled={saving || !source.trim() || !target.trim()}>
+                {saving ? "Saving…" : existingForSource ? "Update correction" : "Add correction"}
+              </Button>
+            </div>
           </div>
-        )}
 
-                  {sorted.length > 200 && (
-          <div className="text-[10px] text-muted-foreground">
-            Showing first 200 entries.
+          {/* List */}
+          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Learned corrections</h2>
+                <p className="text-xs text-muted-foreground">
+                  {loading
+                    ? "Loading…"
+                    : `${sorted.length} ${sorted.length === 1 ? "entry" : "entries"}`}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Sort:</span>
+                <Select value={sortKey} onValueChange={(val) => setSortKey(val as SortKey)}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="count">Most frequent</SelectItem>
+                    <SelectItem value="recent">Most recent</SelectItem>
+                    <SelectItem value="source">Source (A→Z)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="space-y-2">
+                <div className="skeleton h-10 w-full" />
+                <div className="skeleton h-10 w-full" />
+                <div className="skeleton h-10 w-full" />
+              </div>
+            ) : sorted.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                No corrections yet. Enable learning in Settings or add one manually above.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sorted.slice(0, 200).map((r, idx) => (
+                  <div
+                    key={`${r.source}=>${r.target}-${idx}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-background/40 px-3 py-2"
+                  >
+                    {/* Source → Target */}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-mono text-sm text-foreground">{r.source}</span>
+                      <span className="text-sm text-muted-foreground mx-2">→</span>
+                      <span className="font-mono text-sm text-primary">{r.target}</span>
+                    </div>
+
+                    {/* Count + date + delete */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="secondary" className="text-[10px]">
+                        ×{r.count}
+                        {r.last_seen_at && formatDate(r.last_seen_at)
+                          ? ` · ${formatDate(r.last_seen_at)}`
+                          : ""}
+                      </Badge>
+                      <button
+                        onClick={() => {
+                          setSource(r.source);
+                          setTarget(r.target);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                        title="Edit correction"
+                      >
+                        <Pencil size={14} />
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(r.source)}
+                        disabled={deletingSource === r.source}
+                        className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                        title="Remove correction"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sorted.length > 200 && (
+              <div className="text-[10px] text-muted-foreground">Showing first 200 entries.</div>
+            )}
           </div>
-        )}
-      </div>
         </>
       )}
     </div>

@@ -37,20 +37,17 @@ const COLOR_CONFIG: Record<
   indigo: {
     selected:
       "border-primary/20 bg-primary/6 shadow-[0_0_0_1px_rgba(112,255,186,0.12),0_0_10px_-3px_rgba(112,255,186,0.18)]",
-    default:
-      "border-white/5 bg-white/3 hover:border-white/20 hover:bg-white/8",
+    default: "border-white/5 bg-white/3 hover:border-white/20 hover:bg-white/8",
   },
   purple: {
     selected:
       "border-primary/20 bg-primary/6 shadow-[0_0_0_1px_rgba(112,255,186,0.12),0_0_10px_-3px_rgba(112,255,186,0.18)]",
-    default:
-      "border-white/5 bg-white/3 hover:border-white/20 hover:bg-white/8",
+    default: "border-white/5 bg-white/3 hover:border-white/20 hover:bg-white/8",
   },
   blue: {
     selected:
       "border-primary/20 bg-primary/6 shadow-[0_0_0_1px_rgba(112,255,186,0.15),0_0_12px_-3px_rgba(112,255,186,0.2)]",
-    default:
-      "border-white/5 bg-white/3 hover:border-white/20 hover:bg-white/8",
+    default: "border-white/5 bg-white/3 hover:border-white/20 hover:bg-white/8",
   },
 };
 

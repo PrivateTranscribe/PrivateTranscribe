@@ -182,9 +182,9 @@ export default function DictionaryPage() {
         <SettingsPanel>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              Words in your dictionary are provided as context hints to the speech recognition model.
-              This helps it correctly identify uncommon names, technical jargon, brand names, or
-              anything that's frequently misrecognized.
+              Words in your dictionary are provided as context hints to the speech recognition
+              model. This helps it correctly identify uncommon names, technical jargon, brand names,
+              or anything that's frequently misrecognized.
             </p>
           </SettingsPanelRow>
           <SettingsPanelRow>

@@ -253,7 +253,7 @@ export default function ControlPanel() {
         onOpenChange={hideAlertDialog}
         title={alertDialog.title}
         description={alertDialog.description}
-        onOk={() => { }}
+        onOk={() => {}}
       />
 
       <TitleBar
@@ -381,7 +381,9 @@ export default function ControlPanel() {
                   <Mic size={28} className="text-muted-foreground" />
                 </div>
                 <p className="text-lg text-foreground mb-2 font-medium">No transcriptions yet</p>
-                <p className="text-sm text-muted-foreground mb-5">Start dictating to see your transcriptions here</p>
+                <p className="text-sm text-muted-foreground mb-5">
+                  Start dictating to see your transcriptions here
+                </p>
                 <div className="flex items-center gap-3 text-sm text-muted-foreground">
                   <span>Press</span>
                   <kbd className="inline-flex items-center h-8 px-3 rounded-lg bg-surface-raised border border-border-subtle text-sm font-mono font-medium shadow-sm">

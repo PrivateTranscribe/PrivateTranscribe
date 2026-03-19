@@ -5,54 +5,52 @@
      Single dark palette. No light mode. Every component reads these tokens. */
 
   /* Core palette */
-  --color-primary: #70FFBA;
+  --color-primary: #70ffba;
   --color-primary-foreground: #080908;
-  --color-secondary: #1A2E26;
-  --color-secondary-foreground: #FFFFFF;
+  --color-secondary: #1a2e26;
+  --color-secondary-foreground: #ffffff;
   --color-muted: #111311;
-  --color-muted-foreground: #6B7370;
-  --color-accent: #70FFBA;
+  --color-muted-foreground: #6b7370;
+  --color-accent: #70ffba;
   --color-accent-foreground: #080908;
-  --color-destructive: #FF6B6B;
-  --color-destructive-foreground: #FFFFFF;
+  --color-destructive: #ff6b6b;
+  --color-destructive-foreground: #ffffff;
   --color-border: #222523;
   --color-input: #111311;
-  --color-ring: #70FFBA;
+  --color-ring: #70ffba;
   --color-background: #080908;
-  --color-foreground: #FFFFFF;
-  --color-card: #0F110F;
-  --color-card-foreground: #FFFFFF;
+  --color-foreground: #ffffff;
+  --color-card: #0f110f;
+  --color-card-foreground: #ffffff;
   --color-popover: #141614;
-  --color-popover-foreground: #FFFFFF;
-  --color-link: #70FFBA;
+  --color-popover-foreground: #ffffff;
+  --color-link: #70ffba;
 
   /* Semantic colors */
-  --color-success: #70FFBA;
+  --color-success: #70ffba;
   --color-success-foreground: #080908;
-  --color-warning: #FFB86B;
+  --color-warning: #ffb86b;
   --color-warning-foreground: #080908;
-  --color-info: #6BB8FF;
-  --color-info-foreground: #FFFFFF;
+  --color-info: #6bb8ff;
+  --color-info-foreground: #ffffff;
 
   /* Surface hierarchy — layered depth */
   --color-surface-0: #080908;
-  --color-surface-1: #0D0F0D;
+  --color-surface-1: #0d0f0d;
   --color-surface-2: #121412;
-  --color-surface-3: #1A2E26;
-  --color-surface-raised: #1A1D1A;
+  --color-surface-3: #1a2e26;
+  --color-surface-raised: #1a1d1a;
 
   /* Border states */
-  --color-border-subtle: #1C1F1C;
-  --color-border-hover: #2E3230;
-  --color-border-active: #70FFBA;
+  --color-border-subtle: #1c1f1c;
+  --color-border-hover: #2e3230;
+  --color-border-active: #70ffba;
 }
 
 :root {
   /* Typography */
-  --font-family-sans:
-    "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-family-mono:
-    "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --font-family-sans: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
   /* Opacities */
   --opacity-subtle: 0.1;
@@ -88,7 +86,9 @@
     margin: 0;
     padding: 0;
     font-family: var(--font-family-sans);
-    font-feature-settings: "liga" 1, "kern" 1;
+    font-feature-settings:
+      "liga" 1,
+      "kern" 1;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -116,7 +116,12 @@
 }
 
 /* Privoca Typography */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-family-sans);
   font-weight: 600;
   letter-spacing: -0.025em;
@@ -236,34 +241,65 @@ a:hover {
 
 /* Toast progress bar animation */
 @keyframes toast-progress {
-  from { width: 100%; }
-  to { width: 0%; }
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
 }
 
 /* Motion system */
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes ring-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.5; }
-  50% { transform: scale(1.12); opacity: 0.2; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.2;
+  }
 }
 
 @keyframes skeleton-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* Grain overlay — barely perceptible texture for depth */

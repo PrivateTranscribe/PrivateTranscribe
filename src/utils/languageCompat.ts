@@ -23,25 +23,25 @@ export type TranscriptionModelType = "whisper" | "parakeet";
  *                    the specific model's supportedLanguages list)
  */
 export function getModelSupportedLanguages(
-    modelType: TranscriptionModelType,
-    modelId?: string
+  modelType: TranscriptionModelType,
+  modelId?: string
 ): readonly string[] | null {
-    if (modelType === "whisper") {
-        // Whisper (all variants) supports ~99 languages — no restriction.
-        return null;
-    }
-
-    if (modelType === "parakeet") {
-        const info = modelId ? getParakeetModelInfo(modelId) : undefined;
-        const langs = info?.supportedLanguages;
-        if (langs && langs.length > 0) {
-            return langs;
-        }
-        // If the model info is missing, default to English-only as a safe fallback.
-        return ["en"];
-    }
-
+  if (modelType === "whisper") {
+    // Whisper (all variants) supports ~99 languages — no restriction.
     return null;
+  }
+
+  if (modelType === "parakeet") {
+    const info = modelId ? getParakeetModelInfo(modelId) : undefined;
+    const langs = info?.supportedLanguages;
+    if (langs && langs.length > 0) {
+      return langs;
+    }
+    // If the model info is missing, default to English-only as a safe fallback.
+    return ["en"];
+  }
+
+  return null;
 }
 
 /**
@@ -55,16 +55,16 @@ export function getModelSupportedLanguages(
  * @param modelId   - Optional; used by Parakeet to look up the specific model
  */
 export function isLanguageSupported(
-    language: string,
-    modelType: TranscriptionModelType,
-    modelId?: string
+  language: string,
+  modelType: TranscriptionModelType,
+  modelId?: string
 ): boolean {
-    if (!language || language === "auto") return true;
+  if (!language || language === "auto") return true;
 
-    const supported = getModelSupportedLanguages(modelType, modelId);
-    if (supported === null) return true; // no restriction
+  const supported = getModelSupportedLanguages(modelType, modelId);
+  if (supported === null) return true; // no restriction
 
-    return supported.includes(language);
+  return supported.includes(language);
 }
 
 /**
@@ -80,28 +80,27 @@ export function isLanguageSupported(
  * @returns The resolved language code to use, or `null` for auto-detect
  */
 export function resolveTranscriptionLanguage(
-    language: string | null | undefined,
-    modelType: TranscriptionModelType,
-    modelId?: string
+  language: string | null | undefined,
+  modelType: TranscriptionModelType,
+  modelId?: string
 ): string | null {
-    if (!language || language === "auto") return null;
+  if (!language || language === "auto") return null;
 
-    if (!isLanguageSupported(language, modelType, modelId)) {
-        const modelLabel = modelId ? `${modelType} model "${modelId}"` : modelType;
-        const supportedList =
-            getModelSupportedLanguages(modelType, modelId)?.join(", ") ?? "all";
-        logger.warn(
-            `Language "${language}" not supported by ${modelLabel}; falling back to auto-detect`,
-            { language, modelType, modelId: modelId ?? null, supportedLanguages: supportedList },
-            "transcription"
-        );
-        return null;
-    }
-
-    logger.debug(
-        "Language resolved for transcription",
-        { language, modelType, modelId: modelId ?? null },
-        "transcription"
+  if (!isLanguageSupported(language, modelType, modelId)) {
+    const modelLabel = modelId ? `${modelType} model "${modelId}"` : modelType;
+    const supportedList = getModelSupportedLanguages(modelType, modelId)?.join(", ") ?? "all";
+    logger.warn(
+      `Language "${language}" not supported by ${modelLabel}; falling back to auto-detect`,
+      { language, modelType, modelId: modelId ?? null, supportedLanguages: supportedList },
+      "transcription"
     );
-    return language;
+    return null;
+  }
+
+  logger.debug(
+    "Language resolved for transcription",
+    { language, modelType, modelId: modelId ?? null },
+    "transcription"
+  );
+  return language;
 }

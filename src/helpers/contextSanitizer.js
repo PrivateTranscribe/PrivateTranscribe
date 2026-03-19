@@ -215,8 +215,7 @@ const DEFAULT_REDACTION_PATTERNS = [
   // PEM private key blocks
   {
     name: "privateKeyBlock",
-    regex:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    regex: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
   // Emails (can appear in window titles, docs, tickets, etc.)

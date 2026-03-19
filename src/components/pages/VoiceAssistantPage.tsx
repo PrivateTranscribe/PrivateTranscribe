@@ -55,115 +55,117 @@ export default function VoiceAssistantPage() {
           <Lock size={24} className="mx-auto text-primary/60" />
           <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Customize your voice assistant with a personal name and fine-tuned system prompts for AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
+            Customize your voice assistant with a personal name and fine-tuned system prompts for
+            AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
           </p>
         </div>
       )}
 
-      {isUnlocked && (<>
-
-      {/* Agent Name Section */}
-      <div className="mb-10">
-        <p className="text-[13px] font-medium text-foreground mb-3">Agent Name</p>
-        <SettingsPanel>
-          <SettingsPanelRow>
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g. Jarvis, Nova, Atlas..."
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  className="flex-1 text-center text-base font-mono"
-                />
-                <Button
-                  onClick={() => {
-                    setAgentName(agentName.trim());
-                    showAlertDialog({
-                      title: "Agent Name Updated",
-                      description: `Your agent is now named "${agentName.trim()}". Address it by saying "Hey ${agentName.trim()}" followed by your instructions.`,
-                    });
-                  }}
-                  disabled={!agentName.trim()}
-                  size="sm"
-                >
-                  Save
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground/60">
-                Pick something short and natural to say aloud
-              </p>
-            </div>
-          </SettingsPanelRow>
-        </SettingsPanel>
-      </div>
-
-      {/* How it works */}
-      <div className="mb-10">
-        <p className="text-[13px] font-medium text-foreground mb-3">How it works</p>
-        <SettingsPanel>
-          <SettingsPanelRow>
-            <p className="text-[12px] text-muted-foreground leading-relaxed">
-              When you say{" "}
-              <span className="font-medium text-foreground">"Hey {agentName}"</span> followed by an
-              instruction, the AI switches from cleanup mode to instruction mode. Without the trigger
-              phrase, it simply cleans up your dictation.
-            </p>
-          </SettingsPanelRow>
-        </SettingsPanel>
-      </div>
-
-      {/* Examples */}
-      <div className="mb-10">
-        <p className="text-[13px] font-medium text-foreground mb-3">Examples</p>
-        <SettingsPanel>
-          <SettingsPanelRow>
-            <div className="space-y-2.5">
-              {[
-                {
-                  input: `Hey ${agentName}, write a formal email about the budget`,
-                  mode: "Instruction",
-                },
-                {
-                  input: `Hey ${agentName}, make this more professional`,
-                  mode: "Instruction",
-                },
-                {
-                  input: `Hey ${agentName}, convert this to bullet points`,
-                  mode: "Instruction",
-                },
-                { input: "We should schedule a meeting for next week", mode: "Cleanup" },
-              ].map((example, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <span
-                    className={`shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded ${
-                      example.mode === "Instruction"
-                        ? "bg-primary/15 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {example.mode}
-                  </span>
-                  <p className="text-[12px] text-muted-foreground leading-relaxed">
-                    "{example.input}"
+      {isUnlocked && (
+        <>
+          {/* Agent Name Section */}
+          <div className="mb-10">
+            <p className="text-[13px] font-medium text-foreground mb-3">Agent Name</p>
+            <SettingsPanel>
+              <SettingsPanelRow>
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g. Jarvis, Nova, Atlas..."
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      className="flex-1 text-center text-base font-mono"
+                    />
+                    <Button
+                      onClick={() => {
+                        setAgentName(agentName.trim());
+                        showAlertDialog({
+                          title: "Agent Name Updated",
+                          description: `Your agent is now named "${agentName.trim()}". Address it by saying "Hey ${agentName.trim()}" followed by your instructions.`,
+                        });
+                      }}
+                      disabled={!agentName.trim()}
+                      size="sm"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/60">
+                    Pick something short and natural to say aloud
                   </p>
                 </div>
-              ))}
-            </div>
-          </SettingsPanelRow>
-        </SettingsPanel>
-      </div>
+              </SettingsPanelRow>
+            </SettingsPanel>
+          </div>
 
-      {/* Prompt Studio */}
-      <div>
-        <div className="mb-3">
-          <p className="text-[13px] font-medium text-foreground">System Prompts</p>
-          <p className="text-[11px] text-muted-foreground/60 mt-1">
-            Fine-tune the AI's behavior and output style
-          </p>
-        </div>
-                <PromptStudio />
-      </div>
-      </>)}
+          {/* How it works */}
+          <div className="mb-10">
+            <p className="text-[13px] font-medium text-foreground mb-3">How it works</p>
+            <SettingsPanel>
+              <SettingsPanelRow>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">
+                  When you say{" "}
+                  <span className="font-medium text-foreground">"Hey {agentName}"</span> followed by
+                  an instruction, the AI switches from cleanup mode to instruction mode. Without the
+                  trigger phrase, it simply cleans up your dictation.
+                </p>
+              </SettingsPanelRow>
+            </SettingsPanel>
+          </div>
+
+          {/* Examples */}
+          <div className="mb-10">
+            <p className="text-[13px] font-medium text-foreground mb-3">Examples</p>
+            <SettingsPanel>
+              <SettingsPanelRow>
+                <div className="space-y-2.5">
+                  {[
+                    {
+                      input: `Hey ${agentName}, write a formal email about the budget`,
+                      mode: "Instruction",
+                    },
+                    {
+                      input: `Hey ${agentName}, make this more professional`,
+                      mode: "Instruction",
+                    },
+                    {
+                      input: `Hey ${agentName}, convert this to bullet points`,
+                      mode: "Instruction",
+                    },
+                    { input: "We should schedule a meeting for next week", mode: "Cleanup" },
+                  ].map((example, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <span
+                        className={`shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded ${
+                          example.mode === "Instruction"
+                            ? "bg-primary/15 text-primary"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {example.mode}
+                      </span>
+                      <p className="text-[12px] text-muted-foreground leading-relaxed">
+                        "{example.input}"
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </SettingsPanelRow>
+            </SettingsPanel>
+          </div>
+
+          {/* Prompt Studio */}
+          <div>
+            <div className="mb-3">
+              <p className="text-[13px] font-medium text-foreground">System Prompts</p>
+              <p className="text-[11px] text-muted-foreground/60 mt-1">
+                Fine-tune the AI's behavior and output style
+              </p>
+            </div>
+            <PromptStudio />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -13,9 +13,7 @@ export default function ProcessingModeSelector({
   className = "",
 }: ProcessingModeSelectorProps) {
   return (
-    <div
-      className={`relative flex p-0.5 rounded-lg bg-white/3 border border-white/5 ${className}`}
-    >
+    <div className={`relative flex p-0.5 rounded-lg bg-white/3 border border-white/5 ${className}`}>
       {/* Sliding indicator */}
       <div
         className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-white/8 border border-white/10 transition-transform duration-200 ease-out ${

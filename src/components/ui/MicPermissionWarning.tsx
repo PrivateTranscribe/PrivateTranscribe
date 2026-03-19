@@ -57,19 +57,12 @@ export default function MicPermissionWarning({
   const config = useMemo(() => PLATFORM_CONFIG[getPlatform()], []);
 
   return (
-    <div
-      className={cn(
-        "rounded-md p-2.5 border",
-        "bg-warning/10 border-warning/20"
-      )}
-    >
+    <div className={cn("rounded-md p-2.5 border", "bg-warning/10 border-warning/20")}>
       <div className="flex items-center gap-2.5">
         <div className="w-6 h-6 rounded-md bg-warning/15 flex items-center justify-center shrink-0">
           <AlertCircle className="w-3.5 h-3.5 text-warning" />
         </div>
-        <p className="flex-1 text-[11px] text-warning/90 leading-snug">
-          {error || config.message}
-        </p>
+        <p className="flex-1 text-[11px] text-warning/90 leading-snug">{error || config.message}</p>
         <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"

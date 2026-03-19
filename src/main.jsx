@@ -67,7 +67,11 @@ function AppRouter() {
 
   // Only apply grain overlay on control panel, not dictation window (transparent bg)
   if (isControlPanel) {
-    return <div className="grain-overlay"><ControlPanelShell /></div>;
+    return (
+      <div className="grain-overlay">
+        <ControlPanelShell />
+      </div>
+    );
   }
 
   return <App />;

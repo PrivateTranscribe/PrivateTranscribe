@@ -52,10 +52,7 @@ export function DownloadProgressBar({
       </div>
 
       {/* Progress bar - thinner, premium */}
-      <div
-        className="w-full rounded-full overflow-hidden bg-white/3"
-        style={{ height: 4 }}
-      >
+      <div className="w-full rounded-full overflow-hidden bg-white/3" style={{ height: 4 }}>
         <div
           className={`${isInstalling ? "animate-pulse" : ""} bg-primary shadow-[0_0_8px_rgba(112,255,186,0.4)]`}
           style={{

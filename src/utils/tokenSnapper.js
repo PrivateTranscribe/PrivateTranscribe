@@ -5,12 +5,7 @@ const looksLikeIdentifier = (word) => {
   const w = word.trim();
   if (w.length < 2 || w.length > 80) return false;
   // file.ext, camelCase, snake_case, kebab-case, contains digits
-  return (
-    /\.[a-z0-9]{1,6}$/i.test(w) ||
-    /[A-Z]/.test(w) ||
-    /[_-]/.test(w) ||
-    /\d/.test(w)
-  );
+  return /\.[a-z0-9]{1,6}$/i.test(w) || /[A-Z]/.test(w) || /[_-]/.test(w) || /\d/.test(w);
 };
 
 const splitIdentifierToSpoken = (word) => {
@@ -22,10 +17,7 @@ const splitIdentifierToSpoken = (word) => {
   const camel = snake.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
   // ACRONYMWord -> ACRONYM Word
   const acronym = camel.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
-  return acronym
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  return acronym.replace(/\s+/g, " ").trim().toLowerCase();
 };
 
 const normalizeSpoken = (text) => {
@@ -43,7 +35,12 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *
  * Privacy model: runs fully local.
  */
-export function snapTranscript({ transcript, dictionaryWords = [], corrections = [], maxCandidates = DEFAULT_MAX_CANDIDATES }) {
+export function snapTranscript({
+  transcript,
+  dictionaryWords = [],
+  corrections = [],
+  maxCandidates = DEFAULT_MAX_CANDIDATES,
+}) {
   const original = typeof transcript === "string" ? transcript : "";
   if (!original.trim()) return original;
 

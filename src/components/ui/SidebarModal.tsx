@@ -94,9 +94,7 @@ export default function SidebarModal<T extends string>({
               >
                 {/* Title */}
                 <div className="px-5 pt-6 pb-4">
-                  <h2 className="text-sm font-semibold text-foreground tracking-tight">
-                    {title}
-                  </h2>
+                  <h2 className="text-sm font-semibold text-foreground tracking-tight">{title}</h2>
                 </div>
 
                 {/* Navigation */}
@@ -131,7 +129,9 @@ export default function SidebarModal<T extends string>({
                               )}
                               <div
                                 className={`flex items-center justify-center h-7 w-7 rounded-lg shrink-0 transition-all duration-200 ${
-                                  isActive ? "bg-primary/20" : "bg-transparent group-hover:bg-surface-raised"
+                                  isActive
+                                    ? "bg-primary/20"
+                                    : "bg-transparent group-hover:bg-surface-raised"
                                 }`}
                               >
                                 <Icon

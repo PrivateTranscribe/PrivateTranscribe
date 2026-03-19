@@ -187,7 +187,11 @@ export default function DeveloperSection() {
   };
 
   // NOTE: null (no override) is the internal default; only Free/Pro are exposed in the UI.
-  const proPreviewOptions: { value: Exclude<ProPreviewMode, null>; label: string; description: string }[] = [
+  const proPreviewOptions: {
+    value: Exclude<ProPreviewMode, null>;
+    label: string;
+    description: string;
+  }[] = [
     { value: "free", label: "Free", description: "Pro features locked — upsell badges visible" },
     { value: "pro", label: "Pro", description: "All Pro features unlocked — badges hidden" },
   ];

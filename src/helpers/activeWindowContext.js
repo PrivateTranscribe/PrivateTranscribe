@@ -77,7 +77,12 @@ function getExtraSensitivePatterns() {
   return parseSensitivePatternsEnv(process.env.PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS);
 }
 
-function isSensitiveAppContext({ appName = "", processName = "", appClass = "", windowTitle = "" } = {}) {
+function isSensitiveAppContext({
+  appName = "",
+  processName = "",
+  appClass = "",
+  windowTitle = "",
+} = {}) {
   const appHay = [appName, processName, appClass].join(" ").toLowerCase();
 
   // Narrow denylist: password managers / auth apps + OS credential prompts.
@@ -186,7 +191,9 @@ function resolveOnPathForPlatform(cmd, { platform, envPath, pathext } = {}) {
 
   const rawPathext =
     platform === "win32"
-      ? (typeof pathext === "string" ? pathext : String(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM"))
+      ? typeof pathext === "string"
+        ? pathext
+        : String(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
       : "";
 
   const exts =
@@ -207,9 +214,7 @@ function resolveOnPathForPlatform(cmd, { platform, envPath, pathext } = {}) {
 
   const cmdExt = platform === "win32" ? path.extname(cmd) : "";
   const hasKnownExt =
-    platform === "win32" &&
-    cmdExt &&
-    exts.some((e) => e.toLowerCase() === cmdExt.toLowerCase());
+    platform === "win32" && cmdExt && exts.some((e) => e.toLowerCase() === cmdExt.toLowerCase());
 
   for (const dir of dirs) {
     const base = path.join(dir, cmd);
@@ -292,17 +297,20 @@ function getMacOSContext() {
   const script = [
     'tell application "System Events"',
     "set frontApp to name of first application process whose frontmost is true",
-    "set frontWin to \"\"",
+    'set frontWin to ""',
     "try",
     "set frontWin to name of front window of (first application process whose frontmost is true)",
     "end try",
-    "return frontApp & \"\n\" & frontWin",
+    'return frontApp & "\n" & frontWin',
     "end tell",
   ].join("\n");
 
   const res = run("osascript", ["-e", script]);
   if (!res.ok) {
-    return { available: false, reason: "osascript failed (likely missing Accessibility permission)" };
+    return {
+      available: false,
+      reason: "osascript failed (likely missing Accessibility permission)",
+    };
   }
 
   const [appNameRaw, winRaw] = (res.stdout || "").split("\n");
@@ -331,14 +339,18 @@ function getMacOSContext() {
 function shouldCaptureContextCapture() {
   // Allow privacy- or policy-conscious users to fully disable *all* active-window context capture.
   // Default: enabled (best-effort + privacy-first sanitization + hard limits).
-  const raw = String(process.env.PRIVOCA_DISABLE_CONTEXT_CAPTURE || "").trim().toLowerCase();
+  const raw = String(process.env.PRIVOCA_DISABLE_CONTEXT_CAPTURE || "")
+    .trim()
+    .toLowerCase();
   return !(raw === "1" || raw === "true" || raw === "yes");
 }
 
 function shouldCaptureWindowsUia() {
   // Allow privacy- or policy-conscious users to fully disable UIA capture.
   // Default: enabled (best-effort + privacy-first sanitization + hard limit).
-  const raw = String(process.env.PRIVOCA_DISABLE_WINDOWS_UIA || "").trim().toLowerCase();
+  const raw = String(process.env.PRIVOCA_DISABLE_WINDOWS_UIA || "")
+    .trim()
+    .toLowerCase();
   return !(raw === "1" || raw === "true" || raw === "yes");
 }
 
