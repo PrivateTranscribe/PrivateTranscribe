@@ -2388,12 +2388,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     onClick={async () => {
                       try {
                         const result = await window.electronAPI?.openExternal(
-                          "mailto:support@Privoca.com"
+                          "mailto:support@privoca.com"
                         );
                         if (!result?.success) {
                           // Fallback: try opening the email as a web URL
                           await window.electronAPI?.openExternal(
-                            "https://mail.google.com/mail/?view=cm&to=support@Privoca.com"
+                            "https://mail.google.com/mail/?view=cm&to=support@privoca.com"
                           );
                         }
                       } catch (error) {

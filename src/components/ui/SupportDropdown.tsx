@@ -16,12 +16,12 @@ interface SupportDropdownProps {
 export default function SupportDropdown({ className }: SupportDropdownProps) {
   const handleContactSupport = async () => {
     try {
-      const result = await window.electronAPI?.openExternal("mailto:support@Privoca.com");
+      const result = await window.electronAPI?.openExternal("mailto:support@privoca.com");
       if (!result?.success) {
         console.error("Failed to open email client:", result?.error);
         // Fallback: try opening the email as a web URL
         await window.electronAPI?.openExternal(
-          "https://mail.google.com/mail/?view=cm&to=support@Privoca.com"
+          "https://mail.google.com/mail/?view=cm&to=support@privoca.com"
         );
       }
     } catch (error) {
