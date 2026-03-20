@@ -4,6 +4,7 @@ import App from "./App.jsx";
 import ControlPanelShell from "./components/ControlPanelShell.tsx";
 import OnboardingFlow from "./components/OnboardingFlow.tsx";
 import { ToastProvider } from "./components/ui/Toast.tsx";
+import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { useTheme } from "./hooks/useTheme";
 import { refreshProStatus } from "./services/LicensingService.ts";
 import "./index.css";
@@ -79,8 +80,10 @@ function AppRouter() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ToastProvider>
-      <AppRouter />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AppRouter />
+      </ToastProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
