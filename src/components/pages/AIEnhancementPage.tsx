@@ -70,10 +70,13 @@ export default function AIEnhancementPage() {
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3 mb-8">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+          <h3 className="text-base font-semibold text-foreground">
+            Smarter transcriptions, automatically
+          </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            AI Enhancement automatically polishes your transcriptions — fixing grammar, formatting
-            text, and handling intelligent rewrites. Unlock it with a Pro license in Settings.
+            AI Enhancement silently cleans up raw dictation — fixing grammar, cutting filler words,
+            and reformatting text before it reaches the clipboard. You speak; it polishes. Requires
+            Privoca Pro.
           </p>
         </div>
       )}

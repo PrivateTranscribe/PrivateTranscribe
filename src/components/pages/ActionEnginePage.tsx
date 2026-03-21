@@ -976,10 +976,11 @@ export default function ActionEnginePage() {
 
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
             <Lock size={24} className="mx-auto text-primary/60" />
-            <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+            <h3 className="text-base font-semibold text-foreground">Your voice, your commands</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-              Create custom voice commands that launch apps, run scripts, control your editor, and
-              automate repetitive workflows — all hands-free.
+              Say a phrase, trigger a real action. Open apps, run scripts, switch modes, or browse
+              to any URL — without touching the keyboard. Build a personal command vocabulary that
+              works exactly how you think. Get it with Pro.
             </p>
           </div>
         </>

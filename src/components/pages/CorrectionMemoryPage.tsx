@@ -147,10 +147,14 @@ export default function CorrectionMemoryPage() {
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+          <h3 className="text-base font-semibold text-foreground">It learns how you write</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Correction Memory learns from your edits and automatically fixes recurring transcription
-            errors. Unlock it with a Pro license in Settings.
+            Correction Memory captures phrase fixes you confirm — like{" "}
+            <span className="font-mono">use login error</span>
+            {" → "}
+            <span className="font-mono">useLoginError</span> — and applies them to every future
+            dictation automatically. The longer you use Privoca, the sharper it gets. Unlock it
+            with Pro.
           </p>
         </div>
       )}
