@@ -2253,7 +2253,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 shadow-[0_0_40px_rgba(112,255,186,0.08)] overflow-hidden relative">
                 <div className="absolute top-4 right-4">
                   <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">
-                    Coming soon
+                    Pro
                   </Badge>
                 </div>
                 <div className="max-w-2xl space-y-4">
@@ -2261,16 +2261,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     <Sparkles className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">A dedicated prompt workspace</h3>
+                    <h3 className="text-lg font-semibold text-foreground">Your prompt workspace</h3>
                     <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      This section will become the control room for system instructions — letting you tune tone, cleanup rules, command behavior, and reusable prompt presets with more precision.
+                      The control room for system instructions — tune tone, cleanup rules, command behavior, and reusable prompt presets with full precision.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {[
                       "Preset prompt profiles for different workflows",
                       "Fine-grained instruction layers for cleanup vs assistant mode",
-                      "Safer testing before prompts affect live dictation",
+                      "Safe testing before prompts affect live dictation",
                     ].map((item) => (
                       <div key={item} className="rounded-xl border border-border-subtle/50 bg-surface-raised/40 px-4 py-3 text-sm text-muted-foreground">
                         {item}
