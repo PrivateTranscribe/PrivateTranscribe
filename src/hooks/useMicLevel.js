@@ -41,13 +41,6 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
         const ctx = new AudioCtx();
 
-        // Chromium/Electron may create the AudioContext in "suspended" state when
-        // the constructor is not invoked synchronously from a user-gesture handler.
-        // The isRecording state arrives via IPC → React re-render, one hop removed
-        // from the original keypress, so suspension can occur intermittently.
-        // Resume unconditionally — it is a no-op when already "running".
-        ctx.resume().catch(() => {});
-
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
 
@@ -86,8 +79,9 @@ export function useMicLevel(audioManagerRef, isRecording) {
           rafRef.current = requestAnimationFrame(tick);
         };
 
-        rafRef.current = requestAnimationFrame(tick);
-
+        // Register cleanup before the async resume so that if the effect
+        // tears down while ctx.resume() is still pending, source and ctx
+        // are properly closed regardless.
         cleanupRef.current = () => {
           try {
             source.disconnect();
@@ -96,6 +90,25 @@ export function useMicLevel(audioManagerRef, isRecording) {
             // Ignore teardown errors
           }
         };
+
+        // Chromium/Electron creates AudioContext in "suspended" state when the
+        // constructor is not called synchronously from a renderer user-gesture.
+        // Recording is triggered via IPC → React state update, so the renderer
+        // never sees a synchronous gesture event. Fire-and-forgetting resume()
+        // (as was done before) starts the tick loop while the context is still
+        // suspended, causing getFloatTimeDomainData to return all zeros — a flat
+        // line. Instead, wait for the context to be running before ticking.
+        // The catch path still starts the loop as a fallback (some environments
+        // resolve without a gesture; if ctx stays suspended the bars will remain
+        // at zero but audio recording is unaffected).
+        const startLoop = () => {
+          if (!cancelled) rafRef.current = requestAnimationFrame(tick);
+        };
+        if (ctx.state === "running") {
+          startLoop();
+        } else {
+          ctx.resume().then(startLoop).catch(startLoop);
+        }
       } catch {
         // Web Audio API unavailable or stream already closed — fail silently.
         // Visualization degrades to static state, recording is unaffected.
