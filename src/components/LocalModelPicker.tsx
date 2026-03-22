@@ -125,11 +125,17 @@ export default function LocalModelPicker({
         title: "Delete Model",
         description:
           "Are you sure you want to delete this model? You'll need to re-download it if you want to use it again.",
-        onConfirm: () => deleteModel(modelId, loadDownloadedModels),
+        onConfirm: () =>
+          deleteModel(modelId, async () => {
+            const downloaded = await loadDownloadedModels();
+            if (selectedModel === modelId || (selectedModel && !downloaded.has(selectedModel))) {
+              onModelSelect("");
+            }
+          }),
         variant: "destructive",
       });
     },
-    [showConfirmDialog, deleteModel, loadDownloadedModels]
+    [showConfirmDialog, deleteModel, loadDownloadedModels, selectedModel, onModelSelect]
   );
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);

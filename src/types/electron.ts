@@ -438,7 +438,7 @@ declare global {
       modelGetAll: () => Promise<any[]>;
       modelCheck: (modelId: string) => Promise<boolean>;
       modelDownload: (modelId: string) => Promise<void>;
-      modelDelete: (modelId: string) => Promise<void>;
+      modelDelete: (modelId: string) => Promise<{ success: boolean; freed_mb?: number; error?: string }>;
       modelDeleteAll: () => Promise<{ success: boolean; error?: string; code?: string }>;
       modelCheckRuntime: () => Promise<boolean>;
       modelCancelDownload: (modelId: string) => Promise<{ success: boolean; error?: string }>;

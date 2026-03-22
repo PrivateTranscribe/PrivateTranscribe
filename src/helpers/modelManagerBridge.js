@@ -264,9 +264,17 @@ class ModelManager {
 
     const modelPath = path.join(this.modelsDir, modelInfo.model.fileName);
 
+    let freed_mb = 0;
     if (await this.checkFileExists(modelPath)) {
+      try {
+        const stats = await fsPromises.stat(modelPath);
+        freed_mb = Math.round(stats.size / (1024 * 1024));
+      } catch {
+        // ignore stat errors
+      }
       await fsPromises.unlink(modelPath);
     }
+    return { freed_mb };
   }
 
   async deleteAllModels() {

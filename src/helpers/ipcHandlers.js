@@ -780,8 +780,8 @@ class IPCHandlers {
     ipcMain.handle("model-delete", async (event, modelId) => {
       try {
         const modelManager = require("./modelManagerBridge").default;
-        await modelManager.deleteModel(modelId);
-        return { success: true };
+        const { freed_mb } = await modelManager.deleteModel(modelId);
+        return { success: true, freed_mb };
       } catch (error) {
         return {
           success: false,

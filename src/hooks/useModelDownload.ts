@@ -249,11 +249,15 @@ export function useModelDownload({
             });
           }
         } else {
-          await window.electronAPI?.modelDelete?.(modelId);
-          toast({
-            title: "Model Deleted",
-            description: "Model deleted successfully!",
-          });
+          const result = await window.electronAPI?.modelDelete?.(modelId);
+          if (result?.success !== false) {
+            toast({
+              title: "Model Deleted",
+              description: result?.freed_mb
+                ? `Model deleted successfully! Freed ${result.freed_mb}MB of disk space.`
+                : "Model deleted successfully!",
+            });
+          }
         }
         onComplete?.();
       } catch (error: unknown) {
