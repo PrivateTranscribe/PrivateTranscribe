@@ -4,12 +4,12 @@
 
 ### No Window Appears
 
-**Symptoms:** Privoca runs in Task Manager but no window shows
+**Symptoms:** PrivateTranscribe runs in Task Manager but no window shows
 
 **Solutions:**
-1. Check system tray (click ^ caret) for Privoca icon
-2. Run with debug: `Privoca.exe --log-level=debug`
-3. Try disabling GPU: `Privoca.exe --disable-gpu`
+1. Check system tray (click ^ caret) for PrivateTranscribe icon
+2. Run with debug: `PrivateTranscribe.exe --log-level=debug`
+3. Try disabling GPU: `PrivateTranscribe.exe --disable-gpu`
 
 ### No Transcriptions
 
@@ -23,7 +23,7 @@
 ### Active Window Context / UI Automation (UIA) Issues
 
 **Symptoms:**
-- Privoca is slow/stutters when typing
+- PrivateTranscribe is slow/stutters when typing
 - Antivirus/EDR flags PowerShell/UI Automation usage
 - You want to disable UI Automation context capture for privacy/policy reasons
 
@@ -31,7 +31,7 @@
 
 Option A — Disable *all* active-window context capture (strongest privacy / most compatible):
 
-In `%APPDATA%\Privoca\.env` add:
+In `%APPDATA%\PrivateTranscribe\.env` add:
 
 ```ini
 # Disable ALL active-window context capture (window title + UIA)
@@ -40,14 +40,14 @@ PRIVOCA_DISABLE_CONTEXT_CAPTURE=true
 
 Option B — Disable only Windows UIA focused-element text capture:
 
-In `%APPDATA%\Privoca\.env` add:
+In `%APPDATA%\PrivateTranscribe\.env` add:
 
 ```ini
 # Disable Windows UI Automation (focused element text) capture
 PRIVOCA_DISABLE_WINDOWS_UIA=true
 ```
 
-Restart Privoca after changing `.env`.
+Restart PrivateTranscribe after changing `.env`.
 
 ### whisper.cpp Not Working
 
@@ -65,7 +65,7 @@ Restart Privoca after changing `.env`.
 **Symptoms:** Transcription fails silently
 
 **Solutions:**
-1. Reinstall Privoca (FFmpeg is bundled)
+1. Reinstall PrivateTranscribe (FFmpeg is bundled)
 2. Check antivirus isn't quarantining FFmpeg
 3. Install system FFmpeg and add to PATH if needed
 
@@ -73,13 +73,13 @@ Restart Privoca after changing `.env`.
 
 ```batch
 # Run with debug logging
-Privoca.exe --log-level=debug
+PrivateTranscribe.exe --log-level=debug
 
-# Or set in .env file at %APPDATA%\Privoca\.env
+# Or set in .env file at %APPDATA%\PrivateTranscribe\.env
 Privoca_LOG_LEVEL=debug
 ```
 
-Logs saved to: `%APPDATA%\Privoca\logs\`
+Logs saved to: `%APPDATA%\PrivateTranscribe\logs\`
 
 ## Common Errors
 
@@ -93,11 +93,11 @@ Logs saved to: `%APPDATA%\Privoca\logs\`
 ## Windows-Specific Tips
 
 ### Windows Defender
-Add Privoca to exclusions if blocked:
+Add PrivateTranscribe to exclusions if blocked:
 Settings → Virus & threat protection → Exclusions
 
 ### Firewall (Cloud Mode)
-Allow Privoca through firewall for cloud transcription
+Allow PrivateTranscribe through firewall for cloud transcription
 
 ### Permission Errors
 Right-click → Run as administrator (or set in Properties → Compatibility)
@@ -105,20 +105,20 @@ Right-click → Run as administrator (or set in Properties → Compatibility)
 ## Complete Reset
 
 **Recommended path:**
-1. Uninstall Privoca from **Settings -> Apps**
+1. Uninstall PrivateTranscribe from **Settings -> Apps**
 2. Run the full cleanup helper:
 
 ```batch
 npm run uninstall:full:windows
 ```
 
-That removes Privoca data, caches, logs, and legacy DictateVoice leftovers.
+That removes PrivateTranscribe data, caches, logs, and legacy DictateVoice leftovers.
 
 **Manual fallback:**
 
 ```batch
-rd /s /q "%APPDATA%\Privoca"
-rd /s /q "%LOCALAPPDATA%\Privoca"
+rd /s /q "%APPDATA%\PrivateTranscribe"
+rd /s /q "%LOCALAPPDATA%\PrivateTranscribe"
 rd /s /q "%USERPROFILE%\.cache\Privoca"
 ```
 
@@ -126,8 +126,8 @@ Then reinstall.
 
 ## Getting Help
 
-Report issues at https://github.com/Privoca/Privoca/issues with:
+Report issues at https://github.com/PrivateTranscribe/PrivateTranscribe/issues with:
 - Windows version (`winver`)
-- Privoca version
+- PrivateTranscribe version
 - Debug log contents
 - Steps to reproduce

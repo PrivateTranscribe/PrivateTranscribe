@@ -1,6 +1,6 @@
 {
   "appId": "com.privoca.app",
-  "productName": "Privoca",
+  "productName": "PrivateTranscribe",
   "directories": {
     "output": "dist"
   },
@@ -127,8 +127,8 @@
     ],
     "extendInfo": {
       "LSUIElement": false,
-      "NSMicrophoneUsageDescription": "Privoca needs microphone access for speech-to-text transcription.",
-      "NSAccessibilityUsageDescription": "Privoca needs accessibility permissions to paste transcribed text into other applications."
+      "NSMicrophoneUsageDescription": "PrivateTranscribe needs microphone access for speech-to-text transcription.",
+      "NSAccessibilityUsageDescription": "PrivateTranscribe needs accessibility permissions to paste transcribed text into other applications."
     }
   },
   "win": {
@@ -185,7 +185,7 @@
     "include": "resources/nsis/cleanup-models.nsh"
   },
   "dmg": {
-    "title": "Privoca",
+    "title": "PrivateTranscribe",
     "icon": "src/assets/icon.icns",
     "window": {
       "width": 540,

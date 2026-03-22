@@ -4,7 +4,7 @@ const path = require("path");
 const debugLogger = require("./debugLogger");
 
 /**
- * Hardware detection utility for Privoca
+ * Hardware detection utility for PrivateTranscribe
  * Detects GPU capabilities to recommend optimal transcription settings
  */
 
@@ -597,13 +597,13 @@ class HardwareDetector {
         rec.recoverySteps = [
           "Install NVIDIA drivers via your package manager — e.g. `sudo apt install nvidia-driver-535` (Ubuntu/Debian) or `sudo dnf install akmod-nvidia` (Fedora/RHEL)",
           "Modern NVIDIA drivers (v450+) bundle the CUDA runtime Parakeet needs — no separate CUDA Toolkit install is required",
-          "After installing drivers, restart your system, then use 'Re-detect Hardware' in Privoca Settings → Transcription to enable Parakeet GPU acceleration",
+          "After installing drivers, restart your system, then use 'Re-detect Hardware' in PrivateTranscribe Settings → Transcription to enable Parakeet GPU acceleration",
         ];
       } else {
         rec.recoverySteps = [
           "Update or install NVIDIA drivers (v520 or later recommended) — download from nvidia.com/drivers",
           "Modern NVIDIA drivers (v450+) bundle the CUDA runtime libraries that Parakeet requires — no separate CUDA Toolkit install is needed for transcription",
-          "After updating drivers, use 'Re-detect Hardware' in Privoca Settings → Transcription, or restart the app to enable Parakeet GPU acceleration",
+          "After updating drivers, use 'Re-detect Hardware' in PrivateTranscribe Settings → Transcription, or restart the app to enable Parakeet GPU acceleration",
         ];
       }
     } else if (gpu.available && gpu.vendor && gpu.vendor !== "unknown") {

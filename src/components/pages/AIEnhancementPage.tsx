@@ -76,7 +76,7 @@ export default function AIEnhancementPage() {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             AI Enhancement silently cleans up raw dictation — fixing grammar, cutting filler words,
             and reformatting text before it reaches the clipboard. You speak; it polishes. Requires
-            Privoca Pro.
+            PrivateTranscribe Pro.
           </p>
         </div>
       )}

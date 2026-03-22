@@ -659,7 +659,8 @@ class AudioManager {
     try {
       // Refresh correction hints so they're included in the whisper prompt
       // (Pro feature — only inject hints when Pro entitlement is active)
-      const proEnabled = typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
+      const proEnabled =
+        typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
       if (proEnabled) {
         await this.refreshCorrectionHints();
       } else {
@@ -1105,7 +1106,7 @@ class AudioManager {
    * or mis-capitalise custom words. This does a case-insensitive whole-word scan and
    * replaces any match with the exact casing stored in the dictionary.
    *
-   * Example: dictionary has "Privoca", Whisper outputs "provoca" → fixed to "Privoca".
+   * Example: dictionary has "PrivateTranscribe", Whisper outputs "provoca" → fixed to "PrivateTranscribe".
    *
    * Replacements are whole-word only (word boundaries) so "unprovocative" is untouched.
    */
@@ -1131,7 +1132,9 @@ class AudioManager {
   }
 
   async processTranscription(text, source) {
-    const withDictionary = this.applyDictionaryReplacements(typeof text === "string" ? text.trim() : "");
+    const withDictionary = this.applyDictionaryReplacements(
+      typeof text === "string" ? text.trim() : ""
+    );
     const normalizedText = withDictionary;
 
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {

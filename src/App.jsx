@@ -874,7 +874,7 @@ export default function App() {
                 />
                 <MenuRow
                   icon={Settings}
-                  label="Open Privoca microphone settings"
+                  label="Open PrivateTranscribe microphone settings"
                   onClick={() =>
                     void openControlPanel({ page: "settings", settingsTab: "general" })
                   }

@@ -22,7 +22,7 @@ function fetchJson(url, redirectCount = 0) {
     }
 
     const headers = {
-      "User-Agent": "Privoca-Downloader",
+      "User-Agent": "PrivateTranscribe-Downloader",
       Accept: "application/vnd.github+json",
     };
 

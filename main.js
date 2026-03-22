@@ -1,5 +1,5 @@
 const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electron");
-const APP_NAME = "Privoca";
+const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privoca.app";
 
 // Set App User Model ID immediately on Windows — must happen before app is ready
@@ -148,13 +148,13 @@ function initializeManagers() {
           "Run `npm run compile:globe` and rebuild the app to regenerate the listener binary."
         );
       } else {
-        detailLines.push("Try reinstalling Privoca or contact support if the issue persists.");
+        detailLines.push("Try reinstalling PrivateTranscribe or contact support if the issue persists.");
       }
 
       dialog.showMessageBox({
         type: "warning",
         title: "Globe Hotkey Unavailable",
-        message: "Privoca could not activate the Globe key hotkey.",
+        message: "PrivateTranscribe could not activate the Globe key hotkey.",
         detail: detailLines.join("\n\n"),
       });
     });
@@ -528,7 +528,7 @@ if (gotSingleInstanceLock) {
     startApp().catch((error) => {
       console.error("Failed to start app:", error);
       dialog.showErrorBox(
-        "Privoca Startup Error",
+        "PrivateTranscribe Startup Error",
         `Failed to start the application:\n\n${error.message}\n\nPlease report this issue.`
       );
       app.exit(1);

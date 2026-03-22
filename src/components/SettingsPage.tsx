@@ -750,7 +750,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
-      ? "%USERPROFILE%\\.cache\\Privoca\\whisper-models"
+      ? "%USERPROFILE%\\.cache\\PrivateTranscribe\\whisper-models"
       : "~/.cache/Privoca/whisper-models";
 
   // Settings export/import (privacy-first): API keys are excluded by default.
@@ -1193,7 +1193,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         showAlertDialog({
           title: "Still Running",
           description:
-            "Privoca didn't restart automatically. Please quit the app manually to finish installing the update.",
+            "PrivateTranscribe didn't restart automatically. Please quit the app manually to finish installing the update.",
         });
       }, 10000);
     } else if (installTimeoutRef.current) {
@@ -1210,7 +1210,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   }, [installInitiated, showAlertDialog]);
 
   const resetAccessibilityPermissions = () => {
-    const message = `To fix accessibility permissions:\n\n1. Open System Settings > Privacy & Security > Accessibility\n2. Remove any old Privoca or Electron entries\n3. Click (+) and add the current Privoca app\n4. Make sure the checkbox is enabled\n5. Restart Privoca\n\nClick OK to open System Settings.`;
+    const message = `To fix accessibility permissions:\n\n1. Open System Settings > Privacy & Security > Accessibility\n2. Remove any old PrivateTranscribe or Electron entries\n3. Click (+) and add the current PrivateTranscribe app\n4. Make sure the checkbox is enabled\n5. Restart PrivateTranscribe\n\nClick OK to open System Settings.`;
 
     showConfirmDialog({
       title: "Reset Accessibility Permissions",
@@ -1276,7 +1276,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Updates"
-                description="Keep Privoca up to date with the latest features and improvements"
+                description="Keep PrivateTranscribe up to date with the latest features and improvements"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -1463,7 +1463,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Launch at login"
-                      description="Start Privoca automatically when you log in"
+                      description="Start PrivateTranscribe automatically when you log in"
                     >
                       <Toggle
                         checked={autoStartEnabled}
@@ -1567,17 +1567,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           >
                             <span
                               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                translateToEnglish === "on" && translationSupported ? "translate-x-6" : "translate-x-1"
+                                translateToEnglish === "on" && translationSupported
+                                  ? "translate-x-6"
+                                  : "translate-x-1"
                               }`}
                             />
                           </button>
                         </SettingsRow>
                         {!translationSupported && (
                           <p className="mt-1.5 text-xs text-muted-foreground">
-                            Your current model doesn't support translation.
-                            Switch to <strong className="text-foreground">Large</strong> or{" "}
-                            <strong className="text-foreground">Medium</strong> from the model picker
-                            on the home screen to enable this.
+                            Your current model doesn't support translation. Switch to{" "}
+                            <strong className="text-foreground">Large</strong> or{" "}
+                            <strong className="text-foreground">Medium</strong> from the model
+                            picker on the home screen to enable this.
                           </p>
                         )}
                       </>
@@ -1694,7 +1696,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Dictionary"
-                description="Manage your custom vocabulary in the Dictionary section. Add product names, people, acronyms, and other words you want Privoca to recognize more reliably."
+                description="Manage your custom vocabulary in the Dictionary section. Add product names, people, acronyms, and other words you want PrivateTranscribe to recognize more reliably."
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -1704,9 +1706,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         <BookOpen className="w-5 h-5 text-primary" />
                       </div>
                       <div className="space-y-1">
-                        <p className="text-sm font-medium text-foreground">Custom vocabulary has its own home now</p>
+                        <p className="text-sm font-medium text-foreground">
+                          Custom vocabulary has its own home now
+                        </p>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          Manage your custom vocabulary in the <span className="text-foreground font-medium">Dictionary</span> section for a cleaner workflow.
+                          Manage your custom vocabulary in the{" "}
+                          <span className="text-foreground font-medium">Dictionary</span> section
+                          for a cleaner workflow.
                         </p>
                       </div>
                     </div>
@@ -1719,7 +1725,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Behavior"
-                description="Customize how Privoca responds after transcription"
+                description="Customize how PrivateTranscribe responds after transcription"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -1979,7 +1985,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           <div className="space-y-8">
             <SectionHeader
               title="Dictionary"
-              description="Teach Privoca the words that matter to you — names, products, acronyms, and specialist terms."
+              description="Teach PrivateTranscribe the words that matter to you — names, products, acronyms, and specialist terms."
             />
 
             <SettingsPanel>
@@ -2002,7 +2008,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Privoca uses this list to better recognize spellings that generic speech models often miss.
+                    PrivateTranscribe uses this list to better recognize spellings that generic
+                    speech models often miss.
                   </p>
                 </div>
               </SettingsPanelRow>
@@ -2049,9 +2056,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {!aiEnhancementUnlocked && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
                 <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+                <h3 className="text-base font-semibold text-foreground">
+                  Available with PrivateTranscribe Pro
+                </h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  AI Enhancement automatically polishes your transcriptions — fixing grammar, formatting text, and handling intelligent rewrites. Unlock it with a Pro license in Settings.
+                  AI Enhancement automatically polishes your transcriptions — fixing grammar,
+                  formatting text, and handling intelligent rewrites. Unlock it with a Pro license
+                  in Settings.
                 </p>
               </div>
             )}
@@ -2064,10 +2075,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <p className="text-[10px] text-muted-foreground/50 mb-2">Before (raw dictation)</p>
+                      <p className="text-[10px] text-muted-foreground/50 mb-2">
+                        Before (raw dictation)
+                      </p>
                       <div className="rounded-lg bg-surface-1/50 border border-border-subtle/30 p-3">
                         <p className="text-[12px] text-muted-foreground leading-relaxed italic">
-                          &quot;so basically what i was thinking is that we should probably schedule a meeting for next week um to discuss the uh the budget for q2&quot;
+                          &quot;so basically what i was thinking is that we should probably schedule
+                          a meeting for next week um to discuss the uh the budget for q2&quot;
                         </p>
                       </div>
                     </div>
@@ -2075,7 +2089,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       <p className="text-[10px] text-primary/60 mb-2">After (AI enhanced)</p>
                       <div className="rounded-lg bg-primary/5 border border-primary/10 p-3">
                         <p className="text-[12px] text-foreground leading-relaxed">
-                          &quot;We should schedule a meeting next week to discuss the Q2 budget.&quot;
+                          &quot;We should schedule a meeting next week to discuss the Q2
+                          budget.&quot;
                         </p>
                       </div>
                     </div>
@@ -2132,7 +2147,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
                               setLlamaIdleDraft(String(next));
                               updateReasoningSettings({ llamaServerIdleTimeoutMinutes: next });
-                              window.electronAPI?.llamaServerSetIdleTimeoutMinutes(next)?.catch(() => {});
+                              window.electronAPI
+                                ?.llamaServerSetIdleTimeoutMinutes(next)
+                                ?.catch(() => {});
                             }}
                             className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                             aria-label="Llama server idle shutdown minutes"
@@ -2162,9 +2179,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {!voiceAssistantUnlocked && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
                 <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Available with Privoca Pro</h3>
+                <h3 className="text-base font-semibold text-foreground">
+                  Available with PrivateTranscribe Pro
+                </h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  Customize your voice assistant with a personal name and fine-tuned system prompts for AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
+                  Customize your voice assistant with a personal name and fine-tuned system prompts
+                  for AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
                 </p>
               </div>
             )}
@@ -2207,10 +2227,18 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <MessageSquare className="w-4 h-4 text-primary" />
-                        <p className="text-sm font-medium text-foreground">How instruction mode works</p>
+                        <p className="text-sm font-medium text-foreground">
+                          How instruction mode works
+                        </p>
                       </div>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        When you say <span className="font-medium text-foreground">&quot;Hey {agentName}&quot;</span> followed by an instruction, Privoca switches from cleanup mode to assistant mode. Without the trigger phrase, it simply polishes your dictation.
+                        When you say{" "}
+                        <span className="font-medium text-foreground">
+                          &quot;Hey {agentName}&quot;
+                        </span>{" "}
+                        followed by an instruction, PrivateTranscribe switches from cleanup mode to
+                        assistant mode. Without the trigger phrase, it simply polishes your
+                        dictation.
                       </p>
                     </div>
                   </SettingsPanelRow>
@@ -2225,7 +2253,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           <span className="shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded bg-primary/15 text-primary">
                             Instruction
                           </span>
-                          <p className="text-[12px] text-muted-foreground leading-relaxed">&quot;{example}&quot;</p>
+                          <p className="text-[12px] text-muted-foreground leading-relaxed">
+                            &quot;{example}&quot;
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -2244,7 +2274,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           <div className="space-y-8">
             <SectionHeader
               title="System Prompts"
-              description="Shape how Privoca interprets instructions, formats output, and responds to your voice assistant workflows."
+              description="Shape how PrivateTranscribe interprets instructions, formats output, and responds to your voice assistant workflows."
             />
 
             {voiceAssistantUnlocked ? (
@@ -2263,7 +2293,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <div>
                     <h3 className="text-lg font-semibold text-foreground">Your prompt workspace</h3>
                     <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      The control room for system instructions — tune tone, cleanup rules, command behavior, and reusable prompt presets with full precision.
+                      The control room for system instructions — tune tone, cleanup rules, command
+                      behavior, and reusable prompt presets with full precision.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2272,7 +2303,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       "Fine-grained instruction layers for cleanup vs assistant mode",
                       "Safe testing before prompts affect live dictation",
                     ].map((item) => (
-                      <div key={item} className="rounded-xl border border-border-subtle/50 bg-surface-raised/40 px-4 py-3 text-sm text-muted-foreground">
+                      <div
+                        key={item}
+                        className="rounded-xl border border-border-subtle/50 bg-surface-raised/40 px-4 py-3 text-sm text-muted-foreground"
+                      >
                         {item}
                       </div>
                     ))}
@@ -2347,7 +2381,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Reset accessibility permissions"
-                      description="Fix issues after reinstalling or rebuilding the app by removing and re-adding Privoca in System Settings"
+                      description="Fix issues after reinstalling or rebuilding the app by removing and re-adding PrivateTranscribe in System Settings"
                     >
                       <Button
                         onClick={resetAccessibilityPermissions}
@@ -2373,7 +2407,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           <div className="space-y-6">
             <SectionHeader
               title="Help & Support"
-              description="Get assistance with Privoca and report issues"
+              description="Get assistance with PrivateTranscribe and report issues"
             />
 
             <SettingsPanel>
@@ -2417,7 +2451,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     onClick={async () => {
                       try {
                         await window.electronAPI?.openExternal(
-                          "https://github.com/Privoca/Privoca/issues"
+                          "https://github.com/PrivateTranscribe/PrivateTranscribe/issues"
                         );
                       } catch (error) {
                         console.error("Error opening GitHub issues:", error);
@@ -2439,7 +2473,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       updateStatus.isDevelopment
                         ? "Running in development mode"
-                        : "Installed version of Privoca"
+                        : "Installed version of PrivateTranscribe"
                     }
                   >
                     <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
@@ -2459,7 +2493,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="Privoca Pro"
+              title="PrivateTranscribe Pro"
               description="Unlock advanced features with a one-time license"
             />
             <ProSettingsSection />
@@ -2655,7 +2689,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           showConfirmDialog({
                             title: "Reset All App Data",
                             description:
-                              "This will permanently delete ALL Privoca data including:\n\n- Database and transcriptions\n- Local storage settings\n- Downloaded models\n- Environment files\n\nYou will need to manually remove app permissions in System Settings.\n\nThis action cannot be undone.",
+                              "This will permanently delete ALL PrivateTranscribe data including:\n\n- Database and transcriptions\n- Local storage settings\n- Downloaded models\n- Environment files\n\nYou will need to manually remove app permissions in System Settings.\n\nThis action cannot be undone.",
                             onConfirm: () => {
                               window.electronAPI
                                 ?.cleanupApp()
@@ -2693,13 +2727,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Uninstall Privoca"
+                      label="Uninstall PrivateTranscribe"
                       description={
                         platform === "win32"
-                          ? "Remove Privoca via Windows Settings → Apps & features. To also remove downloaded models and app data, use Reset app data first."
+                          ? "Remove PrivateTranscribe via Windows Settings → Apps & features. To also remove downloaded models and app data, use Reset app data first."
                           : platform === "darwin"
-                            ? "Quit Privoca, then drag it from your Applications folder to the Trash. To also remove downloaded models and app data, use Reset app data first."
-                            : "Use your system package manager (apt, dnf, pacman) or software center to remove Privoca. To also remove downloaded models and app data, use Reset app data first."
+                            ? "Quit PrivateTranscribe, then drag it from your Applications folder to the Trash. To also remove downloaded models and app data, use Reset app data first."
+                            : "Use your system package manager (apt, dnf, pacman) or software center to remove PrivateTranscribe. To also remove downloaded models and app data, use Reset app data first."
                       }
                     >
                       {(platform === "win32" || platform === "darwin") && (

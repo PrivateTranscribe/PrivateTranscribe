@@ -83,7 +83,7 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
     },
     {
       id: "pro",
-      label: "Privoca Pro",
+      label: "PrivateTranscribe Pro",
       icon: Zap,
       description: "License & features",
       group: "System",

@@ -136,7 +136,7 @@ class GnomeShortcutManager {
 
       execFileSync(
         "gsettings",
-        ["set", `${KEYBINDING_SCHEMA}:${KEYBINDING_PATH}`, "name", "Privoca Toggle"],
+        ["set", `${KEYBINDING_SCHEMA}:${KEYBINDING_PATH}`, "name", "PrivateTranscribe Toggle"],
         { stdio: "pipe" }
       );
       execFileSync(

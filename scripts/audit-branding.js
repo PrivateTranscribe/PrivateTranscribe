@@ -3,7 +3,7 @@
 /*
   Branding audit
   - Finds legacy product names in the repo (e.g. OpenWhispr / DictateVoice)
-  - Intended to support the ongoing rebranding to Privoca
+  - Intended to support the ongoing rebranding to PrivateTranscribe
 
   Usage:
     node scripts/audit-branding.js
@@ -127,7 +127,7 @@ function main() {
     console.log(`- ${row.file}: ${summary}`);
   }
 
-  console.log("\nTip: update references in the files above as part of the Privoca rebrand.");
+  console.log("\nTip: update references in the files above as part of the PrivateTranscribe rebrand.");
 }
 
 main();

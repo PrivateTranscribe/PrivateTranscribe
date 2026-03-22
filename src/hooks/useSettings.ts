@@ -184,7 +184,7 @@ export function useSettings() {
   // Custom dictionary for improving transcription of specific words
   const [customDictionary, setCustomDictionaryRaw] = useLocalStorage<string[]>(
     "customDictionary",
-    ["Privoca"],
+    ["PrivateTranscribe"],
     {
       serialize: JSON.stringify,
       deserialize: (value) => {
@@ -209,7 +209,7 @@ export function useSettings() {
     [setCustomDictionaryRaw]
   );
 
-  // One-time sync: reconcile localStorage ↔ SQLite on startup, ensure Privoca is included
+  // One-time sync: reconcile localStorage ↔ SQLite on startup, ensure PrivateTranscribe is included
   const hasRunDictionarySync = useRef(false);
   useEffect(() => {
     if (hasRunDictionarySync.current) return;
@@ -218,9 +218,9 @@ export function useSettings() {
     const syncDictionary = async () => {
       if (typeof window === "undefined" || !window.electronAPI?.getDictionary) return;
       try {
-        // Ensure "Privoca" is always in the dictionary
-        if (!customDictionary.includes("Privoca")) {
-          const updated = ["Privoca", ...customDictionary];
+        // Ensure "PrivateTranscribe" is always in the dictionary
+        if (!customDictionary.includes("PrivateTranscribe")) {
+          const updated = ["PrivateTranscribe", ...customDictionary];
           setCustomDictionaryRaw(updated);
           await window.electronAPI.setDictionary(updated);
         }

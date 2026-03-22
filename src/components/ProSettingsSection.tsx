@@ -63,7 +63,7 @@ export default function ProSettingsSection() {
         setKeyInput("");
         toast({
           title: "License activated!",
-          description: "Privoca Pro features are now unlocked.",
+          description: "PrivateTranscribe Pro features are now unlocked.",
           variant: "success",
           duration: 4000,
         });
@@ -139,7 +139,7 @@ export default function ProSettingsSection() {
         <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-5 flex items-start gap-3">
           <Check size={20} className="text-green-500 mt-0.5 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-foreground">Privoca Pro — Active</p>
+            <p className="text-sm font-medium text-foreground">PrivateTranscribe Pro — Active</p>
             <p className="text-xs text-muted-foreground mt-1">
               License: <span className="font-mono">{status.licenseKey}</span>
               {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
@@ -177,7 +177,9 @@ export default function ProSettingsSection() {
           {/* License key entry */}
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-4">
             <div>
-              <h3 className="text-base font-semibold text-foreground">Activate Privoca Pro</h3>
+              <h3 className="text-base font-semibold text-foreground">
+                Activate PrivateTranscribe Pro
+              </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Enter your license key to unlock all Pro features.
               </p>
@@ -215,7 +217,7 @@ export default function ProSettingsSection() {
           {/* Licensing not yet live — purchase CTA */}
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 space-y-4">
             <div>
-              <h3 className="text-base font-semibold text-foreground">Get Privoca Pro</h3>
+              <h3 className="text-base font-semibold text-foreground">Get PrivateTranscribe Pro</h3>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                 One-time purchase. Unlock all Pro features permanently — no subscription, no
                 recurring fees.
@@ -224,12 +226,10 @@ export default function ProSettingsSection() {
             <Button
               variant="default"
               size="sm"
-              onClick={() =>
-                window.electronAPI?.openExternal?.("https://privoca.com/pro")
-              }
+              onClick={() => window.electronAPI?.openExternal?.("https://privoca.com/pro")}
               className="gap-2"
             >
-              Get Privoca Pro — €29 →
+              Get PrivateTranscribe Pro — €29 →
             </Button>
             <p className="text-xs text-muted-foreground">
               Already have a key?{" "}
@@ -239,7 +239,7 @@ export default function ProSettingsSection() {
                 onClick={(e) => {
                   e.preventDefault();
                   window.electronAPI?.openExternal?.(
-                    "mailto:support@privoca.com?subject=Privoca%20Pro%20Activation"
+                    "mailto:support@privoca.com?subject=PrivateTranscribe%20Pro%20Activation"
                   );
                 }}
               >
@@ -255,7 +255,9 @@ export default function ProSettingsSection() {
       <div className="space-y-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">What's included</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Everything unlocked with Privoca Pro</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Everything unlocked with PrivateTranscribe Pro
+          </p>
         </div>
 
         {PRO_FEATURES_AVAILABLE.map((feature) => (
@@ -273,7 +275,9 @@ export default function ProSettingsSection() {
 
         {PRO_FEATURES_COMING.length > 0 && (
           <div className="mt-4 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Coming later</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Coming later
+            </p>
             {PRO_FEATURES_COMING.map((feature) => (
               <div
                 key={feature.name}
@@ -300,8 +304,8 @@ export default function ProSettingsSection() {
               One-time purchase — no subscription
             </p>
             <p className="text-xs text-muted-foreground">
-              Privoca Pro is a single payment that unlocks all current Pro features. No recurring
-              fees, no expiry.
+              PrivateTranscribe Pro is a single payment that unlocks all current Pro features. No
+              recurring fees, no expiry.
             </p>
           </div>
           <Button
@@ -310,7 +314,7 @@ export default function ProSettingsSection() {
             onClick={() => window.electronAPI?.openExternal?.("https://privoca.com/pro")}
             className="gap-2"
           >
-            Get Privoca Pro →
+            Get PrivateTranscribe Pro →
           </Button>
         </div>
       )}

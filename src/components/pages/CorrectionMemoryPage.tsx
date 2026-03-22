@@ -153,8 +153,8 @@ export default function CorrectionMemoryPage() {
             <span className="font-mono">use login error</span>
             {" → "}
             <span className="font-mono">useLoginError</span> — and applies them to every future
-            dictation automatically. The longer you use Privoca, the sharper it gets. Unlock it
-            with Pro.
+            dictation automatically. The longer you use PrivateTranscribe, the sharper it gets.
+            Unlock it with Pro.
           </p>
         </div>
       )}
@@ -172,7 +172,7 @@ export default function CorrectionMemoryPage() {
             <div>
               <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Manually teach Privoca a phrase mapping.
+                Manually teach PrivateTranscribe a phrase mapping.
               </p>
             </div>
 

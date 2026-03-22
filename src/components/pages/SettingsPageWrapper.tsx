@@ -12,7 +12,7 @@ const tabs: SettingsTab[] = [
   { id: "preferences", label: "Preferences" },
   { id: "transcription", label: "Transcription" },
   { id: "permissions", label: "Permissions" },
-  { id: "pro", label: "Privoca Pro" },
+  { id: "pro", label: "PrivateTranscribe Pro" },
   { id: "help", label: "Help & Support" },
   { id: "developer", label: "Developer" },
 ];

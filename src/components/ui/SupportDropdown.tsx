@@ -32,7 +32,7 @@ export default function SupportDropdown({ className }: SupportDropdownProps) {
   const handleSubmitBug = async () => {
     try {
       const result = await window.electronAPI?.openExternal(
-        "https://github.com/Privoca/Privoca/issues"
+        "https://github.com/PrivateTranscribe/PrivateTranscribe/issues"
       );
       if (!result?.success) {
         console.error("Failed to open GitHub issues:", result?.error);

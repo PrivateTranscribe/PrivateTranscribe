@@ -25,7 +25,9 @@ export const useAudioRecording = (toast, options = {}) => {
         // Dynamic import avoids circular dependency with TS hooks
         const { getEffectiveEntitlement } = require("../hooks/useProStatus");
         return getEffectiveEntitlement() === "pro";
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     };
     audioManagerRef.current = manager;
     let disposed = false;
@@ -266,7 +268,7 @@ export const useAudioRecording = (toast, options = {}) => {
 
                         toastRef.current?.({
                           title: "Learned correction",
-                          description: "Privoca will use that correction next time.",
+                          description: "PrivateTranscribe will use that correction next time.",
                           variant: "success",
                           duration: 4000,
                         });

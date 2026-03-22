@@ -309,7 +309,7 @@ class IPCHandlers {
     ipcMain.handle("show-notification", async (event, title, body) => {
       const { Notification } = require("electron");
       if (Notification.isSupported()) {
-        new Notification({ title: title || "Privoca", body: body || "" }).show();
+        new Notification({ title: title || "PrivateTranscribe", body: body || "" }).show();
       }
     });
 
@@ -1277,7 +1277,8 @@ class IPCHandlers {
 
         return {
           success: false,
-          error: "Please use your package manager or software center to uninstall Privoca.",
+          error:
+            "Please use your package manager or software center to uninstall PrivateTranscribe.",
         };
       } catch (error) {
         debugLogger.error("Failed to open uninstall location:", error);

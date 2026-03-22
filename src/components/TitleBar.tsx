@@ -46,7 +46,7 @@ export default function TitleBar({
             className="text-[10px] font-medium tracking-wide text-white/50 uppercase"
             style={{ fontSize: "10px" }}
           >
-            Privoca
+            PrivateTranscribe
           </span>
           {platform !== "darwin" ? (
             <>{getActionsContent()}</>

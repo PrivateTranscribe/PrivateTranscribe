@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 const AGENT_NAME_KEY = "agentName";
-const DEFAULT_AGENT_NAME = "Privoca";
+const DEFAULT_AGENT_NAME = "PrivateTranscribe";
 
 export const getAgentName = (): string => {
   return localStorage.getItem(AGENT_NAME_KEY) || DEFAULT_AGENT_NAME;

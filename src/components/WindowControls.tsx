@@ -123,10 +123,10 @@ export default function WindowControls() {
       <Dialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Close Privoca?</DialogTitle>
+            <DialogTitle>Close PrivateTranscribe?</DialogTitle>
             <DialogDescription>
-              Privoca will continue running in the system tray. Would you like to minimize to tray
-              or quit completely?
+              PrivateTranscribe will continue running in the system tray. Would you like to minimize
+              to tray or quit completely?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">

@@ -1,6 +1,6 @@
 # Assets Directory
 
-This directory contains app icons and other assets for Privoca.
+This directory contains app icons and other assets for PrivateTranscribe.
 
 ## Required Icons
 

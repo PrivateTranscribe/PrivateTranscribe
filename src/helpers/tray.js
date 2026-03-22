@@ -237,14 +237,14 @@ class TrayManager {
         },
       },
       {
-        label: "Open Privoca",
+        label: "Open PrivateTranscribe",
         click: async () => {
           await this.showControlPanelFromTray();
         },
       },
       { type: "separator" },
       {
-        label: "Exit Privoca",
+        label: "Exit PrivateTranscribe",
         click: () => {
           console.log("Quitting app via tray menu");
           app.quit();
@@ -257,7 +257,7 @@ class TrayManager {
     if (!this.tray) return;
 
     const contextMenu = Menu.buildFromTemplate(this.buildContextMenuTemplate());
-    this.tray.setToolTip("Privoca - Voice Dictation");
+    this.tray.setToolTip("PrivateTranscribe - Voice Dictation");
     this.tray.setContextMenu(contextMenu);
   }
 

@@ -106,7 +106,7 @@ class EnvironmentManager {
   createProductionEnvFile(apiKey) {
     const envPath = path.join(app.getPath("userData"), ".env");
 
-    const envContent = `# Privoca Environment Variables
+    const envContent = `# PrivateTranscribe Environment Variables
 # This file was created automatically for production use
 OPENAI_API_KEY=${apiKey}
 `;
@@ -123,7 +123,7 @@ OPENAI_API_KEY=${apiKey}
     const envPath = path.join(app.getPath("userData"), ".env");
 
     // Build env content with all current keys
-    let envContent = `# Privoca Environment Variables
+    let envContent = `# PrivateTranscribe Environment Variables
 # This file was created automatically for production use
 `;
 

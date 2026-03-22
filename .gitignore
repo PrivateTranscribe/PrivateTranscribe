@@ -83,3 +83,4 @@ Thumbs.db
 .windsurf/
 skills/
 runs/
+.env.production

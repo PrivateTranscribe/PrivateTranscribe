@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-Privoca includes or downloads the following third-party components.
+PrivateTranscribe includes or downloads the following third-party components.
 
 ---
 

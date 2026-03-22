@@ -503,7 +503,7 @@ class WindowManager {
 
     this.controlPanelWindow.webContents.on("did-finish-load", () => {
       clearVisibilityTimer();
-      this.controlPanelWindow.setTitle("Privoca");
+      this.controlPanelWindow.setTitle("PrivateTranscribe");
     });
 
     this.controlPanelWindow.webContents.on(
@@ -697,8 +697,8 @@ class WindowManager {
     ].filter(Boolean);
     dialog.showMessageBox({
       type: "error",
-      title: "Privoca failed to load",
-      message: "Privoca could not load its UI.",
+      title: "PrivateTranscribe failed to load",
+      message: "PrivateTranscribe could not load its UI.",
       detail: detailLines.join("\n"),
     });
   }

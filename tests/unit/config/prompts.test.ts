@@ -67,8 +67,8 @@ describe("getSystemPrompt — baseline (no dictation mode)", () => {
   });
 
   it("appends custom dictionary when provided", () => {
-    const prompt = getSystemPrompt("Bob", ["Privoca", "llama.cpp"]);
-    expect(prompt).toContain("Privoca");
+    const prompt = getSystemPrompt("Bob", ["PrivateTranscribe", "llama.cpp"]);
+    expect(prompt).toContain("PrivateTranscribe");
     expect(prompt).toContain("llama.cpp");
   });
 

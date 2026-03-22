@@ -29,14 +29,14 @@
 
 **macOS:**
 1. Open System Settings → Privacy & Security → Microphone
-2. Ensure Privoca is listed and enabled
+2. Ensure PrivateTranscribe is listed and enabled
 3. If not listed, click "Grant Access" in the app to trigger the permission prompt
 4. You can also click "Open Microphone Privacy" button in the app
 
 **Windows:**
 1. Open Settings → Privacy → Microphone
 2. Ensure "Allow apps to access your microphone" is ON
-3. Ensure Privoca is listed and enabled
+3. Ensure PrivateTranscribe is listed and enabled
 4. You can also click "Open Privacy Settings" button in the app
 
 **Linux:**
@@ -101,14 +101,14 @@ Use the OS uninstall flow first, then run the matching full cleanup helper if yo
 - **Linux:** `npm run uninstall:full:linux`
 - **Windows:** `npm run uninstall:full:windows`
 
-These helpers remove Privoca data, caches, logs, and legacy DictateVoice leftovers. They are meant for support/reset cases, not routine upgrades.
+These helpers remove PrivateTranscribe data, caches, logs, and legacy DictateVoice leftovers. They are meant for support/reset cases, not routine upgrades.
 
 ## Getting Help
 
 1. Enable debug mode and reproduce the issue
 2. Collect diagnostic output from commands above
-3. Open an issue at https://github.com/Privoca/Privoca/issues with:
+3. Open an issue at https://github.com/PrivateTranscribe/PrivateTranscribe/issues with:
    - OS version
-   - Privoca version
+   - PrivateTranscribe version
    - Relevant log sections
    - Steps to reproduce

@@ -1,7 +1,7 @@
 {
   "name": "privoca",
   "version": "1.3.4",
-  "description": "Privoca",
+  "description": "PrivateTranscribe",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -59,7 +59,7 @@
     "desktop-app"
   ],
   "author": {
-    "name": "Privoca Team",
+    "name": "PrivateTranscribe Team",
     "email": "support@privoca.com"
   },
   "license": "MIT",

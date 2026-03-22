@@ -69,7 +69,7 @@ const CONTROL_PANEL_CONFIG = {
     sandbox: true,
     spellcheck: false,
   },
-  title: "Privoca",
+  title: "PrivateTranscribe",
   resizable: true,
   show: false,
   frame: false,

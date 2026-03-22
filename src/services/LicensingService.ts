@@ -1,5 +1,5 @@
 /**
- * Privoca Pro Licensing Client
+ * PrivateTranscribe Pro Licensing Client
  *
  * Handles license activation, validation, and entitlement caching.
  * Privacy-first: device IDs are hashed, minimal data sent to server.

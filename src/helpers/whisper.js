@@ -172,7 +172,7 @@ class WhisperManager {
       }
     }
 
-    debugLogger.info("Privoca dependency check", status);
+    debugLogger.info("PrivateTranscribe dependency check", status);
 
     // Log a summary for easy scanning
     const serverStatus = status.whisperServer.available

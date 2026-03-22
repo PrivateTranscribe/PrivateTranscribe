@@ -1,10 +1,10 @@
-# Privoca
+# PrivateTranscribe
 
 An open source desktop dictation application that converts speech to text using OpenAI Whisper. Features both local and cloud processing options for maximum flexibility and privacy.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Privoca/Privoca&type=date&legend=top-left)](https://www.star-history.com/#Privoca/Privoca&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=PrivateTranscribe/PrivateTranscribe&type=date&legend=top-left)](https://www.star-history.com/#PrivateTranscribe/PrivateTranscribe&type=date&legend=top-left)
 
 ## License
 
@@ -51,8 +51,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/Privoca/Privoca.git
-   cd Privoca
+   git clone https://github.com/PrivateTranscribe/PrivateTranscribe.git
+   cd PrivateTranscribe
    ```
 
 2. **Install dependencies**:
@@ -97,8 +97,8 @@ If you want to build a standalone app for personal use:
 # Build without code signing (no certificates required)
 npm run pack
 
-# The unsigned app will be in: dist/mac-arm64/Privoca.app (macOS)
-# or dist/win-unpacked/Privoca.exe (Windows)
+# The unsigned app will be in: dist/mac-arm64/PrivateTranscribe.app (macOS)
+# or dist/win-unpacked/PrivateTranscribe.exe (Windows)
 # or dist/linux-unpacked/open-whispr (Linux)
 ```
 
@@ -106,7 +106,7 @@ npm run pack
 
 #### Linux (Multiple Package Formats)
 
-Privoca now supports multiple Linux package formats for maximum compatibility:
+PrivateTranscribe now supports multiple Linux package formats for maximum compatibility:
 
 **Available Formats**:
 - `.deb` - Debian, Ubuntu, Linux Mint, Pop!_OS
@@ -122,10 +122,10 @@ Privoca now supports multiple Linux package formats for maximum compatibility:
 npm run build:linux
 
 # Find packages in dist/:
-# - Privoca-x.x.x-linux-x64.AppImage
-# - Privoca-x.x.x-linux-x64.deb
-# - Privoca-x.x.x-linux-x64.rpm
-# - Privoca-x.x.x-linux-x64.tar.gz
+# - PrivateTranscribe-x.x.x-linux-x64.AppImage
+# - PrivateTranscribe-x.x.x-linux-x64.deb
+# - PrivateTranscribe-x.x.x-linux-x64.rpm
+# - PrivateTranscribe-x.x.x-linux-x64.tar.gz
 ```
 
 **Optional: Building Flatpak** (requires additional setup):
@@ -148,22 +148,22 @@ npm run build:linux
 
 ```bash
 # Debian/Ubuntu
-sudo apt install ./dist/Privoca-*-linux-x64.deb
+sudo apt install ./dist/PrivateTranscribe-*-linux-x64.deb
 
 # Fedora/RHEL
-sudo dnf install ./dist/Privoca-*-linux-x64.rpm
+sudo dnf install ./dist/PrivateTranscribe-*-linux-x64.rpm
 
 # Universal tar.gz (no root required)
-tar -xzf dist/Privoca-*-linux-x64.tar.gz
-cd Privoca-*/
-./Privoca
+tar -xzf dist/PrivateTranscribe-*-linux-x64.tar.gz
+cd PrivateTranscribe-*/
+./PrivateTranscribe
 
 # Flatpak
-flatpak install --user ./dist/Privoca-*-linux-x64.flatpak
+flatpak install --user ./dist/PrivateTranscribe-*-linux-x64.flatpak
 
 # AppImage (existing method)
-chmod +x dist/Privoca-*.AppImage
-./dist/Privoca-*.AppImage
+chmod +x dist/PrivateTranscribe-*.AppImage
+./dist/PrivateTranscribe-*.AppImage
 ```
 
 **Optional Dependencies for Automatic Paste**:
@@ -222,13 +222,13 @@ sudo dnf install kdotool  # Fedora/RHEL
 sudo pacman -S kdotool    # Arch
 ```
 
-> ℹ️ **Note**: Privoca automatically tries paste tools in this order: `wtype` → `ydotool` → `xdotool` (for XWayland apps). If no paste tool is installed, text will still be copied to the clipboard - you'll just need to paste manually with Ctrl+V.
+> ℹ️ **Note**: PrivateTranscribe automatically tries paste tools in this order: `wtype` → `ydotool` → `xdotool` (for XWayland apps). If no paste tool is installed, text will still be copied to the clipboard - you'll just need to paste manually with Ctrl+V.
 
 > ⚠️ **ydotool Requirements**: The `ydotoold` daemon must be running for ydotool to work. Start it manually with `sudo ydotoold &` or enable the systemd service as shown above.
 
 **GNOME Wayland Global Hotkeys**:
 
-On GNOME Wayland, Electron's standard global shortcuts don't work due to Wayland's security model. Privoca automatically uses native GNOME keyboard shortcuts via D-Bus and gsettings:
+On GNOME Wayland, Electron's standard global shortcuts don't work due to Wayland's security model. PrivateTranscribe automatically uses native GNOME keyboard shortcuts via D-Bus and gsettings:
 
 - Hotkeys are registered as GNOME custom shortcuts (visible in Settings → Keyboard → Shortcuts)
 - Default hotkey is `Alt+R` (backtick not supported on GNOME Wayland)
@@ -286,14 +286,14 @@ npm run build:linux  # Linux
 - **Settings**: Configure API keys, customize hotkeys, and manage permissions
 
 ### Uninstall & Cache Cleanup
-Privoca now has a **two-level uninstall story**:
+PrivateTranscribe now has a **two-level uninstall story**:
 
 - **Normal uninstall**: use the OS/package-manager uninstall flow first.
 - **Full cleanup**: use the platform helper below if you want to remove leftover data, caches, logs, and legacy DictateVoice paths too.
 
 **Normal uninstall**
-- **Windows**: uninstall from **Settings → Apps**. The NSIS uninstaller automatically removes Privoca model caches.
-- **macOS**: remove **Privoca.app** from Applications (or the install location).
+- **Windows**: uninstall from **Settings → Apps**. The NSIS uninstaller automatically removes PrivateTranscribe model caches.
+- **macOS**: remove **PrivateTranscribe.app** from Applications (or the install location).
 - **Linux**: uninstall with the same format you installed with (`apt`, `dnf`, `rpm`, `flatpak`, etc.). Package uninstall removes bundled app files; cache cleanup may vary by format.
 
 **Full cleanup helpers**
@@ -339,7 +339,7 @@ Improve transcription accuracy for specific words, names, or technical terms:
 **Examples of words to add**:
 - Uncommon names (e.g., "Sergey", "Xanthe")
 - Technical jargon (e.g., "Kubernetes", "OAuth")
-- Brand names (e.g., "Privoca", "whisper.cpp")
+- Brand names (e.g., "PrivateTranscribe", "whisper.cpp")
 - Domain-specific terms (e.g., "amortization", "polymerase")
 
 ### Processing Options
@@ -523,7 +523,7 @@ PRIVOCA_CONTEXT_SENSITIVE_APP_PATTERNS=""
 
 ### Local Whisper Setup
 
-For local processing, Privoca uses OpenAI's Whisper model via whisper.cpp - a high-performance C++ implementation:
+For local processing, PrivateTranscribe uses OpenAI's Whisper model via whisper.cpp - a high-performance C++ implementation:
 
 1. **Bundled Binary**: whisper.cpp is bundled with the app for all platforms
 2. **GGML Models**: Downloads optimized GGML models on first use to `~/.cache/Privoca/whisper-models/`
@@ -538,11 +538,11 @@ For local processing, Privoca uses OpenAI's Whisper model via whisper.cpp - a hi
 **Requirements**:
 - Sufficient disk space for models (75MB - 3GB depending on model)
 
-**Upgrading from Python-based version**: If you previously used the Python-based Whisper, you'll need to re-download models in GGML format. You can safely delete the old Python environment (`~/.Privoca/python/`) and PyTorch models (`~/.cache/whisper/`) to reclaim disk space.
+**Upgrading from Python-based version**: If you previously used the Python-based Whisper, you'll need to re-download models in GGML format. You can safely delete the old Python environment (`~/.PrivateTranscribe/python/`) and PyTorch models (`~/.cache/whisper/`) to reclaim disk space.
 
 ### Local Parakeet Setup (Alternative)
 
-Privoca also supports NVIDIA Parakeet models via sherpa-onnx - a fast alternative to Whisper:
+PrivateTranscribe also supports NVIDIA Parakeet models via sherpa-onnx - a fast alternative to Whisper:
 
 1. **Bundled Binary**: sherpa-onnx is bundled with the app for all platforms
 2. **INT8 Quantized Models**: Efficient CPU inference
@@ -583,7 +583,7 @@ We welcome contributions! Please follow these steps:
 - Test on your target platform before submitting
 ## Security
 
-Privoca is designed with privacy and security in mind:
+PrivateTranscribe is designed with privacy and security in mind:
 
 - **Local Processing Option**: Keep your voice data completely private
 - **No Analytics**: We don't collect any usage data or telemetry
@@ -598,7 +598,7 @@ Privoca is designed with privacy and security in mind:
 1. **Microphone permissions**: Grant permissions in System Preferences/Settings
 2. **Accessibility permissions (macOS)**: Required for automatic text pasting
    - Go to System Settings → Privacy & Security → Accessibility
-   - Add Privoca and enable the checkbox
+   - Add PrivateTranscribe and enable the checkbox
    - Use "Fix Permission Issues" in Control Panel if needed
 3. **API key errors** (cloud processing only): Ensure your OpenAI API key is valid and has credits
    - Set key through Control Panel or .env file
@@ -618,7 +618,7 @@ Privoca is designed with privacy and security in mind:
 
 ### Getting Help
 
-- Check the [Issues](https://github.com/Privoca/Privoca/issues) page
+- Check the [Issues](https://github.com/PrivateTranscribe/PrivateTranscribe/issues) page
 - Review the console logs for debugging information
 - For local processing: Ensure whisper.cpp is accessible and models are downloaded
 - For cloud processing: Verify your OpenAI API key and billing status
@@ -633,8 +633,8 @@ Privoca is designed with privacy and security in mind:
 
 ## FAQ
 
-**Q: Is Privoca really free?**
-A: Yes! Privoca is open source and free to use. You only pay for OpenAI API usage if you choose cloud processing.
+**Q: Is PrivateTranscribe really free?**
+A: Yes! PrivateTranscribe is open source and free to use. You only pay for OpenAI API usage if you choose cloud processing.
 
 **Q: Which processing method should I use?**
 A: Use local processing for privacy and offline use. Use cloud processing for speed and convenience.
@@ -649,11 +649,11 @@ A: Open the Control Panel (right-click tray icon) and go to Settings. You can se
 A: With local processing, your audio never leaves your device. With cloud processing, audio is sent to OpenAI's servers (see their privacy policy).
 
 **Q: What languages are supported?**
-A: Privoca supports 58 languages including English, Spanish, French, German, Chinese, Japanese, and more. Set your preferred language in the .env file or use auto-detect.
+A: PrivateTranscribe supports 58 languages including English, Spanish, French, German, Chinese, Japanese, and more. Set your preferred language in the .env file or use auto-detect.
 
 ## Project Status
 
-Privoca is actively maintained and ready for production use. Current version: 1.3.4
+PrivateTranscribe is actively maintained and ready for production use. Current version: 1.3.4
 
 - ✅ Core functionality complete
 - ✅ Cross-platform support (macOS, Windows, Linux)
