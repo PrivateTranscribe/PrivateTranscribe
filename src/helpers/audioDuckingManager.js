@@ -189,12 +189,13 @@ const windows = {
    * @returns {Promise<{ volume: number, muted: boolean }>} the state BEFORE ducking
    */
   async duckAndSave({ mode, duckLevel }) {
-    // Force invariant culture on the float so the output is always '0.2000'
-    // not '0,2000' (which would break our CSV parsing)
+    // duckLevel is a multiplier (e.g. 0.5 = half of current volume).
+    // The PS script reads current volume, multiplies by duckLevel, then sets.
     const setLine =
       mode === "mute"
         ? "[Audio]::SetMute($true)"
-        : `[Audio]::SetVolume([float]::Parse('${duckLevel.toFixed(4)}', [System.Globalization.CultureInfo]::InvariantCulture))`;
+        : `$target = [Math]::Max(0.01, $vol * [float]::Parse('${duckLevel.toFixed(4)}', [System.Globalization.CultureInfo]::InvariantCulture))
+[Audio]::SetVolume($target)`;
 
     const scriptBody = [
       // Output current state with invariant culture so no locale surprises
@@ -279,7 +280,8 @@ class AudioDuckingManager {
   async _doDuck({ mode, duckLevel }) {
     try {
       if (process.platform === "win32") {
-        // Optimised path: get + set in one PS call
+        // duckLevel is a multiplier — Windows duckAndSave reads current volume
+        // and computes the target inside the PS script (currentVol * duckLevel)
         this._savedState = await windows.duckAndSave({ mode, duckLevel });
         this._isDucked = true;
         debugLogger.debug("[AudioDucking] Ducked (Windows). Saved state:", this._savedState);
@@ -288,7 +290,9 @@ class AudioDuckingManager {
         if (mode === "mute") {
           await macos.setMuted(true);
         } else if (!this._savedState.muted) {
-          await macos.setVolume(duckLevel);
+          // duckLevel is a multiplier: 0.5 = half of current volume
+          const targetVolume = Math.max(0.01, this._savedState.volume * duckLevel);
+          await macos.setVolume(targetVolume);
         }
         this._isDucked = true;
         debugLogger.debug("[AudioDucking] Ducked (macOS). Saved state:", this._savedState);
@@ -297,7 +301,9 @@ class AudioDuckingManager {
         if (mode === "mute") {
           await linux.setMuted(true);
         } else if (!this._savedState.muted) {
-          await linux.setVolume(duckLevel);
+          // duckLevel is a multiplier: 0.5 = half of current volume
+          const targetVolume = Math.max(0.01, this._savedState.volume * duckLevel);
+          await linux.setVolume(targetVolume);
         }
         this._isDucked = true;
         debugLogger.debug("[AudioDucking] Ducked (Linux). Saved state:", this._savedState);

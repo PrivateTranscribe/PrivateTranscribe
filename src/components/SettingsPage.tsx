@@ -1669,7 +1669,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Volume while recording"
-                      description={`System audio is reduced to ${Math.round(musicDuckLevel * 100)}% while your microphone is active`}
+                      description={`Volume is reduced to ${Math.round(musicDuckLevel * 100)}% of your current level while recording`}
                     >
                       <div className="flex items-center gap-3">
                         <input
@@ -1700,23 +1700,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               />
               <SettingsPanel>
                 <SettingsPanelRow>
-                  <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                        <BookOpen className="w-5 h-5 text-primary" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-foreground">
-                          Custom vocabulary has its own home now
-                        </p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          Manage your custom vocabulary in the{" "}
-                          <span className="text-foreground font-medium">Dictionary</span> section
-                          for a cleaner workflow.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Go to the <span className="text-foreground font-medium">Dictionary</span> section in the sidebar to manage your custom vocabulary.
+                  </p>
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
