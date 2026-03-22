@@ -220,18 +220,9 @@ function ModeToggle({ useLocalWhisper, onModeChange }: ModeToggleProps) {
       {/* Sliding indicator */}
       <div
         className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-card border border-border-subtle shadow-(--shadow-card) transition-transform duration-200 ease-out ${
-          useLocalWhisper ? "translate-x-[calc(100%+4px)]" : "translate-x-0"
+          useLocalWhisper ? "translate-x-0" : "translate-x-[calc(100%+4px)]"
         }`}
       />
-      <button
-        onClick={() => onModeChange(false)}
-        className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md transition-colors duration-150 ${
-          !useLocalWhisper ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        <Cloud className="w-3.5 h-3.5" />
-        <span className="text-xs font-medium">Cloud</span>
-      </button>
       <button
         onClick={() => onModeChange(true)}
         className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md transition-colors duration-150 ${
@@ -240,6 +231,15 @@ function ModeToggle({ useLocalWhisper, onModeChange }: ModeToggleProps) {
       >
         <Lock className="w-3.5 h-3.5" />
         <span className="text-xs font-medium">Local</span>
+      </button>
+      <button
+        onClick={() => onModeChange(false)}
+        className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md transition-colors duration-150 ${
+          !useLocalWhisper ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <Cloud className="w-3.5 h-3.5" />
+        <span className="text-xs font-medium">Cloud</span>
       </button>
     </div>
   );
@@ -823,6 +823,15 @@ export default function TranscriptionModelPicker({
     <div className={`space-y-3 ${className}`}>
       {/* Integrated mode toggle - always visible */}
       <ModeToggle useLocalWhisper={useLocalWhisper} onModeChange={handleModeChange} />
+
+      {!useLocalWhisper && (
+        <div className="flex items-start gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/8 px-3 py-2">
+          <span className="text-amber-500 text-xs leading-relaxed">
+            ⚠️ Cloud mode sends your audio to a third-party server. Your voice data leaves this
+            device.
+          </span>
+        </div>
+      )}
 
       {!useLocalWhisper ? (
         <div className={styles.container}>
