@@ -1,4 +1,6 @@
 const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electron");
+const path = require("path");
+const fs = require("fs");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privoca.app";
 
@@ -181,11 +183,14 @@ async function startApp() {
   initializeManagers();
 
   // Set auto-start on first run (default: enabled)
-  // Only set if the user hasn't explicitly configured it before.
-  const store = require("electron-store") ? new (require("electron-store"))() : null;
-  if (store && !store.has("autoStartInitialized")) {
-    app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
-    store.set("autoStartInitialized", true);
+  try {
+    const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
+    if (!fs.existsSync(flagPath)) {
+      app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
+      fs.writeFileSync(flagPath, "1");
+    }
+  } catch {
+    // Non-fatal — skip if userData isn't ready yet
   }
 
   // In development, add a small delay to let Vite start properly
