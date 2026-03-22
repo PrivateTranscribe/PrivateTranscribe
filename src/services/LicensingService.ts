@@ -13,13 +13,13 @@ const LICENSING_BASE_URL =
 const OFFLINE_GRACE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Storage keys
-const STORAGE_LICENSE_KEY = "privoca_license_key";
-const STORAGE_ENTITLEMENT = "privoca_entitlement";
-const STORAGE_PRO_STATUS = "privoca_pro_status";
+const STORAGE_LICENSE_KEY = "privatetranscribe_license_key";
+const STORAGE_ENTITLEMENT = "privatetranscribe_entitlement";
+const STORAGE_PRO_STATUS = "privatetranscribe_pro_status";
 
 // Internal integrity - scattered validation markers
-const _SEAL_KEY = "privoca_seal";
-const _EPOCH_KEY = "privoca_ts";
+const _SEAL_KEY = "privatetranscribe_seal";
+const _EPOCH_KEY = "privatetranscribe_ts";
 
 /**
  * Simple hash for integrity checks (not crypto-grade, just tamper detection)
@@ -61,10 +61,10 @@ async function getDeviceId(): Promise<string> {
   }
 
   // Fallback: generate a random ID and persist it
-  let deviceId = localStorage.getItem("privoca_device_id");
+  let deviceId = localStorage.getItem("privatetranscribe_device_id");
   if (!deviceId) {
     deviceId = crypto.randomUUID();
-    localStorage.setItem("privoca_device_id", deviceId);
+    localStorage.setItem("privatetranscribe_device_id", deviceId);
   }
   return deviceId;
 }

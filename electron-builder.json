@@ -1,5 +1,5 @@
 {
-  "appId": "com.privoca.app",
+  "appId": "com.privatetranscribe.app",
   "productName": "PrivateTranscribe",
   "directories": {
     "output": "dist"
@@ -135,7 +135,7 @@
     "target": ["nsis", "portable"],
     "signAndEditExecutable": false,
     "icon": "src/assets/icon.ico",
-    "executableName": "Privoca",
+    "executableName": "PrivateTranscribe",
     "extraResources": [
       {
         "from": "resources/bin/nircmd.exe",

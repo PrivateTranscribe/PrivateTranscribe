@@ -48,7 +48,7 @@ const PRO_FEATURES = new Set([
 const SIDEBAR_PRO_ITEMS = new Set(["ai-enhancement", "voice-assistant", "action-engine"]);
 
 // localStorage key and custom event used by the temporary preview toggle
-const PREVIEW_KEY = "privoca_pro_preview";
+const PREVIEW_KEY = "privatetranscribe_pro_preview";
 const PREVIEW_EVENT = "privoca-pro-preview-changed";
 
 function isProEnforcementEnabled(): boolean {
