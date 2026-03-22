@@ -326,12 +326,12 @@ export default function App() {
   // ── End Action Engine ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (isCommandMenuOpen || toastCount > 0 || isRecording || isProcessing) {
+    if (isCommandMenuOpen || toastCount > 0) {
       setWindowInteractivity(true);
     } else if (!isHovered) {
       setWindowInteractivity(false);
     }
-  }, [isCommandMenuOpen, isHovered, toastCount, isRecording, isProcessing, setWindowInteractivity]);
+  }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
 
   // Debounce cancel-button visibility to prevent flash on quick push-to-talk taps.
   // The button only becomes visible after the active state has been held for 400ms.
