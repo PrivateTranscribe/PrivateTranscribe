@@ -62,34 +62,34 @@ function playNote(
 
 /**
  * Pleasant two-note chime — recording started.
- * A4 → C#5 (major third, upward = "beginning")
+ * G3 → B3 (soft major third, low register = calm "ready")
  */
 export function playStartSound() {
-  playNote(440, 140, { volume: 0.1, type: "sine", attackMs: 5, releaseMs: 80 });
-  playNote(554, 160, { volume: 0.1, type: "sine", attackMs: 5, releaseMs: 100, delayMs: 90 });
+  playNote(196, 180, { volume: 0.06, type: "sine", attackMs: 8, releaseMs: 120 });
+  playNote(247, 200, { volume: 0.06, type: "sine", attackMs: 8, releaseMs: 150, delayMs: 130 });
 }
 
 /**
  * Soft descending chime — recording stopped / processing.
- * C#5 → A4 (same interval, downward = "done")
+ * B3 → G3 (downward = "done")
  */
 export function playStopSound() {
-  playNote(554, 130, { volume: 0.08, type: "sine", attackMs: 5, releaseMs: 70 });
-  playNote(440, 170, { volume: 0.08, type: "sine", attackMs: 5, releaseMs: 110, delayMs: 80 });
+  playNote(247, 160, { volume: 0.05, type: "sine", attackMs: 8, releaseMs: 120 });
+  playNote(196, 200, { volume: 0.05, type: "sine", attackMs: 8, releaseMs: 150, delayMs: 110 });
 }
 
 /**
- * Bright success ping — transcription completed successfully.
- * E5 with a gentle ring-out.
+ * Gentle success tone — transcription completed.
+ * D4, soft ring-out.
  */
 export function playSuccessSound() {
-  playNote(659, 200, { volume: 0.08, type: "sine", attackMs: 5, releaseMs: 150 });
+  playNote(293, 250, { volume: 0.05, type: "sine", attackMs: 8, releaseMs: 200 });
 }
 
 /**
  * Low soft tone — error occurred.
- * A3, longer sustain to feel distinct from the chimes.
+ * A2, long fade.
  */
 export function playErrorSound() {
-  playNote(220, 300, { volume: 0.1, type: "triangle", attackMs: 10, releaseMs: 200 });
+  playNote(110, 350, { volume: 0.06, type: "triangle", attackMs: 15, releaseMs: 280 });
 }

@@ -608,7 +608,7 @@ export function useSettings() {
     false,
     boolSerializer
   );
-  const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", true, boolSerializer);
+  const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
     true,
