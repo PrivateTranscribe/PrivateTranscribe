@@ -14,9 +14,9 @@ import type { TranscriptionItem as TranscriptionItemType } from "../../types/ele
 // Date grouping helpers
 // ---------------------------------------------------------------------------
 
-type DateGroup = "Today" | "Yesterday" | "This Week" | "Older";
+export type DateGroup = "Today" | "Yesterday" | "This Week" | "Older";
 
-function getDateGroup(timestamp: string): DateGroup {
+export function getDateGroup(timestamp: string): DateGroup {
   const src = timestamp.endsWith("Z") ? timestamp : timestamp + "Z";
   const date = new Date(src);
   if (Number.isNaN(date.getTime())) return "Older";
@@ -38,7 +38,7 @@ function getDateGroup(timestamp: string): DateGroup {
 
 const GROUP_ORDER: DateGroup[] = ["Today", "Yesterday", "This Week", "Older"];
 
-function groupTranscriptions(
+export function groupTranscriptions(
   items: TranscriptionItemType[]
 ): { label: DateGroup; items: TranscriptionItemType[] }[] {
   const buckets = new Map<DateGroup, TranscriptionItemType[]>();
