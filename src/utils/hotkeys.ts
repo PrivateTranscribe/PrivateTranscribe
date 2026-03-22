@@ -55,7 +55,7 @@ function formatModifierPart(part: string, isMac: boolean): string {
  * formatHotkeyLabel("CommandOrControl+Shift+K") // "Cmd+Shift+K" on macOS, "Ctrl+Shift+K" on Windows
  * formatHotkeyLabel("GLOBE") // "Globe"
  * formatHotkeyLabel("`") // "`"
- * formatHotkeyLabel(null) // "`"
+ * formatHotkeyLabel(null) // ""
  */
 export function formatHotkeyLabel(hotkey?: string | null): string {
   // Handle empty/null values - return default backtick
@@ -125,7 +125,7 @@ export function isCompoundHotkey(hotkey: string): boolean {
  */
 export function getDefaultHotkey(): string {
   const isMac = isMacPlatform();
-  return isMac ? "GLOBE" : "`";
+  return isMac ? "GLOBE" : "CommandOrControl+Space";
 }
 
 /**

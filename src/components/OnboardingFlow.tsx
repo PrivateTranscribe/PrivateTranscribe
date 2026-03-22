@@ -170,8 +170,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         // Get platform-appropriate default hotkey
         const defaultHotkey = getDefaultHotkey();
 
-        // Only auto-register if no hotkey is currently set or it's the old default
-        if (!hotkey || hotkey === "`" || hotkey === "GLOBE") {
+        // Only auto-register if no hotkey is currently set or it's a default value
+        if (
+          !hotkey ||
+          hotkey === "`" ||
+          hotkey === "GLOBE" ||
+          hotkey === "CommandOrControl+Space"
+        ) {
           // Try to register the default hotkey silently
           const success = await registerHotkey(defaultHotkey);
           if (success) {
@@ -500,7 +505,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       Mode
                     </span>
                     <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                      {activationMode === "tap" ? "Press to start/stop" : "Hold while speaking"}
+                      {activationMode === "tap"
+                        ? "Press to start/stop"
+                        : "Hold while speaking (recommended)"}
                     </p>
                   </div>
                   <ActivationModeSelector
@@ -550,11 +557,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 Setup complete.
               </h2>
               <p className="text-sm text-muted-foreground">
-                Press{" "}
+                {activationMode === "push" ? "Hold" : "Press"}{" "}
                 <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
                   {readableHotkey}
                 </kbd>{" "}
-                to start dictating into any app.
+                {activationMode === "push"
+                  ? "while speaking, then release to transcribe."
+                  : "to start dictating into any app."}
               </p>
             </div>
 
