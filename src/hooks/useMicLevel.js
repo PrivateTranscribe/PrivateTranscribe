@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 /**
- * useMicLevel — real-time microphone amplitude tracking for voice-reactive UI.
+ * useMicLevel - real-time microphone amplitude tracking for voice-reactive UI.
  *
  * Taps into the existing MediaStream held by AudioManager to avoid opening a
  * second getUserMedia request. Returns a smoothed 0–1 level value that is
@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from "react";
  *
  * @param {React.RefObject} audioManagerRef - ref holding the AudioManager instance
  * @param {boolean} isRecording - current recording state
- * @returns {number} micLevel — smoothed amplitude in [0, 1]
+ * @returns {number} micLevel - smoothed amplitude in [0, 1]
  */
 export function useMicLevel(audioManagerRef, isRecording) {
   const [micLevel, setMicLevel] = useState(0);
@@ -44,7 +44,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
 
-        // 256 FFT size gives ~6ms resolution — enough for voice, not too fine
+        // 256 FFT size gives ~6ms resolution - enough for voice, not too fine
         analyser.fftSize = 256;
         // No smoothing from analyser; we do manual exponential smoothing below
         analyser.smoothingTimeConstant = 0;
@@ -96,7 +96,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // Recording is triggered via IPC → React state update, so the renderer
         // never sees a synchronous gesture event. Fire-and-forgetting resume()
         // (as was done before) starts the tick loop while the context is still
-        // suspended, causing getFloatTimeDomainData to return all zeros — a flat
+        // suspended, causing getFloatTimeDomainData to return all zeros - a flat
         // line. Instead, wait for the context to be running before ticking.
         // The catch path still starts the loop as a fallback (some environments
         // resolve without a gesture; if ctx stays suspended the bars will remain
@@ -110,7 +110,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
           ctx.resume().then(startLoop).catch(startLoop);
         }
       } catch {
-        // Web Audio API unavailable or stream already closed — fail silently.
+        // Web Audio API unavailable or stream already closed - fail silently.
         // Visualization degrades to static state, recording is unaffected.
       }
     };
@@ -121,7 +121,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
       const stream = audioManagerRef.current?.recordingStream;
       if (!stream || !stream.active) {
-        // Stream not ready yet — retry once after a further 100ms.  This handles the
+        // Stream not ready yet - retry once after a further 100ms.  This handles the
         // rare race where getUserMedia resolves and sets isRecording=true before
         // recordingStream is stored in audioManagerRef (e.g. on slow getUserMedia paths).
         const retryTimer = setTimeout(() => {

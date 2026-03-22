@@ -1,5 +1,5 @@
 /**
- * Action Engine — shared TypeScript types.
+ * Action Engine - shared TypeScript types.
  *
  * These types are used by both the renderer (React UI, hooks) and the main
  * process (via JSDoc annotations in actionEngineManager.js).  Keep this file
@@ -21,13 +21,13 @@ export type ActionType = "shell" | "url" | "app" | "dictation-mode";
  * Only the fields relevant to `actionType` will be populated.
  */
 export interface ActionConfig {
-  /** `shell` — command string passed to execFile after tokenization. */
+  /** `shell` - command string passed to execFile after tokenization. */
   command?: string;
-  /** `url` — http/https URL opened via shell.openExternal(). */
+  /** `url` - http/https URL opened via shell.openExternal(). */
   url?: string;
-  /** `app` — file system path opened via shell.openPath(). */
+  /** `app` - file system path opened via shell.openPath(). */
   appPath?: string;
-  /** `dictation-mode` — internal mode name sent to the renderer. */
+  /** `dictation-mode` - internal mode name sent to the renderer. */
   mode?: string;
 }
 

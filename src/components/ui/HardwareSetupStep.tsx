@@ -94,7 +94,7 @@ export default function HardwareSetupStep({
 
   const handleContinueWithDefaults = () => {
     // Even if no recommendations, apply safe defaults
-    // Use "base" rather than "turbo" — it's lighter and appropriate when we don't know CPU capability
+    // Use "base" rather than "turbo" - it's lighter and appropriate when we don't know CPU capability
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
@@ -159,7 +159,7 @@ export default function HardwareSetupStep({
           </div>
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
             <p className="text-[11px] text-muted-foreground">
-              Can't detect hardware? You can continue with safe CPU defaults — Whisper Base model
+              Can't detect hardware? You can continue with safe CPU defaults - Whisper Base model
               works well on most machines and can be changed later in Settings.
             </p>
             <Button
@@ -325,7 +325,7 @@ export default function HardwareSetupStep({
           </div>
         )}
 
-        {/* Recovery steps — shown when NVIDIA GPU is detected but CUDA is not usable */}
+        {/* Recovery steps - shown when NVIDIA GPU is detected but CUDA is not usable */}
         {isNvidiaNocuda && recoverySteps.length > 0 && !applied && (
           <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
             <div className="flex items-start gap-2.5">

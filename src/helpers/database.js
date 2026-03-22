@@ -93,7 +93,7 @@ class DatabaseManager {
         )
       `);
 
-      // Action run history — append-only log of every action execution.
+      // Action run history - append-only log of every action execution.
       // action_id / action_name / action_type are snapshotted at execution time so
       // that records remain useful even after the source action is deleted.
       // trigger_text is NULL for manual (test) executions triggered from the UI.

@@ -309,7 +309,7 @@ export function useSettings() {
     },
   });
 
-  // Music ducking — lower/mute system audio while transcribing
+  // Music ducking - lower/mute system audio while transcribing
   const [musicDuckingMode, setMusicDuckingMode] = useLocalStorage<"off" | "mute" | "duck">(
     "musicDuckingMode",
     "duck",

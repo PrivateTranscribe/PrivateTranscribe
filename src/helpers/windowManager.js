@@ -29,7 +29,7 @@ class WindowManager {
     this.activationModeCache = "tap";
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
-    // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt — the
+    // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
     // "floating" panel level is managed reliably by the compositor there.
     this.mainWindowOnTopRepairTimer = null;
 
@@ -124,7 +124,7 @@ class WindowManager {
       }
     } catch (err) {
       debugLogger.info("[Window] No saved overlay position (yet):", err?.message || err);
-      // No saved position or parse error — use default
+      // No saved position or parse error - use default
     }
     return null;
   }
@@ -339,7 +339,7 @@ class WindowManager {
 
       // Windows push mode: always defer to windowsKeyManager and never fall back to toggle
       // while activation mode is "push", even if listener is restarting.
-      // Also check if windowsKeyManager is actively running — this is a synchronous
+      // Also check if windowsKeyManager is actively running - this is a synchronous
       // signal that prevents race conditions during startup before cache is populated.
       if (process.platform === "win32") {
         if (this.activationModeCache === "push") {
@@ -440,7 +440,7 @@ class WindowManager {
   async stopWindowDrag() {
     const result = await this.dragManager.stopWindowDrag();
 
-    // Flush immediately — don't wait for the debounce — so the position is persisted even if
+    // Flush immediately - don't wait for the debounce - so the position is persisted even if
     // the app is force-quit/crashes shortly after the user releases the drag.
     this._flushPendingOverlayPosition("stopWindowDrag");
 

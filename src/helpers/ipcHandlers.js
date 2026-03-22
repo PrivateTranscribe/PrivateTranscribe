@@ -36,7 +36,7 @@ function isAllowedExternalUrl(url) {
  */
 function isSafeModelFilename(filename) {
   if (typeof filename !== "string" || filename.length === 0) return false;
-  // Allow only: word characters, hyphens, dots, and spaces — no slashes or null bytes.
+  // Allow only: word characters, hyphens, dots, and spaces - no slashes or null bytes.
   if (!/^[\w\-. ]+$/.test(filename)) return false;
   // Reject any path traversal attempt.
   if (filename.includes("..")) return false;
@@ -56,7 +56,7 @@ class IPCHandlers {
     this.actionEngineManager = managers.actionEngineManager || null;
     this.benchmarkManager = managers.benchmarkManager || null;
     this.hardwareDetector = new HardwareDetector();
-    // Current history limit — synced from control panel via set-history-limit.
+    // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
     this.setupHandlers();
@@ -176,7 +176,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("db-save-transcription", async (event, text, durationSeconds, options = {}) => {
-      // If historyLimit is 0, the user has opted out of history — don't write to DB
+      // If historyLimit is 0, the user has opted out of history - don't write to DB
       if (this.historyLimit === 0) {
         return { success: true, skipped: true };
       }
@@ -187,7 +187,7 @@ class IPCHandlers {
         try {
           this.databaseManager.trimTranscriptions(this.historyLimit);
         } catch (trimErr) {
-          // Non-fatal — the save itself succeeded; log and continue.
+          // Non-fatal - the save itself succeeded; log and continue.
           console.error("Failed to trim transcriptions after save:", trimErr);
         }
         setImmediate(() => {
@@ -694,7 +694,7 @@ class IPCHandlers {
       return await this.windowManager.stopWindowDrag();
     });
 
-    // External link handler — only http/https URLs are permitted.
+    // External link handler - only http/https URLs are permitted.
     ipcMain.handle("open-external", async (event, url) => {
       if (!isAllowedExternalUrl(url)) {
         debugLogger.warn("open-external blocked non-http(s) URL", { url });
@@ -1450,7 +1450,7 @@ class IPCHandlers {
       return this.updateManager.getUpdateInfo();
     });
 
-    // Audio ducking — mute or lower system volume during transcription
+    // Audio ducking - mute or lower system volume during transcription
     ipcMain.handle("duck-system-audio", async (_event, options = {}) => {
       debugLogger.info("[IPC] duck-system-audio received", options);
       try {
@@ -1476,7 +1476,7 @@ class IPCHandlers {
       }
     });
 
-    // Licensing — stable device identifier
+    // Licensing - stable device identifier
     ipcMain.handle("get-machine-id", async () => {
       try {
         const { machineIdSync } = require("node-machine-id");
@@ -1497,7 +1497,7 @@ class IPCHandlers {
       }
     });
 
-    // Native file-open dialog — used by Action Engine "Open application" and other pickers.
+    // Native file-open dialog - used by Action Engine "Open application" and other pickers.
     // The dialog is always shown as a sheet attached to the requesting window, so the user
     // explicitly chooses a path; no sensitive data is exposed without interaction.
     ipcMain.handle("show-open-dialog", async (event, options) => {

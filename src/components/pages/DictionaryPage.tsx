@@ -189,7 +189,7 @@ export default function DictionaryPage() {
           </SettingsPanelRow>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              <span className="font-medium text-foreground">Tip</span> — For difficult words, add
+              <span className="font-medium text-foreground">Tip</span> - For difficult words, add
               context phrases like "The word is Synty" alongside the word itself. Adding related
               terms (e.g. "Synty" and "SyntyStudios") also helps the model understand the intended
               spelling.

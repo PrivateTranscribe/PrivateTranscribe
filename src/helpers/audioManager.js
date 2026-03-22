@@ -658,7 +658,7 @@ class AudioManager {
 
     try {
       // Refresh correction hints so they're included in the whisper prompt
-      // (Pro feature — only inject hints when Pro entitlement is active)
+      // (Pro feature - only inject hints when Pro entitlement is active)
       const proEnabled =
         typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
       if (proEnabled) {
@@ -696,7 +696,7 @@ class AudioManager {
       );
 
       // Add custom dictionary as initial prompt to help Whisper recognize specific words
-      // Skip when translating — English dictionary hints confuse whisper's translation mode
+      // Skip when translating - English dictionary hints confuse whisper's translation mode
       if (!options.translate) {
         const dictionaryPrompt = this.getCustomDictionaryPrompt();
         if (dictionaryPrompt) {
@@ -1102,7 +1102,7 @@ class AudioManager {
 
   /**
    * Apply custom dictionary word replacements to raw STT output.
-   * Whisper's initialPrompt is a hint, not a guarantee — it can still mis-transcribe
+   * Whisper's initialPrompt is a hint, not a guarantee - it can still mis-transcribe
    * or mis-capitalise custom words. This does a case-insensitive whole-word scan and
    * replaces any match with the exact casing stored in the dictionary.
    *

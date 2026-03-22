@@ -27,7 +27,7 @@ export function toLocalDateKey(date: Date): string {
  * rather than the paginated in-memory history list. This prevents the streak from resetting
  * when the display history window (e.g. 50 items) fills up and evicts older entries.
  *
- * There is no upper cap — the streak grows indefinitely with daily use.
+ * There is no upper cap - the streak grows indefinitely with daily use.
  *
  * Grace-window rules:
  *  - activity today → anchor on today, count backwards

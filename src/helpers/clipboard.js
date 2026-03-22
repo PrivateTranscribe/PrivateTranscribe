@@ -119,7 +119,7 @@ class ClipboardManager {
   }
 
   // Check if a command exists on the system (cached).
-  // Uses `which` as a separate process argument — never via shell string interpolation —
+  // Uses `which` as a separate process argument - never via shell string interpolation -
   // to eliminate any risk of command injection through the cmd value.
   commandExists(cmd) {
     const now = Date.now();
@@ -136,7 +136,7 @@ class ClipboardManager {
     }
 
     try {
-      // Pass cmd as a distinct argument to `which` — no shell involved.
+      // Pass cmd as a distinct argument to `which` - no shell involved.
       const res = spawnSync("which", [cmd], {
         stdio: "ignore",
         timeout: 1000,

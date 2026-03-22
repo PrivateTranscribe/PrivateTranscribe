@@ -267,7 +267,7 @@ export interface BenchmarkResult {
   audioDurationSec: number;
   /** Wall-clock time for the transcription engine to process the sample. */
   elapsedMs: number;
-  /** audio seconds / processing seconds — higher is faster. */
+  /** audio seconds / processing seconds - higher is faster. */
   realtimeFactor: number;
   gpuModel: string | null;
   cpuModel: string | null;
@@ -279,7 +279,7 @@ export interface ComparisonBenchmarkResult {
   id: string;
   cpuResult: BenchmarkResult;
   gpuResult: BenchmarkResult;
-  /** GPU real-time factor / CPU real-time factor — how many times faster GPU is. */
+  /** GPU real-time factor / CPU real-time factor - how many times faster GPU is. */
   speedup: number;
   createdAt: string;
 }

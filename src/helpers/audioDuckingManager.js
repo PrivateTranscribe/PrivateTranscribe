@@ -254,7 +254,7 @@ class AudioDuckingManager {
    */
   async duck({ mode, duckLevel = 0.2 }) {
     if (this._isDucked) {
-      debugLogger.debug("[AudioDucking] Already ducked — skipping");
+      debugLogger.debug("[AudioDucking] Already ducked - skipping");
       return;
     }
 
@@ -280,7 +280,7 @@ class AudioDuckingManager {
   async _doDuck({ mode, duckLevel }) {
     try {
       if (process.platform === "win32") {
-        // duckLevel is a multiplier — Windows duckAndSave reads current volume
+        // duckLevel is a multiplier - Windows duckAndSave reads current volume
         // and computes the target inside the PS script (currentVol * duckLevel)
         this._savedState = await windows.duckAndSave({ mode, duckLevel });
         this._isDucked = true;
@@ -323,7 +323,7 @@ class AudioDuckingManager {
   async restore() {
     // If a duck is still in flight, defer the restore
     if (this._duckInFlight) {
-      debugLogger.debug("[AudioDucking] Duck in flight — deferring restore");
+      debugLogger.debug("[AudioDucking] Duck in flight - deferring restore");
       this._pendingRestore = true;
       return;
     }

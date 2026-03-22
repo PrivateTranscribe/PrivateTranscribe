@@ -139,7 +139,7 @@ function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffs
       const statusCode = response.statusCode;
 
       if (statusCode === 200 && startOffset > 0) {
-        // Server doesn't support Range — restart from beginning
+        // Server doesn't support Range - restart from beginning
         downloadedSize = 0;
         activeFile.destroy();
         activeFile = fs.createWriteStream(tempPath, { flags: "w" });

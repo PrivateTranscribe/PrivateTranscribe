@@ -74,7 +74,7 @@ export default function AIEnhancementPage() {
             Smarter transcriptions, automatically
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            AI Enhancement silently cleans up raw dictation — fixing grammar, cutting filler words,
+            AI Enhancement silently cleans up raw dictation - fixing grammar, cutting filler words,
             and reformatting text before it reaches the clipboard. You speak; it polishes. Requires
             PrivateTranscribe Pro.
           </p>
@@ -135,7 +135,7 @@ export default function AIEnhancementPage() {
             showAlertDialog={showAlertDialog}
           />
 
-          {/* Local llama-server idle shutdown — only relevant when local provider is selected */}
+          {/* Local llama-server idle shutdown - only relevant when local provider is selected */}
           {reasoningProvider === "local" && (
             <div className="mt-6 rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
               <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-4">

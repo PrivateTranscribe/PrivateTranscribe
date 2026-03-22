@@ -2,7 +2,7 @@ const { randomUUID } = require("crypto");
 const debugLogger = require("./debugLogger");
 
 /**
- * BenchmarkManager — measures transcription speed on this device.
+ * BenchmarkManager - measures transcription speed on this device.
  *
  * Generates a known-duration silent WAV sample, sends it through the active
  * transcription engine, and records wall-clock time. The result is expressed
@@ -105,7 +105,7 @@ function buildBenchmarkRecord({
  * @returns {string}
  */
 function formatRealtimeFactor(factor) {
-  if (!Number.isFinite(factor) || factor <= 0) return "—";
+  if (!Number.isFinite(factor) || factor <= 0) return "-";
   if (factor >= 100) return `${Math.round(factor)}x real-time`;
   if (factor >= 10) return `${factor.toFixed(1)}x real-time`;
   return `${factor.toFixed(2)}x real-time`;
@@ -152,7 +152,7 @@ function buildComparisonRecord({ cpuResult, gpuResult }) {
  * @returns {string}
  */
 function formatSpeedup(speedup) {
-  if (!Number.isFinite(speedup) || speedup <= 0) return "—";
+  if (!Number.isFinite(speedup) || speedup <= 0) return "-";
   if (speedup < 1.05) return "about the same speed";
   if (speedup >= 100) return `${Math.round(speedup)}x faster`;
   if (speedup >= 10) return `${speedup.toFixed(1)}x faster`;
@@ -245,7 +245,7 @@ class BenchmarkManager {
       try {
         detection = await this.hardwareDetector.detectHardware();
       } catch {
-        // Non-fatal — we can still benchmark without hardware context
+        // Non-fatal - we can still benchmark without hardware context
       }
 
       // 3. Run transcription and measure

@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Action Engine Manager — main-process module.
+ * Action Engine Manager - main-process module.
  *
  * Responsibilities:
  *   1. CRUD for user-defined actions (backed by the shared SQLite database).
@@ -56,11 +56,11 @@ const VALID_ACTION_TYPES = new Set(["shell", "url", "app", "dictation-mode"]);
  *   5. Lowercase.
  *
  * Characters deliberately NOT stripped:
- *   - Apostrophes  (') — preserve contractions such as "don't", "can't".
- *   - Hyphens      (-) — preserve compound phrases such as "push-to-talk".
- *   - All other characters — conservative; avoids surprising behaviour.
+ *   - Apostrophes  (') - preserve contractions such as "don't", "can't".
+ *   - Hyphens      (-) - preserve compound phrases such as "push-to-talk".
+ *   - All other characters - conservative; avoids surprising behaviour.
  *
- * This function is NOT applied for `regex` mode — the user's pattern governs
+ * This function is NOT applied for `regex` mode - the user's pattern governs
  * matching in full.
  *
  * @param {string} text
@@ -89,13 +89,13 @@ function matchesTrigger(transcript, action) {
   if (!action.enabled) return false;
 
   if (action.triggerMode === "regex") {
-    // Regex mode: the caller controls the pattern in full — no normalization.
+    // Regex mode: the caller controls the pattern in full - no normalization.
     try {
       return new RegExp(action.triggerPhrase, "i").test(
         typeof transcript === "string" ? transcript.trim() : ""
       );
     } catch {
-      // Malformed stored regex — treat as no match rather than crashing.
+      // Malformed stored regex - treat as no match rather than crashing.
       return false;
     }
   }
@@ -136,7 +136,7 @@ function findMatches(transcript, actions) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Input validation (pure — no side effects)
+// Input validation (pure - no side effects)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -311,7 +311,7 @@ function tokenizeCommand(command) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Action execution (side-effecting — runs in main process only)
+// Action execution (side-effecting - runs in main process only)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -406,7 +406,7 @@ function _executeDictationMode(config, context) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Run history pruning (pure — exported for unit tests)
+// Run history pruning (pure - exported for unit tests)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -440,7 +440,7 @@ function pruneRunsToLimit(db, maxRuns) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Run record builder (pure — exported for unit tests)
+// Run record builder (pure - exported for unit tests)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -496,7 +496,7 @@ function _rowToAction(row) {
   try {
     actionConfig = JSON.parse(String(row.action_config || "{}"));
   } catch {
-    // Corrupted stored JSON — fall back to empty config.
+    // Corrupted stored JSON - fall back to empty config.
   }
   return {
     id: String(row.id),
@@ -610,7 +610,7 @@ class ActionEngineManager {
   }
 
   /**
-   * Update an existing action (partial update — unspecified fields are kept).
+   * Update an existing action (partial update - unspecified fields are kept).
    * Throws if the action is not found or the merged payload is invalid.
    *
    * @param {string} id
@@ -711,7 +711,7 @@ class ActionEngineManager {
     const result = await executeAction(action, context);
     const durationMs = Date.now() - startMs;
 
-    // Persist the run record. Errors here must never surface to the caller —
+    // Persist the run record. Errors here must never surface to the caller -
     // observability must not break functionality.
     try {
       const run = buildRunRecord(action, result, triggeredBy, triggerText, durationMs);
@@ -769,7 +769,7 @@ class ActionEngineManager {
 
   /**
    * Delete the oldest runs so that at most `maxRuns` records remain.
-   * Passing 0 (or any non-positive value) means "unlimited" — no rows deleted.
+   * Passing 0 (or any non-positive value) means "unlimited" - no rows deleted.
    *
    * @param {number} maxRuns  Maximum rows to keep.  0 = unlimited.
    * @returns {{ success: boolean, pruned: number }}

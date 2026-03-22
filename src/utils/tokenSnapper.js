@@ -91,7 +91,7 @@ export function snapTranscript({
   }
 
   // Dictionary words are handled via Whisper's initial_prompt hints (pre-transcription).
-  // Post-transcription fuzzy replacement was removed — it caused false positives
+  // Post-transcription fuzzy replacement was removed - it caused false positives
   // (e.g. "product" → "PrivateTranscribe"). Use Correction Memory for explicit replacements.
 
   return output;

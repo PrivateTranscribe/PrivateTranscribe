@@ -149,10 +149,10 @@ export default function CorrectionMemoryPage() {
           <Lock size={24} className="mx-auto text-primary/60" />
           <h3 className="text-base font-semibold text-foreground">It learns how you write</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Correction Memory captures phrase fixes you confirm — like{" "}
+            Correction Memory captures phrase fixes you confirm - like{" "}
             <span className="font-mono">use login error</span>
             {" → "}
-            <span className="font-mono">useLoginError</span> — and applies them to every future
+            <span className="font-mono">useLoginError</span> - and applies them to every future
             dictation automatically. The longer you use PrivateTranscribe, the sharper it gets.
             Unlock it with Pro.
           </p>
@@ -178,13 +178,13 @@ export default function CorrectionMemoryPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
-                placeholder="Source — what you say / what STT outputs"
+                placeholder="Source - what you say / what STT outputs"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               />
               <Input
-                placeholder="Target — what should be inserted"
+                placeholder="Target - what should be inserted"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}

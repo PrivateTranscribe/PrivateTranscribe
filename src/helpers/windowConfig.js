@@ -3,7 +3,7 @@ const path = require("path");
 const WINDOW_SIZES = {
   BASE: { width: 96, height: 96 },
   WITH_MENU: { width: 300, height: 360 },
-  // WITH_TOAST: narrower and shorter than before — the toast only needs ~180px of height
+  // WITH_TOAST: narrower and shorter than before - the toast only needs ~180px of height
   // (toast ~70px + bottom button clearance ~90px + gap) and the width just needs to fit
   // the 320px toast with its 6px margin.  Keeping it tighter reduces the visual jolt when
   // the window expands near the right screen edge.
@@ -123,12 +123,12 @@ class WindowPositionUtil {
     } else if (process.platform === "win32") {
       window.setAlwaysOnTop(true, "pop-up-menu");
     } else {
-      // Linux — "screen-saver" is the highest named level Electron exposes for X11/Wayland.
+      // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
       // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should
       // keep the overlay above normal application windows.  However the compositor is not
       // obliged to honour it when a fullscreen or override-redirect window takes focus
       // (e.g. a Unity game running at native resolution).  Known constraints:
-      //   • X11/Unity: topmost is advisory — fullscreen windows or those with
+      //   • X11/Unity: topmost is advisory - fullscreen windows or those with
       //     _NET_WM_STATE_FULLSCREEN may still occlude the overlay.
       //   • Wayland: no equivalent global always-on-top protocol; "screen-saver" is
       //     passed as a hint but compositor behaviour is undefined.

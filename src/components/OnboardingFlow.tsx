@@ -586,7 +586,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       </kbd>
                     </p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      Works in any text field — browser, code editor, chat app. This dashboard
+                      Works in any text field - browser, code editor, chat app. This dashboard
                       closes to the system tray and stays out of your way.
                     </p>
                   </div>
@@ -599,7 +599,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
                       {activationMode === "push"
-                        ? "Hold and speak — release to transcribe"
+                        ? "Hold and speak - release to transcribe"
                         : "Speak, then press the hotkey again to transcribe"}
                     </p>
                     <p className="text-xs text-muted-foreground/90 leading-relaxed">
@@ -673,7 +673,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       case 4:
         return hotkey.trim() !== ""; // Activation step
       case 5:
-        return true; // Completion screen — always ready to finish
+        return true; // Completion screen - always ready to finish
       default:
         return false;
     }

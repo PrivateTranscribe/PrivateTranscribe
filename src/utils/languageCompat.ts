@@ -5,7 +5,7 @@
  * model capabilities. All logic is centralised here so it can be shared
  * between the UI (settings warnings) and the runtime (audioManager fallback).
  *
- * Whisper supports ~99 languages — no restriction is applied.
+ * Whisper supports ~99 languages - no restriction is applied.
  * Parakeet supports a fixed set of 25 languages defined in modelRegistryData.json.
  */
 
@@ -27,7 +27,7 @@ export function getModelSupportedLanguages(
   modelId?: string
 ): readonly string[] | null {
   if (modelType === "whisper") {
-    // Whisper (all variants) supports ~99 languages — no restriction.
+    // Whisper (all variants) supports ~99 languages - no restriction.
     return null;
   }
 
@@ -47,7 +47,7 @@ export function getModelSupportedLanguages(
 /**
  * Returns true if the given language code is supported by the model.
  *
- * "auto" is always considered supported — it means the model should detect
+ * "auto" is always considered supported - it means the model should detect
  * the language itself, which every model supports.
  *
  * @param language  - BCP-47 code (e.g. "en", "de") or "auto"

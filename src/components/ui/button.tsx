@@ -16,7 +16,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary CTA — flat mint
+        // Primary CTA - flat mint
         default: [
           "relative text-[#080908] font-semibold tracking-[0.01em]",
           "bg-[#70FFBA]",
@@ -26,7 +26,7 @@ const buttonVariants = cva(
           "active:bg-[#5DE6A6] active:scale-[0.98]",
         ].join(" "),
 
-        // Success — same as primary (mint IS success)
+        // Success - same as primary (mint IS success)
         success: [
           "relative text-[#080908] font-semibold tracking-[0.01em]",
           "bg-[#70FFBA]",
@@ -36,7 +36,7 @@ const buttonVariants = cva(
           "active:bg-[#5DE6A6] active:scale-[0.98]",
         ].join(" "),
 
-        // Destructive — flat red
+        // Destructive - flat red
         destructive: [
           "relative text-white font-semibold tracking-[0.01em]",
           "bg-[#FF6B6B]",
@@ -46,7 +46,7 @@ const buttonVariants = cva(
           "active:bg-[#E65555] active:scale-[0.98]",
         ].join(" "),
 
-        // Outline — flat with border
+        // Outline - flat with border
         outline: [
           "relative font-medium",
           "text-foreground bg-surface-1",
@@ -55,7 +55,7 @@ const buttonVariants = cva(
           "active:scale-[0.98]",
         ].join(" "),
 
-        // Secondary — subtle surface
+        // Secondary - subtle surface
         secondary: [
           "relative font-medium",
           "text-foreground bg-surface-2",
@@ -64,7 +64,7 @@ const buttonVariants = cva(
           "active:scale-[0.98]",
         ].join(" "),
 
-        // Ghost — minimal
+        // Ghost - minimal
         ghost: [
           "font-medium",
           "text-muted-foreground",

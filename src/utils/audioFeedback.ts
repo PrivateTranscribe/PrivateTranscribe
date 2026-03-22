@@ -1,6 +1,6 @@
 /**
  * Minimal audio feedback using Web Audio API.
- * No external sound files needed — generates clean tones programmatically.
+ * No external sound files needed - generates clean tones programmatically.
  */
 
 let audioContext: AudioContext | null = null;
@@ -56,12 +56,12 @@ function playNote(
     osc.start(startTime);
     osc.stop(startTime + duration + 0.05);
   } catch {
-    // Audio feedback is best-effort — never crash
+    // Audio feedback is best-effort - never crash
   }
 }
 
 /**
- * Pleasant two-note chime — recording started.
+ * Pleasant two-note chime - recording started.
  * G3 → B3 (soft major third, low register = calm "ready")
  */
 export function playStartSound() {
@@ -70,7 +70,7 @@ export function playStartSound() {
 }
 
 /**
- * Soft descending chime — recording stopped / processing.
+ * Soft descending chime - recording stopped / processing.
  * B3 → G3 (downward = "done")
  */
 export function playStopSound() {
@@ -79,7 +79,7 @@ export function playStopSound() {
 }
 
 /**
- * Gentle success tone — transcription completed.
+ * Gentle success tone - transcription completed.
  * D4, soft ring-out.
  */
 export function playSuccessSound() {
@@ -87,7 +87,7 @@ export function playSuccessSound() {
 }
 
 /**
- * Low soft tone — error occurred.
+ * Low soft tone - error occurred.
  * A2, long fade.
  */
 export function playErrorSound() {

@@ -217,7 +217,7 @@ class ParakeetWsServer {
       return;
     }
 
-    debugLogger.info("parakeet-ws idle timeout reached — stopping server", {
+    debugLogger.info("parakeet-ws idle timeout reached - stopping server", {
       idleMinutes: Math.round(elapsed / 60000),
     });
     this.stoppedDueToIdle = true;

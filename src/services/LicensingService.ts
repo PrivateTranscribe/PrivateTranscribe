@@ -17,7 +17,7 @@ const STORAGE_LICENSE_KEY = "privoca_license_key";
 const STORAGE_ENTITLEMENT = "privoca_entitlement";
 const STORAGE_PRO_STATUS = "privoca_pro_status";
 
-// Internal integrity — scattered validation markers
+// Internal integrity - scattered validation markers
 const _SEAL_KEY = "privoca_seal";
 const _EPOCH_KEY = "privoca_ts";
 
@@ -87,13 +87,13 @@ export interface ProStatus {
   expiresAt: string | null;
   offlineGrace: boolean;
   error: string | null;
-  /** @internal opaque validation token — do not rely on externally */
+  /** @internal opaque validation token - do not rely on externally */
   _t?: number;
 }
 
 /**
  * Internal: produce a validation token that scattered checks can verify.
- * This is NOT security — it's annoyance for casual patchers.
+ * This is NOT security - it's annoyance for casual patchers.
  */
 function _proToken(isPro: boolean): number {
   // Encode pro status + timestamp into a non-obvious number
@@ -111,7 +111,7 @@ export function _verifyToken(t: number | undefined): boolean {
 
 /**
  * Get the current Pro status from local cache.
- * Does NOT call the server — use refreshProStatus() for that.
+ * Does NOT call the server - use refreshProStatus() for that.
  */
 export function getProStatus(): ProStatus {
   const key = localStorage.getItem(STORAGE_LICENSE_KEY);
@@ -135,7 +135,7 @@ export function getProStatus(): ProStatus {
       licenseKey: key,
       expiresAt: null,
       offlineGrace: false,
-      error: "License data integrity check failed — please re-activate",
+      error: "License data integrity check failed - please re-activate",
       _t: 0,
     };
   }
@@ -151,7 +151,7 @@ export function getProStatus(): ProStatus {
         licenseKey: key,
         expiresAt,
         offlineGrace: false,
-        error: "License expired — please connect to the internet to re-validate",
+        error: "License expired - please connect to the internet to re-validate",
         _t: 0,
       };
     }

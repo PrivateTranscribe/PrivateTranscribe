@@ -183,7 +183,7 @@ OPENAI_API_KEY=${apiKey}
     try {
       fs.chmodSync(filePath, 0o600);
     } catch (_) {
-      // Non-fatal — best-effort. Failure is possible on some networked/virtual filesystems.
+      // Non-fatal - best-effort. Failure is possible on some networked/virtual filesystems.
     }
   }
 }

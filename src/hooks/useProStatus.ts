@@ -75,7 +75,7 @@ function isProEnforcementEnabled(): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pro Preview — temporary internal toggle (not part of public paywall arch)
+// Pro Preview - temporary internal toggle (not part of public paywall arch)
 // Lets Kristian preview Free vs Pro UI state without changing the real license.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -123,11 +123,11 @@ export function useProPreview(): [ProPreviewMode, (mode: ProPreviewMode) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Effective Entitlement — single source of truth for all gating + badge logic
+// Effective Entitlement - single source of truth for all gating + badge logic
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * [TEMPORARY — dev/internal override only]
+ * [TEMPORARY - dev/internal override only]
  *
  * Returns the effective entitlement used by all feature gating and badge
  * rendering.  Resolution order:
@@ -146,10 +146,10 @@ export function getEffectiveEntitlement(): "free" | "pro" {
   if (preview === "pro") return "pro";
   if (preview === "free") return "free";
 
-  // 2. Dev mode — contributors get Pro access without a license
+  // 2. Dev mode - contributors get Pro access without a license
   if (!isProEnforcementEnabled()) return "pro";
 
-  // 3. Real license — dual check: status flag + tamper-resistant token
+  // 3. Real license - dual check: status flag + tamper-resistant token
   const status = getProStatus();
   if (status.isPro && _verifyToken(status._t)) return "pro";
 

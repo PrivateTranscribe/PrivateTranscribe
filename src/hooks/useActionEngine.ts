@@ -1,5 +1,5 @@
 /**
- * useActionEngine — React hook for Action Engine CRUD.
+ * useActionEngine - React hook for Action Engine CRUD.
  *
  * Wraps the electronAPI action engine calls with loading / error state and
  * provides a stable, typed interface for UI components.
@@ -21,7 +21,7 @@ export const ACTION_ENGINE_ENABLED_KEY = "actionEngineEnabled";
 export const RUNS_RETENTION_LIMIT_KEY = "actionEngineRunsRetentionLimit";
 
 /**
- * Pure helper — resolves whether the Action Engine is globally enabled from a
+ * Pure helper - resolves whether the Action Engine is globally enabled from a
  * raw localStorage value.  A missing / null value defaults to `true` (opt-in
  * is already done at the feature-unlock level); only the explicit string
  * `"false"` disables it.
@@ -31,7 +31,7 @@ export function resolveActionEngineEnabled(raw: string | null): boolean {
 }
 
 /**
- * Pure helper — resolves the run-history retention limit from a raw localStorage
+ * Pure helper - resolves the run-history retention limit from a raw localStorage
  * value.  Returns 0 for "unlimited" (the default when the value is missing or
  * invalid).  Any stored positive integer is returned as-is.
  */

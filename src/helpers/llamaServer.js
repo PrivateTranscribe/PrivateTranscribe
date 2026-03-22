@@ -284,12 +284,12 @@ class LlamaServerManager {
 
     const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : Infinity;
     if (elapsed < this.idleTimeoutMs) {
-      // Not idle yet — reschedule for the remaining window
+      // Not idle yet - reschedule for the remaining window
       this._scheduleIdleCheck();
       return;
     }
 
-    debugLogger.info("llama-server idle timeout reached — stopping server", {
+    debugLogger.info("llama-server idle timeout reached - stopping server", {
       idleMinutes: Math.round(elapsed / 60000),
     });
     this.stoppedDueToIdle = true;

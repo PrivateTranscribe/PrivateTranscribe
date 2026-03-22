@@ -242,7 +242,7 @@ const Toast: React.FC<
   return (
     <div
       className={cn(
-        // Layout — fixed ideal width but responsive so it can't overflow a narrow window
+        // Layout - fixed ideal width but responsive so it can't overflow a narrow window
         // (relevant in the dictation overlay where the window may be narrower than 320px)
         "pointer-events-auto relative flex items-start gap-2.5 w-[320px] max-w-[min(320px,calc(100vw-24px))]",
         "px-3 py-2.5 pr-8 overflow-hidden",

@@ -33,7 +33,7 @@ const PRO_FEATURES_AVAILABLE = [
 const PRO_FEATURES_COMING = [
   {
     name: "Smart Context",
-    desc: "Context-aware dictation integrated with Cursor and VS Code — NDA-safe, no screenshots",
+    desc: "Context-aware dictation integrated with Cursor and VS Code - NDA-safe, no screenshots",
   },
 ];
 
@@ -139,7 +139,7 @@ export default function ProSettingsSection() {
         <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-5 flex items-start gap-3">
           <Check size={20} className="text-green-500 mt-0.5 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-foreground">PrivateTranscribe Pro — Active</p>
+            <p className="text-sm font-medium text-foreground">PrivateTranscribe Pro - Active</p>
             <p className="text-xs text-muted-foreground mt-1">
               License: <span className="font-mono">{status.licenseKey}</span>
               {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
@@ -214,12 +214,12 @@ export default function ProSettingsSection() {
         </>
       ) : (
         <>
-          {/* Licensing not yet live — purchase CTA */}
+          {/* Licensing not yet live - purchase CTA */}
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 space-y-4">
             <div>
               <h3 className="text-base font-semibold text-foreground">Get PrivateTranscribe Pro</h3>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                One-time purchase. Unlock all Pro features permanently — no subscription, no
+                One-time purchase. Unlock all Pro features permanently - no subscription, no
                 recurring fees.
               </p>
             </div>
@@ -229,7 +229,7 @@ export default function ProSettingsSection() {
               onClick={() => window.electronAPI?.openExternal?.("https://privoca.com/pro")}
               className="gap-2"
             >
-              Get PrivateTranscribe Pro — €29 →
+              Get PrivateTranscribe Pro - €29 →
             </Button>
             <p className="text-xs text-muted-foreground">
               Already have a key?{" "}
@@ -301,7 +301,7 @@ export default function ProSettingsSection() {
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">
-              One-time purchase — no subscription
+              One-time purchase - no subscription
             </p>
             <p className="text-xs text-muted-foreground">
               PrivateTranscribe Pro is a single payment that unlocks all current Pro features. No

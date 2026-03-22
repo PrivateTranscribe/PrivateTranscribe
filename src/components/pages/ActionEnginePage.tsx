@@ -103,7 +103,7 @@ const DEFAULT_CONFIG_FOR_TYPE: Record<ActionType, ActionConfig> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AppActionFields — config UI for the "Open application" action type
+// AppActionFields - config UI for the "Open application" action type
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface InstalledApp {
@@ -276,7 +276,7 @@ function AppActionFields({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ActionConfigFields — dynamic config inputs per action type
+// ActionConfigFields - dynamic config inputs per action type
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ActionConfigFields({
@@ -340,7 +340,7 @@ function ActionConfigFields({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ActionFormDialog — create / edit modal
+// ActionFormDialog - create / edit modal
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ActionFormDialogProps {
@@ -522,7 +522,7 @@ function ActionFormDialog({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ActionRow — single list item
+// ActionRow - single list item
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface RunResult {
@@ -860,13 +860,13 @@ export default function ActionEnginePage() {
 
   const handleCreate = async (form: ActionFormState) => {
     const created = await createAction(form as ActionCreatePayload);
-    if (!created) throw new Error("Failed to create action — check the form fields and try again.");
+    if (!created) throw new Error("Failed to create action - check the form fields and try again.");
   };
 
   const handleUpdate = async (form: ActionFormState) => {
     if (!editTarget) return;
     const updated = await updateAction(editTarget.id, form);
-    if (!updated) throw new Error("Failed to update action — check the form fields and try again.");
+    if (!updated) throw new Error("Failed to update action - check the form fields and try again.");
   };
 
   const handleDeleteConfirm = async () => {
@@ -979,7 +979,7 @@ export default function ActionEnginePage() {
             <h3 className="text-base font-semibold text-foreground">Your voice, your commands</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
               Say a phrase, trigger a real action. Open apps, run scripts, switch modes, or browse
-              to any URL — without touching the keyboard. Build a personal command vocabulary that
+              to any URL - without touching the keyboard. Build a personal command vocabulary that
               works exactly how you think. Get it with Pro.
             </p>
           </div>
@@ -1091,20 +1091,20 @@ export default function ActionEnginePage() {
             <p className="text-sm font-medium text-foreground">How triggers work</p>
             <div className="space-y-2 text-xs text-muted-foreground leading-relaxed">
               <p>
-                <strong className="text-foreground">Contains</strong> — matches if the transcribed
+                <strong className="text-foreground">Contains</strong> - matches if the transcribed
                 text includes the trigger phrase anywhere (case-insensitive). Best for natural
                 commands.
               </p>
               <p>
-                <strong className="text-foreground">Exact</strong> — the entire transcript must
+                <strong className="text-foreground">Exact</strong> - the entire transcript must
                 equal the trigger phrase. Useful to avoid accidental triggers.
               </p>
               <p>
-                <strong className="text-foreground">Starts with</strong> — matches if the transcript
+                <strong className="text-foreground">Starts with</strong> - matches if the transcript
                 begins with the trigger phrase. Suitable for command prefixes.
               </p>
               <p>
-                <strong className="text-foreground">Regex</strong> — full JavaScript regular
+                <strong className="text-foreground">Regex</strong> - full JavaScript regular
                 expression (case-insensitive). For advanced use cases.
               </p>
               <p className="pt-1 border-t border-border-subtle">
@@ -1136,7 +1136,7 @@ export default function ActionEnginePage() {
         onSubmit={handleCreate}
       />
 
-      {/* Edit dialog — key forces remount when target changes, ensuring form is hydrated */}
+      {/* Edit dialog - key forces remount when target changes, ensuring form is hydrated */}
       <ActionFormDialog
         key={editTarget?.id ?? "__edit__"}
         open={editTarget !== null}

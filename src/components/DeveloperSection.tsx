@@ -192,8 +192,8 @@ export default function DeveloperSection() {
     label: string;
     description: string;
   }[] = [
-    { value: "free", label: "Free", description: "Pro features locked — upsell badges visible" },
-    { value: "pro", label: "Pro", description: "All Pro features unlocked — badges hidden" },
+    { value: "free", label: "Free", description: "Pro features locked - upsell badges visible" },
+    { value: "pro", label: "Pro", description: "All Pro features unlocked - badges hidden" },
   ];
 
   return (
@@ -296,7 +296,7 @@ export default function DeveloperSection() {
           </div>
         </div>
 
-        {/* Log Path — only when active */}
+        {/* Log Path - only when active */}
         {debugEnabled && logPath && (
           <div className="px-5 py-4">
             <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-2">
@@ -361,19 +361,19 @@ export default function DeveloperSection() {
         </div>
       </div>
 
-      {/* Performance note — conditional */}
+      {/* Performance note - conditional */}
       {debugEnabled && (
         <div className="rounded-xl border border-warning/20 bg-warning/10">
           <div className="px-5 py-4">
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              <span className="font-medium text-warning">Note</span> — Debug logging writes to disk
+              <span className="font-medium text-warning">Note</span> - Debug logging writes to disk
               continuously and may slightly affect performance. Disable when not troubleshooting.
             </p>
           </div>
         </div>
       )}
 
-      {/* Sharing instructions — conditional */}
+      {/* Sharing instructions - conditional */}
       {debugEnabled && (
         <div>
           <div className="mb-5">

@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * App Discovery — platform-specific installed application scanner.
+ * App Discovery - platform-specific installed application scanner.
  *
  * Scans OS-specific locations to build a sorted list of { name, path } pairs
  * for the Action Engine "Open application" action picker UI.
@@ -78,7 +78,7 @@ function parseDesktopFile(content) {
       inDesktopEntry = true;
       continue;
     }
-    // Entering a different section — stop reading Desktop Entry fields.
+    // Entering a different section - stop reading Desktop Entry fields.
     if (trimmed.startsWith("[") && trimmed !== "[Desktop Entry]") {
       if (inDesktopEntry) break;
       continue;
@@ -239,7 +239,7 @@ function _scanLinux() {
 
       const parsed = parseDesktopFile(content);
       if (!parsed) continue;
-      // ~/.local overrides system entries — process dirs in ascending priority,
+      // ~/.local overrides system entries - process dirs in ascending priority,
       // so later entries overwrite earlier ones for the same name.
       results.set(parsed.name, { name: parsed.name, path: parsed.exec });
     }
@@ -303,7 +303,7 @@ function listInstalledApps() {
 
 module.exports = {
   listInstalledApps,
-  // Pure helpers — exported for unit testing without Electron/filesystem deps
+  // Pure helpers - exported for unit testing without Electron/filesystem deps
   extractAppNameFromPath,
   parseDesktopFile,
   filterApps,

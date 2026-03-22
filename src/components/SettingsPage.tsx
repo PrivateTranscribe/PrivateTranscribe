@@ -114,13 +114,13 @@ function SectionHeader({ title, description }: { title: string; description?: st
   );
 }
 
-// ── GPU Status card — shown in Transcription settings ──────────────────
+// ── GPU Status card - shown in Transcription settings ──────────────────
 
 type GpuDetectState = "idle" | "detecting" | "done" | "error";
 
 const GPU_CATEGORY_LABELS: Record<HardwareGpuCategory, string> = {
   nvidia_cuda: "NVIDIA + CUDA ready",
-  nvidia_no_cuda: "NVIDIA GPU — CUDA not ready",
+  nvidia_no_cuda: "NVIDIA GPU - CUDA not ready",
   non_nvidia_gpu: "Non-NVIDIA GPU",
   metal: "Apple Metal ready",
   cpu_only: "CPU only",
@@ -138,7 +138,7 @@ const GPU_CATEGORY_VARIANT: Record<
 };
 
 function formatRealtimeFactor(factor: number): string {
-  if (!Number.isFinite(factor) || factor <= 0) return "—";
+  if (!Number.isFinite(factor) || factor <= 0) return "-";
   if (factor >= 100) return `${Math.round(factor)}x`;
   if (factor >= 10) return `${factor.toFixed(1)}x`;
   return `${factor.toFixed(2)}x`;
@@ -311,7 +311,7 @@ function GpuStatusCard() {
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No discrete GPU detected — CPU transcription only
+                  No discrete GPU detected - CPU transcription only
                 </p>
               )}
               {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
@@ -393,7 +393,7 @@ function GpuStatusCard() {
                 </div>
               )}
               <p className="text-[9px] text-muted-foreground mt-2 text-center">
-                Measured on this device · Different engines (Whisper CPU vs Parakeet GPU) — not a
+                Measured on this device · Different engines (Whisper CPU vs Parakeet GPU) - not a
                 same-engine comparison
                 {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
               </p>
@@ -404,7 +404,7 @@ function GpuStatusCard() {
             <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Running CPU vs GPU comparison — testing both engines on a 10-second sample…
+                Running CPU vs GPU comparison - testing both engines on a 10-second sample…
               </div>
             </div>
           )}
@@ -443,7 +443,7 @@ function GpuStatusCard() {
             <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Running speed test — transcribing a 10-second sample…
+                Running speed test - transcribing a 10-second sample…
               </div>
             </div>
           )}
@@ -507,11 +507,11 @@ function GpuStatusCard() {
   );
 }
 
-// ── History limit input — free-type with inline confirm when lowering ──
+// ── History limit input - free-type with inline confirm when lowering ──
 
 function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [raw, setRaw] = React.useState(String(value));
-  // Pending is set when the user tries to lower the limit — awaiting confirmation
+  // Pending is set when the user tries to lower the limit - awaiting confirmation
   const [pending, setPending] = React.useState<number | null>(null);
   const [isConfirming, setIsConfirming] = React.useState(false);
 
@@ -523,15 +523,15 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
   const commit = () => {
     const parsed = parseInt(raw, 10);
     if (isNaN(parsed) || parsed < 0) {
-      // Invalid — snap back
+      // Invalid - snap back
       setRaw(String(value));
       return;
     }
     if (parsed < value) {
-      // User is lowering the limit — show warning instead of committing
+      // User is lowering the limit - show warning instead of committing
       setPending(parsed);
     } else {
-      // Same or higher — commit immediately, no cleanup needed
+      // Same or higher - commit immediately, no cleanup needed
       onChange(parsed);
       setRaw(String(parsed));
     }
@@ -1267,7 +1267,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const renderSectionContent = () => {
     switch (activeSection) {
       // ───────────────────────────────────────────────────
-      // GENERAL — Updates, Hotkey, Startup, Mic
+      // GENERAL - Updates, Hotkey, Startup, Mic
       // ───────────────────────────────────────────────────
       case "general":
         return (
@@ -1512,7 +1512,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="I speak"
-                    description="The language you speak. Whisper transcribes in this language — set it to match what you actually speak for best accuracy."
+                    description="The language you speak. Whisper transcribes in this language - set it to match what you actually speak for best accuracy."
                   >
                     <Select
                       value={preferredLanguage || "auto"}
@@ -1621,7 +1621,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       correctionMemoryUnlocked
                         ? "Learn from manual edits (currently detected via clipboard changes after dictation)"
-                        : "Pro feature — unlock in Settings → Pro to enable correction learning"
+                        : "Pro feature - unlock in Settings → Pro to enable correction learning"
                     }
                   >
                     <Toggle
@@ -1696,7 +1696,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Dictionary"
-                description="Add words you want PrivateTranscribe to recognize more reliably — product names, people, acronyms."
+                description="Add words you want PrivateTranscribe to recognize more reliably - product names, people, acronyms."
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -1796,8 +1796,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Context capture"
                     description={
                       smartContextUnlocked
-                        ? "Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) — always sanitized and kept local."
-                        : "Pro feature — unlock in Settings → Pro to enable Smart Context / context capture"
+                        ? "Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) - always sanitized and kept local."
+                        : "Pro feature - unlock in Settings → Pro to enable Smart Context / context capture"
                     }
                   >
                     <Toggle
@@ -1950,7 +1950,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </div>
             )}
 
-            {/* GPU Status — always visible in Transcription tab for local users */}
+            {/* GPU Status - always visible in Transcription tab for local users */}
             {useLocalWhisper && (
               <div className="mt-6">
                 <SectionHeader
@@ -1971,7 +1971,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           <div className="space-y-8">
             <SectionHeader
               title="Dictionary"
-              description="Teach PrivateTranscribe the words that matter to you — names, products, acronyms, and specialist terms."
+              description="Teach PrivateTranscribe the words that matter to you - names, products, acronyms, and specialist terms."
             />
 
             <SettingsPanel>
@@ -2046,7 +2046,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   Available with PrivateTranscribe Pro
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  AI Enhancement automatically polishes your transcriptions — fixing grammar,
+                  AI Enhancement automatically polishes your transcriptions - fixing grammar,
                   formatting text, and handling intelligent rewrites. Unlock it with a Pro license
                   in Settings.
                 </p>
@@ -2279,7 +2279,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <div>
                     <h3 className="text-lg font-semibold text-foreground">Your prompt workspace</h3>
                     <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      The control room for system instructions — tune tone, cleanup rules, command
+                      The control room for system instructions - tune tone, cleanup rules, command
                       behavior, and reusable prompt presets with full precision.
                     </p>
                   </div>
@@ -2499,7 +2499,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
             <DeveloperSection />
 
-            {/* Data Management — moved from General */}
+            {/* Data Management - moved from General */}
             <div className="border-t border-border/30 pt-8">
               <SectionHeader
                 title="Data & Storage"
@@ -2602,7 +2602,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Reset statistics"
-                      description="Clear all aggregate stats — words dictated, session count, time, and WPM. Transcript history and settings are not affected."
+                      description="Clear all aggregate stats - words dictated, session count, time, and WPM. Transcript history and settings are not affected."
                     >
                       <Button
                         variant="outline"

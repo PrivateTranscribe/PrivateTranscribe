@@ -134,7 +134,7 @@ export const useAudioRecording = (toast, options = {}) => {
         // ── Action Engine ──────────────────────────────────────────────────────
         // Check whether the final transcript triggers any user-configured action.
         // When one or more actions match, execute them and suppress the default
-        // paste/copy behaviour — the utterance was a voice command, not dictation
+        // paste/copy behaviour - the utterance was a voice command, not dictation
         // content.  If the IPC call is unavailable or throws, fall through to the
         // normal paste path so that dictation is never silently blocked.
         let actionHandled = false;
@@ -193,7 +193,7 @@ export const useAudioRecording = (toast, options = {}) => {
           }
         }
 
-        // Success confirmation notification (skipped for action triggers — those
+        // Success confirmation notification (skipped for action triggers - those
         // show their own "Action triggered" toast above)
         const showSuccess = localStorage.getItem("successConfirmation") === "true";
         if (showSuccess && !actionHandled) {

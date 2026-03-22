@@ -252,7 +252,7 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
                   { mode: "Cleanup", desc: "Removes filler words, fixes grammar and punctuation" },
                   {
                     mode: "Instruction",
-                    desc: `Triggered by "Hey ${agentName}" — executes commands and cleans text`,
+                    desc: `Triggered by "Hey ${agentName}" - executes commands and cleans text`,
                   },
                 ].map((item) => (
                   <div key={item.mode} className="flex items-start gap-3">
@@ -308,7 +308,7 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
           <div className="divide-y divide-border-subtle">
             <div className="px-5 py-4">
               <p className="text-[12px] text-muted-foreground leading-relaxed">
-                <span className="font-medium text-warning">Caution</span> — Modifying this prompt
+                <span className="font-medium text-warning">Caution</span> - Modifying this prompt
                 may affect transcription quality. Use{" "}
                 <code className="text-[11px] bg-muted/50 px-1 py-0.5 rounded font-mono">
                   {"{{agentName}}"}
