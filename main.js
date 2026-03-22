@@ -413,6 +413,7 @@ async function startApp() {
     const refreshActivationMode = async () => {
       currentActivationMode = await windowManager.getActivationMode();
       windowManager.setActivationMode(currentActivationMode);
+      hotkeyManager.setActivationMode(currentActivationMode);
       debugLogger.debug("[Push-to-Talk] Refreshed activation mode", {
         activationMode: currentActivationMode,
       });
@@ -461,6 +462,7 @@ async function startApp() {
       debugLogger.debug("[Push-to-Talk] IPC: Activation mode changed", { mode });
       currentActivationMode = mode === "push" ? "push" : "tap";
       windowManager.setActivationMode(currentActivationMode);
+      hotkeyManager.setActivationMode(currentActivationMode);
       if (currentActivationMode !== "push") {
         stopPushToTalkRecording("activation-mode-changed");
       }

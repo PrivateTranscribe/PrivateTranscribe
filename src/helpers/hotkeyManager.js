@@ -24,6 +24,12 @@ class HotkeyManager {
     this.gnomeManager = null;
     this.useGnome = false;
     this.hotkeyCallback = null;
+    this.activationMode = "tap";
+  }
+
+  setActivationMode(mode) {
+    this.activationMode = mode === "push" ? "push" : "tap";
+    debugLogger.log(`[HotkeyManager] Activation mode set to: ${this.activationMode}`);
   }
 
   setListeningMode(enabled) {
@@ -159,7 +165,16 @@ class HotkeyManager {
         globalShortcut.unregister(hotkey);
       }
 
-      const success = globalShortcut.register(hotkey, callback);
+      // On Windows in push-to-talk mode, WindowsKeyManager owns dictation start/stop.
+      // Wrapping the callback prevents globalShortcut from double-firing, while still
+      // registering the key so other apps can't steal it.
+      const effectiveCallback =
+        process.platform === "win32"
+          ? () => {
+              if (this.activationMode !== "push") callback();
+            }
+          : callback;
+      const success = globalShortcut.register(hotkey, effectiveCallback);
       debugLogger.log(`[HotkeyManager] Registration result for "${hotkey}": ${success}`);
 
       if (success) {
