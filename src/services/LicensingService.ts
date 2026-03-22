@@ -5,7 +5,9 @@
  * Privacy-first: device IDs are hashed, minimal data sent to server.
  */
 
-const LICENSING_BASE_URL = ""; // Set this when deploying: e.g. https://xyz.supabase.co/functions/v1
+const LICENSING_BASE_URL =
+  import.meta.env.VITE_LICENSING_BASE_URL ||
+  "https://wsfrykhacxjfsgvqnlbq.supabase.co/functions/v1";
 
 // Offline grace: how long to trust a cached entitlement without re-validating
 const OFFLINE_GRACE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
