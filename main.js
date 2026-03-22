@@ -180,6 +180,14 @@ async function startApp() {
   // Initialize all managers now that app is ready
   initializeManagers();
 
+  // Set auto-start on first run (default: enabled)
+  // Only set if the user hasn't explicitly configured it before.
+  const store = require("electron-store") ? new (require("electron-store"))() : null;
+  if (store && !store.has("autoStartInitialized")) {
+    app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
+    store.set("autoStartInitialized", true);
+  }
+
   // In development, add a small delay to let Vite start properly
   if (process.env.NODE_ENV === "development") {
     await new Promise((resolve) => setTimeout(resolve, 2000));

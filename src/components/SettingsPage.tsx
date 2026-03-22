@@ -1462,8 +1462,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Launch at login"
-                      description="Start PrivateTranscribe automatically when you log in"
+                      label="Start on boot"
+                      description="PrivateTranscribe starts automatically when your computer turns on"
                     >
                       <Toggle
                         checked={autoStartEnabled}
@@ -1696,7 +1696,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div>
               <SectionHeader
                 title="Dictionary"
-                description="Manage your custom vocabulary in the Dictionary section. Add product names, people, acronyms, and other words you want PrivateTranscribe to recognize more reliably."
+                description="Add words you want PrivateTranscribe to recognize more reliably — product names, people, acronyms."
               />
               <SettingsPanel>
                 <SettingsPanelRow>

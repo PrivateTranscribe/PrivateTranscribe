@@ -312,7 +312,7 @@ export function useSettings() {
   // Music ducking — lower/mute system audio while transcribing
   const [musicDuckingMode, setMusicDuckingMode] = useLocalStorage<"off" | "mute" | "duck">(
     "musicDuckingMode",
-    "off",
+    "duck",
     {
       serialize: String,
       deserialize: (value) => {
@@ -322,11 +322,11 @@ export function useSettings() {
     }
   );
 
-  const [musicDuckLevel, setMusicDuckLevel] = useLocalStorage<number>("musicDuckLevel", 0.2, {
+  const [musicDuckLevel, setMusicDuckLevel] = useLocalStorage<number>("musicDuckLevel", 0.5, {
     serialize: String,
     deserialize: (value) => {
       const num = parseFloat(value);
-      return isNaN(num) ? 0.2 : Math.max(0.05, Math.min(0.8, num));
+      return isNaN(num) ? 0.5 : Math.max(0.05, Math.min(0.8, num));
     },
   });
 

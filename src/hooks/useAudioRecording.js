@@ -183,6 +183,11 @@ export const useAudioRecording = (toast, options = {}) => {
         if (!actionHandled) {
           if (shouldPaste) {
             await manager.safePaste(text);
+            // If "copy to clipboard" is also on, re-write the transcription after paste
+            // (safePaste restores the original clipboard; this ensures the text stays in it)
+            if (shouldCopy && window.electronAPI?.writeClipboard) {
+              await window.electronAPI.writeClipboard(text);
+            }
           } else if (shouldCopy && window.electronAPI?.writeClipboard) {
             await window.electronAPI.writeClipboard(text);
           }
