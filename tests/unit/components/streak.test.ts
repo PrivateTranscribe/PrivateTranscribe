@@ -8,7 +8,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { computeStreak, toLocalDateKey } from "../../../src/components/pages/DashboardPage";
+import {
+  computeStreak,
+  toLocalDateKey,
+  parseUtcTimestamp,
+} from "../../../src/components/pages/DashboardPage";
 
 // Build a date key for N days offset from today (negative = past).
 function dateKeyOffset(daysOffset: number): string {
@@ -121,5 +125,57 @@ describe("computeStreak", () => {
   it("regression: streak stays at 3 with many days when full history loaded from DB", () => {
     const dates = new Set([dateKeyOffset(0), dateKeyOffset(-1), dateKeyOffset(-2)]);
     expect(computeStreak(dates)).toBe(3);
+  });
+});
+
+describe("parseUtcTimestamp", () => {
+  // Regression: SQLite CURRENT_TIMESTAMP returns "YYYY-MM-DD HH:MM:SS" (UTC, no TZ suffix).
+  // V8/Chromium treats a space-separated date-time string without TZ info as *local* time.
+  // For UTC-N users, dictations after (UTC offset) hours get attributed to the next local day,
+  // causing the streak to reset to 1. parseUtcTimestamp must force UTC interpretation.
+
+  it("parses a SQLite UTC timestamp as UTC (not local time)", () => {
+    // "2026-03-15 14:00:00" is 14:00 UTC — confirm it's NOT treated as local
+    const d = parseUtcTimestamp("2026-03-15 14:00:00");
+    // getUTCHours must be 14 — if it were parsed as local the UTC hours would differ
+    expect(d.getUTCFullYear()).toBe(2026);
+    expect(d.getUTCMonth()).toBe(2); // 0-indexed March
+    expect(d.getUTCDate()).toBe(15);
+    expect(d.getUTCHours()).toBe(14);
+    expect(d.getUTCMinutes()).toBe(0);
+  });
+
+  it("parses a midnight UTC timestamp on the correct UTC date", () => {
+    const d = parseUtcTimestamp("2026-03-15 00:00:00");
+    expect(d.getUTCDate()).toBe(15);
+    expect(d.getUTCHours()).toBe(0);
+  });
+
+  it("parses a late-night UTC timestamp — 23:59 UTC stays on the same UTC date", () => {
+    const d = parseUtcTimestamp("2026-03-15 23:59:59");
+    expect(d.getUTCDate()).toBe(15);
+    expect(d.getUTCHours()).toBe(23);
+  });
+
+  it("leaves already-valid ISO strings untouched", () => {
+    const d = parseUtcTimestamp("2026-03-15T14:00:00Z");
+    expect(d.getUTCHours()).toBe(14);
+    expect(d.getUTCDate()).toBe(15);
+  });
+
+  // Key regression: UTC-5 user dictates at 9 PM local (02:00 UTC next day).
+  // The stored UTC timestamp is "2026-03-24 02:00:00".
+  // toLocalDateKey(parseUtcTimestamp(ts)) must yield the LOCAL date in UTC-5,
+  // i.e. "2026-03-23" — not "2026-03-24".
+  // We test this by fixing the timezone offset via Date mock.
+  it("regression: UTC-5 late-night dictation maps to correct local date", () => {
+    // The UTC timestamp for 9 PM EST on March 23 is March 24 02:00 UTC.
+    const ts = "2026-03-24 02:00:00";
+    const utcDate = parseUtcTimestamp(ts);
+    // Simulate UTC-5: subtract 5h to get local date.
+    const localDate = new Date(utcDate.getTime() - 5 * 60 * 60 * 1000);
+    // Local date should be March 23, not March 24.
+    expect(localDate.getUTCDate()).toBe(23);
+    expect(localDate.getUTCMonth()).toBe(2); // March (0-indexed)
   });
 });

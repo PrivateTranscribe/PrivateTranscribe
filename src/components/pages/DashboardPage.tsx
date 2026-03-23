@@ -11,6 +11,7 @@ import TranscriptionItem from "../ui/TranscriptionItem";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
 import { formatHotkeyLabel } from "../../utils/hotkeys";
 import type { AggregateStats } from "../../types/electron";
+import logger from "../../utils/logger";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
@@ -18,6 +19,30 @@ interface DashboardPageProps {
 
 export function toLocalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Parse a UTC timestamp string from SQLite into a JS Date.
+ *
+ * SQLite's CURRENT_TIMESTAMP returns strings like "2026-03-23 14:00:00" (UTC,
+ * space-separated, no timezone suffix).  V8/Chromium treats a space-separated
+ * date-time string with no timezone as *local* time, not UTC — so passing it
+ * directly to `new Date()` shifts every date key by the local UTC offset.
+ *
+ * For a UTC-5 user who dictates after 7 PM, the UTC timestamp crosses midnight
+ * and gets attributed to the *next* local day, so yesterday's dictation never
+ * appears in "yesterday's" slot and the streak drops to 1.
+ *
+ * Appending "Z" after replacing the space with "T" produces a valid ISO 8601
+ * UTC string ("2026-03-23T14:00:00Z") that V8 parses as UTC unambiguously.
+ */
+export function parseUtcTimestamp(ts: string): Date {
+  // If already has timezone info (T…Z, T…+HH, T…-HH) leave it alone.
+  if (/[TZ]/.test(ts) || /[+-]\d{2}:\d{2}$/.test(ts)) {
+    return new Date(ts);
+  }
+  // "YYYY-MM-DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SSZ"
+  return new Date(ts.replace(" ", "T") + "Z");
 }
 
 /**
@@ -139,22 +164,38 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         const timestamps = await window.electronAPI?.getStreakDates?.();
         if (Array.isArray(timestamps)) {
           // Convert raw UTC timestamps to local date keys in JS (reliable cross-platform).
-          // SQLite's 'localtime' modifier can be a no-op on some Linux builds, so we avoid
-          // doing the TZ conversion in SQL and do it here with JS Date instead.
+          // SQLite's CURRENT_TIMESTAMP returns "YYYY-MM-DD HH:MM:SS" (UTC, no timezone).
+          // V8/Chromium treats a space-separated string without timezone as *local* time,
+          // so we use parseUtcTimestamp() to force UTC interpretation before extracting
+          // the local date. Without this, users in UTC-5 would see dictations made after
+          // 7 PM attributed to the next day, causing the streak to reset to 1.
           const localDateKeys = new Set(
-            timestamps.map((ts) => toLocalDateKey(new Date(ts)))
+            timestamps.map((ts) => toLocalDateKey(parseUtcTimestamp(ts)))
+          );
+          void logger.debug(
+            `[streak] fetched ${timestamps.length} timestamp(s), ${localDateKeys.size} unique day(s)`,
+            {
+              sample: timestamps.slice(0, 3),
+              dateKeys: [...localDateKeys].slice(0, 5),
+              localTzOffset: new Date().getTimezoneOffset(),
+            },
+            "streak"
           );
           setStreakDates(localDateKeys);
         }
-      } catch {
-        // Silently fail
+      } catch (err) {
+        void logger.error("[streak] fetchStreakDates failed", { err }, "streak");
       }
     };
     fetchStats();
     fetchStreakDates();
   }, [transcriptionsVersion]);
 
-  const streak = useMemo(() => computeStreak(streakDates), [streakDates]);
+  const streak = useMemo(() => {
+    const value = computeStreak(streakDates);
+    void logger.debug(`[streak] computed streak = ${value}`, { activeDays: streakDates.size }, "streak");
+    return value;
+  }, [streakDates]);
   const recentFive = useMemo(() => transcriptions.slice(0, 5), [transcriptions]);
   const readableHotkey = useMemo(() => formatHotkeyLabel(dictationKey), [dictationKey]);
 
