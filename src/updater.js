@@ -29,7 +29,7 @@ class UpdateManager {
     // Configure update feed URL
     // This points to the update manifest hosted on our CDN (Cloudflare R2 or similar).
     // The manifest (latest.yml) and installer files must be uploaded there.
-    const UPDATE_FEED_URL = "https://updates.privoca.com/win";
+    const UPDATE_FEED_URL = "https://updates.privatetranscribe.com/win";
 
     autoUpdater.setFeedURL({
       provider: "generic",
