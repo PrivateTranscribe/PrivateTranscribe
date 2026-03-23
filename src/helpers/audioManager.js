@@ -117,6 +117,22 @@ class AudioManager {
     this.discardCurrentRecording = false;
     this.reasoningAvailabilityCache = { value: false, expiresAt: 0 };
     this.cachedReasoningPreference = null;
+    this._cachedAudioInputs = null;
+
+    // Pre-warm device cache and keep it fresh
+    if (navigator.mediaDevices) {
+      this._warmDeviceCache();
+      navigator.mediaDevices.addEventListener("devicechange", () => this._warmDeviceCache());
+    }
+  }
+
+  async _warmDeviceCache() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      this._cachedAudioInputs = devices.filter((d) => d.kind === "audioinput");
+    } catch {
+      this._cachedAudioInputs = null;
+    }
   }
 
   getCustomDictionaryPrompt() {
@@ -287,8 +303,9 @@ class AudioManager {
 
     if (preferBuiltIn) {
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter((d) => d.kind === "audioinput");
+        const audioInputs =
+          this._cachedAudioInputs ??
+          (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
         const builtInMic = audioInputs.find((d) => isBuiltInMicrophone(d.label));
 
         if (builtInMic) {
