@@ -637,7 +637,7 @@ class WindowManager {
       this.mainWindowOnTopRepairTimer = setTimeout(() => {
         this.mainWindowOnTopRepairTimer = null;
         this.enforceMainWindowOnTop();
-      }, 100);
+      }, process.platform === "win32" ? 50 : 100);
     });
 
     this.mainWindow.on("minimize", () => {
