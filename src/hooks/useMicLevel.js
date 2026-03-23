@@ -7,13 +7,52 @@ import { useState, useEffect, useRef } from "react";
  * second getUserMedia request. Returns a smoothed 0–1 level value that is
  * intentionally laggy-smooth (elegant, not jittery).
  *
- * Cleanup is guaranteed: AnalyserNode is disconnected and AudioContext is
- * closed whenever isRecording goes false or the component unmounts.
+ * Uses a module-level singleton AudioContext that survives across recordings.
+ * This prevents the "bars freeze after display sleep/wake" bug on Windows where
+ * a freshly-created AudioContext.resume() resolves but ctx.state never returns
+ * to "running", causing getFloatTimeDomainData to return all zeros.
+ *
+ * The AnalyserNode and MediaStreamSourceNode are still created/destroyed per
+ * recording because they are bound to the stream. Only the AudioContext is shared.
  *
  * @param {React.RefObject} audioManagerRef - ref holding the AudioManager instance
  * @param {boolean} isRecording - current recording state
  * @returns {number} micLevel - smoothed amplitude in [0, 1]
  */
+
+// ---------------------------------------------------------------------------
+// Module-level singleton — one AudioContext for the lifetime of the renderer
+// ---------------------------------------------------------------------------
+let sharedCtx = null;
+
+/**
+ * Returns the shared AudioContext, creating it on first call.
+ * If the existing context was closed (should not happen in normal use),
+ * a new one is created.
+ */
+function getSharedAudioContext() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+
+  if (!sharedCtx || sharedCtx.state === "closed") {
+    sharedCtx = new AudioCtx();
+
+    // Proactively resume whenever the page becomes visible again (e.g. after
+    // the display wakes from sleep). This covers the case where the context
+    // was suspended by the OS while the screen was off.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && sharedCtx?.state === "suspended") {
+        sharedCtx.resume().catch(() => {});
+      }
+    });
+  }
+
+  return sharedCtx;
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 export function useMicLevel(audioManagerRef, isRecording) {
   const [micLevel, setMicLevel] = useState(0);
   const smoothedRef = useRef(0);
@@ -36,10 +75,8 @@ export function useMicLevel(audioManagerRef, isRecording) {
       if (cancelled) return;
 
       try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-
-        const ctx = new AudioCtx();
+        const ctx = getSharedAudioContext();
+        if (!ctx) return;
 
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -79,31 +116,42 @@ export function useMicLevel(audioManagerRef, isRecording) {
           rafRef.current = requestAnimationFrame(tick);
         };
 
-        // Register cleanup before the async resume so that if the effect
-        // tears down while ctx.resume() is still pending, source and ctx
-        // are properly closed regardless.
+        // Register per-recording cleanup. Note: we do NOT close sharedCtx here
+        // because it is reused across recordings. Only the source node is torn down.
         cleanupRef.current = () => {
           try {
             source.disconnect();
-            ctx.close();
           } catch {
             // Ignore teardown errors
           }
         };
 
+        // If the context wakes mid-recording (e.g. display sleep ends while
+        // recording is already in progress), restart the tick loop.
+        const handleStateChange = () => {
+          if (ctx.state === "running" && !cancelled && rafRef.current === null) {
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        };
+        ctx.addEventListener("statechange", handleStateChange);
+
+        // Extend cleanup to also remove the statechange listener.
+        const prevCleanup = cleanupRef.current;
+        cleanupRef.current = () => {
+          prevCleanup?.();
+          ctx.removeEventListener("statechange", handleStateChange);
+        };
+
         // Chromium/Electron creates AudioContext in "suspended" state when the
         // constructor is not called synchronously from a renderer user-gesture.
         // Recording is triggered via IPC → React state update, so the renderer
-        // never sees a synchronous gesture event. Fire-and-forgetting resume()
-        // (as was done before) starts the tick loop while the context is still
-        // suspended, causing getFloatTimeDomainData to return all zeros - a flat
-        // line. Instead, wait for the context to be running before ticking.
-        // The catch path still starts the loop as a fallback (some environments
-        // resolve without a gesture; if ctx stays suspended the bars will remain
-        // at zero but audio recording is unaffected).
+        // never sees a synchronous gesture event. Always call resume() first,
+        // then poll until ctx.state === "running" before starting the tick loop.
+        // This also re-wakes a context that was suspended by a display sleep event.
         const startLoop = () => {
           if (!cancelled) rafRef.current = requestAnimationFrame(tick);
         };
+
         if (ctx.state === "running") {
           startLoop();
         } else {
@@ -158,6 +206,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
       cancelled = true;
       clearTimeout(startTimer);
       cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
       cleanupRef.current?.();
       cleanupRef.current = null;
       smoothedRef.current = 0;
