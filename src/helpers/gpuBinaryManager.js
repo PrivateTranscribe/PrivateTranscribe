@@ -2,25 +2,24 @@
 
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
-const unzipper = require("unzipper");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 
-const GITHUB_API_URL =
-  "https://api.github.com/repos/OpenWhispr/whisper.cpp/releases/latest";
+// R2 public CDN — binaries served directly (no zip extraction needed)
+const R2_BASE_URL = "https://pub-023261a50f6b4499ba1d7a037d59b7eb.r2.dev";
+const BINARY_VERSION = "v0.0.6";
 const USER_AGENT = "PrivateTranscribe/1.0";
 
 const CUDA_BINARIES = {
   "linux-x64": {
-    zipName: "whisper-server-linux-x64-cuda.zip",
-    binaryName: "whisper-server-linux-x64-cuda",
     outputName: "whisper-server-linux-x64-cuda",
+    remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-linux-x64-cuda`,
+    approxBytes: 265000000, // ~253MB
   },
   "win32-x64": {
-    zipName: "whisper-server-win32-x64-cuda.zip",
-    binaryName: "whisper-server-win32-x64-cuda.exe",
     outputName: "whisper-server-win32-x64-cuda.exe",
+    remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-win32-x64-cuda.exe`,
+    approxBytes: 683000000, // ~652MB
   },
 };
 
@@ -69,45 +68,28 @@ class GpuBinaryManager {
     }
 
     this._abortController = createDownloadSignal();
-    const { signal, abort } = this._abortController;
+    const { signal } = this._abortController;
 
     const binDir = this.getBinDir();
-    const zipPath = path.join(binDir, spec.zipName);
+    fs.mkdirSync(binDir, { recursive: true });
     const binaryPath = path.join(binDir, spec.outputName);
+    const totalBytes = spec.approxBytes;
+
+    debugLogger.info("GpuBinaryManager: downloading CUDA binary from R2", {
+      url: spec.remoteUrl,
+      outputName: spec.outputName,
+    });
 
     try {
-      // Fetch latest release metadata
-      debugLogger.info("GpuBinaryManager: fetching latest release info", { url: GITHUB_API_URL });
-      const release = await this._fetchJson(GITHUB_API_URL, signal);
-
-      const asset = (release.assets || []).find((a) => a.name === spec.zipName);
-      if (!asset) {
-        return {
-          success: false,
-          error: `Asset ${spec.zipName} not found in latest release`,
-        };
-      }
-
-      const downloadUrl = asset.browser_download_url;
-      const totalBytes = asset.size || 0;
-
-      debugLogger.info("GpuBinaryManager: downloading CUDA binary zip", {
-        url: downloadUrl.substring(0, 80),
-        size: totalBytes,
-      });
-
-      // Download zip with progress tracking
-      let lastPercent = 0;
-      await downloadFile(downloadUrl, zipPath, {
+      await downloadFile(spec.remoteUrl, binaryPath, {
         signal,
-        timeout: 300000, // 5 min for large files
+        timeout: 600000, // 10 min for large files
         maxRetries: 2,
         onProgress: (bytesDownloaded, total) => {
           if (!onProgress) return;
           const effectiveTotal = total || totalBytes;
           const percent =
-            effectiveTotal > 0 ? Math.round((bytesDownloaded / effectiveTotal) * 80) : lastPercent;
-          lastPercent = percent;
+            effectiveTotal > 0 ? Math.round((bytesDownloaded / effectiveTotal) * 100) : 0;
           onProgress({
             phase: "downloading",
             percent,
@@ -118,28 +100,13 @@ class GpuBinaryManager {
       });
 
       if (signal.aborted) {
-        fs.unlink(zipPath, () => {});
+        try { fs.unlinkSync(binaryPath); } catch { /* ignore */ }
         throw Object.assign(new Error("Download cancelled"), { isAbort: true });
       }
-
-      // Extract binary from zip
-      debugLogger.info("GpuBinaryManager: extracting zip", { zipPath, binaryName: spec.binaryName });
-      if (onProgress) {
-        onProgress({ phase: "extracting", percent: 85, bytesDownloaded: totalBytes, totalBytes });
-      }
-
-      await this._extractBinaryFromZip(zipPath, spec.binaryName, binaryPath);
 
       // Set executable bit on non-Windows
       if (process.platform !== "win32") {
         fs.chmodSync(binaryPath, 0o755);
-      }
-
-      // Clean up zip
-      try {
-        fs.unlinkSync(zipPath);
-      } catch (cleanupErr) {
-        debugLogger.warn("GpuBinaryManager: failed to clean up zip", { error: cleanupErr.message });
       }
 
       if (onProgress) {
@@ -149,12 +116,10 @@ class GpuBinaryManager {
       debugLogger.info("GpuBinaryManager: CUDA binary downloaded successfully", { binaryPath });
       return { success: true, binaryPath };
     } catch (error) {
-      // Clean up partial zip on failure
+      // Clean up partial file on failure
       try {
-        if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-      } catch {
-        // ignore cleanup errors
-      }
+        if (fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
+      } catch { /* ignore */ }
 
       if (error.isAbort) {
         debugLogger.info("GpuBinaryManager: download cancelled");
@@ -175,96 +140,6 @@ class GpuBinaryManager {
     }
   }
 
-  _fetchJson(url, signal) {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) {
-        reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
-        return;
-      }
-
-      const req = https.get(
-        url,
-        {
-          headers: {
-            "User-Agent": USER_AGENT,
-            Accept: "application/vnd.github+json",
-          },
-          timeout: 15000,
-        },
-        (res) => {
-          if (res.statusCode !== 200) {
-            res.resume();
-            reject(
-              Object.assign(new Error(`GitHub API returned HTTP ${res.statusCode}`), {
-                isHttpError: true,
-              })
-            );
-            return;
-          }
-
-          let data = "";
-          res.on("data", (chunk) => {
-            data += chunk;
-          });
-          res.on("end", () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (parseErr) {
-              reject(new Error(`Failed to parse GitHub API response: ${parseErr.message}`));
-            }
-          });
-        }
-      );
-
-      req.on("error", reject);
-      req.on("timeout", () => {
-        req.destroy();
-        reject(Object.assign(new Error("GitHub API request timed out"), { code: "ETIMEDOUT" }));
-      });
-
-      if (signal) {
-        const onAbort = () => {
-          req.destroy();
-          reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
-        };
-        if (signal.aborted) {
-          onAbort();
-        } else {
-          // Attach abort listener in the downloadUtils signal style
-          const origOnAbort = signal.onAbort;
-          signal.onAbort = () => {
-            onAbort();
-            if (typeof origOnAbort === "function") origOnAbort();
-          };
-        }
-      }
-    });
-  }
-
-  _extractBinaryFromZip(zipPath, binaryName, destPath) {
-    return new Promise((resolve, reject) => {
-      fs.createReadStream(zipPath)
-        .pipe(unzipper.Parse())
-        .on("entry", (entry) => {
-          const fileName = path.basename(entry.path);
-          if (fileName === binaryName) {
-            entry
-              .pipe(fs.createWriteStream(destPath))
-              .on("finish", resolve)
-              .on("error", reject);
-          } else {
-            entry.autodrain();
-          }
-        })
-        .on("error", reject)
-        .on("finish", () => {
-          // If destPath wasn't created, the binary wasn't in the zip
-          if (!fs.existsSync(destPath)) {
-            reject(new Error(`Binary ${binaryName} not found in zip archive`));
-          }
-        });
-    });
-  }
 }
 
 GpuBinaryManager.CUDA_BINARIES = CUDA_BINARIES;
