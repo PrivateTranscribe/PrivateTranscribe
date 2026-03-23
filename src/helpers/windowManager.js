@@ -231,6 +231,17 @@ class WindowManager {
 
     // Now load the window content
     await this.loadMainWindow();
+
+    // Ensure overlay is visible after content loads — ready-to-show may not fire reliably
+    // with loadURL (dev server). This is the definitive "make it visible" call.
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      if (this.mainWindow.isMinimized()) this.mainWindow.restore();
+      if (!this.mainWindow.isVisible()) {
+        this.mainWindow.show();
+      }
+      this.enforceMainWindowOnTop();
+    }
+
     await this.initializeHotkey();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((x, y) => this._scheduleSavePosition(x, y));
