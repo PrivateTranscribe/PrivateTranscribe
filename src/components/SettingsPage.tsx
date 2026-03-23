@@ -20,6 +20,8 @@ import {
   MessageSquare,
   Sparkles,
   BookOpen,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import type {
   HardwareDetectionResult,
@@ -175,6 +177,16 @@ function GpuStatusCard() {
   const [compResult, setCompResult] = useState<ComparisonBenchmarkResult | null>(null);
   const [compError, setCompError] = useState<string | null>(null);
 
+  // CUDA binary download state
+  const [cudaStatus, setCudaStatus] = useState<{ installed: boolean; version?: string } | null>(
+    null
+  );
+  const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
+    "idle"
+  );
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   const settings = useSettings();
 
   // Load latest benchmark and comparison on mount
@@ -192,6 +204,46 @@ function GpuStatusCard() {
       }
     });
   }, []);
+
+  // Fetch CUDA binary status on mount
+  useEffect(() => {
+    window.electronAPI
+      ?.getCudaBinaryStatus?.()
+      .then(setCudaStatus)
+      .catch(() => {});
+  }, []);
+
+  // Listen for CUDA download progress events
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
+      setDownloadProgress(Math.round(data.progress));
+    });
+    return () => cleanup?.();
+  }, []);
+
+  const handleDownloadCuda = async () => {
+    setDownloadState("downloading");
+    setDownloadProgress(0);
+    setDownloadError(null);
+    try {
+      await window.electronAPI?.downloadCudaBinary?.();
+      setDownloadState("done");
+      setCudaStatus({ installed: true });
+    } catch (err: unknown) {
+      setDownloadState("error");
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : ((err as { message?: string })?.message ?? "Download failed")
+      );
+    }
+  };
+
+  const handleCancelDownload = async () => {
+    await window.electronAPI?.cancelCudaBinaryDownload?.().catch(() => {});
+    setDownloadState("idle");
+    setDownloadProgress(0);
+  };
 
   const runDetect = async (clearCache = false) => {
     setDetectState("detecting");
@@ -452,6 +504,77 @@ function GpuStatusCard() {
             <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
               <AlertCircle className="w-3 h-3" />
               Speed test failed: {benchError}
+            </div>
+          )}
+
+          {/* ── CUDA binary download section ─────────────────── */}
+          {gpuCategory === "nvidia_cuda" && (
+            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+              {cudaStatus?.installed || downloadState === "done" ? (
+                <div className="flex items-center gap-2 text-xs text-primary">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span className="font-medium">GPU binary installed</span>
+                </div>
+              ) : downloadState === "downloading" ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Downloading… {downloadProgress}%</span>
+                    </div>
+                    <Button
+                      onClick={handleCancelDownload}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1.5 text-[11px]"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-primary/20 overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-200"
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              ) : downloadState === "error" ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-destructive">
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>{downloadError}</span>
+                  </div>
+                  <Button
+                    onClick={handleDownloadCuda}
+                    variant="default"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px]"
+                  >
+                    <Download className="w-3 h-3" />
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-[11px] font-medium text-foreground">
+                      GPU-Accelerated Engine
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Download the CUDA-optimized whisper-server for faster transcription (~650 MB)
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleDownloadCuda}
+                    variant="default"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px]"
+                  >
+                    <Download className="w-3 h-3" />
+                    Download
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1701,7 +1824,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanel>
                 <SettingsPanelRow>
                   <p className="text-sm text-muted-foreground">
-                    Go to the <span className="text-foreground font-medium">Dictionary</span> section in the sidebar to manage your custom vocabulary.
+                    Go to the <span className="text-foreground font-medium">Dictionary</span>{" "}
+                    section in the sidebar to manage your custom vocabulary.
                   </p>
                 </SettingsPanelRow>
               </SettingsPanel>

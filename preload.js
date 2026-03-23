@@ -310,4 +310,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   actionEngineRunsPrune: (maxRuns) => ipcRenderer.invoke("action-engine-runs-prune", maxRuns),
   // Installed app discovery for the "Open application" action picker
   actionEngineListApps: () => ipcRenderer.invoke("action-engine-list-apps"),
+
+  // CUDA binary download
+  getCudaBinaryStatus: () => ipcRenderer.invoke("get-cuda-binary-status"),
+  downloadCudaBinary: () => ipcRenderer.invoke("download-cuda-binary"),
+  cancelCudaBinaryDownload: () => ipcRenderer.invoke("cancel-cuda-binary-download"),
+  onCudaBinaryDownloadProgress: registerListener("cuda-binary-download-progress"),
 });

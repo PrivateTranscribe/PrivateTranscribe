@@ -438,7 +438,9 @@ declare global {
       modelGetAll: () => Promise<any[]>;
       modelCheck: (modelId: string) => Promise<boolean>;
       modelDownload: (modelId: string) => Promise<void>;
-      modelDelete: (modelId: string) => Promise<{ success: boolean; freed_mb?: number; error?: string }>;
+      modelDelete: (
+        modelId: string
+      ) => Promise<{ success: boolean; freed_mb?: number; error?: string }>;
       modelDeleteAll: () => Promise<{ success: boolean; error?: string; code?: string }>;
       modelCheckRuntime: () => Promise<boolean>;
       modelCancelDownload: (modelId: string) => Promise<{ success: boolean; error?: string }>;
@@ -670,6 +672,17 @@ declare global {
         apps?: Array<{ name: string; path: string }>;
         error?: string;
       }>;
+
+      // CUDA binary download
+      getCudaBinaryStatus?: () => Promise<{ installed: boolean; version?: string }>;
+      downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
+      cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;
+      onCudaBinaryDownloadProgress?: (
+        callback: (
+          event: unknown,
+          data: { progress: number; downloadedBytes?: number; totalBytes?: number }
+        ) => void
+      ) => () => void;
     };
 
     api?: {
