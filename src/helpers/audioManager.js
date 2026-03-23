@@ -118,11 +118,17 @@ class AudioManager {
     this.reasoningAvailabilityCache = { value: false, expiresAt: 0 };
     this.cachedReasoningPreference = null;
     this._cachedAudioInputs = null;
+    this._pooledStream = null;
+    this._pooledStreamReleaseTimer = null;
+    this._pooledStreamConstraintsKey = null;
 
     // Pre-warm device cache and keep it fresh
     if (navigator.mediaDevices) {
       this._warmDeviceCache();
-      navigator.mediaDevices.addEventListener("devicechange", () => this._warmDeviceCache());
+      navigator.mediaDevices.addEventListener("devicechange", () => {
+        this._warmDeviceCache();
+        this._clearPooledStream();
+      });
     }
   }
 
@@ -133,6 +139,58 @@ class AudioManager {
     } catch {
       this._cachedAudioInputs = null;
     }
+  }
+
+  _constraintsKey(constraints) {
+    const deviceId =
+      constraints?.audio?.deviceId?.exact || constraints?.audio?.deviceId || "default";
+    return String(deviceId);
+  }
+
+  async _acquireStream(constraints) {
+    const key = this._constraintsKey(constraints);
+    if (
+      this._pooledStream &&
+      this._pooledStreamConstraintsKey === key &&
+      this._pooledStream.getTracks().every((t) => t.readyState === "live")
+    ) {
+      if (this._pooledStreamReleaseTimer) {
+        clearTimeout(this._pooledStreamReleaseTimer);
+        this._pooledStreamReleaseTimer = null;
+      }
+      return this._pooledStream;
+    }
+    // Pool miss or stale — tear down old pooled stream and acquire fresh
+    this._clearPooledStream();
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    this._pooledStream = stream;
+    this._pooledStreamConstraintsKey = key;
+    return stream;
+  }
+
+  _scheduleStreamRelease() {
+    if (this._pooledStreamReleaseTimer) {
+      clearTimeout(this._pooledStreamReleaseTimer);
+    }
+    this._pooledStreamReleaseTimer = setTimeout(() => {
+      this._clearPooledStream();
+    }, 30000);
+  }
+
+  _clearPooledStream() {
+    if (this._pooledStreamReleaseTimer) {
+      clearTimeout(this._pooledStreamReleaseTimer);
+      this._pooledStreamReleaseTimer = null;
+    }
+    if (this._pooledStream) {
+      try {
+        this._pooledStream.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore cleanup errors
+      }
+      this._pooledStream = null;
+    }
+    this._pooledStreamConstraintsKey = null;
   }
 
   getCustomDictionaryPrompt() {
@@ -220,7 +278,8 @@ class AudioManager {
       this.mediaRecorder.onerror = null;
     }
 
-    this.stopRecordingStream();
+    this.recordingStream = null;
+    this._scheduleStreamRelease();
     this.mediaRecorder = null;
     this.activeRecordingSessionId = null;
   }
@@ -355,7 +414,7 @@ class AudioManager {
       this.discardCurrentRecording = false;
 
       const constraints = await this.getAudioConstraints();
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await this._acquireStream(constraints);
 
       // Log which microphone is actually being used
       const audioTrack = stream.getAudioTracks()[0];
@@ -374,7 +433,7 @@ class AudioManager {
       }
 
       if (this.pendingCancelAfterStart) {
-        stream.getTracks().forEach((track) => track.stop());
+        this._scheduleStreamRelease();
         this.isStartingRecording = false;
         this.pendingCancelAfterStart = false;
         this.pendingStopAfterStart = false;
@@ -474,9 +533,7 @@ class AudioManager {
 
       return true;
     } catch (error) {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
+      this._clearPooledStream();
 
       this.audioChunks = [];
       this.recordingStartTime = null;
