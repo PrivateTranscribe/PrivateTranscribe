@@ -49,20 +49,24 @@ const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
 /**
  * VoiceBars — voice-reactive bar visualiser rendered inside the recording button.
  *
- * Four bars, symmetric, heights driven by micLevel (0–1). Each bar has a
- * subtle phase offset for a natural "breathing" feel when level is low.
+ * Five bars, heights matching logo proportions, driven by micLevel (0–1). Each bar
+ * has a subtle phase offset for a natural "breathing" feel when level is low.
  * Colors are dark (primary-foreground) since the button background is mint.
  */
 const VoiceBars = ({ micLevel }) => {
-  // Pseudo-random phase offsets so bars don't move in perfect unison at low levels
-  const phases = [0, Math.PI * 0.6, Math.PI * 0.6, 0];
+  // Phase offsets so bars don't move in perfect unison at low levels
+  const phases = [0, Math.PI * 0.5, Math.PI * 0.9, Math.PI * 0.4, Math.PI * 0.7];
+  // Resting heights derived from logo proportions (tallest bar = 9px)
+  const restingHeights = [2.8, 5.3, 9.0, 6.6, 4.0];
+  // Center bar grows most; outer bars grow less
+  const growthFactors = [8, 11, 16, 12, 9];
   const now = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-  // Bar height: idle floor + driven component
+  // Bar height: resting floor (with subtle breathing) + mic-driven component
   const barHeights = phases.map((phase, i) => {
-    const driven = micLevel * (i % 2 === 0 ? 10 : 13); // outer bars shorter
-    const idle = 2.5 + Math.sin((now / 1000) * 1.2 * Math.PI + phase) * 0.8;
-    return Math.max(2, idle + driven);
+    const breathing = Math.sin((now / 1000) * 1.2 * Math.PI + phase) * 0.8;
+    const driven = micLevel * growthFactors[i];
+    return Math.max(2, restingHeights[i] + breathing + driven);
   });
 
   return (
@@ -120,26 +124,30 @@ const MicHalo = ({ micLevel }) => {
 };
 
 const VoiceWaveIndicator = ({ isListening }) => {
+  // Static heights (non-listening) and animated heights (listening) matching logo proportions
+  const staticHeights = ["4px", "7px", "11px", "8px", "5px"];
+  const animatedHeights = ["6px", "10px", "16px", "11px", "7px"];
+
   return (
     <div className="flex items-center justify-center gap-[2px]">
-      {[...Array(4)].map((_, i) => (
+      {[...Array(5)].map((_, i) => (
         <div
           key={i}
-          className={`w-[2px] bg-white rounded-full transition-all duration-150 ${
-            isListening ? "h-4" : "h-2"
-          }`}
+          className="w-[2px] bg-white rounded-full transition-all duration-150"
           style={{
+            height: isListening ? animatedHeights[i] : staticHeights[i],
             animation: isListening
-              ? `wave-bar 0.6s ease-in-out ${i * 0.1}s infinite alternate`
+              ? `wave-bar-${i} 0.6s ease-in-out ${i * 0.1}s infinite alternate`
               : "none",
           }}
         />
       ))}
       <style>{`
-        @keyframes wave-bar {
-          0% { height: 4px; }
-          100% { height: 16px; }
-        }
+        @keyframes wave-bar-0 { 0% { height: 4px; } 100% { height: 6px; } }
+        @keyframes wave-bar-1 { 0% { height: 5px; } 100% { height: 10px; } }
+        @keyframes wave-bar-2 { 0% { height: 6px; } 100% { height: 16px; } }
+        @keyframes wave-bar-3 { 0% { height: 5px; } 100% { height: 11px; } }
+        @keyframes wave-bar-4 { 0% { height: 4px; } 100% { height: 7px; } }
       `}</style>
     </div>
   );
