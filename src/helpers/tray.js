@@ -257,7 +257,7 @@ class TrayManager {
     if (!this.tray) return;
 
     const contextMenu = Menu.buildFromTemplate(this.buildContextMenuTemplate());
-    this.tray.setToolTip("PrivateTranscribe - Voice Dictation");
+    this.tray.setToolTip("PrivateTranscribe");
     this.tray.setContextMenu(contextMenu);
   }
 
