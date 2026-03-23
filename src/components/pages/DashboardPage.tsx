@@ -115,6 +115,15 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     cloudTranscriptionProvider,
     historyLimit,
     dictationKey,
+    enableCorrectionLearning,
+    enableContextCapture,
+    activationMode,
+    translateToEnglish,
+    customDictionary,
+    reasoningProvider,
+    openaiApiKey,
+    anthropicApiKey,
+    geminiApiKey,
   } = useSettings();
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -216,6 +225,24 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       : "Whisper";
   }, [useLocalWhisper, cloudTranscriptionProvider, localTranscriptionProvider, whisperModel]);
 
+  const aiEnhancementLabel = useMemo(() => {
+    const hasKey = openaiApiKey || anthropicApiKey || geminiApiKey;
+    if (!hasKey) return null;
+    const providerNames: Record<string, string> = {
+      openai: "OpenAI",
+      anthropic: "Anthropic",
+      gemini: "Gemini",
+      local: "Local LLM",
+    };
+    return providerNames[reasoningProvider] || reasoningProvider;
+  }, [openaiApiKey, anthropicApiKey, geminiApiKey, reasoningProvider]);
+
+  const accelerationLabel = useMemo(() => {
+    if (!useLocalWhisper) return null;
+    if (localTranscriptionProvider === "nvidia") return "NVIDIA (Parakeet)";
+    return "CPU";
+  }, [useLocalWhisper, localTranscriptionProvider]);
+
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -239,7 +266,23 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const configRows = [
     { label: "MODEL", value: modelLabel },
-    { label: "LANGUAGE", value: languageLabel },
+    ...(accelerationLabel ? [{ label: "ACCELERATION", value: accelerationLabel }] : []),
+    {
+      label: "LANGUAGE",
+      value: translateToEnglish !== "off" ? `${languageLabel} → English` : languageLabel,
+    },
+    ...(aiEnhancementLabel ? [{ label: "AI ENHANCEMENT", value: aiEnhancementLabel }] : []),
+    ...(enableCorrectionLearning ? [{ label: "CORRECTION MEMORY", value: "On" }] : []),
+    ...(enableContextCapture ? [{ label: "CONTEXT CAPTURE", value: "On" }] : []),
+    ...(activationMode === "push" ? [{ label: "ACTIVATION", value: "Push to talk" }] : []),
+    ...(customDictionary?.length > 0
+      ? [
+          {
+            label: "DICTIONARY",
+            value: `${customDictionary.length} word${customDictionary.length !== 1 ? "s" : ""}`,
+          },
+        ]
+      : []),
   ];
 
   return (
