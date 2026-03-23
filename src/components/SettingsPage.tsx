@@ -871,7 +871,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `privoca-settings${includeApiKeys ? "-with-keys" : ""}.json`;
+      a.download = `privatetranscribe-settings${includeApiKeys ? "-with-keys" : ""}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -2408,12 +2408,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     onClick={async () => {
                       try {
                         const result = await window.electronAPI?.openExternal(
-                          "mailto:support@privoca.com"
+                          "mailto:support@privatetranscribe.com"
                         );
                         if (!result?.success) {
                           // Fallback: try opening the email as a web URL
                           await window.electronAPI?.openExternal(
-                            "https://mail.google.com/mail/?view=cm&to=support@privoca.com"
+                            "https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com"
                           );
                         }
                       } catch (error) {

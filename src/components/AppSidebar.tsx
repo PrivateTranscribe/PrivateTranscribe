@@ -90,8 +90,8 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
   const [, forceUpdate] = useState(0);
   useEffect(() => {
     const handler = () => forceUpdate((n) => n + 1);
-    window.addEventListener("privoca-pro-preview-changed", handler);
-    return () => window.removeEventListener("privoca-pro-preview-changed", handler);
+    window.addEventListener("privatetranscribe-pro-preview-changed", handler);
+    return () => window.removeEventListener("privatetranscribe-pro-preview-changed", handler);
   }, []);
 
   useEffect(() => {

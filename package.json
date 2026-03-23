@@ -1,5 +1,5 @@
 {
-  "name": "privoca",
+  "name": "privatetranscribe",
   "version": "1.3.4",
   "description": "PrivateTranscribe",
   "main": "main.js",
@@ -60,7 +60,7 @@
   ],
   "author": {
     "name": "PrivateTranscribe Team",
-    "email": "support@privoca.com"
+    "email": "support@privatetranscribe.com"
   },
   "license": "MIT",
   "devDependencies": {

@@ -234,12 +234,12 @@ export default function ProSettingsSection() {
             <p className="text-xs text-muted-foreground">
               Already have a key?{" "}
               <a
-                href="mailto:support@privoca.com"
+                href="mailto:support@privatetranscribe.com"
                 className="text-primary hover:underline"
                 onClick={(e) => {
                   e.preventDefault();
                   window.electronAPI?.openExternal?.(
-                    "mailto:support@privoca.com?subject=PrivateTranscribe%20Pro%20Activation"
+                    "mailto:support@privatetranscribe.com?subject=PrivateTranscribe%20Pro%20Activation"
                   );
                 }}
               >

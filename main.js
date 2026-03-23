@@ -2,7 +2,7 @@ const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electro
 const path = require("path");
 const fs = require("fs");
 const APP_NAME = "PrivateTranscribe";
-const APP_ID = "com.privoca.app";
+const APP_ID = "com.privatetranscribe.app";
 
 // Set App User Model ID immediately on Windows — must happen before app is ready
 // and before any window creation so that the taskbar groups the running process

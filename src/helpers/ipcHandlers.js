@@ -14,7 +14,7 @@ const audioDuckingManager = require("./audioDuckingManager");
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
  * - https / http  : web links
- * - mailto        : email client links (e.g. support@privoca.com)
+ * - mailto        : email client links (e.g. support@privatetranscribe.com)
  *
  * Explicitly excluded: file://, javascript:, data:, and any unknown protocol
  * that could be exploited on the host desktop environment.

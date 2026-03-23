@@ -159,14 +159,14 @@ export default function DeveloperSection() {
   const handleSendLogs = async () => {
     try {
       const info = await buildDebugInfo();
-      const mailto = `mailto:support@privoca.com?subject=${encodeURIComponent("PrivateTranscribe debug logs")}&body=${encodeURIComponent(
+      const mailto = `mailto:support@privatetranscribe.com?subject=${encodeURIComponent("PrivateTranscribe debug logs")}&body=${encodeURIComponent(
         `${info}\n\nIssue description:\n\n\nIf logs are enabled, please attach the current log file or zip the logs folder before sending.`
       )}`;
 
       const result = await window.electronAPI?.openExternal?.(mailto);
       if (result && "success" in result && !result.success) {
         await window.electronAPI?.openExternal?.(
-          `https://mail.google.com/mail/?view=cm&to=support@privoca.com&su=${encodeURIComponent("PrivateTranscribe debug logs")}&body=${encodeURIComponent(
+          `https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com&su=${encodeURIComponent("PrivateTranscribe debug logs")}&body=${encodeURIComponent(
             `${info}\n\nIssue description:\n\n\nIf logs are enabled, please attach the current log file or zip the logs folder before sending.`
           )}`
         );
