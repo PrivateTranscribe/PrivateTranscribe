@@ -50,7 +50,7 @@ export default function TranscriptionItem({
         {/* Number badge - luxury pill with glow */}
         <div className="flex-shrink-0 mt-1">
           <span className="inline-flex items-center justify-center min-w-[40px] h-7 px-2.5 rounded-lg bg-primary/15 text-primary text-xs font-semibold tabular-nums shadow-[0_0_10px_rgba(112,255,186,0.15)]">
-            {total - index}
+            {index + 1}
           </span>
         </div>
 

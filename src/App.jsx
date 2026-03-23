@@ -738,8 +738,10 @@ export default function App() {
                   micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
               }}
             >
-              {micState === "idle" || micState === "hover" ? (
-                <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
+              {micState === "idle" ? (
+                <VoiceWaveIndicator isListening={false} />
+              ) : micState === "hover" ? (
+                <VoiceWaveIndicator isListening={false} />
               ) : micState === "recording" ? (
                 <VoiceBars micLevel={micLevel} />
               ) : micState === "processing" ? (
