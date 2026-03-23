@@ -226,7 +226,7 @@ export default function ProSettingsSection() {
             <Button
               variant="default"
               size="sm"
-              onClick={() => window.electronAPI?.openExternal?.("https://privoca.com/pro")}
+              onClick={() => window.electronAPI?.openExternal?.("https://privatetranscribe.com")}
               className="gap-2"
             >
               Get PrivateTranscribe Pro - €29 →
@@ -311,7 +311,7 @@ export default function ProSettingsSection() {
           <Button
             variant="default"
             size="sm"
-            onClick={() => window.electronAPI?.openExternal?.("https://privoca.com/pro")}
+            onClick={() => window.electronAPI?.openExternal?.("https://privatetranscribe.com")}
             className="gap-2"
           >
             Get PrivateTranscribe Pro →
