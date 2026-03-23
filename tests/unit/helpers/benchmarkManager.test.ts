@@ -192,10 +192,10 @@ describe("formatRealtimeFactor", () => {
   });
 
   it("returns dash for invalid values", () => {
-    expect(formatRealtimeFactor(0)).toBe("—");
-    expect(formatRealtimeFactor(-1)).toBe("—");
-    expect(formatRealtimeFactor(NaN)).toBe("—");
-    expect(formatRealtimeFactor(Infinity)).toBe("—");
+    expect(formatRealtimeFactor(0)).toBe("-");
+    expect(formatRealtimeFactor(-1)).toBe("-");
+    expect(formatRealtimeFactor(NaN)).toBe("-");
+    expect(formatRealtimeFactor(Infinity)).toBe("-");
   });
 });
 
@@ -311,10 +311,10 @@ describe("formatSpeedup", () => {
   });
 
   it("returns dash for invalid values", () => {
-    expect(formatSpeedup(0)).toBe("—");
-    expect(formatSpeedup(-1)).toBe("—");
-    expect(formatSpeedup(NaN)).toBe("—");
-    expect(formatSpeedup(Infinity)).toBe("—");
+    expect(formatSpeedup(0)).toBe("-");
+    expect(formatSpeedup(-1)).toBe("-");
+    expect(formatSpeedup(NaN)).toBe("-");
+    expect(formatSpeedup(Infinity)).toBe("-");
   });
 });
 

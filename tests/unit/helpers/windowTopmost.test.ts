@@ -27,8 +27,8 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
     expect(windowConfig).toContain("visibleOnFullScreen: true");
   });
 
-  test("Windows uses pop-up-menu level", () => {
-    expect(windowConfig).toContain('setAlwaysOnTop(true, "pop-up-menu")');
+  test("Windows uses screen-saver level", () => {
+    expect(windowConfig).toContain('setAlwaysOnTop(true, "screen-saver")');
   });
 
   test("Linux uses screen-saver level (highest X11 hint available)", () => {
