@@ -107,7 +107,23 @@ export function useMicLevel(audioManagerRef, isRecording) {
         if (ctx.state === "running") {
           startLoop();
         } else {
-          ctx.resume().then(startLoop).catch(startLoop);
+          ctx.resume().then(() => {
+            // Double-check: if still not running after resume(), keep retrying.
+            // Electron IPC-triggered recording can leave AudioContext stuck in
+            // "suspended" even after resume() resolves on some Windows builds.
+            const pollRunning = (attempts = 0) => {
+              if (cancelled) return;
+              if (ctx.state === "running") {
+                startLoop();
+              } else if (attempts < 10) {
+                setTimeout(() => pollRunning(attempts + 1), 50);
+              } else {
+                // Give up gracefully — visualization stays flat, recording unaffected.
+                startLoop();
+              }
+            };
+            pollRunning();
+          }).catch(startLoop);
         }
       } catch {
         // Web Audio API unavailable or stream already closed - fail silently.
