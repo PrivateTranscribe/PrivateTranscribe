@@ -480,10 +480,10 @@ export default function App() {
 
   const handleContactSupport = useCallback(async () => {
     try {
-      const result = await window.electronAPI?.openExternal?.("mailto:support@privoca.com");
+      const result = await window.electronAPI?.openExternal?.("mailto:support@privatetranscribe.com");
       if (!result?.success) {
         await window.electronAPI?.openExternal?.(
-          "https://mail.google.com/mail/?view=cm&to=support@privoca.com"
+          "https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com"
         );
       }
     } finally {
