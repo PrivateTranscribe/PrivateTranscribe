@@ -569,11 +569,9 @@ class WindowManager {
 
   hideDictationPanel() {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (process.platform === "darwin") {
-        this.mainWindow.hide();
-      } else {
-        this.mainWindow.minimize();
-      }
+      // Use hide() on all platforms — minimize() persists across restarts on Windows,
+      // causing the overlay to start invisible after a restart if it was hidden when quit.
+      this.mainWindow.hide();
     }
   }
 
@@ -596,8 +594,9 @@ class WindowManager {
 
     // Safety timeout: force show the window if ready-to-show doesn't fire within 10 seconds
     const showTimeout = setTimeout(() => {
-      if (this.mainWindow && !this.mainWindow.isDestroyed() && !this.mainWindow.isVisible()) {
-        this.mainWindow.show();
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        if (this.mainWindow.isMinimized()) this.mainWindow.restore();
+        if (!this.mainWindow.isVisible()) this.mainWindow.show();
       }
     }, 10000);
 
