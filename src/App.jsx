@@ -125,16 +125,17 @@ const MicHalo = ({ micLevel }) => {
 
 const VoiceWaveIndicator = ({ isListening }) => {
   // Static heights (non-listening) and animated heights (listening) matching logo proportions
-  const staticHeights = ["4px", "7px", "11px", "8px", "5px"];
-  const animatedHeights = ["6px", "10px", "16px", "11px", "7px"];
+  const staticHeights = ["6px", "11px", "18px", "13px", "8px"];
+  const animatedHeights = ["9px", "16px", "26px", "18px", "11px"];
 
   return (
     <div className="flex items-center justify-center gap-[2px]">
       {[...Array(5)].map((_, i) => (
         <div
           key={i}
-          className="w-[2px] bg-white rounded-full transition-all duration-150"
+          className="w-[3px] rounded-full transition-all duration-150"
           style={{
+            backgroundColor: "#70FFBA",
             height: isListening ? animatedHeights[i] : staticHeights[i],
             animation: isListening
               ? `wave-bar-${i} 0.6s ease-in-out ${i * 0.1}s infinite alternate`
@@ -143,11 +144,11 @@ const VoiceWaveIndicator = ({ isListening }) => {
         />
       ))}
       <style>{`
-        @keyframes wave-bar-0 { 0% { height: 4px; } 100% { height: 6px; } }
-        @keyframes wave-bar-1 { 0% { height: 5px; } 100% { height: 10px; } }
-        @keyframes wave-bar-2 { 0% { height: 6px; } 100% { height: 16px; } }
-        @keyframes wave-bar-3 { 0% { height: 5px; } 100% { height: 11px; } }
-        @keyframes wave-bar-4 { 0% { height: 4px; } 100% { height: 7px; } }
+        @keyframes wave-bar-0 { 0% { height: 6px; } 100% { height: 9px; } }
+        @keyframes wave-bar-1 { 0% { height: 8px; } 100% { height: 16px; } }
+        @keyframes wave-bar-2 { 0% { height: 10px; } 100% { height: 26px; } }
+        @keyframes wave-bar-3 { 0% { height: 8px; } 100% { height: 18px; } }
+        @keyframes wave-bar-4 { 0% { height: 6px; } 100% { height: 11px; } }
       `}</style>
     </div>
   );
