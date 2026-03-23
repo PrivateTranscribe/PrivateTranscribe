@@ -373,7 +373,7 @@ class AudioManager {
             { deviceId: builtInMic.deviceId, label: builtInMic.label },
             "audio"
           );
-          return { audio: { deviceId: { exact: builtInMic.deviceId } } };
+          return { audio: { deviceId: { exact: builtInMic.deviceId }, autoGainControl: true } };
         }
       } catch (error) {
         logger.debug(
@@ -387,12 +387,12 @@ class AudioManager {
     // Use selected device if specified and not preferring built-in
     if (!preferBuiltIn && selectedDeviceId) {
       logger.debug("Using selected microphone", { deviceId: selectedDeviceId }, "audio");
-      return { audio: { deviceId: { exact: selectedDeviceId } } };
+      return { audio: { deviceId: { exact: selectedDeviceId }, autoGainControl: true } };
     }
 
     // Fall back to default device
     logger.debug("Using default microphone", {}, "audio");
-    return { audio: true };
+    return { audio: { autoGainControl: true } };
   }
 
   async startRecording() {
