@@ -603,6 +603,12 @@ class WindowManager {
 
     this.mainWindow.once("ready-to-show", () => {
       clearTimeout(showTimeout);
+      // Always restore from minimized state on startup — on Windows, hideDictationPanel()
+      // uses minimize() which Electron persists across restarts. Without this, the overlay
+      // starts invisible if the app was quit while the overlay was "hidden" (minimized).
+      if (this.mainWindow.isMinimized()) {
+        this.mainWindow.restore();
+      }
       this.enforceMainWindowOnTop();
       if (!this.mainWindow.isVisible()) {
         if (typeof this.mainWindow.showInactive === "function") {
