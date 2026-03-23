@@ -425,10 +425,9 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const hiddenUntil = Number(localStorage.getItem(OVERLAY_HIDDEN_UNTIL_KEY) || "0");
-    if (hiddenUntil > Date.now()) {
-      window.electronAPI?.hideWindow?.();
-    }
+    // "Hide for 1 hour" is a session-only feature — it should not persist across app restarts.
+    // Clear the timer on every startup so the overlay always shows fresh after a restart.
+    localStorage.removeItem(OVERLAY_HIDDEN_UNTIL_KEY);
   }, []);
 
   useEffect(() => {
