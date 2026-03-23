@@ -102,6 +102,10 @@ function initializeManagers() {
   // Set up PATH before initializing managers
   setupProductionPath();
 
+  // Migrate model cache from .cache/Privoca → .cache/PrivateTranscribe (one-time, safe)
+  const { migrateModelDirIfNeeded } = require("./src/helpers/modelDirUtils");
+  migrateModelDirIfNeeded();
+
   // Now it's safe to call app.getPath() and initialize managers
   debugLogger = require("./src/helpers/debugLogger");
   // Ensure file logging is initialized now that app is ready

@@ -2400,28 +2400,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanelRow>
                 <SettingsRow
                   label="Contact Support"
-                  description="Send an email to our support team for assistance"
+                  description="Reach out to us at support@privatetranscribe.com"
                 >
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      try {
-                        const result = await window.electronAPI?.openExternal(
-                          "mailto:support@privatetranscribe.com"
-                        );
-                        if (!result?.success) {
-                          // Fallback: try opening the email as a web URL
-                          await window.electronAPI?.openExternal(
-                            "https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com"
-                          );
-                        }
-                      } catch (error) {
-                        console.error("Error opening email client:", error);
-                      }
+                    onClick={() => {
+                      navigator.clipboard?.writeText("support@privatetranscribe.com");
                     }}
                   >
-                    Email Support
+                    Copy Email
                   </Button>
                 </SettingsRow>
               </SettingsPanelRow>
@@ -2429,22 +2417,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanelRow>
                 <SettingsRow
                   label="Submit Bug Report"
-                  description="Report issues or suggest improvements on GitHub"
+                  description="Email support@privatetranscribe.com with a description of the issue"
                 >
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      try {
-                        await window.electronAPI?.openExternal(
-                          "https://github.com/PrivateTranscribe/PrivateTranscribe/issues"
-                        );
-                      } catch (error) {
-                        console.error("Error opening GitHub issues:", error);
-                      }
+                    onClick={() => {
+                      navigator.clipboard?.writeText("support@privatetranscribe.com");
                     }}
                   >
-                    Open GitHub Issues
+                    Copy Email
                   </Button>
                 </SettingsRow>
               </SettingsPanelRow>
