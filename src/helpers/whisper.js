@@ -4,6 +4,7 @@ const path = require("path");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 const WhisperServerManager = require("./whisperServer");
+const GpuBinaryManager = require("./gpuBinaryManager");
 const { getModelsDirForService } = require("./modelDirUtils");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
@@ -33,6 +34,8 @@ class WhisperManager {
     // Server manager for HTTP-based transcription
     this.serverManager = new WhisperServerManager();
     this.currentServerModel = null;
+    // GPU binary manager for on-demand CUDA binary downloads
+    this.gpuBinaryManager = new GpuBinaryManager();
   }
 
   getModelsDir() {
@@ -228,6 +231,28 @@ class WhisperManager {
 
   getServerStatus() {
     return this.serverManager.getStatus();
+  }
+
+  hasCudaBinary() {
+    return this.gpuBinaryManager.hasCudaBinary();
+  }
+
+  async downloadGpuBinary(onProgress) {
+    return this.gpuBinaryManager.downloadCudaBinary(onProgress);
+  }
+
+  cancelGpuBinaryDownload() {
+    this.gpuBinaryManager.cancelDownload();
+  }
+
+  getCudaBinaryStatus() {
+    const key = this.gpuBinaryManager.getPlatformKey();
+    return {
+      available: this.gpuBinaryManager.hasCudaBinary(),
+      path: this.gpuBinaryManager.getCudaBinaryPath(),
+      platform: key,
+      supported: !!GpuBinaryManager.CUDA_BINARIES[key],
+    };
   }
 
   async checkWhisperInstallation() {

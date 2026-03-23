@@ -7,6 +7,9 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
+const GpuBinaryManager = require("./gpuBinaryManager");
+
+const gpuBinaryManager = new GpuBinaryManager();
 
 const PORT_RANGE_START = 8178;
 const PORT_RANGE_END = 8199;
@@ -157,6 +160,13 @@ class WhisperServerManager {
 
   getServerBinaryPath() {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
+
+    const cudaPath = gpuBinaryManager.getCudaBinaryPath();
+    if (cudaPath) {
+      debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
+      this.cachedServerBinaryPath = cudaPath;
+      return cudaPath;
+    }
 
     const platform = process.platform;
     const arch = process.arch;

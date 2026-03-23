@@ -445,6 +445,26 @@ class IPCHandlers {
       return this.whisperManager.stopServer();
     });
 
+    ipcMain.handle("get-cuda-binary-status", async () => {
+      return this.whisperManager.getCudaBinaryStatus();
+    });
+
+    ipcMain.handle("download-cuda-binary", async (event) => {
+      try {
+        const result = await this.whisperManager.downloadGpuBinary((progress) => {
+          event.sender.send("cuda-binary-download-progress", progress);
+        });
+        return result;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("cancel-cuda-binary-download", async () => {
+      this.whisperManager.cancelGpuBinaryDownload();
+      return { success: true };
+    });
+
     ipcMain.handle("whisper-server-status", async () => {
       return this.whisperManager.getServerStatus();
     });
