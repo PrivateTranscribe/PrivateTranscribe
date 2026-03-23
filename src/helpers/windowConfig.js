@@ -121,20 +121,7 @@ class WindowPositionUtil {
         window.setAlwaysOnTop(true, "floating", 1);
       }
     } else if (process.platform === "win32") {
-      // "pop-up-menu" is the correct level for a visible floating overlay on Windows.
-      // "screen-saver" sounds higher but in practice causes the window to become
-      // invisible / black on many Windows 10/11 configurations — avoid it.
-      //
-      // Unity (game engine) exclusive-fullscreen windows use DirectX exclusive mode
-      // (_WS_EX_TOPMOST + IDirect3DDevice9::Present) which owns the entire display
-      // framebuffer.  No Win32 Z-order level — including HWND_TOPMOST — can paint
-      // over a DirectX exclusive-fullscreen surface.  This is an OS-level constraint;
-      // the only mitigation is to ask the user to run Unity in Windowed / Borderless
-      // mode.  The periodic re-apply timer below keeps the overlay on top against
-      // normal fullscreen (WS_EX_TOPMOST apps, borderless windows, etc.) but cannot
-      // override a true exclusive-fullscreen DirectX context.
       window.setAlwaysOnTop(true, "pop-up-menu");
-      window.moveTop();
     } else {
       // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
       // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should

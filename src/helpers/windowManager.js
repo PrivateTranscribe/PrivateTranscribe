@@ -33,13 +33,6 @@ class WindowManager {
     // "floating" panel level is managed reliably by the compositor there.
     this.mainWindowOnTopRepairTimer = null;
 
-    // Windows: periodic interval to re-assert always-on-top every 2 s.
-    // This keeps the overlay visible against borderless-fullscreen apps and other
-    // HWND_TOPMOST windows that may periodically steal the Z-order.  Note that true
-    // DirectX exclusive-fullscreen (e.g. Unity exclusive mode) cannot be beaten by
-    // any Win32 mechanism — that is a known OS limitation, not a bug here.
-    this._windowsOnTopInterval = null;
-
     // Position persistence
     this._positionFile = null;
     this._positionSaveTimer = null;
@@ -231,17 +224,6 @@ class WindowManager {
 
     // Now load the window content
     await this.loadMainWindow();
-
-    // Ensure overlay is visible after content loads — ready-to-show may not fire reliably
-    // with loadURL (dev server). This is the definitive "make it visible" call.
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (this.mainWindow.isMinimized()) this.mainWindow.restore();
-      if (!this.mainWindow.isVisible()) {
-        this.mainWindow.show();
-      }
-      this.enforceMainWindowOnTop();
-    }
-
     await this.initializeHotkey();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((x, y) => this._scheduleSavePosition(x, y));
@@ -580,9 +562,11 @@ class WindowManager {
 
   hideDictationPanel() {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      // Use hide() on all platforms — minimize() persists across restarts on Windows,
-      // causing the overlay to start invisible after a restart if it was hidden when quit.
-      this.mainWindow.hide();
+      if (process.platform === "darwin") {
+        this.mainWindow.hide();
+      } else {
+        this.mainWindow.minimize();
+      }
     }
   }
 
@@ -605,20 +589,13 @@ class WindowManager {
 
     // Safety timeout: force show the window if ready-to-show doesn't fire within 10 seconds
     const showTimeout = setTimeout(() => {
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        if (this.mainWindow.isMinimized()) this.mainWindow.restore();
-        if (!this.mainWindow.isVisible()) this.mainWindow.show();
+      if (this.mainWindow && !this.mainWindow.isDestroyed() && !this.mainWindow.isVisible()) {
+        this.mainWindow.show();
       }
     }, 10000);
 
     this.mainWindow.once("ready-to-show", () => {
       clearTimeout(showTimeout);
-      // Always restore from minimized state on startup — on Windows, hideDictationPanel()
-      // uses minimize() which Electron persists across restarts. Without this, the overlay
-      // starts invisible if the app was quit while the overlay was "hidden" (minimized).
-      if (this.mainWindow.isMinimized()) {
-        this.mainWindow.restore();
-      }
       this.enforceMainWindowOnTop();
       if (!this.mainWindow.isVisible()) {
         if (typeof this.mainWindow.showInactive === "function") {
@@ -660,11 +637,8 @@ class WindowManager {
       this.mainWindowOnTopRepairTimer = setTimeout(() => {
         this.mainWindowOnTopRepairTimer = null;
         this.enforceMainWindowOnTop();
-      }, process.platform === "win32" ? 50 : 100);
+      }, 100);
     });
-
-    // Start the Windows periodic re-apply timer now that event handlers are wired.
-    this._startWindowsOnTopInterval();
 
     this.mainWindow.on("minimize", () => {
       debugLogger.debug("[Window] main minimize");
@@ -691,7 +665,6 @@ class WindowManager {
         clearTimeout(this.mainWindowOnTopRepairTimer);
         this.mainWindowOnTopRepairTimer = null;
       }
-      this._stopWindowsOnTopInterval();
       if (this._positionSaveTimer) {
         clearTimeout(this._positionSaveTimer);
         this._positionSaveTimer = null;
@@ -703,27 +676,6 @@ class WindowManager {
       this.mainWindow = null;
       this.isMainWindowInteractive = false;
     });
-  }
-
-  _startWindowsOnTopInterval() {
-    if (process.platform !== "win32") return;
-    if (this._windowsOnTopInterval) return; // already running
-    this._windowsOnTopInterval = setInterval(() => {
-      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-        this._stopWindowsOnTopInterval();
-        return;
-      }
-      if (this.mainWindow.isVisible() && !this.mainWindow.isMinimized()) {
-        this.enforceMainWindowOnTop();
-      }
-    }, 2000);
-  }
-
-  _stopWindowsOnTopInterval() {
-    if (this._windowsOnTopInterval) {
-      clearInterval(this._windowsOnTopInterval);
-      this._windowsOnTopInterval = null;
-    }
   }
 
   enforceMainWindowOnTop() {
