@@ -248,7 +248,25 @@ class BenchmarkManager {
         // Non-fatal - we can still benchmark without hardware context
       }
 
-      // 3. Run transcription and measure
+      // 3. Warmup run — loads model into GPU/CPU cache; result discarded.
+      // Without this, first-run benchmarks are 10-20x slower due to VRAM cold-start.
+      debugLogger.info("Benchmark warmup run (discarded)", { provider, model });
+      try {
+        if (provider === "nvidia") {
+          await this.parakeetManager.transcribeLocalParakeet(audioBuffer, {
+            model: model || "parakeet-tdt-0.6b-v3",
+          });
+        } else {
+          await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
+            model: model || "turbo",
+            inputFileName: "benchmark.wav",
+          });
+        }
+      } catch {
+        // Warmup failure is non-fatal — proceed to timed run anyway
+      }
+
+      // 4. Timed run — model is now warm
       const startTime = Date.now();
 
       if (provider === "nvidia") {
