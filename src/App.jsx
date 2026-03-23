@@ -638,21 +638,23 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             gap: 8,
-            pointerEvents: "auto",
-          }}
-          onMouseEnter={() => {
-            setIsHovered(true);
-            setWindowInteractivity(true);
-          }}
-          onMouseLeave={() => {
-            setIsHovered(false);
-            if (!isCommandMenuOpen && toastCount === 0) {
-              setWindowInteractivity(false);
-            }
+            pointerEvents: "none",
           }}
         >
           {/* Wrapper needed for MicHalo to sit outside the overflow:hidden button */}
-          <div style={{ position: "relative", flexShrink: 0 }}>
+          <div
+            style={{ position: "relative", flexShrink: 0, pointerEvents: "auto" }}
+            onMouseEnter={() => {
+              setIsHovered(true);
+              setWindowInteractivity(true);
+            }}
+            onMouseLeave={() => {
+              setIsHovered(false);
+              if (!isCommandMenuOpen && toastCount === 0) {
+                setWindowInteractivity(false);
+              }
+            }}
+          >
             {micState === "recording" && <MicHalo micLevel={micLevel} />}
 
             <button
@@ -772,6 +774,16 @@ export default function App() {
           {cancelReady && isHovered && recordingStartedByMouseRef.current && (
             <button
               aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
+              onMouseEnter={() => {
+                setIsHovered(true);
+                setWindowInteractivity(true);
+              }}
+              onMouseLeave={() => {
+                setIsHovered(false);
+                if (!isCommandMenuOpen && toastCount === 0) {
+                  setWindowInteractivity(false);
+                }
+              }}
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
