@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 
 export function AnalyticsConsentModal({ onConsent }) {
+  const [noHover, setNoHover] = useState(false);
+  const [yesHover, setYesHover] = useState(false);
+
   const handleConsent = async (granted) => {
     await window.electronAPI?.analyticsSetConsent?.(granted);
     onConsent(granted);
@@ -62,31 +65,37 @@ export function AnalyticsConsentModal({ onConsent }) {
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
             onClick={() => handleConsent(false)}
+            onMouseEnter={() => setNoHover(true)}
+            onMouseLeave={() => setNoHover(false)}
             style={{
               flex: 1,
               padding: "0.5rem 1rem",
               borderRadius: "0.5rem",
-              border: "1px solid rgba(255,255,255,0.2)",
-              backgroundColor: "transparent",
-              color: "rgba(255,255,255,0.6)",
+              border: `1px solid ${noHover ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.2)"}`,
+              backgroundColor: noHover ? "rgba(255,255,255,0.06)" : "transparent",
+              color: noHover ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.6)",
               fontSize: "0.875rem",
               cursor: "pointer",
+              transition: "all 200ms ease",
             }}
           >
             No thanks
           </button>
           <button
             onClick={() => handleConsent(true)}
+            onMouseEnter={() => setYesHover(true)}
+            onMouseLeave={() => setYesHover(false)}
             style={{
               flex: 1,
               padding: "0.5rem 1rem",
               borderRadius: "0.5rem",
               border: "none",
-              backgroundColor: "#70FFBA",
+              backgroundColor: yesHover ? "#8FFFCA" : "#70FFBA",
               color: "#000000",
               fontSize: "0.875rem",
               fontWeight: 500,
               cursor: "pointer",
+              transition: "all 200ms ease",
             }}
           >
             Yes, help out
