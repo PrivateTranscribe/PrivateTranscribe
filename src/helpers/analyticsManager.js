@@ -5,6 +5,8 @@ const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 
 const SUPABASE_URL = "https://wsfrykhacxjfsgvqnlbq.supabase.co";
+// Publishable key — safe to embed, RLS restricts to insert-only for anon
+const SUPABASE_ANON_KEY = "sb_publishable_QN2jW34xQsNcVBT9Q76HNw_Yyo8gnao";
 const DEVICE_ID_FILE = "device-id.txt";
 const CONSENT_FILE = "analytics-consent.txt";
 
@@ -12,11 +14,12 @@ class AnalyticsManager {
   constructor() {
     this._deviceId = null;
     this._consent = null; // null = not decided yet
-    this._supabaseAnonKey = null;
+    this._supabaseAnonKey = SUPABASE_ANON_KEY;
   }
 
   initialize(supabaseAnonKey) {
-    this._supabaseAnonKey = supabaseAnonKey;
+    // Key is hardcoded (publishable, safe to embed); param kept for backward compat
+    this._supabaseAnonKey = supabaseAnonKey || SUPABASE_ANON_KEY;
     this._consent = this._loadConsent();
     if (this._consent === "granted") {
       this._deviceId = this._getOrCreateDeviceId();
