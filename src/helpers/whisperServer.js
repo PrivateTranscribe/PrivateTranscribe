@@ -286,6 +286,12 @@ class WhisperServerManager {
       debugLogger.warn("FFmpeg not found - whisper-server will only accept 16kHz mono WAV");
     }
 
+    // Reduce repetition hallucinations: lower entropy threshold triggers
+    // temperature fallback sooner when the decoder enters a loop, and
+    // suppress-nst filters out non-speech tokens that often seed loops.
+    args.push("--entropy-thold", "2.0");
+    args.push("--suppress-nst");
+
     if (options.threads) args.push("--threads", String(options.threads));
     if (options.language && options.language !== "auto") {
       args.push("--language", options.language);

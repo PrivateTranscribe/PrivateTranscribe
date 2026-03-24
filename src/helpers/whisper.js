@@ -389,6 +389,43 @@ class WhisperManager {
     return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   }
 
+  // Detect and remove repetitive phrases that whisper.cpp sometimes hallucinates.
+  // Works by finding any phrase (3+ words) repeated 3+ times consecutively and
+  // collapsing it to a single occurrence.  Also catches single-word stutters
+  // repeated 5+ times (e.g. "the the the the the").
+  removeRepetitions(text) {
+    if (!text) return text;
+
+    let cleaned = text;
+
+    // 1) Collapse long repeated phrases (3–30 word n-grams repeated 3+ times)
+    //    Uses a greedy approach: try longest n-gram first so we catch the biggest loops.
+    for (let n = 30; n >= 3; n--) {
+      // Build a regex that matches an n-word phrase repeated 3+ times in a row.
+      // The phrase is captured, then required to repeat (with whitespace) 2+ more times.
+      const phrasePattern = new RegExp(
+        `((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}`,
+        "gi"
+      );
+      cleaned = cleaned.replace(phrasePattern, "$1");
+    }
+
+    // 2) Collapse single-word stutters (5+ consecutive identical words)
+    cleaned = cleaned.replace(/\b(\w+)(?:\s+\1){4,}\b/gi, "$1");
+
+    // 3) Re-normalize whitespace after replacements
+    cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+    if (cleaned !== text) {
+      debugLogger.info("Removed whisper repetition artifacts", {
+        originalLength: text.length,
+        cleanedLength: cleaned.length,
+      });
+    }
+
+    return cleaned;
+  }
+
   parseWhisperResult(output) {
     // Handle both string (from CLI) and object (from server) inputs
     let result;
@@ -413,7 +450,9 @@ class WhisperManager {
 
     // Handle whisper.cpp JSON format (CLI mode)
     if (result.transcription && Array.isArray(result.transcription)) {
-      const text = this.normalizeWhitespace(result.transcription.map((seg) => seg.text).join(""));
+      const text = this.removeRepetitions(
+        this.normalizeWhitespace(result.transcription.map((seg) => seg.text).join(""))
+      );
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
       }
@@ -422,7 +461,9 @@ class WhisperManager {
 
     // Handle whisper-server format (has "text" field directly)
     if (result.text !== undefined) {
-      const text = typeof result.text === "string" ? this.normalizeWhitespace(result.text) : "";
+      const text = this.removeRepetitions(
+        typeof result.text === "string" ? this.normalizeWhitespace(result.text) : ""
+      );
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
       }
