@@ -267,7 +267,23 @@ class DatabaseManager {
     }
   }
 
-  // Deletes all records beyond the newest `limit` entries (oldest first).
+  // Deletes all records beyond the newest `limit` entries (oldest first),
+  // but always preserves one row per UTC calendar day for streak accuracy.
+  //
+  // Root cause this guards against: trimTranscriptions physically deletes rows from
+  // the DB.  getStreakDates() fetches ALL rows with include_in_stats=1 to compute
+  // the streak — there is no secondary "day activity" table.  Without the protection
+  // below, a user who fills their history limit with today's dictations causes the
+  // trim to delete yesterday's (now-oldest) entry, and the streak drops by one day
+  // the very next time they dictate.
+  //
+  // The protection subquery keeps the oldest (MIN id) include_in_stats=1 row per
+  // UTC date.  That one sentinel row per day is enough for the renderer's
+  // toLocalDateKey(parseUtcTimestamp(ts)) to correctly attribute the day to the
+  // user's local calendar date.  Rows that have already been excluded from stats
+  // (include_in_stats=0 via resetStats) are not protected — they're invisible to
+  // getStreakDates() anyway.
+  //
   // If limit is 0, deletes everything (same as clearTranscriptions).
   trimTranscriptions(limit) {
     try {
@@ -283,6 +299,14 @@ class DatabaseManager {
           SELECT id FROM transcriptions
           ORDER BY timestamp DESC, id DESC
           LIMIT ?
+        )
+        AND id NOT IN (
+          -- Preserve the oldest include_in_stats=1 row per UTC date so that
+          -- getStreakDates() always has at least one timestamp to represent each
+          -- active day, even after aggressive trimming.
+          SELECT MIN(id) FROM transcriptions
+          WHERE include_in_stats = 1
+          GROUP BY date(timestamp)
         )
       `);
       const result = stmt.run(limit);

@@ -145,9 +145,35 @@ class MockDatabaseManager {
         return b.id - a.id;
       });
 
-    const toKeep = sorted.slice(0, limit);
-    const trimmed = this.transcriptions.length - toKeep.length;
-    this.transcriptions = toKeep;
+    // IDs to keep from the regular history window (newest `limit` rows).
+    const toKeep = new Set(sorted.slice(0, limit).map((t) => t.id));
+
+    // Mirrors the streak-protection subquery in the SQL implementation:
+    // preserve the oldest (min id) include_in_stats=1 row per UTC calendar date so
+    // that getStreakDates() always has at least one sentinel per active day.
+    // Extracting the UTC date handles both ISO-Z strings ("…T14:00:00.000Z") and
+    // SQLite-format strings ("2026-03-23 14:00:00", treated as UTC by slicing).
+    const utcDateKey = (ts: string): string =>
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(ts)
+        ? ts.slice(0, 10) // SQLite "YYYY-MM-DD HH:MM:SS" → already UTC
+        : new Date(ts).toISOString().slice(0, 10); // ISO string with Z
+
+    const sentinelByDay = new Map<string, number>(); // utcDateKey → min id
+    for (const t of this.transcriptions) {
+      if (t.include_in_stats !== 1) continue;
+      const key = utcDateKey(t.timestamp);
+      const existing = sentinelByDay.get(key);
+      if (existing === undefined || t.id < existing) {
+        sentinelByDay.set(key, t.id);
+      }
+    }
+    for (const sentinelId of sentinelByDay.values()) {
+      toKeep.add(sentinelId);
+    }
+
+    const before = this.transcriptions.length;
+    this.transcriptions = this.transcriptions.filter((t) => toKeep.has(t.id));
+    const trimmed = before - this.transcriptions.length;
 
     return { trimmed, success: true };
   }
@@ -457,16 +483,19 @@ describe("DatabaseManager", () => {
   });
 
   describe("trimTranscriptions", () => {
-    it("keeps only the newest entries up to limit", () => {
+    it("keeps only the newest entries up to limit (plus per-day sentinels)", () => {
       for (let i = 1; i <= 10; i++) {
         db.saveTranscription(`Entry ${i}`);
       }
 
       const result = db.trimTranscriptions(3);
 
+      // All 10 entries share the same UTC date, so the oldest (id=1, "Entry 1")
+      // is preserved as the per-day streak sentinel in addition to the top-3 window.
+      // That gives 4 rows total and 6 deletions instead of the naive 7.
       expect(result.success).toBe(true);
-      expect(result.trimmed).toBe(7);
-      expect(db.getTranscriptions().length).toBe(3);
+      expect(result.trimmed).toBe(6);
+      expect(db.getTranscriptions().length).toBe(4);
       expect(db.getTranscriptions()[0].text).toBe("Entry 10");
     });
 
@@ -488,6 +517,54 @@ describe("DatabaseManager", () => {
 
       expect(result.trimmed).toBe(0);
       expect(db.getTranscriptions().length).toBe(2);
+    });
+
+    it("preserves the oldest entry per day as a streak sentinel even when beyond the limit", () => {
+      // Regression test: filling the history window with today's dictations used to
+      // delete yesterday's only entry, dropping the streak counter mid-session.
+      //
+      // Scenario: limit=5, 1 entry from yesterday + 5 from today.
+      // Without protection: trim keeps only the 5 newest (all today) → yesterday gone.
+      // With protection: yesterday's lone entry (id=1) is a sentinel and survives.
+      db.insertTestTranscription({ text: "Yesterday lone entry", timestamp: "2026-03-23 10:00:00" }); // id 1
+      db.insertTestTranscription({ text: "Today 1", timestamp: "2026-03-24 08:00:00" }); // id 2
+      db.insertTestTranscription({ text: "Today 2", timestamp: "2026-03-24 09:00:00" }); // id 3
+      db.insertTestTranscription({ text: "Today 3", timestamp: "2026-03-24 10:00:00" }); // id 4
+      db.insertTestTranscription({ text: "Today 4", timestamp: "2026-03-24 11:00:00" }); // id 5
+      db.insertTestTranscription({ text: "Today 5", timestamp: "2026-03-24 12:00:00" }); // id 6
+
+      db.trimTranscriptions(5);
+
+      const remaining = db.getTranscriptions();
+      const texts = remaining.map((t) => t.text);
+
+      // Yesterday's entry must survive because it is the day's sentinel.
+      expect(texts).toContain("Yesterday lone entry");
+
+      // getStreakDates must still include yesterday's date.
+      const streakDates = db.getStreakDates();
+      expect(streakDates).toContain("2026-03-23");
+      expect(streakDates).toContain("2026-03-24");
+    });
+
+    it("does not preserve include_in_stats=0 entries as sentinels", () => {
+      // Entries excluded from stats (e.g. after a stats reset) must not be protected,
+      // since getStreakDates() ignores them anyway.
+      db.insertTestTranscription({
+        text: "Excluded old",
+        timestamp: "2026-03-20 10:00:00",
+        includeInStats: false,
+      }); // id 1, include_in_stats=0
+      db.insertTestTranscription({ text: "Today 1", timestamp: "2026-03-24 08:00:00" }); // id 2
+      db.insertTestTranscription({ text: "Today 2", timestamp: "2026-03-24 09:00:00" }); // id 3
+
+      db.trimTranscriptions(2);
+
+      const remaining = db.getTranscriptions();
+      const texts = remaining.map((t) => t.text);
+
+      // The excluded entry should NOT be protected — it offers no streak value.
+      expect(texts).not.toContain("Excluded old");
     });
   });
 
