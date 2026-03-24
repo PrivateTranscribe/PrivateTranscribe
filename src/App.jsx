@@ -20,7 +20,7 @@ import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
-import { AnalyticsConsentModal } from "./components/AnalyticsConsentModal";
+
 
 const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
@@ -195,7 +195,6 @@ export default function App() {
   // Active dictation mode set by an Action Engine "dictation-mode" action.
   // null means default (no override active).
   const [activeDictationMode, setActiveDictationMode] = useState(null);
-  const [showConsentModal, setShowConsentModal] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(
     () => localStorage.getItem("preferredLanguage") || "en"
   );
@@ -442,15 +441,7 @@ export default function App() {
     localStorage.removeItem(OVERLAY_HIDDEN_UNTIL_KEY);
   }, []);
 
-  // Check if analytics consent prompt is needed on first launch
-  useEffect(() => {
-    window.electronAPI?.analyticsNeedsConsent?.().then((needs) => {
-      if (needs) {
-        window.electronAPI?.resizeMainWindow?.("CONSENT");
-        setShowConsentModal(true);
-      }
-    });
-  }, []);
+  // Analytics consent is handled by ControlPanelShell (dashboard window)
 
   // Track recording start
   const prevIsRecordingRef = useRef(false);
@@ -952,14 +943,7 @@ export default function App() {
           </div>
         )}
       </div>
-      {showConsentModal && (
-        <AnalyticsConsentModal
-          onConsent={() => {
-            setShowConsentModal(false);
-            window.electronAPI?.resizeMainWindow?.("BASE");
-          }}
-        />
-      )}
+      
     </div>
   );
 }

@@ -18,8 +18,11 @@ import CorrectionMemoryPage from "./pages/CorrectionMemoryPage";
 import ActionEnginePage from "./pages/ActionEnginePage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 
+import { AnalyticsConsentModal } from "./AnalyticsConsentModal";
+
 export default function ControlPanelShell() {
   const [activePage, setActivePage] = useState<PageId>("home");
+  const [showConsentModal, setShowConsentModal] = useState(false);
   const { toast } = useToast();
   const { confirmDialog, alertDialog, showConfirmDialog, hideConfirmDialog, hideAlertDialog } =
     useDialogs();
@@ -56,6 +59,12 @@ export default function ControlPanelShell() {
     }
 
     localStorage.removeItem("controlPanelInitialPage");
+  }, []);
+
+  useEffect(() => {
+    window.electronAPI?.analyticsNeedsConsent?.().then((needs: boolean) => {
+      if (needs) setShowConsentModal(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -221,6 +230,10 @@ export default function ControlPanelShell() {
           {renderPage()}
         </main>
       </div>
+
+      {showConsentModal && (
+        <AnalyticsConsentModal onConsent={() => setShowConsentModal(false)} />
+      )}
     </div>
   );
 }
