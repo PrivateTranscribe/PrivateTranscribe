@@ -139,8 +139,14 @@ class AudioManager {
     if (window.electronAPI?.onTranscriptionSettingsChanged) {
       this.transcriptionSettingsChangedCleanup =
         window.electronAPI.onTranscriptionSettingsChanged((settings = {}) => {
-          this.transcriptionSettingsSnapshot =
-            settings && typeof settings === "object" ? settings : null;
+          if (!settings || typeof settings !== "object") {
+            this.transcriptionSettingsSnapshot = null;
+          } else {
+            this.transcriptionSettingsSnapshot = {
+              ...(this.transcriptionSettingsSnapshot || {}),
+              ...settings,
+            };
+          }
           this.invalidateTranscriptionRuntimeCaches();
         }) || null;
     }

@@ -169,11 +169,32 @@ function isExecutableFileForPlatform(p, platform) {
     // On Windows, existence is usually sufficient (PATHEXT controls runnable types).
     if (platform === "win32") return true;
 
-    fs.accessSync(p, fs.constants.X_OK);
+    // Use mode bits for cross-platform determinism in tests, then confirm the
+    // current process can execute it when the host OS supports X_OK semantics.
+    if ((stat.mode & 0o111) === 0) return false;
+    if (process.platform !== "win32") {
+      fs.accessSync(p, fs.constants.X_OK);
+    }
     return true;
   } catch {
     return false;
   }
+}
+
+function normalizeWindowsExecutablePathCase(p) {
+  try {
+    const dir = path.dirname(p);
+    const baseName = path.basename(p);
+    const entries = fs.readdirSync(dir);
+    const matchedEntry = entries.find((entry) => entry.toLowerCase() === baseName.toLowerCase());
+    return matchedEntry ? path.join(dir, matchedEntry) : p;
+  } catch {
+    return p;
+  }
+}
+
+function normalizeResolvedExecutablePath(p, platform) {
+  return platform === "win32" ? normalizeWindowsExecutablePathCase(p) : p;
 }
 
 function resolveOnPathForPlatform(cmd, { platform, envPath, pathext } = {}) {
@@ -221,13 +242,17 @@ function resolveOnPathForPlatform(cmd, { platform, envPath, pathext } = {}) {
 
     // If cmd already includes a PATHEXT extension (e.g. "powershell.exe"), try it directly first.
     if (platform === "win32" && hasKnownExt) {
-      if (isExecutableFileForPlatform(base, platform)) return base;
+      if (isExecutableFileForPlatform(base, platform)) {
+        return normalizeResolvedExecutablePath(base, platform);
+      }
       continue;
     }
 
     for (const ext of exts) {
       const candidate = platform === "win32" ? `${base}${ext}` : base;
-      if (isExecutableFileForPlatform(candidate, platform)) return candidate;
+      if (isExecutableFileForPlatform(candidate, platform)) {
+        return normalizeResolvedExecutablePath(candidate, platform);
+      }
     }
   }
 

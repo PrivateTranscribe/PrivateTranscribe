@@ -467,9 +467,6 @@ export function useSettings() {
         cloudTranscriptionProvider,
         cloudTranscriptionModel,
         cloudTranscriptionBaseUrl,
-        openaiApiKey,
-        groqApiKey,
-        customTranscriptionApiKey,
         ...overrides,
       });
     },
@@ -486,9 +483,6 @@ export function useSettings() {
       cloudTranscriptionProvider,
       cloudTranscriptionModel,
       cloudTranscriptionBaseUrl,
-      openaiApiKey,
-      groqApiKey,
-      customTranscriptionApiKey,
     ]
   );
 
