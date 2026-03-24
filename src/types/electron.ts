@@ -296,6 +296,24 @@ export interface SaveTranscriptionOptions {
   includeInStats?: boolean;
 }
 
+export interface TranscriptionSettingsBroadcast {
+  useLocalWhisper?: string;
+  whisperModel?: string;
+  localTranscriptionProvider?: LocalTranscriptionProvider;
+  parakeetModel?: string;
+  allowOpenAIFallback?: string;
+  allowLocalFallback?: string;
+  fallbackWhisperModel?: string;
+  preferredLanguage?: string;
+  translateToEnglish?: string;
+  cloudTranscriptionProvider?: string;
+  cloudTranscriptionModel?: string;
+  cloudTranscriptionBaseUrl?: string;
+  openaiApiKey?: string;
+  groqApiKey?: string;
+  customTranscriptionApiKey?: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -575,6 +593,10 @@ declare global {
       // Windows Push-to-Talk notifications
       notifyActivationModeChanged?: (mode: "tap" | "push") => void;
       notifyHotkeyChanged?: (hotkey: string) => void;
+      notifyTranscriptionSettingsChanged?: (settings: TranscriptionSettingsBroadcast) => void;
+      onTranscriptionSettingsChanged?: (
+        callback: (settings: TranscriptionSettingsBroadcast) => void
+      ) => (() => void) | void;
 
       // Auto-start at login
       getAutoStartEnabled?: () => Promise<boolean>;

@@ -908,6 +908,10 @@ class IPCHandlers {
       return this.environmentManager.saveAllKeysToEnvFile();
     });
 
+    ipcMain.on("transcription-settings-changed", (_event, settings = {}) => {
+      this.broadcastToWindows("transcription-settings-changed", settings);
+    });
+
     ipcMain.handle("sync-startup-preferences", async (event, prefs) => {
       const setVars = {};
       const clearVars = [];

@@ -125,7 +125,7 @@ export function isCompoundHotkey(hotkey: string): boolean {
  */
 export function getDefaultHotkey(): string {
   const isMac = isMacPlatform();
-  return isMac ? "GLOBE" : "CommandOrControl+Space";
+  return isMac ? "GLOBE" : "`";
 }
 
 /**

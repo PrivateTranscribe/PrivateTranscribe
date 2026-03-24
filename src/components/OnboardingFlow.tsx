@@ -82,6 +82,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const agentName = "PrivateTranscribe"; // Default agent name, editable in settings
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
+  const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
@@ -255,6 +256,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       return;
     }
 
+    if (currentStep === 4) {
+      setIsVerifyingHotkey(true);
+      try {
+        const hotkeyRegistered = await ensureHotkeyRegistered();
+        if (!hotkeyRegistered) {
+          return;
+        }
+      } finally {
+        setIsVerifyingHotkey(false);
+      }
+    }
+
     const newStep = currentStep + 1;
     setCurrentStep(newStep);
 
@@ -263,7 +276,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         window.electronAPI.showDictationPanel();
       }
     }
-  }, [currentStep, setCurrentStep, steps.length]);
+  }, [currentStep, ensureHotkeyRegistered, setCurrentStep, steps.length]);
 
   const prevStep = useCallback(() => {
     if (currentStep > 0) {
@@ -654,8 +667,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           } else if (cloudTranscriptionProvider === "groq") {
             return groqApiKey.trim().length > 0;
           } else if (cloudTranscriptionProvider === "custom") {
-            // Custom can work without API key for local endpoints
-            return true;
+            return (
+              cloudTranscriptionBaseUrl.trim().length > 0 &&
+              cloudTranscriptionModel.trim().length > 0
+            );
           }
           return openaiApiKey.trim().length > 0; // Default to OpenAI
         }
@@ -671,7 +686,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return true;
       }
       case 4:
-        return hotkey.trim() !== ""; // Activation step
+        return hotkey.trim() !== "" && !isHotkeyRegistering && !isVerifyingHotkey;
       case 5:
         return true; // Completion screen - always ready to finish
       default:
@@ -760,7 +775,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 disabled={!canProceed()}
                 className="h-8 px-6 rounded-full text-xs"
               >
-                Next
+                {currentStep === 4 && isVerifyingHotkey ? "Checking..." : "Next"}
                 <ChevronRight className="w-3.5 h-3.5" />
               </Button>
             )}
