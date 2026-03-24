@@ -274,6 +274,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Notify main process of activation mode changes (for Windows Push-to-Talk)
   notifyActivationModeChanged: (mode) => ipcRenderer.send("activation-mode-changed", mode),
   notifyHotkeyChanged: (hotkey) => ipcRenderer.send("hotkey-changed", hotkey),
+  notifyTranscriptionSettingsChanged: (settings) =>
+    ipcRenderer.send("transcription-settings-changed", settings),
+  onTranscriptionSettingsChanged: registerListener(
+    "transcription-settings-changed",
+    (callback) => (_event, settings) => callback?.(settings)
+  ),
 
   // Auto-start management
   getAutoStartEnabled: () => ipcRenderer.invoke("get-auto-start-enabled"),
