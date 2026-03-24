@@ -209,6 +209,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDictationKey: () => ipcRenderer.invoke("get-dictation-key"),
   saveDictationKey: (key) => ipcRenderer.invoke("save-dictation-key", key),
 
+  // Analytics
+  analyticsNeedsConsent: () => ipcRenderer.invoke("analytics-needs-consent"),
+  analyticsSetConsent: (granted) => ipcRenderer.invoke("analytics-set-consent", granted),
+  analyticsTrack: (event, extra) => ipcRenderer.invoke("analytics-track", event, extra),
+
   saveAllKeysToEnv: () => ipcRenderer.invoke("save-all-keys-to-env"),
   syncStartupPreferences: (prefs) => ipcRenderer.invoke("sync-startup-preferences", prefs),
 

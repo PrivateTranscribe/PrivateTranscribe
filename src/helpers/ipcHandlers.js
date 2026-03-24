@@ -1532,6 +1532,12 @@ class IPCHandlers {
       return result; // { canceled: boolean; filePaths: string[] }
     });
 
+    // Analytics consent
+    const analyticsManager = require("./analyticsManager");
+    ipcMain.handle("analytics-needs-consent", () => analyticsManager.needsConsentPrompt());
+    ipcMain.handle("analytics-set-consent", (_e, granted) => analyticsManager.setConsent(granted));
+    ipcMain.handle("analytics-track", (_e, event, extra) => analyticsManager.track(event, extra));
+
     if (this.actionEngineManager) {
       this._setupActionEngineHandlers();
     }

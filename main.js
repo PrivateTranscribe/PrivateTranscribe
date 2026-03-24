@@ -111,6 +111,9 @@ function initializeManagers() {
   // Ensure file logging is initialized now that app is ready
   debugLogger.ensureFileLogging();
 
+  const analyticsManager = require("./src/helpers/analyticsManager");
+  analyticsManager.initialize(process.env.SUPABASE_ANON_KEY || "");
+
   environmentManager = new EnvironmentManager();
   debugLogger.refreshLogLevel();
 
@@ -273,6 +276,10 @@ async function startApp() {
 
   // Create control panel window
   await windowManager.createControlPanelWindow();
+
+  // Track app launch (fire-and-forget, non-fatal)
+  const _analyticsManager = require("./src/helpers/analyticsManager");
+  _analyticsManager.track("app_launched").catch(() => {});
 
   // Set up tray
   trayManager.setWindows(windowManager.mainWindow, windowManager.controlPanelWindow);
