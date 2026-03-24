@@ -13,7 +13,9 @@ export default function ProcessingModeSelector({
   className = "",
 }: ProcessingModeSelectorProps) {
   return (
-    <div className={`relative flex p-0.5 rounded-lg bg-surface-1 border border-border-subtle ${className}`}>
+    <div
+      className={`relative flex p-0.5 rounded-lg bg-surface-1 border border-border-subtle ${className}`}
+    >
       {/* Sliding indicator */}
       <div
         className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-surface-raised border border-border-subtle transition-transform duration-200 ease-out ${

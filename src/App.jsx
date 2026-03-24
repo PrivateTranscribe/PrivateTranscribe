@@ -21,7 +21,6 @@ import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 
-
 const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
 const OVERLAY_HIDDEN_UNTIL_KEY = "overlayHiddenUntil";
@@ -155,6 +154,7 @@ const VoiceWaveIndicator = ({ isListening }) => {
   );
 };
 
+// eslint-disable-next-line no-unused-vars
 const MenuRow = ({ icon: Icon, label, hint, trailing, disabled = false, onClick }) => {
   return (
     <button
@@ -210,7 +210,7 @@ export default function App() {
   const buttonRef = useRef(null);
   const { toast, toastCount } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
-  const { hotkey } = useHotkey();
+  useHotkey();
 
   const setWindowInteractivity = useCallback((shouldCapture) => {
     window.electronAPI?.setMainWindowInteractivity?.(shouldCapture);
@@ -502,7 +502,9 @@ export default function App() {
 
   const handleContactSupport = useCallback(async () => {
     try {
-      const result = await window.electronAPI?.openExternal?.("mailto:support@privatetranscribe.com");
+      const result = await window.electronAPI?.openExternal?.(
+        "mailto:support@privatetranscribe.com"
+      );
       if (!result?.success) {
         await window.electronAPI?.openExternal?.(
           "https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com"
@@ -943,7 +945,6 @@ export default function App() {
           </div>
         )}
       </div>
-      
     </div>
   );
 }

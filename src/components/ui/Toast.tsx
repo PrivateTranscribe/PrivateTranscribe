@@ -20,6 +20,7 @@ export interface ToastContextType {
 
 const ToastContext = React.createContext<ToastContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useToast = () => {
   const context = React.useContext(ToastContext);
   if (!context) {
@@ -111,8 +112,8 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Cleanup on unmount
   React.useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      const timers = timersRef.current;
       for (const id in timers) {
         clearTimeout(timers[id]);
       }
@@ -315,6 +316,7 @@ const Toast: React.FC<
 };
 
 // Helper function for common toast patterns
+// eslint-disable-next-line react-refresh/only-export-components
 export const toast = {
   success: (message: string) => ({
     title: "Success",

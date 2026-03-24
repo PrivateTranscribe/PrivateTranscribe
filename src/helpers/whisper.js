@@ -403,10 +403,7 @@ class WhisperManager {
     for (let n = 30; n >= 3; n--) {
       // Build a regex that matches an n-word phrase repeated 3+ times in a row.
       // The phrase is captured, then required to repeat (with whitespace) 2+ more times.
-      const phrasePattern = new RegExp(
-        `((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}`,
-        "gi"
-      );
+      const phrasePattern = new RegExp(`((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}`, "gi");
       cleaned = cleaned.replace(phrasePattern, "$1");
     }
 

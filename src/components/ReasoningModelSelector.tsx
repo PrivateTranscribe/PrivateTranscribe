@@ -358,6 +358,7 @@ export default function ReasoningModelSelector({
       setSelectedMode("cloud");
       setSelectedCloudProvider(localReasoningProvider);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localProviders, localReasoningProvider]);
 
   useEffect(() => {

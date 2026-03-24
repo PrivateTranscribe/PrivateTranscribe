@@ -9,6 +9,7 @@ import { useTheme } from "./hooks/useTheme";
 import { refreshProStatus } from "./services/LicensingService.ts";
 import "./index.css";
 
+// eslint-disable-next-line react-refresh/only-export-components
 function AppRouter() {
   // Initialize theme system
   useTheme();

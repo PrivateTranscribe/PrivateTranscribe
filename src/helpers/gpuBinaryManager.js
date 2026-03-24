@@ -100,7 +100,11 @@ class GpuBinaryManager {
       });
 
       if (signal.aborted) {
-        try { fs.unlinkSync(binaryPath); } catch { /* ignore */ }
+        try {
+          fs.unlinkSync(binaryPath);
+        } catch {
+          /* ignore */
+        }
         throw Object.assign(new Error("Download cancelled"), { isAbort: true });
       }
 
@@ -119,7 +123,9 @@ class GpuBinaryManager {
       // Clean up partial file on failure
       try {
         if (fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       if (error.isAbort) {
         debugLogger.info("GpuBinaryManager: download cancelled");
@@ -139,7 +145,6 @@ class GpuBinaryManager {
       this._abortController.abort();
     }
   }
-
 }
 
 GpuBinaryManager.CUDA_BINARIES = CUDA_BINARIES;

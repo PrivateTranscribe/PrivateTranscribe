@@ -65,7 +65,7 @@ async function generateIcons() {
       const icoCommand = `${magickPath} ${pngFiles.join(" ")} "${ICO_OUTPUT}"`;
       execSync(icoCommand, { stdio: "ignore" });
       console.log(`  ✓ Created ${ICO_OUTPUT}`);
-    } catch (error) {
+    } catch {
       // ImageMagick not available, use Node.js approach
       console.log("  → ImageMagick not available, trying Node.js approach...");
 

@@ -231,9 +231,7 @@ export default function ControlPanelShell() {
         </main>
       </div>
 
-      {showConsentModal && (
-        <AnalyticsConsentModal onConsent={() => setShowConsentModal(false)} />
-      )}
+      {showConsentModal && <AnalyticsConsentModal onConsent={() => setShowConsentModal(false)} />}
     </div>
   );
 }

@@ -16,6 +16,7 @@ import type { TranscriptionItem as TranscriptionItemType } from "../../types/ele
 
 export type DateGroup = "Today" | "Yesterday" | "This Week" | "Older";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getDateGroup(timestamp: string): DateGroup {
   const src = timestamp.endsWith("Z") ? timestamp : timestamp + "Z";
   const date = new Date(src);
@@ -38,6 +39,7 @@ export function getDateGroup(timestamp: string): DateGroup {
 
 const GROUP_ORDER: DateGroup[] = ["Today", "Yesterday", "This Week", "Older"];
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function groupTranscriptions(
   items: TranscriptionItemType[]
 ): { label: DateGroup; items: TranscriptionItemType[] }[] {
