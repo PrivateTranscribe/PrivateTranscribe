@@ -16,6 +16,7 @@ export default function DeveloperSection() {
 
   useEffect(() => {
     loadDebugState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadDebugState = async () => {

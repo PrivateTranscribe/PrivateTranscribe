@@ -945,6 +945,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
       return payload;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       theme,
       historyLimit,
@@ -1097,6 +1098,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           setCustomReasoningApiKey(keys.customReasoningApiKey);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       allowApiKeysOnImport,
       setTheme,

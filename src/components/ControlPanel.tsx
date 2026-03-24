@@ -60,6 +60,7 @@ export default function ControlPanel() {
 
   useEffect(() => {
     loadTranscriptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Show toast when update is ready

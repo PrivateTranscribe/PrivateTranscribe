@@ -279,6 +279,7 @@ export default function TranscriptionModelPicker({
     if (selectedLocalProvider !== internalLocalProvider) {
       setInternalLocalProvider(selectedLocalProvider);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocalProvider]);
   const isLoadingRef = useRef(false);
   const isLoadingParakeetRef = useRef(false);

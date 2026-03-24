@@ -17,6 +17,7 @@ interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function toLocalDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -36,6 +37,7 @@ export function toLocalDateKey(date: Date): string {
  * Appending "Z" after replacing the space with "T" produces a valid ISO 8601
  * UTC string ("2026-03-23T14:00:00Z") that V8 parses as UTC unambiguously.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseUtcTimestamp(ts: string): Date {
   // If already has timezone info (T…Z, T…+HH, T…-HH) leave it alone.
   if (/[TZ]/.test(ts) || /[+-]\d{2}:\d{2}$/.test(ts)) {
@@ -59,6 +61,7 @@ export function parseUtcTimestamp(ts: string): Date {
  *  - no activity today but activity yesterday → streak still alive, anchor on yesterday
  *  - otherwise → streak is broken (returns 0)
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function computeStreak(activeDates: Set<string>): number {
   if (activeDates.size === 0) return 0;
 
@@ -193,7 +196,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const streak = useMemo(() => {
     const value = computeStreak(streakDates);
-    void logger.debug(`[streak] computed streak = ${value}`, { activeDays: streakDates.size }, "streak");
+    void logger.debug(
+      `[streak] computed streak = ${value}`,
+      { activeDays: streakDates.size },
+      "streak"
+    );
     return value;
   }, [streakDates]);
   const recentFive = useMemo(() => transcriptions.slice(0, 5), [transcriptions]);

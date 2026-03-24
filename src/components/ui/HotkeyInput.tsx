@@ -145,6 +145,7 @@ export interface HotkeyInputProps {
   autoFocus?: boolean;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
   if (MODIFIER_CODES.has(e.code)) {
     return null;
@@ -170,6 +171,7 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
   return modifiers.length > 0 ? [...modifiers, baseKey].join("+") : baseKey;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function mapMouseEventToHotkey(e: MouseEvent): string | null {
   // Browser MouseEvent.button mapping:
   // 0=Left, 1=Middle, 2=Right, 3=Back, 4=Forward

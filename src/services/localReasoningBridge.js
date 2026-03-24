@@ -15,7 +15,7 @@ class LocalReasoningService {
       // Check if at least one model is downloaded
       const models = await modelManager.getAllModels();
       return models.some((model) => model.isDownloaded);
-    } catch (error) {
+    } catch {
       return false;
     }
   }
