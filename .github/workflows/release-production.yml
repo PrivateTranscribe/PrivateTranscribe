@@ -1,0 +1,73 @@
+name: Release to Production (R2)
+
+on:
+  push:
+    branches:
+      - production
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download whisper.cpp binaries
+        run: node scripts/download-whisper-cpp.js --current
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Download nircmd.exe
+        run: node scripts/download-nircmd.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/electron/Cache
+          key: windows-electron-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: windows-electron-
+
+      - name: Build Windows installer
+        # --publish never: we handle upload manually to R2 below
+        run: npm run build:win -- --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ACCOUNT_ENDPOINT }}
+          R2_BUCKET: privatetranscribe-assets
+        run: |
+          pip install awscli --quiet
+
+          # Upload installer + portable exe
+          for f in dist/*.exe; do
+            aws s3 cp "$f" "s3://$R2_BUCKET/win/$(basename $f)" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --no-progress
+            echo "Uploaded: $f"
+          done
+
+          # Upload latest.yml (the update manifest — must come last)
+          aws s3 cp dist/latest.yml "s3://$R2_BUCKET/win/latest.yml" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --no-progress \
+            --cache-control "no-cache, no-store"
+
+          echo "Done. Update manifest uploaded last."
