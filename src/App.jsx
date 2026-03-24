@@ -445,7 +445,10 @@ export default function App() {
   // Check if analytics consent prompt is needed on first launch
   useEffect(() => {
     window.electronAPI?.analyticsNeedsConsent?.().then((needs) => {
-      if (needs) setShowConsentModal(true);
+      if (needs) {
+        window.electronAPI?.resizeMainWindow?.("CONSENT");
+        setShowConsentModal(true);
+      }
     });
   }, []);
 
@@ -950,7 +953,12 @@ export default function App() {
         )}
       </div>
       {showConsentModal && (
-        <AnalyticsConsentModal onConsent={() => setShowConsentModal(false)} />
+        <AnalyticsConsentModal
+          onConsent={() => {
+            setShowConsentModal(false);
+            window.electronAPI?.resizeMainWindow?.("BASE");
+          }}
+        />
       )}
     </div>
   );

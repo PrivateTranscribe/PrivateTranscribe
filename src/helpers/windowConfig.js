@@ -2,6 +2,7 @@ const path = require("path");
 
 const WINDOW_SIZES = {
   BASE: { width: 96, height: 96 },
+  CONSENT: { width: 420, height: 280 },
   WITH_MENU: { width: 300, height: 360 },
   // WITH_TOAST: narrower and shorter than before - the toast only needs ~180px of height
   // (toast ~70px + bottom button clearance ~90px + gap) and the width just needs to fit
