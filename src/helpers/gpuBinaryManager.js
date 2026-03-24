@@ -6,7 +6,7 @@ const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 
 // R2 public CDN — binaries served directly (no zip extraction needed)
-const R2_BASE_URL = "https://pub-023261a50f6b4499ba1d7a037d59b7eb.r2.dev";
+const R2_BASE_URL = "https://updates.privatetranscribe.com";
 const BINARY_VERSION = "v0.0.6";
 const USER_AGENT = "PrivateTranscribe/1.0";
 
