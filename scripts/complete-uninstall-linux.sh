@@ -71,8 +71,9 @@ for tmp in /tmp/Privoca* /tmp/privoca* /tmp/DictateVoice* /tmp/dictatevoice*; do
 done
 shopt -u nullglob
 
-read -r -p "Remove downloaded model caches (~/.cache/Privoca — Whisper, Parakeet, GGUF)? [y/N]: " wipe_models
+read -r -p "Remove downloaded model caches (~/.cache/PrivateTranscribe — Whisper, Parakeet, GGUF)? [y/N]: " wipe_models
 if [[ "$wipe_models" =~ ^[Yy]$ ]]; then
+  remove_target "$HOME/.cache/PrivateTranscribe"
   remove_target "$HOME/.cache/Privoca"
   remove_target "$HOME/.cache/dictatevoice"
   remove_target "$HOME/.cache/whisper"

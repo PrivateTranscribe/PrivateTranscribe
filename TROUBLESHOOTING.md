@@ -80,7 +80,7 @@
 3. If bundled binary fails, install via package manager:
    - macOS: `brew install whisper-cpp`
    - Linux: Build from source at https://github.com/ggml-org/whisper.cpp
-4. Clear model cache: `rm -rf ~/.cache/Privoca/whisper-models`
+4. Clear model cache: `rm -rf ~/.cache/PrivateTranscribe/whisper-models`
 5. Try cloud transcription as fallback
 
 ### Windows-Specific Issues

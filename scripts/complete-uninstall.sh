@@ -84,16 +84,20 @@ for crash in "$HOME/Library/Application Support/CrashReporter"/Privoca_* \
 done
 shopt -u nullglob
 
-read -r -p "Remove all downloaded model caches (~/.cache/Privoca — Whisper, Parakeet, GGUF)? [y/N]: " wipe_models
+read -r -p "Remove all downloaded model caches (~/.cache/PrivateTranscribe — Whisper, Parakeet, GGUF)? [y/N]: " wipe_models
 if [[ "$wipe_models" =~ ^[Yy]$ ]]; then
+  remove_target "$HOME/.cache/PrivateTranscribe/whisper-models"
+  remove_target "$HOME/.cache/PrivateTranscribe/parakeet-models"
+  remove_target "$HOME/.cache/PrivateTranscribe/models"
+  # Legacy model cache paths
   remove_target "$HOME/.cache/Privoca/whisper-models"
   remove_target "$HOME/.cache/Privoca/parakeet-models"
   remove_target "$HOME/.cache/Privoca/models"
-  # Legacy model cache paths
   remove_target "$HOME/.cache/whisper"
   remove_target "$HOME/Library/Application Support/whisper"
   remove_target "$HOME/Library/Application Support/Privoca/models"
   remove_target "$HOME/Library/Application Support/DictateVoice/models"
+  rmdir "$HOME/.cache/PrivateTranscribe" 2>/dev/null || true
   rmdir "$HOME/.cache/Privoca" 2>/dev/null || true
 fi
 
