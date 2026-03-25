@@ -2526,7 +2526,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       // ───────────────────────────────────────────────────
       // HELP & SUPPORT
       // ───────────────────────────────────────────────────
-      case "help":
+      case "help": {
+        const [emailCopied, setEmailCopied] = React.useState(false);
         return (
           <div className="space-y-6">
             <SectionHeader
@@ -2537,34 +2538,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <SettingsPanel>
               <SettingsPanelRow>
                 <SettingsRow
-                  label="Contact Support"
-                  description="Reach out to us at support@privatetranscribe.com"
+                  label="Contact & Bug Reports"
+                  description="support@privatetranscribe.com"
                 >
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
                       navigator.clipboard?.writeText("support@privatetranscribe.com");
+                      setEmailCopied(true);
+                      setTimeout(() => setEmailCopied(false), 2000);
                     }}
                   >
-                    Copy Email
-                  </Button>
-                </SettingsRow>
-              </SettingsPanelRow>
-
-              <SettingsPanelRow>
-                <SettingsRow
-                  label="Submit Bug Report"
-                  description="Email support@privatetranscribe.com with a description of the issue"
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard?.writeText("support@privatetranscribe.com");
-                    }}
-                  >
-                    Copy Email
+                    {emailCopied ? "✓ Copied!" : "Copy Email"}
                   </Button>
                 </SettingsRow>
               </SettingsPanelRow>
@@ -2591,6 +2577,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             </div>
           </div>
         );
+      }
 
       // ───────────────────────────────────────────────────
       // PRO
