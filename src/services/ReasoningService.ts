@@ -7,6 +7,7 @@ import { UNIFIED_SYSTEM_PROMPT, LEGACY_PROMPTS } from "../config/prompts";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { getEffectiveEntitlement } from "../hooks/useProStatus";
+import { getContext } from "../helpers/contextPipeline";
 
 /**
  * @deprecated Use UNIFIED_SYSTEM_PROMPT from ../config/prompts instead
@@ -52,7 +53,7 @@ class ReasoningService extends BaseReasoningService {
     }
 
     try {
-      const ctx = await window.electronAPI?.getActiveWindowContext?.();
+      const ctx = await getContext({ timeoutMs: 2000 });
 
       if (!ctx || !ctx.available) {
         if (ctx?.blocked) {

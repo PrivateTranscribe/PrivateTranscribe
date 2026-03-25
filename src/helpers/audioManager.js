@@ -4,6 +4,7 @@ import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
+import { getContext, isSmartContextEnabled, buildWhisperContextHint } from "./contextPipeline";
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
@@ -126,6 +127,7 @@ class AudioManager {
     this.processingGeneration = 0;
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
+    this._cachedSmartContext = null;
 
     // Pre-warm device cache and keep it fresh
     if (navigator.mediaDevices) {
@@ -860,6 +862,14 @@ class AudioManager {
       } else {
         this._cachedCorrectionHints = [];
       }
+
+      // Fetch Smart Context hint for Whisper initialPrompt (Pro feature, 300 ms timeout)
+      if (isSmartContextEnabled()) {
+        this._cachedSmartContext = await getContext({ timeoutMs: 300 });
+      } else {
+        this._cachedSmartContext = null;
+      }
+
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
       const arrayBuffer = await audioBlob.arrayBuffer();
@@ -889,12 +899,14 @@ class AudioManager {
         "transcription"
       );
 
-      // Add custom dictionary as initial prompt to help Whisper recognize specific words
-      // Skip when translating - English dictionary hints confuse whisper's translation mode
+      // Add custom dictionary (and optional Smart Context hint) as initialPrompt.
+      // Skip when translating — English-biased hints confuse whisper's translation mode.
       if (!options.translate) {
         const dictionaryPrompt = this.getCustomDictionaryPrompt();
-        if (dictionaryPrompt) {
-          options.initialPrompt = dictionaryPrompt;
+        const contextHint = buildWhisperContextHint(this._cachedSmartContext);
+        const promptParts = [dictionaryPrompt, contextHint].filter(Boolean);
+        if (promptParts.length > 0) {
+          options.initialPrompt = promptParts.join(". ");
         }
       }
 
