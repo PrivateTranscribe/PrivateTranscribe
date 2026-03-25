@@ -832,6 +832,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setCopyToClipboard,
     showPanelOnError,
     setShowPanelOnError,
+    pauseMediaOnRecord,
+    setPauseMediaOnRecord,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,
@@ -921,6 +923,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           autoPaste,
           copyToClipboard,
           showPanelOnError,
+          pauseMediaOnRecord,
           audioFeedback,
           errorNotifications,
           successConfirmation,
@@ -972,6 +975,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       autoPaste,
       copyToClipboard,
       showPanelOnError,
+      pauseMediaOnRecord,
       audioFeedback,
       errorNotifications,
       successConfirmation,
@@ -1814,6 +1818,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </SettingsRow>
                   </SettingsPanelRow>
                 )}
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Pause media while recording"
+                    description="Automatically pause playing media when you start recording"
+                  >
+                    <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                  </SettingsRow>
+                </SettingsPanelRow>
               </SettingsPanel>
             </div>
 

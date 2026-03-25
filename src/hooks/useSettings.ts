@@ -649,6 +649,11 @@ export function useSettings() {
     false,
     boolSerializer
   );
+  const [pauseMediaOnRecord, setPauseMediaOnRecord] = useLocalStorage(
+    "pauseMediaOnRecord",
+    false,
+    boolSerializer
+  );
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
@@ -888,6 +893,8 @@ export function useSettings() {
     setCopyToClipboard,
     showPanelOnError,
     setShowPanelOnError,
+    pauseMediaOnRecord,
+    setPauseMediaOnRecord,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,

@@ -299,6 +299,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   duckSystemAudio: (options) => ipcRenderer.invoke("duck-system-audio", options),
   restoreSystemAudio: () => ipcRenderer.invoke("restore-system-audio"),
 
+  // Media pause — pause playing media while recording, resume when done
+  mediaPause: () => ipcRenderer.invoke("media-pause"),
+  mediaResume: () => ipcRenderer.invoke("media-resume"),
+
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
 

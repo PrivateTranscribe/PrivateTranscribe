@@ -51,6 +51,25 @@ export const useAudioRecording = (toast, options = {}) => {
       isDucked = false;
     };
 
+    // ── Media pause helpers ──────────────────────────────────────────────────
+    // Pause playing media (Spotify, browser video, etc.) when recording starts
+    // so it doesn't bleed into the transcription. The main process tracks
+    // whether media was actually paused, so resumeMedia() is a safe no-op if
+    // nothing was playing.
+    let mediaPauseRequested = false;
+
+    const pauseMedia = () => {
+      if (localStorage.getItem("pauseMediaOnRecord") !== "true") return;
+      window.electronAPI?.mediaPause?.();
+      mediaPauseRequested = true;
+    };
+
+    const resumeMedia = () => {
+      if (!mediaPauseRequested) return;
+      mediaPauseRequested = false;
+      window.electronAPI?.mediaResume?.();
+    };
+
     // ── Audio feedback helper ─────────────────────────────────────────────────
     const playFeedback = (sound) => {
       const enabled = localStorage.getItem("audioFeedback") === "true";
@@ -94,6 +113,7 @@ export const useAudioRecording = (toast, options = {}) => {
       onTranscriptionComplete: async (result, commitContext = {}) => {
         // Always restore audio when transcription finishes (safety net)
         restoreAudio();
+        resumeMedia();
 
         const canCommit = () =>
           !disposed &&
@@ -365,11 +385,13 @@ export const useAudioRecording = (toast, options = {}) => {
       ) {
         playFeedback("playStartSound");
         duckAudio();
+        pauseMedia();
         void manager.startRecording();
       } else if (currentState.isRecording || currentState.isStartingRecording) {
         playFeedback("playStopSound");
         manager.stopRecording();
         restoreAudio();
+        resumeMedia();
       }
     };
 
@@ -383,6 +405,7 @@ export const useAudioRecording = (toast, options = {}) => {
       ) {
         playFeedback("playStartSound");
         duckAudio();
+        pauseMedia();
         void manager.startRecording();
       }
     };
@@ -397,6 +420,7 @@ export const useAudioRecording = (toast, options = {}) => {
       // Always restore audio when push-to-talk key is released,
       // even if recording didn't fully start (quick tap race condition)
       restoreAudio();
+      resumeMedia();
     };
 
     const disposeToggle = window.electronAPI.onToggleDictation(() => {

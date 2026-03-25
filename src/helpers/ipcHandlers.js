@@ -10,6 +10,7 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
+const mediaController = require("./mediaController");
 
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
@@ -1498,6 +1499,25 @@ class IPCHandlers {
         debugLogger.warn("[IPC] restore-system-audio failed:", err.message);
         return { success: false, error: err.message };
       }
+    });
+
+    // Media pause — stop playing media while recording, resume when done
+    ipcMain.handle("media-pause", async () => {
+      try {
+        await mediaController.pauseMedia();
+      } catch (_) {
+        // Fail silently
+      }
+      return { success: true };
+    });
+
+    ipcMain.handle("media-resume", () => {
+      try {
+        mediaController.resumeMedia();
+      } catch (_) {
+        // Fail silently
+      }
+      return { success: true };
     });
 
     // Licensing - stable device identifier
