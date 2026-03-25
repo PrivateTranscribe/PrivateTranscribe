@@ -43,6 +43,45 @@ const SUPPORTED_EXTS = new Set([".wav", ".mp3", ".m4a", ".webm"]);
 
 // ─── Locate binary & model ────────────────────────────────────────────────────
 
+/**
+ * Locate FFmpeg: try ffmpeg-static (bundled), then known system paths, then PATH.
+ * Mirrors the logic in src/helpers/ffmpegUtils.js so Windows works without PATH setup.
+ */
+function findFFmpegPath() {
+  // 1. Try bundled ffmpeg-static (works in dev; production uses ASAR-unpacked copy)
+  try {
+    let ffmpegPath = require("ffmpeg-static");
+    ffmpegPath = require("path").normalize(ffmpegPath);
+    if (process.platform === "win32" && !ffmpegPath.endsWith(".exe")) ffmpegPath += ".exe";
+
+    // Production ASAR-unpacked path takes precedence
+    const unpackedPath = ffmpegPath.includes("app.asar")
+      ? ffmpegPath.replace(/app\.asar([/\\])/, "app.asar.unpacked$1")
+      : null;
+    if (unpackedPath && fs.existsSync(unpackedPath)) return unpackedPath;
+    if (fs.existsSync(ffmpegPath)) return ffmpegPath;
+  } catch { /* ffmpeg-static not installed */ }
+
+  // 2. Well-known system locations
+  const systemCandidates =
+    process.platform === "darwin"
+      ? ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
+      : process.platform === "win32"
+        ? ["C:\\ffmpeg\\bin\\ffmpeg.exe"]
+        : ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
+  for (const c of systemCandidates) if (fs.existsSync(c)) return c;
+
+  // 3. Search PATH
+  const pathBinary = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  for (const dir of (process.env.PATH || "").split(process.platform === "win32" ? ";" : ":")) {
+    if (!dir) continue;
+    const c = path.join(dir.replace(/^"|"$/g, ""), pathBinary);
+    if (fs.existsSync(c)) return c;
+  }
+
+  return null;
+}
+
 function findWhisperBinary() {
   const platform = process.platform;
   const arch = process.arch;
@@ -64,9 +103,9 @@ function findWhisperBinary() {
   return null;
 }
 
-function findModelPath(modelName) {
+function findModelPath(modelName, dirs) {
   const home = os.homedir();
-  const dirs = [
+  dirs = dirs || [
     path.join(home, ".cache", "PrivateTranscribe", "whisper-models"),
     path.join(home, ".cache", "Privoca", "whisper-models"),
   ];
@@ -180,8 +219,10 @@ function checkHealth(port) {
  */
 function convertToWav(inputPath) {
   return new Promise((resolve) => {
+    const ffmpegBin = findFFmpegPath();
+    if (!ffmpegBin) return resolve(null);
     const outPath = path.join(os.tmpdir(), `bench_${Date.now()}.wav`);
-    const proc = spawn("ffmpeg", [
+    const proc = spawn(ffmpegBin, [
       "-y", "-i", inputPath,
       "-ar", "16000", "-ac", "1", "-f", "wav", outPath,
     ], { stdio: "ignore" });
@@ -298,50 +339,59 @@ async function main() {
 
   for (const clipPath of clips) {
     const name = path.basename(clipPath).slice(0, 22).padEnd(22);
-    const runData = { audioLoad: [], whisper: [], postProc: [], total: [], changedByPostProc: false };
+    const runData = { audioLoad: [], whisper: [], postProc: [], total: [], changedByPostProc: false, lastText: "" };
 
     for (let r = 0; r < RUNS; r++) {
       const wallStart = Date.now();
 
-      // Stage 1: Audio load + FFmpeg conversion to WAV
-      const t1 = Date.now();
-      const rawBuffer = fs.readFileSync(clipPath);
-      const ext = path.extname(clipPath).toLowerCase();
-      let audioBuffer;
-      if (ext === ".wav") {
-        audioBuffer = rawBuffer;
-      } else {
-        audioBuffer = await convertToWav(clipPath);
-        if (!audioBuffer) {
-          console.error(`  SKIP: FFmpeg conversion failed for ${name} — is FFmpeg installed?`);
-          continue;
+      try {
+        // Stage 1: Audio load + FFmpeg conversion to WAV
+        const t1 = Date.now();
+        const rawBuffer = fs.readFileSync(clipPath);
+        const ext = path.extname(clipPath).toLowerCase();
+        let audioBuffer;
+        if (ext === ".wav") {
+          audioBuffer = rawBuffer;
+        } else {
+          audioBuffer = await convertToWav(clipPath);
+          if (!audioBuffer) {
+            console.error(`  SKIP: FFmpeg conversion failed for ${name} — is FFmpeg installed?`);
+            continue;
+          }
         }
+        const audioLoadMs = Date.now() - t1;
+
+        // Stage 3: Whisper inference (server does FFmpeg conversion internally)
+        const t3 = Date.now();
+        const raw = await transcribe(audioBuffer, port, path.basename(clipPath));
+        const whisperMs = Date.now() - t3;
+
+        // Stage 4: Post-processing
+        const rawText = raw.text || "";
+        const t4 = Date.now();
+        const processed = removeRepetitions(normalizeWhitespace(rawText));
+        const postProcMs = Date.now() - t4;
+
+        const totalMs = Date.now() - wallStart;
+        if (processed !== normalizeWhitespace(rawText)) runData.changedByPostProc = true;
+        // Keep last run's transcript; note empty results explicitly
+        runData.lastText = processed || "[no speech detected]";
+
+        runData.audioLoad.push(audioLoadMs);
+        runData.whisper.push(whisperMs);
+        runData.postProc.push(postProcMs);
+        runData.total.push(totalMs);
+      } catch (err) {
+        console.error(`  ERROR run ${r + 1}/${RUNS} for ${name.trim()}: ${err.message}`);
       }
-      const audioLoadMs = Date.now() - t1;
-
-      // Stage 3: Whisper inference (server does FFmpeg conversion internally)
-      const t3 = Date.now();
-      const raw = await transcribe(audioBuffer, port, path.basename(clipPath));
-      const whisperMs = Date.now() - t3;
-
-      // Stage 4: Post-processing
-      const rawText = raw.text || "";
-      const t4 = Date.now();
-      const processed = removeRepetitions(normalizeWhitespace(rawText));
-      const postProcMs = Date.now() - t4;
-
-      const totalMs = Date.now() - wallStart;
-      if (processed !== normalizeWhitespace(rawText)) runData.changedByPostProc = true;
-      runData.lastText = processed; // keep last run's transcript for display
-
-      runData.audioLoad.push(audioLoadMs);
-      runData.whisper.push(whisperMs);
-      runData.postProc.push(postProcMs);
-      runData.total.push(totalMs);
     }
 
+    if (runData.total.length === 0) {
+      console.error(`  SKIP: all ${RUNS} runs failed for ${name.trim()}`);
+      continue;
+    }
     const avg = (arr) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
-    results.push({ name, ...runData, lastText: runData.lastText, avgAudioLoad: avg(runData.audioLoad), avgWhisper: avg(runData.whisper), avgPostProc: avg(runData.postProc), avgTotal: avg(runData.total) });
+    results.push({ name, ...runData, avgAudioLoad: avg(runData.audioLoad), avgWhisper: avg(runData.whisper), avgPostProc: avg(runData.postProc), avgTotal: avg(runData.total) });
     console.log(`  ✓ ${name.trim()}`);
   }
 
@@ -377,4 +427,9 @@ async function main() {
   }
 }
 
-main().catch((err) => { console.error("Fatal:", err.message); process.exit(1); });
+if (require.main === module) {
+  main().catch((err) => { console.error("Fatal:", err.message); process.exit(1); });
+}
+
+// Export pure functions for unit testing
+module.exports = { removeRepetitions, normalizeWhitespace, findModelPath, generateSilentWav, findFFmpegPath };
