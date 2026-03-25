@@ -280,9 +280,67 @@ class TrayManager {
     }
 
     this.tray.on("destroyed", () => {
-      console.log("Tray icon destroyed");
+      console.log("Tray icon destroyed — attempting recovery");
       this.tray = null;
+      this.attemptTrayRecovery();
     });
+  }
+}
+
+  /**
+   * Attempt to recreate the tray icon after unexpected destruction.
+   * Retries up to 3 times with exponential backoff.
+   */
+  attemptTrayRecovery(attempt = 1) {
+    const maxAttempts = 3;
+    if (attempt > maxAttempts) {
+      console.error(`Tray recovery failed after ${maxAttempts} attempts`);
+      return;
+    }
+    if (this.tray) return; // Already recovered
+
+    const delayMs = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+    console.log(`Tray recovery attempt ${attempt}/${maxAttempts} in ${delayMs}ms`);
+
+    setTimeout(async () => {
+      if (this.tray) return; // Recovered in the meantime
+      try {
+        await this.createTray();
+        if (this.tray) {
+          console.log("Tray icon recovered successfully");
+        } else {
+          this.attemptTrayRecovery(attempt + 1);
+        }
+      } catch (error) {
+        console.error(`Tray recovery attempt ${attempt} failed:`, error.message);
+        this.attemptTrayRecovery(attempt + 1);
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Start a periodic health check that verifies the tray icon still exists.
+   * Call once after initial createTray(). Checks every 30 seconds.
+   */
+  startHealthCheck() {
+    if (this._healthCheckInterval) return;
+    this._healthCheckInterval = setInterval(() => {
+      if (!this.tray || this.tray.isDestroyed?.()) {
+        console.warn("Tray health check: icon missing, triggering recovery");
+        this.tray = null;
+        this.attemptTrayRecovery();
+      }
+    }, 30000);
+  }
+
+  /**
+   * Stop the health check (call on app quit).
+   */
+  stopHealthCheck() {
+    if (this._healthCheckInterval) {
+      clearInterval(this._healthCheckInterval);
+      this._healthCheckInterval = null;
+    }
   }
 }
 
