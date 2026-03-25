@@ -284,9 +284,12 @@ class WindowManager {
 
     let newY = bottomY - newSize.height;
 
-    // Clamp within viewport bounds (prevent off-screen drift)
-    newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - newSize.width));
-    newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - newSize.height));
+    // Clamp within viewport bounds — allow BASE-size window to hang off by its
+    // transparent margin so the visible button can reach the screen edge.
+    const TRANSPARENT_MARGIN = Math.round((WINDOW_SIZES.BASE.width - 96) / 2);
+    const margin = (newSize.width === WINDOW_SIZES.BASE.width) ? TRANSPARENT_MARGIN : 0;
+    newX = Math.max(workArea.x - margin, Math.min(newX, workArea.x + workArea.width - newSize.width + margin));
+    newY = Math.max(workArea.y - margin, Math.min(newY, workArea.y + workArea.height - newSize.height + margin));
 
     this.mainWindow.setBounds({
       x: newX,
