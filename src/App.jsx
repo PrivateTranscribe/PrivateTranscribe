@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ChevronRight,
   Clock3,
-  MessageCircle,
   Settings,
   Mic2,
   Languages,
@@ -476,21 +475,6 @@ export default function App() {
     });
   }, [closeContextMenu, toast]);
 
-  const handleContactSupport = useCallback(async () => {
-    try {
-      const result = await window.electronAPI?.openExternal?.(
-        "mailto:support@privatetranscribe.com"
-      );
-      if (!result?.success) {
-        await window.electronAPI?.openExternal?.(
-          "https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com"
-        );
-      }
-    } finally {
-      closeContextMenu();
-    }
-  }, [closeContextMenu]);
-
   const handleSelectLanguage = useCallback(
     (languageCode) => {
       localStorage.setItem("preferredLanguage", languageCode);
@@ -795,11 +779,7 @@ export default function App() {
             {activeSubmenu === "root" && (
               <>
                 <MenuRow icon={Clock3} label="Hide this for 1 hour" onClick={handleHideForHour} />
-                <MenuRow
-                  icon={MessageCircle}
-                  label="Talk to support"
-                  onClick={() => void handleContactSupport()}
-                />
+
                 <MenuRow
                   icon={Settings}
                   label="Go to settings"

@@ -135,11 +135,30 @@ export function useMicLevel(audioManagerRef, isRecording) {
         };
         ctx.addEventListener("statechange", handleStateChange);
 
-        // Extend cleanup to also remove the statechange listener.
+        // When the display sleeps, requestAnimationFrame stops firing and the
+        // last scheduled frame ID becomes stale. On wake, forcibly cancel the
+        // old RAF and kick a fresh tick so the bars resume immediately.
+        const handleVisibility = () => {
+          if (document.visibilityState === "visible" && !cancelled) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+            // AudioContext may still be suspended; resume it first.
+            if (ctx.state === "suspended") {
+              ctx.resume().catch(() => {});
+            }
+            // Start a new tick regardless — if ctx is still suspended the
+            // analyser returns zeros (flat bars) until it catches up.
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        };
+        document.addEventListener("visibilitychange", handleVisibility);
+
+        // Extend cleanup to also remove the statechange and visibility listeners.
         const prevCleanup = cleanupRef.current;
         cleanupRef.current = () => {
           prevCleanup?.();
           ctx.removeEventListener("statechange", handleStateChange);
+          document.removeEventListener("visibilitychange", handleVisibility);
         };
 
         // Chromium/Electron creates AudioContext in "suspended" state when the
