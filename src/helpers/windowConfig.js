@@ -1,9 +1,9 @@
 const path = require("path");
 
 const WINDOW_SIZES = {
-  // 160×160 gives the MicHalo (max ~140px) room to expand without being clipped
+  // 110×110 gives the MicHalo room to expand without being clipped
   // by the OS window boundary. Extra space is transparent and click-through.
-  BASE: { width: 160, height: 160 },
+  BASE: { width: 110, height: 110 },
   WITH_MENU: { width: 300, height: 360 },
   // WITH_TOAST: narrower and shorter than before - the toast only needs ~180px of height
   // (toast ~70px + bottom button clearance ~90px + gap) and the width just needs to fit
