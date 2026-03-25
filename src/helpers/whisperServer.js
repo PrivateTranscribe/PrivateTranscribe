@@ -289,8 +289,12 @@ class WhisperServerManager {
     // Reduce repetition hallucinations: lower entropy threshold triggers
     // temperature fallback sooner when the decoder enters a loop, and
     // suppress-nst filters out non-speech tokens that often seed loops.
+    // --no-fallback: if entropy threshold is exceeded, accept the best decode
+    // immediately instead of retrying at higher temperature (prevents 1s+ delays
+    // on repeated-word audio while having no effect on normal speech).
     args.push("--entropy-thold", "2.0");
     args.push("--suppress-nst");
+    args.push("--no-fallback");
 
     if (options.threads) args.push("--threads", String(options.threads));
     if (options.language && options.language !== "auto") {
