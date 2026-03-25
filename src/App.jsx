@@ -104,11 +104,11 @@ const MicHalo = ({ micLevel }) => {
       aria-hidden="true"
       style={{
         position: "absolute",
-        // Slightly larger than the 44px button; centered with negative inset
-        width: 68,
-        height: 68,
-        top: -12,
-        left: -12,
+        // Larger base size gives the gradient room at max scale (1.55×)
+        width: 100,
+        height: 100,
+        top: -28,
+        left: -28,
         borderRadius: "50%",
         background:
           "radial-gradient(circle, rgba(112,255,186,0.85) 0%, rgba(112,255,186,0.3) 45%, transparent 72%)",
