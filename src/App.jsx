@@ -619,22 +619,23 @@ export default function App() {
         Absolute-position root: fills the entire Electron window.
         pointer-events: none on the root so transparent areas stay click-through;
         pointer-events: auto re-enabled on the icon anchor only.
-        This ensures the icon at bottom: 24 / left: 24 never shifts due to sibling
+        This ensures the icon at bottom: 58 / left: 58 never shifts due to sibling
         elements (cancel button, menu) entering or leaving the DOM.
       */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}>
         {/*
           Hover container: 16px padding around icon expands the hit-area so moving
           the cursor toward the cancel button doesn't immediately leave hover state.
-          bottom: 8 + padding 16 = icon visually at bottom:24 (unchanged).
-          left:   8 + padding 16 = icon visually at left:24  (unchanged).
+          bottom: 42 + padding 16 = icon visually at bottom:58 = (160-44)/2 (centered).
+          left:   42 + padding 16 = icon visually at left:58  = (160-44)/2 (centered).
+          Button center is 80px from all window edges — 70px halo radius fits on all sides.
           Cancel button lives inside via flexbox — no gap to cross when moving right.
         */}
         <div
           style={{
             position: "absolute",
-            bottom: 8,
-            left: keepMicAnchoredRight ? 8 + toastWidthDelta : 8,
+            bottom: 42,
+            left: keepMicAnchoredRight ? 42 + toastWidthDelta : 42,
             padding: 16,
             display: "flex",
             alignItems: "center",

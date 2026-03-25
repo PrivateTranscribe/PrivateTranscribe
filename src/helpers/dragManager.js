@@ -95,25 +95,20 @@ class DragManager {
       const windowBounds = this.targetWindow.getBounds();
 
       // Constrain so the visible button (not the transparent window frame) clamps to
-      // screen edges.  For the BASE 160×160 window the button sits at left:24, bottom:24
-      // (44×44px), so the transparent margins are asymmetric:
-      //   Left/bottom margin: 24px  →  window can hang 24px off those edges
-      //   Right/top margin:   92px  →  window can hang 92px off those edges
-      // Non-BASE sizes (toast, menu) use symmetric clamping (no overhang).
+      // screen edges.  For the BASE 160×160 window the button (44×44px) is centered at
+      // left:58, bottom:58 — (160-44)/2 = 58px from every edge — so all margins are equal.
+      // Non-BASE sizes (toast, menu) use no overhang.
       const isBase =
         windowBounds.width === WINDOW_SIZES.BASE.width &&
         windowBounds.height === WINDOW_SIZES.BASE.height;
-      const mL = isBase ? 24 : 0;
-      const mR = isBase ? WINDOW_SIZES.BASE.width - 24 - 44 : 0;
-      const mT = isBase ? WINDOW_SIZES.BASE.height - 24 - 44 : 0;
-      const mB = isBase ? 24 : 0;
+      const margin = isBase ? 58 : 0;
       const constrainedX = Math.max(
-        bounds.x - mL,
-        Math.min(newX, bounds.x + bounds.width - windowBounds.width + mR)
+        bounds.x - margin,
+        Math.min(newX, bounds.x + bounds.width - windowBounds.width + margin)
       );
       const constrainedY = Math.max(
-        bounds.y - mT,
-        Math.min(newY, bounds.y + bounds.height - windowBounds.height + mB)
+        bounds.y - margin,
+        Math.min(newY, bounds.y + bounds.height - windowBounds.height + margin)
       );
 
       this.targetWindow.setPosition(constrainedX, constrainedY);

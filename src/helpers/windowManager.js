@@ -285,14 +285,12 @@ class WindowManager {
     let newY = bottomY - newSize.height;
 
     // Clamp so the *visible button* (not the window) clamps to screen edges.
-    // Button sits at left:24, bottom:24 inside the 160px BASE window (44px button).
+    // Button is centered in the 160px BASE window at left:58, bottom:58 (44px button),
+    // so all four transparent margins are equal at 58px — use symmetric clamping.
     const isBase = newSize.width === WINDOW_SIZES.BASE.width && newSize.height === WINDOW_SIZES.BASE.height;
-    const mL = isBase ? 24 : 0;
-    const mR = isBase ? (WINDOW_SIZES.BASE.width - 24 - 44) : 0;
-    const mT = isBase ? (WINDOW_SIZES.BASE.height - 24 - 44) : 0;
-    const mB = isBase ? 24 : 0;
-    newX = Math.max(workArea.x - mL, Math.min(newX, workArea.x + workArea.width - newSize.width + mR));
-    newY = Math.max(workArea.y - mT, Math.min(newY, workArea.y + workArea.height - newSize.height + mB));
+    const margin = isBase ? 58 : 0;
+    newX = Math.max(workArea.x - margin, Math.min(newX, workArea.x + workArea.width - newSize.width + margin));
+    newY = Math.max(workArea.y - margin, Math.min(newY, workArea.y + workArea.height - newSize.height + margin));
 
     this.mainWindow.setBounds({
       x: newX,

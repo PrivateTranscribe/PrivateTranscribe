@@ -102,18 +102,14 @@ class WindowPositionUtil {
   }
 
   static clampPosition(x, y, width, height, workArea) {
-    // The BASE window is larger than the visible button to give MicHalo room.
-    // The button sits at left:24, bottom:24 inside the window (44px wide/tall).
-    // Allow asymmetric overflow so the *button* (not the window) clamps to edges.
-    //   Left/bottom: 24px of transparent space between button and window edge
-    //   Right/top:   160 - 24 - 44 = 92px of transparent space
+    // The BASE window is 160×160px transparent; the button (44×44px) is centered at
+    // left:58, bottom:58 — (160-44)/2 = 58px from every edge.  Allow the window to
+    // overhang by 58px on all four sides so the *button* (not the window frame) clamps
+    // to the workArea edges symmetrically.
     const isBase = width === WINDOW_SIZES.BASE.width && height === WINDOW_SIZES.BASE.height;
-    const mL = isBase ? 24 : 0;
-    const mR = isBase ? (WINDOW_SIZES.BASE.width - 24 - 44) : 0;
-    const mT = isBase ? (WINDOW_SIZES.BASE.height - 24 - 44) : 0;
-    const mB = isBase ? 24 : 0;
-    const cx = Math.max(workArea.x - mL, Math.min(x, workArea.x + workArea.width - width + mR));
-    const cy = Math.max(workArea.y - mT, Math.min(y, workArea.y + workArea.height - height + mB));
+    const margin = isBase ? 58 : 0;
+    const cx = Math.max(workArea.x - margin, Math.min(x, workArea.x + workArea.width - width + margin));
+    const cy = Math.max(workArea.y - margin, Math.min(y, workArea.y + workArea.height - height + margin));
     return { x: cx, y: cy };
   }
 
