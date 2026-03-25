@@ -285,7 +285,6 @@ class TrayManager {
       this.attemptTrayRecovery();
     });
   }
-}
 
   /**
    * Attempt to recreate the tray icon after unexpected destruction.
