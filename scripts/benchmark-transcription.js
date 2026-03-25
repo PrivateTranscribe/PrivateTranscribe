@@ -34,7 +34,9 @@ function getArg(flag) {
   return i !== -1 && argv[i + 1] ? argv[i + 1] : null;
 }
 
-const CLIPS_DIR = getArg("--clips") || "./test-clips";
+const rawClipsDir = getArg("--clips");
+const CLIPS_DIR = rawClipsDir ||
+  (fs.existsSync("./tests/test-clips") ? "./tests/test-clips" : "./test-clips");
 const RUNS = Math.max(1, parseInt(getArg("--runs") || "3", 10));
 const MODEL_NAME = getArg("--model") || "turbo";
 const SUPPORTED_EXTS = new Set([".wav", ".mp3", ".m4a", ".webm"]);
