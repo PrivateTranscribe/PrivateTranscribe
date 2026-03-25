@@ -874,7 +874,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
       ? "%USERPROFILE%\\.cache\\PrivateTranscribe\\whisper-models"
-      : "~/.cache/Privoca/whisper-models";
+      : "~/.cache/PrivateTranscribe/whisper-models";
 
   // Settings export/import (privacy-first): API keys are excluded by default.
   const [includeApiKeysInExport, setIncludeApiKeysInExport] = useState(false);
