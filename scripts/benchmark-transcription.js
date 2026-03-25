@@ -70,9 +70,26 @@ function findModelPath(modelName) {
     path.join(home, ".cache", "PrivateTranscribe", "whisper-models"),
     path.join(home, ".cache", "Privoca", "whisper-models"),
   ];
+  // Try several naming conventions whisper.cpp uses
+  const candidates = [
+    `ggml-${modelName}.bin`,
+    `ggml-large-v3-${modelName}.bin`,
+    `ggml-large-v3-turbo.bin`,
+    `ggml-${modelName}-q5_0.bin`,
+  ];
   for (const dir of dirs) {
-    const p = path.join(dir, `ggml-${modelName}.bin`);
-    if (fs.existsSync(p)) return p;
+    for (const name of candidates) {
+      const p = path.join(dir, name);
+      if (fs.existsSync(p)) return p;
+    }
+    // Also scan the dir for any .bin file matching the model name loosely
+    try {
+      const files = fs.readdirSync(dir).filter(f => f.endsWith(".bin"));
+      const match = files.find(f => f.toLowerCase().includes(modelName.toLowerCase()));
+      if (match) return path.join(dir, match);
+      // Last resort: return the only .bin if there's just one
+      if (files.length === 1) return path.join(dir, files[0]);
+    } catch { /* dir doesn't exist */ }
   }
   return null;
 }
