@@ -95,11 +95,7 @@ const VoiceBars = ({ micLevel }) => {
  * it never intercepts click/drag events on the button.
  */
 const MicHalo = ({ micLevel }) => {
-  // Animate width/height directly instead of scale() so the element never
-  // visually overflows its own bounding box — scale() was causing the glow
-  // to clip at the window edge at high mic levels.
-  // At micLevel=0 → 68px (just wraps the 44px button), at micLevel=1 → 140px.
-  const size = 68 + micLevel * 72;
+  const scale = 1 + micLevel * 0.55;
   const opacity = 0.08 + micLevel * 0.52;
 
   return (
@@ -107,18 +103,18 @@ const MicHalo = ({ micLevel }) => {
       aria-hidden="true"
       style={{
         position: "absolute",
-        width: size,
-        height: size,
-        // Keep centered on the 44px button regardless of size
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
+        // Slightly larger than the 44px button; centered with negative inset
+        width: 68,
+        height: 68,
+        top: -12,
+        left: -12,
         borderRadius: "50%",
         background:
           "radial-gradient(circle, rgba(112,255,186,0.85) 0%, rgba(112,255,186,0.3) 45%, transparent 72%)",
+        transform: `scale(${scale})`,
         opacity,
         // 80ms transition matches the mic level smoothing without fighting it
-        transition: "width 80ms ease-out, height 80ms ease-out, opacity 80ms ease-out",
+        transition: "transform 80ms ease-out, opacity 80ms ease-out",
         pointerEvents: "none",
         zIndex: -1,
       }}
