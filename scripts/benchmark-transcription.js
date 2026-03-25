@@ -174,12 +174,34 @@ function checkHealth(port) {
 
 // ─── Transcribe via HTTP (with timing) ───────────────────────────────────────
 
+/**
+ * Convert audio file to 16kHz mono WAV using FFmpeg (matches what the real app does).
+ * Returns a Buffer of WAV data, or null if FFmpeg is unavailable.
+ */
+function convertToWav(inputPath) {
+  return new Promise((resolve) => {
+    const outPath = path.join(os.tmpdir(), `bench_${Date.now()}.wav`);
+    const proc = spawn("ffmpeg", [
+      "-y", "-i", inputPath,
+      "-ar", "16000", "-ac", "1", "-f", "wav", outPath,
+    ], { stdio: "ignore" });
+    proc.on("close", (code) => {
+      if (code === 0 && fs.existsSync(outPath)) {
+        const buf = fs.readFileSync(outPath);
+        try { fs.unlinkSync(outPath); } catch { /* ignore */ }
+        resolve(buf);
+      } else {
+        resolve(null);
+      }
+    });
+    proc.on("error", () => resolve(null));
+  });
+}
+
 async function transcribe(audioBuffer, port, inputFileName = "audio.wav") {
   const boundary = `----WB${Date.now()}`;
-  const ext = path.extname(inputFileName).toLowerCase() || ".wav";
-  const mime = ext === ".wav" ? "audio/wav" : "audio/mpeg";
   const parts = [
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio${ext}"\r\nContent-Type: ${mime}\r\n\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\nContent-Type: audio/wav\r\n\r\n`),
     audioBuffer,
     Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson\r\n--${boundary}--\r\n`),
   ];
@@ -281,9 +303,20 @@ async function main() {
     for (let r = 0; r < RUNS; r++) {
       const wallStart = Date.now();
 
-      // Stage 1: Audio load
+      // Stage 1: Audio load + FFmpeg conversion to WAV
       const t1 = Date.now();
-      const audioBuffer = fs.readFileSync(clipPath);
+      const rawBuffer = fs.readFileSync(clipPath);
+      const ext = path.extname(clipPath).toLowerCase();
+      let audioBuffer;
+      if (ext === ".wav") {
+        audioBuffer = rawBuffer;
+      } else {
+        audioBuffer = await convertToWav(clipPath);
+        if (!audioBuffer) {
+          console.error(`  SKIP: FFmpeg conversion failed for ${name} — is FFmpeg installed?`);
+          continue;
+        }
+      }
       const audioLoadMs = Date.now() - t1;
 
       // Stage 3: Whisper inference (server does FFmpeg conversion internally)
@@ -316,7 +349,7 @@ async function main() {
   // ── Table ────────────────────────────────────────────────────────────────────
   const W = 24, C1 = 11, C2 = 9, C3 = 9, C4 = 9;
   const hr = "-".repeat(W) + "+" + "-".repeat(C1) + "+" + "-".repeat(C2) + "+" + "-".repeat(C3) + "+" + "-".repeat(C4);
-  console.log(`\n${"Clip".padEnd(W)}| ${"Audio Load".padEnd(C1-1)}| ${"Whisper".padEnd(C2-1)}| ${"Post-proc".padEnd(C3-1)}| ${"Total".padEnd(C4-1)}`);
+  console.log(`\n${"Clip".padEnd(W)}| ${"FFmpeg+Load".padEnd(C1-1)}| ${"Whisper".padEnd(C2-1)}| ${"Post-proc".padEnd(C3-1)}| ${"Total".padEnd(C4-1)}`);
   console.log(hr);
 
   let slowest = results[0], sumAL = 0, sumW = 0, sumPP = 0, sumT = 0;
