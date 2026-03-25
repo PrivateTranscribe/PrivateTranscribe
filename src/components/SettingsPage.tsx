@@ -1230,6 +1230,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   );
 
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
 
   useEffect(() => {
@@ -2527,7 +2528,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       // HELP & SUPPORT
       // ───────────────────────────────────────────────────
       case "help": {
-        const [emailCopied, setEmailCopied] = React.useState(false);
         return (
           <div className="space-y-6">
             <SectionHeader
