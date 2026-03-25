@@ -332,6 +332,7 @@ async function main() {
 
       const totalMs = Date.now() - wallStart;
       if (processed !== normalizeWhitespace(rawText)) runData.changedByPostProc = true;
+      runData.lastText = processed; // keep last run's transcript for display
 
       runData.audioLoad.push(audioLoadMs);
       runData.whisper.push(whisperMs);
@@ -340,7 +341,7 @@ async function main() {
     }
 
     const avg = (arr) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
-    results.push({ name, ...runData, avgAudioLoad: avg(runData.audioLoad), avgWhisper: avg(runData.whisper), avgPostProc: avg(runData.postProc), avgTotal: avg(runData.total) });
+    results.push({ name, ...runData, lastText: runData.lastText, avgAudioLoad: avg(runData.audioLoad), avgWhisper: avg(runData.whisper), avgPostProc: avg(runData.postProc), avgTotal: avg(runData.total) });
     console.log(`  ✓ ${name.trim()}`);
   }
 
@@ -367,6 +368,13 @@ async function main() {
   console.log(`\nSlowest clip: ${slowest.name.trim()} (${slowest.avgTotal}ms avg)`);
   console.log("VAD: N/A — whisper.cpp has no separate VAD stage\n");
   if (results.some((r) => r.changedByPostProc)) console.log("* Post-processing removed repetition artifacts\n");
+
+  console.log("\n── Transcriptions ──────────────────────────────────────────────");
+  for (const r of results) {
+    const tag = r.changedByPostProc ? " [repetition removed]" : "";
+    console.log(`\n${r.name}${tag}`);
+    console.log(`  "${r.lastText || "(empty)"}"`);
+  }
 }
 
 main().catch((err) => { console.error("Fatal:", err.message); process.exit(1); });
