@@ -42,6 +42,11 @@ function makeBlob() {
 describe("AudioManager Smart Context whisper prompt assembly", () => {
   beforeEach(() => {
     (globalThis as any).localStorage = localStorageMock;
+    Object.defineProperty(globalThis, "navigator", {
+      value: { mediaDevices: null },
+      writable: true,
+      configurable: true,
+    });
     localStorageMock.clear();
     localStorageMock.setItem("customDictionary", JSON.stringify(["PrivateTranscribe", "Privoca"]));
 

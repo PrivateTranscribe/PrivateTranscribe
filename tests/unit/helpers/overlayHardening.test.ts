@@ -34,12 +34,8 @@ describe("windowManager.js — multi-monitor position clamping", () => {
 
   test("clamping uses the saved position as the nearest-point query", () => {
     // The nearest-point lookup must reference the saved x/y, not a hardcoded point.
-    // We verify that getDisplayNearestPoint is called with an object containing x/y.
-    const idx = windowManager.indexOf("getDisplayNearestPoint");
-    expect(idx).toBeGreaterThan(-1);
-    const snippet = windowManager.slice(idx, idx + 60);
-    expect(snippet).toContain("saved.x");
-    expect(snippet).toContain("saved.y");
+    // Multiple getDisplayNearestPoint calls exist; verify the saved-position one is present.
+    expect(windowManager).toContain("getDisplayNearestPoint({ x: saved.x, y: saved.y })");
   });
 
   test("primary display lookup is still used as fallback when no saved position", () => {
