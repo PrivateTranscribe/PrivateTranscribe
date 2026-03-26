@@ -213,66 +213,96 @@ class IPCHandlers {
       if (this.historyLimit === 0) {
         return { success: true, skipped: true };
       }
-      const result = this.databaseManager.saveTranscription(text, durationSeconds, options);
-      if (result?.success && result?.transcription) {
-        // Enforce the retention limit immediately after each save.
-        // trimTranscriptions is a no-op if count <= limit, so this is always safe.
-        try {
-          this.databaseManager.trimTranscriptions(this.historyLimit);
-        } catch (trimErr) {
-          // Non-fatal - the save itself succeeded; log and continue.
-          console.error("Failed to trim transcriptions after save:", trimErr);
+      try {
+        const result = this.databaseManager.saveTranscription(text, durationSeconds, options);
+        if (result?.success && result?.transcription) {
+          // Enforce the retention limit immediately after each save.
+          // trimTranscriptions is a no-op if count <= limit, so this is always safe.
+          try {
+            this.databaseManager.trimTranscriptions(this.historyLimit);
+          } catch (trimErr) {
+            // Non-fatal - the save itself succeeded; log and continue.
+            console.error("Failed to trim transcriptions after save:", trimErr);
+          }
+          setImmediate(() => {
+            this.broadcastToWindows("transcription-added", result.transcription);
+          });
         }
-        setImmediate(() => {
-          this.broadcastToWindows("transcription-added", result.transcription);
-        });
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-save-transcription] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     ipcMain.handle("db-get-transcriptions", async (event, limit = 50) => {
       const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 10_000));
-      return this.databaseManager.getTranscriptions(safeLimit);
+      try {
+        return this.databaseManager.getTranscriptions(safeLimit);
+      } catch (err) {
+        console.error("[IPC:db-get-transcriptions] error:", err.message);
+        return { success: true, data: [] };
+      }
     });
 
     ipcMain.handle("db-clear-transcriptions", async (event) => {
-      const result = this.databaseManager.clearTranscriptions();
-      if (result?.success) {
-        setImmediate(() => {
-          this.broadcastToWindows("transcriptions-cleared", {
-            cleared: result.cleared,
+      try {
+        const result = this.databaseManager.clearTranscriptions();
+        if (result?.success) {
+          setImmediate(() => {
+            this.broadcastToWindows("transcriptions-cleared", {
+              cleared: result.cleared,
+            });
           });
-        });
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-clear-transcriptions] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     ipcMain.handle("db-delete-transcription", async (event, id) => {
-      const result = this.databaseManager.deleteTranscription(id);
-      if (result?.success) {
-        setImmediate(() => {
-          this.broadcastToWindows("transcription-deleted", { id });
-        });
+      try {
+        const result = this.databaseManager.deleteTranscription(id);
+        if (result?.success) {
+          setImmediate(() => {
+            this.broadcastToWindows("transcription-deleted", { id });
+          });
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-delete-transcription] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     ipcMain.handle("db-trim-transcriptions", async (event, limit) => {
       const safeLimit = Math.max(0, Math.min(parseInt(limit, 10) || 0, 100_000));
-      const result = this.databaseManager.trimTranscriptions(safeLimit);
-      if (result?.success) {
-        setImmediate(() => {
-          this.broadcastToWindows("transcriptions-cleared", {
-            cleared: result.trimmed ?? result.cleared ?? 0,
+      try {
+        const result = this.databaseManager.trimTranscriptions(safeLimit);
+        if (result?.success) {
+          setImmediate(() => {
+            this.broadcastToWindows("transcriptions-cleared", {
+              cleared: result.trimmed ?? result.cleared ?? 0,
+            });
           });
-        });
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-trim-transcriptions] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     // Dictionary handlers
     ipcMain.handle("db-get-dictionary", async () => {
-      return this.databaseManager.getDictionary();
+      try {
+        return this.databaseManager.getDictionary();
+      } catch (err) {
+        console.error("[IPC:db-get-dictionary] error:", err.message);
+        return { success: true, data: [] };
+      }
     });
 
     ipcMain.handle("db-set-dictionary", async (event, words) => {
@@ -288,42 +318,82 @@ class IPCHandlers {
         .filter((w) => typeof w === "string")
         .map((w) => w.trim().substring(0, 200))
         .filter(Boolean);
-      return this.databaseManager.setDictionary(sanitized);
+      try {
+        return this.databaseManager.setDictionary(sanitized);
+      } catch (err) {
+        console.error("[IPC:db-set-dictionary] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     // Correction memory (local, privacy-first)
     ipcMain.handle("db-get-correction-memory", async (event, limit = 500) => {
-      return this.databaseManager.getCorrectionMemory(limit);
+      try {
+        return this.databaseManager.getCorrectionMemory(limit);
+      } catch (err) {
+        console.error("[IPC:db-get-correction-memory] error:", err.message);
+        return [];
+      }
     });
 
     ipcMain.handle("db-upsert-correction", async (event, source, target) => {
-      return this.databaseManager.upsertCorrection(source, target);
+      try {
+        return this.databaseManager.upsertCorrection(source, target);
+      } catch (err) {
+        console.error("[IPC:db-upsert-correction] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     ipcMain.handle("db-confirm-correction", async (event, source, target) => {
-      return this.databaseManager.confirmCorrection(source, target);
+      try {
+        return this.databaseManager.confirmCorrection(source, target);
+      } catch (err) {
+        console.error("[IPC:db-confirm-correction] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     ipcMain.handle("db-delete-correction", async (event, source) => {
-      return this.databaseManager.deleteCorrection(source);
+      try {
+        return this.databaseManager.deleteCorrection(source);
+      } catch (err) {
+        console.error("[IPC:db-delete-correction] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     // Stats handlers
     ipcMain.handle("db-get-stats", async () => {
-      return this.databaseManager.getStats();
+      try {
+        return this.databaseManager.getStats();
+      } catch (err) {
+        console.error("[IPC:db-get-stats] error:", err.message);
+        return null;
+      }
     });
 
     ipcMain.handle("db-get-streak-dates", async () => {
-      return this.databaseManager.getStreakDates();
+      try {
+        return this.databaseManager.getStreakDates();
+      } catch (err) {
+        console.error("[IPC:db-get-streak-dates] error:", err.message);
+        return [];
+      }
     });
 
     ipcMain.handle("db-reset-stats", async (event) => {
-      const result = this.databaseManager.resetStats();
-      if (result?.success) {
-        const refreshed = this.databaseManager.getTranscriptions();
-        event.sender.send("transcriptions-reloaded", refreshed);
+      try {
+        const result = this.databaseManager.resetStats();
+        if (result?.success) {
+          const refreshed = this.databaseManager.getTranscriptions();
+          event.sender.send("transcriptions-reloaded", refreshed);
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-reset-stats] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     // Clipboard handlers
@@ -1609,9 +1679,30 @@ class IPCHandlers {
 
     // Analytics consent
     const analyticsManager = require("./analyticsManager");
-    ipcMain.handle("analytics-needs-consent", () => analyticsManager.needsConsentPrompt());
-    ipcMain.handle("analytics-set-consent", (_e, granted) => analyticsManager.setConsent(granted));
-    ipcMain.handle("analytics-track", (_e, event, extra) => analyticsManager.track(event, extra));
+    ipcMain.handle("analytics-needs-consent", () => {
+      try {
+        return analyticsManager.needsConsentPrompt();
+      } catch (err) {
+        console.error("[IPC:analytics-needs-consent] error:", err.message);
+        return false;
+      }
+    });
+    ipcMain.handle("analytics-set-consent", (_e, granted) => {
+      try {
+        return analyticsManager.setConsent(granted);
+      } catch (err) {
+        console.error("[IPC:analytics-set-consent] error:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
+    ipcMain.handle("analytics-track", (_e, event, extra) => {
+      try {
+        return analyticsManager.track(event, extra);
+      } catch (err) {
+        console.error("[IPC:analytics-track] error:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
 
     if (this.actionEngineManager) {
       this._setupActionEngineHandlers();
