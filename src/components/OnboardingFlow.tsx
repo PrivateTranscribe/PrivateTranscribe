@@ -13,6 +13,7 @@ import {
   Sparkles,
   Cpu,
   ArrowRight,
+  BookOpen,
 } from "lucide-react";
 import TitleBar from "./TitleBar";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
@@ -32,6 +33,7 @@ import { formatHotkeyLabel, getDefaultHotkey } from "../utils/hotkeys";
 import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
+import { getEffectiveEntitlement } from "../hooks/useProStatus";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -553,21 +555,24 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           </div>
         );
 
-      case 5: // Completion
+      case 5: {
+        // Completion
+        const isPro = getEffectiveEntitlement() === "pro";
+        const gridCols = isPro ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-3";
         return (
           <div className="text-center space-y-6">
-            {/* Success mark */}
+            {/* Success mark — mint accent */}
             <div className="relative w-16 h-16 mx-auto">
-              <div className="absolute inset-0 bg-green-500/20 rounded-full blur-xl" />
-              <div className="relative w-16 h-16 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
-                <Check className="w-7 h-7 text-green-500" />
+              <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
+              <div className="relative w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
+                <Check className="w-7 h-7 text-primary" />
               </div>
             </div>
 
             {/* Heading */}
             <div className="space-y-1.5">
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
-                Setup complete.
+                You&apos;re all set!
               </h2>
               <p className="text-sm text-muted-foreground">
                 {activationMode === "push" ? "Hold" : "Press"}{" "}
@@ -580,67 +585,50 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               </p>
             </div>
 
-            {/* Next Steps */}
-            <div className="text-left rounded-xl border border-border-subtle bg-surface-1 p-5 shadow-sm space-y-4">
-              <p className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> How it works
-              </p>
-
-              <div className="space-y-4">
-                <div className="flex items-start gap-3.5">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
-                    <span className="text-xs font-bold text-primary">1</span>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Place your cursor, then press{" "}
-                      <kbd className="px-2 py-0.5 mx-0.5 rounded-md border border-border bg-muted/50 text-foreground font-mono text-[11px] shadow-sm">
-                        {readableHotkey}
-                      </kbd>
-                    </p>
-                    <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      Works in any text field - browser, code editor, chat app. This dashboard
-                      closes to the system tray and stays out of your way.
-                    </p>
-                  </div>
+            {/* Next steps card grid */}
+            <div className={`grid ${gridCols} gap-3 text-left`}>
+              {/* Card 1: Try dictating */}
+              <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Mic className="w-4 h-4 text-primary" />
                 </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
-                    <span className="text-xs font-bold text-primary">2</span>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {activationMode === "push"
-                        ? "Hold and speak - release to transcribe"
-                        : "Speak, then press the hotkey again to transcribe"}
-                    </p>
-                    <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      {activationMode === "push"
-                        ? "A small overlay confirms the mic is live. Release the key and your words appear instantly."
-                        : "A small overlay confirms the mic is live. Press the hotkey a second time and your words appear instantly."}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5 border border-primary/20 shadow-sm">
-                    <span className="text-xs font-bold text-primary">3</span>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Return anytime via system tray
-                    </p>
-                    <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                      Click the PrivateTranscribe icon in your system tray to reopen this dashboard,
-                      change models, or adjust settings.
-                    </p>
-                  </div>
-                </div>
+                <p className="text-sm font-medium text-foreground">Try dictating</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Press{" "}
+                  <kbd className="px-1 py-0.5 rounded border border-border bg-muted/50 font-mono text-[10px]">
+                    {readableHotkey}
+                  </kbd>{" "}
+                  anywhere to start. Your first transcription will appear in the history.
+                </p>
               </div>
+
+              {/* Card 2: Dictionary */}
+              <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="w-4 h-4 text-primary" />
+                </div>
+                <p className="text-sm font-medium text-foreground">Teach it your words</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Use the dictionary in Settings to add names, technical terms, or jargon.
+                </p>
+              </div>
+
+              {/* Card 3: Pro features — only shown to free users */}
+              {!isPro && (
+                <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">Explore Pro features</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Correction Memory, Smart Context, and more — upgrade when you&apos;re ready.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );
+      }
 
       default:
         return null;
@@ -764,10 +752,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 onClick={finishOnboarding}
                 disabled={!canProceed()}
                 variant="success"
-                className="h-8 px-6 rounded-full text-xs"
+                className="h-10 px-8 rounded-full text-sm font-semibold shadow-lg"
               >
                 Start Dictating
-                <ArrowRight className="w-3.5 h-3.5" />
+                <ArrowRight className="w-4 h-4" />
               </Button>
             ) : (
               <Button
