@@ -342,17 +342,20 @@ class TrayManager {
     // Explorer restarts. The icon silently disappears but the Tray object
     // remains valid, so setImage() forces Windows to re-show it.
     if (process.platform === "win32") {
-      this._winReRegisterInterval = setInterval(async () => {
-        if (!this.tray || this.tray.isDestroyed?.()) return;
-        try {
-          const icon = await this.loadTrayIcon();
-          if (icon && !icon.isEmpty()) {
-            this.tray.setImage(icon);
+      this._winReRegisterInterval = setInterval(
+        async () => {
+          if (!this.tray || this.tray.isDestroyed?.()) return;
+          try {
+            const icon = await this.loadTrayIcon();
+            if (icon && !icon.isEmpty()) {
+              this.tray.setImage(icon);
+            }
+          } catch (err) {
+            console.warn("Tray re-registration failed:", err.message);
           }
-        } catch (err) {
-          console.warn("Tray re-registration failed:", err.message);
-        }
-      }, 5 * 60 * 1000); // every 5 minutes
+        },
+        5 * 60 * 1000
+      ); // every 5 minutes
     }
   }
 

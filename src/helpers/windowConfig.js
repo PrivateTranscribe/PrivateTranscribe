@@ -108,8 +108,14 @@ class WindowPositionUtil {
     // to the workArea edges symmetrically.
     const isBase = width === WINDOW_SIZES.BASE.width && height === WINDOW_SIZES.BASE.height;
     const margin = isBase ? 58 : 0;
-    const cx = Math.max(workArea.x - margin, Math.min(x, workArea.x + workArea.width - width + margin));
-    const cy = Math.max(workArea.y - margin, Math.min(y, workArea.y + workArea.height - height + margin));
+    const cx = Math.max(
+      workArea.x - margin,
+      Math.min(x, workArea.x + workArea.width - width + margin)
+    );
+    const cy = Math.max(
+      workArea.y - margin,
+      Math.min(y, workArea.y + workArea.height - height + margin)
+    );
     return { x: cx, y: cy };
   }
 

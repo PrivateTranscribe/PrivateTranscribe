@@ -1117,8 +1117,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         setEnableVariableSnapping(s.enableVariableSnapping);
       if (typeof s.enableCorrectionLearning === "boolean")
         setEnableCorrectionLearning(s.enableCorrectionLearning);
-      if (typeof s.smartContextEnabled === "boolean")
-        setSmartContextEnabled(s.smartContextEnabled);
+      if (typeof s.smartContextEnabled === "boolean") setSmartContextEnabled(s.smartContextEnabled);
       if (typeof s.enableFileIdentifiers === "boolean")
         setEnableFileIdentifiers(s.enableFileIdentifiers);
       if (typeof s.llmContextEnhancement === "boolean")
@@ -2049,10 +2048,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       label="Active file context"
                       description="Reads variable and function names from your active file to improve code dictation accuracy. Local only — file content stays on your device."
                     >
-                      <Toggle
-                        checked={enableFileIdentifiers}
-                        onChange={setEnableFileIdentifiers}
-                      />
+                      <Toggle checked={enableFileIdentifiers} onChange={setEnableFileIdentifiers} />
                     </SettingsRow>
                   </SettingsPanelRow>
                 )}

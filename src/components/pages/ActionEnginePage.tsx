@@ -458,9 +458,7 @@ function ActionFormDialog({
   })();
 
   const canSubmit =
-    form.name.trim().length > 0 &&
-    form.triggerPhrase.trim().length > 0 &&
-    regexError === null;
+    form.name.trim().length > 0 && form.triggerPhrase.trim().length > 0 && regexError === null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -520,9 +518,7 @@ function ActionFormDialog({
             </div>
           </div>
 
-          {regexError && (
-            <p className="text-xs text-red-400">{regexError}</p>
-          )}
+          {regexError && <p className="text-xs text-red-400">{regexError}</p>}
 
           {/* Action type */}
           <div className="space-y-1.5">

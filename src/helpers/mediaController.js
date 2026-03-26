@@ -162,7 +162,11 @@ function isMediaPlayingMac() {
  */
 function pauseMediaWindowsDirect() {
   return new Promise((resolve) => {
-    debugLogger.debug("mediaController: pauseMediaWindowsDirect — writing SMTC pause script", undefined, "media");
+    debugLogger.debug(
+      "mediaController: pauseMediaWindowsDirect — writing SMTC pause script",
+      undefined,
+      "media"
+    );
     const ps1 = path.join(os.tmpdir(), "pt_smtc_pause.ps1");
     const script = [
       "$ErrorActionPreference = 'SilentlyContinue'",
@@ -230,7 +234,8 @@ function pauseMediaWindowsDirect() {
         if (stderr) {
           for (const line of stderr.split(/\r?\n/)) {
             const trimmed = line.trim();
-            if (trimmed) debugLogger.debug(`mediaController: ps-pause: ${trimmed}`, undefined, "media");
+            if (trimmed)
+              debugLogger.debug(`mediaController: ps-pause: ${trimmed}`, undefined, "media");
           }
         }
 
@@ -239,14 +244,22 @@ function pauseMediaWindowsDirect() {
         if (exitCode === 0) {
           // SMTC TryPauseAsync succeeded — stdout contains the AUMID.
           const aumid = stdout.trim() || "unknown";
-          debugLogger.debug(`mediaController: SMTC TryPauseAsync succeeded — aumid: ${aumid}`, undefined, "media");
+          debugLogger.debug(
+            `mediaController: SMTC TryPauseAsync succeeded — aumid: ${aumid}`,
+            undefined,
+            "media"
+          );
           resolve(aumid);
         } else if (exitCode === 3) {
           // SMTC found a playing session but TryPauseAsync returned false.
           // This is common for Spotify Win32.  Fall back to nircmd mediaplay
           // which sends VK_MEDIA_PLAY_PAUSE to the current SMTC session.
           const aumid = stdout.trim() || "unknown";
-          debugLogger.debug(`mediaController: SMTC TryPauseAsync failed for aumid=${aumid}, trying nircmd fallback`, undefined, "media");
+          debugLogger.debug(
+            `mediaController: SMTC TryPauseAsync failed for aumid=${aumid}, trying nircmd fallback`,
+            undefined,
+            "media"
+          );
           const nircmd = findNircmdPath();
           if (nircmd) {
             const ok = await nircmdMediaPlayPause(nircmd);
@@ -258,12 +271,20 @@ function pauseMediaWindowsDirect() {
             }
             debugLogger.debug(`mediaController: nircmd mediaplay failed`, undefined, "media");
           } else {
-            debugLogger.debug(`mediaController: nircmd not found, cannot pause media`, undefined, "media");
+            debugLogger.debug(
+              `mediaController: nircmd not found, cannot pause media`,
+              undefined,
+              "media"
+            );
           }
           resolve(null);
         } else {
           // Exit 1: no playing session found.  Exit 2: PS exception.
-          debugLogger.debug(`mediaController: pause PS script — exit code ${exitCode} (no action)`, undefined, "media");
+          debugLogger.debug(
+            `mediaController: pause PS script — exit code ${exitCode} (no action)`,
+            undefined,
+            "media"
+          );
           resolve(null);
         }
       }
@@ -291,7 +312,11 @@ function resumeMediaWindowsDirect(aumid) {
     // backticks to prevent any accidental PowerShell interpretation.
     const safeAumid = aumid.replace(/['"`;]/g, "");
 
-    debugLogger.debug(`mediaController: resumeMediaWindowsDirect — targeting aumid: ${safeAumid}`, undefined, "media");
+    debugLogger.debug(
+      `mediaController: resumeMediaWindowsDirect — targeting aumid: ${safeAumid}`,
+      undefined,
+      "media"
+    );
 
     const ps1 = path.join(os.tmpdir(), "pt_smtc_resume.ps1");
     const script = [
@@ -332,11 +357,16 @@ function resumeMediaWindowsDirect(aumid) {
         if (stderr) {
           for (const line of stderr.split(/\r?\n/)) {
             const trimmed = line.trim();
-            if (trimmed) debugLogger.debug(`mediaController: ps-resume: ${trimmed}`, undefined, "media");
+            if (trimmed)
+              debugLogger.debug(`mediaController: ps-resume: ${trimmed}`, undefined, "media");
           }
         }
         const ok = err === null;
-        debugLogger.debug(`mediaController: TryPlayAsync script result: ${ok ? "success" : `failed (code ${err?.code})`}`, undefined, "media");
+        debugLogger.debug(
+          `mediaController: TryPlayAsync script result: ${ok ? "success" : `failed (code ${err?.code})`}`,
+          undefined,
+          "media"
+        );
         resolve(ok);
       }
     );
@@ -380,16 +410,28 @@ async function _doPauseMedia() {
     runCmd("playerctl play-pause 2>/dev/null || xdotool key XF86AudioPlay");
     didPause = true;
   } else if (platform === "win32") {
-    debugLogger.debug("mediaController: pauseMedia — Windows path, calling SMTC direct pause", undefined, "media");
+    debugLogger.debug(
+      "mediaController: pauseMedia — Windows path, calling SMTC direct pause",
+      undefined,
+      "media"
+    );
     // Direct SMTC session control — no global VK_MEDIA_PLAY_PAUSE key.
     const aumid = await pauseMediaWindowsDirect();
     if (!aumid) {
-      debugLogger.debug("mediaController: pauseMedia — no playing SMTC session found (or TryPauseAsync failed); skipping", undefined, "media");
+      debugLogger.debug(
+        "mediaController: pauseMedia — no playing SMTC session found (or TryPauseAsync failed); skipping",
+        undefined,
+        "media"
+      );
       pausedWindowsAumid = null;
       return;
     }
     pausedWindowsAumid = aumid;
-    debugLogger.debug(`mediaController: pauseMedia — stored pausedWindowsAumid: ${aumid}`, undefined, "media");
+    debugLogger.debug(
+      `mediaController: pauseMedia — stored pausedWindowsAumid: ${aumid}`,
+      undefined,
+      "media"
+    );
   } else if (platform === "darwin") {
     const playing = await isMediaPlayingMac();
     if (!playing) {
@@ -409,7 +451,11 @@ async function _doPauseMedia() {
  * Stores the in-flight promise so resumeMedia() can await it if called early.
  */
 async function pauseMedia() {
-  debugLogger.debug("mediaController: pauseMedia() invoked", { platform: process.platform }, "media");
+  debugLogger.debug(
+    "mediaController: pauseMedia() invoked",
+    { platform: process.platform },
+    "media"
+  );
   try {
     pendingPausePromise = _doPauseMedia();
     await pendingPausePromise;
@@ -430,18 +476,34 @@ async function pauseMedia() {
  * state so we act on the final settled value, not a mid-check snapshot.
  */
 async function resumeMedia() {
-  debugLogger.debug("mediaController: resumeMedia() invoked", { platform: process.platform }, "media");
+  debugLogger.debug(
+    "mediaController: resumeMedia() invoked",
+    { platform: process.platform },
+    "media"
+  );
   try {
     if (pendingPausePromise) {
-      debugLogger.debug("mediaController: resumeMedia() waiting on in-flight pauseMedia promise", undefined, "media");
+      debugLogger.debug(
+        "mediaController: resumeMedia() waiting on in-flight pauseMedia promise",
+        undefined,
+        "media"
+      );
       await pendingPausePromise;
-      debugLogger.debug("mediaController: resumeMedia() in-flight pause settled, continuing", undefined, "media");
+      debugLogger.debug(
+        "mediaController: resumeMedia() in-flight pause settled, continuing",
+        undefined,
+        "media"
+      );
     }
 
     const platform = process.platform;
 
     if (platform === "win32") {
-      debugLogger.debug(`mediaController: resumeMedia — pausedWindowsAumid: ${pausedWindowsAumid ?? "null (nothing to resume)"}`, undefined, "media");
+      debugLogger.debug(
+        `mediaController: resumeMedia — pausedWindowsAumid: ${pausedWindowsAumid ?? "null (nothing to resume)"}`,
+        undefined,
+        "media"
+      );
       if (!pausedWindowsAumid) return;
       const aumid = pausedWindowsAumid;
       pausedWindowsAumid = null;

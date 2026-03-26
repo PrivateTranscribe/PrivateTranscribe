@@ -755,17 +755,18 @@ class AudioManager {
       const useLocalWhisper = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
       const localProvider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
       const whisperModel = this.getTranscriptionSetting("whisperModel", "base");
-      const parakeetModel = this.getTranscriptionSetting(
-        "parakeetModel",
-        "parakeet-tdt-0.6b-v3"
-      );
+      const parakeetModel = this.getTranscriptionSetting("parakeetModel", "parakeet-tdt-0.6b-v3");
 
       let result;
       let activeModel;
       if (useLocalWhisper) {
         if (localProvider === "nvidia") {
           activeModel = parakeetModel;
-          result = await this.processWithLocalParakeet(audioBlob, parakeetModel, processingMetadata);
+          result = await this.processWithLocalParakeet(
+            audioBlob,
+            parakeetModel,
+            processingMetadata
+          );
         } else {
           activeModel = whisperModel;
           result = await this.processWithLocalWhisper(audioBlob, whisperModel, processingMetadata);
@@ -817,7 +818,10 @@ class AudioManager {
 
       logger.info("Pipeline timing", timingData, "performance");
     } catch (error) {
-      if (error?.name === "AbortError" || !this.isCurrentProcessingGeneration(processingGeneration)) {
+      if (
+        error?.name === "AbortError" ||
+        !this.isCurrentProcessingGeneration(processingGeneration)
+      ) {
         logger.debug(
           "Transcription request canceled",
           {

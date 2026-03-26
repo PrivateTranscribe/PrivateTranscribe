@@ -124,8 +124,7 @@ export const useAudioRecording = (toast, options = {}) => {
         resumeMedia();
 
         const canCommit = () =>
-          !disposed &&
-          (typeof commitContext.isCurrent !== "function" || commitContext.isCurrent());
+          !disposed && (typeof commitContext.isCurrent !== "function" || commitContext.isCurrent());
 
         if (!canCommit() || !result.success) {
           return;

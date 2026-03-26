@@ -315,8 +315,7 @@ class WindowManager {
     // Expand to the right by default; if that overflows the screen, anchor to the right edge instead.
     // This applies to both WITH_TOAST and WITH_MENU expansions.
     const wouldOverflowRight = bottomLeftX + newSize.width > workArea.x + workArea.width;
-    const expandLeft =
-      (sizeKey === "WITH_TOAST" || sizeKey === "WITH_MENU") && wouldOverflowRight;
+    const expandLeft = (sizeKey === "WITH_TOAST" || sizeKey === "WITH_MENU") && wouldOverflowRight;
 
     let newX = bottomLeftX;
     if (expandLeft) {

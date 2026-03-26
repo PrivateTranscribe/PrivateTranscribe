@@ -489,7 +489,10 @@ export function useSettings() {
 
   const broadcastTranscriptionSettingsUpdate = useCallback(
     (overrides: Partial<TranscriptionSettingsBroadcast> = {}) => {
-      if (typeof window === "undefined" || !window.electronAPI?.notifyTranscriptionSettingsChanged) {
+      if (
+        typeof window === "undefined" ||
+        !window.electronAPI?.notifyTranscriptionSettingsChanged
+      ) {
         return;
       }
 

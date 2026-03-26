@@ -180,7 +180,10 @@ export async function extractFileIdentifiers(windowTitle, options = {}) {
     });
 
     const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => resolve({ available: false, reason: "file identifier extraction timed out" }), timeoutMs),
+      setTimeout(
+        () => resolve({ available: false, reason: "file identifier extraction timed out" }),
+        timeoutMs
+      )
     );
 
     return await Promise.race([ipcPromise, timeoutPromise]);
@@ -207,7 +210,8 @@ export async function extractFileContent(windowTitle, options = {}) {
     const ipcPromise = ipcFn(filename, { maxChars }).then((result) => {
       if (!result) return { available: false, reason: "no result from IPC" };
       if (result.blocked) return { available: false, reason: result.reason };
-      if (!result.excerpt) return { available: false, reason: result.reason || "empty file excerpt" };
+      if (!result.excerpt)
+        return { available: false, reason: result.reason || "empty file excerpt" };
       return {
         available: true,
         filename: result.filename || filename,
@@ -218,7 +222,10 @@ export async function extractFileContent(windowTitle, options = {}) {
     });
 
     const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => resolve({ available: false, reason: "file content extraction timed out" }), timeoutMs),
+      setTimeout(
+        () => resolve({ available: false, reason: "file content extraction timed out" }),
+        timeoutMs
+      )
     );
 
     return await Promise.race([ipcPromise, timeoutPromise]);
@@ -277,8 +284,8 @@ export async function getContext(options = {}) {
       const timeoutPromise = new Promise((resolve) =>
         setTimeout(
           () => resolve({ available: false, source: "timeout", reason: "context fetch timed out" }),
-          timeoutMs,
-        ),
+          timeoutMs
+        )
       );
 
       ctx = await Promise.race([ipcPromise, timeoutPromise]);
@@ -287,7 +294,7 @@ export async function getContext(options = {}) {
     logger.debug(
       "contextPipeline.getContext error",
       { error: err?.message || String(err) },
-      "transcription",
+      "transcription"
     );
     ctx = { available: false, source: "error", reason: err?.message || String(err) };
   }
