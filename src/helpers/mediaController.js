@@ -35,6 +35,7 @@ const { exec } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const debugLogger = require("./debugLogger");
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -122,6 +123,7 @@ function isMediaPlayingMac() {
  */
 function pauseMediaWindowsDirect() {
   return new Promise((resolve) => {
+    debugLogger.debug("mediaController: pauseMediaWindowsDirect — writing SMTC pause script", undefined, "media");
     const ps1 = path.join(os.tmpdir(), "pt_smtc_pause.ps1");
     const script = [
       "$ErrorActionPreference = 'SilentlyContinue'",
@@ -133,10 +135,18 @@ function pauseMediaWindowsDirect() {
       "    $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 })[0]",
       "    $mgrType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime]",
       "    $mgr = $asTask.MakeGenericMethod($mgrType).Invoke($null, @($async)).GetAwaiter().GetResult()",
+      // Emit all discovered SMTC sessions to stderr for diagnostics.
+      // NOTE: If Spotify does not appear here it is not registered as an SMTC session
+      // on this machine (possible with older Spotify builds or certain Windows configs).
+      "    $sessions = $mgr.GetSessions()",
+      "    [Console]::Error.WriteLine('SMTC-DEBUG: session_count=' + $sessions.Count)",
+      "    foreach ($s in $sessions) {",
+      "        [Console]::Error.WriteLine('SMTC-DEBUG: session aumid=' + $s.SourceAppUserModelId + ' status=' + $s.GetPlaybackInfo().PlaybackStatus.ToString())",
+      "    }",
       // Prefer the session that is actively playing over the SMTC "current" session,
       // since the current session may be a paused or stopped one with focus.
       "    $playingSession = $null",
-      "    foreach ($sess in $mgr.GetSessions()) {",
+      "    foreach ($sess in $sessions) {",
       "        if ($sess.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') {",
       "            $playingSession = $sess",
       "            break",
@@ -144,23 +154,26 @@ function pauseMediaWindowsDirect() {
       "    }",
       // Fall back to the SMTC current session if no explicitly-playing one found.
       "    if ($null -eq $playingSession) { $playingSession = $mgr.GetCurrentSession() }",
-      "    if ($null -eq $playingSession) { exit 1 }",
-      "    if ($playingSession.GetPlaybackInfo().PlaybackStatus.ToString() -ne 'Playing') { exit 1 }",
+      "    if ($null -eq $playingSession) { [Console]::Error.WriteLine('SMTC-DEBUG: no session found — exiting'); exit 1 }",
+      "    if ($playingSession.GetPlaybackInfo().PlaybackStatus.ToString() -ne 'Playing') { [Console]::Error.WriteLine('SMTC-DEBUG: chosen session not Playing status=' + $playingSession.GetPlaybackInfo().PlaybackStatus.ToString()); exit 1 }",
+      "    [Console]::Error.WriteLine('SMTC-DEBUG: chosen_aumid=' + $playingSession.SourceAppUserModelId)",
       // Call TryPauseAsync() directly on the session — targeted, not global.
       "    $pauseOp = $playingSession.TryPauseAsync()",
       "    $paused = $asTask.MakeGenericMethod([System.Boolean]).Invoke($null, @($pauseOp)).GetAwaiter().GetResult()",
+      "    [Console]::Error.WriteLine('SMTC-DEBUG: TryPauseAsync result=' + $paused)",
       "    if ($paused) {",
       // Output the AUMID so Node.js can store it for the targeted resume call.
       "        Write-Output $playingSession.SourceAppUserModelId",
       "        exit 0",
       "    }",
       "    exit 1",
-      "} catch { exit 2 }",
+      "} catch { [Console]::Error.WriteLine('SMTC-DEBUG: exception ' + $_.Exception.Message); exit 2 }",
     ].join("\r\n");
 
     try {
       fs.writeFileSync(ps1, script, "utf8");
     } catch (_) {
+      debugLogger.debug("mediaController: failed to write SMTC pause script", undefined, "media");
       resolve(null);
       return;
     }
@@ -168,11 +181,21 @@ function pauseMediaWindowsDirect() {
     exec(
       `powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`,
       { timeout: 5000, windowsHide: true },
-      (err, stdout) => {
+      (err, stdout, stderr) => {
+        // Log all PS diagnostic lines emitted to stderr.
+        if (stderr) {
+          for (const line of stderr.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (trimmed) debugLogger.debug(`mediaController: ps-pause: ${trimmed}`, undefined, "media");
+          }
+        }
         if (err === null) {
           // stdout contains the AUMID of the paused session.
-          resolve(stdout.trim() || "unknown");
+          const aumid = stdout.trim() || "unknown";
+          debugLogger.debug(`mediaController: TryPauseAsync succeeded — storing aumid: ${aumid}`, undefined, "media");
+          resolve(aumid);
         } else {
+          debugLogger.debug(`mediaController: pause PS script failed — exit code ${err.code}`, undefined, "media");
           resolve(null);
         }
       }
@@ -200,6 +223,8 @@ function resumeMediaWindowsDirect(aumid) {
     // backticks to prevent any accidental PowerShell interpretation.
     const safeAumid = aumid.replace(/['"`;]/g, "");
 
+    debugLogger.debug(`mediaController: resumeMediaWindowsDirect — targeting aumid: ${safeAumid}`, undefined, "media");
+
     const ps1 = path.join(os.tmpdir(), "pt_smtc_resume.ps1");
     const script = [
       "$ErrorActionPreference = 'SilentlyContinue'",
@@ -212,18 +237,21 @@ function resumeMediaWindowsDirect(aumid) {
       // Find the exact session we paused by its AUMID.
       `    $target = '${safeAumid}'`,
       "    $s = $mgr.GetSessions() | Where-Object { $_.SourceAppUserModelId -eq $target } | Select-Object -First 1",
-      "    if ($null -eq $s) { exit 1 }",
+      "    if ($null -eq $s) { [Console]::Error.WriteLine('SMTC-DEBUG: resume — target session not found aumid=' + $target); exit 1 }",
+      "    [Console]::Error.WriteLine('SMTC-DEBUG: resume — found session aumid=' + $s.SourceAppUserModelId + ' status=' + $s.GetPlaybackInfo().PlaybackStatus.ToString())",
       // Call TryPlayAsync() directly — targeted resume, not global key toggle.
       "    $playOp = $s.TryPlayAsync()",
       "    $resumed = $asTask.MakeGenericMethod([System.Boolean]).Invoke($null, @($playOp)).GetAwaiter().GetResult()",
+      "    [Console]::Error.WriteLine('SMTC-DEBUG: TryPlayAsync result=' + $resumed)",
       "    if ($resumed) { exit 0 }",
       "    exit 1",
-      "} catch { exit 2 }",
+      "} catch { [Console]::Error.WriteLine('SMTC-DEBUG: resume exception ' + $_.Exception.Message); exit 2 }",
     ].join("\r\n");
 
     try {
       fs.writeFileSync(ps1, script, "utf8");
     } catch (_) {
+      debugLogger.debug("mediaController: failed to write SMTC resume script", undefined, "media");
       resolve(false);
       return;
     }
@@ -231,8 +259,17 @@ function resumeMediaWindowsDirect(aumid) {
     exec(
       `powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`,
       { timeout: 5000, windowsHide: true },
-      (err) => {
-        resolve(err === null);
+      (err, _stdout, stderr) => {
+        // Log all PS diagnostic lines emitted to stderr.
+        if (stderr) {
+          for (const line of stderr.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (trimmed) debugLogger.debug(`mediaController: ps-resume: ${trimmed}`, undefined, "media");
+          }
+        }
+        const ok = err === null;
+        debugLogger.debug(`mediaController: TryPlayAsync script result: ${ok ? "success" : `failed (code ${err?.code})`}`, undefined, "media");
+        resolve(ok);
       }
     );
   });
@@ -275,13 +312,16 @@ async function _doPauseMedia() {
     runCmd("playerctl play-pause 2>/dev/null || xdotool key XF86AudioPlay");
     didPause = true;
   } else if (platform === "win32") {
+    debugLogger.debug("mediaController: pauseMedia — Windows path, calling SMTC direct pause", undefined, "media");
     // Direct SMTC session control — no global VK_MEDIA_PLAY_PAUSE key.
     const aumid = await pauseMediaWindowsDirect();
     if (!aumid) {
+      debugLogger.debug("mediaController: pauseMedia — no playing SMTC session found (or TryPauseAsync failed); skipping", undefined, "media");
       pausedWindowsAumid = null;
       return;
     }
     pausedWindowsAumid = aumid;
+    debugLogger.debug(`mediaController: pauseMedia — stored pausedWindowsAumid: ${aumid}`, undefined, "media");
   } else if (platform === "darwin") {
     const playing = await isMediaPlayingMac();
     if (!playing) {
@@ -301,9 +341,11 @@ async function _doPauseMedia() {
  * Stores the in-flight promise so resumeMedia() can await it if called early.
  */
 async function pauseMedia() {
+  debugLogger.debug("mediaController: pauseMedia() invoked", { platform: process.platform }, "media");
   try {
     pendingPausePromise = _doPauseMedia();
     await pendingPausePromise;
+    debugLogger.debug("mediaController: pauseMedia() settled", undefined, "media");
   } catch (_) {
     // Fail silently
   } finally {
@@ -320,14 +362,18 @@ async function pauseMedia() {
  * state so we act on the final settled value, not a mid-check snapshot.
  */
 async function resumeMedia() {
+  debugLogger.debug("mediaController: resumeMedia() invoked", { platform: process.platform }, "media");
   try {
     if (pendingPausePromise) {
+      debugLogger.debug("mediaController: resumeMedia() waiting on in-flight pauseMedia promise", undefined, "media");
       await pendingPausePromise;
+      debugLogger.debug("mediaController: resumeMedia() in-flight pause settled, continuing", undefined, "media");
     }
 
     const platform = process.platform;
 
     if (platform === "win32") {
+      debugLogger.debug(`mediaController: resumeMedia — pausedWindowsAumid: ${pausedWindowsAumid ?? "null (nothing to resume)"}`, undefined, "media");
       if (!pausedWindowsAumid) return;
       const aumid = pausedWindowsAumid;
       pausedWindowsAumid = null;
