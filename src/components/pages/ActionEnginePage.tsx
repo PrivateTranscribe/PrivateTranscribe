@@ -391,7 +391,20 @@ function ActionFormDialog({
     }
   };
 
-  const canSubmit = form.name.trim().length > 0 && form.triggerPhrase.trim().length > 0;
+  const regexError = (() => {
+    if (form.triggerMode !== "regex" || !form.triggerPhrase.trim()) return null;
+    try {
+      new RegExp(form.triggerPhrase, "i");
+      return null;
+    } catch {
+      return "Invalid regular expression.";
+    }
+  })();
+
+  const canSubmit =
+    form.name.trim().length > 0 &&
+    form.triggerPhrase.trim().length > 0 &&
+    regexError === null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -450,6 +463,10 @@ function ActionFormDialog({
               </Select>
             </div>
           </div>
+
+          {regexError && (
+            <p className="text-xs text-red-400">{regexError}</p>
+          )}
 
           {/* Action type */}
           <div className="space-y-1.5">
