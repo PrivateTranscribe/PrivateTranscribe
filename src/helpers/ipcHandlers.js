@@ -1650,9 +1650,11 @@ class IPCHandlers {
       return { success: true };
     });
 
-    ipcMain.handle("media-resume", () => {
+    ipcMain.handle("media-resume", async () => {
       try {
-        mediaController.resumeMedia();
+        // resumeMedia() is async — it awaits any in-flight pauseMedia() state
+        // check before deciding whether to send the resume key.
+        await mediaController.resumeMedia();
       } catch (_) {
         // Fail silently
       }

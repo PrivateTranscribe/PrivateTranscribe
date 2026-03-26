@@ -166,52 +166,83 @@ function isMediaPlayingMac() {
 // True only if we sent the pause command and should resume later.
 let didPause = false;
 
+// Tracks the in-flight pauseMedia() promise so resumeMedia() can await it.
+// Race condition fix: pauseMedia() is async (2-4s state check), but resumeMedia()
+// may arrive before the check finishes. Without this, resumeMedia() would see
+// didPause=false (check not done yet), skip the resume, and then the state check
+// would complete, send a pause key, and leave media permanently paused.
+let pendingPausePromise = null;
+
+/**
+ * Internal async implementation — does the actual state check + key send.
+ */
+async function _doPauseMedia() {
+  const platform = process.platform;
+
+  if (platform === "linux") {
+    const playing = await isMediaPlayingLinux();
+    if (!playing) {
+      didPause = false;
+      return;
+    }
+    runCmd("playerctl play-pause 2>/dev/null || xdotool key XF86AudioPlay");
+    didPause = true;
+  } else if (platform === "win32") {
+    // SMTC query: only send the key when media is confirmed playing.
+    // If state is unknown or Paused, we skip (fail safe).
+    const playing = await isMediaPlayingWindows();
+    if (!playing) {
+      didPause = false;
+      return;
+    }
+    sendWindowsMediaKey();
+    didPause = true;
+  } else if (platform === "darwin") {
+    const playing = await isMediaPlayingMac();
+    if (!playing) {
+      didPause = false;
+      return;
+    }
+    runCmd("osascript -e 'tell application \"System Events\" to key code 100'");
+    didPause = true;
+  }
+}
+
 /**
  * Pause the currently playing media, if any.
  * Sets didPause = true only when we actually sent the command.
  * Checks media state first on all platforms to avoid toggling already-paused media.
+ * Stores the in-flight promise so resumeMedia() can await it if called early.
  */
 async function pauseMedia() {
   try {
-    const platform = process.platform;
-
-    if (platform === "linux") {
-      const playing = await isMediaPlayingLinux();
-      if (!playing) {
-        didPause = false;
-        return;
-      }
-      runCmd("playerctl play-pause 2>/dev/null || xdotool key XF86AudioPlay");
-      didPause = true;
-    } else if (platform === "win32") {
-      // SMTC query: only send the key when media is confirmed playing.
-      // If state is unknown or Paused, we skip (fail safe).
-      const playing = await isMediaPlayingWindows();
-      if (!playing) {
-        didPause = false;
-        return;
-      }
-      sendWindowsMediaKey();
-      didPause = true;
-    } else if (platform === "darwin") {
-      const playing = await isMediaPlayingMac();
-      if (!playing) {
-        didPause = false;
-        return;
-      }
-      runCmd("osascript -e 'tell application \"System Events\" to key code 100'");
-      didPause = true;
-    }
+    // Store the promise so resumeMedia() can await it if called before we finish.
+    pendingPausePromise = _doPauseMedia();
+    await pendingPausePromise;
   } catch (_) {
     // Fail silently
+  } finally {
+    pendingPausePromise = null;
   }
 }
 
 /**
  * Resume media playback — only if we were the ones who paused it.
+ *
+ * IMPORTANT: This is async because pauseMedia() may still be running its
+ * state check when this is called (e.g. user stops recording quickly).
+ * We await the pending pause before inspecting didPause so we act on the
+ * final settled state rather than a mid-check snapshot.
  */
-function resumeMedia() {
+async function resumeMedia() {
   try {
+    // If pauseMedia() is still checking state, wait for it to finish.
+    // This ensures didPause reflects the true outcome before we decide
+    // whether to send the resume key.
+    if (pendingPausePromise) {
+      await pendingPausePromise;
+    }
+
     if (!didPause) return;
     didPause = false;
 
