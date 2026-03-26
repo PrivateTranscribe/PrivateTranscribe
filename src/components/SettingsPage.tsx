@@ -854,6 +854,36 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
 
+  const [correctionCount, setCorrectionCount] = useState<number | null>(null);
+  const [clearConfirmPending, setClearConfirmPending] = useState(false);
+  const [isClearingCorrections, setIsClearingCorrections] = useState(false);
+
+  useEffect(() => {
+    if (!enableCorrectionLearning) return;
+    window.electronAPI
+      ?.getCorrectionMemory?.(1000)
+      .then((rows) => setCorrectionCount(Array.isArray(rows) ? rows.length : 0))
+      .catch(() => setCorrectionCount(0));
+  }, [enableCorrectionLearning]);
+
+  const handleClearCorrections = useCallback(async () => {
+    if (!clearConfirmPending) {
+      setClearConfirmPending(true);
+      return;
+    }
+    setIsClearingCorrections(true);
+    try {
+      const rows = (await window.electronAPI?.getCorrectionMemory?.(10000)) ?? [];
+      for (const row of rows) {
+        await window.electronAPI?.deleteCorrection?.(row.source);
+      }
+      setCorrectionCount(0);
+    } finally {
+      setIsClearingCorrections(false);
+      setClearConfirmPending(false);
+    }
+  }, [clearConfirmPending]);
+
   // Whisper-server idle shutdown setting (minutes) has a draft state to avoid snapping
   // while typing (e.g. clearing the field).
   const [whisperIdleDraft, setWhisperIdleDraft] = useState<string>(
@@ -1772,6 +1802,56 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       disabled={!correctionMemoryUnlocked}
                     />
                   </SettingsRow>
+                  {enableCorrectionLearning && correctionMemoryUnlocked && (
+                    <div className="mt-2 flex items-center justify-between">
+                      <p
+                        className={
+                          correctionCount !== null && correctionCount > 0
+                            ? "text-xs text-green-600 dark:text-green-400"
+                            : "text-xs text-muted-foreground"
+                        }
+                      >
+                        {correctionCount === null
+                          ? ""
+                          : correctionCount > 0
+                            ? `✓ Learning — ${correctionCount} correction${correctionCount === 1 ? "" : "s"} stored`
+                            : "Listening for corrections..."}
+                      </p>
+                      {correctionCount !== null && correctionCount > 0 && (
+                        <div className="flex items-center gap-2">
+                          {clearConfirmPending && (
+                            <span className="text-xs text-muted-foreground">Are you sure?</span>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClearCorrections}
+                            disabled={isClearingCorrections}
+                            className={
+                              clearConfirmPending
+                                ? "border-destructive text-destructive hover:bg-destructive/10"
+                                : ""
+                            }
+                          >
+                            {isClearingCorrections
+                              ? "Clearing..."
+                              : clearConfirmPending
+                                ? "Yes, clear all"
+                                : "Clear all corrections"}
+                          </Button>
+                          {clearConfirmPending && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setClearConfirmPending(false)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
