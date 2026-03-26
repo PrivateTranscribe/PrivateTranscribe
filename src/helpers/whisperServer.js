@@ -230,7 +230,13 @@ class WhisperServerManager {
   }
 
   async start(modelPath, options = {}) {
-    if (this.startupPromise) return this.startupPromise;
+    // If a startup is in-flight for the SAME model, wait for it.
+    // If it's for a DIFFERENT model (user switched), cancel and restart.
+    if (this.startupPromise) {
+      if (this.modelPath === modelPath) return this.startupPromise;
+      // Model changed mid-startup — stop the current process and fall through to restart.
+      await this.stop();
+    }
 
     // If the server is already running with the requested model, just mark it as used.
     if (this.ready && this.modelPath === modelPath) {
