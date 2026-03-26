@@ -203,6 +203,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                       flexShrink: 0,
                     }}
                   />
+                  <span style={{ flex: 1 }}>{item.label}</span>
                   {item.badge && (item.badgeVariant !== "pro" || shouldShowProBadge(item.id)) && (
                     <span
                       style={{
@@ -223,13 +224,11 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                             : item.badgeVariant === "pro"
                               ? "#A885FF"
                               : "#6B7370",
-                        flexShrink: 0,
                       }}
                     >
                       {item.badge}
                     </span>
                   )}
-                  <span style={{ flex: 1 }}>{item.label}</span>
                 </button>
               );
             })}
