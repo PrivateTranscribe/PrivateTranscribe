@@ -391,6 +391,13 @@ export function useSettings() {
     }
   );
 
+  // Include active file content in LLM context (off by default, separate opt-in).
+  const [includeFileContentInLlmContext, setIncludeFileContentInLlmContext] =
+    useLocalStorage<boolean>("includeFileContentInLlmContext", false, {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    });
+
   // Sync historyLimit to main process so db-save-transcription can gate on it
   // (different Electron windows have isolated localStorage, so the main process
   //  is the single source of truth for this setting at save time)
@@ -925,6 +932,8 @@ export function useSettings() {
     setEnableFileIdentifiers,
     llmContextEnhancement,
     setLlmContextEnhancement,
+    includeFileContentInLlmContext,
+    setIncludeFileContentInLlmContext,
     autoPaste,
     setAutoPaste,
     copyToClipboard,

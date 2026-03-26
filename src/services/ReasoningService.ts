@@ -6,7 +6,12 @@ import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../c
 import { UNIFIED_SYSTEM_PROMPT, LEGACY_PROMPTS } from "../config/prompts";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
-import { getContext, isLlmContextEnhancementEnabled } from "../helpers/contextPipeline";
+import {
+  extractFileContent,
+  getContext,
+  isLlmContextEnhancementEnabled,
+  isLlmFileContentEnabled,
+} from "../helpers/contextPipeline";
 
 /**
  * @deprecated Use UNIFIED_SYSTEM_PROMPT from ../config/prompts instead
@@ -80,6 +85,15 @@ class ReasoningService extends BaseReasoningService {
               .join("\n")}\n\n`
           : "";
 
+      let fileContentBlock = "";
+      if (isLlmFileContentEnabled() && c.windowTitle) {
+        const fileCtx = await extractFileContent(c.windowTitle, { timeoutMs: 300, maxChars: 4000 });
+        if (fileCtx?.available && fileCtx.excerpt) {
+          const truncationNote = fileCtx.truncated ? "\n[Excerpt truncated for prompt size.]" : "";
+          fileContentBlock = `Active file excerpt (${fileCtx.filename || "current file"}):\n\n\`\`\`\n${fileCtx.excerpt}\n\`\`\`${truncationNote}\n\n`;
+        }
+      }
+
       logger.logReasoning("ACTIVE_WINDOW_CONTEXT_INCLUDED", {
         enabled: true,
         platform: c.platform || "unknown",
@@ -87,9 +101,10 @@ class ReasoningService extends BaseReasoningService {
         hasUiaText: !!c.uiaText,
         uiaMethod: c.uiaMethod || undefined,
         source: c.source || "unknown",
+        hasFileContent: Boolean(fileContentBlock),
       });
 
-      return `${contextBlock}${text}`;
+      return `${contextBlock}${fileContentBlock}${text}`;
     } catch (error) {
       logger.logReasoning("ACTIVE_WINDOW_CONTEXT_ERROR", {
         enabled: true,

@@ -402,6 +402,18 @@ declare global {
       getActiveWindowContext: () => Promise<ActiveWindowContextResult>;
       // File identifier extraction for Smart Context (opt-in, local only)
       extractFileIdentifiers: (filename: string) => Promise<FileIdentifiersResult>;
+      // File content extraction for LLM Context Enhancement (opt-in, local only)
+      extractFileContext: (
+        filename: string,
+        options?: { maxChars?: number }
+      ) => Promise<{
+        blocked?: boolean;
+        reason?: string;
+        filename?: string;
+        excerpt?: string;
+        truncated?: boolean;
+        originalLength?: number;
+      }>;
 
       // Audio
       onNoAudioDetected: (callback: (event: any, data?: any) => void) => (() => void) | void;

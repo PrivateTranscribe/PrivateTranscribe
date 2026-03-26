@@ -82,6 +82,21 @@ export function isLlmContextEnhancementEnabled() {
   }
 }
 
+/**
+ * Returns true when active file content should be included in LLM context.
+ * Requires LLM Context Enhancement to already be enabled.
+ *
+ * @returns {boolean}
+ */
+export function isLlmFileContentEnabled() {
+  if (!isLlmContextEnhancementEnabled()) return false;
+  try {
+    return window.localStorage.getItem("includeFileContentInLlmContext") === "true";
+  } catch {
+    return false;
+  }
+}
+
 // ─── Filename parsing ─────────────────────────────────────────────────────────
 
 /**
@@ -166,6 +181,44 @@ export async function extractFileIdentifiers(windowTitle, options = {}) {
 
     const timeoutPromise = new Promise((resolve) =>
       setTimeout(() => resolve({ available: false, reason: "file identifier extraction timed out" }), timeoutMs),
+    );
+
+    return await Promise.race([ipcPromise, timeoutPromise]);
+  } catch (err) {
+    return { available: false, reason: err?.message || String(err) };
+  }
+}
+
+export async function extractFileContent(windowTitle, options = {}) {
+  const timeoutMs = typeof options.timeoutMs === "number" ? options.timeoutMs : 250;
+  const maxChars = typeof options.maxChars === "number" ? options.maxChars : 4000;
+
+  const filename = parseFilenameFromTitle(windowTitle);
+  if (!filename) {
+    return { available: false, reason: "no filename found in window title" };
+  }
+
+  try {
+    const ipcFn = window?.electronAPI?.extractFileContext;
+    if (typeof ipcFn !== "function") {
+      return { available: false, reason: "IPC not available" };
+    }
+
+    const ipcPromise = ipcFn(filename, { maxChars }).then((result) => {
+      if (!result) return { available: false, reason: "no result from IPC" };
+      if (result.blocked) return { available: false, reason: result.reason };
+      if (!result.excerpt) return { available: false, reason: result.reason || "empty file excerpt" };
+      return {
+        available: true,
+        filename: result.filename || filename,
+        excerpt: result.excerpt,
+        truncated: result.truncated === true,
+        originalLength: result.originalLength,
+      };
+    });
+
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => resolve({ available: false, reason: "file content extraction timed out" }), timeoutMs),
     );
 
     return await Promise.race([ipcPromise, timeoutPromise]);

@@ -830,6 +830,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableFileIdentifiers,
     llmContextEnhancement,
     setLlmContextEnhancement,
+    includeFileContentInLlmContext,
+    setIncludeFileContentInLlmContext,
     autoPaste,
     setAutoPaste,
     copyToClipboard,
@@ -955,6 +957,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           smartContextEnabled,
           enableFileIdentifiers,
           llmContextEnhancement,
+          includeFileContentInLlmContext,
           // Behavior & Notifications
           autoPaste,
           copyToClipboard,
@@ -1010,6 +1013,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       smartContextEnabled,
       enableFileIdentifiers,
       llmContextEnhancement,
+      includeFileContentInLlmContext,
       autoPaste,
       copyToClipboard,
       showPanelOnError,
@@ -1122,6 +1126,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         setEnableFileIdentifiers(s.enableFileIdentifiers);
       if (typeof s.llmContextEnhancement === "boolean")
         setLlmContextEnhancement(s.llmContextEnhancement);
+      if (typeof s.includeFileContentInLlmContext === "boolean")
+        setIncludeFileContentInLlmContext(s.includeFileContentInLlmContext);
       if (typeof s.autoPaste === "boolean") setAutoPaste(s.autoPaste);
       if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
       if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
@@ -2055,22 +2061,42 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 )}
 
                 {smartContextUnlocked && useReasoningModel && (
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="LLM Context Enhancement"
-                      description={
-                        useReasoningModel && reasoningProvider !== "local"
-                          ? "Also sends context to the AI reasoning step. ⚠️ Context (app name, window title) will be sent to your cloud reasoning provider."
-                          : "Also sends context to the AI reasoning step. Context is processed by your local model only."
-                      }
-                    >
-                      <Toggle
-                        checked={llmContextEnhancement}
-                        onChange={setLlmContextEnhancement}
-                        disabled={!smartContextUnlocked}
-                      />
-                    </SettingsRow>
-                  </SettingsPanelRow>
+                  <>
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="LLM Context Enhancement"
+                        description={
+                          useReasoningModel && reasoningProvider !== "local"
+                            ? "Also sends context to the AI reasoning step. ⚠️ Context (app name, window title) will be sent to your cloud reasoning provider."
+                            : "Also sends context to the AI reasoning step. Context is processed by your local model only."
+                        }
+                      >
+                        <Toggle
+                          checked={llmContextEnhancement}
+                          onChange={setLlmContextEnhancement}
+                          disabled={!smartContextUnlocked}
+                        />
+                      </SettingsRow>
+                    </SettingsPanelRow>
+
+                    {llmContextEnhancement && (
+                      <SettingsPanelRow>
+                        <SettingsRow
+                          label="Include active file content"
+                          description={
+                            reasoningProvider !== "local"
+                              ? "Adds a truncated excerpt from your active file to the reasoning prompt. ⚠️ File content will be sent to your cloud reasoning provider."
+                              : "Adds a truncated excerpt from your active file to the reasoning prompt. Stays on-device when using a local reasoning model."
+                          }
+                        >
+                          <Toggle
+                            checked={includeFileContentInLlmContext}
+                            onChange={setIncludeFileContentInLlmContext}
+                          />
+                        </SettingsRow>
+                      </SettingsPanelRow>
+                    )}
+                  </>
                 )}
               </SettingsPanel>
             </div>

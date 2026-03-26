@@ -91,6 +91,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getActiveWindowContext: () => ipcRenderer.invoke("get-active-window-context"),
   // File identifier extraction for Smart Context (opt-in, local only)
   extractFileIdentifiers: (filename) => ipcRenderer.invoke("extract-file-identifiers", filename),
+  // File content extraction for LLM Context Enhancement (opt-in, local only)
+  extractFileContext: (filename, options) =>
+    ipcRenderer.invoke("extract-file-context", filename, options),
 
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>

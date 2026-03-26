@@ -445,6 +445,24 @@ class IPCHandlers {
       return extractFromFilePath(found, homeDir);
     });
 
+    // File content extraction for LLM Context Enhancement (opt-in, local only)
+    ipcMain.handle("extract-file-context", async (_, filename, options = {}) => {
+      if (!filename || typeof filename !== "string") {
+        return { blocked: true, reason: "invalid filename" };
+      }
+      if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+        return { blocked: true, reason: "invalid filename" };
+      }
+      const os = require("os");
+      const homeDir = os.homedir();
+      const { extractFileContext } = require("./fileContextExtractor");
+      const found = findFileInHome(filename, homeDir, 3);
+      if (!found) {
+        return { blocked: false, reason: "file not found in home dir" };
+      }
+      return extractFileContext(found, homeDir, undefined, options);
+    });
+
     // Whisper handlers
     ipcMain.handle("transcribe-local-whisper", async (event, audioBlob, options = {}) => {
       debugLogger.log("transcribe-local-whisper called", {
