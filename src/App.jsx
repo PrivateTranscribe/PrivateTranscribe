@@ -18,7 +18,6 @@ import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
-import { formatHotkeyLabel } from "./utils/hotkeys";
 
 const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
@@ -753,7 +752,6 @@ export default function App() {
               {activeDictationMode}
             </div>
           )}
-
         </div>
 
         {/* Context menu: positioned relative to full window, clamped to stay in bounds */}
