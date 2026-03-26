@@ -1125,6 +1125,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.autoPaste === "boolean") setAutoPaste(s.autoPaste);
       if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
       if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
+      if (typeof s.pauseMediaOnRecord === "boolean") setPauseMediaOnRecord(s.pauseMediaOnRecord);
       if (typeof s.audioFeedback === "boolean") setAudioFeedback(s.audioFeedback);
       if (typeof s.errorNotifications === "boolean") setErrorNotifications(s.errorNotifications);
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
@@ -1157,7 +1158,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setMusicDuckLevel,
       setEnableVariableSnapping,
       setEnableCorrectionLearning,
-      setEnableContextCapture,
+      setPauseMediaOnRecord,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,
       setOpenaiApiKey,
