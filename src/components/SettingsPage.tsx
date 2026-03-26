@@ -1917,9 +1917,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Pause media while recording"
-                    description="Automatically pause playing media when you start recording"
+                    description={
+                      platform === "win32"
+                        ? "Coming soon on Windows — media session control is being reworked for reliability"
+                        : "Automatically pause playing media when you start recording"
+                    }
                   >
-                    <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                    {platform === "win32" ? (
+                      <span className="text-[11px] text-muted-foreground/50 font-medium uppercase tracking-wide px-2 py-1 rounded border border-border-subtle">
+                        Soon
+                      </span>
+                    ) : (
+                      <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                    )}
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
