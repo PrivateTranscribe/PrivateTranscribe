@@ -391,15 +391,9 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
-        playFeedback("playStartSound");
-        duckAudio();
-        pauseMedia();
-        void manager.startRecording();
+        void beginRecordingFlow({ playSound: true });
       } else if (currentState.isRecording || currentState.isStartingRecording) {
-        playFeedback("playStopSound");
-        manager.stopRecording();
-        restoreAudio();
-        resumeMedia();
+        endRecordingFlow({ playSound: true });
       }
     };
 
@@ -411,24 +405,15 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
-        playFeedback("playStartSound");
-        duckAudio();
-        pauseMedia();
-        void manager.startRecording();
+        void beginRecordingFlow({ playSound: true });
       }
     };
 
     // Set up listener for push-to-talk stop
     const handleStop = () => {
-      const currentState = manager.getState();
-      if (currentState.isRecording || currentState.isStartingRecording) {
-        playFeedback("playStopSound");
-        manager.stopRecording();
-      }
       // Always restore audio when push-to-talk key is released,
       // even if recording didn't fully start (quick tap race condition)
-      restoreAudio();
-      resumeMedia();
+      endRecordingFlow({ playSound: true });
     };
 
     const disposeToggle = window.electronAPI.onToggleDictation(() => {
@@ -456,6 +441,41 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeNoAudio = window.electronAPI.onNoAudioDetected?.(handleNoAudioDetected);
 
+    const beginRecordingFlow = async ({ playSound = false } = {}) => {
+      const currentState = manager.getState();
+      if (
+        currentState.isRecording ||
+        currentState.isProcessing ||
+        currentState.isStartingRecording
+      ) {
+        return false;
+      }
+
+      if (playSound) {
+        playFeedback("playStartSound");
+      }
+      duckAudio();
+      pauseMedia();
+      return await manager.startRecording();
+    };
+
+    const endRecordingFlow = ({ playSound = false } = {}) => {
+      const currentState = manager.getState();
+      if (!currentState.isRecording && !currentState.isStartingRecording) {
+        restoreAudio();
+        resumeMedia();
+        return false;
+      }
+
+      if (playSound) {
+        playFeedback("playStopSound");
+      }
+      const stopped = manager.stopRecording();
+      restoreAudio();
+      resumeMedia();
+      return stopped;
+    };
+
     // Cleanup
     return () => {
       disposed = true;
@@ -471,25 +491,55 @@ export const useAudioRecording = (toast, options = {}) => {
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (audioManagerRef.current) {
-      const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
-      if (audioFeedbackEnabled) {
-        import("../utils/audioFeedback").then((m) => m.playStartSound()).catch(() => {});
-      }
-      return await audioManagerRef.current.startRecording();
+    if (!audioManagerRef.current) {
+      return false;
     }
-    return false;
+
+    const currentState = audioManagerRef.current.getState();
+    if (currentState.isRecording || currentState.isProcessing || currentState.isStartingRecording) {
+      return false;
+    }
+
+    const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
+    if (audioFeedbackEnabled) {
+      import("../utils/audioFeedback").then((m) => m.playStartSound()).catch(() => {});
+    }
+
+    const mode = localStorage.getItem("musicDuckingMode") || "off";
+    if (mode !== "off") {
+      const duckLevel = parseFloat(localStorage.getItem("musicDuckLevel") || "0.2");
+      window.electronAPI?.duckSystemAudio?.({ mode, duckLevel });
+    }
+
+    const pauseSetting = localStorage.getItem("pauseMediaOnRecord");
+    if (pauseSetting === "true" || pauseSetting === "1" || pauseSetting === "on") {
+      window.electronAPI?.mediaPause?.();
+    }
+
+    return await audioManagerRef.current.startRecording();
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (audioManagerRef.current) {
-      const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
-      if (audioFeedbackEnabled) {
-        import("../utils/audioFeedback").then((m) => m.playStopSound()).catch(() => {});
-      }
-      return audioManagerRef.current.stopRecording();
+    if (!audioManagerRef.current) {
+      return false;
     }
-    return false;
+
+    const currentState = audioManagerRef.current.getState();
+    if (!currentState.isRecording && !currentState.isStartingRecording) {
+      window.electronAPI?.restoreSystemAudio?.();
+      window.electronAPI?.mediaResume?.();
+      return false;
+    }
+
+    const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
+    if (audioFeedbackEnabled) {
+      import("../utils/audioFeedback").then((m) => m.playStopSound()).catch(() => {});
+    }
+
+    const stopped = audioManagerRef.current.stopRecording();
+    window.electronAPI?.restoreSystemAudio?.();
+    window.electronAPI?.mediaResume?.();
+    return stopped;
   }, []);
 
   const cancelRecording = useCallback(() => {
