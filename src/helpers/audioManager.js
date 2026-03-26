@@ -4,7 +4,13 @@ import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
-import { getContext, isSmartContextEnabled, buildWhisperContextHint } from "./contextPipeline";
+import {
+  getContext,
+  isSmartContextEnabled,
+  isFileIdentifiersEnabled,
+  buildWhisperContextHint,
+  buildFileIdentifierHint,
+} from "./contextPipeline";
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
@@ -865,7 +871,10 @@ class AudioManager {
 
       // Fetch Smart Context hint for Whisper initialPrompt (Pro feature, 300 ms timeout)
       if (isSmartContextEnabled()) {
-        this._cachedSmartContext = await getContext({ timeoutMs: 300 });
+        this._cachedSmartContext = await getContext({
+          timeoutMs: 300,
+          includeFileIdentifiers: isFileIdentifiersEnabled(),
+        });
       } else {
         this._cachedSmartContext = null;
       }
@@ -899,12 +908,13 @@ class AudioManager {
         "transcription"
       );
 
-      // Add custom dictionary (and optional Smart Context hint) as initialPrompt.
+      // Add custom dictionary (and optional Smart Context hints) as initialPrompt.
       // Skip when translating — English-biased hints confuse whisper's translation mode.
       if (!options.translate) {
         const dictionaryPrompt = this.getCustomDictionaryPrompt();
         const contextHint = buildWhisperContextHint(this._cachedSmartContext);
-        const promptParts = [dictionaryPrompt, contextHint].filter(Boolean);
+        const fileIdHint = buildFileIdentifierHint(this._cachedSmartContext?.fileIdentifiers);
+        const promptParts = [dictionaryPrompt, contextHint, fileIdHint].filter(Boolean);
         if (promptParts.length > 0) {
           options.initialPrompt = promptParts.join(". ");
         }
@@ -1419,7 +1429,7 @@ class AudioManager {
           normalizedText,
           reasoningModel,
           agentName,
-          { dictationMode, preferredLanguage }
+          { dictationMode, preferredLanguage, smartContext: this._cachedSmartContext ?? null }
         );
 
         logger.logReasoning("REASONING_SUCCESS", {

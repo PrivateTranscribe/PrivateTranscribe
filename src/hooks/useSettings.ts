@@ -349,9 +349,41 @@ export function useSettings() {
     }
   );
 
-  // Context capture (off by default). This is plumbing for future "active app/window context".
+  // Smart Context master toggle (default true — Pro entitlement gate enforces access for free users).
+  // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
+  const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
+    "smartContextEnabled",
+    true,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
+  // Points to the same key — deprecated, use smartContextEnabled going forward.
   const [enableContextCapture, setEnableContextCapture] = useLocalStorage<boolean>(
     "enableContextCapture",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // Active file identifiers (opt-in, local only) — off by default.
+  const [enableFileIdentifiers, setEnableFileIdentifiers] = useLocalStorage<boolean>(
+    "enableFileIdentifiers",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // LLM Context Enhancement — feed Smart Context to the reasoning model (off by default).
+  const [llmContextEnhancement, setLlmContextEnhancement] = useLocalStorage<boolean>(
+    "llmContextEnhancement",
     false,
     {
       serialize: String,
@@ -885,8 +917,14 @@ export function useSettings() {
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    smartContextEnabled,
+    setSmartContextEnabled,
     enableContextCapture,
     setEnableContextCapture,
+    enableFileIdentifiers,
+    setEnableFileIdentifiers,
+    llmContextEnhancement,
+    setLlmContextEnhancement,
     autoPaste,
     setAutoPaste,
     copyToClipboard,

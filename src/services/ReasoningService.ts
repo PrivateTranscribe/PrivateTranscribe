@@ -6,8 +6,7 @@ import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../c
 import { UNIFIED_SYSTEM_PROMPT, LEGACY_PROMPTS } from "../config/prompts";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
-import { getEffectiveEntitlement } from "../hooks/useProStatus";
-import { getContext } from "../helpers/contextPipeline";
+import { getContext, isLlmContextEnhancementEnabled } from "../helpers/contextPipeline";
 
 /**
  * @deprecated Use UNIFIED_SYSTEM_PROMPT from ../config/prompts instead
@@ -27,56 +26,52 @@ class ReasoningService extends BaseReasoningService {
     this.cacheCleanupStop = this.apiKeyCache.startAutoCleanup();
   }
 
-  private shouldIncludeActiveWindowContextInReasoning(): boolean {
-    if (typeof window === "undefined" || !window.localStorage) return false;
-
-    try {
-      // Smart Context is a Pro feature. Even if the local flag was previously
-      // enabled, keep runtime behavior aligned with the current entitlement.
-      if (getEffectiveEntitlement() !== "pro") return false;
-
-      // Preferred setting (UI: Settings → Privacy & History → Context capture)
-      const enableContextCapture = window.localStorage.getItem("enableContextCapture");
-      if (enableContextCapture === "true") return true;
-      if (enableContextCapture === "false") return false;
-
-      // Backwards compatibility: older builds used this key.
-      return window.localStorage.getItem("includeActiveWindowContextInReasoning") === "true";
-    } catch {
-      return false;
-    }
-  }
-
-  private async buildUserPrompt(text: string): Promise<string> {
-    if (!this.shouldIncludeActiveWindowContextInReasoning()) {
+  /**
+   * Build the user prompt, optionally prepending a context block.
+   *
+   * Context inclusion is gated on `llmContextEnhancement` (separate Pro toggle).
+   * When `config.smartContext` is provided (pre-fetched by AudioManager), it is
+   * used directly — avoiding a redundant IPC round-trip. If not provided, context
+   * is fetched lazily with a 2 s timeout.
+   *
+   * @param text       Raw transcribed text.
+   * @param config     ReasoningConfig containing optional pre-fetched smartContext.
+   */
+  private async buildUserPrompt(text: string, config: ReasoningConfig = {}): Promise<string> {
+    if (!isLlmContextEnhancementEnabled()) {
       return text;
     }
 
     try {
-      const ctx = await getContext({ timeoutMs: 2000 });
+      // Use pre-fetched context when available (shared pipeline, no re-capture needed)
+      const ctx =
+        config.smartContext !== undefined
+          ? config.smartContext
+          : await getContext({ timeoutMs: 2000 });
 
-      if (!ctx || !ctx.available) {
-        if (ctx?.blocked) {
+      if (!ctx || !(ctx as any).available) {
+        if ((ctx as any)?.blocked) {
           logger.logReasoning("ACTIVE_WINDOW_CONTEXT_BLOCKED", {
             enabled: true,
-            reason: ctx?.reason || "blocked",
+            reason: (ctx as any)?.reason || "blocked",
           });
         } else {
           logger.logReasoning("ACTIVE_WINDOW_CONTEXT_UNAVAILABLE", {
             enabled: true,
-            reason: ctx?.reason || "unknown",
+            reason: (ctx as any)?.reason || "unknown",
           });
         }
         return text;
       }
 
+      const c = ctx as any;
       const lines: string[] = [];
-      if (ctx.platform) lines.push(`Platform: ${ctx.platform}`);
-      if (ctx.appName) lines.push(`App: ${ctx.appName}`);
-      if (ctx.processName) lines.push(`Process: ${ctx.processName}`);
-      if (ctx.appClass) lines.push(`App class: ${ctx.appClass}`);
-      if (ctx.windowTitle) lines.push(`Window title: ${ctx.windowTitle}`);
-      if (ctx.uiaText) lines.push(`Focused element text: ${ctx.uiaText}`);
+      if (c.platform) lines.push(`Platform: ${c.platform}`);
+      if (c.appName) lines.push(`App: ${c.appName}`);
+      if (c.processName) lines.push(`Process: ${c.processName}`);
+      if (c.appClass) lines.push(`App class: ${c.appClass}`);
+      if (c.windowTitle) lines.push(`Window title: ${c.windowTitle}`);
+      if (c.uiaText) lines.push(`Focused element text: ${c.uiaText}`);
 
       const contextBlock =
         lines.length > 0
@@ -87,10 +82,11 @@ class ReasoningService extends BaseReasoningService {
 
       logger.logReasoning("ACTIVE_WINDOW_CONTEXT_INCLUDED", {
         enabled: true,
-        platform: ctx.platform || "unknown",
-        hasWindowTitle: !!ctx.windowTitle,
-        hasUiaText: !!ctx.uiaText,
-        uiaMethod: ctx.uiaMethod || undefined,
+        platform: c.platform || "unknown",
+        hasWindowTitle: !!c.windowTitle,
+        hasUiaText: !!c.uiaText,
+        uiaMethod: c.uiaMethod || undefined,
+        source: c.source || "unknown",
       });
 
       return `${contextBlock}${text}`;
@@ -344,7 +340,7 @@ class ReasoningService extends BaseReasoningService {
       config.dictationMode,
       config.preferredLanguage
     );
-    const userPrompt = await this.buildUserPrompt(text);
+    const userPrompt = await this.buildUserPrompt(text, config);
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -570,7 +566,7 @@ class ReasoningService extends BaseReasoningService {
         config.dictationMode,
         config.preferredLanguage
       );
-      const userPrompt = await this.buildUserPrompt(text);
+      const userPrompt = await this.buildUserPrompt(text, config);
 
       const messages = [
         { role: "system", content: systemPrompt },
@@ -887,7 +883,7 @@ class ReasoningService extends BaseReasoningService {
         config.dictationMode,
         config.preferredLanguage
       );
-      const userPrompt = await this.buildUserPrompt(text);
+      const userPrompt = await this.buildUserPrompt(text, config);
 
       const requestBody = {
         contents: [

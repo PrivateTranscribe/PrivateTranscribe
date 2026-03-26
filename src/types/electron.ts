@@ -201,6 +201,17 @@ export interface ActiveWindowContextResult {
   uiaMethod?: string;
 }
 
+export interface FileIdentifiersResult {
+  /** Whether identifier extraction succeeded. */
+  blocked: boolean;
+  /** Identifiers extracted from the file. */
+  identifiers: string[];
+  /** Base filename that was found and read. */
+  filename?: string;
+  /** Human-readable reason when blocked or extraction failed. */
+  reason?: string;
+}
+
 export interface HardwareDetectionCPU {
   count: number;
   model: string;
@@ -389,6 +400,8 @@ declare global {
 
       // Context capture (best-effort; returns {available:false} if unsupported)
       getActiveWindowContext: () => Promise<ActiveWindowContextResult>;
+      // File identifier extraction for Smart Context (opt-in, local only)
+      extractFileIdentifiers: (filename: string) => Promise<FileIdentifiersResult>;
 
       // Audio
       onNoAudioDetected: (callback: (event: any, data?: any) => void) => (() => void) | void;

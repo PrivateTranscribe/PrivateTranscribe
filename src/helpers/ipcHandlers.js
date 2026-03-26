@@ -44,6 +44,38 @@ function isSafeModelFilename(filename) {
   return true;
 }
 
+/**
+ * Search for a filename inside `dir` up to `maxDepth` directory levels deep.
+ * Returns the first matching absolute path found, or null.
+ * Skips hidden directories (starting with ".") to avoid slow scans.
+ *
+ * @param {string} filename
+ * @param {string} dir
+ * @param {number} maxDepth
+ * @returns {string|null}
+ */
+function findFileInHome(filename, dir, maxDepth) {
+  if (maxDepth < 0) return null;
+  const fs = require("fs");
+  const path = require("path");
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue; // skip hidden dirs
+      if (entry.isFile() && entry.name === filename) {
+        return path.join(dir, entry.name);
+      }
+      if (entry.isDirectory() && maxDepth > 0) {
+        const found = findFileInHome(filename, path.join(dir, entry.name), maxDepth - 1);
+        if (found) return found;
+      }
+    }
+  } catch {
+    // Permission denied or other fs error — skip silently
+  }
+  return null;
+}
+
 class IPCHandlers {
   constructor(managers) {
     this.environmentManager = managers.environmentManager;
@@ -322,6 +354,25 @@ class IPCHandlers {
     ipcMain.handle("get-active-window-context", async () => {
       const { getActiveWindowContext } = require("./activeWindowContext");
       return getActiveWindowContext();
+    });
+
+    // File identifier extraction for Smart Context (opt-in, local only)
+    ipcMain.handle("extract-file-identifiers", async (_, filename) => {
+      if (!filename || typeof filename !== "string") {
+        return { blocked: true, reason: "invalid filename", identifiers: [] };
+      }
+      // Reject path traversal attempts before any filesystem work
+      if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+        return { blocked: true, reason: "invalid filename", identifiers: [] };
+      }
+      const os = require("os");
+      const homeDir = os.homedir();
+      const { extractFromFilePath } = require("./fileIdentifierExtractor");
+      const found = findFileInHome(filename, homeDir, 3);
+      if (!found) {
+        return { blocked: false, identifiers: [], reason: "file not found in home dir" };
+      }
+      return extractFromFilePath(found, homeDir);
     });
 
     // Whisper handlers

@@ -824,8 +824,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
-    enableContextCapture,
-    setEnableContextCapture,
+    smartContextEnabled,
+    setSmartContextEnabled,
+    enableFileIdentifiers,
+    setEnableFileIdentifiers,
+    llmContextEnhancement,
+    setLlmContextEnhancement,
     autoPaste,
     setAutoPaste,
     copyToClipboard,
@@ -918,7 +922,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           musicDuckLevel,
           enableVariableSnapping,
           enableCorrectionLearning,
-          enableContextCapture,
+          smartContextEnabled,
+          enableFileIdentifiers,
+          llmContextEnhancement,
           // Behavior & Notifications
           autoPaste,
           copyToClipboard,
@@ -971,7 +977,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       musicDuckLevel,
       enableVariableSnapping,
       enableCorrectionLearning,
-      enableContextCapture,
+      smartContextEnabled,
+      enableFileIdentifiers,
+      llmContextEnhancement,
       autoPaste,
       copyToClipboard,
       showPanelOnError,
@@ -1078,8 +1086,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         setEnableVariableSnapping(s.enableVariableSnapping);
       if (typeof s.enableCorrectionLearning === "boolean")
         setEnableCorrectionLearning(s.enableCorrectionLearning);
-      if (typeof s.enableContextCapture === "boolean")
-        setEnableContextCapture(s.enableContextCapture);
+      if (typeof s.smartContextEnabled === "boolean")
+        setSmartContextEnabled(s.smartContextEnabled);
+      if (typeof s.enableFileIdentifiers === "boolean")
+        setEnableFileIdentifiers(s.enableFileIdentifiers);
+      if (typeof s.llmContextEnhancement === "boolean")
+        setLlmContextEnhancement(s.llmContextEnhancement);
       if (typeof s.autoPaste === "boolean") setAutoPaste(s.autoPaste);
       if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
       if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
@@ -1932,20 +1944,53 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Context capture"
+                    label="Smart Context"
                     description={
                       smartContextUnlocked
-                        ? "Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) - always sanitized and kept local."
-                        : "Pro feature - unlock in Settings → Pro to enable Smart Context / context capture"
+                        ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local — never sent to cloud."
+                        : "Pro feature — unlock in Settings → Pro to enable Smart Context"
                     }
                   >
                     <Toggle
-                      checked={enableContextCapture}
-                      onChange={setEnableContextCapture}
+                      checked={smartContextEnabled}
+                      onChange={setSmartContextEnabled}
                       disabled={!smartContextUnlocked}
                     />
                   </SettingsRow>
                 </SettingsPanelRow>
+
+                {smartContextUnlocked && smartContextEnabled && (
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Active file context"
+                      description="Reads variable and function names from your active file to improve code dictation accuracy. Local only — file content stays on your device."
+                    >
+                      <Toggle
+                        checked={enableFileIdentifiers}
+                        onChange={setEnableFileIdentifiers}
+                      />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                )}
+
+                {smartContextUnlocked && useReasoningModel && (
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="LLM Context Enhancement"
+                      description={
+                        useReasoningModel && reasoningProvider !== "local"
+                          ? "Also sends context to the AI reasoning step. ⚠️ Context (app name, window title) will be sent to your cloud reasoning provider."
+                          : "Also sends context to the AI reasoning step. Context is processed by your local model only."
+                      }
+                    >
+                      <Toggle
+                        checked={llmContextEnhancement}
+                        onChange={setLlmContextEnhancement}
+                        disabled={!smartContextUnlocked}
+                      />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                )}
               </SettingsPanel>
             </div>
           </div>
