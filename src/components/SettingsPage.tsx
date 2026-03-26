@@ -178,9 +178,12 @@ function GpuStatusCard() {
   const [compError, setCompError] = useState<string | null>(null);
 
   // CUDA binary download state
-  const [cudaStatus, setCudaStatus] = useState<{ installed: boolean; version?: string } | null>(
-    null
-  );
+  const [cudaStatus, setCudaStatus] = useState<{
+    installed: boolean;
+    path: string | null;
+    platform: string;
+    supported: boolean;
+  } | null>(null);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
     "idle"
   );
@@ -396,7 +399,7 @@ function GpuStatusCard() {
             </div>
           )}
 
-          {/* ── CPU vs GPU Comparison section ─────────────────── */}
+          {/* ── Whisper vs Parakeet Comparison section ─────────────────── */}
           {compState === "done" && compResult && (
             <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
               <div className="flex items-center gap-2 mb-2">
@@ -408,7 +411,9 @@ function GpuStatusCard() {
               <div className="flex items-center gap-3">
                 {/* Whisper result */}
                 <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Whisper</p>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
+                    Whisper{compResult.cpuResult.gpuCategory === "nvidia_cuda" ? " (CUDA)" : " (CPU)"}
+                  </p>
                   <p className="text-sm font-semibold text-foreground tabular-nums">
                     {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
                   </p>
@@ -453,7 +458,7 @@ function GpuStatusCard() {
             <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Running CPU vs GPU comparison - testing both engines on a 10-second sample…
+                Running Whisper vs Parakeet comparison — testing both engines on a 10-second sample…
               </div>
             </div>
           )}
@@ -617,7 +622,7 @@ function GpuStatusCard() {
                 disabled={benchState === "running" || compState === "running"}
               >
                 <Zap className="w-3 h-3" />
-                {compResult ? "Re-run CPU vs GPU" : "Compare CPU vs GPU"}
+                {compResult ? "Re-run Whisper vs Parakeet" : "Compare Whisper vs Parakeet"}
               </Button>
             )}
           </div>

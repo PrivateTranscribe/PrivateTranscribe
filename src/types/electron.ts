@@ -721,7 +721,12 @@ declare global {
       }>;
 
       // CUDA binary download
-      getCudaBinaryStatus?: () => Promise<{ installed: boolean; version?: string }>;
+      getCudaBinaryStatus?: () => Promise<{
+        installed: boolean;
+        path: string | null;
+        platform: string;
+        supported: boolean;
+      }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
       cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;
       onCudaBinaryDownloadProgress?: (
