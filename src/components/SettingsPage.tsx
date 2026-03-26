@@ -402,24 +402,22 @@ function GpuStatusCard() {
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="w-3.5 h-3.5 text-primary" />
                 <p className="text-[11px] font-medium text-foreground">
-                  CPU vs GPU Speed Comparison
+                  Whisper vs Parakeet Speed Comparison
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {/* CPU result */}
+                {/* Whisper result */}
                 <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
-                    CPU (Whisper)
-                  </p>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Whisper</p>
                   <p className="text-sm font-semibold text-foreground tabular-nums">
                     {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
                   </p>
                   <p className="text-[9px] text-muted-foreground">{compResult.cpuResult.model}</p>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                {/* GPU result */}
+                {/* Parakeet result */}
                 <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
-                  <p className="text-[10px] font-medium text-primary mb-0.5">GPU (Parakeet)</p>
+                  <p className="text-[10px] font-medium text-primary mb-0.5">Parakeet</p>
                   <p className="text-sm font-semibold text-foreground tabular-nums">
                     {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
                   </p>
@@ -433,7 +431,7 @@ function GpuStatusCard() {
                     {compResult.speedup >= 10
                       ? `${compResult.speedup.toFixed(1)}x`
                       : `${compResult.speedup.toFixed(2)}x`}{" "}
-                    faster with GPU
+                    faster with Parakeet
                   </span>
                 </div>
               )}
@@ -445,8 +443,7 @@ function GpuStatusCard() {
                 </div>
               )}
               <p className="text-[9px] text-muted-foreground mt-2 text-center">
-                Measured on this device · Different engines (Whisper CPU vs Parakeet GPU) - not a
-                same-engine comparison
+                Measured on this device · Whisper vs Parakeet (ONNX) - different engines
                 {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
               </p>
             </div>

@@ -412,8 +412,35 @@ class BenchmarkManager {
         cpuCores: detection?.cpu?.count || null,
       };
 
-      // ── Run CPU (Whisper) benchmark ──
       const cpuModelName = cpuModel || "turbo";
+      const gpuModelName = gpuModel || "parakeet-tdt-0.6b-v3";
+
+      // ── Warmup runs (discarded) ───────────────────────────────────────────
+      // Ensures both servers are running and models are loaded into cache
+      // before timing. Without this, cold-start server startup time (which
+      // can be several seconds) is included in the timed run, making the
+      // results inaccurate and non-comparable.
+      debugLogger.info("Comparison benchmark: warmup runs (discarded)", {
+        cpuModel: cpuModelName,
+        gpuModel: gpuModelName,
+      });
+      try {
+        await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
+          model: cpuModelName,
+          inputFileName: "benchmark.wav",
+        });
+      } catch {
+        // Warmup failure is non-fatal — proceed to timed run
+      }
+      try {
+        await this.parakeetManager.transcribeLocalParakeet(audioBuffer, {
+          model: gpuModelName,
+        });
+      } catch {
+        // Warmup failure is non-fatal — proceed to timed run
+      }
+
+      // ── Run CPU (Whisper) benchmark ──
       const cpuStart = Date.now();
       await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
         model: cpuModelName,
@@ -434,7 +461,6 @@ class BenchmarkManager {
       this._saveResult(cpuRecord);
 
       // ── Run GPU (Parakeet) benchmark ──
-      const gpuModelName = gpuModel || "parakeet-tdt-0.6b-v3";
       const gpuStart = Date.now();
       await this.parakeetManager.transcribeLocalParakeet(audioBuffer, {
         model: gpuModelName,
