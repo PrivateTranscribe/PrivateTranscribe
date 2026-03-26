@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { app, screen, BrowserWindow, dialog } = require("electron");
+const { app, screen, powerMonitor, BrowserWindow, dialog } = require("electron");
 const HotkeyManager = require("./hotkeyManager");
 const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
@@ -154,6 +154,29 @@ class WindowManager {
     }, 500);
   }
 
+  _reclampOverlayPosition(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const bounds = this.mainWindow.getBounds();
+    const { width, height } = bounds;
+    const display = screen.getDisplayNearestPoint({
+      x: bounds.x + width / 2,
+      y: bounds.y + height / 2,
+    });
+    const workArea = display.workArea || display.bounds;
+    const clamped = WindowPositionUtil.clampPosition(bounds.x, bounds.y, width, height, workArea);
+    if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+      debugLogger.info("[Window] Re-clamping overlay after", reason, {
+        from: { x: bounds.x, y: bounds.y },
+        to: clamped,
+        workArea,
+      });
+      this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
+      this._scheduleSavePosition(clamped.x, clamped.y);
+    } else {
+      debugLogger.debug("[Window] Overlay already within bounds after", reason);
+    }
+  }
+
   async createMainWindow() {
     const display = screen.getPrimaryDisplay();
     const { width, height } = WINDOW_SIZES.BASE;
@@ -228,6 +251,18 @@ class WindowManager {
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((x, y) => this._scheduleSavePosition(x, y));
     MenuManager.setupMainMenu();
+
+    // Re-clamp the overlay after sleep/wake so it doesn't drift when the workArea
+    // changes (e.g. taskbar reappears at a different height, DPI scaling adjusts).
+    // Delay slightly to let the OS finish restoring display configuration.
+    powerMonitor.on("resume", () => {
+      setTimeout(() => this._reclampOverlayPosition("resume"), 1000);
+    });
+
+    // Re-clamp whenever the display resolution, scale, or work area changes.
+    screen.on("display-metrics-changed", () => {
+      this._reclampOverlayPosition("display-metrics-changed");
+    });
   }
 
   setMainWindowInteractivity(shouldCapture) {
