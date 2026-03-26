@@ -81,20 +81,16 @@ describe("Model curation invariants", () => {
       expect(recommended[0].id).toBe("qwen3-8b-q4_k_m");
     });
 
-    it("Mistral provider has exactly one recommended model", () => {
+    it("Mistral provider has been removed (superseded by Qwen3)", () => {
       const data = readRegistry();
       const mistral = data.localProviders.find((p) => p.id === "mistral");
-      expect(mistral).toBeDefined();
-      const recommended = mistral!.models.filter((m) => m.recommended === true);
-      expect(recommended).toHaveLength(1);
+      expect(mistral).toBeUndefined();
     });
 
-    it("Llama provider has exactly one recommended model", () => {
+    it("Llama provider has been removed (superseded by Qwen3)", () => {
       const data = readRegistry();
       const llama = data.localProviders.find((p) => p.id === "llama");
-      expect(llama).toBeDefined();
-      const recommended = llama!.models.filter((m) => m.recommended === true);
-      expect(recommended).toHaveLength(1);
+      expect(llama).toBeUndefined();
     });
   });
 

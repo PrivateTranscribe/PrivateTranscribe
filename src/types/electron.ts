@@ -201,6 +201,17 @@ export interface ActiveWindowContextResult {
   uiaMethod?: string;
 }
 
+export interface FileIdentifiersResult {
+  /** Whether identifier extraction succeeded. */
+  blocked: boolean;
+  /** Identifiers extracted from the file. */
+  identifiers: string[];
+  /** Base filename that was found and read. */
+  filename?: string;
+  /** Human-readable reason when blocked or extraction failed. */
+  reason?: string;
+}
+
 export interface HardwareDetectionCPU {
   count: number;
   model: string;
@@ -296,6 +307,24 @@ export interface SaveTranscriptionOptions {
   includeInStats?: boolean;
 }
 
+export interface TranscriptionSettingsBroadcast {
+  useLocalWhisper?: string;
+  whisperModel?: string;
+  localTranscriptionProvider?: LocalTranscriptionProvider;
+  parakeetModel?: string;
+  allowOpenAIFallback?: string;
+  allowLocalFallback?: string;
+  fallbackWhisperModel?: string;
+  preferredLanguage?: string;
+  translateToEnglish?: string;
+  cloudTranscriptionProvider?: string;
+  cloudTranscriptionModel?: string;
+  cloudTranscriptionBaseUrl?: string;
+  openaiApiKey?: string;
+  groqApiKey?: string;
+  customTranscriptionApiKey?: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -371,6 +400,20 @@ declare global {
 
       // Context capture (best-effort; returns {available:false} if unsupported)
       getActiveWindowContext: () => Promise<ActiveWindowContextResult>;
+      // File identifier extraction for Smart Context (opt-in, local only)
+      extractFileIdentifiers: (filename: string) => Promise<FileIdentifiersResult>;
+      // File content extraction for LLM Context Enhancement (opt-in, local only)
+      extractFileContext: (
+        filename: string,
+        options?: { maxChars?: number }
+      ) => Promise<{
+        blocked?: boolean;
+        reason?: string;
+        filename?: string;
+        excerpt?: string;
+        truncated?: boolean;
+        originalLength?: number;
+      }>;
 
       // Audio
       onNoAudioDetected: (callback: (event: any, data?: any) => void) => (() => void) | void;
@@ -575,6 +618,10 @@ declare global {
       // Windows Push-to-Talk notifications
       notifyActivationModeChanged?: (mode: "tap" | "push") => void;
       notifyHotkeyChanged?: (hotkey: string) => void;
+      notifyTranscriptionSettingsChanged?: (settings: TranscriptionSettingsBroadcast) => void;
+      onTranscriptionSettingsChanged?: (
+        callback: (settings: TranscriptionSettingsBroadcast) => void
+      ) => (() => void) | void;
 
       // Auto-start at login
       getAutoStartEnabled?: () => Promise<boolean>;

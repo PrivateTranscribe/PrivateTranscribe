@@ -286,6 +286,7 @@ async function startApp() {
   trayManager.setWindowManager(windowManager);
   trayManager.setCreateControlPanelCallback(() => windowManager.createControlPanelWindow());
   await trayManager.createTray();
+  trayManager.startHealthCheck();
 
   // Set windows for update manager and check for updates
   updateManager.setWindows(windowManager.mainWindow, windowManager.controlPanelWindow);
@@ -612,6 +613,9 @@ if (gotSingleInstanceLock) {
   });
 
   app.on("will-quit", () => {
+    if (trayManager) {
+      trayManager.stopHealthCheck();
+    }
     if (hotkeyManager) {
       hotkeyManager.unregisterAll();
     } else {

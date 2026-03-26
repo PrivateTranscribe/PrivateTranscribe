@@ -250,22 +250,8 @@ export function getModelProvider(modelId: string): string {
     if (modelId.includes("gemini") && !modelId.includes("gemma")) return "gemini";
     if ((modelId.includes("gpt-4") || modelId.includes("gpt-5")) && !modelId.includes("gpt-oss"))
       return "openai";
-    if (
-      modelId.includes("qwen/") ||
-      modelId.includes("openai/") ||
-      modelId.includes("llama-3.1-8b-instant") ||
-      modelId.includes("llama-3.3-") ||
-      modelId.includes("mixtral-") ||
-      modelId.includes("gemma2-")
-    )
-      return "groq";
-    if (
-      modelId.includes("qwen") ||
-      modelId.includes("llama") ||
-      modelId.includes("mistral") ||
-      modelId.includes("gpt-oss-20b-mxfp4")
-    )
-      return "local";
+    if (modelId.includes("qwen/") || modelId.includes("openai/")) return "groq";
+    if (modelId.includes("qwen") || modelId.includes("gpt-oss-20b-mxfp4")) return "local";
   }
 
   return model?.provider || "openai";

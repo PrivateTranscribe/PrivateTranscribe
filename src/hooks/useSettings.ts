@@ -3,7 +3,7 @@ import { useLocalStorage } from "./useLocalStorage";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import ReasoningService from "../services/ReasoningService";
-import type { LocalTranscriptionProvider } from "../types/electron";
+import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
 
 export interface TranscriptionSettings {
   useLocalWhisper: boolean;
@@ -349,7 +349,19 @@ export function useSettings() {
     }
   );
 
-  // Context capture (off by default). This is plumbing for future "active app/window context".
+  // Smart Context master toggle (default true — Pro entitlement gate enforces access for free users).
+  // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
+  const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
+    "smartContextEnabled",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
+  // Points to the same key — deprecated, use smartContextEnabled going forward.
   const [enableContextCapture, setEnableContextCapture] = useLocalStorage<boolean>(
     "enableContextCapture",
     false,
@@ -358,6 +370,33 @@ export function useSettings() {
       deserialize: (value) => value === "true",
     }
   );
+
+  // Active file identifiers (opt-in, local only) — off by default.
+  const [enableFileIdentifiers, setEnableFileIdentifiers] = useLocalStorage<boolean>(
+    "enableFileIdentifiers",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // LLM Context Enhancement — feed Smart Context to the reasoning model (off by default).
+  const [llmContextEnhancement, setLlmContextEnhancement] = useLocalStorage<boolean>(
+    "llmContextEnhancement",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // Include active file content in LLM context (off by default, separate opt-in).
+  const [includeFileContentInLlmContext, setIncludeFileContentInLlmContext] =
+    useLocalStorage<boolean>("includeFileContentInLlmContext", false, {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    });
 
   // Sync historyLimit to main process so db-save-transcription can gate on it
   // (different Electron windows have isolated localStorage, so the main process
@@ -448,15 +487,57 @@ export function useSettings() {
     }
   }, 1000);
 
+  const broadcastTranscriptionSettingsUpdate = useCallback(
+    (overrides: Partial<TranscriptionSettingsBroadcast> = {}) => {
+      if (
+        typeof window === "undefined" ||
+        !window.electronAPI?.notifyTranscriptionSettingsChanged
+      ) {
+        return;
+      }
+
+      window.electronAPI.notifyTranscriptionSettingsChanged({
+        useLocalWhisper: String(useLocalWhisper),
+        whisperModel,
+        localTranscriptionProvider,
+        parakeetModel,
+        allowOpenAIFallback: String(allowOpenAIFallback),
+        allowLocalFallback: String(allowLocalFallback),
+        fallbackWhisperModel,
+        preferredLanguage,
+        translateToEnglish,
+        cloudTranscriptionProvider,
+        cloudTranscriptionModel,
+        cloudTranscriptionBaseUrl,
+        ...overrides,
+      });
+    },
+    [
+      useLocalWhisper,
+      whisperModel,
+      localTranscriptionProvider,
+      parakeetModel,
+      allowOpenAIFallback,
+      allowLocalFallback,
+      fallbackWhisperModel,
+      preferredLanguage,
+      translateToEnglish,
+      cloudTranscriptionProvider,
+      cloudTranscriptionModel,
+      cloudTranscriptionBaseUrl,
+    ]
+  );
+
   // Wrapped setters that sync to Electron IPC and invalidate cache
   const setOpenaiApiKey = useCallback(
     (key: string) => {
       setOpenaiApiKeyLocal(key);
       window.electronAPI?.saveOpenAIKey?.(key);
       ReasoningService.clearApiKeyCache("openai");
+      broadcastTranscriptionSettingsUpdate({ openaiApiKey: key });
       debouncedPersistToEnv();
     },
-    [setOpenaiApiKeyLocal, debouncedPersistToEnv]
+    [setOpenaiApiKeyLocal, debouncedPersistToEnv, broadcastTranscriptionSettingsUpdate]
   );
 
   const setAnthropicApiKey = useCallback(
@@ -484,18 +565,20 @@ export function useSettings() {
       setGroqApiKeyLocal(key);
       window.electronAPI?.saveGroqKey?.(key);
       ReasoningService.clearApiKeyCache("groq");
+      broadcastTranscriptionSettingsUpdate({ groqApiKey: key });
       debouncedPersistToEnv();
     },
-    [setGroqApiKeyLocal, debouncedPersistToEnv]
+    [setGroqApiKeyLocal, debouncedPersistToEnv, broadcastTranscriptionSettingsUpdate]
   );
 
   const setCustomTranscriptionApiKey = useCallback(
     (key: string) => {
       setCustomTranscriptionApiKeyLocal(key);
       window.electronAPI?.saveCustomTranscriptionKey?.(key);
+      broadcastTranscriptionSettingsUpdate({ customTranscriptionApiKey: key });
       debouncedPersistToEnv();
     },
-    [setCustomTranscriptionApiKeyLocal, debouncedPersistToEnv]
+    [setCustomTranscriptionApiKeyLocal, debouncedPersistToEnv, broadcastTranscriptionSettingsUpdate]
   );
 
   const setCustomReasoningApiKey = useCallback(
@@ -608,6 +691,11 @@ export function useSettings() {
     false,
     boolSerializer
   );
+  const [pauseMediaOnRecord, setPauseMediaOnRecord] = useLocalStorage(
+    "pauseMediaOnRecord",
+    false,
+    boolSerializer
+  );
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
@@ -669,6 +757,48 @@ export function useSettings() {
       if (settings.cloudTranscriptionBaseUrl !== undefined)
         setCloudTranscriptionBaseUrl(settings.cloudTranscriptionBaseUrl);
       if (settings.customDictionary !== undefined) setCustomDictionary(settings.customDictionary);
+
+      const transcriptionOverrides: Partial<TranscriptionSettingsBroadcast> = {};
+      if (settings.useLocalWhisper !== undefined) {
+        transcriptionOverrides.useLocalWhisper = String(settings.useLocalWhisper);
+      }
+      if (settings.whisperModel !== undefined) {
+        transcriptionOverrides.whisperModel = settings.whisperModel;
+      }
+      if (settings.localTranscriptionProvider !== undefined) {
+        transcriptionOverrides.localTranscriptionProvider = settings.localTranscriptionProvider;
+      }
+      if (settings.parakeetModel !== undefined) {
+        transcriptionOverrides.parakeetModel = settings.parakeetModel;
+      }
+      if (settings.allowOpenAIFallback !== undefined) {
+        transcriptionOverrides.allowOpenAIFallback = String(settings.allowOpenAIFallback);
+      }
+      if (settings.allowLocalFallback !== undefined) {
+        transcriptionOverrides.allowLocalFallback = String(settings.allowLocalFallback);
+      }
+      if (settings.fallbackWhisperModel !== undefined) {
+        transcriptionOverrides.fallbackWhisperModel = settings.fallbackWhisperModel;
+      }
+      if (settings.preferredLanguage !== undefined) {
+        transcriptionOverrides.preferredLanguage = settings.preferredLanguage;
+      }
+      if (settings.translateToEnglish !== undefined) {
+        transcriptionOverrides.translateToEnglish = settings.translateToEnglish;
+      }
+      if (settings.cloudTranscriptionProvider !== undefined) {
+        transcriptionOverrides.cloudTranscriptionProvider = settings.cloudTranscriptionProvider;
+      }
+      if (settings.cloudTranscriptionModel !== undefined) {
+        transcriptionOverrides.cloudTranscriptionModel = settings.cloudTranscriptionModel;
+      }
+      if (settings.cloudTranscriptionBaseUrl !== undefined) {
+        transcriptionOverrides.cloudTranscriptionBaseUrl = settings.cloudTranscriptionBaseUrl;
+      }
+
+      if (Object.keys(transcriptionOverrides).length > 0) {
+        broadcastTranscriptionSettingsUpdate(transcriptionOverrides);
+      }
     },
     [
       setUseLocalWhisper,
@@ -686,6 +816,7 @@ export function useSettings() {
       setCloudTranscriptionModel,
       setCloudTranscriptionBaseUrl,
       setCustomDictionary,
+      broadcastTranscriptionSettingsUpdate,
     ]
   );
 
@@ -796,14 +927,24 @@ export function useSettings() {
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    smartContextEnabled,
+    setSmartContextEnabled,
     enableContextCapture,
     setEnableContextCapture,
+    enableFileIdentifiers,
+    setEnableFileIdentifiers,
+    llmContextEnhancement,
+    setLlmContextEnhancement,
+    includeFileContentInLlmContext,
+    setIncludeFileContentInLlmContext,
     autoPaste,
     setAutoPaste,
     copyToClipboard,
     setCopyToClipboard,
     showPanelOnError,
     setShowPanelOnError,
+    pauseMediaOnRecord,
+    setPauseMediaOnRecord,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,

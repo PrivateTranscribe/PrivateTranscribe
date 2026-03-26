@@ -4,6 +4,13 @@ import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
+import {
+  getContext,
+  isSmartContextEnabled,
+  isFileIdentifiersEnabled,
+  buildWhisperContextHint,
+  buildFileIdentifierHint,
+} from "./contextPipeline";
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
@@ -107,6 +114,8 @@ class AudioManager {
     this.cachedTranscriptionEndpoint = null;
     this.cachedEndpointProvider = null;
     this.cachedEndpointBaseUrl = null;
+    this.transcriptionSettingsSnapshot = null;
+    this.transcriptionSettingsChangedCleanup = null;
     this.recordingStartTime = null;
     this.recordingMimeType = "audio/webm";
     this.recordingSessionCounter = 0;
@@ -121,6 +130,10 @@ class AudioManager {
     this._pooledStream = null;
     this._pooledStreamReleaseTimer = null;
     this._pooledStreamConstraintsKey = null;
+    this.processingGeneration = 0;
+    this.activeTranscriptionAbortController = null;
+    this.activeTranscriptionGeneration = 0;
+    this._cachedSmartContext = null;
 
     // Pre-warm device cache and keep it fresh
     if (navigator.mediaDevices) {
@@ -129,6 +142,21 @@ class AudioManager {
         this._warmDeviceCache();
         this._clearPooledStream();
       });
+    }
+
+    if (window.electronAPI?.onTranscriptionSettingsChanged) {
+      this.transcriptionSettingsChangedCleanup =
+        window.electronAPI.onTranscriptionSettingsChanged((settings = {}) => {
+          if (!settings || typeof settings !== "object") {
+            this.transcriptionSettingsSnapshot = null;
+          } else {
+            this.transcriptionSettingsSnapshot = {
+              ...(this.transcriptionSettingsSnapshot || {}),
+              ...settings,
+            };
+          }
+          this.invalidateTranscriptionRuntimeCaches();
+        }) || null;
     }
   }
 
@@ -244,6 +272,75 @@ class AudioManager {
       isRecording: this.isRecording,
       isProcessing: this.isProcessing,
     });
+  }
+
+  getTranscriptionSetting(key, fallback = "") {
+    if (
+      this.transcriptionSettingsSnapshot &&
+      Object.prototype.hasOwnProperty.call(this.transcriptionSettingsSnapshot, key)
+    ) {
+      const snapshotValue = this.transcriptionSettingsSnapshot[key];
+      if (snapshotValue !== undefined && snapshotValue !== null) {
+        return snapshotValue;
+      }
+    }
+
+    if (typeof localStorage !== "undefined") {
+      const storedValue = localStorage.getItem(key);
+      if (storedValue !== null) {
+        return storedValue;
+      }
+    }
+
+    return fallback;
+  }
+
+  hasTranscriptionSettingSnapshot(key) {
+    return (
+      !!this.transcriptionSettingsSnapshot &&
+      Object.prototype.hasOwnProperty.call(this.transcriptionSettingsSnapshot, key)
+    );
+  }
+
+  invalidateTranscriptionRuntimeCaches() {
+    this.cachedApiKey = null;
+    this.cachedApiKeyProvider = null;
+    this.cachedTranscriptionEndpoint = null;
+    this.cachedEndpointProvider = null;
+    this.cachedEndpointBaseUrl = null;
+  }
+
+  isCurrentProcessingGeneration(generation) {
+    return this.isProcessing && generation === this.processingGeneration;
+  }
+
+  setActiveTranscriptionAbortController(controller, generation) {
+    this.activeTranscriptionAbortController = controller;
+    this.activeTranscriptionGeneration = generation;
+  }
+
+  clearActiveTranscriptionAbortController(generation = null) {
+    if (
+      generation !== null &&
+      generation !== undefined &&
+      generation !== this.activeTranscriptionGeneration
+    ) {
+      return;
+    }
+
+    this.activeTranscriptionAbortController = null;
+    this.activeTranscriptionGeneration = 0;
+  }
+
+  abortActiveTranscriptionRequest() {
+    if (this.activeTranscriptionAbortController) {
+      try {
+        this.activeTranscriptionAbortController.abort();
+      } catch {
+        // Ignore abort errors during cancellation/cleanup.
+      }
+    }
+    this.clearActiveTranscriptionAbortController();
   }
 
   clearRecorderStopWatchdog() {
@@ -637,8 +734,10 @@ class AudioManager {
 
   cancelProcessing() {
     if (this.isProcessing) {
+      this.processingGeneration += 1;
+      this.abortActiveTranscriptionRequest();
       this.isProcessing = false;
-      this.onStateChange?.({ isRecording: false, isProcessing: false });
+      this.emitStateChange();
       return true;
     }
     return false;
@@ -646,29 +745,38 @@ class AudioManager {
 
   async processAudio(audioBlob, metadata = {}) {
     const pipelineStart = performance.now();
+    const processingGeneration = ++this.processingGeneration;
+    const processingMetadata = {
+      ...metadata,
+      processingGeneration,
+    };
 
     try {
-      const useLocalWhisper = localStorage.getItem("useLocalWhisper") === "true";
-      const localProvider = localStorage.getItem("localTranscriptionProvider") || "whisper";
-      const whisperModel = localStorage.getItem("whisperModel") || "base";
-      const parakeetModel = localStorage.getItem("parakeetModel") || "parakeet-tdt-0.6b-v3";
+      const useLocalWhisper = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
+      const localProvider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
+      const whisperModel = this.getTranscriptionSetting("whisperModel", "base");
+      const parakeetModel = this.getTranscriptionSetting("parakeetModel", "parakeet-tdt-0.6b-v3");
 
       let result;
       let activeModel;
       if (useLocalWhisper) {
         if (localProvider === "nvidia") {
           activeModel = parakeetModel;
-          result = await this.processWithLocalParakeet(audioBlob, parakeetModel, metadata);
+          result = await this.processWithLocalParakeet(
+            audioBlob,
+            parakeetModel,
+            processingMetadata
+          );
         } else {
           activeModel = whisperModel;
-          result = await this.processWithLocalWhisper(audioBlob, whisperModel, metadata);
+          result = await this.processWithLocalWhisper(audioBlob, whisperModel, processingMetadata);
         }
       } else {
         activeModel = this.getTranscriptionModel();
-        result = await this.processWithOpenAIAPI(audioBlob, metadata);
+        result = await this.processWithOpenAIAPI(audioBlob, processingMetadata);
       }
 
-      if (!this.isProcessing) {
+      if (!this.isCurrentProcessingGeneration(processingGeneration)) {
         return;
       }
 
@@ -676,8 +784,16 @@ class AudioManager {
       if (metadata.durationSeconds) {
         result.durationSeconds = metadata.durationSeconds;
       }
+      result.processingGeneration = processingGeneration;
 
-      this.onTranscriptionComplete?.(result);
+      await this.onTranscriptionComplete?.(result, {
+        processingGeneration,
+        isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
+      });
+
+      if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        return;
+      }
 
       const roundTripDurationMs = Math.round(performance.now() - pipelineStart);
 
@@ -702,6 +818,20 @@ class AudioManager {
 
       logger.info("Pipeline timing", timingData, "performance");
     } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        !this.isCurrentProcessingGeneration(processingGeneration)
+      ) {
+        logger.debug(
+          "Transcription request canceled",
+          {
+            processingGeneration,
+          },
+          "transcription"
+        );
+        return;
+      }
+
       const errorAtMs = Math.round(performance.now() - pipelineStart);
 
       logger.error(
@@ -720,9 +850,11 @@ class AudioManager {
         });
       }
     } finally {
-      if (this.isProcessing) {
+      this.clearActiveTranscriptionAbortController(processingGeneration);
+
+      if (this.processingGeneration === processingGeneration && this.isProcessing) {
         this.isProcessing = false;
-        this.onStateChange?.({ isRecording: false, isProcessing: false });
+        this.emitStateChange();
       }
     }
   }
@@ -740,11 +872,22 @@ class AudioManager {
       } else {
         this._cachedCorrectionHints = [];
       }
+
+      // Fetch Smart Context hint for Whisper initialPrompt (Pro feature, 300 ms timeout)
+      if (isSmartContextEnabled()) {
+        this._cachedSmartContext = await getContext({
+          timeoutMs: 300,
+          includeFileIdentifiers: isFileIdentifiersEnabled(),
+        });
+      } else {
+        this._cachedSmartContext = null;
+      }
+
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const rawLanguage = localStorage.getItem("preferredLanguage");
-      const translateToEnglish = localStorage.getItem("translateToEnglish");
+      const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
+      const translateToEnglish = this.getTranscriptionSetting("translateToEnglish", "off");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
       const options = { model };
       if (resolvedLanguage) {
@@ -769,12 +912,15 @@ class AudioManager {
         "transcription"
       );
 
-      // Add custom dictionary as initial prompt to help Whisper recognize specific words
-      // Skip when translating - English dictionary hints confuse whisper's translation mode
+      // Add custom dictionary (and optional Smart Context hints) as initialPrompt.
+      // Skip when translating — English-biased hints confuse whisper's translation mode.
       if (!options.translate) {
         const dictionaryPrompt = this.getCustomDictionaryPrompt();
-        if (dictionaryPrompt) {
-          options.initialPrompt = dictionaryPrompt;
+        const contextHint = buildWhisperContextHint(this._cachedSmartContext);
+        const fileIdHint = buildFileIdentifierHint(this._cachedSmartContext?.fileIdentifiers);
+        const promptParts = [dictionaryPrompt, contextHint, fileIdHint].filter(Boolean);
+        if (promptParts.length > 0) {
+          options.initialPrompt = promptParts.join(". ");
         }
       }
 
@@ -822,8 +968,9 @@ class AudioManager {
         throw error;
       }
 
-      const allowOpenAIFallback = localStorage.getItem("allowOpenAIFallback") === "true";
-      const isLocalMode = localStorage.getItem("useLocalWhisper") === "true";
+      const allowOpenAIFallback =
+        this.getTranscriptionSetting("allowOpenAIFallback", "false") === "true";
+      const isLocalMode = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
 
       if (allowOpenAIFallback && isLocalMode) {
         try {
@@ -845,7 +992,7 @@ class AudioManager {
 
     try {
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const rawLanguage = localStorage.getItem("preferredLanguage");
+      const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "parakeet", model);
       const options = { model };
       if (resolvedLanguage) {
@@ -911,8 +1058,9 @@ class AudioManager {
         throw error;
       }
 
-      const allowOpenAIFallback = localStorage.getItem("allowOpenAIFallback") === "true";
-      const isLocalMode = localStorage.getItem("useLocalWhisper") === "true";
+      const allowOpenAIFallback =
+        this.getTranscriptionSetting("allowOpenAIFallback", "false") === "true";
+      const isLocalMode = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
 
       if (allowOpenAIFallback && isLocalMode) {
         try {
@@ -931,10 +1079,7 @@ class AudioManager {
 
   async getAPIKey() {
     // Get the current transcription provider
-    const provider =
-      typeof localStorage !== "undefined"
-        ? localStorage.getItem("cloudTranscriptionProvider") || "openai"
-        : "openai";
+    const provider = this.getTranscriptionSetting("cloudTranscriptionProvider", "openai");
 
     // Check cache (invalidate if provider changed)
     if (this.cachedApiKey !== null && this.cachedApiKeyProvider === provider) {
@@ -944,17 +1089,21 @@ class AudioManager {
     let apiKey = null;
 
     if (provider === "custom") {
-      try {
-        apiKey = await window.electronAPI.getCustomTranscriptionKey?.();
-      } catch (err) {
-        logger.debug(
-          "Failed to get custom transcription key via IPC, falling back to localStorage",
-          { error: err?.message },
-          "transcription"
-        );
-      }
-      if (!apiKey || !apiKey.trim()) {
-        apiKey = localStorage.getItem("customTranscriptionApiKey") || "";
+      if (this.hasTranscriptionSettingSnapshot("customTranscriptionApiKey")) {
+        apiKey = this.getTranscriptionSetting("customTranscriptionApiKey", "");
+      } else {
+        try {
+          apiKey = await window.electronAPI.getCustomTranscriptionKey?.();
+        } catch (err) {
+          logger.debug(
+            "Failed to get custom transcription key via IPC, falling back to localStorage",
+            { error: err?.message },
+            "transcription"
+          );
+        }
+        if (!apiKey || !apiKey.trim()) {
+          apiKey = localStorage.getItem("customTranscriptionApiKey") || "";
+        }
       }
       apiKey = apiKey?.trim() || "";
 
@@ -975,18 +1124,26 @@ class AudioManager {
       }
     } else if (provider === "groq") {
       // Try to get Groq API key
-      apiKey = await window.electronAPI.getGroqKey?.();
-      if (!isValidApiKey(apiKey, "groq")) {
-        apiKey = localStorage.getItem("groqApiKey");
+      if (this.hasTranscriptionSettingSnapshot("groqApiKey")) {
+        apiKey = this.getTranscriptionSetting("groqApiKey", "");
+      } else {
+        apiKey = await window.electronAPI.getGroqKey?.();
+        if (!isValidApiKey(apiKey, "groq")) {
+          apiKey = localStorage.getItem("groqApiKey");
+        }
       }
       if (!isValidApiKey(apiKey, "groq")) {
         throw new Error("Groq API key not found. Please set your API key in the Control Panel.");
       }
     } else {
       // Default to OpenAI
-      apiKey = await window.electronAPI.getOpenAIKey();
-      if (!isValidApiKey(apiKey, "openai")) {
-        apiKey = localStorage.getItem("openaiApiKey");
+      if (this.hasTranscriptionSettingSnapshot("openaiApiKey")) {
+        apiKey = this.getTranscriptionSetting("openaiApiKey", "");
+      } else {
+        apiKey = await window.electronAPI.getOpenAIKey();
+        if (!isValidApiKey(apiKey, "openai")) {
+          apiKey = localStorage.getItem("openaiApiKey");
+        }
       }
       if (!isValidApiKey(apiKey, "openai")) {
         throw new Error(
@@ -1276,7 +1433,7 @@ class AudioManager {
           normalizedText,
           reasoningModel,
           agentName,
-          { dictationMode, preferredLanguage }
+          { dictationMode, preferredLanguage, smartContext: this._cachedSmartContext ?? null }
         );
 
         logger.logReasoning("REASONING_SUCCESS", {
@@ -1460,12 +1617,15 @@ class AudioManager {
 
   async processWithOpenAIAPI(audioBlob, metadata = {}) {
     const timings = {};
-    const language = localStorage.getItem("preferredLanguage");
-    const allowLocalFallback = localStorage.getItem("allowLocalFallback") === "true";
-    const fallbackModel = localStorage.getItem("fallbackWhisperModel") || "base";
+    const language = this.getTranscriptionSetting("preferredLanguage", "");
+    const allowLocalFallback =
+      this.getTranscriptionSetting("allowLocalFallback", "false") === "true";
+    const fallbackModel = this.getTranscriptionSetting("fallbackWhisperModel", "base");
     const source = metadata?.source || "dictation";
     const originalFileName = metadata?.originalFileName || null;
     const skipOptimizationByMetadata = metadata?.skipOptimization === true;
+    const processingGeneration = metadata?.processingGeneration ?? null;
+    const abortController = new AbortController();
 
     try {
       const durationSeconds = metadata.durationSeconds ?? null;
@@ -1475,7 +1635,7 @@ class AudioManager {
         durationSeconds < SHORT_CLIP_DURATION_SECONDS;
 
       const model = this.getTranscriptionModel();
-      const provider = localStorage.getItem("cloudTranscriptionProvider") || "openai";
+      const provider = this.getTranscriptionSetting("cloudTranscriptionProvider", "openai");
 
       const effectiveLanguage = !language || language === "auto" ? null : language;
       logger.info(
@@ -1608,10 +1768,14 @@ class AudioManager {
       );
 
       const apiCallStart = performance.now();
+      if (processingGeneration !== null && processingGeneration !== undefined) {
+        this.setActiveTranscriptionAbortController(abortController, processingGeneration);
+      }
       const response = await fetch(endpoint, {
         method: "POST",
         headers,
         body: formData,
+        signal: abortController.signal,
       });
 
       const responseContentType = response.headers.get("content-type") || "";
@@ -1743,7 +1907,11 @@ class AudioManager {
         );
       }
     } catch (error) {
-      const isOpenAIMode = localStorage.getItem("useLocalWhisper") !== "true";
+      if (error?.name === "AbortError") {
+        throw error;
+      }
+
+      const isOpenAIMode = this.getTranscriptionSetting("useLocalWhisper", "false") !== "true";
 
       if (allowLocalFallback && isOpenAIMode) {
         try {
@@ -1773,20 +1941,15 @@ class AudioManager {
       }
 
       throw error;
+    } finally {
+      this.clearActiveTranscriptionAbortController(processingGeneration);
     }
   }
 
   getTranscriptionModel() {
     try {
-      const provider =
-        typeof localStorage !== "undefined"
-          ? localStorage.getItem("cloudTranscriptionProvider") || "openai"
-          : "openai";
-
-      const model =
-        typeof localStorage !== "undefined"
-          ? localStorage.getItem("cloudTranscriptionModel") || ""
-          : "";
+      const provider = this.getTranscriptionSetting("cloudTranscriptionProvider", "openai");
+      const model = this.getTranscriptionSetting("cloudTranscriptionModel", "");
 
       const trimmedModel = model.trim();
 
@@ -1818,14 +1981,8 @@ class AudioManager {
 
   getTranscriptionEndpoint() {
     // Get current provider and base URL to check if cache is valid
-    const currentProvider =
-      typeof localStorage !== "undefined"
-        ? localStorage.getItem("cloudTranscriptionProvider") || "openai"
-        : "openai";
-    const currentBaseUrl =
-      typeof localStorage !== "undefined"
-        ? localStorage.getItem("cloudTranscriptionBaseUrl") || ""
-        : "";
+    const currentProvider = this.getTranscriptionSetting("cloudTranscriptionProvider", "openai");
+    const currentBaseUrl = this.getTranscriptionSetting("cloudTranscriptionBaseUrl", "");
 
     // Only use custom URL when provider is explicitly "custom"
     const isCustomEndpoint = currentProvider === "custom";
@@ -1975,6 +2132,12 @@ class AudioManager {
   }
 
   cleanup() {
+    this.abortActiveTranscriptionRequest();
+    this.processingGeneration += 1;
+    this.transcriptionSettingsChangedCleanup?.();
+    this.transcriptionSettingsChangedCleanup = null;
+    this.transcriptionSettingsSnapshot = null;
+    this.invalidateTranscriptionRuntimeCaches();
     this.discardCurrentRecording = true;
     this.clearRecorderStopWatchdog();
     if (this.mediaRecorder?.state === "recording") {

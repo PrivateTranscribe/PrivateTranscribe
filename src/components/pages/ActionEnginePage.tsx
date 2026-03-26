@@ -95,6 +95,62 @@ const EMPTY_FORM: ActionFormState = {
   enabled: true,
 };
 
+interface StarterTemplate {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  name: string;
+  description: string;
+  triggerExample: string;
+  form: ActionFormState;
+}
+
+const STARTER_TEMPLATES: StarterTemplate[] = [
+  {
+    icon: Terminal,
+    name: "Open Terminal",
+    description: "Launch a terminal window by voice.",
+    triggerExample: '"open terminal"',
+    form: {
+      name: "Open Terminal",
+      description: "Launch a terminal window",
+      triggerPhrase: "open terminal",
+      triggerMode: "contains",
+      actionType: "shell",
+      actionConfig: { command: "gnome-terminal" },
+      enabled: true,
+    },
+  },
+  {
+    icon: Globe,
+    name: "Search the Web",
+    description: "Open your browser to a search engine.",
+    triggerExample: '"search the web"',
+    form: {
+      name: "Search the Web",
+      description: "Open browser to search engine",
+      triggerPhrase: "search the web",
+      triggerMode: "contains",
+      actionType: "url",
+      actionConfig: { url: "https://www.google.com" },
+      enabled: true,
+    },
+  },
+  {
+    icon: Mic,
+    name: "Switch to Push-to-Talk",
+    description: "Toggle dictation mode with your voice.",
+    triggerExample: '"push to talk mode"',
+    form: {
+      name: "Switch to Push-to-Talk",
+      description: "Switch dictation to push-to-talk",
+      triggerPhrase: "push to talk mode",
+      triggerMode: "contains",
+      actionType: "dictation-mode",
+      actionConfig: { mode: "push" },
+      enabled: true,
+    },
+  },
+];
+
 const DEFAULT_CONFIG_FOR_TYPE: Record<ActionType, ActionConfig> = {
   shell: { command: "" },
   url: { url: "" },
@@ -391,7 +447,18 @@ function ActionFormDialog({
     }
   };
 
-  const canSubmit = form.name.trim().length > 0 && form.triggerPhrase.trim().length > 0;
+  const regexError = (() => {
+    if (form.triggerMode !== "regex" || !form.triggerPhrase.trim()) return null;
+    try {
+      new RegExp(form.triggerPhrase, "i");
+      return null;
+    } catch {
+      return "Invalid regular expression.";
+    }
+  })();
+
+  const canSubmit =
+    form.name.trim().length > 0 && form.triggerPhrase.trim().length > 0 && regexError === null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -450,6 +517,8 @@ function ActionFormDialog({
               </Select>
             </div>
           </div>
+
+          {regexError && <p className="text-xs text-red-400">{regexError}</p>}
 
           {/* Action type */}
           <div className="space-y-1.5">
@@ -845,6 +914,7 @@ export default function ActionEnginePage() {
 
   // Dialog state
   const [createOpen, setCreateOpen] = useState(false);
+  const [createInitial, setCreateInitial] = useState<ActionFormState | null>(null);
   const [editTarget, setEditTarget] = useState<Action | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Action | null>(null);
 
@@ -857,6 +927,11 @@ export default function ActionEnginePage() {
   // Run feedback
   const [runningId, setRunningId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<RunResult | null>(null);
+
+  const openCreateWithTemplate = (template?: ActionFormState) => {
+    setCreateInitial(template ?? null);
+    setCreateOpen(true);
+  };
 
   const handleCreate = async (form: ActionFormState) => {
     const created = await createAction(form as ActionCreatePayload);
@@ -1042,7 +1117,7 @@ export default function ActionEnginePage() {
                     : `${actions.length} ${actions.length === 1 ? "action" : "actions"} defined`}
                 </p>
               </div>
-              <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
+              <Button size="sm" onClick={() => openCreateWithTemplate()} className="gap-1.5">
                 <Plus size={14} />
                 Add action
               </Button>
@@ -1055,18 +1130,52 @@ export default function ActionEnginePage() {
                 ))}
               </div>
             ) : actions.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <Zap size={32} className="text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No actions yet.</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setCreateOpen(true)}
-                  className="gap-1.5"
-                >
-                  <Plus size={14} />
-                  Create your first action
-                </Button>
+              <div className="space-y-4 py-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Start with a template
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {STARTER_TEMPLATES.map((tpl) => {
+                    const Icon = tpl.icon;
+                    return (
+                      <button
+                        key={tpl.name}
+                        onClick={() => openCreateWithTemplate(tpl.form)}
+                        className="group flex flex-col gap-2 rounded-lg border border-border-subtle/50 bg-surface-raised/20 p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon
+                            size={15}
+                            className="text-muted-foreground group-hover:text-primary transition-colors"
+                          />
+                          <span className="text-sm font-medium text-foreground">{tpl.name}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {tpl.description}
+                        </p>
+                        <p className="text-[11px] text-primary/70 font-mono">
+                          Say {tpl.triggerExample}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="h-px flex-1 bg-border-subtle/30" />
+                  <span className="text-xs text-muted-foreground">or</span>
+                  <div className="h-px flex-1 bg-border-subtle/30" />
+                </div>
+                <div className="flex justify-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openCreateWithTemplate()}
+                    className="gap-1.5"
+                  >
+                    <Plus size={14} />
+                    Create from scratch
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1127,10 +1236,15 @@ export default function ActionEnginePage() {
         </>
       )}
 
-      {/* Create dialog */}
+      {/* Create dialog - key forces remount when template changes so form is hydrated */}
       <ActionFormDialog
+        key={createInitial ? JSON.stringify(createInitial.name) : "__blank__"}
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateInitial(null);
+        }}
+        initial={createInitial ?? EMPTY_FORM}
         title="New action"
         submitLabel="Create action"
         onSubmit={handleCreate}

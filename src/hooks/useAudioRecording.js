@@ -51,6 +51,33 @@ export const useAudioRecording = (toast, options = {}) => {
       isDucked = false;
     };
 
+    // ── Media pause helpers ──────────────────────────────────────────────────
+    // Pause playing media (Spotify, browser video, etc.) when recording starts
+    // so it doesn't bleed into the transcription. The main process tracks
+    // whether media was actually paused, so resumeMedia() is a safe no-op if
+    // nothing was playing.
+    let mediaPauseRequested = false;
+
+    const pauseMedia = () => {
+      const pauseSetting = localStorage.getItem("pauseMediaOnRecord");
+      console.log("[media] pauseMedia called, setting:", pauseSetting);
+      if (pauseSetting !== "true" && pauseSetting !== "1" && pauseSetting !== "on") {
+        console.log("[media] pauseMedia skipped — setting not enabled");
+        return;
+      }
+      console.log("[media] invoking mediaPause IPC");
+      window.electronAPI?.mediaPause?.();
+      mediaPauseRequested = true;
+    };
+
+    const resumeMedia = () => {
+      console.log("[media] resumeMedia called, mediaPauseRequested:", mediaPauseRequested);
+      if (!mediaPauseRequested) return;
+      mediaPauseRequested = false;
+      console.log("[media] invoking mediaResume IPC");
+      window.electronAPI?.mediaResume?.();
+    };
+
     // ── Audio feedback helper ─────────────────────────────────────────────────
     const playFeedback = (sound) => {
       const enabled = localStorage.getItem("audioFeedback") === "true";
@@ -91,11 +118,15 @@ export const useAudioRecording = (toast, options = {}) => {
           window.electronAPI.openControlPanel();
         }
       },
-      onTranscriptionComplete: async (result) => {
+      onTranscriptionComplete: async (result, commitContext = {}) => {
         // Always restore audio when transcription finishes (safety net)
         restoreAudio();
+        resumeMedia();
 
-        if (disposed || !result.success) {
+        const canCommit = () =>
+          !disposed && (typeof commitContext.isCurrent !== "function" || commitContext.isCurrent());
+
+        if (!canCommit() || !result.success) {
           return;
         }
 
@@ -129,6 +160,10 @@ export const useAudioRecording = (toast, options = {}) => {
           // Non-fatal: snapping is best-effort.
         }
 
+        if (!canCommit()) {
+          return;
+        }
+
         setTranscript(text);
 
         // ── Action Engine ──────────────────────────────────────────────────────
@@ -142,6 +177,9 @@ export const useAudioRecording = (toast, options = {}) => {
           const aeEnabled = localStorage.getItem("actionEngineEnabled") !== "false";
           if (aeEnabled && window.electronAPI?.actionEngineMatch) {
             const matchResult = await window.electronAPI.actionEngineMatch(text);
+            if (!canCommit()) {
+              return;
+            }
             if (
               matchResult?.success &&
               Array.isArray(matchResult.matches) &&
@@ -149,10 +187,16 @@ export const useAudioRecording = (toast, options = {}) => {
             ) {
               actionHandled = true;
               for (const { action } of matchResult.matches) {
+                if (!canCommit()) {
+                  return;
+                }
                 const execResult = await window.electronAPI?.actionEngineExecute?.(action.id, {
                   triggeredBy: "transcript",
                   triggerText: text,
                 });
+                if (!canCommit()) {
+                  return;
+                }
                 if (execResult && !execResult.success) {
                   toastRef.current?.({
                     title: `Action failed: ${action.name}`,
@@ -163,6 +207,9 @@ export const useAudioRecording = (toast, options = {}) => {
                 }
               }
               const names = matchResult.matches.map(({ action }) => action.name).join(", ");
+              if (!canCommit()) {
+                return;
+              }
               toastRef.current?.({
                 title: "Action triggered",
                 description: names,
@@ -181,8 +228,14 @@ export const useAudioRecording = (toast, options = {}) => {
         const shouldCopy = (localStorage.getItem("copyToClipboard") ?? "true") !== "false";
 
         if (!actionHandled) {
+          if (!canCommit()) {
+            return;
+          }
           if (shouldPaste) {
             await manager.safePaste(text);
+            if (!canCommit()) {
+              return;
+            }
             // If "copy to clipboard" is also on, re-write the transcription after paste
             // (safePaste restores the original clipboard; this ensures the text stays in it)
             if (shouldCopy && window.electronAPI?.writeClipboard) {
@@ -196,6 +249,9 @@ export const useAudioRecording = (toast, options = {}) => {
         // Success confirmation notification (skipped for action triggers - those
         // show their own "Action triggered" toast above)
         const showSuccess = localStorage.getItem("successConfirmation") === "true";
+        if (!canCommit()) {
+          return;
+        }
         if (showSuccess && !actionHandled) {
           toastRef.current?.({
             title: "Transcription complete",
@@ -223,12 +279,20 @@ export const useAudioRecording = (toast, options = {}) => {
             let prompted = false;
 
             const intervalId = setInterval(async () => {
+              if (!canCommit()) {
+                clearInterval(intervalId);
+                return;
+              }
               if (Date.now() - startedAt > timeoutMs || prompted) {
                 clearInterval(intervalId);
                 return;
               }
 
               const current = await window.electronAPI.readClipboard();
+              if (!canCommit()) {
+                clearInterval(intervalId);
+                return;
+              }
               if (!current || current === lastClipboard) return;
               lastClipboard = current;
 
@@ -299,11 +363,15 @@ export const useAudioRecording = (toast, options = {}) => {
         // Only save to history if the user hasn't disabled history entirely
         const historyLimitRaw = localStorage.getItem("historyLimit");
         const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
-        if (isNaN(historyLimit) || historyLimit > 0) {
+        if (canCommit() && (isNaN(historyLimit) || historyLimit > 0)) {
           void manager.saveTranscription(text, result.durationSeconds);
         }
 
-        if (result.source === "openai" && localStorage.getItem("useLocalWhisper") === "true") {
+        if (
+          canCommit() &&
+          (result.source === "openai" || result.source === "openai-fallback") &&
+          localStorage.getItem("useLocalWhisper") === "true"
+        ) {
           toastRef.current?.({
             title: "Fallback Mode",
             description: "Local Whisper failed. Used OpenAI API instead.",
@@ -322,13 +390,9 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
-        playFeedback("playStartSound");
-        duckAudio();
-        void manager.startRecording();
+        void beginRecordingFlow({ playSound: true });
       } else if (currentState.isRecording || currentState.isStartingRecording) {
-        playFeedback("playStopSound");
-        manager.stopRecording();
-        restoreAudio();
+        endRecordingFlow({ playSound: true });
       }
     };
 
@@ -340,22 +404,15 @@ export const useAudioRecording = (toast, options = {}) => {
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
-        playFeedback("playStartSound");
-        duckAudio();
-        void manager.startRecording();
+        void beginRecordingFlow({ playSound: true });
       }
     };
 
     // Set up listener for push-to-talk stop
     const handleStop = () => {
-      const currentState = manager.getState();
-      if (currentState.isRecording || currentState.isStartingRecording) {
-        playFeedback("playStopSound");
-        manager.stopRecording();
-      }
       // Always restore audio when push-to-talk key is released,
       // even if recording didn't fully start (quick tap race condition)
-      restoreAudio();
+      endRecordingFlow({ playSound: true });
     };
 
     const disposeToggle = window.electronAPI.onToggleDictation(() => {
@@ -383,6 +440,41 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeNoAudio = window.electronAPI.onNoAudioDetected?.(handleNoAudioDetected);
 
+    const beginRecordingFlow = async ({ playSound = false } = {}) => {
+      const currentState = manager.getState();
+      if (
+        currentState.isRecording ||
+        currentState.isProcessing ||
+        currentState.isStartingRecording
+      ) {
+        return false;
+      }
+
+      if (playSound) {
+        playFeedback("playStartSound");
+      }
+      duckAudio();
+      pauseMedia();
+      return await manager.startRecording();
+    };
+
+    const endRecordingFlow = ({ playSound = false } = {}) => {
+      const currentState = manager.getState();
+      if (!currentState.isRecording && !currentState.isStartingRecording) {
+        restoreAudio();
+        resumeMedia();
+        return false;
+      }
+
+      if (playSound) {
+        playFeedback("playStopSound");
+      }
+      const stopped = manager.stopRecording();
+      restoreAudio();
+      resumeMedia();
+      return stopped;
+    };
+
     // Cleanup
     return () => {
       disposed = true;
@@ -398,25 +490,55 @@ export const useAudioRecording = (toast, options = {}) => {
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (audioManagerRef.current) {
-      const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
-      if (audioFeedbackEnabled) {
-        import("../utils/audioFeedback").then((m) => m.playStartSound()).catch(() => {});
-      }
-      return await audioManagerRef.current.startRecording();
+    if (!audioManagerRef.current) {
+      return false;
     }
-    return false;
+
+    const currentState = audioManagerRef.current.getState();
+    if (currentState.isRecording || currentState.isProcessing || currentState.isStartingRecording) {
+      return false;
+    }
+
+    const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
+    if (audioFeedbackEnabled) {
+      import("../utils/audioFeedback").then((m) => m.playStartSound()).catch(() => {});
+    }
+
+    const mode = localStorage.getItem("musicDuckingMode") || "off";
+    if (mode !== "off") {
+      const duckLevel = parseFloat(localStorage.getItem("musicDuckLevel") || "0.2");
+      window.electronAPI?.duckSystemAudio?.({ mode, duckLevel });
+    }
+
+    const pauseSetting = localStorage.getItem("pauseMediaOnRecord");
+    if (pauseSetting === "true" || pauseSetting === "1" || pauseSetting === "on") {
+      window.electronAPI?.mediaPause?.();
+    }
+
+    return await audioManagerRef.current.startRecording();
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (audioManagerRef.current) {
-      const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
-      if (audioFeedbackEnabled) {
-        import("../utils/audioFeedback").then((m) => m.playStopSound()).catch(() => {});
-      }
-      return audioManagerRef.current.stopRecording();
+    if (!audioManagerRef.current) {
+      return false;
     }
-    return false;
+
+    const currentState = audioManagerRef.current.getState();
+    if (!currentState.isRecording && !currentState.isStartingRecording) {
+      window.electronAPI?.restoreSystemAudio?.();
+      window.electronAPI?.mediaResume?.();
+      return false;
+    }
+
+    const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
+    if (audioFeedbackEnabled) {
+      import("../utils/audioFeedback").then((m) => m.playStopSound()).catch(() => {});
+    }
+
+    const stopped = audioManagerRef.current.stopRecording();
+    window.electronAPI?.restoreSystemAudio?.();
+    window.electronAPI?.mediaResume?.();
+    return stopped;
   }, []);
 
   const cancelRecording = useCallback(() => {

@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import "./index.css";
 import {
-  X,
   Check,
   ArrowLeft,
   ChevronRight,
   Clock3,
-  MessageCircle,
   Settings,
   Mic2,
   Languages,
@@ -183,14 +181,6 @@ const MenuRow = ({ icon: Icon, label, hint, trailing, disabled = false, onClick 
 export default function App() {
   const [isHovered, setIsHovered] = useState(false);
   const [isCommandMenuOpen, setIsCommandMenuOpen] = useState(false);
-  // cancelReady: only true after recording/processing has been stable for ≥400ms.
-  // Prevents the cancel button from flashing during quick push-to-talk taps where
-  // the recording+processing cycle completes faster than the user can react.
-  const [cancelReady, setCancelReady] = useState(false);
-  const cancelReadyTimerRef = useRef(null);
-  // Track whether the current recording session was started by a mouse click vs hotkey.
-  // The cancel button is only shown for mouse-initiated recordings.
-  const recordingStartedByMouseRef = useRef(false);
   const [activeSubmenu, setActiveSubmenu] = useState("root");
   // Active dictation mode set by an Action Engine "dictation-mode" action.
   // null means default (no override active).
@@ -344,21 +334,6 @@ export default function App() {
     }
   }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
 
-  // Debounce cancel-button visibility to prevent flash on quick push-to-talk taps.
-  // The button only becomes visible after the active state has been held for 400ms.
-  // It hides immediately when the state ends (no delay on hide).
-  // Also resets the mouse-start flag when the session ends.
-  useEffect(() => {
-    clearTimeout(cancelReadyTimerRef.current);
-    if (isRecording || isProcessing) {
-      cancelReadyTimerRef.current = setTimeout(() => setCancelReady(true), 400);
-    } else {
-      setCancelReady(false);
-      recordingStartedByMouseRef.current = false;
-    }
-    return () => clearTimeout(cancelReadyTimerRef.current);
-  }, [isRecording, isProcessing]);
-
   useEffect(() => {
     const resizeWindow = () => {
       if (isCommandMenuOpen && toastCount > 0) {
@@ -500,21 +475,6 @@ export default function App() {
     });
   }, [closeContextMenu, toast]);
 
-  const handleContactSupport = useCallback(async () => {
-    try {
-      const result = await window.electronAPI?.openExternal?.(
-        "mailto:support@privatetranscribe.com"
-      );
-      if (!result?.success) {
-        await window.electronAPI?.openExternal?.(
-          "https://mail.google.com/mail/?view=cm&to=support@privatetranscribe.com"
-        );
-      }
-    } finally {
-      closeContextMenu();
-    }
-  }, [closeContextMenu]);
-
   const handleSelectLanguage = useCallback(
     (languageCode) => {
       localStorage.setItem("preferredLanguage", languageCode);
@@ -643,22 +603,23 @@ export default function App() {
         Absolute-position root: fills the entire Electron window.
         pointer-events: none on the root so transparent areas stay click-through;
         pointer-events: auto re-enabled on the icon anchor only.
-        This ensures the icon at bottom: 24 / left: 24 never shifts due to sibling
+        This ensures the icon at bottom: 58 / left: 58 never shifts due to sibling
         elements (cancel button, menu) entering or leaving the DOM.
       */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}>
         {/*
           Hover container: 16px padding around icon expands the hit-area so moving
           the cursor toward the cancel button doesn't immediately leave hover state.
-          bottom: 8 + padding 16 = icon visually at bottom:24 (unchanged).
-          left:   8 + padding 16 = icon visually at left:24  (unchanged).
+          bottom: 42 + padding 16 = icon visually at bottom:58 = (160-44)/2 (centered).
+          left:   42 + padding 16 = icon visually at left:58  = (160-44)/2 (centered).
+          Button center is 80px from all window edges — 70px halo radius fits on all sides.
           Cancel button lives inside via flexbox — no gap to cross when moving right.
         */}
         <div
           style={{
             position: "absolute",
-            bottom: 8,
-            left: keepMicAnchoredRight ? 8 + toastWidthDelta : 8,
+            bottom: 42,
+            left: keepMicAnchoredRight ? 42 + toastWidthDelta : 42,
             padding: 16,
             display: "flex",
             alignItems: "center",
@@ -733,9 +694,6 @@ export default function App() {
                   return;
                 }
                 closeContextMenu(false);
-                if (!isRecording && !isProcessing) {
-                  recordingStartedByMouseRef.current = true;
-                }
                 toggleListening();
                 e.preventDefault();
               }}
@@ -794,38 +752,6 @@ export default function App() {
               {activeDictationMode}
             </div>
           )}
-
-          {/* Cancel button inside hover container — cursor moving from icon to here stays hovered.
-              Only shown after 400ms in active state (cancelReady), only for mouse-initiated
-              recordings (not hotkey), to prevent flashing on quick push-to-talk taps. */}
-          {cancelReady && isHovered && recordingStartedByMouseRef.current && (
-            <button
-              aria-label={isRecording ? "Cancel recording" : "Cancel processing"}
-              onMouseEnter={() => {
-                setIsHovered(true);
-                setWindowInteractivity(true);
-              }}
-              onMouseLeave={() => {
-                setIsHovered(false);
-                if (!isCommandMenuOpen && toastCount === 0) {
-                  setWindowInteractivity(false);
-                }
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                isRecording ? cancelRecording() : cancelProcessing();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              className="w-5 h-5 rounded-full bg-surface-1/90 hover:bg-[#FF6B6B] border border-border-subtle hover:border-[#FF6B6B] flex items-center justify-center transition-all duration-150 shadow-elevated backdrop-blur-sm"
-              style={{ pointerEvents: "auto", flexShrink: 0 }}
-            >
-              <X size={10} strokeWidth={2.5} color="white" />
-            </button>
-          )}
         </div>
 
         {/* Context menu: positioned relative to full window, clamped to stay in bounds */}
@@ -852,11 +778,7 @@ export default function App() {
             {activeSubmenu === "root" && (
               <>
                 <MenuRow icon={Clock3} label="Hide this for 1 hour" onClick={handleHideForHour} />
-                <MenuRow
-                  icon={MessageCircle}
-                  label="Talk to support"
-                  onClick={() => void handleContactSupport()}
-                />
+
                 <MenuRow
                   icon={Settings}
                   label="Go to settings"

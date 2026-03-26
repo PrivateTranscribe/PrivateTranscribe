@@ -402,24 +402,22 @@ function GpuStatusCard() {
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="w-3.5 h-3.5 text-primary" />
                 <p className="text-[11px] font-medium text-foreground">
-                  CPU vs GPU Speed Comparison
+                  Whisper vs Parakeet Speed Comparison
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {/* CPU result */}
+                {/* Whisper result */}
                 <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
-                    CPU (Whisper)
-                  </p>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Whisper</p>
                   <p className="text-sm font-semibold text-foreground tabular-nums">
                     {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
                   </p>
                   <p className="text-[9px] text-muted-foreground">{compResult.cpuResult.model}</p>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                {/* GPU result */}
+                {/* Parakeet result */}
                 <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
-                  <p className="text-[10px] font-medium text-primary mb-0.5">GPU (Parakeet)</p>
+                  <p className="text-[10px] font-medium text-primary mb-0.5">Parakeet</p>
                   <p className="text-sm font-semibold text-foreground tabular-nums">
                     {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
                   </p>
@@ -433,7 +431,7 @@ function GpuStatusCard() {
                     {compResult.speedup >= 10
                       ? `${compResult.speedup.toFixed(1)}x`
                       : `${compResult.speedup.toFixed(2)}x`}{" "}
-                    faster with GPU
+                    faster with Parakeet
                   </span>
                 </div>
               )}
@@ -445,8 +443,7 @@ function GpuStatusCard() {
                 </div>
               )}
               <p className="text-[9px] text-muted-foreground mt-2 text-center">
-                Measured on this device · Different engines (Whisper CPU vs Parakeet GPU) - not a
-                same-engine comparison
+                Measured on this device · Whisper vs Parakeet (ONNX) - different engines
                 {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
               </p>
             </div>
@@ -824,14 +821,22 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
-    enableContextCapture,
-    setEnableContextCapture,
+    smartContextEnabled,
+    setSmartContextEnabled,
+    enableFileIdentifiers,
+    setEnableFileIdentifiers,
+    llmContextEnhancement,
+    setLlmContextEnhancement,
+    includeFileContentInLlmContext,
+    setIncludeFileContentInLlmContext,
     autoPaste,
     setAutoPaste,
     copyToClipboard,
     setCopyToClipboard,
     showPanelOnError,
     setShowPanelOnError,
+    pauseMediaOnRecord,
+    setPauseMediaOnRecord,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,
@@ -847,6 +852,36 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
+
+  const [correctionCount, setCorrectionCount] = useState<number | null>(null);
+  const [clearConfirmPending, setClearConfirmPending] = useState(false);
+  const [isClearingCorrections, setIsClearingCorrections] = useState(false);
+
+  useEffect(() => {
+    if (!enableCorrectionLearning) return;
+    window.electronAPI
+      ?.getCorrectionMemory?.(1000)
+      .then((rows) => setCorrectionCount(Array.isArray(rows) ? rows.length : 0))
+      .catch(() => setCorrectionCount(0));
+  }, [enableCorrectionLearning]);
+
+  const handleClearCorrections = useCallback(async () => {
+    if (!clearConfirmPending) {
+      setClearConfirmPending(true);
+      return;
+    }
+    setIsClearingCorrections(true);
+    try {
+      const rows = (await window.electronAPI?.getCorrectionMemory?.(10000)) ?? [];
+      for (const row of rows) {
+        await window.electronAPI?.deleteCorrection?.(row.source);
+      }
+      setCorrectionCount(0);
+    } finally {
+      setIsClearingCorrections(false);
+      setClearConfirmPending(false);
+    }
+  }, [clearConfirmPending]);
 
   // Whisper-server idle shutdown setting (minutes) has a draft state to avoid snapping
   // while typing (e.g. clearing the field).
@@ -874,7 +909,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
       ? "%USERPROFILE%\\.cache\\PrivateTranscribe\\whisper-models"
-      : "~/.cache/Privoca/whisper-models";
+      : "~/.cache/PrivateTranscribe/whisper-models";
 
   // Settings export/import (privacy-first): API keys are excluded by default.
   const [includeApiKeysInExport, setIncludeApiKeysInExport] = useState(false);
@@ -916,11 +951,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           musicDuckLevel,
           enableVariableSnapping,
           enableCorrectionLearning,
-          enableContextCapture,
+          smartContextEnabled,
+          enableFileIdentifiers,
+          llmContextEnhancement,
+          includeFileContentInLlmContext,
           // Behavior & Notifications
           autoPaste,
           copyToClipboard,
           showPanelOnError,
+          pauseMediaOnRecord,
           audioFeedback,
           errorNotifications,
           successConfirmation,
@@ -968,10 +1007,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       musicDuckLevel,
       enableVariableSnapping,
       enableCorrectionLearning,
-      enableContextCapture,
+      smartContextEnabled,
+      enableFileIdentifiers,
+      llmContextEnhancement,
+      includeFileContentInLlmContext,
       autoPaste,
       copyToClipboard,
       showPanelOnError,
+      pauseMediaOnRecord,
       audioFeedback,
       errorNotifications,
       successConfirmation,
@@ -1074,11 +1117,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         setEnableVariableSnapping(s.enableVariableSnapping);
       if (typeof s.enableCorrectionLearning === "boolean")
         setEnableCorrectionLearning(s.enableCorrectionLearning);
-      if (typeof s.enableContextCapture === "boolean")
-        setEnableContextCapture(s.enableContextCapture);
+      if (typeof s.smartContextEnabled === "boolean") setSmartContextEnabled(s.smartContextEnabled);
+      if (typeof s.enableFileIdentifiers === "boolean")
+        setEnableFileIdentifiers(s.enableFileIdentifiers);
+      if (typeof s.llmContextEnhancement === "boolean")
+        setLlmContextEnhancement(s.llmContextEnhancement);
+      if (typeof s.includeFileContentInLlmContext === "boolean")
+        setIncludeFileContentInLlmContext(s.includeFileContentInLlmContext);
       if (typeof s.autoPaste === "boolean") setAutoPaste(s.autoPaste);
       if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
       if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
+      if (typeof s.pauseMediaOnRecord === "boolean") setPauseMediaOnRecord(s.pauseMediaOnRecord);
       if (typeof s.audioFeedback === "boolean") setAudioFeedback(s.audioFeedback);
       if (typeof s.errorNotifications === "boolean") setErrorNotifications(s.errorNotifications);
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
@@ -1111,7 +1160,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setMusicDuckLevel,
       setEnableVariableSnapping,
       setEnableCorrectionLearning,
-      setEnableContextCapture,
+      setPauseMediaOnRecord,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,
       setOpenaiApiKey,
@@ -1226,6 +1275,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   );
 
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
 
   useEffect(() => {
@@ -1755,6 +1805,56 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       disabled={!correctionMemoryUnlocked}
                     />
                   </SettingsRow>
+                  {enableCorrectionLearning && correctionMemoryUnlocked && (
+                    <div className="mt-2 flex items-center justify-between">
+                      <p
+                        className={
+                          correctionCount !== null && correctionCount > 0
+                            ? "text-xs text-green-600 dark:text-green-400"
+                            : "text-xs text-muted-foreground"
+                        }
+                      >
+                        {correctionCount === null
+                          ? ""
+                          : correctionCount > 0
+                            ? `✓ Learning — ${correctionCount} correction${correctionCount === 1 ? "" : "s"} stored`
+                            : "Listening for corrections..."}
+                      </p>
+                      {correctionCount !== null && correctionCount > 0 && (
+                        <div className="flex items-center gap-2">
+                          {clearConfirmPending && (
+                            <span className="text-xs text-muted-foreground">Are you sure?</span>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClearCorrections}
+                            disabled={isClearingCorrections}
+                            className={
+                              clearConfirmPending
+                                ? "border-destructive text-destructive hover:bg-destructive/10"
+                                : ""
+                            }
+                          >
+                            {isClearingCorrections
+                              ? "Clearing..."
+                              : clearConfirmPending
+                                ? "Yes, clear all"
+                                : "Clear all corrections"}
+                          </Button>
+                          {clearConfirmPending && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setClearConfirmPending(false)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
@@ -1814,6 +1914,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </SettingsRow>
                   </SettingsPanelRow>
                 )}
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Pause media while recording"
+                    description="Automatically pause playing media when you start recording"
+                  >
+                    <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                  </SettingsRow>
+                </SettingsPanelRow>
               </SettingsPanel>
             </div>
 
@@ -1919,20 +2027,70 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Context capture"
+                    label="Smart Context"
                     description={
                       smartContextUnlocked
-                        ? "Include frontmost app/window context to improve accuracy (beta). Captures app + window title (and on Windows, best-effort focused text) - always sanitized and kept local."
-                        : "Pro feature - unlock in Settings → Pro to enable Smart Context / context capture"
+                        ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local — never sent to cloud."
+                        : "Pro feature — unlock in Settings → Pro to enable Smart Context"
                     }
                   >
                     <Toggle
-                      checked={enableContextCapture}
-                      onChange={setEnableContextCapture}
+                      checked={smartContextEnabled}
+                      onChange={setSmartContextEnabled}
                       disabled={!smartContextUnlocked}
                     />
                   </SettingsRow>
                 </SettingsPanelRow>
+
+                {smartContextUnlocked && smartContextEnabled && (
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Active file context"
+                      description="Reads variable and function names from your active file to improve code dictation accuracy. Local only — file content stays on your device."
+                    >
+                      <Toggle checked={enableFileIdentifiers} onChange={setEnableFileIdentifiers} />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                )}
+
+                {smartContextUnlocked && useReasoningModel && (
+                  <>
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="LLM Context Enhancement"
+                        description={
+                          useReasoningModel && reasoningProvider !== "local"
+                            ? "Also sends context to the AI reasoning step. ⚠️ Context (app name, window title) will be sent to your cloud reasoning provider."
+                            : "Also sends context to the AI reasoning step. Context is processed by your local model only."
+                        }
+                      >
+                        <Toggle
+                          checked={llmContextEnhancement}
+                          onChange={setLlmContextEnhancement}
+                          disabled={!smartContextUnlocked}
+                        />
+                      </SettingsRow>
+                    </SettingsPanelRow>
+
+                    {llmContextEnhancement && (
+                      <SettingsPanelRow>
+                        <SettingsRow
+                          label="Include active file content"
+                          description={
+                            reasoningProvider !== "local"
+                              ? "Adds a truncated excerpt from your active file to the reasoning prompt. ⚠️ File content will be sent to your cloud reasoning provider."
+                              : "Adds a truncated excerpt from your active file to the reasoning prompt. Stays on-device when using a local reasoning model."
+                          }
+                        >
+                          <Toggle
+                            checked={includeFileContentInLlmContext}
+                            onChange={setIncludeFileContentInLlmContext}
+                          />
+                        </SettingsRow>
+                      </SettingsPanelRow>
+                    )}
+                  </>
+                )}
               </SettingsPanel>
             </div>
           </div>
@@ -2514,7 +2672,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       // ───────────────────────────────────────────────────
       // HELP & SUPPORT
       // ───────────────────────────────────────────────────
-      case "help":
+      case "help": {
         return (
           <div className="space-y-6">
             <SectionHeader
@@ -2525,34 +2683,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <SettingsPanel>
               <SettingsPanelRow>
                 <SettingsRow
-                  label="Contact Support"
-                  description="Reach out to us at support@privatetranscribe.com"
+                  label="Contact & Bug Reports"
+                  description="support@privatetranscribe.com"
                 >
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
                       navigator.clipboard?.writeText("support@privatetranscribe.com");
+                      setEmailCopied(true);
+                      setTimeout(() => setEmailCopied(false), 2000);
                     }}
                   >
-                    Copy Email
-                  </Button>
-                </SettingsRow>
-              </SettingsPanelRow>
-
-              <SettingsPanelRow>
-                <SettingsRow
-                  label="Submit Bug Report"
-                  description="Email support@privatetranscribe.com with a description of the issue"
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard?.writeText("support@privatetranscribe.com");
-                    }}
-                  >
-                    Copy Email
+                    {emailCopied ? "✓ Copied!" : "Copy Email"}
                   </Button>
                 </SettingsRow>
               </SettingsPanelRow>
@@ -2579,6 +2722,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             </div>
           </div>
         );
+      }
 
       // ───────────────────────────────────────────────────
       // PRO

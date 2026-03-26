@@ -1,7 +1,9 @@
 const path = require("path");
 
 const WINDOW_SIZES = {
-  BASE: { width: 96, height: 96 },
+  // 110×110 gives the MicHalo room to expand without being clipped
+  // by the OS window boundary. Extra space is transparent and click-through.
+  BASE: { width: 160, height: 160 },
   WITH_MENU: { width: 300, height: 360 },
   // WITH_TOAST: narrower and shorter than before - the toast only needs ~180px of height
   // (toast ~70px + bottom button clearance ~90px + gap) and the width just needs to fit
@@ -100,8 +102,20 @@ class WindowPositionUtil {
   }
 
   static clampPosition(x, y, width, height, workArea) {
-    const cx = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - width));
-    const cy = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - height));
+    // The BASE window is 160×160px transparent; the button (44×44px) is centered at
+    // left:58, bottom:58 — (160-44)/2 = 58px from every edge.  Allow the window to
+    // overhang by 58px on all four sides so the *button* (not the window frame) clamps
+    // to the workArea edges symmetrically.
+    const isBase = width === WINDOW_SIZES.BASE.width && height === WINDOW_SIZES.BASE.height;
+    const margin = isBase ? 58 : 0;
+    const cx = Math.max(
+      workArea.x - margin,
+      Math.min(x, workArea.x + workArea.width - width + margin)
+    );
+    const cy = Math.max(
+      workArea.y - margin,
+      Math.min(y, workArea.y + workArea.height - height + margin)
+    );
     return { x: cx, y: cy };
   }
 

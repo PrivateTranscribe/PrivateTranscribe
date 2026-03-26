@@ -10,6 +10,7 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
+const mediaController = require("./mediaController");
 
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
@@ -41,6 +42,38 @@ function isSafeModelFilename(filename) {
   // Reject any path traversal attempt.
   if (filename.includes("..")) return false;
   return true;
+}
+
+/**
+ * Search for a filename inside `dir` up to `maxDepth` directory levels deep.
+ * Returns the first matching absolute path found, or null.
+ * Skips hidden directories (starting with ".") to avoid slow scans.
+ *
+ * @param {string} filename
+ * @param {string} dir
+ * @param {number} maxDepth
+ * @returns {string|null}
+ */
+function findFileInHome(filename, dir, maxDepth) {
+  if (maxDepth < 0) return null;
+  const fs = require("fs");
+  const path = require("path");
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue; // skip hidden dirs
+      if (entry.isFile() && entry.name === filename) {
+        return path.join(dir, entry.name);
+      }
+      if (entry.isDirectory() && maxDepth > 0) {
+        const found = findFileInHome(filename, path.join(dir, entry.name), maxDepth - 1);
+        if (found) return found;
+      }
+    }
+  } catch {
+    // Permission denied or other fs error — skip silently
+  }
+  return null;
 }
 
 class IPCHandlers {
@@ -180,66 +213,96 @@ class IPCHandlers {
       if (this.historyLimit === 0) {
         return { success: true, skipped: true };
       }
-      const result = this.databaseManager.saveTranscription(text, durationSeconds, options);
-      if (result?.success && result?.transcription) {
-        // Enforce the retention limit immediately after each save.
-        // trimTranscriptions is a no-op if count <= limit, so this is always safe.
-        try {
-          this.databaseManager.trimTranscriptions(this.historyLimit);
-        } catch (trimErr) {
-          // Non-fatal - the save itself succeeded; log and continue.
-          console.error("Failed to trim transcriptions after save:", trimErr);
+      try {
+        const result = this.databaseManager.saveTranscription(text, durationSeconds, options);
+        if (result?.success && result?.transcription) {
+          // Enforce the retention limit immediately after each save.
+          // trimTranscriptions is a no-op if count <= limit, so this is always safe.
+          try {
+            this.databaseManager.trimTranscriptions(this.historyLimit);
+          } catch (trimErr) {
+            // Non-fatal - the save itself succeeded; log and continue.
+            console.error("Failed to trim transcriptions after save:", trimErr);
+          }
+          setImmediate(() => {
+            this.broadcastToWindows("transcription-added", result.transcription);
+          });
         }
-        setImmediate(() => {
-          this.broadcastToWindows("transcription-added", result.transcription);
-        });
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-save-transcription] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     ipcMain.handle("db-get-transcriptions", async (event, limit = 50) => {
       const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 10_000));
-      return this.databaseManager.getTranscriptions(safeLimit);
+      try {
+        return this.databaseManager.getTranscriptions(safeLimit);
+      } catch (err) {
+        console.error("[IPC:db-get-transcriptions] error:", err.message);
+        return { success: true, data: [] };
+      }
     });
 
     ipcMain.handle("db-clear-transcriptions", async (event) => {
-      const result = this.databaseManager.clearTranscriptions();
-      if (result?.success) {
-        setImmediate(() => {
-          this.broadcastToWindows("transcriptions-cleared", {
-            cleared: result.cleared,
+      try {
+        const result = this.databaseManager.clearTranscriptions();
+        if (result?.success) {
+          setImmediate(() => {
+            this.broadcastToWindows("transcriptions-cleared", {
+              cleared: result.cleared,
+            });
           });
-        });
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-clear-transcriptions] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     ipcMain.handle("db-delete-transcription", async (event, id) => {
-      const result = this.databaseManager.deleteTranscription(id);
-      if (result?.success) {
-        setImmediate(() => {
-          this.broadcastToWindows("transcription-deleted", { id });
-        });
+      try {
+        const result = this.databaseManager.deleteTranscription(id);
+        if (result?.success) {
+          setImmediate(() => {
+            this.broadcastToWindows("transcription-deleted", { id });
+          });
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-delete-transcription] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     ipcMain.handle("db-trim-transcriptions", async (event, limit) => {
       const safeLimit = Math.max(0, Math.min(parseInt(limit, 10) || 0, 100_000));
-      const result = this.databaseManager.trimTranscriptions(safeLimit);
-      if (result?.success) {
-        setImmediate(() => {
-          this.broadcastToWindows("transcriptions-cleared", {
-            cleared: result.trimmed ?? result.cleared ?? 0,
+      try {
+        const result = this.databaseManager.trimTranscriptions(safeLimit);
+        if (result?.success) {
+          setImmediate(() => {
+            this.broadcastToWindows("transcriptions-cleared", {
+              cleared: result.trimmed ?? result.cleared ?? 0,
+            });
           });
-        });
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-trim-transcriptions] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     // Dictionary handlers
     ipcMain.handle("db-get-dictionary", async () => {
-      return this.databaseManager.getDictionary();
+      try {
+        return this.databaseManager.getDictionary();
+      } catch (err) {
+        console.error("[IPC:db-get-dictionary] error:", err.message);
+        return { success: true, data: [] };
+      }
     });
 
     ipcMain.handle("db-set-dictionary", async (event, words) => {
@@ -255,42 +318,82 @@ class IPCHandlers {
         .filter((w) => typeof w === "string")
         .map((w) => w.trim().substring(0, 200))
         .filter(Boolean);
-      return this.databaseManager.setDictionary(sanitized);
+      try {
+        return this.databaseManager.setDictionary(sanitized);
+      } catch (err) {
+        console.error("[IPC:db-set-dictionary] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     // Correction memory (local, privacy-first)
     ipcMain.handle("db-get-correction-memory", async (event, limit = 500) => {
-      return this.databaseManager.getCorrectionMemory(limit);
+      try {
+        return this.databaseManager.getCorrectionMemory(limit);
+      } catch (err) {
+        console.error("[IPC:db-get-correction-memory] error:", err.message);
+        return [];
+      }
     });
 
     ipcMain.handle("db-upsert-correction", async (event, source, target) => {
-      return this.databaseManager.upsertCorrection(source, target);
+      try {
+        return this.databaseManager.upsertCorrection(source, target);
+      } catch (err) {
+        console.error("[IPC:db-upsert-correction] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     ipcMain.handle("db-confirm-correction", async (event, source, target) => {
-      return this.databaseManager.confirmCorrection(source, target);
+      try {
+        return this.databaseManager.confirmCorrection(source, target);
+      } catch (err) {
+        console.error("[IPC:db-confirm-correction] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     ipcMain.handle("db-delete-correction", async (event, source) => {
-      return this.databaseManager.deleteCorrection(source);
+      try {
+        return this.databaseManager.deleteCorrection(source);
+      } catch (err) {
+        console.error("[IPC:db-delete-correction] error:", err.message);
+        return { success: false, error: err.message };
+      }
     });
 
     // Stats handlers
     ipcMain.handle("db-get-stats", async () => {
-      return this.databaseManager.getStats();
+      try {
+        return this.databaseManager.getStats();
+      } catch (err) {
+        console.error("[IPC:db-get-stats] error:", err.message);
+        return null;
+      }
     });
 
     ipcMain.handle("db-get-streak-dates", async () => {
-      return this.databaseManager.getStreakDates();
+      try {
+        return this.databaseManager.getStreakDates();
+      } catch (err) {
+        console.error("[IPC:db-get-streak-dates] error:", err.message);
+        return [];
+      }
     });
 
     ipcMain.handle("db-reset-stats", async (event) => {
-      const result = this.databaseManager.resetStats();
-      if (result?.success) {
-        const refreshed = this.databaseManager.getTranscriptions();
-        event.sender.send("transcriptions-reloaded", refreshed);
+      try {
+        const result = this.databaseManager.resetStats();
+        if (result?.success) {
+          const refreshed = this.databaseManager.getTranscriptions();
+          event.sender.send("transcriptions-reloaded", refreshed);
+        }
+        return result;
+      } catch (err) {
+        console.error("[IPC:db-reset-stats] error:", err.message);
+        return { success: false, error: err.message };
       }
-      return result;
     });
 
     // Clipboard handlers
@@ -321,6 +424,43 @@ class IPCHandlers {
     ipcMain.handle("get-active-window-context", async () => {
       const { getActiveWindowContext } = require("./activeWindowContext");
       return getActiveWindowContext();
+    });
+
+    // File identifier extraction for Smart Context (opt-in, local only)
+    ipcMain.handle("extract-file-identifiers", async (_, filename) => {
+      if (!filename || typeof filename !== "string") {
+        return { blocked: true, reason: "invalid filename", identifiers: [] };
+      }
+      // Reject path traversal attempts before any filesystem work
+      if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+        return { blocked: true, reason: "invalid filename", identifiers: [] };
+      }
+      const os = require("os");
+      const homeDir = os.homedir();
+      const { extractFromFilePath } = require("./fileIdentifierExtractor");
+      const found = findFileInHome(filename, homeDir, 3);
+      if (!found) {
+        return { blocked: false, identifiers: [], reason: "file not found in home dir" };
+      }
+      return extractFromFilePath(found, homeDir);
+    });
+
+    // File content extraction for LLM Context Enhancement (opt-in, local only)
+    ipcMain.handle("extract-file-context", async (_, filename, options = {}) => {
+      if (!filename || typeof filename !== "string") {
+        return { blocked: true, reason: "invalid filename" };
+      }
+      if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+        return { blocked: true, reason: "invalid filename" };
+      }
+      const os = require("os");
+      const homeDir = os.homedir();
+      const { extractFileContext } = require("./fileContextExtractor");
+      const found = findFileInHome(filename, homeDir, 3);
+      if (!found) {
+        return { blocked: false, reason: "file not found in home dir" };
+      }
+      return extractFileContext(found, homeDir, undefined, options);
     });
 
     // Whisper handlers
@@ -906,6 +1046,10 @@ class IPCHandlers {
 
     ipcMain.handle("save-all-keys-to-env", async () => {
       return this.environmentManager.saveAllKeysToEnvFile();
+    });
+
+    ipcMain.on("transcription-settings-changed", (_event, settings = {}) => {
+      this.broadcastToWindows("transcription-settings-changed", settings);
     });
 
     ipcMain.handle("sync-startup-preferences", async (event, prefs) => {
@@ -1496,6 +1640,29 @@ class IPCHandlers {
       }
     });
 
+    // Media pause — stop playing media while recording, resume when done
+    ipcMain.handle("media-pause", async () => {
+      console.log("[IPC] media-pause received");
+      try {
+        await mediaController.pauseMedia();
+      } catch (_) {
+        // Fail silently
+      }
+      return { success: true };
+    });
+
+    ipcMain.handle("media-resume", async () => {
+      console.log("[IPC] media-resume received");
+      try {
+        // resumeMedia() is async — it awaits any in-flight pauseMedia() state
+        // check before deciding whether to send the resume key.
+        await mediaController.resumeMedia();
+      } catch (_) {
+        // Fail silently
+      }
+      return { success: true };
+    });
+
     // Licensing - stable device identifier
     ipcMain.handle("get-machine-id", async () => {
       try {
@@ -1534,9 +1701,30 @@ class IPCHandlers {
 
     // Analytics consent
     const analyticsManager = require("./analyticsManager");
-    ipcMain.handle("analytics-needs-consent", () => analyticsManager.needsConsentPrompt());
-    ipcMain.handle("analytics-set-consent", (_e, granted) => analyticsManager.setConsent(granted));
-    ipcMain.handle("analytics-track", (_e, event, extra) => analyticsManager.track(event, extra));
+    ipcMain.handle("analytics-needs-consent", () => {
+      try {
+        return analyticsManager.needsConsentPrompt();
+      } catch (err) {
+        console.error("[IPC:analytics-needs-consent] error:", err.message);
+        return false;
+      }
+    });
+    ipcMain.handle("analytics-set-consent", (_e, granted) => {
+      try {
+        return analyticsManager.setConsent(granted);
+      } catch (err) {
+        console.error("[IPC:analytics-set-consent] error:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
+    ipcMain.handle("analytics-track", (_e, event, extra) => {
+      try {
+        return analyticsManager.track(event, extra);
+      } catch (err) {
+        console.error("[IPC:analytics-track] error:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
 
     if (this.actionEngineManager) {
       this._setupActionEngineHandlers();

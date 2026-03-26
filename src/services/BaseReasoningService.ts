@@ -8,6 +8,11 @@ export interface ReasoningConfig {
   dictationMode?: string;
   /** User's preferred output language (BCP-47 code, e.g. "en", "fr"). Null/undefined/"auto" = no constraint. */
   preferredLanguage?: string | null;
+  /**
+   * Pre-fetched Smart Context object from the shared context pipeline.
+   * When present, used instead of re-capturing context inside ReasoningService.
+   */
+  smartContext?: Record<string, unknown> | null;
 }
 
 export abstract class BaseReasoningService {

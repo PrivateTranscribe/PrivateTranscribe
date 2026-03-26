@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 import { shouldShowProBadge } from "../hooks/useProStatus";
+import { formatHotkeyLabel } from "../utils/hotkeys";
 
 export type PageId =
   | "home"
@@ -117,13 +118,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
 
   const formatHotkey = (key: string) => {
     if (!key) return "...";
-    const map: Record<string, string> = {
-      "`": "` (backtick)",
-      " ": "Space",
-      Enter: "Enter",
-      Escape: "Esc",
-    };
-    return map[key] || key;
+    return formatHotkeyLabel(key);
   };
 
   return (

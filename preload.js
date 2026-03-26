@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Context capture (best-effort; returns {available:false} if unsupported)
   getActiveWindowContext: () => ipcRenderer.invoke("get-active-window-context"),
+  // File identifier extraction for Smart Context (opt-in, local only)
+  extractFileIdentifiers: (filename) => ipcRenderer.invoke("extract-file-identifiers", filename),
+  // File content extraction for LLM Context Enhancement (opt-in, local only)
+  extractFileContext: (filename, options) =>
+    ipcRenderer.invoke("extract-file-context", filename, options),
 
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>
@@ -274,6 +279,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Notify main process of activation mode changes (for Windows Push-to-Talk)
   notifyActivationModeChanged: (mode) => ipcRenderer.send("activation-mode-changed", mode),
   notifyHotkeyChanged: (hotkey) => ipcRenderer.send("hotkey-changed", hotkey),
+  notifyTranscriptionSettingsChanged: (settings) =>
+    ipcRenderer.send("transcription-settings-changed", settings),
+  onTranscriptionSettingsChanged: registerListener(
+    "transcription-settings-changed",
+    (callback) => (_event, settings) => callback?.(settings)
+  ),
 
   // Auto-start management
   getAutoStartEnabled: () => ipcRenderer.invoke("get-auto-start-enabled"),
@@ -292,6 +303,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Audio ducking — lower/mute system volume while transcribing
   duckSystemAudio: (options) => ipcRenderer.invoke("duck-system-audio", options),
   restoreSystemAudio: () => ipcRenderer.invoke("restore-system-audio"),
+
+  // Media pause — pause playing media while recording, resume when done
+  mediaPause: () => ipcRenderer.invoke("media-pause"),
+  mediaResume: () => ipcRenderer.invoke("media-resume"),
 
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),

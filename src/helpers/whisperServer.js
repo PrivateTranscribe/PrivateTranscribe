@@ -230,7 +230,13 @@ class WhisperServerManager {
   }
 
   async start(modelPath, options = {}) {
-    if (this.startupPromise) return this.startupPromise;
+    // If a startup is in-flight for the SAME model, wait for it.
+    // If it's for a DIFFERENT model (user switched), cancel and restart.
+    if (this.startupPromise) {
+      if (this.modelPath === modelPath) return this.startupPromise;
+      // Model changed mid-startup — stop the current process and fall through to restart.
+      await this.stop();
+    }
 
     // If the server is already running with the requested model, just mark it as used.
     if (this.ready && this.modelPath === modelPath) {
@@ -289,6 +295,8 @@ class WhisperServerManager {
     // Reduce repetition hallucinations: lower entropy threshold triggers
     // temperature fallback sooner when the decoder enters a loop, and
     // suppress-nst filters out non-speech tokens that often seed loops.
+    // --no-fallback was tested but had no effect on repeated-word clips —
+    // the slowness is in the first decode pass, not temperature fallback retries.
     args.push("--entropy-thold", "2.0");
     args.push("--suppress-nst");
 

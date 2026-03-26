@@ -34,12 +34,8 @@ describe("windowManager.js — multi-monitor position clamping", () => {
 
   test("clamping uses the saved position as the nearest-point query", () => {
     // The nearest-point lookup must reference the saved x/y, not a hardcoded point.
-    // We verify that getDisplayNearestPoint is called with an object containing x/y.
-    const idx = windowManager.indexOf("getDisplayNearestPoint");
-    expect(idx).toBeGreaterThan(-1);
-    const snippet = windowManager.slice(idx, idx + 60);
-    expect(snippet).toContain("saved.x");
-    expect(snippet).toContain("saved.y");
+    // Multiple getDisplayNearestPoint calls exist; verify the saved-position one is present.
+    expect(windowManager).toContain("getDisplayNearestPoint({ x: saved.x, y: saved.y })");
   });
 
   test("primary display lookup is still used as fallback when no saved position", () => {
@@ -51,7 +47,7 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     // resizeMainWindow must call Math.max and Math.min to clamp both axes.
     const idx = windowManager.indexOf("resizeMainWindow");
     expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 2200);
+    const block = windowManager.slice(idx, idx + 3200);
     expect(block).toContain("Math.max");
     expect(block).toContain("Math.min");
     expect(block).toContain("workArea.x");
@@ -59,13 +55,13 @@ describe("windowManager.js — multi-monitor position clamping", () => {
 
   test("toast expansion preserves the original base X anchor for collapse/edge flips", () => {
     // The overlay should remember its base-size X position before temporary
-    // expansions so right-edge toast flips don't leave the mic shifted.
+    // expansions so right-edge toast/menu flips don't leave the mic shifted.
     const idx = windowManager.indexOf("resizeMainWindow");
     expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 2600);
+    const block = windowManager.slice(idx, idx + 2800);
     expect(block).toContain("this._originalBaseX");
+    expect(block).toContain("_originalBaseBottomY");
     expect(block).toContain("WINDOW_SIZES.BASE.width");
-    expect(block).toContain("?? bottomLeftX");
   });
 });
 

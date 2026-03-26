@@ -280,9 +280,97 @@ class TrayManager {
     }
 
     this.tray.on("destroyed", () => {
-      console.log("Tray icon destroyed");
+      console.log("Tray icon destroyed — attempting recovery");
       this.tray = null;
+      this.attemptTrayRecovery();
     });
+  }
+
+  /**
+   * Attempt to recreate the tray icon after unexpected destruction.
+   * Retries up to 3 times with exponential backoff.
+   */
+  attemptTrayRecovery(attempt = 1) {
+    const maxAttempts = 3;
+    if (attempt > maxAttempts) {
+      console.error(`Tray recovery failed after ${maxAttempts} attempts`);
+      return;
+    }
+    if (this.tray) return; // Already recovered
+
+    const delayMs = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+    console.log(`Tray recovery attempt ${attempt}/${maxAttempts} in ${delayMs}ms`);
+
+    setTimeout(async () => {
+      if (this.tray) return; // Recovered in the meantime
+      try {
+        await this.createTray();
+        if (this.tray) {
+          console.log("Tray icon recovered successfully");
+        } else {
+          this.attemptTrayRecovery(attempt + 1);
+        }
+      } catch (error) {
+        console.error(`Tray recovery attempt ${attempt} failed:`, error.message);
+        this.attemptTrayRecovery(attempt + 1);
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Start a periodic health check that verifies the tray icon still exists.
+   * Call once after initial createTray(). Checks every 30 seconds.
+   *
+   * On Windows, the tray icon can silently vanish from the notification area
+   * after Explorer crashes or restarts — WITHOUT triggering the `destroyed`
+   * event. The standard workaround is to periodically call setImage() to force
+   * Windows to re-register the icon in the shell notification area.
+   */
+  startHealthCheck() {
+    if (this._healthCheckInterval) return;
+
+    // Check every 30 seconds: if tray object is destroyed, recover it
+    this._healthCheckInterval = setInterval(() => {
+      if (!this.tray || this.tray.isDestroyed?.()) {
+        console.warn("Tray health check: icon missing, triggering recovery");
+        this.tray = null;
+        this.attemptTrayRecovery();
+      }
+    }, 30000);
+
+    // Windows only: re-register the tray icon every 5 minutes to survive
+    // Explorer restarts. The icon silently disappears but the Tray object
+    // remains valid, so setImage() forces Windows to re-show it.
+    if (process.platform === "win32") {
+      this._winReRegisterInterval = setInterval(
+        async () => {
+          if (!this.tray || this.tray.isDestroyed?.()) return;
+          try {
+            const icon = await this.loadTrayIcon();
+            if (icon && !icon.isEmpty()) {
+              this.tray.setImage(icon);
+            }
+          } catch (err) {
+            console.warn("Tray re-registration failed:", err.message);
+          }
+        },
+        5 * 60 * 1000
+      ); // every 5 minutes
+    }
+  }
+
+  /**
+   * Stop the health check (call on app quit).
+   */
+  stopHealthCheck() {
+    if (this._healthCheckInterval) {
+      clearInterval(this._healthCheckInterval);
+      this._healthCheckInterval = null;
+    }
+    if (this._winReRegisterInterval) {
+      clearInterval(this._winReRegisterInterval);
+      this._winReRegisterInterval = null;
+    }
   }
 }
 

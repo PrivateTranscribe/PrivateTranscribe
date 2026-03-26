@@ -27,8 +27,6 @@ const OWNED_BY_ICON_RULES: Array<{ match: RegExp; provider: string }> = [
   { match: /(azure)/, provider: "openai" },
   { match: /(anthropic|claude)/, provider: "anthropic" },
   { match: /(google|gemini)/, provider: "gemini" },
-  { match: /(meta|llama)/, provider: "llama" },
-  { match: /(mistral)/, provider: "mistral" },
   { match: /(qwen|ali|tongyi)/, provider: "qwen" },
   { match: /(openrouter|oss)/, provider: "openai-oss" },
 ];

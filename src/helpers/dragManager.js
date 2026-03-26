@@ -1,4 +1,5 @@
 const { screen } = require("electron");
+const { WINDOW_SIZES } = require("./windowConfig");
 
 class DragManager {
   constructor() {
@@ -93,14 +94,21 @@ class DragManager {
       // Get window size for boundary calculations
       const windowBounds = this.targetWindow.getBounds();
 
-      // Constrain to screen bounds
+      // Constrain so the visible button (not the transparent window frame) clamps to
+      // screen edges.  For the BASE 160×160 window the button (44×44px) is centered at
+      // left:58, bottom:58 — (160-44)/2 = 58px from every edge — so all margins are equal.
+      // Non-BASE sizes (toast, menu) use no overhang.
+      const isBase =
+        windowBounds.width === WINDOW_SIZES.BASE.width &&
+        windowBounds.height === WINDOW_SIZES.BASE.height;
+      const margin = isBase ? 58 : 0;
       const constrainedX = Math.max(
-        bounds.x,
-        Math.min(newX, bounds.x + bounds.width - windowBounds.width)
+        bounds.x - margin,
+        Math.min(newX, bounds.x + bounds.width - windowBounds.width + margin)
       );
       const constrainedY = Math.max(
-        bounds.y,
-        Math.min(newY, bounds.y + bounds.height - windowBounds.height)
+        bounds.y - margin,
+        Math.min(newY, bounds.y + bounds.height - windowBounds.height + margin)
       );
 
       this.targetWindow.setPosition(constrainedX, constrainedY);

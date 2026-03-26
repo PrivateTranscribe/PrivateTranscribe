@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -8,12 +8,33 @@ const { __test } = require("../../../src/helpers/activeWindowContext");
 
 const { resolveOnPathForPlatform } = __test;
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function mockStatMode(filePath: string, mode: number) {
+  const originalStatSync = fs.statSync;
+  vi.spyOn(fs, "statSync").mockImplementation(((targetPath: fs.PathLike, options?: any) => {
+    const stat = originalStatSync(targetPath, options);
+    if (String(targetPath) !== filePath) {
+      return stat;
+    }
+
+    return {
+      ...stat,
+      mode,
+      isFile: () => stat.isFile(),
+    };
+  }) as typeof fs.statSync);
+}
+
 describe("activeWindowContext PATH resolver", () => {
   test("linux: resolves executable from PATH", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "privoca-path-"));
     const bin = path.join(dir, "hello");
     fs.writeFileSync(bin, "#!/bin/sh\necho hi\n", "utf8");
     fs.chmodSync(bin, 0o755);
+    mockStatMode(bin, 0o100755);
 
     const resolved = resolveOnPathForPlatform("hello", {
       platform: "linux",
@@ -28,6 +49,7 @@ describe("activeWindowContext PATH resolver", () => {
     const bin = path.join(dir, "nope");
     fs.writeFileSync(bin, "echo hi\n", "utf8");
     fs.chmodSync(bin, 0o644);
+    mockStatMode(bin, 0o100644);
 
     const resolved = resolveOnPathForPlatform("nope", {
       platform: "linux",

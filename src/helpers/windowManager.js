@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { app, screen, BrowserWindow, dialog } = require("electron");
+const { app, screen, powerMonitor, BrowserWindow, dialog } = require("electron");
 const HotkeyManager = require("./hotkeyManager");
 const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
@@ -154,6 +154,29 @@ class WindowManager {
     }, 500);
   }
 
+  _reclampOverlayPosition(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const bounds = this.mainWindow.getBounds();
+    const { width, height } = bounds;
+    const display = screen.getDisplayNearestPoint({
+      x: bounds.x + width / 2,
+      y: bounds.y + height / 2,
+    });
+    const workArea = display.workArea || display.bounds;
+    const clamped = WindowPositionUtil.clampPosition(bounds.x, bounds.y, width, height, workArea);
+    if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+      debugLogger.info("[Window] Re-clamping overlay after", reason, {
+        from: { x: bounds.x, y: bounds.y },
+        to: clamped,
+        workArea,
+      });
+      this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
+      this._scheduleSavePosition(clamped.x, clamped.y);
+    } else {
+      debugLogger.debug("[Window] Overlay already within bounds after", reason);
+    }
+  }
+
   async createMainWindow() {
     const display = screen.getPrimaryDisplay();
     const { width, height } = WINDOW_SIZES.BASE;
@@ -228,6 +251,18 @@ class WindowManager {
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((x, y) => this._scheduleSavePosition(x, y));
     MenuManager.setupMainMenu();
+
+    // Re-clamp the overlay after sleep/wake so it doesn't drift when the workArea
+    // changes (e.g. taskbar reappears at a different height, DPI scaling adjusts).
+    // Delay slightly to let the OS finish restoring display configuration.
+    powerMonitor.on("resume", () => {
+      setTimeout(() => this._reclampOverlayPosition("resume"), 1000);
+    });
+
+    // Re-clamp whenever the display resolution, scale, or work area changes.
+    screen.on("display-metrics-changed", () => {
+      this._reclampOverlayPosition("display-metrics-changed");
+    });
   }
 
   setMainWindowInteractivity(shouldCapture) {
@@ -253,40 +288,63 @@ class WindowManager {
 
     // Preserve the original BASE position so we can restore it accurately after
     // any temporary expansion (toast, menu, etc.).
-    if (
+    // Save aggressively: update whenever we're at BASE size, or initialize from
+    // current bounds if we have no saved position yet (prevents drift on first call).
+    const isCurrentlyBase =
       currentBounds.width === WINDOW_SIZES.BASE.width &&
-      currentBounds.height === WINDOW_SIZES.BASE.height
-    ) {
+      currentBounds.height === WINDOW_SIZES.BASE.height;
+    if (isCurrentlyBase) {
       this._originalBaseX = currentBounds.x;
       this._originalBaseY = currentBounds.y;
+      this._originalBaseBottomY = currentBounds.y + currentBounds.height;
+    } else if (this._originalBaseX == null) {
+      // Not at BASE but no saved anchor yet — initialize so we have a stable reference.
+      this._originalBaseX = currentBounds.x;
+      this._originalBaseY = currentBounds.y;
+      this._originalBaseBottomY = currentBounds.y + currentBounds.height;
     }
 
-    // Keep the overlay visually stable by preserving bottom alignment.
-    // For toast-only expansion, expand to the right by default, but if we're near
-    // the right screen edge, expand to the left instead.
-    const bottomY = currentBounds.y + currentBounds.height;
-    const bottomLeftX = currentBounds.x;
+    // Use the saved base bottom as the stable vertical anchor so repeated
+    // expand/collapse cycles don't drift the position upward.
+    const bottomY = this._originalBaseBottomY ?? currentBounds.y + currentBounds.height;
+    const bottomLeftX = this._originalBaseX ?? currentBounds.x;
 
     const display = screen.getDisplayNearestPoint({ x: currentBounds.x, y: bottomY });
     const workArea = display.workArea || display.bounds;
 
-    const wouldOverflowRight =
-      (this._originalBaseX ?? bottomLeftX) + newSize.width > workArea.x + workArea.width;
-    const expandToastLeft = sizeKey === "WITH_TOAST" && wouldOverflowRight;
+    // Expand to the right by default; if that overflows the screen, anchor to the right edge instead.
+    // This applies to both WITH_TOAST and WITH_MENU expansions.
+    const wouldOverflowRight = bottomLeftX + newSize.width > workArea.x + workArea.width;
+    const expandLeft = (sizeKey === "WITH_TOAST" || sizeKey === "WITH_MENU") && wouldOverflowRight;
 
-    let newX = this._originalBaseX ?? bottomLeftX;
-    if (expandToastLeft) {
+    let newX = bottomLeftX;
+    if (expandLeft) {
       // Anchor to right: original right edge minus new width
-      newX = Math.round(
-        (this._originalBaseX ?? bottomLeftX) + WINDOW_SIZES.BASE.width - newSize.width
-      );
+      newX = Math.round(bottomLeftX + WINDOW_SIZES.BASE.width - newSize.width);
     }
 
     let newY = bottomY - newSize.height;
 
-    // Clamp within viewport bounds (prevent off-screen drift)
-    newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - newSize.width));
-    newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - newSize.height));
+    // Clamp so the *visible button* (not the window) clamps to screen edges.
+    // Button is centered in the 160px BASE window at left:58, bottom:58 (44px button),
+    // so all four transparent margins are equal at 58px — use symmetric clamping.
+    const isBase =
+      newSize.width === WINDOW_SIZES.BASE.width && newSize.height === WINDOW_SIZES.BASE.height;
+    const margin = isBase ? 58 : 0;
+    newX = Math.max(
+      workArea.x - margin,
+      Math.min(newX, workArea.x + workArea.width - newSize.width + margin)
+    );
+    newY = Math.max(
+      workArea.y - margin,
+      Math.min(newY, workArea.y + workArea.height - newSize.height + margin)
+    );
+
+    // For non-BASE sizes (menu, toast), also clamp the top edge so the expanded
+    // window cannot go above the top of the work area.
+    if (!isBase) {
+      newY = Math.max(workArea.y, newY);
+    }
 
     this.mainWindow.setBounds({
       x: newX,
