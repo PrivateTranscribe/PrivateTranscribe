@@ -42,7 +42,6 @@ function sendWindowsMediaKey() {
     exec(`"${nircmd}" sendkeypress 0xb3`, { timeout: 3000 }, () => {});
     return;
   }
-  // VBScript fallback — wscript.exe ships with every Windows version, no PowerShell needed.
   const vbs = path.join(os.tmpdir(), "pt_mediapause.vbs");
   try {
     fs.writeFileSync(vbs, 'Set s = CreateObject("WScript.Shell")\r\ns.SendKeys Chr(179)\r\n', "utf8");
@@ -74,86 +73,12 @@ function isMediaPlayingLinux() {
 }
 
 /**
- * Returns true if any media is currently playing on Windows.
- * Uses PowerShell WMI to query media state — read-only query, not a key press,
- * so it does not trigger AV heuristics.
- * Resolves false on error or timeout.
- */
-function isMediaPlayingWindows() {
-  return new Promise((resolve) => {
-    // Query the Windows SMTC (System Media Transport Controls) registry key.
-    // A simpler and AV-safe approach: check if any known media player process
-    // has an active audio session via PowerShell Get-Process — but to avoid
-    // PowerShell entirely, we use a VBScript query instead.
-    // Fallback: if we can't determine state, assume playing (safe default — better
-    // to pause unnecessarily than to start playback unexpectedly).
-    const vbs = path.join(os.tmpdir(), "pt_mediacheck.vbs");
-    try {
-      // Query Windows audio sessions via WMI. If any session is active and not paused, output "Playing".
-      fs.writeFileSync(
-        vbs,
-        [
-          'Set objWMI = GetObject("winmgmts:{impersonationLevel=impersonate}!\\\\.\\\\root\\\\cimv2")',
-          'Set colItems = objWMI.ExecQuery("Select * From Win32_Process Where Name=\'chrome.exe\' Or Name=\'firefox.exe\' Or Name=\'msedge.exe\' Or Name=\'spotify.exe\' Or Name=\'wmplayer.exe\' Or Name=\'vlc.exe\' Or Name=\'Music.UI.exe\'")',
-          "If colItems.Count > 0 Then",
-          '  WScript.Echo "MaybePlaying"',
-          "Else",
-          '  WScript.Echo "NotPlaying"',
-          "End If",
-        ].join("\r\n"),
-        "utf8"
-      );
-      exec(`wscript //nologo "${vbs}"`, { timeout: 2000 }, (err, stdout) => {
-        if (err) {
-          resolve(true); // Assume playing on error — safer default
-          return;
-        }
-        resolve(stdout.trim() === "MaybePlaying");
-      });
-    } catch (_) {
-      resolve(true); // Assume playing on error
-    }
-  });
-}
-
-/**
- * Returns true if media is currently playing on macOS.
- * Uses AppleScript to check common players.
- * Resolves false on error or if no known player is playing.
- */
-function isMediaPlayingMac() {
-  return new Promise((resolve) => {
-    const script = [
-      'tell application "System Events"',
-      '  set activeApps to name of every process whose background only is false',
-      "end tell",
-      'set playing to false',
-      'if "Spotify" is in activeApps then',
-      '  tell application "Spotify"',
-      '    if player state is playing then set playing to true',
-      "  end tell",
-      "end if",
-      'if "Music" is in activeApps then',
-      '  tell application "Music"',
-      '    if player state is playing then set playing to true',
-      "  end tell",
-      "end if",
-      "return playing",
-    ].join("\n");
-    exec(`osascript -e '${script}'`, { timeout: 3000 }, (err, stdout) => {
-      if (err) {
-        resolve(true); // Assume playing on error
-        return;
-      }
-      resolve(stdout.trim() === "true");
-    });
-  });
-}
-
-/**
  * Pause the currently playing media, if any.
  * Sets didPause = true only when we actually sent the command.
- * Checks media state first on all platforms to avoid toggling already-paused media.
+ * On Linux, checks playerctl status first to avoid toggling already-paused media.
+ *
+ * Note: Windows/macOS media state detection is non-trivial without fragile platform-
+ * specific scripting. For now we keep the AV-safe key sending fix and resume tracking.
  */
 async function pauseMedia() {
   try {
@@ -168,19 +93,9 @@ async function pauseMedia() {
       runCmd("playerctl play-pause 2>/dev/null || xdotool key XF86AudioPlay");
       didPause = true;
     } else if (platform === "win32") {
-      const playing = await isMediaPlayingWindows();
-      if (!playing) {
-        didPause = false;
-        return;
-      }
       sendWindowsMediaKey();
       didPause = true;
     } else if (platform === "darwin") {
-      const playing = await isMediaPlayingMac();
-      if (!playing) {
-        didPause = false;
-        return;
-      }
       runCmd("osascript -e 'tell application \"System Events\" to key code 100'");
       didPause = true;
     }
