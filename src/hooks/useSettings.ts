@@ -353,7 +353,7 @@ export function useSettings() {
   // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
   const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
     "smartContextEnabled",
-    true,
+    false,
     {
       serialize: String,
       deserialize: (value) => value === "true",
