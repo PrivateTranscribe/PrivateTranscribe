@@ -130,9 +130,16 @@ export default function CorrectionMemoryPage() {
       <div className="flex items-start gap-3 mb-2">
         <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
         <div>
-          <h1 className="text-3xl font-semibold text-foreground tracking-tight">
-            Correction Memory
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-semibold text-foreground tracking-tight">
+              Correction Memory
+            </h1>
+            {!isUnlocked && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
+                <Lock size={10} /> Pro
+              </span>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">
             Correction Memory stores explicit phrase fixes like{" "}
             <span className="font-mono text-foreground">use login error</span>
