@@ -32,10 +32,12 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(windowManager).toContain("getDisplayNearestPoint");
   });
 
-  test("clamping uses the saved position as the nearest-point query", () => {
-    // The nearest-point lookup must reference the saved x/y, not a hardcoded point.
-    // Multiple getDisplayNearestPoint calls exist; verify the saved-position one is present.
-    expect(windowManager).toContain("getDisplayNearestPoint({ x: saved.x, y: saved.y })");
+  test("clamping uses the saved button position as the nearest-point query", () => {
+    // The nearest-point lookup must reference the restored saved position, not a hardcoded point.
+    // The implementation now normalizes saved button coords into btnX / btnY before querying.
+    expect(windowManager).toContain("const btnX = saved.x");
+    expect(windowManager).toContain("const btnY = saved.y");
+    expect(windowManager).toContain("getDisplayNearestPoint({ x: btnX, y: btnY })");
   });
 
   test("primary display lookup is still used as fallback when no saved position", () => {
@@ -43,25 +45,21 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(windowManager).toContain("getPrimaryDisplay");
   });
 
-  test("resizeMainWindow clamps X and Y to prevent off-screen drift", () => {
-    // resizeMainWindow must call Math.max and Math.min to clamp both axes.
-    const idx = windowManager.indexOf("resizeMainWindow");
+  test("re-clamping uses shared clampPosition util against the active workArea", () => {
+    const idx = windowManager.indexOf("_reclampOverlayPosition");
     expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 3200);
-    expect(block).toContain("Math.max");
-    expect(block).toContain("Math.min");
-    expect(block).toContain("workArea.x");
+    const block = windowManager.slice(idx, idx + 1800);
+    expect(block).toContain("WindowPositionUtil.clampPosition");
+    expect(block).toContain("display.workArea || display.bounds");
+    expect(block).toContain("this.mainWindow.setBounds");
   });
 
-  test("toast expansion preserves the original base X anchor for collapse/edge flips", () => {
-    // The overlay should remember its base-size X position before temporary
-    // expansions so right-edge toast/menu flips don't leave the mic shifted.
-    const idx = windowManager.indexOf("resizeMainWindow");
-    expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 2800);
-    expect(block).toContain("this._originalBaseX");
-    expect(block).toContain("_originalBaseBottomY");
-    expect(block).toContain("WINDOW_SIZES.BASE.width");
+  test("saved/restored overlay math still anchors to button offsets", () => {
+    // The fixed transparent container keeps the button as the durable anchor.
+    expect(windowManager).toContain("BUTTON_OFFSET_X");
+    expect(windowManager).toContain("BUTTON_OFFSET_Y");
+    expect(windowManager).toContain("winX = btnX - BUTTON_OFFSET_X");
+    expect(windowManager).toContain("winY = btnY - BUTTON_OFFSET_Y");
   });
 });
 
@@ -74,8 +72,8 @@ describe("Toast.tsx — adaptive toast placement for dictation overlay", () => {
   });
 
   test("dictation overlay supports both left and right toast placements", () => {
-    expect(toastTsx).toContain("bottom-20 left-6 items-start");
-    expect(toastTsx).toContain("bottom-20 right-6 items-end");
+    expect(toastTsx).toContain("bottom-[110px] left-6 items-start");
+    expect(toastTsx).toContain("bottom-[110px] right-6 items-end");
   });
 });
 
@@ -146,15 +144,14 @@ describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => 
 // ─── Window size constants — sanity checks ───────────────────────────────────
 
 describe("windowConfig.js — window size constants", () => {
-  test("WITH_TOAST width is narrower than EXPANDED to minimise right-edge shift", () => {
-    // Extract numeric widths from WINDOW_SIZES declaration
+  test("WITH_TOAST width is narrower than the fixed transparent container", () => {
     const withToastMatch = windowConfig.match(/WITH_TOAST:\s*\{\s*width:\s*(\d+)/);
-    const expandedMatch = windowConfig.match(/EXPANDED:\s*\{\s*width:\s*(\d+)/);
+    const containerMatch = windowConfig.match(/const CONTAINER_W = (\d+);/);
     expect(withToastMatch).not.toBeNull();
-    expect(expandedMatch).not.toBeNull();
+    expect(containerMatch).not.toBeNull();
     const withToastWidth = parseInt(withToastMatch![1], 10);
-    const expandedWidth = parseInt(expandedMatch![1], 10);
-    expect(withToastWidth).toBeLessThan(expandedWidth);
+    const containerWidth = parseInt(containerMatch![1], 10);
+    expect(withToastWidth).toBeLessThan(containerWidth);
   });
 
   test("WITH_MENU height leaves room for context menu content", () => {
