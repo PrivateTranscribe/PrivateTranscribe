@@ -334,20 +334,8 @@ export default function App() {
     }
   }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
 
-  useEffect(() => {
-    const resizeWindow = () => {
-      if (isCommandMenuOpen && toastCount > 0) {
-        window.electronAPI?.resizeMainWindow?.("EXPANDED");
-      } else if (isCommandMenuOpen) {
-        window.electronAPI?.resizeMainWindow?.("WITH_MENU");
-      } else if (toastCount > 0) {
-        window.electronAPI?.resizeMainWindow?.("WITH_TOAST");
-      } else {
-        window.electronAPI?.resizeMainWindow?.("BASE");
-      }
-    };
-    resizeWindow();
-  }, [isCommandMenuOpen, toastCount]);
+  // No resize effect needed: the overlay uses a fixed 400×500 transparent window.
+  // Menu, toast, and recording states expand/collapse inside the container via CSS.
 
   useEffect(() => {
     if (!isCommandMenuOpen) {
@@ -579,11 +567,6 @@ export default function App() {
     };
   })();
 
-  const toastWidthDelta = 380 - 96;
-  const toastWouldOverflowRight =
-    typeof window !== "undefined" && window.screenX + 380 > window.screen.width;
-  const keepMicAnchoredRight = !isCommandMenuOpen && toastCount > 0 && toastWouldOverflowRight;
-
   return (
     <div className="dictation-window">
       <style>{`
@@ -600,26 +583,23 @@ export default function App() {
       `}</style>
 
       {/*
-        Absolute-position root: fills the entire Electron window.
+        Absolute-position root: fills the fixed 400×500 transparent Electron window.
         pointer-events: none on the root so transparent areas stay click-through;
-        pointer-events: auto re-enabled on the icon anchor only.
-        This ensures the icon at bottom: 58 / left: 58 never shifts due to sibling
-        elements (cancel button, menu) entering or leaving the DOM.
+        pointer-events: auto re-enabled only on interactive children (button, menu, toast).
       */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}>
         {/*
-          Hover container: 16px padding around icon expands the hit-area so moving
-          the cursor toward the cancel button doesn't immediately leave hover state.
-          bottom: 42 + padding 16 = icon visually at bottom:58 = (160-44)/2 (centered).
-          left:   42 + padding 16 = icon visually at left:58  = (160-44)/2 (centered).
-          Button center is 80px from all window edges — 70px halo radius fits on all sides.
-          Cancel button lives inside via flexbox — no gap to cross when moving right.
+          Button anchor: positioned at bottom:58px, horizontally centered in the fixed
+          400×500 container. The 16px padding provides a hover buffer without affecting
+          the button's visual position. Menu expands upward; toast appears above via
+          ToastViewport. The container never resizes — all state changes use CSS only.
         */}
         <div
           style={{
             position: "absolute",
             bottom: 42,
-            left: keepMicAnchoredRight ? 42 + toastWidthDelta : 42,
+            left: "50%",
+            transform: "translateX(-50%)",
             padding: 16,
             display: "flex",
             alignItems: "center",

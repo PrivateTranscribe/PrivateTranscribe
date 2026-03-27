@@ -1,5 +1,5 @@
 const { screen } = require("electron");
-const { WINDOW_SIZES } = require("./windowConfig");
+const { BUTTON_OFFSET_X, BUTTON_OFFSET_Y } = require("./windowConfig");
 
 class DragManager {
   constructor() {
@@ -87,29 +87,18 @@ class DragManager {
       const newX = cursorPos.x - this.dragOffset.x;
       const newY = cursorPos.y - this.dragOffset.y;
 
-      // Get screen bounds to keep window visible
+      // Get screen bounds to keep the button within the work area.
       const display = screen.getDisplayNearestPoint(cursorPos);
       const bounds = display.workArea;
 
-      // Get window size for boundary calculations
-      const windowBounds = this.targetWindow.getBounds();
-
-      // Constrain so the visible button (not the transparent window frame) clamps to
-      // screen edges.  For the BASE 160×160 window the button (44×44px) is centered at
-      // left:58, bottom:58 — (160-44)/2 = 58px from every edge — so all margins are equal.
-      // Non-BASE sizes (toast, menu) use no overhang.
-      const isBase =
-        windowBounds.width === WINDOW_SIZES.BASE.width &&
-        windowBounds.height === WINDOW_SIZES.BASE.height;
-      const margin = isBase ? 58 : 0;
-      const constrainedX = Math.max(
-        bounds.x - margin,
-        Math.min(newX, bounds.x + bounds.width - windowBounds.width + margin)
-      );
-      const constrainedY = Math.max(
-        bounds.y - margin,
-        Math.min(newY, bounds.y + bounds.height - windowBounds.height + margin)
-      );
+      // Constrain so the button center (at BUTTON_OFFSET_X, BUTTON_OFFSET_Y within the
+      // fixed 400×500 container) stays within the work area.
+      const btnX = newX + BUTTON_OFFSET_X;
+      const btnY = newY + BUTTON_OFFSET_Y;
+      const clampedBtnX = Math.max(bounds.x, Math.min(btnX, bounds.x + bounds.width));
+      const clampedBtnY = Math.max(bounds.y, Math.min(btnY, bounds.y + bounds.height));
+      const constrainedX = clampedBtnX - BUTTON_OFFSET_X;
+      const constrainedY = clampedBtnY - BUTTON_OFFSET_Y;
 
       this.targetWindow.setPosition(constrainedX, constrainedY);
 
