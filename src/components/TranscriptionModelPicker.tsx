@@ -958,6 +958,7 @@ export default function TranscriptionModelPicker({
                   icon: Cpu,
                   label: "CPU",
                   subtitle: "Always available",
+                  recommended: !gpuSupported,
                   disabled: false,
                   title: undefined,
                 },
@@ -965,7 +966,8 @@ export default function TranscriptionModelPicker({
                   id: "gpu" as const,
                   icon: Zap,
                   label: "GPU · Whisper",
-                  subtitle: gpuSupported ? "NVIDIA CUDA" : "Needs NVIDIA",
+                  subtitle: gpuSupported ? "Faster · translation" : "Needs NVIDIA GPU",
+                  recommended: false,
                   disabled: !gpuSupported,
                   title: !gpuSupported ? "Requires an NVIDIA GPU with CUDA support" : undefined,
                 },
@@ -973,7 +975,8 @@ export default function TranscriptionModelPicker({
                   id: "parakeet" as const,
                   icon: Zap,
                   label: "Parakeet",
-                  subtitle: gpuSupported ? "NVIDIA ONNX" : "Needs NVIDIA",
+                  subtitle: gpuSupported ? "Fastest · 25 languages" : "Needs NVIDIA GPU",
+                  recommended: gpuSupported,
                   disabled: !gpuSupported,
                   title: !gpuSupported ? "Requires an NVIDIA GPU" : undefined,
                 },
@@ -981,6 +984,9 @@ export default function TranscriptionModelPicker({
             ).map((engine) => {
               const isActive = selectedEngine === engine.id;
               const Icon = engine.icon;
+              // Show "Recommended" badge when: GPU is available and this is recommended,
+              // and this engine is NOT already selected (don't show badge on active card)
+              const showRecommended = engine.recommended && !isActive && !engine.disabled;
               return (
                 <button
                   key={engine.id}
@@ -995,24 +1001,29 @@ export default function TranscriptionModelPicker({
                       : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
                   }`}
                 >
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-between w-full mb-0.5">
+                    <div className="flex items-center gap-1 min-w-0">
                       <Icon
-                        className={`w-3 h-3 ${isActive && !engine.disabled ? "text-primary" : "text-muted-foreground"}`}
+                        className={`w-3 h-3 shrink-0 ${isActive && !engine.disabled ? "text-primary" : "text-muted-foreground"}`}
                       />
                       <span
-                        className={`text-[10px] font-semibold leading-tight ${isActive && !engine.disabled ? "text-foreground" : "text-muted-foreground"}`}
+                        className={`text-[10px] font-semibold leading-tight truncate ${isActive && !engine.disabled ? "text-foreground" : "text-muted-foreground"}`}
                       >
                         {engine.label}
                       </span>
                     </div>
                     {isActive && !engine.disabled && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 ml-1" />
                     )}
                   </div>
                   <span className="text-[9px] text-muted-foreground/50 leading-tight">
                     {engine.subtitle}
                   </span>
+                  {showRecommended && (
+                    <span className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-primary/70 bg-primary/10 px-1 py-0.5 rounded leading-none">
+                      Recommended
+                    </span>
+                  )}
                 </button>
               );
             })}

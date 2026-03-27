@@ -163,7 +163,14 @@ function formatBenchmarkDate(iso: string): string {
 
 type BenchmarkState = "idle" | "running" | "done" | "error";
 
-function GpuStatusCard() {
+function GpuStatusCard({
+  activeProvider,
+  activeWhisperForceCpu,
+}: {
+  /** localTranscriptionProvider from parent — avoids stale useSettings() copy */
+  activeProvider: string;
+  activeWhisperForceCpu: boolean;
+}) {
   const [detectState, setDetectState] = useState<GpuDetectState>("idle");
   const [detection, setDetection] = useState<HardwareDetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -277,7 +284,9 @@ function GpuStatusCard() {
     setBenchState("running");
     setBenchError(null);
     try {
-      const provider = settings.localTranscriptionProvider === "nvidia" ? "nvidia" : "whisper";
+      // Use props (not settings) — GpuStatusCard's own useSettings() copy can be stale
+      // if localTranscriptionProvider was changed by the model picker above.
+      const provider = activeProvider === "nvidia" ? "nvidia" : "whisper";
       const model =
         provider === "nvidia"
           ? settings.parakeetModel || "parakeet-tdt-0.6b-v3"
@@ -604,6 +613,7 @@ function GpuStatusCard() {
                   size="sm"
                   className="h-7 gap-1.5 text-[11px]"
                   disabled={benchState === "running" || compState === "running"}
+                  title={`Benchmarks the active engine: ${activeProvider === "nvidia" ? "Parakeet" : activeWhisperForceCpu ? "Whisper (CPU)" : "Whisper (GPU)"}`}
                 >
                   <Timer className="w-3 h-3" />
                   {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
@@ -2257,7 +2267,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   title="Performance"
                   description="Hardware detection, CUDA setup, and transcription speed benchmarks"
                 />
-                <GpuStatusCard />
+                <GpuStatusCard
+                  activeProvider={localTranscriptionProvider}
+                  activeWhisperForceCpu={whisperForceCpu}
+                />
               </div>
             )}
           </div>
