@@ -1963,22 +1963,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </SettingsPanel>
             </div>
 
-            {/* Dictionary */}
-            <div>
-              <SectionHeader
-                title="Dictionary"
-                description="Add words you want PrivateTranscribe to recognize more reliably - product names, people, acronyms."
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <p className="text-sm text-muted-foreground">
-                    Go to the <span className="text-foreground font-medium">Dictionary</span>{" "}
-                    section in the sidebar to manage your custom vocabulary.
-                  </p>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
             {/* Behavior */}
             <div>
               <SectionHeader

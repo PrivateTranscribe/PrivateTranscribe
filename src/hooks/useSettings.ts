@@ -250,7 +250,7 @@ export function useSettings() {
   }, []);
 
   // Reasoning settings
-  const [useReasoningModel, setUseReasoningModel] = useLocalStorage("useReasoningModel", true, {
+  const [useReasoningModel, setUseReasoningModel] = useLocalStorage("useReasoningModel", false, {
     serialize: String,
     deserialize: (value) => value !== "false", // Default true
   });
