@@ -59,6 +59,9 @@ class WhisperServerManager {
     this.cachedFFmpegPath = null;
     this.canConvert = false;
 
+    // When true, always use the CPU binary even if the CUDA binary is present.
+    this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
+
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
     this.idleCheckTimeout = null;
@@ -158,14 +161,30 @@ class WhisperServerManager {
     return null;
   }
 
+  /**
+   * Update whether to force CPU mode. Clears the binary path cache and stops
+   * any running server so the next transcription starts with the correct binary.
+   */
+  async setForceCpu(value) {
+    if (this.forceCpu === value) return;
+    this.forceCpu = value;
+    this.cachedServerBinaryPath = null;
+    await this.stop();
+    debugLogger.info("WhisperServer: forceCpu changed", { forceCpu: value });
+  }
+
   getServerBinaryPath() {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
-    const cudaPath = gpuBinaryManager.getCudaBinaryPath();
-    if (cudaPath) {
-      debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
-      this.cachedServerBinaryPath = cudaPath;
-      return cudaPath;
+    if (!this.forceCpu) {
+      const cudaPath = gpuBinaryManager.getCudaBinaryPath();
+      if (cudaPath) {
+        debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
+        this.cachedServerBinaryPath = cudaPath;
+        return cudaPath;
+      }
+    } else {
+      debugLogger.info("WhisperServer: CUDA binary skipped (CPU mode forced)");
     }
 
     const platform = process.platform;

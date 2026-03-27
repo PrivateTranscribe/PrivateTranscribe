@@ -726,9 +726,11 @@ declare global {
         path: string | null;
         platform: string;
         supported: boolean;
+        forceCpu: boolean;
       }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
       cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;
+      setWhisperForceCpu?: (value: boolean) => Promise<{ success: boolean; error?: string }>;
       onCudaBinaryDownloadProgress?: (
         callback: (
           event: unknown,

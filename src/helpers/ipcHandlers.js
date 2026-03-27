@@ -605,6 +605,15 @@ class IPCHandlers {
       return { success: true };
     });
 
+    ipcMain.handle("set-whisper-force-cpu", async (_event, value) => {
+      try {
+        await this.whisperManager.setForceCpu(!!value);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
     ipcMain.handle("whisper-server-status", async () => {
       return this.whisperManager.getServerStatus();
     });
@@ -1103,6 +1112,17 @@ class IPCHandlers {
         }
       } else {
         clearVars.push("LLAMA_SERVER_IDLE_TIMEOUT_MINUTES");
+      }
+
+      if (typeof prefs.whisperForceCpu === "boolean") {
+        if (prefs.whisperForceCpu) {
+          setVars.WHISPER_FORCE_CPU = "true";
+        } else {
+          clearVars.push("WHISPER_FORCE_CPU");
+        }
+        if (this.whisperManager) {
+          this.whisperManager.setForceCpu(prefs.whisperForceCpu).catch(() => {});
+        }
       }
 
       if (prefs.useLocalWhisper && prefs.model) {

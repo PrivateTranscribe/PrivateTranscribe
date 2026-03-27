@@ -10,6 +10,8 @@ export interface TranscriptionSettings {
   whisperModel: string;
   localTranscriptionProvider: LocalTranscriptionProvider;
   parakeetModel: string;
+  /** When true, use the CPU whisper binary even if the CUDA binary is installed. */
+  whisperForceCpu: boolean;
   /** Minutes before whisper-server is auto-stopped to free memory. 0 = never. */
   whisperServerIdleTimeoutMinutes: number;
   /** Minutes before parakeet-ws server is auto-stopped to free memory. 0 = never. */
@@ -86,6 +88,11 @@ export function useSettings() {
   const [parakeetModel, setParakeetModel] = useLocalStorage("parakeetModel", "", {
     serialize: String,
     deserialize: String,
+  });
+
+  const [whisperForceCpu, setWhisperForceCpu] = useLocalStorage("whisperForceCpu", false, {
+    serialize: String,
+    deserialize: (value) => value === "true",
   });
 
   const [whisperServerIdleTimeoutMinutes, setWhisperServerIdleTimeoutMinutes] = useLocalStorage(
@@ -661,6 +668,7 @@ export function useSettings() {
         llamaServerIdleTimeoutMinutes,
         reasoningProvider,
         reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
+        whisperForceCpu,
       })
       .catch((err) => console.error("Failed to sync startup preferences:", err));
   }, [
@@ -673,7 +681,14 @@ export function useSettings() {
     llamaServerIdleTimeoutMinutes,
     reasoningProvider,
     reasoningModel,
+    whisperForceCpu,
   ]);
+
+  // Apply force-CPU toggle immediately when it changes (no restart needed)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.electronAPI?.setWhisperForceCpu?.(whisperForceCpu);
+  }, [whisperForceCpu]);
 
   // Batch operations
 
@@ -736,6 +751,7 @@ export function useSettings() {
       if (settings.localTranscriptionProvider !== undefined)
         setLocalTranscriptionProvider(settings.localTranscriptionProvider);
       if (settings.parakeetModel !== undefined) setParakeetModel(settings.parakeetModel);
+      if (settings.whisperForceCpu !== undefined) setWhisperForceCpu(settings.whisperForceCpu);
       if (settings.whisperServerIdleTimeoutMinutes !== undefined)
         setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
       if (settings.parakeetServerIdleTimeoutMinutes !== undefined)
@@ -856,6 +872,7 @@ export function useSettings() {
     whisperModel,
     localTranscriptionProvider,
     parakeetModel,
+    whisperForceCpu,
     whisperServerIdleTimeoutMinutes,
     parakeetServerIdleTimeoutMinutes,
     allowOpenAIFallback,
@@ -882,6 +899,7 @@ export function useSettings() {
     setWhisperModel,
     setLocalTranscriptionProvider,
     setParakeetModel,
+    setWhisperForceCpu,
     setWhisperServerIdleTimeoutMinutes,
     setParakeetServerIdleTimeoutMinutes,
     setAllowOpenAIFallback,

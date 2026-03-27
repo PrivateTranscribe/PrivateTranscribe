@@ -37,6 +37,7 @@ import MicrophoneSettings from "./ui/MicrophoneSettings";
 import PermissionCard from "./ui/PermissionCard";
 import PasteToolsInfo from "./ui/PasteToolsInfo";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
+import { Toggle } from "./ui/toggle";
 import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
@@ -183,6 +184,7 @@ function GpuStatusCard() {
     path: string | null;
     platform: string;
     supported: boolean;
+    forceCpu: boolean;
   } | null>(null);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
     "idle"
@@ -513,9 +515,23 @@ function GpuStatusCard() {
           {gpuCategory === "nvidia_cuda" && (
             <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
               {cudaStatus?.installed || downloadState === "done" ? (
-                <div className="flex items-center gap-2 text-xs text-primary">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span className="font-medium">GPU binary installed</span>
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs text-primary">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="font-medium">GPU binary installed</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[11px] font-medium text-foreground">Use CPU instead</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Forces the standard CPU binary even though the CUDA binary is available
+                      </p>
+                    </div>
+                    <Toggle
+                      checked={settings.whisperForceCpu}
+                      onChange={settings.setWhisperForceCpu}
+                    />
+                  </div>
                 </div>
               ) : downloadState === "downloading" ? (
                 <div className="space-y-2">

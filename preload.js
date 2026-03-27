@@ -336,4 +336,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   downloadCudaBinary: () => ipcRenderer.invoke("download-cuda-binary"),
   cancelCudaBinaryDownload: () => ipcRenderer.invoke("cancel-cuda-binary-download"),
   onCudaBinaryDownloadProgress: registerListener("cuda-binary-download-progress"),
+  setWhisperForceCpu: (value) => ipcRenderer.invoke("set-whisper-force-cpu", value),
 });

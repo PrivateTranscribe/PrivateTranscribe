@@ -245,6 +245,10 @@ class WhisperManager {
     this.gpuBinaryManager.cancelDownload();
   }
 
+  async setForceCpu(value) {
+    await this.serverManager.setForceCpu(value);
+  }
+
   getCudaBinaryStatus() {
     const key = this.gpuBinaryManager.getPlatformKey();
     const installed = this.gpuBinaryManager.hasCudaBinary();
@@ -253,6 +257,7 @@ class WhisperManager {
       path: installed ? this.gpuBinaryManager.getCudaBinaryPath() : null,
       platform: key,
       supported: !!GpuBinaryManager.CUDA_BINARIES[key],
+      forceCpu: this.serverManager.forceCpu,
     };
   }
 
