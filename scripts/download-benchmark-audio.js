@@ -2,12 +2,14 @@
 /**
  * download-benchmark-audio.js
  *
- * Downloads a 10-second clip for use as the local transcription benchmark.
- * The resulting file is saved to resources/benchmark.wav and is intentionally
- * excluded from git and production builds — it is a developer-only asset.
+ * Downloads a public-domain speech sample for the transcription benchmark.
  *
- * Requirements (must be installed on your PATH):
- *   yt-dlp   https://github.com/yt-dlp/yt-dlp#installation
+ * Source: JFK 1961 Inaugural Address — U.S. government work, public domain.
+ *   "Ask not what your country can do for you..."
+ *   ~11 seconds of clear speech — the canonical Whisper benchmark clip,
+ *   used in OpenAI's own Whisper test suite.
+ *
+ * Requirements:
  *   ffmpeg   https://ffmpeg.org/download.html
  *
  * Usage:
@@ -17,38 +19,66 @@
 
 "use strict";
 
-const { execSync, spawnSync } = require("child_process");
+const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { spawnSync } = require("child_process");
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
-// dQw4w9WgXcQ — you know exactly what this is
-const VIDEO_ID = "dQw4w9WgXcQ";
-const CLIP_START = "0";
-const CLIP_DURATION = "10"; // seconds — enough to stress the encoder+decoder
+// JFK 1961 Inaugural Address — U.S. government work, public domain.
+// This is the canonical Whisper benchmark clip (used in OpenAI's own test suite).
+const AUDIO_URL =
+  "https://raw.githubusercontent.com/openai/whisper/refs/heads/main/tests/jfk.flac";
+const AUDIO_CREDIT = "JFK Inaugural Address (1961) · U.S. government work · public domain";
+
 const OUT_PATH = path.join(__dirname, "..", "resources", "benchmark.wav");
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function checkDep(name) {
-  const result = spawnSync(name, ["--version"], { stdio: "pipe" });
-  if (result.status !== 0 && result.error) {
+function checkFfmpeg() {
+  const result = spawnSync("ffmpeg", ["-version"], { stdio: "pipe" });
+  if (result.error) {
     console.error(
-      `\n  ✗  ${name} not found on PATH.\n` +
-        `     Install it first:\n` +
-        (name === "yt-dlp"
-          ? `     https://github.com/yt-dlp/yt-dlp#installation\n`
-          : `     https://ffmpeg.org/download.html\n`)
+      "\n  ✗  ffmpeg not found on PATH.\n" +
+        "     Install it: https://ffmpeg.org/download.html\n"
     );
     process.exit(1);
   }
-  console.log(`  ✓  ${name} found`);
+  console.log("  ✓  ffmpeg found");
 }
 
-function run(cmd, args, opts = {}) {
-  const result = spawnSync(cmd, args, { stdio: "inherit", ...opts });
+/** Download a URL to a local file, following redirects. */
+function download(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const follow = (redirectUrl) => {
+      const mod = redirectUrl.startsWith("https") ? https : http;
+      mod
+        .get(redirectUrl, { headers: { "User-Agent": "PrivateTranscribe/1.0" } }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume();
+            follow(res.headers.location);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode} from ${redirectUrl}`));
+            return;
+          }
+          const dest = fs.createWriteStream(destPath);
+          res.pipe(dest);
+          dest.on("finish", resolve);
+          dest.on("error", reject);
+        })
+        .on("error", reject);
+    };
+    follow(url);
+  });
+}
+
+function run(cmd, args) {
+  const result = spawnSync(cmd, args, { stdio: "inherit" });
   if (result.status !== 0) {
     console.error(`\nCommand failed: ${cmd} ${args.join(" ")}`);
     process.exit(result.status ?? 1);
@@ -57,60 +87,49 @@ function run(cmd, args, opts = {}) {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-console.log("\nDownloading benchmark audio…\n");
+async function main() {
+  console.log("\nDownloading benchmark audio…");
+  console.log(`Source: ${AUDIO_CREDIT}\n`);
 
-// 1. Check deps
-console.log("Checking dependencies:");
-checkDep("yt-dlp");
-checkDep("ffmpeg");
+  console.log("Checking dependencies:");
+  checkFfmpeg();
 
-// 2. Ensure output directory exists
-fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
+  fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
 
-// 3. Download audio to a temp file
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-bench-"));
-const tmpRaw = path.join(tmpDir, "raw.%(ext)s");
-const tmpWav = path.join(tmpDir, "raw.wav");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-bench-"));
+  const tmpFlac = path.join(tmpDir, "sample.flac");
 
-console.log("\nDownloading audio track…");
-run("yt-dlp", [
-  `https://www.youtube.com/watch?v=${VIDEO_ID}`,
-  "--format", "bestaudio",
-  "--extract-audio",
-  "--audio-format", "wav",
-  "--output", tmpRaw,
-  "--no-playlist",
-  "--quiet",
-  "--progress",
-]);
+  console.log("\nDownloading speech sample…");
+  try {
+    await download(AUDIO_URL, tmpFlac);
+  } catch (err) {
+    console.error(`\n  ✗  Download failed: ${err.message}`);
+    process.exit(1);
+  }
 
-// yt-dlp may write the file with any extension — find it
-const rawFile = fs.readdirSync(tmpDir).find((f) => f !== "raw.wav");
-const rawPath = rawFile ? path.join(tmpDir, rawFile) : tmpWav;
+  console.log("Converting to 16 kHz mono WAV…");
+  run("ffmpeg", [
+    "-y",
+    "-i", tmpFlac,
+    "-ar", "16000",
+    "-ac", "1",
+    "-sample_fmt", "s16",
+    "-acodec", "pcm_s16le",
+    "-t", "10",
+    OUT_PATH,
+  ]);
 
-// 4. Convert + trim to 10-second, 16 kHz, mono, 16-bit PCM WAV
-console.log(`\nConverting to 16 kHz mono WAV (${CLIP_DURATION}s)…`);
-run("ffmpeg", [
-  "-y",
-  "-ss", CLIP_START,
-  "-t", CLIP_DURATION,
-  "-i", rawPath,
-  "-ar", "16000",
-  "-ac", "1",
-  "-sample_fmt", "s16",
-  "-acodec", "pcm_s16le",
-  OUT_PATH,
-]);
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch {
+    // non-fatal
+  }
 
-// 5. Cleanup temp files
-try {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-} catch {
-  // non-fatal
+  const stats = fs.statSync(OUT_PATH);
+  const kb = Math.round(stats.size / 1024);
+  console.log(`\n  ✓  Saved to resources/benchmark.wav (${kb} KB)`);
+  console.log(`     ${AUDIO_CREDIT}`);
+  console.log("     The benchmark will now use this file instead of synthetic noise.\n");
 }
 
-// 6. Verify
-const stats = fs.statSync(OUT_PATH);
-const kb = Math.round(stats.size / 1024);
-console.log(`\n  ✓  Saved to resources/benchmark.wav (${kb} KB)`);
-console.log("     The benchmark will now use this file instead of synthetic noise.\n");
+main();

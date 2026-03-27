@@ -59,8 +59,6 @@ build/
 
 # Generated Globe listener binary
 resources/bin/
-# Developer-only benchmark audio (copyrighted, never commit or bundle)
-resources/benchmark.wav
 
 # OS
 .DS_Store
