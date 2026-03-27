@@ -47,10 +47,22 @@ function loadBenchmarkAudio() {
   if (wavPath) {
     try {
       const buffer = fs.readFileSync(wavPath);
-      // Read duration from WAV header (data chunk size / byte rate)
+      // Scan WAV chunks to find the 'data' chunk (not hardcoded offset — ffmpeg
+      // may insert extra chunks like LIST/INFO between fmt and data).
       const byteRate = buffer.readUInt32LE(28);
-      const dataSize = buffer.readUInt32LE(40);
-      const durationSeconds = byteRate > 0 ? dataSize / byteRate : BENCHMARK_AUDIO_DURATION_SEC;
+      let dataSize = 0;
+      let scanOffset = 12; // skip RIFF header (4 bytes id + 4 bytes size + 4 bytes WAVE)
+      while (scanOffset + 8 <= buffer.length) {
+        const chunkId = buffer.toString("ascii", scanOffset, scanOffset + 4);
+        const chunkSize = buffer.readUInt32LE(scanOffset + 4);
+        if (chunkId === "data") {
+          dataSize = chunkSize;
+          break;
+        }
+        scanOffset += 8 + chunkSize;
+      }
+      const durationSeconds =
+        byteRate > 0 && dataSize > 0 ? dataSize / byteRate : BENCHMARK_AUDIO_DURATION_SEC;
       debugLogger.info("BenchmarkManager: using bundled benchmark.wav", {
         path: wavPath,
         durationSeconds,

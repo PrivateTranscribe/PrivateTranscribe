@@ -36,6 +36,7 @@
     "download:llama-server:all": "node scripts/download-llama-server.js --all",
     "download:sherpa-onnx": "node scripts/download-sherpa-onnx.js --current",
     "download:sherpa-onnx:all": "node scripts/download-sherpa-onnx.js --all",
+    "download:benchmark-audio": "node scripts/download-benchmark-audio.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

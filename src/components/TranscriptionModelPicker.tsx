@@ -210,6 +210,8 @@ interface TranscriptionModelPickerProps {
   setCloudTranscriptionBaseUrl?: (url: string) => void;
   className?: string;
   variant?: "onboarding" | "settings";
+  /** Provider IDs that should be greyed-out and unselectable (e.g. ["nvidia"] in CPU-only mode) */
+  disabledLocalProviders?: string[];
 }
 
 const CLOUD_PROVIDER_TABS = [
@@ -283,6 +285,7 @@ export default function TranscriptionModelPicker({
   setCloudTranscriptionBaseUrl,
   className = "",
   variant = "settings",
+  disabledLocalProviders = [],
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
@@ -921,7 +924,18 @@ export default function TranscriptionModelPicker({
         <div className={styles.container}>
           <div className="p-2.5 pb-0">
             <ProviderTabs
-              providers={LOCAL_PROVIDER_TABS}
+              providers={LOCAL_PROVIDER_TABS.map((tab) =>
+                disabledLocalProviders.includes(tab.id)
+                  ? {
+                      ...tab,
+                      disabled: true,
+                      disabledReason:
+                        tab.id === "nvidia"
+                          ? "Parakeet always uses GPU — switch to GPU mode to use it"
+                          : "Unavailable in current mode",
+                    }
+                  : tab
+              )}
               selectedId={internalLocalProvider}
               onSelect={handleLocalProviderChange}
               colorScheme={colorScheme === "purple" ? "purple" : "indigo"}

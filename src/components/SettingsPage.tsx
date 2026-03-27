@@ -402,7 +402,13 @@ function GpuStatusCard() {
 
             {/* CPU option */}
             <button
-              onClick={() => settings.setWhisperForceCpu(true)}
+              onClick={() => {
+                settings.setWhisperForceCpu(true);
+                // Parakeet always uses GPU — auto-switch to Whisper when choosing CPU mode
+                if (settings.localTranscriptionProvider === "nvidia") {
+                  settings.setLocalTranscriptionProvider("whisper");
+                }
+              }}
               className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all duration-150 cursor-pointer ${
                 !usingGpu || !gpuSupported
                   ? "border-primary bg-primary/10 shadow-sm"
@@ -915,6 +921,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setSelectedMicDeviceId,
     setUseLocalWhisper,
     setWhisperModel,
+    whisperForceCpu,
+    setWhisperForceCpu,
     setLocalTranscriptionProvider,
     setParakeetModel,
     setWhisperServerIdleTimeoutMinutes,
@@ -2247,7 +2255,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 }
               }}
               selectedLocalProvider={localTranscriptionProvider}
-              onLocalProviderSelect={setLocalTranscriptionProvider}
+              onLocalProviderSelect={(providerId) => {
+                setLocalTranscriptionProvider(providerId);
+                // Parakeet always uses GPU — auto-enable GPU mode when switching to Parakeet
+                if (providerId === "nvidia" && whisperForceCpu) {
+                  setWhisperForceCpu(false);
+                }
+              }}
+              disabledLocalProviders={whisperForceCpu ? ["nvidia"] : []}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 setUseLocalWhisper(isLocal);
