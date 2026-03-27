@@ -340,7 +340,7 @@ function GpuStatusCard() {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-            <p className="text-sm font-medium text-foreground">Transcription Engine</p>
+            <p className="text-sm font-medium text-foreground">Hardware</p>
             {detectState === "detecting" && (
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -354,119 +354,16 @@ function GpuStatusCard() {
             )}
           </div>
 
-          {/* ── Engine selector (GPU / CPU) ───────────────────────── */}
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {/* GPU option */}
-            <button
-              onClick={() => {
-                if (gpuSupported) settings.setWhisperForceCpu(false);
-              }}
-              disabled={!gpuSupported}
-              className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all duration-150 ${
-                !gpuSupported
-                  ? "border-border-subtle/40 bg-surface-raised/20 opacity-50 cursor-not-allowed"
-                  : usingGpu
-                  ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
-                  : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-1.5">
-                  <Zap
-                    className={`w-3.5 h-3.5 ${usingGpu && gpuSupported ? "text-primary" : "text-muted-foreground"}`}
-                  />
-                  <span
-                    className={`text-xs font-semibold ${usingGpu && gpuSupported ? "text-foreground" : "text-muted-foreground"}`}
-                  >
-                    GPU
-                  </span>
-                </div>
-                {usingGpu && gpuSupported ? (
-                  <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                ) : gpuSupported && !usingGpu ? (
-                  <span className="text-[9px] font-semibold uppercase tracking-wide text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded">
-                    Recommended
-                  </span>
-                ) : null}
-              </div>
-              <span className="text-[10px] leading-tight text-muted-foreground/70">
-                {cudaStatus === null
-                  ? "Checking…"
-                  : gpuSupported
-                  ? detectState === "done" && detection?.gpu.model
-                    ? detection.gpu.model
-                    : "Faster · recommended"
-                  : "Requires NVIDIA GPU"}
-              </span>
-            </button>
-
-            {/* CPU option */}
-            <button
-              onClick={() => {
-                settings.setWhisperForceCpu(true);
-                // Parakeet always uses GPU — auto-switch to Whisper when choosing CPU mode
-                if (settings.localTranscriptionProvider === "nvidia") {
-                  settings.setLocalTranscriptionProvider("whisper");
-                }
-              }}
-              className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all duration-150 cursor-pointer ${
-                !usingGpu || !gpuSupported
-                  ? "border-primary bg-primary/10 shadow-sm"
-                  : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle"
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-1.5">
-                  <Cpu
-                    className={`w-3.5 h-3.5 ${!usingGpu || !gpuSupported ? "text-primary" : "text-muted-foreground"}`}
-                  />
-                  <span
-                    className={`text-xs font-semibold ${!usingGpu || !gpuSupported ? "text-foreground" : "text-muted-foreground"}`}
-                  >
-                    CPU
-                  </span>
-                </div>
-                {(!usingGpu || !gpuSupported) && (
-                  <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                )}
-              </div>
-              <span className="text-[10px] leading-tight text-muted-foreground/70">
-                {detectState === "done" && detection?.cpu.count
-                  ? `${detection.cpu.count} cores · universal`
-                  : "Universal · no GPU required"}
-              </span>
-            </button>
-          </div>
-
-          {/* Recommendation note */}
-          <p className="text-[10px] text-muted-foreground/60 mb-4 leading-relaxed">
-            {gpuSupported
-              ? usingGpu
-                ? "GPU mode is faster. Switch to CPU only if you need VRAM for gaming or other apps."
-                : "CPU mode active — GPU is available. Switch to GPU for faster transcription."
-              : cudaStatus === null
-              ? "Checking GPU support…"
-              : "GPU acceleration requires an NVIDIA GPU with CUDA support."}
-          </p>
-
           <div className="space-y-4">
-            {/* ═══ GPU ENGINE ══════════════════════════════════════ */}
-            {usingGpu && gpuSupported && (
+            {/* ═══ CUDA SETUP (shown only when GPU Whisper is selected and CUDA isn't ready) ═══ */}
+            {usingGpu && gpuSupported && !cudaReady && (
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
-                  GPU Engine
-                </p>
-                {cudaReady ? (
-                  <div className="flex items-center gap-2 text-xs text-primary">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="font-medium">CUDA binary ready — GPU transcription enabled</span>
-                  </div>
-                ) : downloadState === "downloading" ? (
+                {downloadState === "downloading" ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Downloading… {downloadProgress}%</span>
+                        <span>Downloading CUDA engine… {downloadProgress}%</span>
                       </div>
                       <Button
                         onClick={handleCancelDownload}
@@ -497,13 +394,14 @@ function GpuStatusCard() {
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      Retry
+                      Retry Download
                     </Button>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-2">
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      Download the CUDA binary (~650 MB) to enable GPU-accelerated transcription.
+                      GPU · Whisper requires the CUDA engine (~650 MB). Download it once to enable
+                      GPU-accelerated transcription.
                     </p>
                     <Button
                       onClick={handleDownloadCuda}
@@ -512,41 +410,9 @@ function GpuStatusCard() {
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      Download GPU Engine
+                      Download CUDA Engine
                     </Button>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* ═══ CPU ENGINE ══════════════════════════════════════ */}
-            {(!usingGpu || !gpuSupported) && detectState === "done" && detection && (
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
-                  CPU Mode
-                </p>
-                <div className="flex items-center gap-2 text-xs text-primary mb-2.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span className="font-medium">CPU transcription active</span>
-                </div>
-                <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-1">
-                  <p className="text-[11px] font-medium text-foreground truncate">
-                    {detection.cpu.model || "CPU"}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {detection.cpu.count} cores
-                    {detection.cpu.speed
-                      ? ` · ${(detection.cpu.speed / 1000).toFixed(1)} GHz`
-                      : ""}
-                  </p>
-                </div>
-                <p className="text-[10px] text-muted-foreground/50 mt-2 leading-relaxed">
-                  Applies to the Whisper engine only. Parakeet always uses the GPU.
-                </p>
-                {gpuSupported && !usingGpu && (
-                  <p className="text-[10px] text-amber-400/80 mt-1.5">
-                    GPU available — switch to GPU mode for faster transcription.
-                  </p>
                 )}
               </div>
             )}
@@ -990,6 +856,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
+
+  // GPU support status — fetched once to drive the engine selector in TranscriptionModelPicker
+  const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
+  useEffect(() => {
+    window.electronAPI
+      ?.getCudaBinaryStatus?.()
+      .then((s) => setGpuSupportedForPicker(s?.supported ?? false))
+      .catch(() => {});
+  }, []);
 
   const [correctionCount, setCorrectionCount] = useState<number | null>(null);
   const [clearConfirmPending, setClearConfirmPending] = useState(false);
@@ -2262,7 +2137,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   setWhisperForceCpu(false);
                 }
               }}
-              disabledLocalProviders={whisperForceCpu ? ["nvidia"] : []}
+              whisperForceCpu={whisperForceCpu}
+              onWhisperForceCpuChange={setWhisperForceCpu}
+              gpuSupported={gpuSupportedForPicker}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 setUseLocalWhisper(isLocal);
@@ -2377,8 +2254,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {useLocalWhisper && (
               <div className="mt-6">
                 <SectionHeader
-                  title="GPU acceleration"
-                  description="Check whether your system supports GPU-accelerated transcription"
+                  title="Performance"
+                  description="Hardware detection, CUDA setup, and transcription speed benchmarks"
                 />
                 <GpuStatusCard />
               </div>

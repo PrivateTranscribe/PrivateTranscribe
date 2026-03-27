@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Download, Trash2, Cloud, Lock, X, RefreshCw, HardDrive } from "lucide-react";
+import { Download, Trash2, Cloud, Lock, X, RefreshCw, HardDrive, Cpu, Zap } from "lucide-react";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { ProviderTabs } from "./ui/ProviderTabs";
 import ModelCardList from "./ui/ModelCardList";
@@ -210,8 +210,11 @@ interface TranscriptionModelPickerProps {
   setCloudTranscriptionBaseUrl?: (url: string) => void;
   className?: string;
   variant?: "onboarding" | "settings";
-  /** Provider IDs that should be greyed-out and unselectable (e.g. ["nvidia"] in CPU-only mode) */
-  disabledLocalProviders?: string[];
+  /** Whether Whisper is running in CPU-only mode (no CUDA). Controls the 3-engine selector. */
+  whisperForceCpu?: boolean;
+  onWhisperForceCpuChange?: (forceCpu: boolean) => void;
+  /** Whether this platform supports GPU acceleration (NVIDIA CUDA detected). */
+  gpuSupported?: boolean;
 }
 
 const CLOUD_PROVIDER_TABS = [
@@ -285,7 +288,9 @@ export default function TranscriptionModelPicker({
   setCloudTranscriptionBaseUrl,
   className = "",
   variant = "settings",
-  disabledLocalProviders = [],
+  whisperForceCpu = false,
+  onWhisperForceCpuChange,
+  gpuSupported = false,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
@@ -518,6 +523,28 @@ export default function TranscriptionModelPicker({
       onLocalProviderSelect?.(providerId);
     },
     [onLocalProviderSelect]
+  );
+
+  // Derives a single "engine" value from provider + forceCpu state
+  type LocalEngine = "cpu" | "gpu" | "parakeet";
+  const selectedEngine: LocalEngine = useMemo(() => {
+    if (internalLocalProvider === "nvidia") return "parakeet";
+    return whisperForceCpu ? "cpu" : "gpu";
+  }, [internalLocalProvider, whisperForceCpu]);
+
+  const handleEngineChange = useCallback(
+    (engine: LocalEngine) => {
+      if (engine === "parakeet") {
+        setInternalLocalProvider("nvidia");
+        onLocalProviderSelect?.("nvidia");
+        onWhisperForceCpuChange?.(false);
+      } else {
+        setInternalLocalProvider("whisper");
+        onLocalProviderSelect?.("whisper");
+        onWhisperForceCpuChange?.(engine === "cpu");
+      }
+    },
+    [onLocalProviderSelect, onWhisperForceCpuChange]
   );
 
   // Wrapper to set both model and provider when selecting a local model
@@ -922,32 +949,81 @@ export default function TranscriptionModelPicker({
         </div>
       ) : (
         <div className={styles.container}>
-          <div className="p-2.5 pb-0">
-            <ProviderTabs
-              providers={LOCAL_PROVIDER_TABS.map((tab) =>
-                disabledLocalProviders.includes(tab.id)
-                  ? {
-                      ...tab,
-                      disabled: true,
-                      disabledReason:
-                        tab.id === "nvidia"
-                          ? "Parakeet always uses GPU — switch to GPU mode to use it"
-                          : "Unavailable in current mode",
-                    }
-                  : tab
-              )}
-              selectedId={internalLocalProvider}
-              onSelect={handleLocalProviderChange}
-              colorScheme={colorScheme === "purple" ? "purple" : "indigo"}
-            />
+          {/* ── 3-engine selector ─────────────────────────────────── */}
+          <div className="grid grid-cols-3 gap-1.5 p-2.5 pb-2.5">
+            {(
+              [
+                {
+                  id: "cpu" as const,
+                  icon: Cpu,
+                  label: "CPU",
+                  subtitle: "Always available",
+                  disabled: false,
+                  title: undefined,
+                },
+                {
+                  id: "gpu" as const,
+                  icon: Zap,
+                  label: "GPU · Whisper",
+                  subtitle: gpuSupported ? "NVIDIA CUDA" : "Needs NVIDIA",
+                  disabled: !gpuSupported,
+                  title: !gpuSupported ? "Requires an NVIDIA GPU with CUDA support" : undefined,
+                },
+                {
+                  id: "parakeet" as const,
+                  icon: Zap,
+                  label: "Parakeet",
+                  subtitle: gpuSupported ? "NVIDIA ONNX" : "Needs NVIDIA",
+                  disabled: !gpuSupported,
+                  title: !gpuSupported ? "Requires an NVIDIA GPU" : undefined,
+                },
+              ] as const
+            ).map((engine) => {
+              const isActive = selectedEngine === engine.id;
+              const Icon = engine.icon;
+              return (
+                <button
+                  key={engine.id}
+                  onClick={() => !engine.disabled && handleEngineChange(engine.id)}
+                  disabled={engine.disabled}
+                  title={engine.title}
+                  className={`flex flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-all duration-150 ${
+                    engine.disabled
+                      ? "opacity-40 cursor-not-allowed border-border-subtle/40 bg-surface-raised/20"
+                      : isActive
+                      ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
+                      : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-1">
+                      <Icon
+                        className={`w-3 h-3 ${isActive && !engine.disabled ? "text-primary" : "text-muted-foreground"}`}
+                      />
+                      <span
+                        className={`text-[10px] font-semibold leading-tight ${isActive && !engine.disabled ? "text-foreground" : "text-muted-foreground"}`}
+                      >
+                        {engine.label}
+                      </span>
+                    </div>
+                    {isActive && !engine.disabled && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                    )}
+                  </div>
+                  <span className="text-[9px] text-muted-foreground/50 leading-tight">
+                    {engine.subtitle}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {progressDisplay}
           {retryBanner}
 
-          <div className="p-3">
-            {internalLocalProvider === "whisper" && renderLocalModels()}
-            {internalLocalProvider === "nvidia" && renderParakeetModels()}
+          <div className="p-3 pt-0">
+            {(selectedEngine === "cpu" || selectedEngine === "gpu") && renderLocalModels()}
+            {selectedEngine === "parakeet" && renderParakeetModels()}
             {diskUsageMb > 0 && (
               <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
                 <HardDrive size={10} />
