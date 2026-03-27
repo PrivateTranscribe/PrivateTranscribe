@@ -648,7 +648,7 @@ function GpuStatusCard() {
                 Check GPU Status
               </Button>
             </div>
-          )
+          )}
         </div>
       </div>
     </div>
