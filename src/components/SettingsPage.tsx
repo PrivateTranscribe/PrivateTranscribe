@@ -428,11 +428,13 @@ function GpuStatusCard() {
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span className="font-medium">CUDA binary installed</span>
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-[11px] font-medium text-foreground">Use CPU instead</p>
+                          <p className="text-[11px] font-medium text-foreground">
+                            Use CPU for transcription
+                          </p>
                           <p className="text-[10px] text-muted-foreground mt-0.5">
-                            Forces the standard CPU binary even though CUDA is available
+                            Frees up VRAM — transcription uses CPU binary instead of CUDA
                           </p>
                         </div>
                         <Toggle
@@ -440,6 +442,11 @@ function GpuStatusCard() {
                           onChange={settings.setWhisperForceCpu}
                         />
                       </div>
+                      {settings.whisperForceCpu && (
+                        <p className="text-[10px] text-amber-400/80">
+                          CPU mode active — CUDA is available but not being used
+                        </p>
+                      )}
                     </div>
                   ) : downloadState === "downloading" ? (
                     <div className="space-y-2">
@@ -549,6 +556,9 @@ function GpuStatusCard() {
                       </p>
                     )}
                     <p className="text-[9px] text-muted-foreground mt-2 text-center">
+                      Higher = faster. 59x means 60s of audio transcribes in ~1s.
+                    </p>
+                    <p className="text-[9px] text-muted-foreground mt-0.5 text-center">
                       Whisper vs Parakeet (ONNX) — different engines
                       {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
                     </p>
@@ -634,19 +644,53 @@ function GpuStatusCard() {
 
           {/* Initial state — no detection run yet */}
           {detectState === "idle" && (
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground mb-2">
-                Check whether your GPU is ready for local acceleration.
-              </p>
-              <Button
-                onClick={() => runDetect(false)}
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-[11px]"
-              >
-                <MonitorSmartphone className="w-3 h-3" />
-                Check GPU Status
-              </Button>
+            <div className="mt-3 space-y-3">
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Check whether your GPU is ready for local acceleration.
+                </p>
+                <Button
+                  onClick={() => runDetect(false)}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-[11px]"
+                >
+                  <MonitorSmartphone className="w-3 h-3" />
+                  Check GPU Status
+                </Button>
+              </div>
+
+              {/* Show CPU toggle without detection if CUDA binary is already installed */}
+              {cudaStatus?.installed && (
+                <div className="pt-3 border-t border-border-subtle/50 space-y-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                    GPU Engine
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-primary">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="font-medium">CUDA binary installed</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-medium text-foreground">
+                        Use CPU for transcription
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Frees up VRAM — transcription uses CPU binary instead of CUDA
+                      </p>
+                    </div>
+                    <Toggle
+                      checked={settings.whisperForceCpu}
+                      onChange={settings.setWhisperForceCpu}
+                    />
+                  </div>
+                  {settings.whisperForceCpu && (
+                    <p className="text-[10px] text-amber-400/80">
+                      CPU mode active — CUDA is available but not being used
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

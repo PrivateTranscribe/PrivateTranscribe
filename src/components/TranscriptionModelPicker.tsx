@@ -40,12 +40,23 @@ interface LocalModelCardProps {
   recommended?: boolean;
   provider: string;
   languageLabel?: string;
+  performanceLabel?: string;
   onSelect: () => void;
   onDelete: () => void;
   onDownload: () => void;
   onCancel: () => void;
   styles: ReturnType<(typeof MODEL_PICKER_COLORS)[keyof typeof MODEL_PICKER_COLORS]>;
 }
+
+// Speed and quality ratings for Whisper models shown during onboarding
+const WHISPER_PERF_LABELS: Record<string, { speed: string; quality: string }> = {
+  tiny: { speed: "Fastest", quality: "Basic" },
+  base: { speed: "Fast", quality: "Good" },
+  small: { speed: "Medium", quality: "Better" },
+  medium: { speed: "Slow", quality: "Great" },
+  large: { speed: "Slowest", quality: "Best" },
+  turbo: { speed: "Fast", quality: "Great" },
+};
 
 function LocalModelCard({
   modelId,
@@ -60,6 +71,7 @@ function LocalModelCard({
   recommended,
   provider,
   languageLabel,
+  performanceLabel,
   onSelect,
   onDelete,
   onDownload,
@@ -113,6 +125,11 @@ function LocalModelCard({
           {languageLabel && (
             <span className="text-[10px] text-muted-foreground/50 font-medium shrink-0">
               {languageLabel}
+            </span>
+          )}
+          {performanceLabel && (
+            <span className="text-[10px] text-muted-foreground/40 shrink-0 hidden sm:inline">
+              {performanceLabel}
             </span>
           )}
         </div>
@@ -270,7 +287,6 @@ export default function TranscriptionModelPicker({
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
   const [internalLocalProvider, setInternalLocalProvider] = useState(selectedLocalProvider);
-  const [showAllWhisperModels, setShowAllWhisperModels] = useState(false);
   const hasLoadedRef = useRef(false);
   const hasLoadedParakeetRef = useRef(false);
 
@@ -684,32 +700,21 @@ export default function TranscriptionModelPicker({
           }))
         : localModels;
 
-    // In onboarding mode, show only the recommended model + tiny (lightweight option)
-    // plus the currently selected model (so it's never hidden). Settings mode shows all.
     const isOnboarding = variant === "onboarding";
-    const ALWAYS_SHOW_IDS = new Set(["turbo", "base", "tiny"]);
-
-    const visibleModels =
-      isOnboarding && !showAllWhisperModels
-        ? allModelEntries.filter(
-            (m) =>
-              ALWAYS_SHOW_IDS.has(m.model) ||
-              m.model === selectedLocalModel ||
-              (WHISPER_MODEL_INFO[m.model]?.recommended ?? false)
-          )
-        : allModelEntries;
-
-    const hiddenCount = allModelEntries.length - visibleModels.length;
 
     return (
       <div className="space-y-1">
-        {visibleModels.map((model) => {
+        {allModelEntries.map((model) => {
           const modelId = model.model;
           const info = WHISPER_MODEL_INFO[modelId] || {
             name: modelId,
             description: "Model",
             size: "Unknown",
           };
+
+          const perf = WHISPER_PERF_LABELS[modelId];
+          const performanceLabel =
+            isOnboarding && perf ? `${perf.speed} · ${perf.quality}` : undefined;
 
           return (
             <LocalModelCard
@@ -725,6 +730,7 @@ export default function TranscriptionModelPicker({
               isCancelling={isCancelling}
               recommended={info.recommended}
               provider="whisper"
+              performanceLabel={performanceLabel}
               onSelect={() => handleWhisperModelSelect(modelId)}
               onDelete={() => handleDelete(modelId)}
               onDownload={() => downloadModel(modelId, handleWhisperModelSelect)}
@@ -733,15 +739,6 @@ export default function TranscriptionModelPicker({
             />
           );
         })}
-        {isOnboarding && hiddenCount > 0 && !showAllWhisperModels && (
-          <button
-            type="button"
-            onClick={() => setShowAllWhisperModels(true)}
-            className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground py-1 transition-colors"
-          >
-            Show {hiddenCount} more {hiddenCount === 1 ? "option" : "options"}
-          </button>
-        )}
       </div>
     );
   };
