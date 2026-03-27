@@ -336,267 +336,308 @@ function GpuStatusCard() {
             )}
           </div>
 
-          {detectState === "idle" && (
-            <p className="text-xs text-muted-foreground mt-1 mb-2">
-              Check whether your GPU is ready for local acceleration.
-            </p>
-          )}
+          {/* ── Section divider helper ─────────────────────────── */}
+          {detectState !== "idle" && (
+            <div className="mt-4 space-y-4">
 
-          {detectState === "detecting" && (
-            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Scanning hardware…
-            </div>
-          )}
-
-          {detectState === "error" && (
-            <div className="flex items-center gap-2 mt-2 text-xs text-destructive">
-              <AlertCircle className="w-3 h-3" />
-              {error}
-            </div>
-          )}
-
-          {detectState === "done" && detection && (
-            <div className="mt-2 space-y-1">
-              {detection.gpu.available ? (
-                <p className="text-xs text-muted-foreground">
-                  {detection.gpu.model ?? "GPU detected"}
-                  {detection.gpu.vram
-                    ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
-                    : ""}
+              {/* ═══ HARDWARE ════════════════════════════════════════ */}
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
+                  Hardware
                 </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No discrete GPU detected - CPU transcription only
-                </p>
-              )}
-              {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
-                <div className="mt-2 rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5">
-                  <p className="text-[11px] font-medium text-foreground">
-                    To enable GPU acceleration:
-                  </p>
-                  <ol className="space-y-1 list-none">
-                    {rec.recoverySteps.map((step, i) => (
-                      <li
-                        key={i}
-                        className="text-[11px] text-muted-foreground flex items-start gap-1.5"
-                      >
-                        <span className="text-warning font-medium mt-0.5 shrink-0">{i + 1}.</span>
-                        <span>{step}</span>
-                      </li>
-                    ))}
-                  </ol>
+                {detectState === "detecting" && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Scanning hardware…
+                  </div>
+                )}
+                {detectState === "error" && (
+                  <div className="flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle className="w-3 h-3" />
+                    {error}
+                  </div>
+                )}
+                {detectState === "done" && detection && (
+                  <div className="space-y-2">
+                    {detection.gpu.available ? (
+                      <p className="text-xs text-muted-foreground">
+                        {detection.gpu.model ?? "GPU detected"}
+                        {detection.gpu.vram
+                          ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
+                          : ""}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No discrete GPU detected — CPU transcription only
+                      </p>
+                    )}
+                    {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
+                      <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5">
+                        <p className="text-[11px] font-medium text-foreground">
+                          To enable GPU acceleration:
+                        </p>
+                        <ol className="space-y-1 list-none">
+                          {rec.recoverySteps.map((step, i) => (
+                            <li
+                              key={i}
+                              className="text-[11px] text-muted-foreground flex items-start gap-1.5"
+                            >
+                              <span className="text-warning font-medium mt-0.5 shrink-0">
+                                {i + 1}.
+                              </span>
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
+                        <Button
+                          onClick={() => openExternalLink("https://www.nvidia.com/drivers")}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1.5 text-[11px] mt-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Download NVIDIA Drivers
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="mt-2">
                   <Button
-                    onClick={() => openExternalLink("https://www.nvidia.com/drivers")}
+                    onClick={() => runDetect(true)}
                     variant="outline"
                     size="sm"
-                    className="h-7 gap-1.5 text-[11px] mt-1"
+                    className="h-7 gap-1.5 text-[11px]"
+                    disabled={detectState === "detecting"}
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Download NVIDIA Drivers
+                    <RefreshCw className="w-3 h-3" />
+                    Re-detect Hardware
                   </Button>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Whisper vs Parakeet Comparison section ─────────────────── */}
-          {compState === "done" && compResult && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[11px] font-medium text-foreground">
-                  Whisper vs Parakeet Speed Comparison
-                </p>
               </div>
-              <div className="flex items-center gap-3">
-                {/* Whisper result */}
-                <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
-                    Whisper{compResult.cpuResult.gpuCategory === "nvidia_cuda" ? " (CUDA)" : " (CPU)"}
+
+              {/* ═══ GPU ENGINE ══════════════════════════════════════ */}
+              {gpuCategory === "nvidia_cuda" && (
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
+                    GPU Engine
                   </p>
-                  <p className="text-sm font-semibold text-foreground tabular-nums">
-                    {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground">{compResult.cpuResult.model}</p>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                {/* Parakeet result */}
-                <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
-                  <p className="text-[10px] font-medium text-primary mb-0.5">Parakeet</p>
-                  <p className="text-sm font-semibold text-foreground tabular-nums">
-                    {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground">{compResult.gpuResult.model}</p>
-                </div>
-              </div>
-              {/* Speedup summary */}
-              {compResult.speedup >= 1.05 && (
-                <div className="mt-2 flex items-center justify-center gap-1.5">
-                  <span className="text-xs font-semibold text-primary tabular-nums">
-                    {compResult.speedup >= 10
-                      ? `${compResult.speedup.toFixed(1)}x`
-                      : `${compResult.speedup.toFixed(2)}x`}{" "}
-                    faster with Parakeet
-                  </span>
-                </div>
-              )}
-              {compResult.speedup > 0 && compResult.speedup < 1.05 && (
-                <div className="mt-2 flex items-center justify-center">
-                  <span className="text-[11px] text-muted-foreground">
-                    About the same speed on this device
-                  </span>
-                </div>
-              )}
-              <p className="text-[9px] text-muted-foreground mt-2 text-center">
-                Measured on this device · Whisper vs Parakeet (ONNX) - different engines
-                {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
-              </p>
-            </div>
-          )}
-
-          {compState === "running" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Running Whisper vs Parakeet comparison — testing both engines on a 10-second sample…
-              </div>
-            </div>
-          )}
-
-          {compState === "error" && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
-              <AlertCircle className="w-3 h-3" />
-              Comparison failed: {compError}
-            </div>
-          )}
-
-          {/* ── Single-engine Speed Test section ─────────────────── */}
-          {benchState === "done" && benchResult && compState !== "done" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Zap className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[11px] font-medium text-foreground">Transcription Speed</p>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-semibold text-foreground tabular-nums">
-                  {formatRealtimeFactor(benchResult.realtimeFactor)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">real-time</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Measured on this device ·{" "}
-                {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} ({benchResult.model}) ·{" "}
-                {(benchResult.elapsedMs / 1000).toFixed(1)}s for {benchResult.audioDurationSec}s
-                audio
-                {benchResult.createdAt ? ` · ${formatBenchmarkDate(benchResult.createdAt)}` : ""}
-              </p>
-            </div>
-          )}
-
-          {benchState === "running" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Running speed test - transcribing a 10-second sample…
-              </div>
-            </div>
-          )}
-
-          {benchState === "error" && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
-              <AlertCircle className="w-3 h-3" />
-              Speed test failed: {benchError}
-            </div>
-          )}
-
-          {/* ── CUDA binary download section ─────────────────── */}
-          {gpuCategory === "nvidia_cuda" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              {cudaStatus?.installed || downloadState === "done" ? (
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs text-primary">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span className="font-medium">GPU binary installed</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[11px] font-medium text-foreground">Use CPU instead</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Forces the standard CPU binary even though the CUDA binary is available
+                  {cudaStatus?.installed || downloadState === "done" ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs text-primary">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span className="font-medium">CUDA binary installed</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[11px] font-medium text-foreground">Use CPU instead</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            Forces the standard CPU binary even though CUDA is available
+                          </p>
+                        </div>
+                        <Toggle
+                          checked={settings.whisperForceCpu}
+                          onChange={settings.setWhisperForceCpu}
+                        />
+                      </div>
+                    </div>
+                  ) : downloadState === "downloading" ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Downloading… {downloadProgress}%</span>
+                        </div>
+                        <Button
+                          onClick={handleCancelDownload}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1.5 text-[11px]"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-primary/20 overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all duration-200"
+                          style={{ width: `${downloadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : downloadState === "error" ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs text-destructive">
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>{downloadError}</span>
+                      </div>
+                      <Button
+                        onClick={handleDownloadCuda}
+                        variant="default"
+                        size="sm"
+                        className="h-7 gap-1.5 text-[11px]"
+                      >
+                        <Download className="w-3 h-3" />
+                        Retry
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-muted-foreground">
+                        Download the CUDA-optimized whisper-server for GPU-accelerated
+                        transcription (~650 MB)
                       </p>
+                      <Button
+                        onClick={handleDownloadCuda}
+                        variant="default"
+                        size="sm"
+                        className="h-7 gap-1.5 text-[11px]"
+                      >
+                        <Download className="w-3 h-3" />
+                        Download GPU Engine
+                      </Button>
                     </div>
-                    <Toggle
-                      checked={settings.whisperForceCpu}
-                      onChange={settings.setWhisperForceCpu}
-                    />
-                  </div>
+                  )}
                 </div>
-              ) : downloadState === "downloading" ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Downloading… {downloadProgress}%</span>
+              )}
+
+              {/* ═══ BENCHMARKS ══════════════════════════════════════ */}
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
+                  Benchmarks
+                </p>
+
+                {/* Comparison result */}
+                {compState === "done" && compResult && (
+                  <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
+                        <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
+                          Whisper
+                          {compResult.cpuResult.gpuCategory === "nvidia_cuda"
+                            ? " (CUDA)"
+                            : " (CPU)"}
+                        </p>
+                        <p className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
+                        </p>
+                        <p className="text-[9px] text-muted-foreground">
+                          {compResult.cpuResult.model}
+                        </p>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
+                        <p className="text-[10px] font-medium text-primary mb-0.5">Parakeet</p>
+                        <p className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
+                        </p>
+                        <p className="text-[9px] text-muted-foreground">
+                          {compResult.gpuResult.model}
+                        </p>
+                      </div>
                     </div>
+                    {compResult.speedup >= 1.05 && (
+                      <p className="mt-2 text-center text-xs font-semibold text-primary tabular-nums">
+                        {compResult.speedup >= 10
+                          ? `${compResult.speedup.toFixed(1)}x`
+                          : `${compResult.speedup.toFixed(2)}x`}{" "}
+                        faster with Parakeet
+                      </p>
+                    )}
+                    {compResult.speedup > 0 && compResult.speedup < 1.05 && (
+                      <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                        About the same speed on this device
+                      </p>
+                    )}
+                    <p className="text-[9px] text-muted-foreground mt-2 text-center">
+                      Whisper vs Parakeet (ONNX) — different engines
+                      {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
+                    </p>
+                  </div>
+                )}
+
+                {/* Single-engine result (only shown when no comparison yet) */}
+                {benchState === "done" && benchResult && compState !== "done" && (
+                  <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-lg font-semibold text-foreground tabular-nums">
+                        {formatRealtimeFactor(benchResult.realtimeFactor)}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">real-time</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} (
+                      {benchResult.model}) ·{" "}
+                      {(benchResult.elapsedMs / 1000).toFixed(1)}s for{" "}
+                      {benchResult.audioDurationSec}s audio
+                      {benchResult.createdAt
+                        ? ` · ${formatBenchmarkDate(benchResult.createdAt)}`
+                        : ""}
+                    </p>
+                  </div>
+                )}
+
+                {/* Running states */}
+                {(benchState === "running" || compState === "running") && (
+                  <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      {compState === "running"
+                        ? "Running Whisper vs Parakeet comparison — testing both engines on a 10-second sample…"
+                        : "Running speed test — transcribing a 10-second sample…"}
+                    </div>
+                  </div>
+                )}
+
+                {/* Error states */}
+                {benchState === "error" && (
+                  <div className="mb-3 flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle className="w-3 h-3" />
+                    Speed test failed: {benchError}
+                  </div>
+                )}
+                {compState === "error" && (
+                  <div className="mb-3 flex items-center gap-2 text-xs text-destructive">
+                    <AlertCircle className="w-3 h-3" />
+                    Comparison failed: {compError}
+                  </div>
+                )}
+
+                {/* Benchmark action buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    onClick={runBenchmark}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-[11px]"
+                    disabled={benchState === "running" || compState === "running"}
+                  >
+                    <Timer className="w-3 h-3" />
+                    {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
+                  </Button>
+                  {gpuCategory === "nvidia_cuda" && (
                     <Button
-                      onClick={handleCancelDownload}
+                      onClick={runComparison}
                       variant="outline"
                       size="sm"
                       className="h-7 gap-1.5 text-[11px]"
+                      disabled={benchState === "running" || compState === "running"}
                     >
-                      Cancel
+                      <Zap className="w-3 h-3" />
+                      {compResult ? "Re-run Whisper vs Parakeet" : "Compare Whisper vs Parakeet"}
                     </Button>
-                  </div>
-                  <div className="w-full h-1.5 rounded-full bg-primary/20 overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all duration-200"
-                      style={{ width: `${downloadProgress}%` }}
-                    />
-                  </div>
+                  )}
                 </div>
-              ) : downloadState === "error" ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5 text-xs text-destructive">
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>{downloadError}</span>
-                  </div>
-                  <Button
-                    onClick={handleDownloadCuda}
-                    variant="default"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[11px]"
-                  >
-                    <Download className="w-3 h-3" />
-                    Retry
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-[11px] font-medium text-foreground">
-                      GPU-Accelerated Engine
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Download the CUDA-optimized whisper-server for faster transcription (~650 MB)
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleDownloadCuda}
-                    variant="default"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[11px]"
-                  >
-                    <Download className="w-3 h-3" />
-                    Download
-                  </Button>
-                </div>
-              )}
+              </div>
+
             </div>
           )}
 
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
-            {detectState === "idle" && (
+          {/* Initial state — no detection run yet */}
+          {detectState === "idle" && (
+            <div className="mt-3">
+              <p className="text-xs text-muted-foreground mb-2">
+                Check whether your GPU is ready for local acceleration.
+              </p>
               <Button
                 onClick={() => runDetect(false)}
                 variant="outline"
@@ -606,41 +647,8 @@ function GpuStatusCard() {
                 <MonitorSmartphone className="w-3 h-3" />
                 Check GPU Status
               </Button>
-            )}
-            {(detectState === "done" || detectState === "error") && (
-              <Button
-                onClick={() => runDetect(true)}
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-[11px]"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Re-detect Hardware
-              </Button>
-            )}
-            <Button
-              onClick={runBenchmark}
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-[11px]"
-              disabled={benchState === "running" || compState === "running"}
-            >
-              <Timer className="w-3 h-3" />
-              {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
-            </Button>
-            {gpuCategory === "nvidia_cuda" && (
-              <Button
-                onClick={runComparison}
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-[11px]"
-                disabled={benchState === "running" || compState === "running"}
-              >
-                <Zap className="w-3 h-3" />
-                {compResult ? "Re-run Whisper vs Parakeet" : "Compare Whisper vs Parakeet"}
-              </Button>
-            )}
-          </div>
+            </div>
+          )
         </div>
       </div>
     </div>
