@@ -1,26 +1,91 @@
+const path = require("path");
+const fs = require("fs");
 const { randomUUID } = require("crypto");
 const debugLogger = require("./debugLogger");
 
 /**
  * BenchmarkManager - measures transcription speed on this device.
  *
- * Generates a known-duration silent WAV sample, sends it through the active
- * transcription engine, and records wall-clock time. The result is expressed
- * as a "real-time factor" (audio seconds / processing seconds), giving the
- * user a truthful, device-specific measure of their local transcription speed.
+ * Sends a known-duration audio sample through the active transcription engine
+ * and records wall-clock time. The result is expressed as a "real-time factor"
+ * (audio seconds / processing seconds), giving the user a truthful,
+ * device-specific measure of their local transcription speed.
+ *
+ * Audio source priority:
+ *   1. resources/benchmark.wav — drop in any 16 kHz mono WAV for a realistic
+ *      speech benchmark. A 10-second LibriSpeech or CC0 clip works well.
+ *   2. Synthetic white noise — generated deterministically when no file exists.
+ *      Much better than silence (forces the full encoder+decoder pipeline) but
+ *      not as representative as real speech for GPU vs CPU comparison.
  *
  * Results are persisted in the `benchmarks` database table so the user can
  * see their most recent measurement across sessions.
  */
 
+/**
+ * Candidate paths for a user-supplied benchmark WAV file.
+ * Checked in order; first existing file wins.
+ */
+function findBundledBenchmarkWav() {
+  const candidates = [];
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, "benchmark.wav"));
+  }
+  candidates.push(path.join(__dirname, "..", "..", "resources", "benchmark.wav"));
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+/**
+ * Load benchmark audio: prefers a bundled speech WAV file; falls back to
+ * synthetic white noise. Returns { buffer, durationSeconds, source }.
+ */
+function loadBenchmarkAudio() {
+  const wavPath = findBundledBenchmarkWav();
+  if (wavPath) {
+    try {
+      const buffer = fs.readFileSync(wavPath);
+      // Read duration from WAV header (data chunk size / byte rate)
+      const byteRate = buffer.readUInt32LE(28);
+      const dataSize = buffer.readUInt32LE(40);
+      const durationSeconds = byteRate > 0 ? dataSize / byteRate : BENCHMARK_AUDIO_DURATION_SEC;
+      debugLogger.info("BenchmarkManager: using bundled benchmark.wav", {
+        path: wavPath,
+        durationSeconds,
+      });
+      return { buffer, durationSeconds, source: "file" };
+    } catch (err) {
+      debugLogger.warn("BenchmarkManager: failed to read benchmark.wav, falling back to synthetic", {
+        error: err.message,
+      });
+    }
+  }
+  debugLogger.info("BenchmarkManager: using synthetic white-noise audio");
+  return {
+    buffer: generateBenchmarkAudio(BENCHMARK_AUDIO_DURATION_SEC),
+    durationSeconds: BENCHMARK_AUDIO_DURATION_SEC,
+    source: "synthetic",
+  };
+}
+
 // ── Pure helpers (exported for unit testing) ─────────────────────────────
 
 /**
- * Generate a valid 16 kHz mono 16-bit PCM WAV buffer of silence.
+ * Generate a valid 16 kHz mono 16-bit PCM WAV buffer filled with deterministic
+ * white noise. Unlike silence, noise forces the full encoder + decoder pipeline
+ * in both whisper.cpp and Parakeet, giving accurate and comparable timings.
+ * Pure silence allows both engines to fast-path via energy/VAD checks, making
+ * CPU and GPU results look identical — which is misleading.
+ *
+ * The noise is generated with a seeded LCG so the same audio is produced on
+ * every run, keeping benchmark results reproducible and comparable over time.
+ *
  * @param {number} durationSeconds
  * @returns {Buffer}
  */
-function generateSilentWav(durationSeconds) {
+function generateBenchmarkAudio(durationSeconds) {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 60) {
     throw new Error("durationSeconds must be between 0 and 60");
   }
@@ -32,7 +97,7 @@ function generateSilentWav(durationSeconds) {
   const numSamples = Math.round(sampleRate * durationSeconds);
   const dataSize = numSamples * numChannels * bytesPerSample;
 
-  // 44-byte WAV header + PCM data (all zeros = silence)
+  // 44-byte WAV header + PCM data
   const buffer = Buffer.alloc(44 + dataSize, 0);
 
   // RIFF header
@@ -53,7 +118,18 @@ function generateSilentWav(durationSeconds) {
   // data sub-chunk
   buffer.write("data", 36);
   buffer.writeUInt32LE(dataSize, 40);
-  // PCM samples are already zero (silence)
+
+  // Fill with deterministic white noise (seeded LCG) at ~15 % amplitude.
+  // Low enough to avoid clipping, high enough to defeat VAD silence detection.
+  const maxSample = Math.round(0.15 * 32767);
+  let seed = 0x12345678;
+  for (let i = 0; i < numSamples; i++) {
+    // Linear Congruential Generator (Numerical Recipes constants)
+    seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+    // Map unsigned 32-bit value to signed 16-bit range
+    const sample = Math.round(((seed >>> 1) / 0x40000000 - 1) * maxSample);
+    buffer.writeInt16LE(sample, 44 + i * bytesPerSample);
+  }
 
   return buffer;
 }
@@ -237,8 +313,10 @@ class BenchmarkManager {
     try {
       debugLogger.info("Benchmark starting", { provider, model });
 
-      // 1. Generate test audio
-      const audioBuffer = generateSilentWav(BENCHMARK_AUDIO_DURATION_SEC);
+      // 1. Load test audio (bundled speech WAV preferred, synthetic noise fallback)
+      const { buffer: audioBuffer, durationSeconds: audioDurationSec, source: audioSource } =
+        loadBenchmarkAudio();
+      debugLogger.info("Benchmark audio loaded", { source: audioSource, audioDurationSec });
 
       // 2. Detect hardware context
       let detection = null;
@@ -302,7 +380,7 @@ class BenchmarkManager {
         provider: provider || "whisper",
         model: model || (provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : "turbo"),
         gpuCategory: effectiveGpuCategory,
-        audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
+        audioDurationSec,
         elapsedMs,
         gpuModel: detection?.gpu?.model || null,
         cpuModel: detection?.cpu?.model || null,
@@ -408,8 +486,10 @@ class BenchmarkManager {
     try {
       debugLogger.info("Comparison benchmark starting", { cpuModel, gpuModel });
 
-      // Generate a single audio sample used for both engines
-      const audioBuffer = generateSilentWav(BENCHMARK_AUDIO_DURATION_SEC);
+      // Load test audio — same sample used for both engines so the comparison is fair
+      const { buffer: audioBuffer, durationSeconds: audioDurationSec, source: audioSource } =
+        loadBenchmarkAudio();
+      debugLogger.info("Comparison benchmark audio loaded", { source: audioSource, audioDurationSec });
 
       // Detect hardware once
       let detection = null;
@@ -477,7 +557,7 @@ class BenchmarkManager {
         provider: "whisper",
         model: cpuModelName,
         gpuCategory: whisperGpuCategory,
-        audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
+        audioDurationSec,
         elapsedMs: cpuElapsed,
         gpuModel: hwContext.gpuModelName,
         cpuModel: hwContext.cpuModelName,
@@ -496,7 +576,7 @@ class BenchmarkManager {
         provider: "nvidia",
         model: gpuModelName,
         gpuCategory: hwContext.gpuCategory,
-        audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
+        audioDurationSec,
         elapsedMs: gpuElapsed,
         gpuModel: hwContext.gpuModelName,
         cpuModel: hwContext.cpuModelName,
@@ -605,7 +685,7 @@ class BenchmarkManager {
 module.exports = {
   BenchmarkManager,
   // Pure helpers exported for testing
-  generateSilentWav,
+  generateBenchmarkAudio,
   computeRealtimeFactor,
   buildBenchmarkRecord,
   formatRealtimeFactor,

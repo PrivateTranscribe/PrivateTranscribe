@@ -133,7 +133,9 @@ function findModelPath(modelName, dirs) {
   return null;
 }
 
-// ─── Synthetic clip (silent 16kHz WAV) ───────────────────────────────────────
+// ─── Synthetic clip (deterministic noise WAV) ────────────────────────────────
+// White noise forces the full encoder+decoder pipeline; silence can be
+// fast-pathed by VAD checks, making CPU and GPU results look identical.
 
 function generateSilentWav(durationSec = 5) {
   const sampleRate = 16000;
@@ -147,6 +149,14 @@ function generateSilentWav(durationSec = 5) {
   buf.writeUInt32LE(sampleRate * 2, 28);       buf.writeUInt16LE(2, 32);
   buf.writeUInt16LE(16, 34);                   buf.write("data", 36);
   buf.writeUInt32LE(dataSize, 40);
+  // Deterministic white noise (seeded LCG) at ~15 % amplitude
+  const maxSample = Math.round(0.15 * 32767);
+  let seed = 0x12345678;
+  for (let i = 0; i < numSamples; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+    const sample = Math.round(((seed >>> 1) / 0x40000000 - 1) * maxSample);
+    buf.writeInt16LE(sample, 44 + i * 2);
+  }
   return buf;
 }
 
