@@ -284,10 +284,24 @@ class BenchmarkManager {
       const elapsedMs = Date.now() - startTime;
 
       // 4. Build result record
+      // For whisper, check if forceCpu is active — if so, label as cpu_only
+      // even when the hardware has CUDA, since the CPU binary was actually used.
+      let effectiveGpuCategory = detection?.recommendations?.gpuCategory || "cpu_only";
+      if (provider !== "nvidia") {
+        try {
+          const cudaStatus = this.whisperManager.getCudaBinaryStatus?.();
+          if (cudaStatus?.installed && cudaStatus?.forceCpu) {
+            effectiveGpuCategory = "cpu_only";
+          }
+        } catch {
+          // Non-fatal — fall back to hardware-detected category
+        }
+      }
+
       const record = buildBenchmarkRecord({
         provider: provider || "whisper",
         model: model || (provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : "turbo"),
-        gpuCategory: detection?.recommendations?.gpuCategory || "cpu_only",
+        gpuCategory: effectiveGpuCategory,
         audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
         elapsedMs,
         gpuModel: detection?.gpu?.model || null,
@@ -441,6 +455,17 @@ class BenchmarkManager {
       }
 
       // ── Run CPU (Whisper) benchmark ──
+      // Whisper label reflects the actual binary used, not just hardware capability.
+      let whisperGpuCategory = hwContext.gpuCategory;
+      try {
+        const cudaStatus = this.whisperManager.getCudaBinaryStatus?.();
+        if (cudaStatus?.installed && cudaStatus?.forceCpu) {
+          whisperGpuCategory = "cpu_only";
+        }
+      } catch {
+        // Non-fatal
+      }
+
       const cpuStart = Date.now();
       await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
         model: cpuModelName,
@@ -451,7 +476,7 @@ class BenchmarkManager {
       const cpuRecord = buildBenchmarkRecord({
         provider: "whisper",
         model: cpuModelName,
-        gpuCategory: hwContext.gpuCategory,
+        gpuCategory: whisperGpuCategory,
         audioDurationSec: BENCHMARK_AUDIO_DURATION_SEC,
         elapsedMs: cpuElapsed,
         gpuModel: hwContext.gpuModelName,
