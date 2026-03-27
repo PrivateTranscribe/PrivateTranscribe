@@ -1663,7 +1663,6 @@ class IPCHandlers {
 
     // Media pause — stop playing media while recording, resume when done
     ipcMain.handle("media-pause", async () => {
-      console.log("[IPC] media-pause received");
       try {
         await mediaController.pauseMedia();
       } catch (_) {
@@ -1673,7 +1672,6 @@ class IPCHandlers {
     });
 
     ipcMain.handle("media-resume", async () => {
-      console.log("[IPC] media-resume received");
       try {
         // resumeMedia() is async — it awaits any in-flight pauseMedia() state
         // check before deciding whether to send the resume key.

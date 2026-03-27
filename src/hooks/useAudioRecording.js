@@ -60,21 +60,16 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const pauseMedia = () => {
       const pauseSetting = localStorage.getItem("pauseMediaOnRecord");
-      console.log("[media] pauseMedia called, setting:", pauseSetting);
       if (pauseSetting !== "true" && pauseSetting !== "1" && pauseSetting !== "on") {
-        console.log("[media] pauseMedia skipped — setting not enabled");
         return;
       }
-      console.log("[media] invoking mediaPause IPC");
       window.electronAPI?.mediaPause?.();
       mediaPauseRequested = true;
     };
 
     const resumeMedia = () => {
-      console.log("[media] resumeMedia called, mediaPauseRequested:", mediaPauseRequested);
       if (!mediaPauseRequested) return;
       mediaPauseRequested = false;
-      console.log("[media] invoking mediaResume IPC");
       window.electronAPI?.mediaResume?.();
     };
 
