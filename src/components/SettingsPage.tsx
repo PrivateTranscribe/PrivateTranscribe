@@ -22,7 +22,6 @@ import {
   BookOpen,
   CheckCircle2,
   XCircle,
-  Cpu,
 } from "lucide-react";
 import type {
   HardwareDetectionResult,
@@ -334,8 +333,8 @@ function GpuStatusCard({
   const gpuCategory = rec?.gpuCategory;
   const isNvidiaNoCuda = gpuCategory === "nvidia_no_cuda";
 
-  // GPU is "selected" when CPU mode is NOT forced
-  const usingGpu = !settings.whisperForceCpu;
+  // GPU is "selected" when CPU mode is NOT forced (use prop, not stale settings copy)
+  const usingGpu = !activeWhisperForceCpu;
   // CUDA is supported on this platform
   const gpuSupported = cudaStatus != null ? cudaStatus.supported : false;
   // CUDA binary is ready to use
@@ -618,7 +617,7 @@ function GpuStatusCard({
                   <Timer className="w-3 h-3" />
                   {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
                 </Button>
-                {gpuCategory === "nvidia_cuda" && (
+                {gpuCategory === "nvidia_cuda" && !activeWhisperForceCpu && (
                   <Button
                     onClick={runComparison}
                     variant="outline"
