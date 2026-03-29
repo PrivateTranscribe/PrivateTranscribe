@@ -55,14 +55,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: privoca-windows-setup
-          path: dist/Privoca-Setup-*.exe
+          path: dist/PrivateTranscribe-Setup-*.exe
           retention-days: 7
 
       - name: Upload portable
         uses: actions/upload-artifact@v4
         with:
           name: privoca-windows-portable
-          path: dist/Privoca-*.exe
+          path: dist/PrivateTranscribe-*.exe
           retention-days: 7
 
       - name: Upload latest.yml (update manifest)

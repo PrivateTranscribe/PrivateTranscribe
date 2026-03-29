@@ -1500,25 +1500,25 @@ class IPCHandlers {
         // Parse lines
         const lines = envContent.split("\n");
         const logLevelIndex = lines.findIndex((line) =>
-          line.trim().startsWith("Privoca_LOG_LEVEL=")
+          line.trim().startsWith("PT_LOG_LEVEL=")
         );
 
         if (enabled) {
           // Set to debug
           if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "Privoca_LOG_LEVEL=debug";
+            lines[logLevelIndex] = "PT_LOG_LEVEL=debug";
           } else {
             // Add new line
             if (lines.length > 0 && lines[lines.length - 1] !== "") {
               lines.push("");
             }
             lines.push("# Debug logging setting");
-            lines.push("Privoca_LOG_LEVEL=debug");
+            lines.push("PT_LOG_LEVEL=debug");
           }
         } else {
           // Remove or set to info
           if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "Privoca_LOG_LEVEL=info";
+            lines[logLevelIndex] = "PT_LOG_LEVEL=info";
           }
         }
 
@@ -1526,7 +1526,7 @@ class IPCHandlers {
         fs.writeFileSync(envPath, lines.join("\n"), "utf8");
 
         // Update environment variable
-        process.env.Privoca_LOG_LEVEL = enabled ? "debug" : "info";
+        process.env.PT_LOG_LEVEL = enabled ? "debug" : "info";
 
         // Refresh logger state
         debugLogger.refreshLogLevel();
