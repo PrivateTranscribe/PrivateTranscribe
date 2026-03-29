@@ -546,6 +546,12 @@ export default function App() {
   };
 
   // Compute fixed-window position for context menu, clamped to stay in bounds.
+  // The overlay is a fixed CONTAINER_W×CONTAINER_H transparent Electron window.
+  // The menu must remain within the window bounds (no OS-level repositioning).
+  // Direction logic: open upward unless there is less than MENU_EST_HEIGHT px above
+  // the button, in which case open downward. This prevents the menu from being
+  // clipped or triggering OS window repositioning when the overlay is near the
+  // top of the screen.
   const menuStyle = (() => {
     const btn = buttonRef.current;
     if (!btn) return null;
@@ -555,16 +561,43 @@ export default function App() {
     const edge = 8;
 
     const menuWidth = 248;
+    // Conservative estimate of the tallest menu state (root + audio submenu)
+    const MENU_EST_HEIGHT = 320;
+    const GAP = 12; // gap between button edge and menu
+
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
-    const menuBottom = iH - rect.top + 12;
 
-    return {
-      position: "absolute",
-      left: menuLeft,
-      bottom: menuBottom,
-      pointerEvents: "auto",
-    };
+    // Space available above the button (top of button to top of window)
+    const spaceAbove = rect.top - edge;
+    // Space available below the button (bottom of button to bottom of window)
+    const spaceBelow = iH - (rect.bottom + edge);
+
+    if (spaceAbove >= MENU_EST_HEIGHT || spaceAbove >= spaceBelow) {
+      // Open upward.
+      // CSS `bottom` is distance from container bottom edge.
+      // To keep menu within container: iH - bottom - MENU_EST_HEIGHT >= edge
+      //   → bottom <= iH - MENU_EST_HEIGHT - edge  (cap to prevent overflow above the container)
+      // Also floor at edge so menu doesn't hang below container.
+      const menuBottom = iH - rect.top + GAP;
+      const clampedBottom = Math.min(iH - MENU_EST_HEIGHT - edge, Math.max(edge, menuBottom));
+      return {
+        position: "absolute",
+        left: menuLeft,
+        bottom: clampedBottom,
+        pointerEvents: "auto",
+      };
+    } else {
+      // Flip: open downward — clamp so menu doesn't exceed bottom of window
+      const menuTop = rect.bottom + GAP;
+      const clampedTop = Math.max(edge, Math.min(iH - MENU_EST_HEIGHT - edge, menuTop));
+      return {
+        position: "absolute",
+        left: menuLeft,
+        top: clampedTop,
+        pointerEvents: "auto",
+      };
+    }
   })();
 
   return (
