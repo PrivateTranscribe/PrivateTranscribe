@@ -8,6 +8,7 @@ import { ConfirmDialog } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useSettings } from "../../hooks/useSettings";
+import { formatHotkeyLabel } from "../../utils/hotkeys";
 import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
 
 // ---------------------------------------------------------------------------
@@ -65,7 +66,8 @@ export default function HistoryPage() {
   const transcriptions = useTranscriptions();
   const { toast } = useToast();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
-  const { historyLimit } = useSettings();
+  const { historyLimit, dictationKey } = useSettings();
+  const hotkeyLabel = formatHotkeyLabel(dictationKey);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -214,7 +216,11 @@ export default function HistoryPage() {
             <div className="text-center space-y-1.5">
               <p className="text-lg font-medium text-foreground">No transcriptions yet</p>
               <p className="text-sm text-muted-foreground max-w-xs">
-                Start dictating to see your history here
+                Press{" "}
+                <kbd className="inline-flex items-center px-1.5 py-0.5 rounded border border-border-subtle bg-surface-1 text-xs font-mono text-foreground/70">
+                  {hotkeyLabel}
+                </kbd>{" "}
+                to start dictating
               </p>
             </div>
           </div>
