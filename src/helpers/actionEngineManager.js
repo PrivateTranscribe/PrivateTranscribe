@@ -551,6 +551,23 @@ class ActionEngineManager {
   constructor(databaseManager) {
     /** @type {import('better-sqlite3').Database} */
     this.db = databaseManager.db;
+
+    /**
+     * Per-action debounce map for transcript-triggered executions.
+     * Maps action id → timestamp (ms) of the last transcript-triggered run.
+     * Prevents the same voice command from firing twice in rapid succession
+     * when streaming transcription produces overlapping final segments.
+     *
+     * Only applies when triggeredBy === 'transcript'.
+     * Manual "Test" runs always bypass this guard.
+     *
+     * Override via env: PRIVOCA_ACTION_DEBOUNCE_MS (default 2000).
+     */
+    this._lastTranscriptRunMs = new Map();
+    this._transcriptDebounceMs = (() => {
+      const v = parseInt(process.env.PRIVOCA_ACTION_DEBOUNCE_MS ?? "", 10);
+      return Number.isFinite(v) && v >= 0 ? v : 2000;
+    })();
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -706,6 +723,25 @@ class ActionEngineManager {
 
     const triggeredBy = runOptions.triggeredBy === "transcript" ? "transcript" : "manual";
     const triggerText = runOptions.triggerText ?? null;
+
+    // ── Transcript debounce ─────────────────────────────────────────────────
+    // When an action is triggered by transcript matching, enforce a per-action
+    // cooldown to prevent duplicate executions caused by streaming transcription
+    // overlaps or accidental repeated utterances.  Manual "Test" runs bypass
+    // this guard so users always get immediate feedback from the UI.
+    if (triggeredBy === "transcript" && this._transcriptDebounceMs > 0) {
+      const lastRun = this._lastTranscriptRunMs.get(id) ?? 0;
+      const elapsed = Date.now() - lastRun;
+      if (elapsed < this._transcriptDebounceMs) {
+        return {
+          success: false,
+          debounced: true,
+          error: `Action debounced — last ran ${elapsed}ms ago (cooldown: ${this._transcriptDebounceMs}ms)`,
+        };
+      }
+      this._lastTranscriptRunMs.set(id, Date.now());
+    }
+    // ───────────────────────────────────────────────────────────────────────
 
     const startMs = Date.now();
     const result = await executeAction(action, context);
