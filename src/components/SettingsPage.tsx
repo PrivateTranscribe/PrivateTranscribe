@@ -1440,7 +1440,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               return;
             }
 
-            window.dispatchEvent(new Event("Privoca-models-cleared"));
+            window.dispatchEvent(new Event("PrivateTranscribe-models-cleared"));
 
             showAlertDialog({
               title: "Models Removed",
