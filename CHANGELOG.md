@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.4.1] - 2026-03-29
+
+### Fixed
+- **Overlay context menu overflow**: Context menu now detects available space above and below the trigger button and flips direction accordingly, preventing the OS from repositioning the Electron window when the overlay is near the top of the screen.
+- **Action Engine double-fire**: Added a per-action transcript debounce guard (default 2 s, tunable via `PRIVOCA_ACTION_DEBOUNCE_MS`) so overlapping final segments from streaming transcription can no longer trigger the same voice command twice. Manual Test-button runs bypass the cooldown.
+- **Stale Privoca brand references**: Removed remaining "Privoca" brand references from docs and legal copy, completing the rename to PrivateTranscribe.
+
+### Changed
+- **History empty state**: When no transcriptions exist, the empty state now shows the user's actual configured hotkey (e.g. `` ` ``) in a styled `<kbd>` element instead of the generic "Start dictating to see your history here" message.
+
 ## [0.4.0] - 2026-03-25
 
 ### Added
