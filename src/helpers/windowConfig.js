@@ -110,13 +110,20 @@ class WindowPositionUtil {
   }
 
   static clampPosition(x, y, width, height, workArea) {
-    // Clamp so the button (at BUTTON_OFFSET_X, BUTTON_OFFSET_Y within the container)
-    // stays within the work area. width/height are accepted for API compatibility but
-    // the window is always CONTAINER_W × CONTAINER_H.
+    // Clamp so the full 44px button stays visible within the work area.
+    // We clamp against the button *edge* (not just center) so the button can't hang off screen.
+    // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
+    const BUTTON_HALF = 22; // half of 44px button
     const btnX = x + BUTTON_OFFSET_X;
     const btnY = y + BUTTON_OFFSET_Y;
-    const clampedBtnX = Math.max(workArea.x, Math.min(btnX, workArea.x + workArea.width));
-    const clampedBtnY = Math.max(workArea.y, Math.min(btnY, workArea.y + workArea.height));
+    const clampedBtnX = Math.max(
+      workArea.x + BUTTON_HALF,
+      Math.min(btnX, workArea.x + workArea.width - BUTTON_HALF)
+    );
+    const clampedBtnY = Math.max(
+      workArea.y + BUTTON_HALF,
+      Math.min(btnY, workArea.y + workArea.height - BUTTON_HALF)
+    );
     return {
       x: Math.round(clampedBtnX - BUTTON_OFFSET_X),
       y: Math.round(clampedBtnY - BUTTON_OFFSET_Y),

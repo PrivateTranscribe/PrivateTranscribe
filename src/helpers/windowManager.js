@@ -40,6 +40,7 @@ class WindowManager {
     this._positionFile = null;
     this._positionSaveTimer = null;
     this._pendingPosition = null;
+    this._displayMetricsTimer = null;
 
     this._registerExitHandlers();
 
@@ -282,8 +283,16 @@ class WindowManager {
     });
 
     // Re-clamp whenever the display resolution, scale, or work area changes.
+    // Debounce: this event fires many times during sleep/wake and screen on/off while
+    // the work area is in flux (taskbar not yet registered, DPI not yet settled).
+    // Firing immediately can save a wrong clamped position, which persists across reboots.
+    // Wait 2 s after the last event so we act on the final stable work area.
     screen.on("display-metrics-changed", () => {
-      this._reclampOverlayPosition("display-metrics-changed");
+      if (this._displayMetricsTimer) clearTimeout(this._displayMetricsTimer);
+      this._displayMetricsTimer = setTimeout(() => {
+        this._displayMetricsTimer = null;
+        this._reclampOverlayPosition("display-metrics-changed");
+      }, 2000);
     });
   }
 
@@ -673,6 +682,10 @@ class WindowManager {
       if (this.mainWindowOnTopRepairTimer) {
         clearTimeout(this.mainWindowOnTopRepairTimer);
         this.mainWindowOnTopRepairTimer = null;
+      }
+      if (this._displayMetricsTimer) {
+        clearTimeout(this._displayMetricsTimer);
+        this._displayMetricsTimer = null;
       }
       if (this._positionSaveTimer) {
         clearTimeout(this._positionSaveTimer);

@@ -91,12 +91,19 @@ class DragManager {
       const display = screen.getDisplayNearestPoint(cursorPos);
       const bounds = display.workArea;
 
-      // Constrain so the button center (at BUTTON_OFFSET_X, BUTTON_OFFSET_Y within the
-      // fixed 400×500 container) stays within the work area.
+      // Constrain so the full 44px button stays visible — clamp against the button *edge*,
+      // not just its center. Using the center caused half the button to hang off screen.
+      const BUTTON_HALF = 22; // half of 44px button
       const btnX = newX + BUTTON_OFFSET_X;
       const btnY = newY + BUTTON_OFFSET_Y;
-      const clampedBtnX = Math.max(bounds.x, Math.min(btnX, bounds.x + bounds.width));
-      const clampedBtnY = Math.max(bounds.y, Math.min(btnY, bounds.y + bounds.height));
+      const clampedBtnX = Math.max(
+        bounds.x + BUTTON_HALF,
+        Math.min(btnX, bounds.x + bounds.width - BUTTON_HALF)
+      );
+      const clampedBtnY = Math.max(
+        bounds.y + BUTTON_HALF,
+        Math.min(btnY, bounds.y + bounds.height - BUTTON_HALF)
+      );
       const constrainedX = clampedBtnX - BUTTON_OFFSET_X;
       const constrainedY = clampedBtnY - BUTTON_OFFSET_Y;
 
