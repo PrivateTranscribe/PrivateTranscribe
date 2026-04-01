@@ -227,3 +227,88 @@ describe("downloadFile integration", () => {
     expect(fs.existsSync(tmpPath)).toBe(false);
   });
 });
+
+// ── cleanStaleTmpFiles tests ──────────────────────────────────────────────────
+
+describe("cleanStaleTmpFiles", () => {
+  let tmpDir: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cleanStaleTmpFiles: (dir: string) => Promise<void>;
+
+  const STALE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — mirrors the constant
+
+  beforeEach(() => {
+    vi.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("../../../src/helpers/downloadUtils");
+    cleanStaleTmpFiles = mod.cleanStaleTmpFiles;
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-stale-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeFile(name: string, content = "x") {
+    const p = path.join(tmpDir, name);
+    fs.writeFileSync(p, content);
+    return p;
+  }
+
+  function setMtime(filePath: string, ageMs: number) {
+    const t = new Date(Date.now() - ageMs);
+    fs.utimesSync(filePath, t, t);
+  }
+
+  it("deletes .tmp files older than the retention window", async () => {
+    const stalePath = writeFile("old.tmp");
+    setMtime(stalePath, STALE_AGE_MS + 1000); // just over the threshold
+
+    await cleanStaleTmpFiles(tmpDir);
+
+    expect(fs.existsSync(stalePath)).toBe(false);
+  });
+
+  it("preserves .tmp files within the retention window", async () => {
+    const freshPath = writeFile("new.tmp");
+    setMtime(freshPath, STALE_AGE_MS - 60_000); // 1 minute under threshold
+
+    await cleanStaleTmpFiles(tmpDir);
+
+    expect(fs.existsSync(freshPath)).toBe(true);
+  });
+
+  it("does not touch non-.tmp files regardless of age", async () => {
+    const binPath = writeFile("model.bin");
+    setMtime(binPath, STALE_AGE_MS + 1000);
+
+    await cleanStaleTmpFiles(tmpDir);
+
+    expect(fs.existsSync(binPath)).toBe(true);
+  });
+
+  it("handles multiple files, removing only stale .tmp entries", async () => {
+    const stale1 = writeFile("a.tmp");
+    const stale2 = writeFile("b.tmp");
+    const fresh = writeFile("c.tmp");
+    const other = writeFile("d.bin");
+
+    setMtime(stale1, STALE_AGE_MS + 1000);
+    setMtime(stale2, STALE_AGE_MS + 86_400_000); // 8 days old
+    setMtime(fresh, 60_000); // 1 minute old
+    setMtime(other, STALE_AGE_MS + 1000);
+
+    await cleanStaleTmpFiles(tmpDir);
+
+    expect(fs.existsSync(stale1)).toBe(false);
+    expect(fs.existsSync(stale2)).toBe(false);
+    expect(fs.existsSync(fresh)).toBe(true);
+    expect(fs.existsSync(other)).toBe(true);
+  });
+
+  it("resolves without error when the directory does not exist", async () => {
+    await expect(
+      cleanStaleTmpFiles(path.join(tmpDir, "nonexistent"))
+    ).resolves.toBeUndefined();
+  });
+});

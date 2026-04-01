@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { promises: fsPromises } = require("fs");
+const path = require("path");
 const https = require("https");
 const http = require("http");
 const { pipeline } = require("stream");
@@ -11,6 +12,8 @@ const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT = 60000;
 const DEFAULT_MAX_RETRIES = 3;
 const MAX_BACKOFF_MS = 30000;
+// Temp files older than this are considered abandoned and eligible for deletion.
+const STALE_TMP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const RETRYABLE_CODES = new Set([
   "ECONNRESET",
@@ -215,6 +218,37 @@ function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffs
   });
 }
 
+/**
+ * Delete `.tmp` files in `dir` that have not been modified for longer than
+ * STALE_TMP_MAX_AGE_MS.  Silently skips any entry it cannot stat or remove.
+ */
+async function cleanStaleTmpFiles(dir) {
+  let entries;
+  try {
+    entries = await fsPromises.readdir(dir);
+  } catch {
+    return; // Directory doesn't exist yet — nothing to clean.
+  }
+
+  const now = Date.now();
+  await Promise.all(
+    entries
+      .filter((name) => name.endsWith(".tmp"))
+      .map(async (name) => {
+        const filePath = path.join(dir, name);
+        try {
+          const stat = await fsPromises.stat(filePath);
+          if (now - stat.mtimeMs > STALE_TMP_MAX_AGE_MS) {
+            await fsPromises.unlink(filePath);
+            debugLogger.info("Deleted stale temp file", { filePath });
+          }
+        } catch {
+          // Ignore — file may have been removed by a concurrent process.
+        }
+      })
+  );
+}
+
 async function downloadFile(url, destPath, options = {}) {
   const {
     onProgress,
@@ -224,6 +258,9 @@ async function downloadFile(url, destPath, options = {}) {
   } = options;
 
   const tempPath = `${destPath}.tmp`;
+
+  // Sweep the destination directory for abandoned temp files before starting.
+  await cleanStaleTmpFiles(path.dirname(destPath));
 
   debugLogger.info("Download starting", { url: url.substring(0, 80), destPath });
 
@@ -317,4 +354,4 @@ function createDownloadSignal() {
   };
 }
 
-module.exports = { downloadFile, createDownloadSignal };
+module.exports = { downloadFile, createDownloadSignal, cleanStaleTmpFiles };
