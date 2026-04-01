@@ -612,7 +612,16 @@ if (gotSingleInstanceLock) {
     }
   });
 
-  app.on("will-quit", () => {
+  // Use before-quit so we can await async server teardown before the process
+  // exits. Without this, whisper-server / parakeet-ws-server / llama-server
+  // become orphan processes that survive past the app quit.
+  let isQuittingAsync = false;
+  app.on("before-quit", (event) => {
+    if (isQuittingAsync) return; // second call after we call app.quit() below
+    event.preventDefault();
+    isQuittingAsync = true;
+
+    // Synchronous teardown first (no async needed).
     if (trayManager) {
       trayManager.stopHealthCheck();
     }
@@ -630,16 +639,16 @@ if (gotSingleInstanceLock) {
     if (updateManager) {
       updateManager.cleanup();
     }
-    // Stop whisper server if running
-    if (whisperManager) {
-      whisperManager.stopServer().catch(() => {});
-    }
-    // Stop parakeet WS server if running
-    if (parakeetManager) {
-      parakeetManager.stopServer().catch(() => {});
-    }
-    // Stop llama-server if running
+
+    // Async teardown: stop all child-process servers and then let the app exit.
     const modelManager = require("./src/helpers/modelManagerBridge").default;
-    modelManager.stopServer().catch(() => {});
+    const stopAll = [
+      whisperManager ? whisperManager.stopServer() : Promise.resolve(),
+      parakeetManager ? parakeetManager.stopServer() : Promise.resolve(),
+      modelManager.stopServer(),
+    ];
+    Promise.allSettled(stopAll).then(() => {
+      app.quit(); // re-triggers before-quit; isQuittingAsync guard skips straight through
+    });
   });
 }
