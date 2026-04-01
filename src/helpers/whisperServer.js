@@ -249,32 +249,53 @@ class WhisperServerManager {
   }
 
   async start(modelPath, options = {}) {
-    // If a startup is in-flight for the SAME model, wait for it.
-    // If it's for a DIFFERENT model (user switched), cancel and restart.
-    if (this.startupPromise) {
-      if (this.modelPath === modelPath) return this.startupPromise;
-      // Model changed mid-startup — stop the current process and fall through to restart.
-      await this.stop();
-    }
-
-    // If the server is already running with the requested model, just mark it as used.
-    if (this.ready && this.modelPath === modelPath) {
+    // Fast path: server is already running with the right model and no startup
+    // is in progress.  Just bump the usage timestamp and return immediately.
+    if (this.ready && this.modelPath === modelPath && !this.startupPromise) {
       this.lastUsedTime = Date.now();
       this.stoppedDueToIdle = false;
       this._scheduleIdleCheck();
       return;
     }
 
-    if (this.process) {
-      await this.stop();
+    // If a startup is already in-flight for this exact model, share the promise
+    // so the second caller waits for the same result instead of spawning again.
+    if (this.startupPromise && this.modelPath === modelPath) {
+      return this.startupPromise;
     }
 
-    this.startupPromise = this._doStart(modelPath, options);
-    try {
-      await this.startupPromise;
-    } finally {
-      this.startupPromise = null;
-    }
+    // A different model was requested (or no startup was in progress).
+    // We must serialise through the existing in-flight promise (if any) so that
+    // we never run _doStart concurrently.  Assign both startupPromise and
+    // modelPath *before* any await so that a concurrent caller arriving while
+    // we are awaiting stop() or _doStart() will see the new values and share
+    // this promise rather than spawning a second server process.
+    const prev = this.startupPromise ?? Promise.resolve();
+    this.modelPath = modelPath; // claim the slot early
+
+    const startup = prev
+      .catch(() => {}) // don't let a failed previous startup block the new one
+      .then(async () => {
+        // Re-check after the previous promise settled: the server may have
+        // become ready for this model (e.g. from a concurrent caller).
+        if (this.ready && this.modelPath === modelPath) {
+          this.lastUsedTime = Date.now();
+          this.stoppedDueToIdle = false;
+          this._scheduleIdleCheck();
+          return;
+        }
+        if (this.process) await this.stop();
+        await this._doStart(modelPath, options);
+      });
+
+    this.startupPromise = startup;
+
+    return startup.finally(() => {
+      // Only clear the slot if nothing newer has claimed it.
+      if (this.startupPromise === startup) {
+        this.startupPromise = null;
+      }
+    });
   }
 
   async _doStart(modelPath, options = {}) {
