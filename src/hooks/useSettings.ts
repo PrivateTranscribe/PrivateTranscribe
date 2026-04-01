@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
@@ -444,6 +444,22 @@ export function useSettings() {
     }
   );
 
+  // Error state for API key persistence failures — set when saveAllKeysToEnv fails.
+  // Auto-clears after 15 seconds to avoid stale banners.
+  const [apiKeySyncError, setApiKeySyncError] = useState<string | null>(null);
+  const persistErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reportPersistError = useCallback((msg: string) => {
+    setApiKeySyncError(msg);
+    if (persistErrorTimerRef.current) clearTimeout(persistErrorTimerRef.current);
+    persistErrorTimerRef.current = setTimeout(() => setApiKeySyncError(null), 15_000);
+  }, []);
+
+  const clearApiKeySyncError = useCallback(() => {
+    if (persistErrorTimerRef.current) clearTimeout(persistErrorTimerRef.current);
+    setApiKeySyncError(null);
+  }, []);
+
   // Sync API keys from main process on first mount (if localStorage was cleared)
   const hasRunApiKeySync = useRef(false);
   useEffect(() => {
@@ -480,16 +496,20 @@ export function useSettings() {
       }
     };
 
-    syncKeys().catch(() => {
-      // Silently ignore sync errors
+    syncKeys().catch((err) => {
+      // Startup sync failure is transient (bridge may not be ready yet) — log only.
+      console.warn("[useSettings] Startup API key sync failed:", err);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const debouncedPersistToEnv = useDebouncedCallback(() => {
     if (typeof window !== "undefined" && window.electronAPI?.saveAllKeysToEnv) {
-      window.electronAPI.saveAllKeysToEnv().catch(() => {
-        // Silently ignore persistence errors
+      window.electronAPI.saveAllKeysToEnv().catch((err: unknown) => {
+        console.error("[useSettings] Failed to persist API keys to .env:", err);
+        reportPersistError(
+          "API keys could not be saved to disk. They are stored for this session only — you may need to re-enter them after restarting the app."
+        );
       });
     }
   }, 1000);
@@ -539,7 +559,9 @@ export function useSettings() {
   const setOpenaiApiKey = useCallback(
     (key: string) => {
       setOpenaiApiKeyLocal(key);
-      window.electronAPI?.saveOpenAIKey?.(key);
+      window.electronAPI?.saveOpenAIKey?.(key)?.catch((err: unknown) => {
+        console.error("[useSettings] saveOpenAIKey IPC failed:", err);
+      });
       ReasoningService.clearApiKeyCache("openai");
       broadcastTranscriptionSettingsUpdate({ openaiApiKey: key });
       debouncedPersistToEnv();
@@ -550,7 +572,9 @@ export function useSettings() {
   const setAnthropicApiKey = useCallback(
     (key: string) => {
       setAnthropicApiKeyLocal(key);
-      window.electronAPI?.saveAnthropicKey?.(key);
+      window.electronAPI?.saveAnthropicKey?.(key)?.catch((err: unknown) => {
+        console.error("[useSettings] saveAnthropicKey IPC failed:", err);
+      });
       ReasoningService.clearApiKeyCache("anthropic");
       debouncedPersistToEnv();
     },
@@ -560,7 +584,9 @@ export function useSettings() {
   const setGeminiApiKey = useCallback(
     (key: string) => {
       setGeminiApiKeyLocal(key);
-      window.electronAPI?.saveGeminiKey?.(key);
+      window.electronAPI?.saveGeminiKey?.(key)?.catch((err: unknown) => {
+        console.error("[useSettings] saveGeminiKey IPC failed:", err);
+      });
       ReasoningService.clearApiKeyCache("gemini");
       debouncedPersistToEnv();
     },
@@ -570,7 +596,9 @@ export function useSettings() {
   const setGroqApiKey = useCallback(
     (key: string) => {
       setGroqApiKeyLocal(key);
-      window.electronAPI?.saveGroqKey?.(key);
+      window.electronAPI?.saveGroqKey?.(key)?.catch((err: unknown) => {
+        console.error("[useSettings] saveGroqKey IPC failed:", err);
+      });
       ReasoningService.clearApiKeyCache("groq");
       broadcastTranscriptionSettingsUpdate({ groqApiKey: key });
       debouncedPersistToEnv();
@@ -581,7 +609,9 @@ export function useSettings() {
   const setCustomTranscriptionApiKey = useCallback(
     (key: string) => {
       setCustomTranscriptionApiKeyLocal(key);
-      window.electronAPI?.saveCustomTranscriptionKey?.(key);
+      window.electronAPI?.saveCustomTranscriptionKey?.(key)?.catch((err: unknown) => {
+        console.error("[useSettings] saveCustomTranscriptionKey IPC failed:", err);
+      });
       broadcastTranscriptionSettingsUpdate({ customTranscriptionApiKey: key });
       debouncedPersistToEnv();
     },
@@ -591,7 +621,9 @@ export function useSettings() {
   const setCustomReasoningApiKey = useCallback(
     (key: string) => {
       setCustomReasoningApiKeyLocal(key);
-      window.electronAPI?.saveCustomReasoningKey?.(key);
+      window.electronAPI?.saveCustomReasoningKey?.(key)?.catch((err: unknown) => {
+        console.error("[useSettings] saveCustomReasoningKey IPC failed:", err);
+      });
       ReasoningService.clearApiKeyCache("custom");
       debouncedPersistToEnv();
     },
@@ -970,5 +1002,7 @@ export function useSettings() {
     successConfirmation,
     setSuccessConfirmation,
     updateBehaviorSettings,
+    apiKeySyncError,
+    clearApiKeySyncError,
   };
 }

@@ -856,6 +856,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
+    apiKeySyncError,
+    clearApiKeySyncError,
   } = useSettings();
 
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
@@ -3055,6 +3057,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         description={alertDialog.description}
         onOk={() => {}}
       />
+
+      {apiKeySyncError && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/8 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="flex-1">{apiKeySyncError}</span>
+          <button
+            onClick={clearApiKeySyncError}
+            className="ml-2 shrink-0 text-destructive/60 hover:text-destructive transition-colors"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {renderSectionContent()}
     </>
