@@ -77,13 +77,22 @@ export default function HistoryPage() {
   }, [historyLimit]);
 
   // ------- Filtered + grouped data -------
+  const activeQuery = searchQuery.trim();
+
   const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return transcriptions;
-    const q = searchQuery.toLowerCase();
+    if (!activeQuery) return transcriptions;
+    const q = activeQuery.toLowerCase();
     return transcriptions.filter((t) => t.text.toLowerCase().includes(q));
-  }, [transcriptions, searchQuery]);
+  }, [transcriptions, activeQuery]);
 
   const groups = useMemo(() => groupTranscriptions(filtered), [filtered]);
+
+  // Precompute id → position map to avoid O(n²) findIndex inside the render loop
+  const indexById = useMemo(() => {
+    const map = new Map<number, number>();
+    transcriptions.forEach((t, i) => map.set(t.id, i));
+    return map;
+  }, [transcriptions]);
 
   // ------- Actions -------
   const handleCopy = useCallback(
@@ -260,8 +269,9 @@ export default function HistoryPage() {
                       {idx > 0 && <div className="mx-6 h-px bg-border-subtle/50" />}
                       <TranscriptionItem
                         item={item}
-                        index={transcriptions.findIndex((t) => t.id === item.id)}
+                        index={indexById.get(item.id) ?? 0}
                         total={transcriptions.length}
+                        searchQuery={activeQuery}
                         onCopy={handleCopy}
                         onDelete={handleDelete}
                       />
