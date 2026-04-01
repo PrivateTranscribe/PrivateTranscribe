@@ -282,7 +282,8 @@ async function downloadFile(url, destPath, options = {}) {
       lastError = error;
 
       if (error.isAbort) {
-        await fsPromises.unlink(tempPath).catch(() => {});
+        // Preserve partial .tmp so the next attempt can resume from this offset
+        debugLogger.info("Download cancelled — partial file preserved for resume", { tempPath });
         throw error;
       }
 
