@@ -29,6 +29,23 @@ const execFileAsync = promisify(execFile);
 /** Maximum wall-clock time (ms) allowed for a shell action subprocess. */
 const SHELL_TIMEOUT_MS = 10_000;
 
+/**
+ * Maximum number of characters fed to a regex trigger match.
+ * Transcripts are conversational speech — capping at 2 000 chars is far above
+ * any real trigger phrase while bounding the worst-case backtracking cost for
+ * a poorly-written pattern.
+ */
+const REGEX_MATCH_INPUT_LIMIT = 2_000;
+
+/**
+ * Guard against the most common catastrophic-backtracking constructs.
+ * Matches patterns that nest a quantifier inside a group that itself carries
+ * a quantifier — e.g. (a+)+, (a*b*)*, (x|y+)+.
+ * This is a conservative heuristic: it rejects some harmless patterns but
+ * never allows a known-dangerous one through.
+ */
+const REDOS_PATTERN = /\([^)]*[+*][^)]*\)[+*?]/;
+
 const VALID_TRIGGER_MODES = new Set(["exact", "prefix", "contains", "regex"]);
 const VALID_ACTION_TYPES = new Set(["shell", "url", "app", "dictation-mode"]);
 
@@ -90,10 +107,13 @@ function matchesTrigger(transcript, action) {
 
   if (action.triggerMode === "regex") {
     // Regex mode: the caller controls the pattern in full - no normalization.
+    // Cap input length to bound worst-case backtracking for any stored pattern.
     try {
-      return new RegExp(action.triggerPhrase, "i").test(
-        typeof transcript === "string" ? transcript.trim() : ""
+      const input = (typeof transcript === "string" ? transcript.trim() : "").slice(
+        0,
+        REGEX_MATCH_INPUT_LIMIT
       );
+      return new RegExp(action.triggerPhrase, "i").test(input);
     } catch {
       // Malformed stored regex - treat as no match rather than crashing.
       return false;
@@ -182,12 +202,19 @@ function validateActionPayload(raw) {
     );
   }
 
-  // Validate regex compilability up front so we don't store broken patterns.
+  // Validate regex at save time: must compile and must not use constructs that
+  // are known to cause catastrophic backtracking (nested quantifiers).
   if (triggerMode === "regex") {
     try {
       new RegExp(triggerPhrase, "i");
     } catch {
       throw new Error("Trigger phrase is not a valid regular expression.");
+    }
+    if (REDOS_PATTERN.test(triggerPhrase)) {
+      throw new Error(
+        "Trigger phrase contains unsafe regex constructs (nested quantifiers). " +
+          "Simplify the pattern to avoid catastrophic backtracking."
+      );
     }
   }
 
