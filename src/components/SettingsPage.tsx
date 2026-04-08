@@ -239,7 +239,7 @@ function GpuStatusCard({
     try {
       await window.electronAPI?.downloadCudaBinary?.();
       setDownloadState("done");
-      setCudaStatus({ installed: true });
+      setCudaStatus((prev) => prev ? { ...prev, installed: true } : { installed: true, path: null, platform: "", supported: true, forceCpu: false });
     } catch (err: unknown) {
       setDownloadState("error");
       setDownloadError(
@@ -363,8 +363,8 @@ function GpuStatusCard({
           </div>
 
           <div className="space-y-4">
-            {/* ═══ CUDA SETUP (shown only when GPU Whisper is selected and CUDA isn't ready) ═══ */}
-            {usingGpu && gpuSupported && !cudaReady && (
+            {/* ═══ CUDA SETUP (shown only when GPU Whisper is selected and CUDA isn't ready, or while downloading) ═══ */}
+            {usingGpu && gpuSupported && (!cudaReady || downloadState === "downloading" || downloadState === "done") && (
               <div>
                 {downloadState === "downloading" ? (
                   <div className="space-y-2">
@@ -388,6 +388,11 @@ function GpuStatusCard({
                         style={{ width: `${downloadProgress}%` }}
                       />
                     </div>
+                  </div>
+                ) : downloadState === "done" ? (
+                  <div className="flex items-center gap-1.5 text-xs text-success">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>CUDA engine installed — GPU acceleration active.</span>
                   </div>
                 ) : downloadState === "error" ? (
                   <div className="space-y-2">

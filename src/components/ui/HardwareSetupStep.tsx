@@ -392,20 +392,27 @@ export default function HardwareSetupStep({
           {detection?.recommendations && detection.recommendations.reasoning.length > 0 ? (
             <>
               {!applied ? (
-                <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
-                  <Check className="w-3.5 h-3.5" />
-                  Apply Recommendations
-                </Button>
+                <>
+                  <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    Apply Recommendations
+                  </Button>
+                  {onSkip && (
+                    <Button
+                      onClick={onSkip}
+                      variant="ghost"
+                      className="h-8 px-4 text-xs text-muted-foreground"
+                      title="Use CPU transcription instead of GPU"
+                    >
+                      Use CPU instead
+                    </Button>
+                  )}
+                </>
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
                   <span className="text-sm font-medium">Continuing...</span>
                 </div>
-              )}
-              {showSkip && !applied && onSkip && (
-                <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
-                  Skip
-                </Button>
               )}
             </>
           ) : (
