@@ -1,6 +1,7 @@
 import React from "react";
 import WindowControls from "./WindowControls";
 import { Button } from "./ui/button";
+import logoSrc from "../assets/icon.svg";
 
 interface TitleBarProps {
   title?: string;
@@ -42,7 +43,7 @@ export default function TitleBar({
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" }}>
           {/* Brand Logo */}
           <img
-            src="./src/assets/icon.svg"
+            src={logoSrc}
             alt="PrivateTranscribe"
             className="w-4 h-4 flex-shrink-0"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
