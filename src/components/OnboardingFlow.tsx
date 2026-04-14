@@ -33,15 +33,22 @@ import { formatHotkeyLabel, getDefaultHotkey } from "../utils/hotkeys";
 import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
-import { getEffectiveEntitlement } from "../hooks/useProStatus";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
 }
 
 export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
-  // Max valid step index for the current onboarding flow (6 steps, index 0-5)
-  const MAX_STEP = 5;
+  const steps = [
+    { title: "Welcome", icon: Sparkles },
+    { title: "Hardware", icon: Cpu },
+    { title: "Setup", icon: Settings },
+    { title: "Permissions", icon: Shield },
+    { title: "Activation", icon: Command },
+    { title: "Complete", icon: Check },
+  ];
+
+  const MAX_STEP = steps.length - 1;
 
   const [currentStep, setCurrentStep, removeCurrentStep] = useLocalStorage(
     "onboardingCurrentStep",
@@ -85,6 +92,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
@@ -104,15 +112,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const permissionsHook = usePermissions(showAlertDialog);
   useClipboard(showAlertDialog); // Initialize clipboard hook for permission checks
-
-  const steps = [
-    { title: "Welcome", icon: Sparkles },
-    { title: "Hardware", icon: Cpu },
-    { title: "Setup", icon: Settings },
-    { title: "Permissions", icon: Shield },
-    { title: "Activation", icon: Command },
-    { title: "Complete", icon: Check },
-  ];
 
   useEffect(() => {
     const checkHotkeyMode = async () => {
@@ -288,12 +287,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }, [currentStep, setCurrentStep]);
 
   const finishOnboarding = useCallback(async () => {
-    const saved = await saveSettings();
-    if (!saved) {
-      return;
+    try {
+      const saved = await saveSettings();
+      if (!saved) {
+        return;
+      }
+      setOnboardingError(null);
+      removeCurrentStep();
+      onComplete();
+    } catch (error) {
+      console.error("Failed to finish onboarding:", error);
+      setOnboardingError("Something went wrong. Please try again.");
     }
-    removeCurrentStep();
-    onComplete();
   }, [saveSettings, removeCurrentStep, onComplete]);
 
   const renderStep = () => {
@@ -557,8 +562,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
       case 5: {
         // Completion
-        const isPro = getEffectiveEntitlement() === "pro";
-        const gridCols = isPro ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-3";
         return (
           <div className="text-center space-y-6">
             {/* Success mark — mint accent */}
@@ -586,7 +589,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             </div>
 
             {/* Next steps card grid */}
-            <div className={`grid ${gridCols} gap-3 text-left`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
               {/* Card 1: Try dictating */}
               <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -612,19 +615,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   Use the dictionary in Settings to add names, technical terms, or jargon.
                 </p>
               </div>
-
-              {/* Card 3: Pro features — only shown to free users */}
-              {!isPro && (
-                <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">Explore Pro features</p>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Correction Memory, Smart Context, and more — upgrade when you&apos;re ready.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         );
@@ -748,15 +738,22 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
           <div className="flex items-center gap-2">
             {currentStep === steps.length - 1 ? (
-              <Button
-                onClick={finishOnboarding}
-                disabled={!canProceed()}
-                variant="success"
-                className="h-10 px-8 rounded-full text-sm font-semibold shadow-lg"
-              >
-                Start Dictating
-                <ArrowRight className="w-4 h-4" />
-              </Button>
+              <div className="flex flex-col items-end gap-2">
+                {onboardingError && (
+                  <div className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {onboardingError}
+                  </div>
+                )}
+                <Button
+                  onClick={finishOnboarding}
+                  disabled={!canProceed()}
+                  variant="success"
+                  className="h-10 px-8 rounded-full text-sm font-semibold shadow-lg"
+                >
+                  Start Dictating
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
             ) : (
               <Button
                 onClick={nextStep}
