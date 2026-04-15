@@ -95,6 +95,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
+  const [isDemoRecording, setIsDemoRecording] = useState(false);
+  const [demoText, setDemoText] = useState("");
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
     useDialogs();
@@ -301,6 +303,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       setOnboardingError("Something went wrong. Please try again.");
     }
   }, [saveSettings, removeCurrentStep, onComplete]);
+
+  const handleDemoDictation = useCallback(() => {
+    setIsDemoRecording(true);
+    window.setTimeout(() => {
+      setIsDemoRecording(false);
+      setDemoText("Hello! I just set up PrivateTranscribe and it works great.");
+    }, 2500);
+  }, []);
 
   const renderStep = () => {
     switch (currentStep) {
@@ -636,6 +646,33 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   Use the dictionary in Settings to add names, technical terms, or jargon.
                 </p>
               </div>
+            </div>
+
+            {/* Interactive try-it section */}
+            <div className="mt-6 rounded-xl border border-border-subtle bg-surface-1/50 p-4 text-left">
+              <h3 className="text-sm font-medium mb-2">Try it out</h3>
+              <div className="relative">
+                <textarea
+                  readOnly
+                  value={demoText}
+                  placeholder="Click the mic to try dictation..."
+                  className="w-full h-20 text-sm bg-background rounded-lg border border-border-subtle p-3 resize-none"
+                />
+                <button
+                  onClick={handleDemoDictation}
+                  disabled={isDemoRecording}
+                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {isDemoRecording ? (
+                    <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                  ) : (
+                    <Mic className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                This is a demo. Start dictating from any app using your hotkey.
+              </p>
             </div>
           </div>
         );
