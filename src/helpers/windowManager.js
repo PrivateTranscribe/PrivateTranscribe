@@ -41,6 +41,8 @@ class WindowManager {
     this._positionSaveTimer = null;
     this._pendingPosition = null;
     this._displayMetricsTimer = null;
+    this._displacedFromDisplayId = null; // tracks original display when overlay is displaced
+    this._preDisplacementPosition = null; // {x, y} button position before displacement
 
     this._registerExitHandlers();
 
@@ -117,15 +119,16 @@ class WindowManager {
       const raw = fs.readFileSync(this._getPositionFile(), "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.x === "number" && typeof parsed.y === "number") {
-        if (parsed.v === 2) {
-          // v2 format: x,y is the button's screen center position
-          debugLogger.info("[Window] Loaded saved overlay position (v2):", parsed);
-          return parsed;
+        if (parsed.v === 2 || parsed.v === 3) {
+          const result = { x: parsed.x, y: parsed.y, v: 3 };
+          if (parsed.displayId) result.displayId = parsed.displayId;
+          debugLogger.info("[Window] Loaded saved overlay position (v" + parsed.v + "):", parsed);
+          return result;
         } else {
           // v1 format: x,y is the old 160×160 window top-left.
           // Button center was at (x+80, y+80) in the old BASE window.
-          const migrated = { x: parsed.x + 80, y: parsed.y + 80, v: 2 };
-          debugLogger.info("[Window] Migrated saved overlay position v1→v2:", {
+          const migrated = { x: parsed.x + 80, y: parsed.y + 80, v: 3 };
+          debugLogger.info("[Window] Migrated saved overlay position v1→v3:", {
             from: parsed,
             to: migrated,
           });
@@ -147,8 +150,9 @@ class WindowManager {
   }
 
   _scheduleSavePosition(x, y) {
-    // x,y is the button's screen center position (v2 format).
-    this._pendingPosition = { x, y, v: 2 };
+    // x,y is the button's screen center position (v3 format).
+    const currentDisplay = screen.getDisplayNearestPoint({ x, y });
+    this._pendingPosition = { x, y, v: 3, displayId: currentDisplay.id };
 
     if (this._positionSaveTimer) {
       clearTimeout(this._positionSaveTimer);
@@ -175,14 +179,81 @@ class WindowManager {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const bounds = this.mainWindow.getBounds();
     const { width, height } = bounds;
-    // Use button screen position for display detection (more accurate than window center).
-    const display = screen.getDisplayNearestPoint({
-      x: bounds.x + BUTTON_OFFSET_X,
-      y: bounds.y + BUTTON_OFFSET_Y,
-    });
+
+    // Use button screen position for display detection.
+    const btnX = bounds.x + BUTTON_OFFSET_X;
+    const btnY = bounds.y + BUTTON_OFFSET_Y;
+    const display = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
     const workArea = display.workArea || display.bounds;
+
+    // Check if we have a displaced state and the original display is back.
+    if (this._displacedFromDisplayId !== null) {
+      const allDisplays = screen.getAllDisplays();
+      const originalDisplay = allDisplays.find((d) => d.id === this._displacedFromDisplayId);
+
+      if (originalDisplay) {
+        // Original display is back; restore to it.
+        const origWorkArea = originalDisplay.workArea || originalDisplay.bounds;
+        const restoreX = this._preDisplacementPosition
+          ? this._preDisplacementPosition.x - BUTTON_OFFSET_X
+          : origWorkArea.x + Math.round((origWorkArea.width - width) / 2);
+        const restoreY = this._preDisplacementPosition
+          ? this._preDisplacementPosition.y - BUTTON_OFFSET_Y
+          : origWorkArea.y + Math.round((origWorkArea.height - height) / 2);
+
+        const restoreClamped = WindowPositionUtil.clampPosition(
+          restoreX,
+          restoreY,
+          width,
+          height,
+          origWorkArea
+        );
+
+        debugLogger.info("[Window] Restoring overlay to original display", {
+          displayId: this._displacedFromDisplayId,
+          to: restoreClamped,
+          hadPreDisplacementPosition: !!this._preDisplacementPosition,
+        });
+
+        this.mainWindow.setBounds({
+          x: restoreClamped.x,
+          y: restoreClamped.y,
+          width,
+          height,
+        });
+        this._scheduleSavePosition(
+          restoreClamped.x + BUTTON_OFFSET_X,
+          restoreClamped.y + BUTTON_OFFSET_Y
+        );
+
+        // Clear displaced state.
+        this._displacedFromDisplayId = null;
+        this._preDisplacementPosition = null;
+        return;
+      }
+    }
+
     const clamped = WindowPositionUtil.clampPosition(bounds.x, bounds.y, width, height, workArea);
     if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+      // Check if this displacement is because our original display went away.
+      const saved = this._loadSavedPosition();
+      if (saved && saved.displayId) {
+        const allDisplays = screen.getAllDisplays();
+        const originalDisplay = allDisplays.find((d) => d.id === saved.displayId);
+
+        if (!originalDisplay) {
+          // Our original display is gone; save displacement state.
+          if (this._displacedFromDisplayId === null) {
+            debugLogger.info("[Window] Original display gone, saving displacement state", {
+              originalDisplayId: saved.displayId,
+              displacedTo: { x: clamped.x, y: clamped.y },
+            });
+            this._displacedFromDisplayId = saved.displayId;
+            this._preDisplacementPosition = { x: saved.x, y: saved.y };
+          }
+        }
+      }
+
       debugLogger.info("[Window] Re-clamping overlay after", reason, {
         from: { x: bounds.x, y: bounds.y },
         to: clamped,
@@ -271,6 +342,9 @@ class WindowManager {
     await this.initializeHotkey();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((winX, winY) => {
+      // User manually moved overlay; clear any displaced state.
+      this._displacedFromDisplayId = null;
+      this._preDisplacementPosition = null;
       this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
     });
     MenuManager.setupMainMenu();
@@ -293,6 +367,15 @@ class WindowManager {
         this._displayMetricsTimer = null;
         this._reclampOverlayPosition("display-metrics-changed");
       }, 2000);
+    });
+
+    // When a display is added (e.g. monitor wakes up), check if we need to restore.
+    screen.on("display-added", (_event, newDisplay) => {
+      if (this._displacedFromDisplayId !== null && newDisplay.id === this._displacedFromDisplayId) {
+        debugLogger.info("[Window] Original display reconnected:", newDisplay.id);
+        // Small delay to let the display settle.
+        setTimeout(() => this._reclampOverlayPosition("display-added"), 500);
+      }
     });
   }
 
