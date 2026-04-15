@@ -90,6 +90,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [hotkey, setHotkey] = useState(dictationKey || getDefaultHotkey());
   const agentName = "PrivateTranscribe"; // Default agent name, editable in settings
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+  const [skippedModelSetup, setSkippedModelSetup] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
@@ -421,6 +422,20 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               }
               variant="onboarding"
             />
+            {useLocalWhisper && !isModelDownloaded && (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkippedModelSetup(true);
+                    void nextStep();
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Skip — set up later
+                </button>
+              </div>
+            )}
           </div>
         );
 
@@ -587,6 +602,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   : "to start dictating into any app."}
               </p>
             </div>
+            {skippedModelSetup && (
+              <div className="rounded-lg border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-muted-foreground text-left">
+                Note: Local transcription model not configured. You can set it up later in
+                Settings.
+              </div>
+            )}
 
             {/* Next steps card grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
@@ -635,6 +656,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       case 2:
         // Setup - check if configuration is complete
         if (useLocalWhisper) {
+          if (skippedModelSetup) {
+            return true;
+          }
           const modelToCheck =
             localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
           return modelToCheck !== "" && isModelDownloaded;
@@ -723,50 +747,52 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         </div>
       </div>
 
-      {/* Footer - This will stick to the bottom */}
-      <div className="flex-shrink-0 bg-background/80 backdrop-blur-2xl border-t border-border-subtle px-6 md:px-12 py-3 z-10">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <Button
-            onClick={prevStep}
-            variant="outline"
-            disabled={currentStep === 0}
-            className="h-8 px-5 rounded-full text-xs"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-            Back
-          </Button>
+      {/* Step 1 handles its own navigation via HardwareSetupStep actions. */}
+      {currentStep !== 1 && (
+        <div className="flex-shrink-0 bg-background/80 backdrop-blur-2xl border-t border-border-subtle px-6 md:px-12 py-3 z-10">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <Button
+              onClick={prevStep}
+              variant="outline"
+              disabled={currentStep === 0}
+              className="h-8 px-5 rounded-full text-xs"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Back
+            </Button>
 
-          <div className="flex items-center gap-2">
-            {currentStep === steps.length - 1 ? (
-              <div className="flex flex-col items-end gap-2">
-                {onboardingError && (
-                  <div className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                    {onboardingError}
-                  </div>
-                )}
+            <div className="flex items-center gap-2">
+              {currentStep === steps.length - 1 ? (
+                <div className="flex flex-col items-end gap-2">
+                  {onboardingError && (
+                    <div className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+                      {onboardingError}
+                    </div>
+                  )}
+                  <Button
+                    onClick={finishOnboarding}
+                    disabled={!canProceed()}
+                    variant="success"
+                    className="h-10 px-8 rounded-full text-sm font-semibold shadow-lg"
+                  >
+                    Start Dictating
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
                 <Button
-                  onClick={finishOnboarding}
+                  onClick={nextStep}
                   disabled={!canProceed()}
-                  variant="success"
-                  className="h-10 px-8 rounded-full text-sm font-semibold shadow-lg"
+                  className="h-8 px-6 rounded-full text-xs"
                 >
-                  Start Dictating
-                  <ArrowRight className="w-4 h-4" />
+                  {currentStep === 4 && isVerifyingHotkey ? "Checking..." : "Next"}
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </Button>
-              </div>
-            ) : (
-              <Button
-                onClick={nextStep}
-                disabled={!canProceed()}
-                className="h-8 px-6 rounded-full text-xs"
-              >
-                {currentStep === 4 && isVerifyingHotkey ? "Checking..." : "Next"}
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Button>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
