@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
+import { isValidApiUrl } from "../helpers/urlValidation";
 import ReasoningService from "../services/ReasoningService";
 import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
 
@@ -170,7 +171,7 @@ export function useSettings() {
     }
   );
 
-  const [cloudTranscriptionBaseUrl, setCloudTranscriptionBaseUrl] = useLocalStorage(
+  const [cloudTranscriptionBaseUrl, setCloudTranscriptionBaseUrlLocal] = useLocalStorage(
     "cloudTranscriptionBaseUrl",
     API_ENDPOINTS.TRANSCRIPTION_BASE,
     {
@@ -179,7 +180,7 @@ export function useSettings() {
     }
   );
 
-  const [cloudReasoningBaseUrl, setCloudReasoningBaseUrl] = useLocalStorage(
+  const [cloudReasoningBaseUrl, setCloudReasoningBaseUrlLocal] = useLocalStorage(
     "cloudReasoningBaseUrl",
     API_ENDPOINTS.OPENAI_BASE,
     {
@@ -628,6 +629,30 @@ export function useSettings() {
       debouncedPersistToEnv();
     },
     [setCustomReasoningApiKeyLocal, debouncedPersistToEnv]
+  );
+
+  const setCloudTranscriptionBaseUrl = useCallback(
+    (url: string) => {
+      const validation = isValidApiUrl(url);
+      if (!validation.valid) {
+        console.warn("[useSettings] Rejected unsafe cloudTranscriptionBaseUrl:", validation.reason);
+        return;
+      }
+      setCloudTranscriptionBaseUrlLocal(url);
+    },
+    [setCloudTranscriptionBaseUrlLocal]
+  );
+
+  const setCloudReasoningBaseUrl = useCallback(
+    (url: string) => {
+      const validation = isValidApiUrl(url);
+      if (!validation.valid) {
+        console.warn("[useSettings] Rejected unsafe cloudReasoningBaseUrl:", validation.reason);
+        return;
+      }
+      setCloudReasoningBaseUrlLocal(url);
+    },
+    [setCloudReasoningBaseUrlLocal]
   );
 
   // Hotkey

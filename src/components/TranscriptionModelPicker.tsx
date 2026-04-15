@@ -20,6 +20,7 @@ import { MODEL_PICKER_COLORS, type ColorScheme } from "../utils/modelPickerStyle
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
 import { API_ENDPOINTS } from "../config/constants";
 import { createExternalLinkHandler } from "../utils/externalLinks";
+import { isValidApiUrl } from "../helpers/urlValidation";
 
 interface LocalModel {
   model: string;
@@ -376,6 +377,7 @@ export default function TranscriptionModelPicker({
 
   const ensureValidCloudSelection = useCallback(() => {
     const isValidProvider = VALID_CLOUD_PROVIDER_IDS.includes(selectedCloudProvider);
+    const customUrlValidation = isValidApiUrl(cloudTranscriptionBaseUrl || "");
 
     if (!isValidProvider) {
       // Check if we have a custom URL that differs from known providers
@@ -384,6 +386,7 @@ export default function TranscriptionModelPicker({
         cloudTranscriptionBaseUrl &&
         cloudTranscriptionBaseUrl.trim() !== "" &&
         cloudTranscriptionBaseUrl !== API_ENDPOINTS.TRANSCRIPTION_BASE &&
+        customUrlValidation.valid &&
         !knownProviderUrls.includes(cloudTranscriptionBaseUrl);
 
       if (hasCustomUrl) {
@@ -599,6 +602,11 @@ export default function TranscriptionModelPicker({
     onCloudModelSelect,
     cloudProviders,
   ]);
+
+  const customBaseUrlValidation = useMemo(
+    () => isValidApiUrl(cloudTranscriptionBaseUrl || ""),
+    [cloudTranscriptionBaseUrl]
+  );
 
   const handleDelete = useCallback(
     (modelId: string) => {
@@ -886,6 +894,9 @@ export default function TranscriptionModelPicker({
                     placeholder="https://your-api.example.com/v1"
                     className="h-8 text-sm"
                   />
+                  {!customBaseUrlValidation.valid && customBaseUrlValidation.reason && (
+                    <p className="text-xs text-destructive">{customBaseUrlValidation.reason}</p>
+                  )}
                 </div>
 
                 {/* API Key */}
