@@ -57,8 +57,7 @@ import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
 import { SettingsRow } from "./ui/SettingsSection";
-import { LANGUAGE_OPTIONS, getLanguageLabel } from "../utils/languages";
-import { isLanguageSupported } from "../utils/languageCompat";
+import { LANGUAGE_OPTIONS } from "../utils/languages";
 
 export type SettingsSectionType =
   | "general"
@@ -286,10 +285,7 @@ function GpuStatusCard({
       // Use props (not settings) — GpuStatusCard's own useSettings() copy can be stale
       // if localTranscriptionProvider was changed by the model picker above.
       const provider = activeProvider === "nvidia" ? "nvidia" : "whisper";
-      const model =
-        provider === "nvidia"
-          ? settings.parakeetModel || "parakeet-tdt-0.6b-v3"
-          : settings.whisperModel || "turbo";
+      const model = provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : settings.whisperModel || "turbo";
 
       const res = await window.electronAPI?.benchmarkRun?.({ provider, model });
       if (res?.success && res.result) {
@@ -311,7 +307,7 @@ function GpuStatusCard({
     try {
       const res = await window.electronAPI?.benchmarkRunComparison?.({
         cpuModel: settings.whisperModel || "turbo",
-        gpuModel: settings.parakeetModel || "parakeet-tdt-0.6b-v3",
+        gpuModel: "parakeet-tdt-0.6b-v3",
       });
       if (res?.success && res.result) {
         setCompResult(res.result);
@@ -774,9 +770,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     useLocalWhisper,
     whisperModel,
     localTranscriptionProvider,
-    parakeetModel,
     whisperServerIdleTimeoutMinutes,
-    parakeetServerIdleTimeoutMinutes,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -804,7 +798,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     whisperForceCpu,
     setWhisperForceCpu,
     setLocalTranscriptionProvider,
-    setParakeetModel,
     setWhisperServerIdleTimeoutMinutes,
     setCloudTranscriptionProvider,
     setCloudTranscriptionModel,
@@ -921,13 +914,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperIdleDraft(String(whisperServerIdleTimeoutMinutes));
   }, [whisperServerIdleTimeoutMinutes]);
 
-  const [parakeetIdleDraft, setParakeetIdleDraft] = useState<string>(
-    String(parakeetServerIdleTimeoutMinutes)
-  );
-  useEffect(() => {
-    setParakeetIdleDraft(String(parakeetServerIdleTimeoutMinutes));
-  }, [parakeetServerIdleTimeoutMinutes]);
-
   const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
     String(llamaServerIdleTimeoutMinutes)
   );
@@ -961,9 +947,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           useLocalWhisper,
           localTranscriptionProvider,
           whisperModel,
-          parakeetModel,
           whisperServerIdleTimeoutMinutes,
-          parakeetServerIdleTimeoutMinutes,
           preferredLanguage,
           translateToEnglish,
           cloudTranscriptionProvider,
@@ -1022,7 +1006,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       useLocalWhisper,
       localTranscriptionProvider,
       whisperModel,
-      parakeetModel,
       preferredLanguage,
       translateToEnglish,
       cloudTranscriptionProvider,
@@ -1091,17 +1074,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         useLocalWhisper: typeof s.useLocalWhisper === "boolean" ? s.useLocalWhisper : undefined,
         localTranscriptionProvider:
           s.localTranscriptionProvider === "nvidia" || s.localTranscriptionProvider === "whisper"
-            ? s.localTranscriptionProvider
+            ? "whisper"
             : undefined,
         whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
-        parakeetModel: typeof s.parakeetModel === "string" ? s.parakeetModel : undefined,
         whisperServerIdleTimeoutMinutes:
           typeof s.whisperServerIdleTimeoutMinutes === "number"
             ? s.whisperServerIdleTimeoutMinutes
-            : undefined,
-        parakeetServerIdleTimeoutMinutes:
-          typeof s.parakeetServerIdleTimeoutMinutes === "number"
-            ? s.parakeetServerIdleTimeoutMinutes
             : undefined,
         preferredLanguage:
           typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
@@ -1256,18 +1234,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     return "linux";
   }, []);
 
-  /**
-   * Derived warning: shown when the active local provider is Parakeet and the
-   * user's chosen language is outside its supported set. Computed in the
-   * renderer so it reacts instantly to changes in any of the three values.
-   */
-  const languageCompatWarning = useMemo(() => {
-    if (!useLocalWhisper || localTranscriptionProvider !== "nvidia") return null;
-    const lang = preferredLanguage || "auto";
-    if (lang === "auto") return null;
-    if (isLanguageSupported(lang, "parakeet", parakeetModel)) return null;
-    return `"${getLanguageLabel(lang)}" is not supported by Parakeet. Auto-detect will be used instead.`;
-  }, [useLocalWhisper, localTranscriptionProvider, parakeetModel, preferredLanguage]);
+  const languageCompatWarning = null;
 
   /**
    * Whether the current model supports translation.
@@ -2136,22 +2103,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               selectedCloudModel={cloudTranscriptionModel}
               onCloudModelSelect={setCloudTranscriptionModel}
               selectedLocalModel={
-                localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel
+                whisperModel
               }
               onLocalModelSelect={(modelId) => {
-                if (localTranscriptionProvider === "nvidia") {
-                  setParakeetModel(modelId);
-                } else {
-                  setWhisperModel(modelId);
-                }
+                setWhisperModel(modelId);
               }}
               selectedLocalProvider={localTranscriptionProvider}
               onLocalProviderSelect={(providerId) => {
                 setLocalTranscriptionProvider(providerId);
-                // Parakeet always uses GPU — auto-enable GPU mode when switching to Parakeet
-                if (providerId === "nvidia" && whisperForceCpu) {
-                  setWhisperForceCpu(false);
-                }
               }}
               whisperForceCpu={whisperForceCpu}
               onWhisperForceCpuChange={setWhisperForceCpu}
@@ -2210,53 +2169,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           }}
                           className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                           aria-label="Whisper server idle shutdown minutes"
-                        />
-                        <span className="text-xs text-muted-foreground">min</span>
-                      </div>
-                    </SettingsRow>
-                  </SettingsPanelRow>
-                </SettingsPanel>
-              </div>
-            )}
-
-            {useLocalWhisper && localTranscriptionProvider === "nvidia" && (
-              <div className="mt-6">
-                <SectionHeader
-                  title="Parakeet server performance"
-                  description="Tune how the local Parakeet server behaves after you stop dictating"
-                />
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Idle shutdown (minutes)"
-                      description="Stops the Parakeet server after being idle to free RAM. Set to 0 to keep it running."
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          max={240}
-                          step={1}
-                          value={parakeetIdleDraft}
-                          onChange={(e) => {
-                            setParakeetIdleDraft(e.target.value);
-                          }}
-                          onBlur={() => {
-                            const raw = parseInt(parakeetIdleDraft, 10);
-                            const next = Number.isFinite(raw)
-                              ? Math.max(0, Math.min(240, raw))
-                              : parakeetServerIdleTimeoutMinutes;
-
-                            setParakeetIdleDraft(String(next));
-                            updateTranscriptionSettings({ parakeetServerIdleTimeoutMinutes: next });
-
-                            // Best-effort: apply immediately if the server is already running.
-                            window.electronAPI
-                              ?.parakeetServerSetIdleTimeoutMinutes(next)
-                              ?.catch(() => {});
-                          }}
-                          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                          aria-label="Parakeet server idle shutdown minutes"
                         />
                         <span className="text-xs text-muted-foreground">min</span>
                       </div>

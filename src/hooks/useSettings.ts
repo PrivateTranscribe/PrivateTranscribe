@@ -10,13 +10,10 @@ export interface TranscriptionSettings {
   useLocalWhisper: boolean;
   whisperModel: string;
   localTranscriptionProvider: LocalTranscriptionProvider;
-  parakeetModel: string;
   /** When true, use the CPU whisper binary even if the CUDA binary is installed. */
   whisperForceCpu: boolean;
   /** Minutes before whisper-server is auto-stopped to free memory. 0 = never. */
   whisperServerIdleTimeoutMinutes: number;
-  /** Minutes before parakeet-ws server is auto-stopped to free memory. 0 = never. */
-  parakeetServerIdleTimeoutMinutes: number;
   allowOpenAIFallback: boolean;
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
@@ -83,13 +80,9 @@ export function useSettings() {
   const [localTranscriptionProvider, setLocalTranscriptionProvider] =
     useLocalStorage<LocalTranscriptionProvider>("localTranscriptionProvider", "whisper", {
       serialize: String,
-      deserialize: (value) => (value === "nvidia" ? "nvidia" : "whisper"),
+      // Legacy cleanup: "nvidia" is mapped to whisper.
+      deserialize: () => "whisper",
     });
-
-  const [parakeetModel, setParakeetModel] = useLocalStorage("parakeetModel", "", {
-    serialize: String,
-    deserialize: String,
-  });
 
   const [whisperForceCpu, setWhisperForceCpu] = useLocalStorage("whisperForceCpu", false, {
     serialize: String,
@@ -98,18 +91,6 @@ export function useSettings() {
 
   const [whisperServerIdleTimeoutMinutes, setWhisperServerIdleTimeoutMinutes] = useLocalStorage(
     "whisperServerIdleTimeoutMinutes",
-    30,
-    {
-      serialize: String,
-      deserialize: (value) => {
-        const n = parseInt(value, 10);
-        return Number.isFinite(n) && n >= 0 ? n : 30;
-      },
-    }
-  );
-
-  const [parakeetServerIdleTimeoutMinutes, setParakeetServerIdleTimeoutMinutes] = useLocalStorage(
-    "parakeetServerIdleTimeoutMinutes",
     30,
     {
       serialize: String,
@@ -528,7 +509,6 @@ export function useSettings() {
         useLocalWhisper: String(useLocalWhisper),
         whisperModel,
         localTranscriptionProvider,
-        parakeetModel,
         allowOpenAIFallback: String(allowOpenAIFallback),
         allowLocalFallback: String(allowLocalFallback),
         fallbackWhisperModel,
@@ -544,7 +524,6 @@ export function useSettings() {
       useLocalWhisper,
       whisperModel,
       localTranscriptionProvider,
-      parakeetModel,
       allowOpenAIFallback,
       allowLocalFallback,
       fallbackWhisperModel,
@@ -714,14 +693,12 @@ export function useSettings() {
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI?.syncStartupPreferences) return;
 
-    const model = localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel;
     window.electronAPI
       .syncStartupPreferences({
         useLocalWhisper,
         localTranscriptionProvider,
-        model: model || undefined,
+        model: whisperModel || undefined,
         whisperServerIdleTimeoutMinutes,
-        parakeetServerIdleTimeoutMinutes,
         llamaServerIdleTimeoutMinutes,
         reasoningProvider,
         reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
@@ -732,9 +709,7 @@ export function useSettings() {
     useLocalWhisper,
     localTranscriptionProvider,
     whisperModel,
-    parakeetModel,
     whisperServerIdleTimeoutMinutes,
-    parakeetServerIdleTimeoutMinutes,
     llamaServerIdleTimeoutMinutes,
     reasoningProvider,
     reasoningModel,
@@ -807,12 +782,9 @@ export function useSettings() {
       if (settings.whisperModel !== undefined) setWhisperModel(settings.whisperModel);
       if (settings.localTranscriptionProvider !== undefined)
         setLocalTranscriptionProvider(settings.localTranscriptionProvider);
-      if (settings.parakeetModel !== undefined) setParakeetModel(settings.parakeetModel);
       if (settings.whisperForceCpu !== undefined) setWhisperForceCpu(settings.whisperForceCpu);
       if (settings.whisperServerIdleTimeoutMinutes !== undefined)
         setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
-      if (settings.parakeetServerIdleTimeoutMinutes !== undefined)
-        setParakeetServerIdleTimeoutMinutes(settings.parakeetServerIdleTimeoutMinutes);
       if (settings.allowOpenAIFallback !== undefined)
         setAllowOpenAIFallback(settings.allowOpenAIFallback);
       if (settings.allowLocalFallback !== undefined)
@@ -840,9 +812,6 @@ export function useSettings() {
       }
       if (settings.localTranscriptionProvider !== undefined) {
         transcriptionOverrides.localTranscriptionProvider = settings.localTranscriptionProvider;
-      }
-      if (settings.parakeetModel !== undefined) {
-        transcriptionOverrides.parakeetModel = settings.parakeetModel;
       }
       if (settings.allowOpenAIFallback !== undefined) {
         transcriptionOverrides.allowOpenAIFallback = String(settings.allowOpenAIFallback);
@@ -877,9 +846,7 @@ export function useSettings() {
       setUseLocalWhisper,
       setWhisperModel,
       setLocalTranscriptionProvider,
-      setParakeetModel,
       setWhisperServerIdleTimeoutMinutes,
-      setParakeetServerIdleTimeoutMinutes,
       setAllowOpenAIFallback,
       setAllowLocalFallback,
       setFallbackWhisperModel,
@@ -928,10 +895,8 @@ export function useSettings() {
     useLocalWhisper,
     whisperModel,
     localTranscriptionProvider,
-    parakeetModel,
     whisperForceCpu,
     whisperServerIdleTimeoutMinutes,
-    parakeetServerIdleTimeoutMinutes,
     allowOpenAIFallback,
     allowLocalFallback,
     fallbackWhisperModel,
@@ -955,10 +920,8 @@ export function useSettings() {
     setUseLocalWhisper,
     setWhisperModel,
     setLocalTranscriptionProvider,
-    setParakeetModel,
     setWhisperForceCpu,
     setWhisperServerIdleTimeoutMinutes,
-    setParakeetServerIdleTimeoutMinutes,
     setAllowOpenAIFallback,
     setAllowLocalFallback,
     setFallbackWhisperModel,
