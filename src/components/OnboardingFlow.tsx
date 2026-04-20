@@ -33,6 +33,7 @@ import { formatHotkeyLabel, getDefaultHotkey } from "../utils/hotkeys";
 import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
+import { DownloadProgressBar } from "./ui/DownloadProgressBar";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -69,6 +70,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const {
     useLocalWhisper,
     whisperModel,
+    whisperForceCpu,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -80,6 +82,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     activationMode,
     setActivationMode,
     setDictationKey,
+    setWhisperForceCpu,
     setOpenaiApiKey,
     setGroqApiKey,
     updateTranscriptionSettings,
@@ -88,6 +91,22 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [hotkey, setHotkey] = useState(dictationKey || getDefaultHotkey());
   const agentName = "PrivateTranscribe"; // Default agent name, editable in settings
   const [isModelDownloaded, setIsModelDownloaded] = useState(false);
+  const [cudaStatus, setCudaStatus] = useState<{
+    installed: boolean;
+    path: string | null;
+    platform: string;
+    supported: boolean;
+    forceCpu: boolean;
+  } | null>(null);
+  const [cudaDownloadState, setCudaDownloadState] = useState<
+    "idle" | "downloading" | "done" | "error"
+  >("idle");
+  const [cudaDownloadProgress, setCudaDownloadProgress] = useState({
+    percentage: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+  });
+  const [cudaDownloadError, setCudaDownloadError] = useState<string | null>(null);
   const [skippedModelSetup, setSkippedModelSetup] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
@@ -147,6 +166,84 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
     checkStatus();
   }, [useLocalWhisper, whisperModel]);
+
+  const loadCudaStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      setCudaStatus(
+        status || {
+          installed: false,
+          path: null,
+          platform: "unknown",
+          supported: false,
+          forceCpu: whisperForceCpu,
+        }
+      );
+    } catch (error) {
+      console.error("Failed to check CUDA binary status:", error);
+      setCudaStatus({
+        installed: false,
+        path: null,
+        platform: "unknown",
+        supported: false,
+        forceCpu: whisperForceCpu,
+      });
+    }
+  }, [whisperForceCpu]);
+
+  useEffect(() => {
+    void loadCudaStatus();
+  }, [loadCudaStatus]);
+
+  useEffect(() => {
+    if (useLocalWhisper && !whisperForceCpu) {
+      void loadCudaStatus();
+    }
+  }, [useLocalWhisper, whisperForceCpu, loadCudaStatus]);
+
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
+      setCudaDownloadProgress({
+        percentage: data.percent ?? data.progress ?? 0,
+        downloadedBytes: data.bytesDownloaded ?? data.downloadedBytes ?? 0,
+        totalBytes: data.totalBytes ?? 0,
+      });
+    });
+    return () => cleanup?.();
+  }, []);
+
+  const handleDownloadCuda = useCallback(async () => {
+    setCudaDownloadState("downloading");
+    setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
+    setCudaDownloadError(null);
+
+    try {
+      const result = await window.electronAPI?.downloadCudaBinary?.();
+      if (!result?.success) {
+        setCudaDownloadState("error");
+        setCudaDownloadError(result?.error || "CUDA download failed");
+        return;
+      }
+      setCudaDownloadState("done");
+      await loadCudaStatus();
+    } catch (error) {
+      setCudaDownloadState("error");
+      setCudaDownloadError(error instanceof Error ? error.message : "CUDA download failed");
+    }
+  }, [loadCudaStatus]);
+
+  const handleCancelCudaDownload = useCallback(async () => {
+    await window.electronAPI?.cancelCudaBinaryDownload?.().catch(() => {});
+    setCudaDownloadState("idle");
+    setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
+  }, []);
+
+  const handleSkipCudaAndUseCpu = useCallback(() => {
+    setWhisperForceCpu(true);
+    setCudaDownloadState("idle");
+    setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
+    setCudaDownloadError(null);
+  }, [setWhisperForceCpu]);
 
   // Auto-register default hotkey when entering the hotkey step (step 4)
   useEffect(() => {
@@ -376,6 +473,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
 
       case 2: // Setup - Choose Mode & Configure
+        const shouldShowCudaDownload =
+          useLocalWhisper &&
+          isModelDownloaded &&
+          !whisperForceCpu &&
+          cudaStatus?.supported &&
+          !cudaStatus.installed;
+
         return (
           <div className="space-y-3">
             <div className="text-center space-y-0.5">
@@ -419,6 +523,56 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               }
               variant="onboarding"
             />
+            {shouldShowCudaDownload && (
+              <div className="rounded-lg border border-border-subtle bg-surface-1 overflow-hidden">
+                <div className="p-3 border-b border-border-subtle">
+                  <h3 className="text-sm font-medium text-foreground">GPU Engine</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Download the CUDA engine to keep GPU acceleration enabled.
+                  </p>
+                </div>
+
+                {cudaDownloadState === "downloading" && (
+                  <DownloadProgressBar
+                    modelName="GPU Engine"
+                    progress={cudaDownloadProgress}
+                  />
+                )}
+
+                <div className="p-3 space-y-2">
+                  {cudaDownloadState !== "downloading" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void handleDownloadCuda()}
+                    >
+                      Download GPU Engine (652 MB)
+                    </Button>
+                  )}
+                  {cudaDownloadState === "downloading" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void handleCancelCudaDownload()}
+                    >
+                      Cancel Download
+                    </Button>
+                  )}
+                  {cudaDownloadError && (
+                    <p className="text-xs text-destructive">{cudaDownloadError}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSkipCudaAndUseCpu}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Skip - use CPU mode
+                  </button>
+                </div>
+              </div>
+            )}
             {useLocalWhisper && !isModelDownloaded && (
               <div className="text-center">
                 <button
@@ -683,7 +837,19 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           if (skippedModelSetup) {
             return true;
           }
-          return whisperModel !== "" && isModelDownloaded;
+          if (whisperModel === "" || !isModelDownloaded) {
+            return false;
+          }
+
+          if (!whisperForceCpu) {
+            if (!cudaStatus) {
+              return false;
+            }
+            if (cudaStatus.supported && !cudaStatus.installed) {
+              return false;
+            }
+          }
+          return true;
         } else {
           // For cloud mode, check if appropriate API key is set
           if (cloudTranscriptionProvider === "openai") {

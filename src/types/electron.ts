@@ -734,7 +734,14 @@ declare global {
       onCudaBinaryDownloadProgress?: (
         callback: (
           event: unknown,
-          data: { progress: number; downloadedBytes?: number; totalBytes?: number }
+          data: {
+            progress?: number;
+            percent?: number;
+            phase?: string;
+            downloadedBytes?: number;
+            bytesDownloaded?: number;
+            totalBytes?: number;
+          }
         ) => void
       ) => () => void;
     };
