@@ -14,7 +14,6 @@ import { openExternalLink } from "../../utils/externalLinks";
 import { cn } from "../lib/utils";
 import type {
   HardwareDetectionResult,
-  HardwareRecommendations,
   LocalTranscriptionProvider,
 } from "../../types/electron";
 
@@ -23,7 +22,6 @@ interface HardwareSetupStepProps {
     useLocalWhisper: boolean;
     localTranscriptionProvider: LocalTranscriptionProvider;
     whisperModel: string;
-    parakeetModel?: string;
   }) => void;
   onNext?: () => void;
   onSkip?: () => void;
@@ -80,7 +78,6 @@ export default function HardwareSetupStep({
       useLocalWhisper: rec.transcriptionProvider === "local",
       localTranscriptionProvider: rec.localTranscriptionProvider,
       whisperModel: rec.whisperModel,
-      parakeetModel: rec.parakeetModel,
     });
     setApplied(true);
 
