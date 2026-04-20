@@ -1234,8 +1234,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     return "linux";
   }, []);
 
-  const languageCompatWarning = null;
-
   /**
    * Whether the current model supports translation.
    * Whisper Turbo silently ignores the translate flag.
@@ -1755,15 +1753,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         )}
                       </>
                     )}
-
-                  {languageCompatWarning && (
-                    <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                      <span aria-hidden="true" className="mt-px shrink-0">
-                        ⚠
-                      </span>
-                      {languageCompatWarning}
-                    </p>
-                  )}
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
