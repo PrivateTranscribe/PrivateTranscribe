@@ -932,10 +932,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return true;
       case 2:
         // Setup - check if configuration is complete
-        if (isLoadingStatus) {
-          return false;
-        }
         if (useLocalWhisper) {
+          if (isLoadingStatus) {
+            return false;
+          }
           if (whisperModel === "") {
             return false;
           }
@@ -943,7 +943,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             return false;
           }
 
-          if (!whisperForceCpu) {
+          if (!skippedModelSetup && !whisperForceCpu) {
             if (!cudaStatus) {
               return false;
             }
