@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Check,
+  Loader2,
   Settings,
   Mic,
   Shield,
@@ -34,6 +35,7 @@ import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { DownloadProgressBar } from "./ui/DownloadProgressBar";
+import { useToast } from "./ui/Toast";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -107,31 +109,64 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     totalBytes: 0,
   });
   const [cudaDownloadError, setCudaDownloadError] = useState<string | null>(null);
+  const [cudaInstalled, setCudaInstalled] = useState(false);
   const [skippedModelSetup, setSkippedModelSetup] = useState(false);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
-  const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
   const [isDemoRecording, setIsDemoRecording] = useState(false);
   const [demoText, setDemoText] = useState("");
+  const { toast } = useToast();
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
     useDialogs();
 
   const autoRegisterInFlightRef = useRef(false);
   const hotkeyStepInitializedRef = useRef(false);
+  const hotkeyRegistrationCounterRef = useRef(0);
+  const demoTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const pendingStatusChecksRef = useRef(0);
 
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
-    onSuccess: (registeredHotkey) => {
-      setHotkey(registeredHotkey);
-      setDictationKey(registeredHotkey);
-    },
+    onSuccess: () => {},
     showSuccessToast: false, // Don't show toast during onboarding auto-registration
     showErrorToast: false,
   });
 
   const permissionsHook = usePermissions(showAlertDialog);
   useClipboard(showAlertDialog); // Initialize clipboard hook for permission checks
+
+  const beginStatusCheck = useCallback(() => {
+    pendingStatusChecksRef.current += 1;
+    setIsLoadingStatus(true);
+  }, []);
+
+  const endStatusCheck = useCallback(() => {
+    pendingStatusChecksRef.current = Math.max(0, pendingStatusChecksRef.current - 1);
+    if (pendingStatusChecksRef.current === 0) {
+      setIsLoadingStatus(false);
+    }
+  }, []);
+
+  const registerHotkeyWithRaceGuard = useCallback(
+    async (newHotkey: string) => {
+      const registrationId = ++hotkeyRegistrationCounterRef.current;
+      const success = await registerHotkey(newHotkey);
+
+      if (registrationId !== hotkeyRegistrationCounterRef.current) {
+        return false;
+      }
+
+      if (success) {
+        setHotkey(newHotkey);
+        setDictationKey(newHotkey);
+      }
+
+      return success;
+    },
+    [registerHotkey, setDictationKey]
+  );
 
   useEffect(() => {
     const checkHotkeyMode = async () => {
@@ -155,32 +190,37 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     }
 
     const checkStatus = async () => {
+      beginStatusCheck();
       try {
         const result = await window.electronAPI?.checkModelStatus(whisperModel);
         setIsModelDownloaded(result?.downloaded ?? false);
       } catch (error) {
         console.error("Failed to check model status:", error);
         setIsModelDownloaded(false);
+      } finally {
+        endStatusCheck();
       }
     };
 
     checkStatus();
-  }, [useLocalWhisper, whisperModel]);
+  }, [useLocalWhisper, whisperModel, beginStatusCheck, endStatusCheck]);
 
   const loadCudaStatus = useCallback(async () => {
+    beginStatusCheck();
     try {
       const status = await window.electronAPI?.getCudaBinaryStatus?.();
-      setCudaStatus(
-        status || {
-          installed: false,
-          path: null,
-          platform: "unknown",
-          supported: false,
-          forceCpu: whisperForceCpu,
-        }
-      );
+      const resolvedStatus = status || {
+        installed: false,
+        path: null,
+        platform: "unknown",
+        supported: false,
+        forceCpu: whisperForceCpu,
+      };
+      setCudaInstalled(resolvedStatus.installed);
+      setCudaStatus(resolvedStatus);
     } catch (error) {
       console.error("Failed to check CUDA binary status:", error);
+      setCudaInstalled(false);
       setCudaStatus({
         installed: false,
         path: null,
@@ -188,8 +228,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         supported: false,
         forceCpu: whisperForceCpu,
       });
+    } finally {
+      endStatusCheck();
     }
-  }, [whisperForceCpu]);
+  }, [whisperForceCpu, beginStatusCheck, endStatusCheck]);
 
   useEffect(() => {
     void loadCudaStatus();
@@ -225,21 +267,32 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return;
       }
       setCudaDownloadState("done");
+      setCudaInstalled(true);
       await loadCudaStatus();
     } catch (error) {
       setCudaDownloadState("error");
       setCudaDownloadError(error instanceof Error ? error.message : "CUDA download failed");
+      setCudaInstalled(false);
     }
   }, [loadCudaStatus]);
 
   const handleCancelCudaDownload = useCallback(async () => {
-    await window.electronAPI?.cancelCudaBinaryDownload?.().catch(() => {});
-    setCudaDownloadState("idle");
-    setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
+    try {
+      const result = await window.electronAPI?.cancelCudaBinaryDownload?.();
+      if (result && !result.success) {
+        throw new Error("CUDA download cancellation failed");
+      }
+      setCudaDownloadState("idle");
+      setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
+    } catch (error) {
+      console.error("Failed to cancel CUDA download:", error);
+      setCudaDownloadError("Failed to cancel download. Please try again.");
+    }
   }, []);
 
   const handleSkipCudaAndUseCpu = useCallback(() => {
     setWhisperForceCpu(true);
+    setCudaInstalled(false);
     setCudaDownloadState("idle");
     setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
     setCudaDownloadError(null);
@@ -274,10 +327,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           hotkey === "CommandOrControl+Space"
         ) {
           // Try to register the default hotkey silently
-          const success = await registerHotkey(defaultHotkey);
-          if (success) {
-            setHotkey(defaultHotkey);
-          }
+          await registerHotkeyWithRaceGuard(defaultHotkey);
         }
       } catch (error) {
         console.error("Failed to auto-register default hotkey:", error);
@@ -287,7 +337,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     };
 
     void autoRegisterDefaultHotkey();
-  }, [currentStep, hotkey, registerHotkey]);
+  }, [currentStep, hotkey, registerHotkeyWithRaceGuard]);
 
   const ensureHotkeyRegistered = useCallback(async () => {
     if (!window.electronAPI?.updateHotkey) {
@@ -331,9 +381,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     localStorage.setItem("onboardingCompleted", "true");
 
     try {
-      await window.electronAPI?.saveAllKeysToEnv?.();
+      const saveResult = await window.electronAPI?.saveAllKeysToEnv?.();
+      if (saveResult && !saveResult.success) {
+        throw new Error("Failed to save API keys");
+      }
     } catch (error) {
       console.error("Failed to persist API keys:", error);
+      toast({
+        title: "Failed to save API keys",
+        description: "Your keys were not persisted to the environment file.",
+        variant: "destructive",
+      });
+      return false;
     }
 
     return true;
@@ -344,6 +403,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     permissionsHook.accessibilityPermissionGranted,
     setDictationKey,
     ensureHotkeyRegistered,
+    toast,
   ]);
 
   const nextStep = useCallback(async () => {
@@ -368,10 +428,19 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
     if (currentStep === 3 && newStep === 4) {
       if (window.electronAPI?.showDictationPanel) {
-        window.electronAPI.showDictationPanel();
+        try {
+          await window.electronAPI.showDictationPanel();
+        } catch (error) {
+          console.error("Failed to show dictation panel:", error);
+          toast({
+            title: "Could not open dictation panel",
+            description: "You can still continue setup and open it later.",
+            variant: "destructive",
+          });
+        }
       }
     }
-  }, [currentStep, ensureHotkeyRegistered, setCurrentStep, steps.length]);
+  }, [currentStep, ensureHotkeyRegistered, setCurrentStep, steps.length, toast]);
 
   const prevStep = useCallback(() => {
     if (currentStep > 0) {
@@ -397,11 +466,28 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const handleDemoDictation = useCallback(() => {
     setIsDemoRecording(true);
-    window.setTimeout(() => {
+    if (demoTimeoutRef.current) {
+      window.clearTimeout(demoTimeoutRef.current);
+    }
+    demoTimeoutRef.current = window.setTimeout(() => {
       setIsDemoRecording(false);
       setDemoText("Hello! I just set up PrivateTranscribe and it works great.");
     }, 2500);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (demoTimeoutRef.current) {
+        window.clearTimeout(demoTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!useLocalWhisper) {
+      setSkippedModelSetup(false);
+    }
+  }, [useLocalWhisper]);
 
   const renderStep = () => {
     switch (currentStep) {
@@ -435,21 +521,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   <Mic className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-xs font-medium text-foreground">Voice to Text</span>
-                <span className="text-[10px] text-muted-foreground">Instant</span>
+                <span className="text-xs text-muted-foreground">Instant</span>
               </div>
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Command className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-xs font-medium text-foreground">Works Anywhere</span>
-                <span className="text-[10px] text-muted-foreground">Any app</span>
+                <span className="text-xs text-muted-foreground">Any app</span>
               </div>
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Shield className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-xs font-medium text-foreground">Private</span>
-                <span className="text-[10px] text-muted-foreground">Your choice</span>
+                <span className="text-xs text-muted-foreground">Your choice</span>
               </div>
             </div>
           </div>
@@ -464,7 +550,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 localTranscriptionProvider: recommendations.localTranscriptionProvider,
                 whisperModel: recommendations.whisperModel,
               });
-              setHardwareRecommendationsApplied(true);
             }}
             onNext={() => nextStep()}
             onSkip={() => nextStep()}
@@ -568,9 +653,25 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     onClick={handleSkipCudaAndUseCpu}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Skip - use CPU mode
+                    Skip — use CPU mode
                   </button>
                 </div>
+              </div>
+            )}
+            {useLocalWhisper &&
+              isModelDownloaded &&
+              !whisperForceCpu &&
+              cudaStatus?.supported &&
+              cudaInstalled &&
+              cudaDownloadState !== "downloading" && (
+                <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+                  ✓ GPU engine installed
+                </div>
+              )}
+            {isLoadingStatus && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking setup status...
               </div>
             )}
             {useLocalWhisper && !isModelDownloaded && (
@@ -673,10 +774,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <HotkeyInput
                   value={hotkey}
                   onChange={async (newHotkey) => {
-                    const success = await registerHotkey(newHotkey);
-                    if (success) {
-                      setHotkey(newHotkey);
-                    }
+                    await registerHotkeyWithRaceGuard(newHotkey);
                   }}
                   disabled={isHotkeyRegistering}
                   variant="hero"
@@ -690,7 +788,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Mode
                     </span>
-                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">
                       {activationMode === "tap"
                         ? "Press to start/stop"
                         : "Hold while speaking (recommended)"}
@@ -711,7 +809,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Test
                 </span>
-                <span className="text-[10px] text-muted-foreground/60">
+                <span className="text-xs text-muted-foreground/60">
                   {activationMode === "tap" || isUsingGnomeHotkeys
                     ? `${readableHotkey} to start/stop`
                     : `Hold ${readableHotkey}`}
@@ -745,7 +843,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               </h2>
               <p className="text-sm text-muted-foreground">
                 {activationMode === "push" ? "Hold" : "Press"}{" "}
-                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
+                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-xs">
                   {readableHotkey}
                 </kbd>{" "}
                 {activationMode === "push"
@@ -753,7 +851,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   : "to start dictating into any app."}
               </p>
             </div>
-            {skippedModelSetup && (
+            {useLocalWhisper && skippedModelSetup && (
               <div className="rounded-lg border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-muted-foreground text-left">
                 Note: Local transcription model not configured. You can set it up later in
                 Settings.
@@ -768,9 +866,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   <Mic className="w-4 h-4 text-primary" />
                 </div>
                 <p className="text-sm font-medium text-foreground">Try dictating</p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   Press{" "}
-                  <kbd className="px-1 py-0.5 rounded border border-border bg-muted/50 font-mono text-[10px]">
+                  <kbd className="px-1 py-0.5 rounded border border-border bg-muted/50 font-mono text-xs">
                     {readableHotkey}
                   </kbd>{" "}
                   anywhere to start. Your first transcription will appear in the history.
@@ -783,7 +881,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   <BookOpen className="w-4 h-4 text-primary" />
                 </div>
                 <p className="text-sm font-medium text-foreground">Teach it your words</p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   Use the dictionary in Settings to add names, technical terms, or jargon.
                 </p>
               </div>
@@ -797,9 +895,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   readOnly
                   value={demoText}
                   placeholder="Click the mic to try dictation..."
-                  className="w-full h-20 text-sm bg-background rounded-lg border border-border-subtle p-3 resize-none"
+                  className="w-full h-20 text-sm bg-background rounded-lg border border-border-subtle p-3 pr-10 resize-none"
                 />
                 <button
+                  aria-label="Start demo dictation"
                   onClick={handleDemoDictation}
                   disabled={isDemoRecording}
                   className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
@@ -833,11 +932,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return true;
       case 2:
         // Setup - check if configuration is complete
+        if (isLoadingStatus) {
+          return false;
+        }
         if (useLocalWhisper) {
-          if (skippedModelSetup) {
-            return true;
+          if (whisperModel === "") {
+            return false;
           }
-          if (whisperModel === "" || !isModelDownloaded) {
+          if (!skippedModelSetup && !isModelDownloaded) {
             return false;
           }
 
