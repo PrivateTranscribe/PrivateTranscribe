@@ -27,7 +27,7 @@ class ParakeetWsServer {
     this.modelDir = null;
     this.startupPromise = null;
     this.healthCheckInterval = null;
-    this.transcribing = false;
+    this.activeTranscriptions = 0;
     this.cachedWsBinaryPath = null;
     this.lastUsedTime = null;
     this.idleCheckTimeout = null;
@@ -121,6 +121,7 @@ class ParakeetWsServer {
       exitCode = code;
       debugLogger.debug("parakeet-ws process exited", { code });
       this.ready = false;
+      this.activeTranscriptions = 0;
       this.process = null;
       this.stopHealthCheck();
       readyResolve(false);
@@ -205,7 +206,7 @@ class ParakeetWsServer {
   async checkIdleAndStop() {
     if (!this.ready || !this.process) return;
     if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
-    if (this.transcribing) {
+    if (this.activeTranscriptions > 0) {
       // Delay check until transcription is done
       this._scheduleIdleCheck();
       return;
@@ -241,7 +242,7 @@ class ParakeetWsServer {
         this.stopHealthCheck();
         return;
       }
-      if (this.transcribing) return;
+      if (this.activeTranscriptions > 0) return;
 
       if (!this._isProcessAlive()) {
         debugLogger.warn("parakeet-ws health check failed: process not alive");
@@ -263,16 +264,19 @@ class ParakeetWsServer {
       throw new Error("parakeet-ws server is not running");
     }
 
-    this.transcribing = true;
+    this.activeTranscriptions += 1;
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
       let result = "";
+      let settled = false;
 
       const done =
         (fn, updateLastUsed = false) =>
         (...args) => {
-          this.transcribing = false;
+          if (settled) return;
+          settled = true;
+          this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
           if (updateLastUsed) {
             this.lastUsedTime = Date.now();
             this._scheduleIdleCheck();
@@ -363,6 +367,7 @@ class ParakeetWsServer {
 
     this.process = null;
     this.ready = false;
+    this.activeTranscriptions = 0;
     this.port = null;
     this.modelName = null;
     this.modelDir = null;

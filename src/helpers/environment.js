@@ -131,16 +131,17 @@ class EnvironmentManager {
    */
   _persistPlainEnvFile() {
     let content = `# PrivateTranscribe — non-secret settings\n# Generated automatically — do not edit manually.\n`;
+    const sanitizeEnvValue = (value) => String(value).replace(/[\r\n]+/g, "");
 
     for (const key of PLAIN_ENV_KEYS) {
-      if (process.env[key]) content += `${key}=${process.env[key]}\n`;
+      if (process.env[key]) content += `${key}=${sanitizeEnvValue(process.env[key])}\n`;
     }
 
     // Fallback: if encryption is unavailable, include secrets in the plain file
     // so that API keys survive restarts even without OS-keychain support.
     if (!this._encryptionAvailable) {
       for (const key of SECRET_ENV_KEYS) {
-        if (process.env[key]) content += `${key}=${process.env[key]}\n`;
+        if (process.env[key]) content += `${key}=${sanitizeEnvValue(process.env[key])}\n`;
       }
     }
 

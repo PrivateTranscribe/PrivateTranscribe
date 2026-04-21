@@ -450,7 +450,18 @@ export const useAudioRecording = (toast, options = {}) => {
       }
       duckAudio();
       pauseMedia();
-      return await manager.startRecording();
+      try {
+        const started = await manager.startRecording();
+        if (!started) {
+          restoreAudio();
+          resumeMedia();
+        }
+        return started;
+      } catch (error) {
+        restoreAudio();
+        resumeMedia();
+        throw error;
+      }
     };
 
     const endRecordingFlow = ({ playSound = false } = {}) => {

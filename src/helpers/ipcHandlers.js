@@ -1063,6 +1063,9 @@ class IPCHandlers {
     });
 
     ipcMain.handle("sync-startup-preferences", async (event, prefs) => {
+      if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
+        return { success: false, synced: false };
+      }
       const setVars = {};
       const clearVars = [];
 
@@ -1152,6 +1155,7 @@ class IPCHandlers {
       }
 
       this._syncStartupEnv(setVars, clearVars);
+      return { success: true, synced: true };
     });
 
     // Local reasoning handler

@@ -48,6 +48,7 @@ const REDOS_PATTERN = /\([^)]*[+*][^)]*\)[+*?]/;
 
 const VALID_TRIGGER_MODES = new Set(["exact", "prefix", "contains", "regex"]);
 const VALID_ACTION_TYPES = new Set(["shell", "url", "app", "dictation-mode"]);
+const UNSAFE_EXECUTABLE_CHARS = /[|&;<>`$]/;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure pattern-matching helpers
@@ -255,6 +256,12 @@ function validateActionConfig(actionType, config) {
       const cmd = typeof config.command === "string" ? config.command.trim() : "";
       if (!cmd) throw new Error("Shell action requires a non-empty command.");
       if (cmd.length > 1_000) throw new Error("Shell command must be 1 000 characters or fewer.");
+      const parts = tokenizeCommand(cmd);
+      if (parts.length === 0) throw new Error("Shell action requires a valid executable.");
+      const executable = parts[0];
+      if (!isSafeShellExecutable(executable)) {
+        throw new Error("Shell executable contains unsupported characters.");
+      }
       break;
     }
 
@@ -337,6 +344,13 @@ function tokenizeCommand(command) {
   return tokens;
 }
 
+function isSafeShellExecutable(executable) {
+  if (typeof executable !== "string" || executable.trim() === "") return false;
+  if (/[\r\n\0]/.test(executable)) return false;
+  if (UNSAFE_EXECUTABLE_CHARS.test(executable)) return false;
+  return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Action execution (side-effecting - runs in main process only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -379,6 +393,9 @@ async function _executeShell(config) {
   if (parts.length === 0) return { success: false, error: "Empty command." };
 
   const [executable, ...args] = parts;
+  if (!isSafeShellExecutable(executable)) {
+    return { success: false, error: "Executable contains unsupported characters." };
+  }
   const { stdout, stderr } = await execFileAsync(executable, args, {
     timeout: SHELL_TIMEOUT_MS,
     windowsHide: true,
