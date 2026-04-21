@@ -27,16 +27,16 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
                 isActive
                   ? "bg-primary/15 text-primary"
                   : isCompleted
-                    ? "text-success"
+                    ? "text-primary"
                     : "text-muted-foreground/50"
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
                   isActive
-                    ? "bg-primary text-white shadow-sm"
+                    ? "border-2 border-primary bg-background text-primary shadow-[0_0_8px_rgba(112,255,186,0.3)]"
                     : isCompleted
-                      ? "bg-success/20 text-success"
+                      ? "bg-primary/20 text-primary"
                       : "bg-white/5 text-muted-foreground/50"
                 }`}
               >
@@ -47,11 +47,11 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
                 )}
               </div>
               <span
-                className={`text-[11px] font-medium hidden md:block ${
+                className={`text-[11px] font-medium hidden sm:block ${
                   isActive
                     ? "text-primary"
                     : isCompleted
-                      ? "text-success"
+                      ? "text-primary"
                       : "text-muted-foreground/50"
                 }`}
               >
@@ -61,7 +61,7 @@ export default function StepProgress({ steps, currentStep, className = "" }: Ste
             {index < steps.length - 1 && (
               <div
                 className={`w-4 h-px transition-colors duration-200 ${
-                  isCompleted ? "bg-success/50" : "bg-white/10"
+                  isCompleted ? "bg-primary/50" : "bg-white/10"
                 }`}
               />
             )}

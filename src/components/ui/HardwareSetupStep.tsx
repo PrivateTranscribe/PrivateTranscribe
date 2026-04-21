@@ -18,23 +18,21 @@ import type {
 } from "../../types/electron";
 
 interface HardwareSetupStepProps {
+  stepLabel?: string;
   onApplyRecommendations: (recommendations: {
     useLocalWhisper: boolean;
     localTranscriptionProvider: LocalTranscriptionProvider;
     whisperModel: string;
     whisperForceCpu?: boolean;
   }) => void;
-  onNext?: () => void;
-  onSkip?: () => void;
   showSkip?: boolean;
 }
 
 type DetectionState = "idle" | "detecting" | "complete" | "error";
 
 export default function HardwareSetupStep({
+  stepLabel,
   onApplyRecommendations,
-  onNext,
-  onSkip,
   showSkip = true,
 }: HardwareSetupStepProps) {
   const [detectionState, setDetectionState] = useState<DetectionState>("idle");
@@ -82,13 +80,6 @@ export default function HardwareSetupStep({
       whisperForceCpu: false,
     });
     setApplied(true);
-
-    // Auto-advance after brief confirmation display (1.5s for user to see confirmation)
-    if (onNext) {
-      setTimeout(() => {
-        onNext();
-      }, 1500);
-    }
   };
 
   const handleContinueWithDefaults = () => {
@@ -101,13 +92,6 @@ export default function HardwareSetupStep({
       whisperForceCpu: true,
     });
     setApplied(true);
-
-    // Auto-advance after brief confirmation
-    if (onNext) {
-      setTimeout(() => {
-        onNext();
-      }, 1500);
-    }
   };
 
   const handleUseCpuInstead = () => {
@@ -118,16 +102,6 @@ export default function HardwareSetupStep({
       whisperForceCpu: true,
     });
     setApplied(true);
-
-    if (onSkip) {
-      setTimeout(() => {
-        onSkip();
-      }, 400);
-    } else if (onNext) {
-      setTimeout(() => {
-        onNext();
-      }, 400);
-    }
   };
 
   const toFriendlyHardwareText = (text: string) =>
@@ -198,7 +172,7 @@ export default function HardwareSetupStep({
               className="mt-2 h-7 gap-1.5 text-[11px]"
             >
               <Check className="w-3 h-3" />
-              Continue with Safe Defaults
+              Continue with recommended settings
             </Button>
           </div>
         </div>
@@ -407,10 +381,13 @@ export default function HardwareSetupStep({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
       <div className="text-center space-y-0.5">
-        <h2 className="text-lg font-semibold text-foreground tracking-tight">Hardware Setup</h2>
+        {stepLabel && <p className="text-xs text-muted-foreground/60 mb-1">{stepLabel}</p>}
+        <h2 className="text-xl font-semibold text-foreground tracking-tight">
+          {detectionState === "detecting" ? "Detecting Hardware" : "Hardware Detected"}
+        </h2>
         <p className="text-xs text-muted-foreground">
           We'll detect your hardware and recommend optimal settings
         </p>
@@ -428,43 +405,41 @@ export default function HardwareSetupStep({
                 <>
                   <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
                     <Check className="w-3.5 h-3.5" />
-                    Apply Recommendations
+                    Apply recommended settings
                   </Button>
-                  {onSkip && (
+                  {showSkip && (
                     <Button
                       onClick={handleUseCpuInstead}
-                      variant="ghost"
-                      className="h-8 px-4 text-xs text-muted-foreground"
-                      title="Use CPU transcription instead of GPU"
+                      variant="outline"
+                      className="h-8 px-4 text-xs w-full"
+                      title="Use CPU transcription mode"
                     >
-                      Use CPU instead
+                      Use CPU mode
                     </Button>
                   )}
                 </>
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Continuing...</span>
+                  <span className="text-sm font-medium">Recommended settings applied</span>
                 </div>
               )}
             </>
           ) : (
             <>
               {!applied ? (
-                onNext && (
-                  <Button onClick={handleContinueWithDefaults} className="h-8 px-6">
-                    Continue with Defaults
-                  </Button>
-                )
+                <Button onClick={handleContinueWithDefaults} className="h-8 px-6">
+                  Continue with recommended settings
+                </Button>
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Continuing...</span>
+                  <span className="text-sm font-medium">Recommended settings applied</span>
                 </div>
               )}
-              {showSkip && !applied && onSkip && (
-                <Button onClick={handleUseCpuInstead} variant="ghost" className="h-8 px-4 text-xs">
-                  Use CPU instead
+              {showSkip && !applied && (
+                <Button onClick={handleUseCpuInstead} variant="outline" className="h-8 px-4 text-xs w-full">
+                  Use CPU mode
                 </Button>
               )}
             </>

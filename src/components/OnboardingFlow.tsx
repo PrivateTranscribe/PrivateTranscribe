@@ -14,7 +14,6 @@ import {
   Sparkles,
   Cpu,
   ArrowRight,
-  BookOpen,
 } from "lucide-react";
 import TitleBar from "./TitleBar";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
@@ -118,6 +117,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [micTestState, setMicTestState] = useState<"idle" | "recording" | "success" | "error">(
     "idle"
   );
+  const [micTestCountdown, setMicTestCountdown] = useState<number | null>(null);
   const [micTestLevel, setMicTestLevel] = useState(0);
   const [micTestError, setMicTestError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -129,6 +129,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const hotkeyStepInitializedRef = useRef(false);
   const hotkeyRegistrationCounterRef = useRef(0);
   const micTestTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const micTestIntervalRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const micTestRafRef = useRef<number | null>(null);
   const micTestStreamRef = useRef<MediaStream | null>(null);
   const micTestAudioContextRef = useRef<AudioContext | null>(null);
@@ -482,6 +483,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       micTestTimeoutRef.current = null;
     }
 
+    if (micTestIntervalRef.current) {
+      window.clearInterval(micTestIntervalRef.current);
+      micTestIntervalRef.current = null;
+    }
+
     micTestSourceRef.current?.disconnect();
     micTestSourceRef.current = null;
 
@@ -499,6 +505,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     cleanupMicTestResources();
     setMicTestError(null);
     setMicTestLevel(0);
+    setMicTestCountdown(3);
     setMicTestState("recording");
 
     try {
@@ -534,14 +541,25 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
       updateLevel();
 
+      micTestIntervalRef.current = window.setInterval(() => {
+        setMicTestCountdown((previous) => {
+          if (previous === null || previous <= 1) {
+            return 1;
+          }
+          return previous - 1;
+        });
+      }, 1000);
+
       micTestTimeoutRef.current = window.setTimeout(() => {
         cleanupMicTestResources();
         setMicTestLevel(0);
+        setMicTestCountdown(null);
         setMicTestState("success");
       }, 3000);
     } catch (error) {
       cleanupMicTestResources();
       setMicTestLevel(0);
+      setMicTestCountdown(null);
       setMicTestState("error");
       setMicTestError(
         error instanceof Error
@@ -580,6 +598,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
             {/* Title */}
             <div className="space-y-1">
+              <p className="text-xs text-muted-foreground/60 mb-1">
+                Step {currentStep + 1} of {steps.length}
+              </p>
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
                 Welcome to PrivateTranscribe
               </h2>
@@ -589,27 +610,27 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             </div>
 
             {/* Feature grid - compact and refined */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Mic className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-xs font-medium text-foreground">Voice to Text</span>
-                <span className="text-xs text-muted-foreground">Instant</span>
+                <span className="text-sm text-muted-foreground">Instant</span>
               </div>
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Command className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-xs font-medium text-foreground">Works Anywhere</span>
-                <span className="text-xs text-muted-foreground">Any app</span>
+                <span className="text-sm text-muted-foreground">Any app</span>
               </div>
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Shield className="w-4 h-4 text-primary" />
                 </div>
                 <span className="text-xs font-medium text-foreground">Private</span>
-                <span className="text-xs text-muted-foreground">Your choice</span>
+                <span className="text-sm text-muted-foreground">Your choice</span>
               </div>
             </div>
           </div>
@@ -618,6 +639,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       case 1: // Hardware Detection
         return (
           <HardwareSetupStep
+            stepLabel={`Step ${currentStep + 1} of ${steps.length}`}
             onApplyRecommendations={(recommendations) => {
               updateTranscriptionSettings({
                 useLocalWhisper: recommendations.useLocalWhisper,
@@ -625,16 +647,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 whisperModel: recommendations.whisperModel,
                 whisperForceCpu: recommendations.whisperForceCpu,
               });
-            }}
-            onNext={() => nextStep()}
-            onSkip={() => {
-              updateTranscriptionSettings({
-                useLocalWhisper: true,
-                localTranscriptionProvider: "whisper",
-                whisperModel: "base",
-                whisperForceCpu: true,
-              });
-              void nextStep();
             }}
             showSkip={true}
           />
@@ -649,9 +661,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           !cudaStatus.installed;
 
         return (
-          <div className="space-y-3">
+          <div className="space-y-5">
             <div className="text-center space-y-0.5">
-              <h2 className="text-lg font-semibold text-foreground tracking-tight">
+              <p className="text-xs text-muted-foreground/60 mb-1">
+                Step {currentStep + 1} of {steps.length}
+              </p>
+              <h2 className="text-xl font-semibold text-foreground tracking-tight">
                 Transcription Setup
               </h2>
               <p className="text-xs text-muted-foreground">Choose where transcription runs</p>
@@ -731,13 +746,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   {cudaDownloadError && (
                     <p className="text-xs text-destructive">{cudaDownloadError}</p>
                   )}
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={handleSkipCudaAndUseCpu}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    className="h-8 px-4 text-xs w-full"
                   >
                     Skip — use your CPU
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -758,17 +774,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               </div>
             )}
             {useLocalWhisper && !isModelDownloaded && (
-              <div className="text-center">
-                <button
+              <div>
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => {
                     setSkippedModelSetup(true);
                     void nextStep();
                   }}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="h-8 px-4 text-xs w-full"
                 >
                   Skip — set up later
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -779,10 +796,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         const isMacOS = platform === "darwin";
 
         return (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {/* Header - compact */}
             <div className="text-center">
-              <h2 className="text-lg font-semibold text-foreground tracking-tight">Permissions</h2>
+              <p className="text-xs text-muted-foreground/60 mb-1">
+                Step {currentStep + 1} of {steps.length}
+              </p>
+              <h2 className="text-xl font-semibold text-foreground tracking-tight">Permissions</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {isMacOS ? "Required for PrivateTranscribe to work" : "Microphone access required"}
               </p>
@@ -793,7 +813,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <PermissionCard
                 icon={Mic}
                 title="Microphone"
-                description="Required to hear your speech for transcription"
+                description="Required to hear your speech for transcription. Your browser will ask for microphone access."
                 granted={permissionsHook.micPermissionGranted}
                 onRequest={permissionsHook.requestMicPermission}
                 buttonText="Grant"
@@ -803,7 +823,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <PermissionCard
                   icon={Shield}
                   title="Accessibility"
-                  description="Lets PrivateTranscribe type your transcription directly into the app you're using"
+                  description="Lets PrivateTranscribe type your transcription directly into the app you're using. You'll be guided to System Settings -> Privacy & Security -> Accessibility."
                   granted={permissionsHook.accessibilityPermissionGranted}
                   onRequest={permissionsHook.testAccessibilityPermission}
                   buttonText="Test & Grant"
@@ -836,10 +856,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
       case 4: // Hotkey & Activation Mode
         return (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {/* Header */}
             <div className="text-center space-y-0.5">
-              <h2 className="text-lg font-semibold text-foreground tracking-tight">
+              <p className="text-xs text-muted-foreground/60 mb-1">
+                Step {currentStep + 1} of {steps.length}
+              </p>
+              <h2 className="text-xl font-semibold text-foreground tracking-tight">
                 Trigger Setup
               </h2>
               <p className="text-xs text-muted-foreground">Choose how you start and stop dictation</p>
@@ -910,70 +933,40 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       case 5: {
         // Completion
         return (
-          <div className="text-center space-y-6">
-            {/* Success mark — mint accent */}
-            <div className="relative w-16 h-16 mx-auto">
-              <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
-              <div className="relative w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-                <Check className="w-7 h-7 text-primary" />
-              </div>
-            </div>
+          <div className="text-center space-y-5">
+            <p className="text-xs text-muted-foreground/60 mb-1">
+              Step {currentStep + 1} of {steps.length}
+            </p>
 
-            {/* Heading */}
-            <div className="space-y-1.5">
-              <h2 className="text-xl font-semibold text-foreground tracking-tight">
-                You&apos;re all set!
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {activationMode === "push" ? "Hold" : "Press"}{" "}
-                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-xs">
-                  {readableHotkey}
-                </kbd>{" "}
-                {activationMode === "push"
-                  ? "while speaking, then release to transcribe."
-                  : "to start dictating into any app."}
-              </p>
-            </div>
-            {useLocalWhisper && skippedModelSetup && (
-              <div className="rounded-lg border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-muted-foreground text-left">
-                Note: Local transcription model not configured. You can set it up later in
-                Settings.
-              </div>
-            )}
-
-            {/* Next steps card grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-              {/* Card 1: Try dictating */}
-              <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Mic className="w-4 h-4 text-primary" />
+            <div className="rounded-xl border border-border-subtle bg-surface-1 p-5 space-y-5">
+              <div className="space-y-2">
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
+                  <div className="relative w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
+                    <Check className="w-7 h-7 text-primary" />
+                  </div>
                 </div>
-                <p className="text-sm font-medium text-foreground">Try dictating</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Press{" "}
-                  <kbd className="px-1 py-0.5 rounded border border-border bg-muted/50 font-mono text-xs">
+                <h2 className="text-xl font-semibold text-foreground tracking-tight">
+                  You&apos;re all set!
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {activationMode === "push" ? "Hold" : "Press"}{" "}
+                  <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-xs">
                     {readableHotkey}
                   </kbd>{" "}
-                  anywhere to start. Your first transcription will appear in the history.
+                  {activationMode === "push"
+                    ? "while speaking, then release to transcribe."
+                    : "to start dictating into any app."}
                 </p>
+                {useLocalWhisper && skippedModelSetup && (
+                  <p className="text-xs text-muted-foreground">
+                    Local model setup was skipped. You can configure it later in Settings.
+                  </p>
+                )}
               </div>
 
-              {/* Card 2: Dictionary */}
-              <div className="flex flex-col gap-2 p-4 rounded-xl bg-surface-1 border border-border-subtle">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <BookOpen className="w-4 h-4 text-primary" />
-                </div>
-                <p className="text-sm font-medium text-foreground">Teach it your words</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Use the dictionary in Settings to add names, technical terms, or jargon.
-                </p>
-              </div>
-            </div>
-
-            {/* Interactive try-it section */}
-            <div className="mt-6 rounded-xl border border-border-subtle bg-surface-1/50 p-4 text-left">
-              <h3 className="text-sm font-medium mb-2">Test your setup</h3>
-              <div className="space-y-3">
+              <div className="space-y-3 text-left">
+                <h3 className="text-sm font-medium">Test your microphone</h3>
                 <Button
                   type="button"
                   variant="outline"
@@ -982,20 +975,26 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   className="h-9 px-4"
                 >
                   <Mic className="w-4 h-4" />
-                  {micTestState === "recording" ? "Listening..." : "Test your microphone"}
+                  {micTestState === "recording" ? `${micTestCountdown ?? 3}...` : "Test your microphone"}
                 </Button>
 
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-150 ${
-                      micTestState === "recording" ? "bg-primary animate-pulse" : "bg-primary/50"
-                    }`}
-                    style={{ width: `${Math.round(micTestLevel * 100)}%` }}
-                  />
+                <div className="flex items-center gap-1.5">
+                  {Array.from({ length: 5 }, (_, index) => {
+                    const activeBars = Math.ceil(micTestLevel * 5);
+                    const isActive = index < activeBars;
+                    return (
+                      <div
+                        key={index}
+                        className={`h-2 w-2 rounded transition-colors duration-200 ${
+                          isActive ? "bg-primary" : "bg-muted"
+                        }`}
+                      />
+                    );
+                  })}
                 </div>
 
                 {micTestState === "success" && (
-                  <p className="text-sm text-success font-medium">Microphone working! ✓</p>
+                  <p className="text-sm text-primary font-medium">Microphone working! ✓</p>
                 )}
 
                 {micTestState === "error" && (
@@ -1015,10 +1014,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     </Button>
                   </div>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll listen for 3 seconds to confirm your microphone is working.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                We record for 3 seconds to confirm your microphone is working.
-              </p>
             </div>
           </div>
         );
@@ -1092,6 +1091,16 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     }
   };
 
+  const canContinue = canProceed();
+  const stepTwoProceedHint =
+    currentStep === 2 && !canContinue
+      ? !useLocalWhisper
+        ? "Choose a transcription mode to continue"
+        : !skippedModelSetup && !isModelDownloaded
+          ? "Download a model to continue"
+          : "Choose a transcription mode to continue"
+      : null;
+
   return (
     <div
       className="h-screen flex flex-col bg-background"
@@ -1143,52 +1152,54 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         </div>
       </div>
 
-      {/* Step 1 handles its own navigation via HardwareSetupStep actions. */}
-      {currentStep !== 1 && (
-        <div className="flex-shrink-0 bg-background/80 backdrop-blur-2xl border-t border-border-subtle px-6 md:px-12 py-3 z-10">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
-            <Button
-              onClick={prevStep}
-              variant="outline"
-              disabled={currentStep === 0}
-              className="h-8 px-5 rounded-full text-xs"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              Back
-            </Button>
+      {/* Bottom navigation */}
+      <div className="flex-shrink-0 border-t border-border-subtle px-6 md:px-12 py-4 z-10">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
+          <Button
+            onClick={prevStep}
+            variant="outline"
+            disabled={currentStep === 0}
+            className="h-10 px-5 rounded-xl text-sm font-medium"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Back
+          </Button>
 
-            <div className="flex items-center gap-2">
-              {currentStep === steps.length - 1 ? (
-                <div className="flex flex-col items-end gap-2">
-                  {onboardingError && (
-                    <div className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                      {onboardingError}
-                    </div>
-                  )}
-                  <Button
-                    onClick={finishOnboarding}
-                    disabled={!canProceed()}
-                    variant="success"
-                    className="h-10 px-8 rounded-full text-sm font-semibold shadow-lg"
-                  >
-                    Start Dictating
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
+          <div className="flex flex-col items-end gap-2">
+            {currentStep === steps.length - 1 ? (
+              <>
+                {onboardingError && (
+                  <div className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {onboardingError}
+                  </div>
+                )}
+                <Button
+                  onClick={finishOnboarding}
+                  disabled={!canContinue}
+                  className="h-10 px-6 rounded-xl text-sm font-medium"
+                >
+                  Start Using PrivateTranscribe
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </>
+            ) : (
+              <>
                 <Button
                   onClick={nextStep}
-                  disabled={!canProceed()}
-                  className="h-8 px-6 rounded-full text-xs"
+                  disabled={!canContinue}
+                  className="h-10 px-6 rounded-xl text-sm font-medium"
                 >
                   {currentStep === 4 && isVerifyingHotkey ? "Checking..." : "Next"}
                   <ChevronRight className="w-3.5 h-3.5" />
                 </Button>
-              )}
-            </div>
+                {stepTwoProceedHint && (
+                  <p className="text-xs text-muted-foreground">{stepTwoProceedHint}</p>
+                )}
+              </>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
