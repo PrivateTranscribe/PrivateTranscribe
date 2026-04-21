@@ -22,6 +22,7 @@ interface HardwareSetupStepProps {
     useLocalWhisper: boolean;
     localTranscriptionProvider: LocalTranscriptionProvider;
     whisperModel: string;
+    whisperForceCpu?: boolean;
   }) => void;
   onNext?: () => void;
   onSkip?: () => void;
@@ -78,6 +79,7 @@ export default function HardwareSetupStep({
       useLocalWhisper: rec.transcriptionProvider === "local",
       localTranscriptionProvider: rec.localTranscriptionProvider,
       whisperModel: rec.whisperModel,
+      whisperForceCpu: false,
     });
     setApplied(true);
 
@@ -96,6 +98,7 @@ export default function HardwareSetupStep({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
       whisperModel: "base",
+      whisperForceCpu: true,
     });
     setApplied(true);
 
@@ -106,6 +109,35 @@ export default function HardwareSetupStep({
       }, 1500);
     }
   };
+
+  const handleUseCpuInstead = () => {
+    onApplyRecommendations({
+      useLocalWhisper: true,
+      localTranscriptionProvider: "whisper",
+      whisperModel: "base",
+      whisperForceCpu: true,
+    });
+    setApplied(true);
+
+    if (onSkip) {
+      setTimeout(() => {
+        onSkip();
+      }, 400);
+    } else if (onNext) {
+      setTimeout(() => {
+        onNext();
+      }, 400);
+    }
+  };
+
+  const toFriendlyHardwareText = (text: string) =>
+    text
+      .replace(/\bCUDA runtime\b/gi, "GPU acceleration")
+      .replace(/\bCUDA\b/g, "GPU acceleration")
+      .replace(/\bVRAM\b/gi, "graphics memory")
+      .replace(/NVIDIA GPU with CUDA detected/gi, "NVIDIA graphics card detected")
+      .replace(/CUDA runtime is not available/gi, "GPU drivers need updating")
+      .replace(/\blocal inference\b/gi, "on your computer");
 
   const getGPUIcon = () => {
     if (!detection?.gpu?.available) return null;
@@ -128,7 +160,7 @@ export default function HardwareSetupStep({
             <div>
               <h3 className="text-sm font-medium text-foreground">Detecting Hardware</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Scanning your system for GPU and CPU capabilities...
+                Scanning your computer for graphics card and CPU capabilities...
               </p>
             </div>
           </div>
@@ -251,13 +283,17 @@ export default function HardwareSetupStep({
                 </p>
                 <div className="flex items-center gap-2 mt-0.5">
                   {hasCuda && (
-                    <span className="text-[10px] text-success font-medium">CUDA Ready</span>
+                    <span className="text-[10px] text-success font-medium">
+                      GPU Acceleration Ready
+                    </span>
                   )}
                   {hasMetal && (
                     <span className="text-[10px] text-success font-medium">Metal Ready</span>
                   )}
                   {isNvidiaNocuda && !hasCuda && (
-                    <span className="text-[10px] text-warning font-medium">CUDA Not Ready</span>
+                    <span className="text-[10px] text-warning font-medium">
+                      GPU Drivers Need Updating
+                    </span>
                   )}
                   {detection.gpu.vram && (
                     <span className="text-[10px] text-muted-foreground">
@@ -295,7 +331,7 @@ export default function HardwareSetupStep({
                       className="text-[11px] text-muted-foreground flex items-start gap-1.5"
                     >
                       <span className="text-primary mt-0.5">•</span>
-                      <span>{reason}</span>
+                      <span>{toFriendlyHardwareText(reason)}</span>
                     </li>
                   ))}
                 </ul>
@@ -396,7 +432,7 @@ export default function HardwareSetupStep({
                   </Button>
                   {onSkip && (
                     <Button
-                      onClick={onSkip}
+                      onClick={handleUseCpuInstead}
                       variant="ghost"
                       className="h-8 px-4 text-xs text-muted-foreground"
                       title="Use CPU transcription instead of GPU"
@@ -427,8 +463,8 @@ export default function HardwareSetupStep({
                 </div>
               )}
               {showSkip && !applied && onSkip && (
-                <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
-                  Skip
+                <Button onClick={handleUseCpuInstead} variant="ghost" className="h-8 px-4 text-xs">
+                  Use CPU instead
                 </Button>
               )}
             </>

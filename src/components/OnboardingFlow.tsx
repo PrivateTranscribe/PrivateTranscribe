@@ -115,8 +115,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
-  const [isDemoRecording, setIsDemoRecording] = useState(false);
-  const [demoText, setDemoText] = useState("");
+  const [micTestState, setMicTestState] = useState<"idle" | "recording" | "success" | "error">(
+    "idle"
+  );
+  const [micTestLevel, setMicTestLevel] = useState(0);
+  const [micTestError, setMicTestError] = useState<string | null>(null);
   const { toast } = useToast();
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
@@ -125,7 +128,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const autoRegisterInFlightRef = useRef(false);
   const hotkeyStepInitializedRef = useRef(false);
   const hotkeyRegistrationCounterRef = useRef(0);
-  const demoTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const micTestTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const micTestRafRef = useRef<number | null>(null);
+  const micTestStreamRef = useRef<MediaStream | null>(null);
+  const micTestAudioContextRef = useRef<AudioContext | null>(null);
+  const micTestSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const pendingStatusChecksRef = useRef(0);
 
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
@@ -464,24 +471,91 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     }
   }, [saveSettings, removeCurrentStep, onComplete]);
 
-  const handleDemoDictation = useCallback(() => {
-    setIsDemoRecording(true);
-    if (demoTimeoutRef.current) {
-      window.clearTimeout(demoTimeoutRef.current);
+  const cleanupMicTestResources = useCallback(() => {
+    if (micTestRafRef.current !== null) {
+      window.cancelAnimationFrame(micTestRafRef.current);
+      micTestRafRef.current = null;
     }
-    demoTimeoutRef.current = window.setTimeout(() => {
-      setIsDemoRecording(false);
-      setDemoText("Hello! I just set up PrivateTranscribe and it works great.");
-    }, 2500);
+
+    if (micTestTimeoutRef.current) {
+      window.clearTimeout(micTestTimeoutRef.current);
+      micTestTimeoutRef.current = null;
+    }
+
+    micTestSourceRef.current?.disconnect();
+    micTestSourceRef.current = null;
+
+    micTestStreamRef.current?.getTracks().forEach((track) => track.stop());
+    micTestStreamRef.current = null;
+
+    const audioContext = micTestAudioContextRef.current;
+    micTestAudioContextRef.current = null;
+    if (audioContext) {
+      void audioContext.close();
+    }
   }, []);
+
+  const handleMicTest = useCallback(async () => {
+    cleanupMicTestResources();
+    setMicTestError(null);
+    setMicTestLevel(0);
+    setMicTestState("recording");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micTestStreamRef.current = stream;
+
+      const AudioContextCtor = window.AudioContext;
+      if (!AudioContextCtor) {
+        throw new Error("AudioContext is not available in this environment.");
+      }
+      const audioContext = new AudioContextCtor();
+      micTestAudioContextRef.current = audioContext;
+
+      const source = audioContext.createMediaStreamSource(stream);
+      micTestSourceRef.current = source;
+
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const sampleBuffer = new Uint8Array(analyser.fftSize);
+
+      const updateLevel = () => {
+        analyser.getByteTimeDomainData(sampleBuffer);
+        let sum = 0;
+        for (let i = 0; i < sampleBuffer.length; i += 1) {
+          const normalized = (sampleBuffer[i] - 128) / 128;
+          sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / sampleBuffer.length);
+        setMicTestLevel(Math.min(1, Math.max(0.08, rms * 6)));
+        micTestRafRef.current = window.requestAnimationFrame(updateLevel);
+      };
+
+      updateLevel();
+
+      micTestTimeoutRef.current = window.setTimeout(() => {
+        cleanupMicTestResources();
+        setMicTestLevel(0);
+        setMicTestState("success");
+      }, 3000);
+    } catch (error) {
+      cleanupMicTestResources();
+      setMicTestLevel(0);
+      setMicTestState("error");
+      setMicTestError(
+        error instanceof Error
+          ? error.message
+          : "PrivateTranscribe couldn't access your microphone. Check system permissions and try again."
+      );
+    }
+  }, [cleanupMicTestResources]);
 
   useEffect(() => {
     return () => {
-      if (demoTimeoutRef.current) {
-        window.clearTimeout(demoTimeoutRef.current);
-      }
+      cleanupMicTestResources();
     };
-  }, []);
+  }, [cleanupMicTestResources]);
 
   useEffect(() => {
     if (!useLocalWhisper) {
@@ -549,10 +623,19 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 useLocalWhisper: recommendations.useLocalWhisper,
                 localTranscriptionProvider: recommendations.localTranscriptionProvider,
                 whisperModel: recommendations.whisperModel,
+                whisperForceCpu: recommendations.whisperForceCpu,
               });
             }}
             onNext={() => nextStep()}
-            onSkip={() => nextStep()}
+            onSkip={() => {
+              updateTranscriptionSettings({
+                useLocalWhisper: true,
+                localTranscriptionProvider: "whisper",
+                whisperModel: "base",
+                whisperForceCpu: true,
+              });
+              void nextStep();
+            }}
             showSkip={true}
           />
         );
@@ -571,7 +654,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <h2 className="text-lg font-semibold text-foreground tracking-tight">
                 Transcription Setup
               </h2>
-              <p className="text-xs text-muted-foreground">Choose your mode and provider</p>
+              <p className="text-xs text-muted-foreground">Choose where transcription runs</p>
             </div>
 
             {/* Unified configuration with integrated mode toggle */}
@@ -613,7 +696,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <div className="p-3 border-b border-border-subtle">
                   <h3 className="text-sm font-medium text-foreground">GPU Engine</h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Download the CUDA engine to keep GPU acceleration enabled.
+                    Download the GPU engine (faster transcription) to keep acceleration enabled.
                   </p>
                 </div>
 
@@ -653,7 +736,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     onClick={handleSkipCudaAndUseCpu}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Skip — use CPU mode
+                    Skip — use your CPU
                   </button>
                 </div>
               </div>
@@ -710,7 +793,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <PermissionCard
                 icon={Mic}
                 title="Microphone"
-                description="To capture your voice"
+                description="Required to hear your speech for transcription"
                 granted={permissionsHook.micPermissionGranted}
                 onRequest={permissionsHook.requestMicPermission}
                 buttonText="Grant"
@@ -720,7 +803,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <PermissionCard
                   icon={Shield}
                   title="Accessibility"
-                  description="To paste text into apps"
+                  description="Lets PrivateTranscribe type your transcription directly into the app you're using"
                   granted={permissionsHook.accessibilityPermissionGranted}
                   onRequest={permissionsHook.testAccessibilityPermission}
                   buttonText="Test & Grant"
@@ -757,9 +840,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {/* Header */}
             <div className="text-center space-y-0.5">
               <h2 className="text-lg font-semibold text-foreground tracking-tight">
-                Activation Setup
+                Trigger Setup
               </h2>
-              <p className="text-xs text-muted-foreground">Configure how you trigger dictation</p>
+              <p className="text-xs text-muted-foreground">Choose how you start and stop dictation</p>
             </div>
 
             {/* Unified control surface */}
@@ -786,12 +869,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <div className="p-4 flex items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Mode
+                      Style
                     </span>
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
                       {activationMode === "tap"
-                        ? "Press to start/stop"
-                        : "Hold while speaking (recommended)"}
+                        ? "Press once to start, press again to stop"
+                        : "Hold while speaking, release to transcribe"}
                     </p>
                   </div>
                   <ActivationModeSelector
@@ -889,29 +972,52 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
             {/* Interactive try-it section */}
             <div className="mt-6 rounded-xl border border-border-subtle bg-surface-1/50 p-4 text-left">
-              <h3 className="text-sm font-medium mb-2">Try it out</h3>
-              <div className="relative">
-                <textarea
-                  readOnly
-                  value={demoText}
-                  placeholder="Click the mic to try dictation..."
-                  className="w-full h-20 text-sm bg-background rounded-lg border border-border-subtle p-3 pr-10 resize-none"
-                />
-                <button
-                  aria-label="Start demo dictation"
-                  onClick={handleDemoDictation}
-                  disabled={isDemoRecording}
-                  className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              <h3 className="text-sm font-medium mb-2">Test your setup</h3>
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleMicTest()}
+                  disabled={micTestState === "recording"}
+                  className="h-9 px-4"
                 >
-                  {isDemoRecording ? (
-                    <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                  ) : (
-                    <Mic className="w-4 h-4" />
-                  )}
-                </button>
+                  <Mic className="w-4 h-4" />
+                  {micTestState === "recording" ? "Listening..." : "Test your microphone"}
+                </Button>
+
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-150 ${
+                      micTestState === "recording" ? "bg-primary animate-pulse" : "bg-primary/50"
+                    }`}
+                    style={{ width: `${Math.round(micTestLevel * 100)}%` }}
+                  />
+                </div>
+
+                {micTestState === "success" && (
+                  <p className="text-sm text-success font-medium">Microphone working! ✓</p>
+                )}
+
+                {micTestState === "error" && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-xs text-destructive">
+                      {micTestError ||
+                        "PrivateTranscribe couldn't access your microphone. Check permissions and try again."}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 h-7 text-xs"
+                      onClick={() => void handleMicTest()}
+                    >
+                      Retry microphone test
+                    </Button>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                This is a demo. Start dictating from any app using your hotkey.
+                We record for 3 seconds to confirm your microphone is working.
               </p>
             </div>
           </div>
