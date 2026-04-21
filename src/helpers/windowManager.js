@@ -41,6 +41,8 @@ class WindowManager {
     this._positionSaveTimer = null;
     this._pendingPosition = null;
     this._displayMetricsTimer = null;
+    this._lastDisplayMetricsEventAt = 0;
+    this._stablePosition = null; // {x, y} button center snapshot used during transient display instability
     this._displacedFromDisplayId = null; // tracks original display when overlay is displaced
     this._preDisplacementPosition = null; // {x, y} button position before displacement
 
@@ -175,6 +177,38 @@ class WindowManager {
     }, 500);
   }
 
+  _snapshotStablePosition(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const bounds = this.mainWindow.getBounds();
+    this._stablePosition = {
+      x: bounds.x + BUTTON_OFFSET_X,
+      y: bounds.y + BUTTON_OFFSET_Y,
+    };
+    debugLogger.debug("[Window] Snapshot stable overlay position:", {
+      reason,
+      position: this._stablePosition,
+    });
+  }
+
+  _restoreFromStablePosition(reason, width, height) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this._stablePosition) return false;
+    const stableBtnX = this._stablePosition.x;
+    const stableBtnY = this._stablePosition.y;
+    const stableDisplay = screen.getDisplayNearestPoint({ x: stableBtnX, y: stableBtnY });
+    const stableWorkArea = stableDisplay.workArea || stableDisplay.bounds;
+    const winX = stableBtnX - BUTTON_OFFSET_X;
+    const winY = stableBtnY - BUTTON_OFFSET_Y;
+    const clamped = WindowPositionUtil.clampPosition(winX, winY, width, height, stableWorkArea);
+    this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
+    this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
+    debugLogger.warn("[Window] Restored overlay from stable snapshot:", {
+      reason,
+      restoredTo: clamped,
+      stablePosition: this._stablePosition,
+    });
+    return true;
+  }
+
   _reclampOverlayPosition(reason) {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const bounds = this.mainWindow.getBounds();
@@ -185,6 +219,17 @@ class WindowManager {
     const btnY = bounds.y + BUTTON_OFFSET_Y;
     const display = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
     const workArea = display.workArea || display.bounds;
+    const hasSaneWorkArea = workArea && workArea.width > 100 && workArea.height > 100;
+
+    if (!hasSaneWorkArea) {
+      debugLogger.warn("[Window] Skipping overlay re-clamp due to implausible display bounds", {
+        reason,
+        displayId: display?.id,
+        workArea,
+      });
+      this._restoreFromStablePosition(`${reason}:bad-workArea`, width, height);
+      return;
+    }
 
     // Check if we have a displaced state and the original display is back.
     if (this._displacedFromDisplayId !== null) {
@@ -263,6 +308,11 @@ class WindowManager {
       this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
     } else {
       debugLogger.debug("[Window] Overlay already within bounds after", reason);
+    }
+
+    // Only refresh the stable snapshot after display events have been quiet for 3 seconds.
+    if (Date.now() - this._lastDisplayMetricsEventAt >= 3000) {
+      this._snapshotStablePosition(`stable:${reason}`);
     }
   }
 
@@ -355,18 +405,36 @@ class WindowManager {
     powerMonitor.on("resume", () => {
       setTimeout(() => this._reclampOverlayPosition("resume"), 1000);
     });
+    if (typeof powerMonitor.on === "function") {
+      powerMonitor.on("lock-screen", () => {
+        this._snapshotStablePosition("lock-screen");
+      });
+      powerMonitor.on("unlock-screen", () => {
+        setTimeout(() => {
+          if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+          const bounds = this.mainWindow.getBounds();
+          this._restoreFromStablePosition("unlock-screen", bounds.width, bounds.height);
+          this._reclampOverlayPosition("unlock-screen");
+        }, 2000);
+      });
+    }
 
     // Re-clamp whenever the display resolution, scale, or work area changes.
     // Debounce: this event fires many times during sleep/wake and screen on/off while
     // the work area is in flux (taskbar not yet registered, DPI not yet settled).
     // Firing immediately can save a wrong clamped position, which persists across reboots.
-    // Wait 2 s after the last event so we act on the final stable work area.
+    // Wait 3 s after the last event so we act on the final stable work area.
     screen.on("display-metrics-changed", () => {
+      // Lock current known-good position at the start of a metrics burst.
+      if (!this._displayMetricsTimer) {
+        this._snapshotStablePosition("display-metrics-burst-start");
+      }
+      this._lastDisplayMetricsEventAt = Date.now();
       if (this._displayMetricsTimer) clearTimeout(this._displayMetricsTimer);
       this._displayMetricsTimer = setTimeout(() => {
         this._displayMetricsTimer = null;
         this._reclampOverlayPosition("display-metrics-changed");
-      }, 2000);
+      }, 3000);
     });
 
     // When a display is added (e.g. monitor wakes up), check if we need to restore.
