@@ -16,6 +16,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import TitleBar from "./TitleBar";
+import appIconSrc from "../assets/icon.png";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import HardwareSetupStep from "./ui/HardwareSetupStep";
 import PermissionCard from "./ui/PermissionCard";
@@ -587,12 +588,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return (
           <div className="text-center space-y-5">
             {/* App logo */}
-            <div className="relative w-16 h-16 mx-auto">
+            <div className="relative w-24 h-24 mx-auto">
               <div className="absolute inset-0 bg-primary/30 rounded-2xl blur-xl" />
               <img
-                src="./assets/icon.png"
+                src={appIconSrc}
                 alt="PrivateTranscribe"
-                className="relative w-16 h-16 rounded-2xl shadow-lg"
+                className="relative w-24 h-24 rounded-2xl shadow-lg object-contain"
               />
             </div>
 
@@ -604,9 +605,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
                 Welcome to PrivateTranscribe
               </h2>
-              <p className="text-sm text-muted-foreground">
-                Professional voice-to-text for your computer
-              </p>
+              <p className="text-sm text-muted-foreground">Speak once, get clean text in any app</p>
             </div>
 
             {/* Feature grid - compact and refined */}
@@ -669,7 +668,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
                 Transcription Setup
               </h2>
-              <p className="text-xs text-muted-foreground">Choose where transcription runs</p>
+              <p className="text-xs text-muted-foreground">Pick the fastest way to get started</p>
             </div>
 
             {/* Unified configuration with integrated mode toggle */}
@@ -784,7 +783,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   }}
                   className="h-8 px-4 text-xs w-full"
                 >
-                  Skip — set up later
+                  Skip for now — set up later
                 </Button>
               </div>
             )}
@@ -813,20 +812,20 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <PermissionCard
                 icon={Mic}
                 title="Microphone"
-                description="Required to hear your speech for transcription. Your browser will ask for microphone access."
+                description="Needed so PrivateTranscribe can hear you."
                 granted={permissionsHook.micPermissionGranted}
                 onRequest={permissionsHook.requestMicPermission}
-                buttonText="Grant"
+                buttonText="Allow"
               />
 
               {isMacOS && (
                 <PermissionCard
                   icon={Shield}
                   title="Accessibility"
-                  description="Lets PrivateTranscribe type your transcription directly into the app you're using. You'll be guided to System Settings -> Privacy & Security -> Accessibility."
+                  description="Needed to type text into other apps for you."
                   granted={permissionsHook.accessibilityPermissionGranted}
                   onRequest={permissionsHook.testAccessibilityPermission}
-                  buttonText="Test & Grant"
+                  buttonText="Allow"
                   onOpenSettings={permissionsHook.openAccessibilitySettings}
                 />
               )}
@@ -863,9 +862,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 Step {currentStep + 1} of {steps.length}
               </p>
               <h2 className="text-xl font-semibold text-foreground tracking-tight">
-                Trigger Setup
+                Start Dictation
               </h2>
-              <p className="text-xs text-muted-foreground">Choose how you start and stop dictation</p>
+              <p className="text-xs text-muted-foreground">Confirm your shortcut and try it</p>
             </div>
 
             {/* Unified control surface */}
@@ -923,7 +922,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               </div>
               <Textarea
                 rows={2}
-                placeholder="Click here and use your hotkey to dictate..."
+                placeholder="Click here, then use your shortcut to test..."
                 className="text-sm resize-none"
               />
             </div>
@@ -1095,10 +1094,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const stepTwoProceedHint =
     currentStep === 2 && !canContinue
       ? !useLocalWhisper
-        ? "Choose a transcription mode to continue"
-        : !skippedModelSetup && !isModelDownloaded
-          ? "Download a model to continue"
-          : "Choose a transcription mode to continue"
+        ? cloudTranscriptionProvider === "openai"
+          ? "Paste your OpenAI API key to continue"
+          : cloudTranscriptionProvider === "groq"
+            ? "Paste your Groq API key to continue"
+            : "Choose OpenAI or Groq to continue"
+        : isLoadingStatus
+          ? "Checking setup status..."
+          : !skippedModelSetup && !isModelDownloaded
+            ? "Download a model, or skip for now"
+            : !skippedModelSetup &&
+                !whisperForceCpu &&
+                cudaStatus?.supported &&
+                !cudaStatus.installed
+              ? "Download GPU engine, or switch to CPU mode"
+              : "Select a setup option to continue"
       : null;
 
   return (
@@ -1178,7 +1188,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   disabled={!canContinue}
                   className="h-10 px-6 rounded-xl text-sm font-medium"
                 >
-                  Start Using PrivateTranscribe
+                  Start Dictating
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </>
