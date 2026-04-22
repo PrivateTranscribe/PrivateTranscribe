@@ -172,7 +172,7 @@ export default function HardwareSetupStep({
               className="mt-2 h-7 gap-1.5 text-[11px]"
             >
               <Check className="w-3 h-3" />
-              Continue with recommended settings
+              Continue with safe defaults
             </Button>
           </div>
         </div>
@@ -429,7 +429,7 @@ export default function HardwareSetupStep({
             <>
               {!applied ? (
                 <Button onClick={handleContinueWithDefaults} className="h-8 px-6">
-                  Continue with recommended settings
+                  Continue with Defaults
                 </Button>
               ) : (
                 <div className="flex items-center gap-2 text-success">

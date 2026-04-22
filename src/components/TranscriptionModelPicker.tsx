@@ -223,8 +223,6 @@ const CLOUD_PROVIDER_TABS = [
   { id: "custom", name: "Custom" },
 ];
 
-const VALID_CLOUD_PROVIDER_IDS = CLOUD_PROVIDER_TABS.map((p) => p.id);
-
 // Mode toggle component - defined outside to prevent recreation on every render
 interface ModeToggleProps {
   useLocalWhisper: boolean;
@@ -306,6 +304,17 @@ export default function TranscriptionModelPicker({
   const colorScheme: ColorScheme = variant === "settings" ? "purple" : "blue";
   const styles = useMemo(() => MODEL_PICKER_COLORS[colorScheme], [colorScheme]);
   const cloudProviders = useMemo(() => getTranscriptionProviders(), []);
+  const availableCloudProviderTabs = useMemo(
+    () =>
+      variant === "onboarding"
+        ? CLOUD_PROVIDER_TABS.filter((provider) => provider.id !== "custom")
+        : CLOUD_PROVIDER_TABS,
+    [variant]
+  );
+  const validCloudProviderIds = useMemo(
+    () => availableCloudProviderTabs.map((provider) => provider.id),
+    [availableCloudProviderTabs]
+  );
 
   useEffect(() => {
     selectedLocalModelRef.current = selectedLocalModel;
@@ -347,7 +356,7 @@ export default function TranscriptionModelPicker({
   }, [validateAndSelectModel]);
 
   const ensureValidCloudSelection = useCallback(() => {
-    const isValidProvider = VALID_CLOUD_PROVIDER_IDS.includes(selectedCloudProvider);
+    const isValidProvider = validCloudProviderIds.includes(selectedCloudProvider);
     const customUrlValidation = isValidApiUrl(cloudTranscriptionBaseUrl || "");
 
     if (!isValidProvider) {
@@ -358,7 +367,8 @@ export default function TranscriptionModelPicker({
         cloudTranscriptionBaseUrl.trim() !== "" &&
         cloudTranscriptionBaseUrl !== API_ENDPOINTS.TRANSCRIPTION_BASE &&
         customUrlValidation.valid &&
-        !knownProviderUrls.includes(cloudTranscriptionBaseUrl);
+        !knownProviderUrls.includes(cloudTranscriptionBaseUrl) &&
+        variant !== "onboarding";
 
       if (hasCustomUrl) {
         onCloudProviderSelect("custom");
@@ -384,6 +394,8 @@ export default function TranscriptionModelPicker({
     selectedCloudModel,
     onCloudProviderSelect,
     onCloudModelSelect,
+    validCloudProviderIds,
+    variant,
   ]);
 
   useEffect(() => {
@@ -444,6 +456,9 @@ export default function TranscriptionModelPicker({
 
   const handleCloudProviderChange = useCallback(
     (providerId: string) => {
+      if (variant === "onboarding" && providerId === "custom") {
+        return;
+      }
       onCloudProviderSelect(providerId);
       const provider = cloudProviders.find((p) => p.id === providerId);
 
@@ -463,7 +478,13 @@ export default function TranscriptionModelPicker({
         }
       }
     },
-    [cloudProviders, onCloudProviderSelect, onCloudModelSelect, setCloudTranscriptionBaseUrl]
+    [
+      cloudProviders,
+      onCloudProviderSelect,
+      onCloudModelSelect,
+      setCloudTranscriptionBaseUrl,
+      variant,
+    ]
   );
 
   // Derives a single "engine" value for Whisper.
@@ -628,10 +649,30 @@ export default function TranscriptionModelPicker({
         : localModels;
 
     const isOnboarding = variant === "onboarding";
+    const primaryOnboardingModels = new Set(["turbo", "base"]);
+    const displayedModelEntries = isOnboarding
+      ? allModelEntries
+          .filter(
+            (model) =>
+              model.downloaded ||
+              model.model === selectedLocalModel ||
+              primaryOnboardingModels.has(model.model)
+          )
+          .sort((a, b) => {
+            const rank = (model: LocalModel): number => {
+              if (model.model === selectedLocalModel) return 0;
+              if (model.downloaded) return 1;
+              if (model.model === "turbo") return 2;
+              if (model.model === "base") return 3;
+              return 9;
+            };
+            return rank(a) - rank(b);
+          })
+      : allModelEntries;
 
     return (
       <div className="space-y-1">
-        {allModelEntries.map((model) => {
+        {displayedModelEntries.map((model) => {
           const modelId = model.model;
           const info = WHISPER_MODEL_INFO[modelId] || {
             name: modelId,
@@ -688,7 +729,7 @@ export default function TranscriptionModelPicker({
         <div className={styles.container}>
           <div className="p-2.5 pb-0">
             <ProviderTabs
-              providers={CLOUD_PROVIDER_TABS}
+              providers={availableCloudProviderTabs}
               selectedId={selectedCloudProvider}
               onSelect={handleCloudProviderChange}
               colorScheme={colorScheme === "purple" ? "purple" : "indigo"}
