@@ -57,7 +57,14 @@ jobs:
           fi
           echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
 
-      - name: Configure CMake
+      - name: Set up MSVC + Ninja (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja (Windows)
+        shell: pwsh
+        run: choco install ninja -y --no-progress
+
+      - name: Configure CMake (Windows)
         shell: cmd
         run: |
           set PATH=%CUDA_PATH%\bin;%PATH%
@@ -67,9 +74,10 @@ jobs:
             -DCMAKE_CUDA_ARCHITECTURES="86;89;120" ^
             -DWHISPER_BUILD_SERVER=ON ^
             -DCMAKE_BUILD_TYPE=Release ^
-            -G "Visual Studio 17 2022" -A x64
+            -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe" ^
+            -G Ninja
 
-      - name: Build whisper-server
+      - name: Build whisper-server (Windows)
         shell: cmd
         run: |
           set PATH=%CUDA_PATH%\bin;%PATH%
