@@ -398,12 +398,12 @@ export default function HardwareSetupStep({
 
       {/* Actions */}
       {detectionState === "complete" && (
-        <div className="flex items-center justify-center gap-2 pt-2">
+        <div className="flex flex-col items-center gap-2 pt-2">
           {detection?.recommendations && detection.recommendations.reasoning.length > 0 ? (
             <>
               {!applied ? (
                 <>
-                  <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
+                  <Button onClick={handleApply} className="h-8 px-6 gap-1.5 w-full max-w-xs">
                     <Check className="w-3.5 h-3.5" />
                     Apply recommended settings
                   </Button>
@@ -411,7 +411,7 @@ export default function HardwareSetupStep({
                     <Button
                       onClick={handleUseCpuInstead}
                       variant="outline"
-                      className="h-8 px-4 text-xs w-full"
+                      className="h-8 px-4 text-xs w-full max-w-xs"
                       title="Use CPU transcription mode"
                     >
                       Use CPU mode
@@ -428,7 +428,7 @@ export default function HardwareSetupStep({
           ) : (
             <>
               {!applied ? (
-                <Button onClick={handleContinueWithDefaults} className="h-8 px-6">
+                <Button onClick={handleContinueWithDefaults} className="h-8 px-6 w-full max-w-xs">
                   Continue with Defaults
                 </Button>
               ) : (
@@ -438,7 +438,7 @@ export default function HardwareSetupStep({
                 </div>
               )}
               {showSkip && !applied && (
-                <Button onClick={handleUseCpuInstead} variant="outline" className="h-8 px-4 text-xs w-full">
+                <Button onClick={handleUseCpuInstead} variant="outline" className="h-8 px-4 text-xs w-full max-w-xs">
                   Use CPU mode
                 </Button>
               )}
