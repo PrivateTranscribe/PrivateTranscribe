@@ -2694,7 +2694,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               description="Advanced diagnostics, logging, and debugging capabilities"
             />
 
-            <DeveloperSection />
+            {updateStatus.isDevelopment && <DeveloperSection />}
 
             {/* Data Management - moved from General */}
             <div className="border-t border-border/30 pt-8">
