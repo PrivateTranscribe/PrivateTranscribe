@@ -579,6 +579,15 @@ function GpuStatusCard({
                   <p className="text-[9px] text-muted-foreground mt-1">
                     Higher = faster. 59x means 60s of audio transcribes in ~1s.
                   </p>
+                  {/* Warn if CUDA binary is present but speed is suspiciously low (likely not using GPU) */}
+                  {gpuCategory === "nvidia_cuda" && !activeWhisperForceCpu && benchResult.realtimeFactor < 2 && (
+                    <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/8 px-2.5 py-2">
+                      <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-[10px] text-amber-500 leading-relaxed">
+                        GPU acceleration may not be working. Your NVIDIA GPU might not be compatible with the current CUDA binary (RTX 50-series requires a newer build). A Blackwell-compatible update is in progress.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

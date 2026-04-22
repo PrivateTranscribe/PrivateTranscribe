@@ -1,0 +1,184 @@
+name: Build CUDA Binary (Blackwell sm_120)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuda_version:
+        description: 'CUDA version to build with'
+        required: false
+        default: '12.8'
+      upload_to_r2:
+        description: 'Upload binary to R2 CDN'
+        type: boolean
+        default: false
+      whisper_tag:
+        description: 'whisper.cpp git tag/branch to build (empty = latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-cuda-windows:
+    name: Build Windows CUDA binary
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout PrivateTranscribe
+        uses: actions/checkout@v4
+
+      - name: Install CUDA Toolkit ${{ github.event.inputs.cuda_version }}
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: '${{ github.event.inputs.cuda_version }}.0'
+          method: 'network'
+          sub-packages: '["nvcc", "cublas", "cublas_dev", "cudart", "cudart_dev"]'
+
+      - name: Clone whisper.cpp
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.whisper_tag }}"
+          if [ -n "$TAG" ]; then
+            git clone --depth=1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp.git whisper-src
+          else
+            git clone --depth=1 https://github.com/ggml-org/whisper.cpp.git whisper-src
+          fi
+          echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
+
+      - name: Configure CMake (CUDA 12.8, sm_86+sm_89+sm_120)
+        shell: cmd
+        run: |
+          cd whisper-src
+          cmake -B build ^
+            -DGGML_CUDA=ON ^
+            -DCMAKE_CUDA_ARCHITECTURES="86;89;120" ^
+            -DWHISPER_BUILD_SERVER=ON ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -G "Visual Studio 17 2022" -A x64
+
+      - name: Build whisper-server
+        shell: cmd
+        run: |
+          cd whisper-src
+          cmake --build build --config Release --target whisper-server -j4
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          ls -lh whisper-src/build/bin/Release/whisper-server.exe || ls -lh whisper-src/build/Release/whisper-server.exe
+          echo "Build successful"
+
+      - name: Rename binary
+        shell: bash
+        run: |
+          find whisper-src/build -name "whisper-server.exe" -exec cp {} whisper-server-win32-x64-cuda-blackwell.exe \;
+          ls -lh whisper-server-win32-x64-cuda-blackwell.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-server-win32-x64-cuda-blackwell
+          path: whisper-server-win32-x64-cuda-blackwell.exe
+          retention-days: 30
+
+      - name: Upload to R2 CDN
+        if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: privatetranscribe-assets
+        run: |
+          # Install rclone for R2 upload
+          curl -O https://downloads.rclone.org/rclone-current-windows-amd64.zip
+          unzip -q rclone-current-windows-amd64.zip
+          RCLONE=$(find . -name "rclone.exe" | head -1)
+
+          # Configure rclone for R2
+          "$RCLONE" config create r2 s3 \
+            provider Cloudflare \
+            access_key_id "$R2_ACCESS_KEY_ID" \
+            secret_access_key "$R2_SECRET_ACCESS_KEY" \
+            endpoint "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          # Upload (v0.0.7 = new version with Blackwell support)
+          "$RCLONE" copy whisper-server-win32-x64-cuda-blackwell.exe \
+            "r2:${R2_BUCKET}/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
+          echo "Uploaded to R2 as binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
+
+  build-cuda-linux:
+    name: Build Linux CUDA binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PrivateTranscribe
+        uses: actions/checkout@v4
+
+      - name: Install CUDA Toolkit ${{ github.event.inputs.cuda_version }}
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: '${{ github.event.inputs.cuda_version }}.0'
+          method: 'network'
+          sub-packages: '["nvcc", "libcublas", "libcublas-dev", "libcudart", "libcudart-dev"]'
+
+      - name: Clone whisper.cpp
+        run: |
+          TAG="${{ github.event.inputs.whisper_tag }}"
+          if [ -n "$TAG" ]; then
+            git clone --depth=1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp.git whisper-src
+          else
+            git clone --depth=1 https://github.com/ggml-org/whisper.cpp.git whisper-src
+          fi
+          echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
+
+      - name: Configure CMake (CUDA 12.8, sm_86+sm_89+sm_120)
+        run: |
+          cd whisper-src
+          cmake -B build \
+            -DGGML_CUDA=ON \
+            -DCMAKE_CUDA_ARCHITECTURES="86;89;120" \
+            -DWHISPER_BUILD_SERVER=ON \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build whisper-server
+        run: |
+          cd whisper-src
+          cmake --build build --config Release --target whisper-server -j$(nproc)
+
+      - name: Rename & verify binary
+        run: |
+          cp whisper-src/build/bin/whisper-server whisper-server-linux-x64-cuda-blackwell
+          chmod +x whisper-server-linux-x64-cuda-blackwell
+          ls -lh whisper-server-linux-x64-cuda-blackwell
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-server-linux-x64-cuda-blackwell
+          path: whisper-server-linux-x64-cuda-blackwell
+          retention-days: 30
+
+      - name: Upload to R2 CDN
+        if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: privatetranscribe-assets
+        run: |
+          curl -O https://downloads.rclone.org/rclone-current-linux-amd64.zip
+          unzip -q rclone-current-linux-amd64.zip
+          RCLONE=$(find . -name "rclone" -type f | head -1)
+          chmod +x "$RCLONE"
+
+          "$RCLONE" config create r2 s3 \
+            provider Cloudflare \
+            access_key_id "$R2_ACCESS_KEY_ID" \
+            secret_access_key "$R2_SECRET_ACCESS_KEY" \
+            endpoint "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          "$RCLONE" copy whisper-server-linux-x64-cuda-blackwell \
+            "r2:${R2_BUCKET}/binaries/v0.0.7/whisper-server-linux-x64-cuda"
+          echo "Uploaded to R2 as binaries/v0.0.7/whisper-server-linux-x64-cuda"
