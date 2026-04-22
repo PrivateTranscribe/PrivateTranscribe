@@ -32,7 +32,7 @@ jobs:
           Write-Host "Downloading CUDA 12.8 installer..."
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
           Write-Host "Installing CUDA components..."
-          $proc = Start-Process -FilePath $installer -ArgumentList "-s nvcc_12.8 cublas_12.8 cublas_dev_12.8 cudart_12.8" -Wait -PassThru -NoNewWindow
+          Start-Process -FilePath $installer -ArgumentList "-s nvcc_12.8 cublas_12.8 cublas_dev_12.8 cudart_12.8 visual_studio_integration_12.8" -Wait -PassThru -NoNewWindow
           Write-Host "Installer exit code: $($proc.ExitCode)"
           $cudaBin = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin"
           $cudaPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
@@ -106,6 +106,8 @@ jobs:
             secret_access_key "$R2_SECRET_ACCESS_KEY" \
             endpoint "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           "$RCLONE" copy whisper-server-win32-x64-cuda.exe \
+            --no-check-bucket \
+            --s3-no-check-bucket \
             "r2:privatetranscribe-assets/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
           echo "Uploaded to R2: binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
 
@@ -189,5 +191,7 @@ jobs:
             secret_access_key "$R2_SECRET_ACCESS_KEY" \
             endpoint "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           "$RCLONE" copy whisper-server-linux-x64-cuda.bin \
+            --no-check-bucket \
+            --s3-no-check-bucket \
             "r2:privatetranscribe-assets/binaries/v0.0.7/whisper-server-linux-x64-cuda"
           echo "Uploaded to R2: binaries/v0.0.7/whisper-server-linux-x64-cuda"
