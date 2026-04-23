@@ -309,19 +309,19 @@ class IPCHandlers {
     });
 
     ipcMain.handle("db-set-dictionary", async (event, words) => {
-      if (!Array.isArray(words)) {
-        throw new Error("words must be an array");
-      }
-      if (words.length > 10_000) {
-        throw new Error("Dictionary too large: maximum 10,000 entries allowed");
-      }
-      // Coerce all entries to trimmed strings and drop empties.
-      // This prevents non-string values from reaching the database layer.
-      const sanitized = words
-        .filter((w) => typeof w === "string")
-        .map((w) => w.trim().substring(0, 200))
-        .filter(Boolean);
       try {
+        if (!Array.isArray(words)) {
+          throw new Error("words must be an array");
+        }
+        if (words.length > 10_000) {
+          throw new Error("Dictionary too large: maximum 10,000 entries allowed");
+        }
+        // Coerce all entries to trimmed strings and drop empties.
+        // This prevents non-string values from reaching the database layer.
+        const sanitized = words
+          .filter((w) => typeof w === "string")
+          .map((w) => w.trim().substring(0, 200))
+          .filter(Boolean);
         return this.databaseManager.setDictionary(sanitized);
       } catch (err) {
         console.error("[IPC:db-set-dictionary] error:", err.message);

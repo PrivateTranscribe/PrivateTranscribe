@@ -286,6 +286,7 @@ export default function TranscriptionModelPicker({
   gpuSupported = false,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
+  const [showAllLocalModels, setShowAllLocalModels] = useState(false);
   const hasLoadedRef = useRef(false);
 
   // Normalize legacy provider selections to Whisper-only local mode.
@@ -649,25 +650,19 @@ export default function TranscriptionModelPicker({
         : localModels;
 
     const isOnboarding = variant === "onboarding";
-    const primaryOnboardingModels = new Set(["turbo", "base"]);
     const displayedModelEntries = isOnboarding
-      ? allModelEntries
-          .filter(
-            (model) =>
-              model.downloaded ||
-              model.model === selectedLocalModel ||
-              primaryOnboardingModels.has(model.model)
-          )
-          .sort((a, b) => {
-            const rank = (model: LocalModel): number => {
-              if (model.model === selectedLocalModel) return 0;
-              if (model.downloaded) return 1;
-              if (model.model === "turbo") return 2;
-              if (model.model === "base") return 3;
-              return 9;
-            };
-            return rank(a) - rank(b);
-          })
+      ? (showAllLocalModels
+          ? allModelEntries
+          : allModelEntries.filter((model) => model.model === "turbo")
+        ).sort((a, b) => {
+          const rank = (model: LocalModel): number => {
+            if (model.model === "turbo") return 0;
+            if (model.model === selectedLocalModel) return 1;
+            if (model.downloaded) return 2;
+            return 9;
+          };
+          return rank(a) - rank(b);
+        })
       : allModelEntries;
 
     return (
@@ -688,7 +683,7 @@ export default function TranscriptionModelPicker({
             <LocalModelCard
               key={modelId}
               modelId={modelId}
-              name={info.name}
+              name={isOnboarding && modelId === "turbo" ? "Whisper Turbo" : info.name}
               description={info.description}
               size={info.size}
               actualSizeMb={model.size_mb}
@@ -707,6 +702,17 @@ export default function TranscriptionModelPicker({
             />
           );
         })}
+        {isOnboarding && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAllLocalModels((value) => !value)}
+            className="mt-1 h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            {showAllLocalModels ? "Hide advanced models" : "Show all models"}
+          </Button>
+        )}
       </div>
     );
   };

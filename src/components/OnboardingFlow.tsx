@@ -111,6 +111,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [cudaDownloadError, setCudaDownloadError] = useState<string | null>(null);
   const [cudaInstalled, setCudaInstalled] = useState(false);
   const [skippedModelSetup, setSkippedModelSetup] = useState(false);
+  const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
+  const [onboardingGpuSupported, setOnboardingGpuSupported] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
@@ -646,7 +648,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 whisperModel: recommendations.whisperModel,
                 whisperForceCpu: recommendations.whisperForceCpu,
               });
+              setOnboardingGpuSupported(recommendations.whisperForceCpu === false);
+              setHardwareRecommendationsApplied(true);
             }}
+            onAppliedChange={setHardwareRecommendationsApplied}
             showSkip={true}
           />
         );
@@ -691,6 +696,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   localTranscriptionProvider: "whisper",
                 })
               }
+              whisperForceCpu={whisperForceCpu}
+              onWhisperForceCpuChange={setWhisperForceCpu}
+              gpuSupported={onboardingGpuSupported}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => updateTranscriptionSettings({ useLocalWhisper: isLocal })}
               openaiApiKey={openaiApiKey}
@@ -1032,8 +1040,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       case 0:
         return true; // Welcome
       case 1:
-        // Hardware detection - always can proceed (recommendations are optional)
-        return true;
+        return hardwareRecommendationsApplied;
       case 2:
         // Setup - check if configuration is complete
         if (useLocalWhisper) {

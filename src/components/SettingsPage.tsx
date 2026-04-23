@@ -243,7 +243,7 @@ function GpuStatusCard({
   // Listen for CUDA download progress events
   useEffect(() => {
     const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
-      setDownloadProgress(Math.round(data?.percent ?? 0));
+      setDownloadProgress(Math.round(data?.percent ?? data?.progress ?? 0));
     });
     return () => cleanup?.();
   }, []);
@@ -361,12 +361,14 @@ function GpuStatusCard({
   const cudaAutoUpdateFailed =
     !!cudaStatus?.cudaAutoUpdateFailed && (cudaStatus?.upToDate ?? true) === false;
   const needsInitialCudaInstall = (cudaStatus?.installed ?? false) === false;
+  const needsCudaUpdate =
+    (cudaStatus?.installed ?? false) === true && (cudaStatus?.upToDate ?? true) === false;
   const shouldShowCudaDownloadState =
     downloadState === "downloading" || downloadState === "done" || downloadState === "error";
   const shouldShowCudaSetupCard =
     usingGpu &&
     gpuSupported &&
-    (shouldShowCudaDownloadState || needsInitialCudaInstall || cudaAutoUpdateFailed);
+    (shouldShowCudaDownloadState || needsInitialCudaInstall || needsCudaUpdate);
 
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
@@ -438,10 +440,12 @@ function GpuStatusCard({
                       Retry Download
                     </Button>
                   </div>
-                ) : cudaAutoUpdateFailed ? (
+                ) : needsCudaUpdate ? (
                   <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
                     <p className="text-[11px] text-amber-200 leading-relaxed">
-                      GPU engine update failed. Click to retry.
+                      {cudaAutoUpdateFailed
+                        ? "GPU engine update failed. Click to retry."
+                        : "GPU engine update available. Update it to keep GPU transcription current."}
                     </p>
                     <Button
                       onClick={handleDownloadCuda}
@@ -450,7 +454,7 @@ function GpuStatusCard({
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      Retry
+                      {cudaAutoUpdateFailed ? "Retry" : "Update CUDA Engine"}
                     </Button>
                   </div>
                 ) : (
@@ -926,8 +930,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
   useEffect(() => {
     window.electronAPI
-      ?.getCudaBinaryStatus?.()
-      .then((s) => setGpuSupportedForPicker(s?.supported ?? false))
+      ?.detectHardware?.()
+      .then((result) =>
+        setGpuSupportedForPicker(result?.detection?.recommendations?.gpuCategory === "nvidia_cuda")
+      )
       .catch(() => {});
   }, []);
 
@@ -1003,6 +1009,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           useLocalWhisper,
           localTranscriptionProvider,
           whisperModel,
+          whisperForceCpu,
           whisperServerIdleTimeoutMinutes,
           preferredLanguage,
           translateToEnglish,
@@ -1062,6 +1069,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       useLocalWhisper,
       localTranscriptionProvider,
       whisperModel,
+      whisperForceCpu,
       preferredLanguage,
       translateToEnglish,
       cloudTranscriptionProvider,
@@ -1133,6 +1141,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             ? "whisper"
             : undefined,
         whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
+        whisperForceCpu:
+          typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
         whisperServerIdleTimeoutMinutes:
           typeof s.whisperServerIdleTimeoutMinutes === "number"
             ? s.whisperServerIdleTimeoutMinutes

@@ -314,7 +314,7 @@ class WhisperManager {
       );
     }
 
-    const model = options.model || "base";
+    const model = options.model || "turbo";
     const language = options.language || null;
     const translate = options.translate || false;
     const initialPrompt = options.initialPrompt || null;

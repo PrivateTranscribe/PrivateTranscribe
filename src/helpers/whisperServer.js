@@ -3,6 +3,7 @@ const fs = require("fs");
 const net = require("net");
 const path = require("path");
 const http = require("http");
+const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
@@ -705,10 +706,10 @@ class WhisperServerManager {
 
   async _convertToWav(audioBuffer, inputFileName = null) {
     const tempDir = getSafeTempDir();
-    const timestamp = Date.now();
+    const tempId = crypto.randomUUID();
     const inputExtension = resolveTempInputExtension(inputFileName);
-    const tempInputPath = path.join(tempDir, `whisper-input-${timestamp}${inputExtension}`);
-    const tempWavPath = path.join(tempDir, `whisper-output-${timestamp}.wav`);
+    const tempInputPath = path.join(tempDir, `whisper-input-${tempId}${inputExtension}`);
+    const tempWavPath = path.join(tempDir, `whisper-output-${tempId}.wav`);
 
     try {
       fs.writeFileSync(tempInputPath, audioBuffer);

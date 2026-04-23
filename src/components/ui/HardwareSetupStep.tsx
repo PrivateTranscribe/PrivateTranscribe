@@ -25,6 +25,7 @@ interface HardwareSetupStepProps {
     whisperModel: string;
     whisperForceCpu?: boolean;
   }) => void;
+  onAppliedChange?: (applied: boolean) => void;
   showSkip?: boolean;
 }
 
@@ -33,6 +34,7 @@ type DetectionState = "idle" | "detecting" | "complete" | "error";
 export default function HardwareSetupStep({
   stepLabel,
   onApplyRecommendations,
+  onAppliedChange,
   showSkip = true,
 }: HardwareSetupStepProps) {
   const [detectionState, setDetectionState] = useState<DetectionState>("idle");
@@ -74,21 +76,20 @@ export default function HardwareSetupStep({
 
     const rec = detection.recommendations;
     onApplyRecommendations({
-      useLocalWhisper: rec.transcriptionProvider === "local",
-      localTranscriptionProvider: rec.localTranscriptionProvider,
-      whisperModel: rec.whisperModel,
-      whisperForceCpu: false,
+      useLocalWhisper: true,
+      localTranscriptionProvider: "whisper",
+      whisperModel: rec.whisperModel || "turbo",
+      whisperForceCpu: rec.gpuCategory !== "nvidia_cuda",
     });
     setApplied(true);
   };
 
   const handleContinueWithDefaults = () => {
     // Even if no recommendations, apply safe defaults
-    // Use "base" rather than "turbo" - it's lighter and appropriate when we don't know CPU capability
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "base",
+      whisperModel: "turbo",
       whisperForceCpu: true,
     });
     setApplied(true);
@@ -98,11 +99,28 @@ export default function HardwareSetupStep({
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "base",
+      whisperModel: "turbo",
       whisperForceCpu: true,
     });
     setApplied(true);
   };
+
+  useEffect(() => {
+    onAppliedChange?.(applied);
+  }, [applied, onAppliedChange]);
+
+  useEffect(() => {
+    if (applied) return;
+    if (detectionState === "complete") {
+      if (detection?.recommendations) {
+        handleApply();
+      } else {
+        handleContinueWithDefaults();
+      }
+    } else if (detectionState === "error") {
+      handleContinueWithDefaults();
+    }
+  }, [applied, detection, detectionState]);
 
   const toFriendlyHardwareText = (text: string) =>
     text
@@ -162,7 +180,7 @@ export default function HardwareSetupStep({
           </div>
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
             <p className="text-[11px] text-muted-foreground">
-              Can't detect hardware? You can continue with safe CPU defaults - Whisper Base model
+              Can't detect hardware? You can continue with safe CPU defaults - Whisper Turbo model
               works well on most machines and can be changed later in Settings.
             </p>
             <Button
@@ -324,7 +342,7 @@ export default function HardwareSetupStep({
                 </h4>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {applied
-                    ? "Using safe CPU defaults with Whisper Base model. You can adjust settings later."
+                    ? "Using safe CPU defaults with Whisper Turbo model. You can adjust settings later."
                     : "Hardware analysis completed but could not generate recommendations. Safe CPU defaults will be used."}
                 </p>
               </div>
