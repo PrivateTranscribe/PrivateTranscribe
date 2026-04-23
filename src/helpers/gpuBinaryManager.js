@@ -92,6 +92,10 @@ class GpuBinaryManager {
     return this.getCudaBinaryPath() !== null;
   }
 
+  wasCudaPreviouslyInstalled() {
+    return this.getCudaBinaryFilePath() !== null;
+  }
+
   async computeSha256(filePath) {
     return new Promise((resolve, reject) => {
       const hash = crypto.createHash("sha256");

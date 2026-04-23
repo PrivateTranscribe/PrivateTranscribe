@@ -730,6 +730,7 @@ declare global {
         upToDate: boolean;
         expectedVersion: string;
         forceCpu: boolean;
+        cudaAutoUpdateFailed?: boolean;
       }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
       cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;

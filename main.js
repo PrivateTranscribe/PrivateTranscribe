@@ -75,6 +75,8 @@ let windowsKeyManager = null;
 let actionEngineManager = null;
 let benchmarkManager = null;
 let globeKeyAlertShown = false;
+let cudaAutoUpdateFailed = false;
+let cudaAutoUpdateError = null;
 
 // Set up PATH for production builds to find system tools (whisper.cpp, ffmpeg)
 function setupProductionPath() {
@@ -181,7 +183,53 @@ function initializeManagers() {
     windowsKeyManager,
     actionEngineManager,
     benchmarkManager,
+    getCudaAutoUpdateState: () => ({
+      failed: cudaAutoUpdateFailed,
+      error: cudaAutoUpdateError,
+    }),
+    clearCudaAutoUpdateFailure: () => {
+      cudaAutoUpdateFailed = false;
+      cudaAutoUpdateError = null;
+    },
   });
+}
+
+async function autoUpdateCudaBinaryIfNeeded() {
+  if (!whisperManager) return;
+
+  try {
+    if (!whisperManager.wasCudaPreviouslyInstalled()) {
+      return;
+    }
+
+    if (whisperManager.isCudaBinaryUpToDate()) {
+      cudaAutoUpdateFailed = false;
+      cudaAutoUpdateError = null;
+      return;
+    }
+
+    debugLogger.info("Startup CUDA auto-update: outdated binary detected, downloading silently");
+    const result = await whisperManager.downloadGpuBinary();
+    if (result?.success) {
+      cudaAutoUpdateFailed = false;
+      cudaAutoUpdateError = null;
+      debugLogger.info("Startup CUDA auto-update: download succeeded");
+      return;
+    }
+
+    cudaAutoUpdateFailed = true;
+    cudaAutoUpdateError = result?.error || "Unknown CUDA auto-update failure";
+    debugLogger.warn("Startup CUDA auto-update failed", {
+      error: cudaAutoUpdateError,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    cudaAutoUpdateFailed = true;
+    cudaAutoUpdateError = errorMessage;
+    debugLogger.warn("Startup CUDA auto-update threw an error", {
+      error: errorMessage,
+    });
+  }
 }
 
 // Main application startup
@@ -276,6 +324,14 @@ async function startApp() {
 
   // Create control panel window
   await windowManager.createControlPanelWindow();
+
+  // If a user previously installed CUDA, keep it in sync silently after app updates.
+  autoUpdateCudaBinaryIfNeeded().catch((error) => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    cudaAutoUpdateFailed = true;
+    cudaAutoUpdateError = errorMessage;
+    debugLogger.warn("Startup CUDA auto-update failed unexpectedly", { error: errorMessage });
+  });
 
   // Track app launch (fire-and-forget, non-fatal)
   const _analyticsManager = require("./src/helpers/analyticsManager");

@@ -88,6 +88,8 @@ class IPCHandlers {
     this.windowsKeyManager = managers.windowsKeyManager;
     this.actionEngineManager = managers.actionEngineManager || null;
     this.benchmarkManager = managers.benchmarkManager || null;
+    this.getCudaAutoUpdateState = managers.getCudaAutoUpdateState || null;
+    this.clearCudaAutoUpdateFailure = managers.clearCudaAutoUpdateFailure || null;
     this.hardwareDetector = new HardwareDetector();
     // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
@@ -587,7 +589,12 @@ class IPCHandlers {
     });
 
     ipcMain.handle("get-cuda-binary-status", async () => {
-      return this.whisperManager.getCudaBinaryStatus();
+      const cudaStatus = this.whisperManager.getCudaBinaryStatus();
+      const autoUpdateState = this.getCudaAutoUpdateState ? this.getCudaAutoUpdateState() : null;
+      return {
+        ...cudaStatus,
+        cudaAutoUpdateFailed: !!autoUpdateState?.failed,
+      };
     });
 
     ipcMain.handle("download-cuda-binary", async (event) => {
@@ -595,6 +602,9 @@ class IPCHandlers {
         const result = await this.whisperManager.downloadGpuBinary((progress) => {
           event.sender.send("cuda-binary-download-progress", progress);
         });
+        if (result?.success && this.clearCudaAutoUpdateFailure) {
+          this.clearCudaAutoUpdateFailure();
+        }
         return result;
       } catch (error) {
         return { success: false, error: error.message };

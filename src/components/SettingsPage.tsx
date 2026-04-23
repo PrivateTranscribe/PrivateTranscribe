@@ -190,6 +190,7 @@ function GpuStatusCard({
     platform: string;
     supported: boolean;
     forceCpu: boolean;
+    cudaAutoUpdateFailed?: boolean;
     version?: string | null;
     upToDate?: boolean;
     expectedVersion?: string;
@@ -344,10 +345,15 @@ function GpuStatusCard({
   const usingGpu = !activeWhisperForceCpu;
   // CUDA is supported on this platform
   const gpuSupported = cudaStatus != null ? cudaStatus.supported : false;
-  const cudaUpdateAvailable =
-    (cudaStatus?.installed ?? false) && (cudaStatus?.upToDate ?? true) === false;
-  // CUDA binary is ready to use
-  const cudaReady = (cudaStatus?.upToDate ?? false) || downloadState === "done";
+  const cudaAutoUpdateFailed =
+    !!cudaStatus?.cudaAutoUpdateFailed && (cudaStatus?.upToDate ?? true) === false;
+  const needsInitialCudaInstall = (cudaStatus?.installed ?? false) === false;
+  const shouldShowCudaDownloadState =
+    downloadState === "downloading" || downloadState === "done" || downloadState === "error";
+  const shouldShowCudaSetupCard =
+    usingGpu &&
+    gpuSupported &&
+    (shouldShowCudaDownloadState || needsInitialCudaInstall || cudaAutoUpdateFailed);
 
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
@@ -373,7 +379,7 @@ function GpuStatusCard({
 
           <div className="space-y-4">
             {/* ═══ CUDA SETUP (shown only when GPU Whisper is selected and CUDA isn't ready, or while downloading) ═══ */}
-            {usingGpu && gpuSupported && (!cudaReady || downloadState === "downloading" || downloadState === "done") && (
+            {shouldShowCudaSetupCard && (
               <div>
                 {downloadState === "downloading" ? (
                   <div className="space-y-2">
@@ -419,11 +425,10 @@ function GpuStatusCard({
                       Retry Download
                     </Button>
                   </div>
-                ) : cudaUpdateAvailable ? (
+                ) : cudaAutoUpdateFailed ? (
                   <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
                     <p className="text-[11px] text-amber-200 leading-relaxed">
-                      GPU engine update available ({cudaStatus?.expectedVersion ?? "latest"}).
-                      Re-download to improve performance.
+                      GPU engine update failed. Click to retry.
                     </p>
                     <Button
                       onClick={handleDownloadCuda}
@@ -432,7 +437,7 @@ function GpuStatusCard({
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      Update
+                      Retry
                     </Button>
                   </div>
                 ) : (
