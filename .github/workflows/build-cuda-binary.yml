@@ -105,18 +105,12 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
-          curl -LSs https://downloads.rclone.org/rclone-current-windows-amd64.zip -o rclone.zip
-          unzip -q rclone.zip
-          RCLONE=$(find . -name "rclone.exe" | head -1)
-          "$RCLONE" config create r2 s3 \
-            provider Cloudflare \
-            access_key_id "$R2_ACCESS_KEY_ID" \
-            secret_access_key "$R2_SECRET_ACCESS_KEY" \
-            endpoint "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          "$RCLONE" copy whisper-server-win32-x64-cuda.exe \
-            --no-check-bucket \
-            --s3-no-check-bucket \
-            "r2:privatetranscribe-assets/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws s3 cp whisper-server-win32-x64-cuda.exe \
+            s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress
           echo "Uploaded to R2: binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
 
   build-cuda-linux:
@@ -189,17 +183,10 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
-          curl -LSs https://downloads.rclone.org/rclone-current-linux-amd64.zip -o rclone.zip
-          unzip -q rclone.zip
-          RCLONE=$(find . -name "rclone" -not -name "*.1" -type f | head -1)
-          chmod +x "$RCLONE"
-          "$RCLONE" config create r2 s3 \
-            provider Cloudflare \
-            access_key_id "$R2_ACCESS_KEY_ID" \
-            secret_access_key "$R2_SECRET_ACCESS_KEY" \
-            endpoint "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          "$RCLONE" copy whisper-server-linux-x64-cuda.bin \
-            --no-check-bucket \
-            --s3-no-check-bucket \
-            "r2:privatetranscribe-assets/binaries/v0.0.7/whisper-server-linux-x64-cuda"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws s3 cp whisper-server-linux-x64-cuda.bin \
+            s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-linux-x64-cuda \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress
           echo "Uploaded to R2: binaries/v0.0.7/whisper-server-linux-x64-cuda"
