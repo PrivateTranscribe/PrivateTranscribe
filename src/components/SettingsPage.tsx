@@ -227,10 +227,23 @@ function GpuStatusCard({
       .catch(() => {});
   }, []);
 
+  // Refresh CUDA status while Settings is open so async auto-update failures surface.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const status = await window.electronAPI?.getCudaBinaryStatus?.();
+        if (status) setCudaStatus(status);
+      } catch {
+        /* keep the last known status */
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Listen for CUDA download progress events
   useEffect(() => {
     const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
-      setDownloadProgress(Math.round(data.progress));
+      setDownloadProgress(Math.round(data?.percent ?? 0));
     });
     return () => cleanup?.();
   }, []);

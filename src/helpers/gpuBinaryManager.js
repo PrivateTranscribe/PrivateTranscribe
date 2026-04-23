@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 
@@ -30,11 +31,18 @@ class GpuBinaryManager {
     this._abortController = null;
   }
 
-  getBinDir() {
+  getBundledBinDir() {
     if (process.resourcesPath) {
       return path.join(process.resourcesPath, "bin");
     }
     return path.join(__dirname, "..", "..", "resources", "bin");
+  }
+
+  getBinDir() {
+    if (app?.getPath) {
+      return path.join(app.getPath("userData"), "bin");
+    }
+    return this.getBundledBinDir();
   }
 
   getPlatformKey() {
@@ -115,33 +123,33 @@ class GpuBinaryManager {
   }
 
   async downloadCudaBinary(onProgress) {
+    const key = this.getPlatformKey();
+    const spec = CUDA_BINARIES[key];
+    if (!spec) {
+      return { success: false, error: `CUDA binary not supported on platform: ${key}` };
+    }
+
     // Prevent concurrent downloads (e.g. auto-update + manual Settings click)
     if (this._downloading) {
       return { success: false, error: "CUDA binary download already in progress" };
     }
     this._downloading = true;
-
-    const key = this.getPlatformKey();
-    const spec = CUDA_BINARIES[key];
-    if (!spec) {
-      this._downloading = false;
-      return { success: false, error: `CUDA binary not supported on platform: ${key}` };
-    }
-
-    this._abortController = createDownloadSignal();
-    const { signal } = this._abortController;
-
-    const binDir = this.getBinDir();
-    fs.mkdirSync(binDir, { recursive: true });
-    const binaryPath = path.join(binDir, spec.outputName);
-    const totalBytes = spec.approxBytes;
-
-    debugLogger.info("GpuBinaryManager: downloading CUDA binary from R2", {
-      url: spec.remoteUrl,
-      outputName: spec.outputName,
-    });
+    let binaryPath = null;
 
     try {
+      this._abortController = createDownloadSignal();
+      const { signal } = this._abortController;
+
+      const binDir = this.getBinDir();
+      fs.mkdirSync(binDir, { recursive: true });
+      binaryPath = path.join(binDir, spec.outputName);
+      const totalBytes = spec.approxBytes;
+
+      debugLogger.info("GpuBinaryManager: downloading CUDA binary from R2", {
+        url: spec.remoteUrl,
+        outputName: spec.outputName,
+      });
+
       await downloadFile(spec.remoteUrl, binaryPath, {
         signal,
         timeout: 600000, // 10 min for large files
@@ -200,7 +208,7 @@ class GpuBinaryManager {
     } catch (error) {
       // Clean up partial file on failure
       try {
-        if (fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
+        if (binaryPath && fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
       } catch {
         /* ignore */
       }
