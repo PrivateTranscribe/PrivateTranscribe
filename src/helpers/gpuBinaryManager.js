@@ -115,9 +115,16 @@ class GpuBinaryManager {
   }
 
   async downloadCudaBinary(onProgress) {
+    // Prevent concurrent downloads (e.g. auto-update + manual Settings click)
+    if (this._downloading) {
+      return { success: false, error: "CUDA binary download already in progress" };
+    }
+    this._downloading = true;
+
     const key = this.getPlatformKey();
     const spec = CUDA_BINARIES[key];
     if (!spec) {
+      this._downloading = false;
       return { success: false, error: `CUDA binary not supported on platform: ${key}` };
     }
 
@@ -218,6 +225,7 @@ class GpuBinaryManager {
       debugLogger.error("GpuBinaryManager: download failed", { error: error.message });
       return { success: false, error: error.message };
     } finally {
+      this._downloading = false;
       this._abortController = null;
     }
   }
