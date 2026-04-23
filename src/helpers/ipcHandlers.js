@@ -225,7 +225,7 @@ class IPCHandlers {
             this.databaseManager.trimTranscriptions(this.historyLimit);
           } catch (trimErr) {
             // Non-fatal - the save itself succeeded; log and continue.
-            console.error("Failed to trim transcriptions after save:", trimErr);
+            debugLogger.error("Failed to trim transcriptions after save:", trimErr);
           }
           setImmediate(() => {
             this.broadcastToWindows("transcription-added", result.transcription);
@@ -233,7 +233,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-save-transcription] error:", err.message);
+        debugLogger.error("[IPC:db-save-transcription] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -243,7 +243,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getTranscriptions(safeLimit);
       } catch (err) {
-        console.error("[IPC:db-get-transcriptions] error:", err.message);
+        debugLogger.error("[IPC:db-get-transcriptions] error:", err.message);
         return { success: true, data: [] };
       }
     });
@@ -260,7 +260,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-clear-transcriptions] error:", err.message);
+        debugLogger.error("[IPC:db-clear-transcriptions] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -275,7 +275,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-delete-transcription] error:", err.message);
+        debugLogger.error("[IPC:db-delete-transcription] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -293,7 +293,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-trim-transcriptions] error:", err.message);
+        debugLogger.error("[IPC:db-trim-transcriptions] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -303,7 +303,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getDictionary();
       } catch (err) {
-        console.error("[IPC:db-get-dictionary] error:", err.message);
+        debugLogger.error("[IPC:db-get-dictionary] error:", err.message);
         return { success: true, data: [] };
       }
     });
@@ -324,7 +324,7 @@ class IPCHandlers {
           .filter(Boolean);
         return this.databaseManager.setDictionary(sanitized);
       } catch (err) {
-        console.error("[IPC:db-set-dictionary] error:", err.message);
+        debugLogger.error("[IPC:db-set-dictionary] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -334,7 +334,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getCorrectionMemory(limit);
       } catch (err) {
-        console.error("[IPC:db-get-correction-memory] error:", err.message);
+        debugLogger.error("[IPC:db-get-correction-memory] error:", err.message);
         return [];
       }
     });
@@ -343,7 +343,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.upsertCorrection(source, target);
       } catch (err) {
-        console.error("[IPC:db-upsert-correction] error:", err.message);
+        debugLogger.error("[IPC:db-upsert-correction] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -352,7 +352,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.confirmCorrection(source, target);
       } catch (err) {
-        console.error("[IPC:db-confirm-correction] error:", err.message);
+        debugLogger.error("[IPC:db-confirm-correction] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -361,7 +361,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.deleteCorrection(source);
       } catch (err) {
-        console.error("[IPC:db-delete-correction] error:", err.message);
+        debugLogger.error("[IPC:db-delete-correction] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -371,7 +371,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getStats();
       } catch (err) {
-        console.error("[IPC:db-get-stats] error:", err.message);
+        debugLogger.error("[IPC:db-get-stats] error:", err.message);
         return null;
       }
     });
@@ -380,7 +380,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getStreakDates();
       } catch (err) {
-        console.error("[IPC:db-get-streak-dates] error:", err.message);
+        debugLogger.error("[IPC:db-get-streak-dates] error:", err.message);
         return [];
       }
     });
@@ -394,7 +394,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-reset-stats] error:", err.message);
+        debugLogger.error("[IPC:db-reset-stats] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -1741,7 +1741,7 @@ class IPCHandlers {
       try {
         return analyticsManager.needsConsentPrompt();
       } catch (err) {
-        console.error("[IPC:analytics-needs-consent] error:", err.message);
+        debugLogger.error("[IPC:analytics-needs-consent] error:", err.message);
         return false;
       }
     });
@@ -1749,7 +1749,7 @@ class IPCHandlers {
       try {
         return analyticsManager.setConsent(granted);
       } catch (err) {
-        console.error("[IPC:analytics-set-consent] error:", err.message);
+        debugLogger.error("[IPC:analytics-set-consent] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -1757,7 +1757,7 @@ class IPCHandlers {
       try {
         return analyticsManager.track(event, extra);
       } catch (err) {
-        console.error("[IPC:analytics-track] error:", err.message);
+        debugLogger.error("[IPC:analytics-track] error:", err.message);
         return { success: false, error: err.message };
       }
     });

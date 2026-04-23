@@ -356,8 +356,8 @@ function GpuStatusCard({
 
   // GPU is "selected" when CPU mode is NOT forced (use prop, not stale settings copy)
   const usingGpu = !activeWhisperForceCpu;
-  // CUDA is supported on this platform
-  const gpuSupported = cudaStatus != null ? cudaStatus.supported : false;
+  // CUDA setup requires actual NVIDIA CUDA hardware, not just a supported OS/arch.
+  const gpuSupported = gpuCategory === "nvidia_cuda";
   const cudaAutoUpdateFailed =
     !!cudaStatus?.cudaAutoUpdateFailed && (cudaStatus?.upToDate ?? true) === false;
   const needsInitialCudaInstall = (cudaStatus?.installed ?? false) === false;

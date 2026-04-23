@@ -28,19 +28,28 @@ if (!gotSingleInstanceLock) {
 
 const isLiveWindow = (window) => window && !window.isDestroyed();
 
+let debugLogger = null;
+
+function logMainError(...args) {
+  if (!debugLogger) {
+    debugLogger = require("./src/helpers/debugLogger");
+  }
+  debugLogger.error(...args);
+}
+
 // Add global error handling for uncaught exceptions
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught Exception:", error);
+  logMainError("Uncaught Exception:", error);
   // Don't exit the process for EPIPE errors as they're harmless
   if (error.code === "EPIPE") {
     return;
   }
   // For other errors, log and continue
-  console.error("Error stack:", error.stack);
+  logMainError("Error stack:", error.stack);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  logMainError("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // Import helper module classes (but don't instantiate yet - wait for app.whenReady())
@@ -60,7 +69,6 @@ const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
 const HardwareDetector = require("./src/helpers/hardwareDetector");
 
 // Manager instances - initialized after app.whenReady()
-let debugLogger = null;
 let environmentManager = null;
 let windowManager = null;
 let hotkeyManager = null;
@@ -615,7 +623,7 @@ if (gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     startApp().catch((error) => {
-      console.error("Failed to start app:", error);
+      logMainError("Failed to start app:", error);
       dialog.showErrorBox(
         "PrivateTranscribe Startup Error",
         `Failed to start the application:\n\n${error.message}\n\nPlease report this issue.`

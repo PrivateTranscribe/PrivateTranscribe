@@ -145,12 +145,9 @@ class GpuBinaryManager {
         fs.chmodSync(tempPath, 0o755);
       }
       fs.renameSync(tempPath, binaryPath);
-      const versionPath = this.writeCudaBinaryVersionFile();
-      debugLogger.info("GpuBinaryManager: migrated legacy CUDA binary", {
+      debugLogger.info("GpuBinaryManager: migrated legacy binary, will be updated on next check", {
         legacyPath,
         binaryPath,
-        versionPath,
-        version: BINARY_VERSION,
       });
       return { migrated: true, binaryPath };
     } catch (error) {
@@ -245,6 +242,20 @@ class GpuBinaryManager {
       // Set executable bit on non-Windows
       if (process.platform !== "win32") {
         fs.chmodSync(binaryPath, 0o755);
+      }
+
+      const binarySize = fs.statSync(binaryPath).size;
+      if (binarySize < 1_000_000) {
+        try {
+          fs.unlinkSync(binaryPath);
+        } catch {
+          /* ignore */
+        }
+        debugLogger.error("GpuBinaryManager: downloaded CUDA binary is too small", {
+          binaryPath,
+          size: binarySize,
+        });
+        return { success: false, error: "Downloaded binary is too small, likely corrupted" };
       }
 
       try {
