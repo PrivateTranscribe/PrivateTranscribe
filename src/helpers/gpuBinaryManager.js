@@ -5,7 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { app } = require("electron");
 const debugLogger = require("./debugLogger");
-const { downloadFile, createDownloadSignal } = require("./downloadUtils");
+const { downloadFile, createDownloadSignal, isRetryable } = require("./downloadUtils");
 
 // R2 public CDN — binaries served directly (no zip extraction needed)
 const R2_BASE_URL = "https://updates.privatetranscribe.com";
@@ -230,12 +230,6 @@ class GpuBinaryManager {
       });
 
       if (signal.aborted) {
-        try {
-          const tempPath = `${binaryPath}.tmp`;
-          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-        } catch {
-          /* ignore */
-        }
         throw Object.assign(new Error("Download cancelled"), { isAbort: true });
       }
 
@@ -284,11 +278,14 @@ class GpuBinaryManager {
     } catch (error) {
       // downloadFile writes to binaryPath.tmp and only renames on success. Keep
       // any existing final binary/version file intact when an update fails.
-      try {
-        const tempPath = binaryPath ? `${binaryPath}.tmp` : null;
-        if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        /* ignore */
+      const shouldPreservePartialDownload = error.isAbort || isRetryable(error);
+      if (!shouldPreservePartialDownload) {
+        try {
+          const tempPath = binaryPath ? `${binaryPath}.tmp` : null;
+          if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        } catch {
+          /* ignore */
+        }
       }
       try {
         const tempVersionPath = `${this.getCudaVersionFilePath()}.tmp`;

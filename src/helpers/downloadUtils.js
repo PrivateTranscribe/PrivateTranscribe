@@ -324,8 +324,18 @@ async function downloadFile(url, destPath, options = {}) {
         throw error;
       }
 
-      if (!isRetryable(error) || attempt >= maxRetries) {
+      if (!isRetryable(error)) {
         await fsPromises.unlink(tempPath).catch(() => {});
+        throw error;
+      }
+
+      if (attempt >= maxRetries) {
+        // Keep partial network downloads so the next user-initiated attempt can resume.
+        debugLogger.warn("Download retries exhausted - partial file preserved for resume", {
+          tempPath,
+          error: error.message,
+          code: error.code,
+        });
         throw error;
       }
 
@@ -354,4 +364,4 @@ function createDownloadSignal() {
   };
 }
 
-module.exports = { downloadFile, createDownloadSignal, cleanStaleTmpFiles };
+module.exports = { downloadFile, createDownloadSignal, cleanStaleTmpFiles, isRetryable };

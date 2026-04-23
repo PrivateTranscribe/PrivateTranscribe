@@ -70,6 +70,8 @@ class WhisperServerManager {
 
     // Configurable idle timeout (ms). Set to 0 to disable auto-stop.
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
+
+    this.activeTranscriptions = 0;
   }
 
   getFFmpegPath() {
@@ -564,10 +566,15 @@ class WhisperServerManager {
     return { success: true, idleTimeoutMs: this.idleTimeoutMs };
   }
 
+  isProcessing() {
+    return this.activeTranscriptions > 0;
+  }
+
   async transcribe(audioBuffer, options = {}) {
     if (!this.ready || !this.process) {
       throw new Error("whisper-server is not running");
     }
+    this.activeTranscriptions += 1;
 
     // Debug: Log audio buffer info
     debugLogger.debug("whisper-server transcribe called", {
@@ -585,10 +592,15 @@ class WhisperServerManager {
 
     // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
     let finalBuffer = audioBuffer;
-    if (!this.canConvert) {
-      throw new Error("FFmpeg not found - required for audio conversion");
+    try {
+      if (!this.canConvert) {
+        throw new Error("FFmpeg not found - required for audio conversion");
+      }
+      finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
+    } catch (error) {
+      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
+      throw error;
     }
-    finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
 
     const boundary = `----WhisperBoundary${Date.now()}`;
     const parts = [];
@@ -701,6 +713,8 @@ class WhisperServerManager {
 
       req.write(body);
       req.end();
+    }).finally(() => {
+      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
     });
   }
 

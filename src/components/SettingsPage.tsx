@@ -58,6 +58,7 @@ import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
 import { SettingsRow } from "./ui/SettingsSection";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
+import { getValidWhisperModelNames } from "../models/ModelRegistry";
 
 export type SettingsSectionType =
   | "general"
@@ -71,6 +72,28 @@ export type SettingsSectionType =
   | "help"
   | "developer"
   | "pro";
+
+const HISTORY_LIMIT_MIN = 10;
+const HISTORY_LIMIT_MAX = 10000;
+const WHISPER_IDLE_TIMEOUT_MIN = 1;
+const WHISPER_IDLE_TIMEOUT_MAX = 1440;
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const isPathLikeString = (value: string) =>
+  value.includes("../") ||
+  value.includes("..\\") ||
+  value.startsWith("/") ||
+  /^[a-zA-Z]:[\\/]/.test(value);
+
+const isSafeImportedIdentifier = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && !isPathLikeString(value);
+
+const isValidImportedLanguage = (value: unknown): value is string =>
+  typeof value === "string" &&
+  (value === "auto" ||
+    LANGUAGE_OPTIONS.some((language) => language.value === value) ||
+    /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(value));
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -301,7 +324,9 @@ function GpuStatusCard({
 
   // Auto-detect hardware on mount — uses cached result if available, fast on revisit
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { runDetect(false); }, []);
+  useEffect(() => {
+    runDetect(false);
+  }, []);
 
   const runBenchmark = async () => {
     setBenchState("running");
@@ -310,7 +335,8 @@ function GpuStatusCard({
       // Use props (not settings) — GpuStatusCard's own useSettings() copy can be stale
       // if localTranscriptionProvider was changed by the model picker above.
       const provider = activeProvider === "nvidia" ? "nvidia" : "whisper";
-      const model = provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : settings.whisperModel || "turbo";
+      const model =
+        provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : settings.whisperModel || "turbo";
 
       const res = await window.electronAPI?.benchmarkRun?.({ provider, model });
       if (res?.success && res.result) {
@@ -559,58 +585,7 @@ function GpuStatusCard({
                 Benchmarks
               </p>
 
-              {compState === "done" && compResult && (
-                <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
-                      <p className="text-[10px] font-medium text-muted-foreground mb-0.5">
-                        Whisper
-                        {compResult.cpuResult.gpuCategory === "nvidia_cuda"
-                          ? " (CUDA)"
-                          : " (CPU)"}
-                      </p>
-                      <p className="text-sm font-semibold text-foreground tabular-nums">
-                        {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
-                      </p>
-                      <p className="text-[9px] text-muted-foreground">
-                        {compResult.cpuResult.model}
-                      </p>
-                    </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
-                      <p className="text-[10px] font-medium text-primary mb-0.5">Parakeet</p>
-                      <p className="text-sm font-semibold text-foreground tabular-nums">
-                        {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
-                      </p>
-                      <p className="text-[9px] text-muted-foreground">
-                        {compResult.gpuResult.model}
-                      </p>
-                    </div>
-                  </div>
-                  {compResult.speedup >= 1.05 && (
-                    <p className="mt-2 text-center text-xs font-semibold text-primary tabular-nums">
-                      {compResult.speedup >= 10
-                        ? `${compResult.speedup.toFixed(1)}x`
-                        : `${compResult.speedup.toFixed(2)}x`}{" "}
-                      faster with Parakeet
-                    </p>
-                  )}
-                  {compResult.speedup > 0 && compResult.speedup < 1.05 && (
-                    <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                      About the same speed on this device
-                    </p>
-                  )}
-                  <p className="text-[9px] text-muted-foreground mt-2 text-center">
-                    Higher = faster. 59x means 60s of audio transcribes in ~1s.
-                  </p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5 text-center">
-                    Whisper vs Parakeet (ONNX) — different engines
-                    {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
-                  </p>
-                </div>
-              )}
-
-              {benchState === "done" && benchResult && compState !== "done" && (
+              {benchState === "done" && benchResult && (
                 <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-lg font-semibold text-foreground tabular-nums">
@@ -620,8 +595,7 @@ function GpuStatusCard({
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} (
-                    {benchResult.model}) ·{" "}
-                    {(benchResult.elapsedMs / 1000).toFixed(1)}s for{" "}
+                    {benchResult.model}) · {(benchResult.elapsedMs / 1000).toFixed(1)}s for{" "}
                     {benchResult.audioDurationSec}s audio
                     {benchResult.createdAt
                       ? ` · ${formatBenchmarkDate(benchResult.createdAt)}`
@@ -631,14 +605,18 @@ function GpuStatusCard({
                     Higher = faster. 59x means 60s of audio transcribes in ~1s.
                   </p>
                   {/* Warn if CUDA binary is present but speed is suspiciously low (likely not using GPU) */}
-                  {gpuCategory === "nvidia_cuda" && !activeWhisperForceCpu && benchResult.realtimeFactor < 2 && (
-                    <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/8 px-2.5 py-2">
-                      <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
-                      <p className="text-[10px] text-amber-500 leading-relaxed">
-                        GPU acceleration may not be working. Your NVIDIA GPU might not be compatible with the current CUDA binary (RTX 50-series requires a newer build). A Blackwell-compatible update is in progress.
-                      </p>
-                    </div>
-                  )}
+                  {gpuCategory === "nvidia_cuda" &&
+                    !activeWhisperForceCpu &&
+                    benchResult.realtimeFactor < 2 && (
+                      <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/8 px-2.5 py-2">
+                        <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-[10px] text-amber-500 leading-relaxed">
+                          GPU acceleration may not be working. Your NVIDIA GPU might not be
+                          compatible with the current CUDA binary (RTX 50-series requires a newer
+                          build). A Blackwell-compatible update is in progress.
+                        </p>
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -678,18 +656,7 @@ function GpuStatusCard({
                   <Timer className="w-3 h-3" />
                   {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
                 </Button>
-                {gpuCategory === "nvidia_cuda" && !activeWhisperForceCpu && (
-                  <Button
-                    onClick={runComparison}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[11px]"
-                    disabled={benchState === "running" || compState === "running"}
-                  >
-                    <Zap className="w-3 h-3" />
-                    {compResult ? "Re-run Whisper vs Parakeet" : "Compare Whisper vs Parakeet"}
-                  </Button>
-                )}
+
               </div>
             </div>
           </div>
@@ -1127,9 +1094,75 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     async (data: any) => {
       const s = data?.settings || data;
       if (!s || typeof s !== "object") throw new Error("Invalid settings file");
+      const skippedFields: string[] = [];
+      const skipField = (field: string, reason: string) => {
+        skippedFields.push(`${field}: ${reason}`);
+      };
+      const validWhisperModels = new Set(getValidWhisperModelNames());
+
+      let importedHistoryLimit: number | undefined;
+      if (s.historyLimit !== undefined) {
+        if (Number.isInteger(s.historyLimit) && s.historyLimit > 0) {
+          importedHistoryLimit = clamp(s.historyLimit, HISTORY_LIMIT_MIN, HISTORY_LIMIT_MAX);
+        } else {
+          skipField("historyLimit", "must be a positive integer");
+        }
+      }
+
+      let importedWhisperIdleTimeout: number | undefined;
+      if (s.whisperServerIdleTimeoutMinutes !== undefined) {
+        if (
+          Number.isInteger(s.whisperServerIdleTimeoutMinutes) &&
+          s.whisperServerIdleTimeoutMinutes > 0
+        ) {
+          importedWhisperIdleTimeout = clamp(
+            s.whisperServerIdleTimeoutMinutes,
+            WHISPER_IDLE_TIMEOUT_MIN,
+            WHISPER_IDLE_TIMEOUT_MAX
+          );
+        } else {
+          skipField("whisperServerIdleTimeoutMinutes", "must be a positive integer");
+        }
+      }
+
+      let importedWhisperModel: string | undefined;
+      if (s.whisperModel !== undefined) {
+        if (typeof s.whisperModel === "string" && validWhisperModels.has(s.whisperModel)) {
+          importedWhisperModel = s.whisperModel;
+        } else {
+          skipField("whisperModel", "must be a known Whisper model ID");
+        }
+      }
+
+      const importedLanguage = s.whisperLanguage ?? s.preferredLanguage;
+      let importedPreferredLanguage: string | undefined;
+      if (importedLanguage !== undefined) {
+        if (importedLanguage === null) {
+          importedPreferredLanguage = "auto";
+        } else if (isValidImportedLanguage(importedLanguage)) {
+          importedPreferredLanguage = importedLanguage;
+        } else {
+          skipField("preferredLanguage", "must be a valid BCP-47 language code or null");
+        }
+      }
+
+      const safeIdentifier = (field: string): string | undefined => {
+        const value = s[field];
+        if (value === undefined) return undefined;
+        if (isSafeImportedIdentifier(value)) return value;
+        skipField(field, "contains unsafe path-like content");
+        return undefined;
+      };
+      const safeNonPathString = (field: string): string | undefined => {
+        const value = s[field];
+        if (value === undefined) return undefined;
+        if (typeof value === "string" && !isPathLikeString(value)) return value;
+        skipField(field, "contains unsafe path-like content");
+        return undefined;
+      };
 
       if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
-      if (typeof s.historyLimit === "number") setHistoryLimit(s.historyLimit);
+      if (importedHistoryLimit !== undefined) setHistoryLimit(importedHistoryLimit);
       if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
       if (s.activationMode === "tap" || s.activationMode === "push")
         setActivationMode(s.activationMode);
@@ -1140,38 +1173,26 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           s.localTranscriptionProvider === "nvidia" || s.localTranscriptionProvider === "whisper"
             ? "whisper"
             : undefined,
-        whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
-        whisperForceCpu:
-          typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
-        whisperServerIdleTimeoutMinutes:
-          typeof s.whisperServerIdleTimeoutMinutes === "number"
-            ? s.whisperServerIdleTimeoutMinutes
-            : undefined,
-        preferredLanguage:
-          typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
+        whisperModel: importedWhisperModel,
+        whisperForceCpu: typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
+        whisperServerIdleTimeoutMinutes: importedWhisperIdleTimeout,
+        preferredLanguage: importedPreferredLanguage,
         translateToEnglish:
           s.translateToEnglish === "on" || s.translateToEnglish === "off"
             ? s.translateToEnglish
             : undefined,
-        cloudTranscriptionProvider:
-          typeof s.cloudTranscriptionProvider === "string"
-            ? s.cloudTranscriptionProvider
-            : undefined,
-        cloudTranscriptionModel:
-          typeof s.cloudTranscriptionModel === "string" ? s.cloudTranscriptionModel : undefined,
-        cloudTranscriptionBaseUrl:
-          typeof s.cloudTranscriptionBaseUrl === "string" ? s.cloudTranscriptionBaseUrl : undefined,
+        cloudTranscriptionProvider: safeIdentifier("cloudTranscriptionProvider"),
+        cloudTranscriptionModel: safeIdentifier("cloudTranscriptionModel"),
+        cloudTranscriptionBaseUrl: safeNonPathString("cloudTranscriptionBaseUrl"),
         customDictionary: Array.isArray(s.customDictionary) ? s.customDictionary : undefined,
       });
 
       updateReasoningSettings({
         useReasoningModel:
           typeof s.useReasoningModel === "boolean" ? s.useReasoningModel : undefined,
-        reasoningProvider:
-          typeof s.reasoningProvider === "string" ? s.reasoningProvider : undefined,
-        reasoningModel: typeof s.reasoningModel === "string" ? s.reasoningModel : undefined,
-        cloudReasoningBaseUrl:
-          typeof s.cloudReasoningBaseUrl === "string" ? s.cloudReasoningBaseUrl : undefined,
+        reasoningProvider: safeIdentifier("reasoningProvider"),
+        reasoningModel: safeIdentifier("reasoningModel"),
+        cloudReasoningBaseUrl: safeNonPathString("cloudReasoningBaseUrl"),
         llamaServerIdleTimeoutMinutes:
           typeof s.llamaServerIdleTimeoutMinutes === "number"
             ? s.llamaServerIdleTimeoutMinutes
@@ -1206,7 +1227,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
-      if (typeof s.selectedMicDeviceId === "string") setSelectedMicDeviceId(s.selectedMicDeviceId);
+      if (s.selectedMicDeviceId !== undefined) {
+        if (isSafeImportedIdentifier(s.selectedMicDeviceId)) {
+          setSelectedMicDeviceId(s.selectedMicDeviceId);
+        } else {
+          skipField("selectedMicDeviceId", "contains unsafe path-like content");
+        }
+      }
 
       if (allowApiKeysOnImport) {
         const keys = s.apiKeys || {};
@@ -1219,6 +1246,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         if (typeof keys.customReasoningApiKey === "string")
           setCustomReasoningApiKey(keys.customReasoningApiKey);
       }
+
+      if (skippedFields.length > 0) {
+        console.warn("Skipped unsafe or invalid imported settings", skippedFields);
+      }
+      return skippedFields;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -2157,9 +2189,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               onCloudProviderSelect={setCloudTranscriptionProvider}
               selectedCloudModel={cloudTranscriptionModel}
               onCloudModelSelect={setCloudTranscriptionModel}
-              selectedLocalModel={
-                whisperModel
-              }
+              selectedLocalModel={whisperModel}
               onLocalModelSelect={(modelId) => {
                 setWhisperModel(modelId);
               }}
@@ -2822,10 +2852,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                 confirmText: "Import",
                                 onConfirm: async () => {
                                   try {
-                                    await handleImportSettingsFile(file);
+                                    const skippedFields = await handleImportSettingsFile(file);
                                     showAlertDialog({
-                                      title: "Settings Imported",
-                                      description: "Your settings were imported successfully.",
+                                      title:
+                                        skippedFields.length > 0
+                                          ? "Settings Imported With Skips"
+                                          : "Settings Imported",
+                                      description:
+                                        skippedFields.length > 0
+                                          ? `Imported valid settings. Skipped ${skippedFields.length} invalid field(s): ${skippedFields.join("; ")}.`
+                                          : "Your settings were imported successfully.",
                                     });
                                   } catch (err: any) {
                                     showAlertDialog({

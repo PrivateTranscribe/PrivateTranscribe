@@ -44,6 +44,11 @@ function isSafeModelFilename(filename) {
   return true;
 }
 
+function safeSend(sender, channel, payload) {
+  if (!sender || sender.isDestroyed()) return;
+  sender.send(channel, payload);
+}
+
 /**
  * Search for a filename inside `dir` up to `maxDepth` directory levels deep.
  * Returns the first matching absolute path found, or null.
@@ -555,7 +560,7 @@ class IPCHandlers {
 
     ipcMain.handle("download-whisper-model", async (event, modelName) => {
       return this.whisperManager.downloadWhisperModel(modelName, (progressData) => {
-        event.sender.send("whisper-download-progress", progressData);
+        safeSend(event.sender, "whisper-download-progress", progressData);
       });
     });
 
@@ -600,7 +605,7 @@ class IPCHandlers {
     ipcMain.handle("download-cuda-binary", async (event) => {
       try {
         const result = await this.whisperManager.downloadGpuBinary((progress) => {
-          event.sender.send("cuda-binary-download-progress", progress);
+          safeSend(event.sender, "cuda-binary-download-progress", progress);
         });
         if (result?.success) {
           await this.whisperManager.invalidateServerCache({ stopRunningServer: true });
@@ -621,6 +626,12 @@ class IPCHandlers {
 
     ipcMain.handle("set-whisper-force-cpu", async (_event, value) => {
       try {
+        if (this.whisperManager.isProcessing && this.whisperManager.isProcessing()) {
+          return {
+            success: false,
+            error: "Cannot change engine while transcription is in progress",
+          };
+        }
         await this.whisperManager.setForceCpu(!!value);
         return { success: true };
       } catch (error) {
@@ -716,7 +727,7 @@ class IPCHandlers {
 
     ipcMain.handle("download-parakeet-model", async (event, modelName) => {
       return this.parakeetManager.downloadParakeetModel(modelName, (progressData) => {
-        event.sender.send("parakeet-download-progress", progressData);
+        safeSend(event.sender, "parakeet-download-progress", progressData);
       });
     });
 
@@ -941,7 +952,7 @@ class IPCHandlers {
         const result = await modelManager.downloadModel(
           modelId,
           (progress, downloadedSize, totalSize) => {
-            event.sender.send("model-download-progress", {
+            safeSend(event.sender, "model-download-progress", {
               modelId,
               progress,
               downloadedSize,
@@ -1516,9 +1527,7 @@ class IPCHandlers {
 
         // Parse lines
         const lines = envContent.split("\n");
-        const logLevelIndex = lines.findIndex((line) =>
-          line.trim().startsWith("PT_LOG_LEVEL=")
-        );
+        const logLevelIndex = lines.findIndex((line) => line.trim().startsWith("PT_LOG_LEVEL="));
 
         if (enabled) {
           // Set to debug
