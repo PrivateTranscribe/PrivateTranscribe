@@ -726,6 +726,9 @@ declare global {
         path: string | null;
         platform: string;
         supported: boolean;
+        version: string | null;
+        upToDate: boolean;
+        expectedVersion: string;
         forceCpu: boolean;
       }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;

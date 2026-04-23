@@ -190,6 +190,9 @@ function GpuStatusCard({
     platform: string;
     supported: boolean;
     forceCpu: boolean;
+    version?: string | null;
+    upToDate?: boolean;
+    expectedVersion?: string;
   } | null>(null);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
     "idle"
@@ -236,9 +239,17 @@ function GpuStatusCard({
     setDownloadProgress(0);
     setDownloadError(null);
     try {
-      await window.electronAPI?.downloadCudaBinary?.();
+      const result = await window.electronAPI?.downloadCudaBinary?.();
+      if (!result?.success) {
+        setDownloadState("error");
+        setDownloadError(result?.error || "Download failed");
+        return;
+      }
       setDownloadState("done");
-      setCudaStatus((prev) => prev ? { ...prev, installed: true } : { installed: true, path: null, platform: "", supported: true, forceCpu: false });
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      if (status) {
+        setCudaStatus(status);
+      }
     } catch (err: unknown) {
       setDownloadState("error");
       setDownloadError(
@@ -333,8 +344,10 @@ function GpuStatusCard({
   const usingGpu = !activeWhisperForceCpu;
   // CUDA is supported on this platform
   const gpuSupported = cudaStatus != null ? cudaStatus.supported : false;
+  const cudaUpdateAvailable =
+    (cudaStatus?.installed ?? false) && (cudaStatus?.upToDate ?? true) === false;
   // CUDA binary is ready to use
-  const cudaReady = cudaStatus?.installed || downloadState === "done";
+  const cudaReady = (cudaStatus?.upToDate ?? false) || downloadState === "done";
 
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
@@ -404,6 +417,22 @@ function GpuStatusCard({
                     >
                       <Download className="w-3 h-3" />
                       Retry Download
+                    </Button>
+                  </div>
+                ) : cudaUpdateAvailable ? (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+                    <p className="text-[11px] text-amber-200 leading-relaxed">
+                      GPU engine update available ({cudaStatus?.expectedVersion ?? "latest"}).
+                      Re-download to improve performance.
+                    </p>
+                    <Button
+                      onClick={handleDownloadCuda}
+                      variant="default"
+                      size="sm"
+                      className="h-7 gap-1.5 text-[11px]"
+                    >
+                      <Download className="w-3 h-3" />
+                      Update
                     </Button>
                   </div>
                 ) : (
