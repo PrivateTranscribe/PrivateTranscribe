@@ -66,6 +66,23 @@ class GpuBinaryManager {
     return null;
   }
 
+  getLegacyCudaBinaryPath() {
+    const key = this.getPlatformKey();
+    const spec = CUDA_BINARIES[key];
+    if (!spec) return null;
+
+    const legacyPath = path.join(this.getBundledBinDir(), spec.outputName);
+    if (fs.existsSync(legacyPath)) {
+      try {
+        fs.statSync(legacyPath);
+        return legacyPath;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   getCudaVersionFilePath() {
     return path.join(this.getBinDir(), CUDA_VERSION_FILE);
   }
@@ -101,7 +118,54 @@ class GpuBinaryManager {
   }
 
   wasCudaPreviouslyInstalled() {
-    return this.getCudaBinaryFilePath() !== null;
+    return this.getCudaBinaryFilePath() !== null || this.getLegacyCudaBinaryPath() !== null;
+  }
+
+  migrateLegacyCudaBinary() {
+    const existingPath = this.getCudaBinaryFilePath();
+    const legacyPath = this.getLegacyCudaBinaryPath();
+    if (existingPath || !legacyPath) {
+      return { migrated: false, binaryPath: existingPath || legacyPath || null };
+    }
+
+    const key = this.getPlatformKey();
+    const spec = CUDA_BINARIES[key];
+    if (!spec) {
+      return { migrated: false, binaryPath: null };
+    }
+
+    const binDir = this.getBinDir();
+    fs.mkdirSync(binDir, { recursive: true });
+
+    const binaryPath = path.join(binDir, spec.outputName);
+    const tempPath = `${binaryPath}.tmp`;
+    try {
+      fs.copyFileSync(legacyPath, tempPath);
+      if (process.platform !== "win32") {
+        fs.chmodSync(tempPath, 0o755);
+      }
+      fs.renameSync(tempPath, binaryPath);
+      const versionPath = this.writeCudaBinaryVersionFile();
+      debugLogger.info("GpuBinaryManager: migrated legacy CUDA binary", {
+        legacyPath,
+        binaryPath,
+        versionPath,
+        version: BINARY_VERSION,
+      });
+      return { migrated: true, binaryPath };
+    } catch (error) {
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      } catch {
+        /* ignore */
+      }
+      debugLogger.warn("GpuBinaryManager: failed to migrate legacy CUDA binary", {
+        legacyPath,
+        binaryPath,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 
   async computeSha256(filePath) {
@@ -170,7 +234,8 @@ class GpuBinaryManager {
 
       if (signal.aborted) {
         try {
-          fs.unlinkSync(binaryPath);
+          const tempPath = `${binaryPath}.tmp`;
+          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
         } catch {
           /* ignore */
         }
@@ -206,15 +271,11 @@ class GpuBinaryManager {
       });
       return { success: true, binaryPath };
     } catch (error) {
-      // Clean up partial file on failure
+      // downloadFile writes to binaryPath.tmp and only renames on success. Keep
+      // any existing final binary/version file intact when an update fails.
       try {
-        if (binaryPath && fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
-      } catch {
-        /* ignore */
-      }
-      try {
-        const versionPath = this.getCudaVersionFilePath();
-        if (fs.existsSync(versionPath)) fs.unlinkSync(versionPath);
+        const tempPath = binaryPath ? `${binaryPath}.tmp` : null;
+        if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
       } catch {
         /* ignore */
       }

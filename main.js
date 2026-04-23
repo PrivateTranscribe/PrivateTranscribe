@@ -202,6 +202,11 @@ async function autoUpdateCudaBinaryIfNeeded() {
       return;
     }
 
+    const migrationResult = whisperManager.migrateLegacyCudaBinary();
+    if (migrationResult?.migrated) {
+      await whisperManager.invalidateServerCache({ stopRunningServer: true });
+    }
+
     if (whisperManager.isCudaBinaryUpToDate()) {
       cudaAutoUpdateFailed = false;
       cudaAutoUpdateError = null;
@@ -211,6 +216,7 @@ async function autoUpdateCudaBinaryIfNeeded() {
     debugLogger.info("Startup CUDA auto-update: outdated binary detected, downloading silently");
     const result = await whisperManager.downloadGpuBinary();
     if (result?.success) {
+      await whisperManager.invalidateServerCache({ stopRunningServer: true });
       cudaAutoUpdateFailed = false;
       cudaAutoUpdateError = null;
       debugLogger.info("Startup CUDA auto-update: download succeeded");

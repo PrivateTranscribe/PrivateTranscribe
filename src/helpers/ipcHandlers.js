@@ -602,8 +602,11 @@ class IPCHandlers {
         const result = await this.whisperManager.downloadGpuBinary((progress) => {
           event.sender.send("cuda-binary-download-progress", progress);
         });
-        if (result?.success && this.clearCudaAutoUpdateFailure) {
-          this.clearCudaAutoUpdateFailure();
+        if (result?.success) {
+          await this.whisperManager.invalidateServerCache({ stopRunningServer: true });
+          if (this.clearCudaAutoUpdateFailure) {
+            this.clearCudaAutoUpdateFailure();
+          }
         }
         return result;
       } catch (error) {

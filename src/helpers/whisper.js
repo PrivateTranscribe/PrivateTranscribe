@@ -241,12 +241,21 @@ class WhisperManager {
     return this.gpuBinaryManager.wasCudaPreviouslyInstalled();
   }
 
+  migrateLegacyCudaBinary() {
+    return this.gpuBinaryManager.migrateLegacyCudaBinary();
+  }
+
   isCudaBinaryUpToDate() {
     return this.gpuBinaryManager.isCudaBinaryUpToDate();
   }
 
   async downloadGpuBinary(onProgress) {
     return this.gpuBinaryManager.downloadCudaBinary(onProgress);
+  }
+
+  async invalidateServerCache(options = {}) {
+    await this.serverManager.invalidateServerCache(options);
+    this.currentServerModel = null;
   }
 
   cancelGpuBinaryDownload() {

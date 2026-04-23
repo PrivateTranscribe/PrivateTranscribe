@@ -173,6 +173,13 @@ class WhisperServerManager {
     debugLogger.info("WhisperServer: forceCpu changed", { forceCpu: value });
   }
 
+  async invalidateServerCache({ stopRunningServer = false } = {}) {
+    this.cachedServerBinaryPath = null;
+    if (stopRunningServer && this.process) {
+      await this.stop();
+    }
+  }
+
   getServerBinaryPath() {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
