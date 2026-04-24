@@ -5,7 +5,8 @@ const DBUS_SERVICE_NAME = "com.PrivateTranscribe.App";
 const DBUS_OBJECT_PATH = "/com/PrivateTranscribe/App";
 const DBUS_INTERFACE = "com.PrivateTranscribe.App";
 
-const KEYBINDING_PATH = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/PrivateTranscribe/";
+const KEYBINDING_PATH =
+  "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/PrivateTranscribe/";
 const KEYBINDING_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 
 // Valid pattern for GNOME shortcut format (e.g., "<Alt>r", "<Control><Shift>space")

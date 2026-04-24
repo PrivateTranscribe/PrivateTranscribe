@@ -105,12 +105,7 @@ export default function TranscribePage() {
       return `Whisper (${whisperModel || "base"})`;
     }
     return `${cloudTranscriptionProvider.toUpperCase()} (${cloudTranscriptionModel || "default"})`;
-  }, [
-    useLocalWhisper,
-    whisperModel,
-    cloudTranscriptionProvider,
-    cloudTranscriptionModel,
-  ]);
+  }, [useLocalWhisper, whisperModel, cloudTranscriptionProvider, cloudTranscriptionModel]);
 
   const activeLanguageLabel = useMemo(
     () => getLanguageLabel(preferredLanguage || "auto"),

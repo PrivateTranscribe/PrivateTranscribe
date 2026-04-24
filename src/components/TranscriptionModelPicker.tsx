@@ -428,7 +428,8 @@ export default function TranscriptionModelPicker({
   useEffect(() => {
     const handleModelsCleared = () => loadLocalModels();
     window.addEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
+    return () =>
+      window.removeEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
   }, [loadLocalModels]);
 
   const {
@@ -633,11 +634,7 @@ export default function TranscriptionModelPicker({
         </Button>
       </div>
     );
-  }, [
-    useLocalWhisper,
-    failedWhisperModel,
-    retryWhisperDownload,
-  ]);
+  }, [useLocalWhisper, failedWhisperModel, retryWhisperDownload]);
 
   const renderLocalModels = () => {
     const allModelEntries =
@@ -860,8 +857,8 @@ export default function TranscriptionModelPicker({
                     engine.disabled
                       ? "opacity-40 cursor-not-allowed border-border-subtle/40 bg-surface-raised/20"
                       : isActive
-                      ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
-                      : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
+                        ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
+                        : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
                   }`}
                 >
                   <div className="flex items-center justify-between w-full mb-0.5">

@@ -71,7 +71,8 @@ export function useModelDownload({
   useEffect(() => {
     const handleModelsCleared = () => onModelsClearedRef.current?.();
     window.addEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
+    return () =>
+      window.removeEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
   }, []);
 
   const handleWhisperProgress = useCallback(

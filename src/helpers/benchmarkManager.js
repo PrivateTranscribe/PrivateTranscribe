@@ -69,9 +69,12 @@ function loadBenchmarkAudio() {
       });
       return { buffer, durationSeconds, source: "file" };
     } catch (err) {
-      debugLogger.warn("BenchmarkManager: failed to read benchmark.wav, falling back to synthetic", {
-        error: err.message,
-      });
+      debugLogger.warn(
+        "BenchmarkManager: failed to read benchmark.wav, falling back to synthetic",
+        {
+          error: err.message,
+        }
+      );
     }
   }
   debugLogger.info("BenchmarkManager: using synthetic white-noise audio");
@@ -326,8 +329,11 @@ class BenchmarkManager {
       debugLogger.info("Benchmark starting", { provider, model });
 
       // 1. Load test audio (bundled speech WAV preferred, synthetic noise fallback)
-      const { buffer: audioBuffer, durationSeconds: audioDurationSec, source: audioSource } =
-        loadBenchmarkAudio();
+      const {
+        buffer: audioBuffer,
+        durationSeconds: audioDurationSec,
+        source: audioSource,
+      } = loadBenchmarkAudio();
       debugLogger.info("Benchmark audio loaded", { source: audioSource, audioDurationSec });
 
       // 2. Detect hardware context
@@ -499,9 +505,15 @@ class BenchmarkManager {
       debugLogger.info("Comparison benchmark starting", { cpuModel, gpuModel });
 
       // Load test audio — same sample used for both engines so the comparison is fair
-      const { buffer: audioBuffer, durationSeconds: audioDurationSec, source: audioSource } =
-        loadBenchmarkAudio();
-      debugLogger.info("Comparison benchmark audio loaded", { source: audioSource, audioDurationSec });
+      const {
+        buffer: audioBuffer,
+        durationSeconds: audioDurationSec,
+        source: audioSource,
+      } = loadBenchmarkAudio();
+      debugLogger.info("Comparison benchmark audio loaded", {
+        source: audioSource,
+        audioDurationSec,
+      });
 
       // Detect hardware once
       let detection = null;

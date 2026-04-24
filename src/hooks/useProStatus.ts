@@ -45,7 +45,12 @@ const PRO_FEATURES = new Set([
 ]);
 
 // Subset of PRO_FEATURES that also carry a visible badge in the sidebar/page headers
-const SIDEBAR_PRO_ITEMS = new Set(["correction-memory", "ai-enhancement", "voice-assistant", "action-engine"]);
+const SIDEBAR_PRO_ITEMS = new Set([
+  "correction-memory",
+  "ai-enhancement",
+  "voice-assistant",
+  "action-engine",
+]);
 
 // localStorage key and custom event used by the temporary preview toggle
 const PREVIEW_KEY = "privatetranscribe_pro_preview";

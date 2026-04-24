@@ -322,7 +322,6 @@ function GpuStatusCard({
     }
   };
 
-  // Auto-detect hardware on mount — uses cached result if available, fast on revisit
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     runDetect(false);
@@ -656,7 +655,6 @@ function GpuStatusCard({
                   <Timer className="w-3 h-3" />
                   {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
                 </Button>
-
               </div>
             </div>
           </div>

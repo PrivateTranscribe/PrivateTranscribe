@@ -12,10 +12,7 @@ import {
 } from "lucide-react";
 import { openExternalLink } from "../../utils/externalLinks";
 import { cn } from "../lib/utils";
-import type {
-  HardwareDetectionResult,
-  LocalTranscriptionProvider,
-} from "../../types/electron";
+import type { HardwareDetectionResult, LocalTranscriptionProvider } from "../../types/electron";
 
 interface HardwareSetupStepProps {
   stepLabel?: string;
@@ -120,7 +117,7 @@ export default function HardwareSetupStep({
     } else if (detectionState === "error") {
       handleContinueWithDefaults();
     }
-  }, [applied, detection, detectionState]);
+  }, [applied, detection, detectionState, handleApply, handleContinueWithDefaults]);
 
   const toFriendlyHardwareText = (text: string) =>
     text
@@ -456,7 +453,11 @@ export default function HardwareSetupStep({
                 </div>
               )}
               {showSkip && !applied && (
-                <Button onClick={handleUseCpuInstead} variant="outline" className="h-8 px-4 text-xs w-full max-w-xs">
+                <Button
+                  onClick={handleUseCpuInstead}
+                  variant="outline"
+                  className="h-8 px-4 text-xs w-full max-w-xs"
+                >
                   Use CPU mode
                 </Button>
               )}

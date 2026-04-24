@@ -46,7 +46,9 @@ export default function TitleBar({
             src={logoSrc}
             alt="PrivateTranscribe"
             className="w-4 h-4 flex-shrink-0"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
           />
           <span
             className="text-[10px] font-medium tracking-wide text-white/50 uppercase"

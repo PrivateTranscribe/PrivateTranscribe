@@ -686,10 +686,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               onCloudModelSelect={(model) =>
                 updateTranscriptionSettings({ cloudTranscriptionModel: model })
               }
-              selectedLocalModel={
-                whisperModel
+              selectedLocalModel={whisperModel}
+              onLocalModelSelect={(modelId) =>
+                updateTranscriptionSettings({ whisperModel: modelId })
               }
-              onLocalModelSelect={(modelId) => updateTranscriptionSettings({ whisperModel: modelId })}
               selectedLocalProvider="whisper"
               onLocalProviderSelect={() =>
                 updateTranscriptionSettings({
@@ -723,10 +723,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 </div>
 
                 {cudaDownloadState === "downloading" && (
-                  <DownloadProgressBar
-                    modelName="GPU Engine"
-                    progress={cudaDownloadProgress}
-                  />
+                  <DownloadProgressBar modelName="GPU Engine" progress={cudaDownloadProgress} />
                 )}
 
                 <div className="p-3 space-y-2">
@@ -982,7 +979,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   className="h-9 px-4"
                 >
                   <Mic className="w-4 h-4" />
-                  {micTestState === "recording" ? `${micTestCountdown ?? 3}...` : "Test your microphone"}
+                  {micTestState === "recording"
+                    ? `${micTestCountdown ?? 3}...`
+                    : "Test your microphone"}
                 </Button>
 
                 <div className="flex items-center gap-1.5">

@@ -856,6 +856,7 @@ export function useSettings() {
       setCloudTranscriptionModel,
       setCloudTranscriptionBaseUrl,
       setCustomDictionary,
+      setWhisperForceCpu,
       broadcastTranscriptionSettingsUpdate,
     ]
   );
