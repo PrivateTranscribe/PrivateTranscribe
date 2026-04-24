@@ -688,6 +688,8 @@ if (gotSingleInstanceLock) {
   let isQuittingAsync = false;
   app.on("before-quit", (event) => {
     if (isQuittingAsync) return; // second call after we call app.quit() below
+    // autoUpdater.quitAndInstall() calls quit internally — let it through
+    if (updateManager && updateManager.isInstalling) return;
     event.preventDefault();
     isQuittingAsync = true;
 
