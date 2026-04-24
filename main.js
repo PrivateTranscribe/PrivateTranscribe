@@ -690,7 +690,9 @@ if (gotSingleInstanceLock) {
     if (isQuittingAsync) return; // second call after we call app.quit() below
     // autoUpdater.quitAndInstall() calls quit internally — let it through
     if (updateManager && updateManager.isInstalling) return;
-    event.preventDefault();
+    if (event && event.preventDefault) {
+      event.preventDefault();
+    }
     isQuittingAsync = true;
 
     // Synchronous teardown first (no async needed).
