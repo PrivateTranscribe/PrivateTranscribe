@@ -57,8 +57,8 @@ import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
 import { SettingsRow } from "./ui/SettingsSection";
-import { LANGUAGE_OPTIONS, getLanguageLabel } from "../utils/languages";
-import { isLanguageSupported } from "../utils/languageCompat";
+import { LANGUAGE_OPTIONS } from "../utils/languages";
+import { getValidWhisperModelNames } from "../models/ModelRegistry";
 
 export type SettingsSectionType =
   | "general"
@@ -72,6 +72,28 @@ export type SettingsSectionType =
   | "help"
   | "developer"
   | "pro";
+
+const HISTORY_LIMIT_MIN = 10;
+const HISTORY_LIMIT_MAX = 10000;
+const WHISPER_IDLE_TIMEOUT_MIN = 1;
+const WHISPER_IDLE_TIMEOUT_MAX = 1440;
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const isPathLikeString = (value: string) =>
+  value.includes("../") ||
+  value.includes("..\\") ||
+  value.startsWith("/") ||
+  /^[a-zA-Z]:[\\/]/.test(value);
+
+const isSafeImportedIdentifier = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && !isPathLikeString(value);
+
+const isValidImportedLanguage = (value: unknown): value is string =>
+  typeof value === "string" &&
+  (value === "auto" ||
+    LANGUAGE_OPTIONS.some((language) => language.value === value) ||
+    /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(value));
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -162,7 +184,14 @@ function formatBenchmarkDate(iso: string): string {
 
 type BenchmarkState = "idle" | "running" | "done" | "error";
 
-function GpuStatusCard() {
+function GpuStatusCard({
+  activeProvider,
+  activeWhisperForceCpu,
+}: {
+  /** localTranscriptionProvider from parent — avoids stale useSettings() copy */
+  activeProvider: string;
+  activeWhisperForceCpu: boolean;
+}) {
   const [detectState, setDetectState] = useState<GpuDetectState>("idle");
   const [detection, setDetection] = useState<HardwareDetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,9 +207,17 @@ function GpuStatusCard() {
   const [compError, setCompError] = useState<string | null>(null);
 
   // CUDA binary download state
-  const [cudaStatus, setCudaStatus] = useState<{ installed: boolean; version?: string } | null>(
-    null
-  );
+  const [cudaStatus, setCudaStatus] = useState<{
+    installed: boolean;
+    path: string | null;
+    platform: string;
+    supported: boolean;
+    forceCpu: boolean;
+    cudaAutoUpdateFailed?: boolean;
+    version?: string | null;
+    upToDate?: boolean;
+    expectedVersion?: string;
+  } | null>(null);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
     "idle"
   );
@@ -213,10 +250,23 @@ function GpuStatusCard() {
       .catch(() => {});
   }, []);
 
+  // Refresh CUDA status while Settings is open so async auto-update failures surface.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const status = await window.electronAPI?.getCudaBinaryStatus?.();
+        if (status) setCudaStatus(status);
+      } catch {
+        /* keep the last known status */
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Listen for CUDA download progress events
   useEffect(() => {
     const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
-      setDownloadProgress(Math.round(data.progress));
+      setDownloadProgress(Math.round(data?.percent ?? data?.progress ?? 0));
     });
     return () => cleanup?.();
   }, []);
@@ -226,9 +276,17 @@ function GpuStatusCard() {
     setDownloadProgress(0);
     setDownloadError(null);
     try {
-      await window.electronAPI?.downloadCudaBinary?.();
+      const result = await window.electronAPI?.downloadCudaBinary?.();
+      if (!result?.success) {
+        setDownloadState("error");
+        setDownloadError(result?.error || "Download failed");
+        return;
+      }
       setDownloadState("done");
-      setCudaStatus({ installed: true });
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      if (status) {
+        setCudaStatus(status);
+      }
     } catch (err: unknown) {
       setDownloadState("error");
       setDownloadError(
@@ -264,15 +322,20 @@ function GpuStatusCard() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    runDetect(false);
+  }, []);
+
   const runBenchmark = async () => {
     setBenchState("running");
     setBenchError(null);
     try {
-      const provider = settings.localTranscriptionProvider === "nvidia" ? "nvidia" : "whisper";
+      // Use props (not settings) — GpuStatusCard's own useSettings() copy can be stale
+      // if localTranscriptionProvider was changed by the model picker above.
+      const provider = activeProvider === "nvidia" ? "nvidia" : "whisper";
       const model =
-        provider === "nvidia"
-          ? settings.parakeetModel || "parakeet-tdt-0.6b-v3"
-          : settings.whisperModel || "turbo";
+        provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : settings.whisperModel || "turbo";
 
       const res = await window.electronAPI?.benchmarkRun?.({ provider, model });
       if (res?.success && res.result) {
@@ -294,7 +357,7 @@ function GpuStatusCard() {
     try {
       const res = await window.electronAPI?.benchmarkRunComparison?.({
         cpuModel: settings.whisperModel || "turbo",
-        gpuModel: settings.parakeetModel || "parakeet-tdt-0.6b-v3",
+        gpuModel: "parakeet-tdt-0.6b-v3",
       });
       if (res?.success && res.result) {
         setCompResult(res.result);
@@ -316,6 +379,22 @@ function GpuStatusCard() {
   const gpuCategory = rec?.gpuCategory;
   const isNvidiaNoCuda = gpuCategory === "nvidia_no_cuda";
 
+  // GPU is "selected" when CPU mode is NOT forced (use prop, not stale settings copy)
+  const usingGpu = !activeWhisperForceCpu;
+  // CUDA setup requires actual NVIDIA CUDA hardware, not just a supported OS/arch.
+  const gpuSupported = gpuCategory === "nvidia_cuda";
+  const cudaAutoUpdateFailed =
+    !!cudaStatus?.cudaAutoUpdateFailed && (cudaStatus?.upToDate ?? true) === false;
+  const needsInitialCudaInstall = (cudaStatus?.installed ?? false) === false;
+  const needsCudaUpdate =
+    (cudaStatus?.installed ?? false) === true && (cudaStatus?.upToDate ?? true) === false;
+  const shouldShowCudaDownloadState =
+    downloadState === "downloading" || downloadState === "done" || downloadState === "error";
+  const shouldShowCudaSetupCard =
+    usingGpu &&
+    gpuSupported &&
+    (shouldShowCudaDownloadState || needsInitialCudaInstall || needsCudaUpdate);
+
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
       <div className="p-4 flex items-start gap-3">
@@ -323,303 +402,261 @@ function GpuStatusCard() {
           <MonitorSmartphone className="w-4 h-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm font-medium text-foreground">GPU Acceleration Status</p>
-            {gpuCategory && (
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+            <p className="text-sm font-medium text-foreground">Hardware</p>
+            {detectState === "detecting" && (
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                Detecting…
+              </div>
+            )}
+            {detectState === "done" && gpuCategory && (
               <Badge variant={GPU_CATEGORY_VARIANT[gpuCategory]} className="text-[10px] shrink-0">
                 {GPU_CATEGORY_LABELS[gpuCategory]}
               </Badge>
             )}
           </div>
 
-          {detectState === "idle" && (
-            <p className="text-xs text-muted-foreground mt-1 mb-2">
-              Check whether your GPU is ready for local acceleration.
-            </p>
-          )}
-
-          {detectState === "detecting" && (
-            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Scanning hardware…
-            </div>
-          )}
-
-          {detectState === "error" && (
-            <div className="flex items-center gap-2 mt-2 text-xs text-destructive">
-              <AlertCircle className="w-3 h-3" />
-              {error}
-            </div>
-          )}
-
-          {detectState === "done" && detection && (
-            <div className="mt-2 space-y-1">
-              {detection.gpu.available ? (
-                <p className="text-xs text-muted-foreground">
-                  {detection.gpu.model ?? "GPU detected"}
-                  {detection.gpu.vram
-                    ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
-                    : ""}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No discrete GPU detected - CPU transcription only
-                </p>
-              )}
-              {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
-                <div className="mt-2 rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5">
-                  <p className="text-[11px] font-medium text-foreground">
-                    To enable GPU acceleration:
-                  </p>
-                  <ol className="space-y-1 list-none">
-                    {rec.recoverySteps.map((step, i) => (
-                      <li
-                        key={i}
-                        className="text-[11px] text-muted-foreground flex items-start gap-1.5"
+          <div className="space-y-4">
+            {/* ═══ CUDA SETUP (shown only when GPU Whisper is selected and CUDA isn't ready, or while downloading) ═══ */}
+            {shouldShowCudaSetupCard && (
+              <div>
+                {downloadState === "downloading" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Downloading CUDA engine… {downloadProgress}%</span>
+                      </div>
+                      <Button
+                        onClick={handleCancelDownload}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1.5 text-[11px]"
                       >
-                        <span className="text-warning font-medium mt-0.5 shrink-0">{i + 1}.</span>
-                        <span>{step}</span>
-                      </li>
-                    ))}
-                  </ol>
-                  <Button
-                    onClick={() => openExternalLink("https://www.nvidia.com/drivers")}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[11px] mt-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Download NVIDIA Drivers
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── CPU vs GPU Comparison section ─────────────────── */}
-          {compState === "done" && compResult && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[11px] font-medium text-foreground">
-                  Whisper vs Parakeet Speed Comparison
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {/* Whisper result */}
-                <div className="flex-1 rounded-md border border-border-subtle/40 bg-surface-raised/20 p-2 text-center">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Whisper</p>
-                  <p className="text-sm font-semibold text-foreground tabular-nums">
-                    {formatRealtimeFactor(compResult.cpuResult.realtimeFactor)}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground">{compResult.cpuResult.model}</p>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                {/* Parakeet result */}
-                <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 p-2 text-center">
-                  <p className="text-[10px] font-medium text-primary mb-0.5">Parakeet</p>
-                  <p className="text-sm font-semibold text-foreground tabular-nums">
-                    {formatRealtimeFactor(compResult.gpuResult.realtimeFactor)}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground">{compResult.gpuResult.model}</p>
-                </div>
-              </div>
-              {/* Speedup summary */}
-              {compResult.speedup >= 1.05 && (
-                <div className="mt-2 flex items-center justify-center gap-1.5">
-                  <span className="text-xs font-semibold text-primary tabular-nums">
-                    {compResult.speedup >= 10
-                      ? `${compResult.speedup.toFixed(1)}x`
-                      : `${compResult.speedup.toFixed(2)}x`}{" "}
-                    faster with Parakeet
-                  </span>
-                </div>
-              )}
-              {compResult.speedup > 0 && compResult.speedup < 1.05 && (
-                <div className="mt-2 flex items-center justify-center">
-                  <span className="text-[11px] text-muted-foreground">
-                    About the same speed on this device
-                  </span>
-                </div>
-              )}
-              <p className="text-[9px] text-muted-foreground mt-2 text-center">
-                Measured on this device · Whisper vs Parakeet (ONNX) - different engines
-                {compResult.createdAt ? ` · ${formatBenchmarkDate(compResult.createdAt)}` : ""}
-              </p>
-            </div>
-          )}
-
-          {compState === "running" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Running CPU vs GPU comparison - testing both engines on a 10-second sample…
-              </div>
-            </div>
-          )}
-
-          {compState === "error" && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
-              <AlertCircle className="w-3 h-3" />
-              Comparison failed: {compError}
-            </div>
-          )}
-
-          {/* ── Single-engine Speed Test section ─────────────────── */}
-          {benchState === "done" && benchResult && compState !== "done" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Zap className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[11px] font-medium text-foreground">Transcription Speed</p>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-semibold text-foreground tabular-nums">
-                  {formatRealtimeFactor(benchResult.realtimeFactor)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">real-time</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Measured on this device ·{" "}
-                {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} ({benchResult.model}) ·{" "}
-                {(benchResult.elapsedMs / 1000).toFixed(1)}s for {benchResult.audioDurationSec}s
-                audio
-                {benchResult.createdAt ? ` · ${formatBenchmarkDate(benchResult.createdAt)}` : ""}
-              </p>
-            </div>
-          )}
-
-          {benchState === "running" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Running speed test - transcribing a 10-second sample…
-              </div>
-            </div>
-          )}
-
-          {benchState === "error" && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
-              <AlertCircle className="w-3 h-3" />
-              Speed test failed: {benchError}
-            </div>
-          )}
-
-          {/* ── CUDA binary download section ─────────────────── */}
-          {gpuCategory === "nvidia_cuda" && (
-            <div className="mt-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
-              {cudaStatus?.installed || downloadState === "done" ? (
-                <div className="flex items-center gap-2 text-xs text-primary">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span className="font-medium">GPU binary installed</span>
-                </div>
-              ) : downloadState === "downloading" ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Downloading… {downloadProgress}%</span>
+                        Cancel
+                      </Button>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-primary/20 overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all duration-200"
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : downloadState === "done" ? (
+                  <div className="flex items-center gap-1.5 text-xs text-success">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>CUDA engine installed — GPU acceleration active.</span>
+                  </div>
+                ) : downloadState === "error" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs text-destructive">
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>{downloadError}</span>
                     </div>
                     <Button
-                      onClick={handleCancelDownload}
-                      variant="outline"
+                      onClick={handleDownloadCuda}
+                      variant="default"
                       size="sm"
                       className="h-7 gap-1.5 text-[11px]"
                     >
-                      Cancel
+                      <Download className="w-3 h-3" />
+                      Retry Download
                     </Button>
                   </div>
-                  <div className="w-full h-1.5 rounded-full bg-primary/20 overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all duration-200"
-                      style={{ width: `${downloadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              ) : downloadState === "error" ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5 text-xs text-destructive">
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>{downloadError}</span>
-                  </div>
-                  <Button
-                    onClick={handleDownloadCuda}
-                    variant="default"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[11px]"
-                  >
-                    <Download className="w-3 h-3" />
-                    Retry
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-[11px] font-medium text-foreground">
-                      GPU-Accelerated Engine
+                ) : needsCudaUpdate ? (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+                    <p className="text-[11px] text-amber-200 leading-relaxed">
+                      {cudaAutoUpdateFailed
+                        ? "GPU engine update failed. Click to retry."
+                        : "GPU engine update available. Update it to keep GPU transcription current."}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Download the CUDA-optimized whisper-server for faster transcription (~650 MB)
-                    </p>
+                    <Button
+                      onClick={handleDownloadCuda}
+                      variant="default"
+                      size="sm"
+                      className="h-7 gap-1.5 text-[11px]"
+                    >
+                      <Download className="w-3 h-3" />
+                      {cudaAutoUpdateFailed ? "Retry" : "Update CUDA Engine"}
+                    </Button>
                   </div>
-                  <Button
-                    onClick={handleDownloadCuda}
-                    variant="default"
-                    size="sm"
-                    className="h-7 gap-1.5 text-[11px]"
-                  >
-                    <Download className="w-3 h-3" />
-                    Download
-                  </Button>
+                ) : (
+                  <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      GPU · Whisper requires the CUDA engine (~650 MB). Download it once to enable
+                      GPU-accelerated transcription.
+                    </p>
+                    <Button
+                      onClick={handleDownloadCuda}
+                      variant="default"
+                      size="sm"
+                      className="h-7 gap-1.5 text-[11px]"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download CUDA Engine
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══ HARDWARE ════════════════════════════════════════ */}
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
+                Hardware
+              </p>
+              {detectState === "detecting" && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Scanning hardware…
                 </div>
               )}
+              {detectState === "error" && (
+                <div className="flex items-center gap-2 text-xs text-destructive">
+                  <AlertCircle className="w-3 h-3" />
+                  {error}
+                </div>
+              )}
+              {detectState === "done" && detection && (
+                <div className="space-y-2">
+                  {detection.gpu.available ? (
+                    <p className="text-xs text-muted-foreground">
+                      {detection.gpu.model ?? "GPU detected"}
+                      {detection.gpu.vram
+                        ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
+                        : ""}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No discrete GPU detected — CPU transcription only
+                    </p>
+                  )}
+                  {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
+                    <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5">
+                      <p className="text-[11px] font-medium text-foreground">
+                        To enable GPU acceleration:
+                      </p>
+                      <ol className="space-y-1 list-none">
+                        {rec.recoverySteps.map((step, i) => (
+                          <li
+                            key={i}
+                            className="text-[11px] text-muted-foreground flex items-start gap-1.5"
+                          >
+                            <span className="text-warning font-medium mt-0.5 shrink-0">
+                              {i + 1}.
+                            </span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                      <Button
+                        onClick={() => openExternalLink("https://www.nvidia.com/drivers")}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1.5 text-[11px] mt-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Download NVIDIA Drivers
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className={detectState === "done" && detection ? "mt-2" : ""}>
+                <Button
+                  onClick={() => runDetect(true)}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-[11px]"
+                  disabled={detectState === "detecting"}
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  {detectState === "done" ? "Re-detect Hardware" : "Detect Hardware"}
+                </Button>
+              </div>
             </div>
-          )}
 
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
-            {detectState === "idle" && (
-              <Button
-                onClick={() => runDetect(false)}
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-[11px]"
-              >
-                <MonitorSmartphone className="w-3 h-3" />
-                Check GPU Status
-              </Button>
-            )}
-            {(detectState === "done" || detectState === "error") && (
-              <Button
-                onClick={() => runDetect(true)}
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-[11px]"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Re-detect Hardware
-              </Button>
-            )}
-            <Button
-              onClick={runBenchmark}
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-[11px]"
-              disabled={benchState === "running" || compState === "running"}
-            >
-              <Timer className="w-3 h-3" />
-              {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
-            </Button>
-            {gpuCategory === "nvidia_cuda" && (
-              <Button
-                onClick={runComparison}
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 text-[11px]"
-                disabled={benchState === "running" || compState === "running"}
-              >
-                <Zap className="w-3 h-3" />
-                {compResult ? "Re-run CPU vs GPU" : "Compare CPU vs GPU"}
-              </Button>
-            )}
+            {/* ═══ BENCHMARKS ══════════════════════════════════════ */}
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
+                Benchmarks
+              </p>
+
+              {benchState === "done" && benchResult && (
+                <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-semibold text-foreground tabular-nums">
+                      {formatRealtimeFactor(benchResult.realtimeFactor)}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">real-time</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} (
+                    {benchResult.model}) · {(benchResult.elapsedMs / 1000).toFixed(1)}s for{" "}
+                    {benchResult.audioDurationSec}s audio
+                    {benchResult.createdAt
+                      ? ` · ${formatBenchmarkDate(benchResult.createdAt)}`
+                      : ""}
+                  </p>
+                  <p className="text-[9px] text-muted-foreground mt-1">
+                    Higher = faster. 59x means 60s of audio transcribes in ~1s.
+                  </p>
+                  {/* Warn if CUDA binary is present but speed is suspiciously low (likely not using GPU) */}
+                  {gpuCategory === "nvidia_cuda" &&
+                    !activeWhisperForceCpu &&
+                    benchResult.realtimeFactor < 2 && (
+                      <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/8 px-2.5 py-2">
+                        <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-[10px] text-amber-500 leading-relaxed">
+                          GPU acceleration may not be working. Your NVIDIA GPU might not be
+                          compatible with the current CUDA binary (RTX 50-series requires a newer
+                          build). A Blackwell-compatible update is in progress.
+                        </p>
+                      </div>
+                    )}
+                </div>
+              )}
+
+              {(benchState === "running" || compState === "running") && (
+                <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {compState === "running"
+                      ? "Running Whisper vs Parakeet comparison — testing both engines on a 10-second sample…"
+                      : "Running speed test — transcribing a 10-second sample…"}
+                  </div>
+                </div>
+              )}
+
+              {benchState === "error" && (
+                <div className="mb-3 flex items-center gap-2 text-xs text-destructive">
+                  <AlertCircle className="w-3 h-3" />
+                  Speed test failed: {benchError}
+                </div>
+              )}
+              {compState === "error" && (
+                <div className="mb-3 flex items-center gap-2 text-xs text-destructive">
+                  <AlertCircle className="w-3 h-3" />
+                  Comparison failed: {compError}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  onClick={runBenchmark}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-[11px]"
+                  disabled={benchState === "running" || compState === "running"}
+                  title={`Benchmarks the active engine: ${activeProvider === "nvidia" ? "Parakeet" : activeWhisperForceCpu ? "Whisper (CPU)" : "Whisper (GPU)"}`}
+                >
+                  <Timer className="w-3 h-3" />
+                  {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -758,9 +795,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     useLocalWhisper,
     whisperModel,
     localTranscriptionProvider,
-    parakeetModel,
     whisperServerIdleTimeoutMinutes,
-    parakeetServerIdleTimeoutMinutes,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
@@ -785,8 +820,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setSelectedMicDeviceId,
     setUseLocalWhisper,
     setWhisperModel,
+    whisperForceCpu,
+    setWhisperForceCpu,
     setLocalTranscriptionProvider,
-    setParakeetModel,
     setWhisperServerIdleTimeoutMinutes,
     setCloudTranscriptionProvider,
     setCloudTranscriptionModel,
@@ -843,6 +879,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
+    apiKeySyncError,
+    clearApiKeySyncError,
   } = useSettings();
 
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
@@ -852,6 +890,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
+
+  // GPU support status — fetched once to drive the engine selector in TranscriptionModelPicker
+  const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
+  useEffect(() => {
+    window.electronAPI
+      ?.detectHardware?.()
+      .then((result) =>
+        setGpuSupportedForPicker(result?.detection?.recommendations?.gpuCategory === "nvidia_cuda")
+      )
+      .catch(() => {});
+  }, []);
 
   const [correctionCount, setCorrectionCount] = useState<number | null>(null);
   const [clearConfirmPending, setClearConfirmPending] = useState(false);
@@ -892,13 +941,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperIdleDraft(String(whisperServerIdleTimeoutMinutes));
   }, [whisperServerIdleTimeoutMinutes]);
 
-  const [parakeetIdleDraft, setParakeetIdleDraft] = useState<string>(
-    String(parakeetServerIdleTimeoutMinutes)
-  );
-  useEffect(() => {
-    setParakeetIdleDraft(String(parakeetServerIdleTimeoutMinutes));
-  }, [parakeetServerIdleTimeoutMinutes]);
-
   const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
     String(llamaServerIdleTimeoutMinutes)
   );
@@ -932,9 +974,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           useLocalWhisper,
           localTranscriptionProvider,
           whisperModel,
-          parakeetModel,
+          whisperForceCpu,
           whisperServerIdleTimeoutMinutes,
-          parakeetServerIdleTimeoutMinutes,
           preferredLanguage,
           translateToEnglish,
           cloudTranscriptionProvider,
@@ -993,7 +1034,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       useLocalWhisper,
       localTranscriptionProvider,
       whisperModel,
-      parakeetModel,
+      whisperForceCpu,
       preferredLanguage,
       translateToEnglish,
       cloudTranscriptionProvider,
@@ -1051,9 +1092,75 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     async (data: any) => {
       const s = data?.settings || data;
       if (!s || typeof s !== "object") throw new Error("Invalid settings file");
+      const skippedFields: string[] = [];
+      const skipField = (field: string, reason: string) => {
+        skippedFields.push(`${field}: ${reason}`);
+      };
+      const validWhisperModels = new Set(getValidWhisperModelNames());
+
+      let importedHistoryLimit: number | undefined;
+      if (s.historyLimit !== undefined) {
+        if (Number.isInteger(s.historyLimit) && s.historyLimit > 0) {
+          importedHistoryLimit = clamp(s.historyLimit, HISTORY_LIMIT_MIN, HISTORY_LIMIT_MAX);
+        } else {
+          skipField("historyLimit", "must be a positive integer");
+        }
+      }
+
+      let importedWhisperIdleTimeout: number | undefined;
+      if (s.whisperServerIdleTimeoutMinutes !== undefined) {
+        if (
+          Number.isInteger(s.whisperServerIdleTimeoutMinutes) &&
+          s.whisperServerIdleTimeoutMinutes > 0
+        ) {
+          importedWhisperIdleTimeout = clamp(
+            s.whisperServerIdleTimeoutMinutes,
+            WHISPER_IDLE_TIMEOUT_MIN,
+            WHISPER_IDLE_TIMEOUT_MAX
+          );
+        } else {
+          skipField("whisperServerIdleTimeoutMinutes", "must be a positive integer");
+        }
+      }
+
+      let importedWhisperModel: string | undefined;
+      if (s.whisperModel !== undefined) {
+        if (typeof s.whisperModel === "string" && validWhisperModels.has(s.whisperModel)) {
+          importedWhisperModel = s.whisperModel;
+        } else {
+          skipField("whisperModel", "must be a known Whisper model ID");
+        }
+      }
+
+      const importedLanguage = s.whisperLanguage ?? s.preferredLanguage;
+      let importedPreferredLanguage: string | undefined;
+      if (importedLanguage !== undefined) {
+        if (importedLanguage === null) {
+          importedPreferredLanguage = "auto";
+        } else if (isValidImportedLanguage(importedLanguage)) {
+          importedPreferredLanguage = importedLanguage;
+        } else {
+          skipField("preferredLanguage", "must be a valid BCP-47 language code or null");
+        }
+      }
+
+      const safeIdentifier = (field: string): string | undefined => {
+        const value = s[field];
+        if (value === undefined) return undefined;
+        if (isSafeImportedIdentifier(value)) return value;
+        skipField(field, "contains unsafe path-like content");
+        return undefined;
+      };
+      const safeNonPathString = (field: string): string | undefined => {
+        const value = s[field];
+        if (value === undefined) return undefined;
+        if (typeof value === "string" && !isPathLikeString(value)) return value;
+        skipField(field, "contains unsafe path-like content");
+        return undefined;
+      };
 
       if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
-      if (typeof s.historyLimit === "number") setHistoryLimit(s.historyLimit);
+      if (importedHistoryLimit !== undefined) setHistoryLimit(importedHistoryLimit);
       if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
       if (s.activationMode === "tap" || s.activationMode === "push")
         setActivationMode(s.activationMode);
@@ -1062,43 +1169,28 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         useLocalWhisper: typeof s.useLocalWhisper === "boolean" ? s.useLocalWhisper : undefined,
         localTranscriptionProvider:
           s.localTranscriptionProvider === "nvidia" || s.localTranscriptionProvider === "whisper"
-            ? s.localTranscriptionProvider
+            ? "whisper"
             : undefined,
-        whisperModel: typeof s.whisperModel === "string" ? s.whisperModel : undefined,
-        parakeetModel: typeof s.parakeetModel === "string" ? s.parakeetModel : undefined,
-        whisperServerIdleTimeoutMinutes:
-          typeof s.whisperServerIdleTimeoutMinutes === "number"
-            ? s.whisperServerIdleTimeoutMinutes
-            : undefined,
-        parakeetServerIdleTimeoutMinutes:
-          typeof s.parakeetServerIdleTimeoutMinutes === "number"
-            ? s.parakeetServerIdleTimeoutMinutes
-            : undefined,
-        preferredLanguage:
-          typeof s.preferredLanguage === "string" ? s.preferredLanguage : undefined,
+        whisperModel: importedWhisperModel,
+        whisperForceCpu: typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
+        whisperServerIdleTimeoutMinutes: importedWhisperIdleTimeout,
+        preferredLanguage: importedPreferredLanguage,
         translateToEnglish:
           s.translateToEnglish === "on" || s.translateToEnglish === "off"
             ? s.translateToEnglish
             : undefined,
-        cloudTranscriptionProvider:
-          typeof s.cloudTranscriptionProvider === "string"
-            ? s.cloudTranscriptionProvider
-            : undefined,
-        cloudTranscriptionModel:
-          typeof s.cloudTranscriptionModel === "string" ? s.cloudTranscriptionModel : undefined,
-        cloudTranscriptionBaseUrl:
-          typeof s.cloudTranscriptionBaseUrl === "string" ? s.cloudTranscriptionBaseUrl : undefined,
+        cloudTranscriptionProvider: safeIdentifier("cloudTranscriptionProvider"),
+        cloudTranscriptionModel: safeIdentifier("cloudTranscriptionModel"),
+        cloudTranscriptionBaseUrl: safeNonPathString("cloudTranscriptionBaseUrl"),
         customDictionary: Array.isArray(s.customDictionary) ? s.customDictionary : undefined,
       });
 
       updateReasoningSettings({
         useReasoningModel:
           typeof s.useReasoningModel === "boolean" ? s.useReasoningModel : undefined,
-        reasoningProvider:
-          typeof s.reasoningProvider === "string" ? s.reasoningProvider : undefined,
-        reasoningModel: typeof s.reasoningModel === "string" ? s.reasoningModel : undefined,
-        cloudReasoningBaseUrl:
-          typeof s.cloudReasoningBaseUrl === "string" ? s.cloudReasoningBaseUrl : undefined,
+        reasoningProvider: safeIdentifier("reasoningProvider"),
+        reasoningModel: safeIdentifier("reasoningModel"),
+        cloudReasoningBaseUrl: safeNonPathString("cloudReasoningBaseUrl"),
         llamaServerIdleTimeoutMinutes:
           typeof s.llamaServerIdleTimeoutMinutes === "number"
             ? s.llamaServerIdleTimeoutMinutes
@@ -1133,7 +1225,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
-      if (typeof s.selectedMicDeviceId === "string") setSelectedMicDeviceId(s.selectedMicDeviceId);
+      if (s.selectedMicDeviceId !== undefined) {
+        if (isSafeImportedIdentifier(s.selectedMicDeviceId)) {
+          setSelectedMicDeviceId(s.selectedMicDeviceId);
+        } else {
+          skipField("selectedMicDeviceId", "contains unsafe path-like content");
+        }
+      }
 
       if (allowApiKeysOnImport) {
         const keys = s.apiKeys || {};
@@ -1146,6 +1244,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         if (typeof keys.customReasoningApiKey === "string")
           setCustomReasoningApiKey(keys.customReasoningApiKey);
       }
+
+      if (skippedFields.length > 0) {
+        console.warn("Skipped unsafe or invalid imported settings", skippedFields);
+      }
+      return skippedFields;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -1226,19 +1329,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     }
     return "linux";
   }, []);
-
-  /**
-   * Derived warning: shown when the active local provider is Parakeet and the
-   * user's chosen language is outside its supported set. Computed in the
-   * renderer so it reacts instantly to changes in any of the three values.
-   */
-  const languageCompatWarning = useMemo(() => {
-    if (!useLocalWhisper || localTranscriptionProvider !== "nvidia") return null;
-    const lang = preferredLanguage || "auto";
-    if (lang === "auto") return null;
-    if (isLanguageSupported(lang, "parakeet", parakeetModel)) return null;
-    return `"${getLanguageLabel(lang)}" is not supported by Parakeet. Auto-detect will be used instead.`;
-  }, [useLocalWhisper, localTranscriptionProvider, parakeetModel, preferredLanguage]);
 
   /**
    * Whether the current model supports translation.
@@ -1418,7 +1508,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               return;
             }
 
-            window.dispatchEvent(new Event("Privoca-models-cleared"));
+            window.dispatchEvent(new Event("PrivateTranscribe-models-cleared"));
 
             showAlertDialog({
               title: "Models Removed",
@@ -1759,15 +1849,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         )}
                       </>
                     )}
-
-                  {languageCompatWarning && (
-                    <p className="mt-3 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                      <span aria-hidden="true" className="mt-px shrink-0">
-                        ⚠
-                      </span>
-                      {languageCompatWarning}
-                    </p>
-                  )}
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
@@ -1917,26 +1998,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Pause media while recording"
-                    description="Automatically pause playing media when you start recording"
+                    description={
+                      platform === "win32"
+                        ? "Coming soon on Windows — media session control is being reworked for reliability"
+                        : "Automatically pause playing media when you start recording"
+                    }
                   >
-                    <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                    {platform === "win32" ? (
+                      <span className="text-[11px] text-muted-foreground/50 font-medium uppercase tracking-wide px-2 py-1 rounded border border-border-subtle">
+                        Soon
+                      </span>
+                    ) : (
+                      <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                    )}
                   </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
-            {/* Dictionary */}
-            <div>
-              <SectionHeader
-                title="Dictionary"
-                description="Add words you want PrivateTranscribe to recognize more reliably - product names, people, acronyms."
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <p className="text-sm text-muted-foreground">
-                    Go to the <span className="text-foreground font-medium">Dictionary</span>{" "}
-                    section in the sidebar to manage your custom vocabulary.
-                  </p>
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
@@ -2112,18 +2187,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               onCloudProviderSelect={setCloudTranscriptionProvider}
               selectedCloudModel={cloudTranscriptionModel}
               onCloudModelSelect={setCloudTranscriptionModel}
-              selectedLocalModel={
-                localTranscriptionProvider === "nvidia" ? parakeetModel : whisperModel
-              }
+              selectedLocalModel={whisperModel}
               onLocalModelSelect={(modelId) => {
-                if (localTranscriptionProvider === "nvidia") {
-                  setParakeetModel(modelId);
-                } else {
-                  setWhisperModel(modelId);
-                }
+                setWhisperModel(modelId);
               }}
               selectedLocalProvider={localTranscriptionProvider}
-              onLocalProviderSelect={setLocalTranscriptionProvider}
+              onLocalProviderSelect={(providerId) => {
+                setLocalTranscriptionProvider(providerId);
+              }}
+              whisperForceCpu={whisperForceCpu}
+              onWhisperForceCpuChange={setWhisperForceCpu}
+              gpuSupported={gpuSupportedForPicker}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 setUseLocalWhisper(isLocal);
@@ -2187,61 +2261,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </div>
             )}
 
-            {useLocalWhisper && localTranscriptionProvider === "nvidia" && (
-              <div className="mt-6">
-                <SectionHeader
-                  title="Parakeet server performance"
-                  description="Tune how the local Parakeet server behaves after you stop dictating"
-                />
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Idle shutdown (minutes)"
-                      description="Stops the Parakeet server after being idle to free RAM. Set to 0 to keep it running."
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          max={240}
-                          step={1}
-                          value={parakeetIdleDraft}
-                          onChange={(e) => {
-                            setParakeetIdleDraft(e.target.value);
-                          }}
-                          onBlur={() => {
-                            const raw = parseInt(parakeetIdleDraft, 10);
-                            const next = Number.isFinite(raw)
-                              ? Math.max(0, Math.min(240, raw))
-                              : parakeetServerIdleTimeoutMinutes;
-
-                            setParakeetIdleDraft(String(next));
-                            updateTranscriptionSettings({ parakeetServerIdleTimeoutMinutes: next });
-
-                            // Best-effort: apply immediately if the server is already running.
-                            window.electronAPI
-                              ?.parakeetServerSetIdleTimeoutMinutes(next)
-                              ?.catch(() => {});
-                          }}
-                          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                          aria-label="Parakeet server idle shutdown minutes"
-                        />
-                        <span className="text-xs text-muted-foreground">min</span>
-                      </div>
-                    </SettingsRow>
-                  </SettingsPanelRow>
-                </SettingsPanel>
-              </div>
-            )}
-
             {/* GPU Status - always visible in Transcription tab for local users */}
             {useLocalWhisper && (
               <div className="mt-6">
                 <SectionHeader
-                  title="GPU acceleration"
-                  description="Check whether your system supports GPU-accelerated transcription"
+                  title="Performance"
+                  description="Hardware detection, CUDA setup, and transcription speed benchmarks"
                 />
-                <GpuStatusCard />
+                <GpuStatusCard
+                  activeProvider={localTranscriptionProvider}
+                  activeWhisperForceCpu={whisperForceCpu}
+                />
               </div>
             )}
           </div>
@@ -2749,7 +2779,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               description="Advanced diagnostics, logging, and debugging capabilities"
             />
 
-            <DeveloperSection />
+            {updateStatus.isDevelopment && <DeveloperSection />}
 
             {/* Data Management - moved from General */}
             <div className="border-t border-border/30 pt-8">
@@ -2820,10 +2850,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                 confirmText: "Import",
                                 onConfirm: async () => {
                                   try {
-                                    await handleImportSettingsFile(file);
+                                    const skippedFields = await handleImportSettingsFile(file);
                                     showAlertDialog({
-                                      title: "Settings Imported",
-                                      description: "Your settings were imported successfully.",
+                                      title:
+                                        skippedFields.length > 0
+                                          ? "Settings Imported With Skips"
+                                          : "Settings Imported",
+                                      description:
+                                        skippedFields.length > 0
+                                          ? `Imported valid settings. Skipped ${skippedFields.length} invalid field(s): ${skippedFields.join("; ")}.`
+                                          : "Your settings were imported successfully.",
                                     });
                                   } catch (err: any) {
                                     showAlertDialog({
@@ -3027,6 +3063,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         description={alertDialog.description}
         onOk={() => {}}
       />
+
+      {apiKeySyncError && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/8 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="flex-1">{apiKeySyncError}</span>
+          <button
+            onClick={clearApiKeySyncError}
+            className="ml-2 shrink-0 text-destructive/60 hover:text-destructive transition-colors"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {renderSectionContent()}
     </>

@@ -147,8 +147,10 @@ const ToastViewport: React.FC<{
     );
   }, []);
 
-  // In the dictation overlay, place the toast on the side with available room.
-  // Near the right screen edge, the toast should expand to the left of the mic.
+  // In the dictation overlay the window is a fixed 400×500 transparent container.
+  // The button sits at bottom:58px (button top edge at 102px from window bottom).
+  // Position the toast at bottom:110px so it clears the button with an 8px gap.
+  // Near the right screen edge, expand to the left of center instead of the right.
   const toastOnLeft = isDictationPanel && window.screenX + 380 > window.screen.width;
 
   if (toasts.length === 0) return null;
@@ -159,8 +161,8 @@ const ToastViewport: React.FC<{
         "fixed z-50 flex flex-col gap-1.5 pointer-events-none",
         isDictationPanel
           ? toastOnLeft
-            ? "bottom-20 left-6 items-start"
-            : "bottom-20 right-6 items-end"
+            ? "bottom-[110px] left-6 items-start"
+            : "bottom-[110px] right-6 items-end"
           : "bottom-5 right-5" // Standard position in control panel
       )}
     >

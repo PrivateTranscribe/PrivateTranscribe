@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Button } from "./button";
 import { Copy, Trash2, ChevronDown, ChevronUp, Check } from "lucide-react";
 import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
@@ -8,8 +9,33 @@ interface TranscriptionItemProps {
   item: TranscriptionItemType;
   index: number;
   total: number;
+  searchQuery?: string;
   onCopy: (text: string) => void;
   onDelete: (id: number) => void;
+}
+
+// Splits text into plain/highlighted segments for the given query string.
+// Returns the original string when query is empty.
+// eslint-disable-next-line react-refresh/only-export-components
+export function highlightText(text: string, query: string): ReactNode {
+  if (!query) return text;
+  const lq = query.toLowerCase();
+  const lower = text.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  let pos = lower.indexOf(lq);
+  while (pos !== -1) {
+    if (pos > cursor) parts.push(text.slice(cursor, pos));
+    parts.push(
+      <mark key={pos} className="bg-primary/25 text-foreground rounded-sm px-0.5 not-italic">
+        {text.slice(pos, pos + query.length)}
+      </mark>
+    );
+    cursor = pos + query.length;
+    pos = lower.indexOf(lq, cursor);
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts.length ? <>{parts}</> : text;
 }
 
 const TEXT_PREVIEW_LENGTH = 280;
@@ -18,6 +44,7 @@ export default function TranscriptionItem({
   item,
   index,
   total,
+  searchQuery = "",
   onCopy,
   onDelete,
 }: TranscriptionItemProps) {
@@ -37,8 +64,10 @@ export default function TranscriptionItem({
       });
 
   const isLongText = item.text.length > TEXT_PREVIEW_LENGTH;
-  const displayText =
-    isExpanded || !isLongText ? item.text : `${item.text.slice(0, TEXT_PREVIEW_LENGTH)}…`;
+  // When a search is active, show full text so the highlighted match is always visible.
+  const showFullText = isExpanded || !isLongText || !!searchQuery;
+  const displayText = showFullText ? item.text : `${item.text.slice(0, TEXT_PREVIEW_LENGTH)}…`;
+  const renderedText = highlightText(displayText, searchQuery);
 
   return (
     <div
@@ -60,16 +89,16 @@ export default function TranscriptionItem({
           <p
             className={cn(
               "text-foreground text-[15px] leading-relaxed break-words",
-              !isExpanded && isLongText && "line-clamp-3"
+              !isExpanded && isLongText && !searchQuery && "line-clamp-3"
             )}
           >
-            {displayText}
+            {renderedText}
           </p>
 
           {/* Metadata row */}
           <div className="flex items-center gap-3 mt-2.5">
             <span className="text-xs text-muted-foreground tabular-nums">{formattedTimestamp}</span>
-            {isLongText && (
+            {isLongText && !searchQuery && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="inline-flex items-center gap-1 text-xs text-primary/80 hover:text-primary transition-colors duration-200"

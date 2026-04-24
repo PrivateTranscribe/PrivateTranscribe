@@ -12,30 +12,26 @@ import {
 } from "lucide-react";
 import { openExternalLink } from "../../utils/externalLinks";
 import { cn } from "../lib/utils";
-import type {
-  HardwareDetectionResult,
-  HardwareRecommendations,
-  LocalTranscriptionProvider,
-} from "../../types/electron";
+import type { HardwareDetectionResult, LocalTranscriptionProvider } from "../../types/electron";
 
 interface HardwareSetupStepProps {
+  stepLabel?: string;
   onApplyRecommendations: (recommendations: {
     useLocalWhisper: boolean;
     localTranscriptionProvider: LocalTranscriptionProvider;
     whisperModel: string;
-    parakeetModel?: string;
+    whisperForceCpu?: boolean;
   }) => void;
-  onNext?: () => void;
-  onSkip?: () => void;
+  onAppliedChange?: (applied: boolean) => void;
   showSkip?: boolean;
 }
 
 type DetectionState = "idle" | "detecting" | "complete" | "error";
 
 export default function HardwareSetupStep({
+  stepLabel,
   onApplyRecommendations,
-  onNext,
-  onSkip,
+  onAppliedChange,
   showSkip = true,
 }: HardwareSetupStepProps) {
   const [detectionState, setDetectionState] = useState<DetectionState>("idle");
@@ -77,38 +73,60 @@ export default function HardwareSetupStep({
 
     const rec = detection.recommendations;
     onApplyRecommendations({
-      useLocalWhisper: rec.transcriptionProvider === "local",
-      localTranscriptionProvider: rec.localTranscriptionProvider,
-      whisperModel: rec.whisperModel,
-      parakeetModel: rec.parakeetModel,
+      useLocalWhisper: true,
+      localTranscriptionProvider: "whisper",
+      whisperModel: rec.whisperModel || "turbo",
+      whisperForceCpu: rec.gpuCategory !== "nvidia_cuda",
     });
     setApplied(true);
-
-    // Auto-advance after brief confirmation display (1.5s for user to see confirmation)
-    if (onNext) {
-      setTimeout(() => {
-        onNext();
-      }, 1500);
-    }
   };
 
   const handleContinueWithDefaults = () => {
     // Even if no recommendations, apply safe defaults
-    // Use "base" rather than "turbo" - it's lighter and appropriate when we don't know CPU capability
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "base",
+      whisperModel: "turbo",
+      whisperForceCpu: true,
     });
     setApplied(true);
-
-    // Auto-advance after brief confirmation
-    if (onNext) {
-      setTimeout(() => {
-        onNext();
-      }, 1500);
-    }
   };
+
+  const handleUseCpuInstead = () => {
+    onApplyRecommendations({
+      useLocalWhisper: true,
+      localTranscriptionProvider: "whisper",
+      whisperModel: "turbo",
+      whisperForceCpu: true,
+    });
+    setApplied(true);
+  };
+
+  useEffect(() => {
+    onAppliedChange?.(applied);
+  }, [applied, onAppliedChange]);
+
+  useEffect(() => {
+    if (applied) return;
+    if (detectionState === "complete") {
+      if (detection?.recommendations) {
+        handleApply();
+      } else {
+        handleContinueWithDefaults();
+      }
+    } else if (detectionState === "error") {
+      handleContinueWithDefaults();
+    }
+  }, [applied, detection, detectionState, handleApply, handleContinueWithDefaults]);
+
+  const toFriendlyHardwareText = (text: string) =>
+    text
+      .replace(/\bCUDA runtime\b/gi, "GPU acceleration")
+      .replace(/\bCUDA\b/g, "GPU acceleration")
+      .replace(/\bVRAM\b/gi, "graphics memory")
+      .replace(/NVIDIA GPU with CUDA detected/gi, "NVIDIA graphics card detected")
+      .replace(/CUDA runtime is not available/gi, "GPU drivers need updating")
+      .replace(/\blocal inference\b/gi, "on your computer");
 
   const getGPUIcon = () => {
     if (!detection?.gpu?.available) return null;
@@ -131,7 +149,7 @@ export default function HardwareSetupStep({
             <div>
               <h3 className="text-sm font-medium text-foreground">Detecting Hardware</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Scanning your system for GPU and CPU capabilities...
+                Scanning your computer for graphics card and CPU capabilities...
               </p>
             </div>
           </div>
@@ -159,7 +177,7 @@ export default function HardwareSetupStep({
           </div>
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
             <p className="text-[11px] text-muted-foreground">
-              Can't detect hardware? You can continue with safe CPU defaults - Whisper Base model
+              Can't detect hardware? You can continue with safe CPU defaults - Whisper Turbo model
               works well on most machines and can be changed later in Settings.
             </p>
             <Button
@@ -169,7 +187,7 @@ export default function HardwareSetupStep({
               className="mt-2 h-7 gap-1.5 text-[11px]"
             >
               <Check className="w-3 h-3" />
-              Continue with Safe Defaults
+              Continue with safe defaults
             </Button>
           </div>
         </div>
@@ -254,13 +272,17 @@ export default function HardwareSetupStep({
                 </p>
                 <div className="flex items-center gap-2 mt-0.5">
                   {hasCuda && (
-                    <span className="text-[10px] text-success font-medium">CUDA Ready</span>
+                    <span className="text-[10px] text-success font-medium">
+                      GPU Acceleration Ready
+                    </span>
                   )}
                   {hasMetal && (
                     <span className="text-[10px] text-success font-medium">Metal Ready</span>
                   )}
                   {isNvidiaNocuda && !hasCuda && (
-                    <span className="text-[10px] text-warning font-medium">CUDA Not Ready</span>
+                    <span className="text-[10px] text-warning font-medium">
+                      GPU Drivers Need Updating
+                    </span>
                   )}
                   {detection.gpu.vram && (
                     <span className="text-[10px] text-muted-foreground">
@@ -298,7 +320,7 @@ export default function HardwareSetupStep({
                       className="text-[11px] text-muted-foreground flex items-start gap-1.5"
                     >
                       <span className="text-primary mt-0.5">•</span>
-                      <span>{reason}</span>
+                      <span>{toFriendlyHardwareText(reason)}</span>
                     </li>
                   ))}
                 </ul>
@@ -317,7 +339,7 @@ export default function HardwareSetupStep({
                 </h4>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {applied
-                    ? "Using safe CPU defaults with Whisper Base model. You can adjust settings later."
+                    ? "Using safe CPU defaults with Whisper Turbo model. You can adjust settings later."
                     : "Hardware analysis completed but could not generate recommendations. Safe CPU defaults will be used."}
                 </p>
               </div>
@@ -374,10 +396,13 @@ export default function HardwareSetupStep({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
       <div className="text-center space-y-0.5">
-        <h2 className="text-lg font-semibold text-foreground tracking-tight">Hardware Setup</h2>
+        {stepLabel && <p className="text-xs text-muted-foreground/60 mb-1">{stepLabel}</p>}
+        <h2 className="text-xl font-semibold text-foreground tracking-tight">
+          {detectionState === "detecting" ? "Detecting Hardware" : "Hardware Detected"}
+        </h2>
         <p className="text-xs text-muted-foreground">
           We'll detect your hardware and recommend optimal settings
         </p>
@@ -388,43 +413,52 @@ export default function HardwareSetupStep({
 
       {/* Actions */}
       {detectionState === "complete" && (
-        <div className="flex items-center justify-center gap-2 pt-2">
+        <div className="flex flex-col items-center gap-2 pt-2">
           {detection?.recommendations && detection.recommendations.reasoning.length > 0 ? (
             <>
               {!applied ? (
-                <Button onClick={handleApply} className="h-8 px-6 gap-1.5">
-                  <Check className="w-3.5 h-3.5" />
-                  Apply Recommendations
-                </Button>
+                <>
+                  <Button onClick={handleApply} className="h-8 px-6 gap-1.5 w-full max-w-xs">
+                    <Check className="w-3.5 h-3.5" />
+                    Apply recommended settings
+                  </Button>
+                  {showSkip && (
+                    <Button
+                      onClick={handleUseCpuInstead}
+                      variant="outline"
+                      className="h-8 px-4 text-xs w-full max-w-xs"
+                      title="Use CPU transcription mode"
+                    >
+                      Use CPU mode
+                    </Button>
+                  )}
+                </>
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Continuing...</span>
+                  <span className="text-sm font-medium">Recommended settings applied</span>
                 </div>
-              )}
-              {showSkip && !applied && onSkip && (
-                <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
-                  Skip
-                </Button>
               )}
             </>
           ) : (
             <>
               {!applied ? (
-                onNext && (
-                  <Button onClick={handleContinueWithDefaults} className="h-8 px-6">
-                    Continue with Defaults
-                  </Button>
-                )
+                <Button onClick={handleContinueWithDefaults} className="h-8 px-6 w-full max-w-xs">
+                  Continue with Defaults
+                </Button>
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Continuing...</span>
+                  <span className="text-sm font-medium">Recommended settings applied</span>
                 </div>
               )}
-              {showSkip && !applied && onSkip && (
-                <Button onClick={onSkip} variant="ghost" className="h-8 px-4 text-xs">
-                  Skip
+              {showSkip && !applied && (
+                <Button
+                  onClick={handleUseCpuInstead}
+                  variant="outline"
+                  className="h-8 px-4 text-xs w-full max-w-xs"
+                >
+                  Use CPU mode
                 </Button>
               )}
             </>

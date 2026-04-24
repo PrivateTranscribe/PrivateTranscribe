@@ -46,7 +46,7 @@ class ModelManager {
 
   private getModelsDir(): string {
     const homeDir = app.getPath("home");
-    return path.join(homeDir, ".cache", "Privoca", "models");
+    return path.join(homeDir, ".cache", "PrivateTranscribe", "models");
   }
 
   async ensureModelsDir(): Promise<void> {

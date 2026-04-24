@@ -29,8 +29,26 @@ const execFileAsync = promisify(execFile);
 /** Maximum wall-clock time (ms) allowed for a shell action subprocess. */
 const SHELL_TIMEOUT_MS = 10_000;
 
+/**
+ * Maximum number of characters fed to a regex trigger match.
+ * Transcripts are conversational speech — capping at 2 000 chars is far above
+ * any real trigger phrase while bounding the worst-case backtracking cost for
+ * a poorly-written pattern.
+ */
+const REGEX_MATCH_INPUT_LIMIT = 2_000;
+
+/**
+ * Guard against the most common catastrophic-backtracking constructs.
+ * Matches patterns that nest a quantifier inside a group that itself carries
+ * a quantifier — e.g. (a+)+, (a*b*)*, (x|y+)+.
+ * This is a conservative heuristic: it rejects some harmless patterns but
+ * never allows a known-dangerous one through.
+ */
+const REDOS_PATTERN = /\([^)]*[+*][^)]*\)[+*?]/;
+
 const VALID_TRIGGER_MODES = new Set(["exact", "prefix", "contains", "regex"]);
 const VALID_ACTION_TYPES = new Set(["shell", "url", "app", "dictation-mode"]);
+const UNSAFE_EXECUTABLE_CHARS = /[|&;<>`$]/;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure pattern-matching helpers
@@ -90,10 +108,13 @@ function matchesTrigger(transcript, action) {
 
   if (action.triggerMode === "regex") {
     // Regex mode: the caller controls the pattern in full - no normalization.
+    // Cap input length to bound worst-case backtracking for any stored pattern.
     try {
-      return new RegExp(action.triggerPhrase, "i").test(
-        typeof transcript === "string" ? transcript.trim() : ""
+      const input = (typeof transcript === "string" ? transcript.trim() : "").slice(
+        0,
+        REGEX_MATCH_INPUT_LIMIT
       );
+      return new RegExp(action.triggerPhrase, "i").test(input);
     } catch {
       // Malformed stored regex - treat as no match rather than crashing.
       return false;
@@ -182,12 +203,19 @@ function validateActionPayload(raw) {
     );
   }
 
-  // Validate regex compilability up front so we don't store broken patterns.
+  // Validate regex at save time: must compile and must not use constructs that
+  // are known to cause catastrophic backtracking (nested quantifiers).
   if (triggerMode === "regex") {
     try {
       new RegExp(triggerPhrase, "i");
     } catch {
       throw new Error("Trigger phrase is not a valid regular expression.");
+    }
+    if (REDOS_PATTERN.test(triggerPhrase)) {
+      throw new Error(
+        "Trigger phrase contains unsafe regex constructs (nested quantifiers). " +
+          "Simplify the pattern to avoid catastrophic backtracking."
+      );
     }
   }
 
@@ -228,6 +256,12 @@ function validateActionConfig(actionType, config) {
       const cmd = typeof config.command === "string" ? config.command.trim() : "";
       if (!cmd) throw new Error("Shell action requires a non-empty command.");
       if (cmd.length > 1_000) throw new Error("Shell command must be 1 000 characters or fewer.");
+      const parts = tokenizeCommand(cmd);
+      if (parts.length === 0) throw new Error("Shell action requires a valid executable.");
+      const executable = parts[0];
+      if (!isSafeShellExecutable(executable)) {
+        throw new Error("Shell executable contains unsupported characters.");
+      }
       break;
     }
 
@@ -310,6 +344,13 @@ function tokenizeCommand(command) {
   return tokens;
 }
 
+function isSafeShellExecutable(executable) {
+  if (typeof executable !== "string" || executable.trim() === "") return false;
+  if (/[\r\n\0]/.test(executable)) return false;
+  if (UNSAFE_EXECUTABLE_CHARS.test(executable)) return false;
+  return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Action execution (side-effecting - runs in main process only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -352,6 +393,9 @@ async function _executeShell(config) {
   if (parts.length === 0) return { success: false, error: "Empty command." };
 
   const [executable, ...args] = parts;
+  if (!isSafeShellExecutable(executable)) {
+    return { success: false, error: "Executable contains unsupported characters." };
+  }
   const { stdout, stderr } = await execFileAsync(executable, args, {
     timeout: SHELL_TIMEOUT_MS,
     windowsHide: true,
@@ -551,6 +595,23 @@ class ActionEngineManager {
   constructor(databaseManager) {
     /** @type {import('better-sqlite3').Database} */
     this.db = databaseManager.db;
+
+    /**
+     * Per-action debounce map for transcript-triggered executions.
+     * Maps action id → timestamp (ms) of the last transcript-triggered run.
+     * Prevents the same voice command from firing twice in rapid succession
+     * when streaming transcription produces overlapping final segments.
+     *
+     * Only applies when triggeredBy === 'transcript'.
+     * Manual "Test" runs always bypass this guard.
+     *
+     * Override via env: PRIVOCA_ACTION_DEBOUNCE_MS (default 2000).
+     */
+    this._lastTranscriptRunMs = new Map();
+    this._transcriptDebounceMs = (() => {
+      const v = parseInt(process.env.PRIVOCA_ACTION_DEBOUNCE_MS ?? "", 10);
+      return Number.isFinite(v) && v >= 0 ? v : 2000;
+    })();
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -706,6 +767,25 @@ class ActionEngineManager {
 
     const triggeredBy = runOptions.triggeredBy === "transcript" ? "transcript" : "manual";
     const triggerText = runOptions.triggerText ?? null;
+
+    // ── Transcript debounce ─────────────────────────────────────────────────
+    // When an action is triggered by transcript matching, enforce a per-action
+    // cooldown to prevent duplicate executions caused by streaming transcription
+    // overlaps or accidental repeated utterances.  Manual "Test" runs bypass
+    // this guard so users always get immediate feedback from the UI.
+    if (triggeredBy === "transcript" && this._transcriptDebounceMs > 0) {
+      const lastRun = this._lastTranscriptRunMs.get(id) ?? 0;
+      const elapsed = Date.now() - lastRun;
+      if (elapsed < this._transcriptDebounceMs) {
+        return {
+          success: false,
+          debounced: true,
+          error: `Action debounced — last ran ${elapsed}ms ago (cooldown: ${this._transcriptDebounceMs}ms)`,
+        };
+      }
+      this._lastTranscriptRunMs.set(id, Date.now());
+    }
+    // ───────────────────────────────────────────────────────────────────────
 
     const startMs = Date.now();
     const result = await executeAction(action, context);

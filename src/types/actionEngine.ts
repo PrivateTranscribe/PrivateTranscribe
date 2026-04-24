@@ -72,6 +72,11 @@ export interface ActionExecuteResult {
   output?: string;
   /** Human-readable error message if `success` is false. */
   error?: string;
+  /**
+   * True when the execution was suppressed by the transcript debounce guard.
+   * Only set on transcript-triggered runs; manual runs always execute.
+   */
+  debounced?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

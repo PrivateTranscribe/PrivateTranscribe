@@ -3,6 +3,7 @@ const fs = require("fs");
 const net = require("net");
 const path = require("path");
 const http = require("http");
+const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
@@ -59,6 +60,9 @@ class WhisperServerManager {
     this.cachedFFmpegPath = null;
     this.canConvert = false;
 
+    // When true, always use the CPU binary even if the CUDA binary is present.
+    this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
+
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
     this.idleCheckTimeout = null;
@@ -66,6 +70,8 @@ class WhisperServerManager {
 
     // Configurable idle timeout (ms). Set to 0 to disable auto-stop.
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
+
+    this.activeTranscriptions = 0;
   }
 
   getFFmpegPath() {
@@ -158,14 +164,37 @@ class WhisperServerManager {
     return null;
   }
 
+  /**
+   * Update whether to force CPU mode. Clears the binary path cache and stops
+   * any running server so the next transcription starts with the correct binary.
+   */
+  async setForceCpu(value) {
+    if (this.forceCpu === value) return;
+    this.forceCpu = value;
+    this.cachedServerBinaryPath = null;
+    await this.stop();
+    debugLogger.info("WhisperServer: forceCpu changed", { forceCpu: value });
+  }
+
+  async invalidateServerCache({ stopRunningServer = false } = {}) {
+    this.cachedServerBinaryPath = null;
+    if (stopRunningServer && this.process) {
+      await this.stop();
+    }
+  }
+
   getServerBinaryPath() {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
-    const cudaPath = gpuBinaryManager.getCudaBinaryPath();
-    if (cudaPath) {
-      debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
-      this.cachedServerBinaryPath = cudaPath;
-      return cudaPath;
+    if (!this.forceCpu) {
+      const cudaPath = gpuBinaryManager.getCudaBinaryPath();
+      if (cudaPath) {
+        debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
+        this.cachedServerBinaryPath = cudaPath;
+        return cudaPath;
+      }
+    } else {
+      debugLogger.info("WhisperServer: CUDA binary skipped (CPU mode forced)");
     }
 
     const platform = process.platform;
@@ -230,32 +259,53 @@ class WhisperServerManager {
   }
 
   async start(modelPath, options = {}) {
-    // If a startup is in-flight for the SAME model, wait for it.
-    // If it's for a DIFFERENT model (user switched), cancel and restart.
-    if (this.startupPromise) {
-      if (this.modelPath === modelPath) return this.startupPromise;
-      // Model changed mid-startup — stop the current process and fall through to restart.
-      await this.stop();
-    }
-
-    // If the server is already running with the requested model, just mark it as used.
-    if (this.ready && this.modelPath === modelPath) {
+    // Fast path: server is already running with the right model and no startup
+    // is in progress.  Just bump the usage timestamp and return immediately.
+    if (this.ready && this.modelPath === modelPath && !this.startupPromise) {
       this.lastUsedTime = Date.now();
       this.stoppedDueToIdle = false;
       this._scheduleIdleCheck();
       return;
     }
 
-    if (this.process) {
-      await this.stop();
+    // If a startup is already in-flight for this exact model, share the promise
+    // so the second caller waits for the same result instead of spawning again.
+    if (this.startupPromise && this.modelPath === modelPath) {
+      return this.startupPromise;
     }
 
-    this.startupPromise = this._doStart(modelPath, options);
-    try {
-      await this.startupPromise;
-    } finally {
-      this.startupPromise = null;
-    }
+    // A different model was requested (or no startup was in progress).
+    // We must serialise through the existing in-flight promise (if any) so that
+    // we never run _doStart concurrently.  Assign both startupPromise and
+    // modelPath *before* any await so that a concurrent caller arriving while
+    // we are awaiting stop() or _doStart() will see the new values and share
+    // this promise rather than spawning a second server process.
+    const prev = this.startupPromise ?? Promise.resolve();
+    this.modelPath = modelPath; // claim the slot early
+
+    const startup = prev
+      .catch(() => {}) // don't let a failed previous startup block the new one
+      .then(async () => {
+        // Re-check after the previous promise settled: the server may have
+        // become ready for this model (e.g. from a concurrent caller).
+        if (this.ready && this.modelPath === modelPath) {
+          this.lastUsedTime = Date.now();
+          this.stoppedDueToIdle = false;
+          this._scheduleIdleCheck();
+          return;
+        }
+        if (this.process) await this.stop();
+        await this._doStart(modelPath, options);
+      });
+
+    this.startupPromise = startup;
+
+    return startup.finally(() => {
+      // Only clear the slot if nothing newer has claimed it.
+      if (this.startupPromise === startup) {
+        this.startupPromise = null;
+      }
+    });
   }
 
   async _doStart(modelPath, options = {}) {
@@ -516,10 +566,15 @@ class WhisperServerManager {
     return { success: true, idleTimeoutMs: this.idleTimeoutMs };
   }
 
+  isProcessing() {
+    return this.activeTranscriptions > 0;
+  }
+
   async transcribe(audioBuffer, options = {}) {
     if (!this.ready || !this.process) {
       throw new Error("whisper-server is not running");
     }
+    this.activeTranscriptions += 1;
 
     // Debug: Log audio buffer info
     debugLogger.debug("whisper-server transcribe called", {
@@ -537,10 +592,15 @@ class WhisperServerManager {
 
     // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
     let finalBuffer = audioBuffer;
-    if (!this.canConvert) {
-      throw new Error("FFmpeg not found - required for audio conversion");
+    try {
+      if (!this.canConvert) {
+        throw new Error("FFmpeg not found - required for audio conversion");
+      }
+      finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
+    } catch (error) {
+      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
+      throw error;
     }
-    finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
 
     const boundary = `----WhisperBoundary${Date.now()}`;
     const parts = [];
@@ -653,15 +713,17 @@ class WhisperServerManager {
 
       req.write(body);
       req.end();
+    }).finally(() => {
+      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
     });
   }
 
   async _convertToWav(audioBuffer, inputFileName = null) {
     const tempDir = getSafeTempDir();
-    const timestamp = Date.now();
+    const tempId = crypto.randomUUID();
     const inputExtension = resolveTempInputExtension(inputFileName);
-    const tempInputPath = path.join(tempDir, `whisper-input-${timestamp}${inputExtension}`);
-    const tempWavPath = path.join(tempDir, `whisper-output-${timestamp}.wav`);
+    const tempInputPath = path.join(tempDir, `whisper-input-${tempId}${inputExtension}`);
+    const tempWavPath = path.join(tempDir, `whisper-output-${tempId}.wav`);
 
     try {
       fs.writeFileSync(tempInputPath, audioBuffer);

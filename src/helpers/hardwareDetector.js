@@ -565,14 +565,14 @@ class HardwareDetector {
       return rec;
     }
 
-    // ── NVIDIA + CUDA - recommend Parakeet GPU acceleration ─────────────────
+    // ── NVIDIA + CUDA - recommend Whisper with CUDA acceleration ────────────
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
       rec.gpuCategory = "nvidia_cuda";
-      rec.localTranscriptionProvider = "nvidia";
-      rec.parakeetModel = "parakeet-tdt-0.6b-v3";
+      rec.localTranscriptionProvider = "whisper";
+      rec.whisperModel = "turbo";
       rec.transcriptionProvider = "local";
       rec.reasoning.push(
-        "NVIDIA GPU with CUDA detected - Parakeet recommended for GPU acceleration"
+        "NVIDIA GPU with CUDA detected - Whisper Turbo recommended for faster local inference"
       );
 
       if (gpu.vram && gpu.vram >= 4096) {
@@ -596,14 +596,14 @@ class HardwareDetector {
       if (process.platform === "linux") {
         rec.recoverySteps = [
           "Install NVIDIA drivers via your package manager - e.g. `sudo apt install nvidia-driver-535` (Ubuntu/Debian) or `sudo dnf install akmod-nvidia` (Fedora/RHEL)",
-          "Modern NVIDIA drivers (v450+) bundle the CUDA runtime Parakeet needs - no separate CUDA Toolkit install is required",
-          "After installing drivers, restart your system, then use 'Re-detect Hardware' in PrivateTranscribe Settings → Transcription to enable Parakeet GPU acceleration",
+          "Modern NVIDIA drivers (v450+) bundle the CUDA runtime needed for GPU-accelerated inference - no separate CUDA Toolkit install is required",
+          "After installing drivers, restart your system, then use 'Re-detect Hardware' in PrivateTranscribe Settings → Transcription to enable Whisper GPU acceleration",
         ];
       } else {
         rec.recoverySteps = [
           "Update or install NVIDIA drivers (v520 or later recommended) - download from nvidia.com/drivers",
-          "Modern NVIDIA drivers (v450+) bundle the CUDA runtime libraries that Parakeet requires - no separate CUDA Toolkit install is needed for transcription",
-          "After updating drivers, use 'Re-detect Hardware' in PrivateTranscribe Settings → Transcription, or restart the app to enable Parakeet GPU acceleration",
+          "Modern NVIDIA drivers (v450+) bundle the CUDA runtime libraries needed for GPU-accelerated inference - no separate CUDA Toolkit install is needed for transcription",
+          "After updating drivers, use 'Re-detect Hardware' in PrivateTranscribe Settings → Transcription, or restart the app to enable Whisper GPU acceleration",
         ];
       }
     } else if (gpu.available && gpu.vendor && gpu.vendor !== "unknown") {
@@ -614,7 +614,7 @@ class HardwareDetector {
       const vendorName = this.getVendorDisplayName(gpu.vendor);
       if (process.platform === "linux") {
         rec.reasoning.push(
-          `${vendorName} GPU detected - Whisper will run on CPU (Parakeet GPU acceleration requires NVIDIA CUDA; AMD ROCm is not yet supported)`
+          `${vendorName} GPU detected - Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA on this platform)`
         );
       } else {
         rec.reasoning.push(

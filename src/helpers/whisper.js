@@ -10,6 +10,8 @@ const { getModelsDirForService } = require("./modelDirUtils");
 const modelRegistryData = require("../models/modelRegistryData.json");
 
 const CACHE_TTL_MS = 30000;
+const MIN_VALID_MODEL_BYTES = 1_000_000;
+const MIN_EXPECTED_MODEL_RATIO = 0.9;
 
 function getWhisperModelConfig(modelName) {
   const modelInfo = modelRegistryData.whisperModels[modelName];
@@ -237,21 +239,55 @@ class WhisperManager {
     return this.gpuBinaryManager.hasCudaBinary();
   }
 
+  wasCudaPreviouslyInstalled() {
+    return this.gpuBinaryManager.wasCudaPreviouslyInstalled();
+  }
+
+  migrateLegacyCudaBinary() {
+    return this.gpuBinaryManager.migrateLegacyCudaBinary();
+  }
+
+  isCudaBinaryUpToDate() {
+    return this.gpuBinaryManager.isCudaBinaryUpToDate();
+  }
+
   async downloadGpuBinary(onProgress) {
     return this.gpuBinaryManager.downloadCudaBinary(onProgress);
+  }
+
+  async invalidateServerCache(options = {}) {
+    await this.serverManager.invalidateServerCache(options);
+    this.currentServerModel = null;
   }
 
   cancelGpuBinaryDownload() {
     this.gpuBinaryManager.cancelDownload();
   }
 
+  async setForceCpu(value) {
+    await this.serverManager.setForceCpu(value);
+  }
+
+  isProcessing() {
+    return this.serverManager.isProcessing();
+  }
+
   getCudaBinaryStatus() {
     const key = this.gpuBinaryManager.getPlatformKey();
+    const installedPath = this.gpuBinaryManager.getCudaBinaryFilePath();
+    const installed = !!installedPath;
+    const version = this.gpuBinaryManager.getCudaBinaryVersion();
+    const upToDate = this.gpuBinaryManager.isCudaBinaryUpToDate();
+    const expectedVersion = this.gpuBinaryManager.getExpectedCudaBinaryVersion();
     return {
-      available: this.gpuBinaryManager.hasCudaBinary(),
-      path: this.gpuBinaryManager.getCudaBinaryPath(),
+      installed,
+      path: installedPath,
       platform: key,
       supported: !!GpuBinaryManager.CUDA_BINARIES[key],
+      version,
+      upToDate,
+      expectedVersion,
+      forceCpu: this.serverManager.forceCpu,
     };
   }
 
@@ -284,7 +320,7 @@ class WhisperManager {
       );
     }
 
-    const model = options.model || "base";
+    const model = options.model || "turbo";
     const language = options.language || null;
     const translate = options.translate || false;
     const initialPrompt = options.initialPrompt || null;
@@ -519,6 +555,23 @@ class WhisperManager {
       });
 
       const stats = await fsPromises.stat(modelPath);
+      const expectedSize = modelConfig.size;
+      const minSize = expectedSize
+        ? Math.floor(expectedSize * MIN_EXPECTED_MODEL_RATIO)
+        : MIN_VALID_MODEL_BYTES;
+
+      // TODO: Verify downloaded Whisper models against a SHA256 manifest.
+      if (stats.size < minSize) {
+        await fsPromises.unlink(modelPath).catch(() => {});
+        const expectedDescription = expectedSize
+          ? `expected at least ${Math.round(minSize / (1024 * 1024))}MB`
+          : "expected at least 1MB";
+        throw new Error(
+          `Downloaded Whisper model is too small (${Math.round(
+            stats.size / (1024 * 1024)
+          )}MB, ${expectedDescription})`
+        );
+      }
 
       if (progressCallback) {
         progressCallback({ type: "complete", model: modelName, percentage: 100 });

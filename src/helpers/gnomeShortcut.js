@@ -1,11 +1,12 @@
 const { execFileSync } = require("child_process");
 const debugLogger = require("./debugLogger");
 
-const DBUS_SERVICE_NAME = "com.Privoca.App";
-const DBUS_OBJECT_PATH = "/com/Privoca/App";
-const DBUS_INTERFACE = "com.Privoca.App";
+const DBUS_SERVICE_NAME = "com.PrivateTranscribe.App";
+const DBUS_OBJECT_PATH = "/com/PrivateTranscribe/App";
+const DBUS_INTERFACE = "com.PrivateTranscribe.App";
 
-const KEYBINDING_PATH = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/Privoca/";
+const KEYBINDING_PATH =
+  "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/PrivateTranscribe/";
 const KEYBINDING_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 
 // Valid pattern for GNOME shortcut format (e.g., "<Alt>r", "<Control><Shift>space")
@@ -88,7 +89,7 @@ class GnomeShortcutManager {
   }
 
   _createInterfaceClass(dbusModule, callback) {
-    class PrivocaInterface extends dbusModule.interface.Interface {
+    class PrivateTranscribeInterface extends dbusModule.interface.Interface {
       constructor() {
         super(DBUS_INTERFACE);
         this._callback = callback;
@@ -101,13 +102,13 @@ class GnomeShortcutManager {
       }
     }
 
-    PrivocaInterface.configureMembers({
+    PrivateTranscribeInterface.configureMembers({
       methods: {
         Toggle: { inSignature: "", outSignature: "" },
       },
     });
 
-    return PrivocaInterface;
+    return PrivateTranscribeInterface;
   }
 
   static isValidShortcut(shortcut) {

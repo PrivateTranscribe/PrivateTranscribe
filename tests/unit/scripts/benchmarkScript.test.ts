@@ -118,9 +118,15 @@ describe("generateSilentWav", () => {
     expect(buf3.length).toBe(44 + 96000);
   });
 
-  it("produces all-zero audio samples (silence)", () => {
+  it("produces non-silent audio (contains non-zero PCM samples)", () => {
     const buf = generateSilentWav(1);
     const audioData = buf.slice(44);
-    expect(audioData.every((b) => b === 0)).toBe(true);
+    expect(audioData.some((b) => b !== 0)).toBe(true);
+  });
+
+  it("produces deterministic output (same bytes on every call)", () => {
+    const buf1 = generateSilentWav(1);
+    const buf2 = generateSilentWav(1);
+    expect(buf1.equals(buf2)).toBe(true);
   });
 });

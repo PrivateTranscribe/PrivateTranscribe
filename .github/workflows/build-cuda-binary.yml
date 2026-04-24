@@ -1,0 +1,192 @@
+name: Build CUDA Binary (Blackwell sm_120)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_r2:
+        description: 'Upload binary to R2 CDN'
+        type: boolean
+        default: false
+      whisper_tag:
+        description: 'whisper.cpp git tag/branch to build (empty = latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-cuda-windows:
+    name: Build Windows CUDA binary
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout PrivateTranscribe
+        uses: actions/checkout@v4
+
+      - name: Install CUDA 12.8 (Windows)
+        shell: pwsh
+        run: |
+          $url = "https://developer.download.nvidia.com/compute/cuda/12.8.0/network_installers/cuda_12.8.0_windows_network.exe"
+          $installer = "$env:TEMP\cuda_installer.exe"
+          Write-Host "Downloading CUDA 12.8 installer..."
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Installing CUDA components..."
+          Start-Process -FilePath $installer -ArgumentList "-s nvcc_12.8 cublas_12.8 cublas_dev_12.8 cudart_12.8 visual_studio_integration_12.8" -Wait -PassThru -NoNewWindow
+          Write-Host "Installer exit code: $($proc.ExitCode)"
+          $cudaBin = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin"
+          $cudaPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+          Add-Content $env:GITHUB_PATH $cudaBin
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=$cudaPath"
+          Add-Content $env:GITHUB_ENV "CUDA_HOME=$cudaPath"
+
+      - name: Verify CUDA install (Windows)
+        shell: cmd
+        run: |
+          set PATH=%CUDA_PATH%\bin;%PATH%
+          nvcc --version
+
+      - name: Clone whisper.cpp
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.whisper_tag }}"
+          if [ -n "$TAG" ]; then
+            git clone --depth=1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp.git whisper-src
+          else
+            git clone --depth=1 https://github.com/ggml-org/whisper.cpp.git whisper-src
+          fi
+          echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
+
+      - name: Set up MSVC + Ninja (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja (Windows)
+        shell: pwsh
+        run: choco install ninja -y --no-progress
+
+      - name: Configure CMake (Windows)
+        shell: cmd
+        run: |
+          set PATH=%CUDA_PATH%\bin;%PATH%
+          cd whisper-src
+          cmake -B build ^
+            -DGGML_CUDA=ON ^
+            -DCMAKE_CUDA_ARCHITECTURES="86;89;120" ^
+            -DWHISPER_BUILD_SERVER=ON ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe" ^
+            -G Ninja
+
+      - name: Build whisper-server (Windows)
+        shell: cmd
+        run: |
+          set PATH=%CUDA_PATH%\bin;%PATH%
+          cd whisper-src
+          cmake --build build --config Release --target whisper-server -j4
+
+      - name: Collect binary
+        shell: bash
+        run: |
+          find whisper-src/build -name "whisper-server.exe" | head -1 | xargs -I{} cp {} whisper-server-win32-x64-cuda.exe
+          ls -lh whisper-server-win32-x64-cuda.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-server-win32-x64-cuda-blackwell
+          path: whisper-server-win32-x64-cuda.exe
+          retention-days: 30
+
+      - name: Upload to R2
+        if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws s3 cp whisper-server-win32-x64-cuda.exe \
+            s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress
+          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
+
+  build-cuda-linux:
+    name: Build Linux CUDA binary
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout PrivateTranscribe
+        uses: actions/checkout@v4
+
+      - name: Install CUDA 12.8 (Linux)
+        run: |
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cuda-nvcc-12-8 \
+            libcublas-12-8 \
+            libcublas-dev-12-8 \
+            cuda-cudart-12-8 \
+            cuda-cudart-dev-12-8
+          echo "/usr/local/cuda-12.8/bin" >> $GITHUB_PATH
+          echo "CUDA_PATH=/usr/local/cuda-12.8" >> $GITHUB_ENV
+
+      - name: Verify CUDA install (Linux)
+        run: /usr/local/cuda-12.8/bin/nvcc --version
+
+      - name: Clone whisper.cpp
+        run: |
+          TAG="${{ github.event.inputs.whisper_tag }}"
+          if [ -n "$TAG" ]; then
+            git clone --depth=1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp.git whisper-src
+          else
+            git clone --depth=1 https://github.com/ggml-org/whisper.cpp.git whisper-src
+          fi
+          echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
+
+      - name: Configure CMake
+        run: |
+          cd whisper-src
+          cmake -B build \
+            -DGGML_CUDA=ON \
+            -DCMAKE_CUDA_ARCHITECTURES="86;89;120" \
+            -DWHISPER_BUILD_SERVER=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc
+
+      - name: Build whisper-server
+        run: |
+          cd whisper-src
+          cmake --build build --config Release --target whisper-server -j$(nproc)
+
+      - name: Collect binary
+        run: |
+          cp whisper-src/build/bin/whisper-server whisper-server-linux-x64-cuda.bin
+          chmod +x whisper-server-linux-x64-cuda.bin
+          ls -lh whisper-server-linux-x64-cuda.bin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-server-linux-x64-cuda-blackwell
+          path: whisper-server-linux-x64-cuda.bin
+          retention-days: 30
+
+      - name: Upload to R2
+        if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws s3 cp whisper-server-linux-x64-cuda.bin \
+            s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-linux-x64-cuda \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress
+          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-linux-x64-cuda"

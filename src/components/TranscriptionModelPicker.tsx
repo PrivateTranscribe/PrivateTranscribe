@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Download, Trash2, Cloud, Lock, X, RefreshCw, HardDrive } from "lucide-react";
+import { Download, Trash2, Cloud, Lock, X, RefreshCw, HardDrive, Cpu, Zap } from "lucide-react";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { ProviderTabs } from "./ui/ProviderTabs";
 import ModelCardList from "./ui/ModelCardList";
@@ -14,12 +14,12 @@ import {
   getTranscriptionProviders,
   TranscriptionProviderData,
   WHISPER_MODEL_INFO,
-  PARAKEET_MODEL_INFO,
 } from "../models/ModelRegistry";
 import { MODEL_PICKER_COLORS, type ColorScheme } from "../utils/modelPickerStyles";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
 import { API_ENDPOINTS } from "../config/constants";
 import { createExternalLinkHandler } from "../utils/externalLinks";
+import { isValidApiUrl } from "../helpers/urlValidation";
 
 interface LocalModel {
   model: string;
@@ -40,12 +40,23 @@ interface LocalModelCardProps {
   recommended?: boolean;
   provider: string;
   languageLabel?: string;
+  performanceLabel?: string;
   onSelect: () => void;
   onDelete: () => void;
   onDownload: () => void;
   onCancel: () => void;
   styles: ReturnType<(typeof MODEL_PICKER_COLORS)[keyof typeof MODEL_PICKER_COLORS]>;
 }
+
+// Speed and quality ratings for Whisper models shown during onboarding
+const WHISPER_PERF_LABELS: Record<string, { speed: string; quality: string }> = {
+  tiny: { speed: "Fastest", quality: "Basic" },
+  base: { speed: "Fast", quality: "Good" },
+  small: { speed: "Medium", quality: "Better" },
+  medium: { speed: "Slow", quality: "Great" },
+  large: { speed: "Slowest", quality: "Best" },
+  turbo: { speed: "Fast", quality: "Great" },
+};
 
 function LocalModelCard({
   modelId,
@@ -60,6 +71,7 @@ function LocalModelCard({
   recommended,
   provider,
   languageLabel,
+  performanceLabel,
   onSelect,
   onDelete,
   onDownload,
@@ -113,6 +125,11 @@ function LocalModelCard({
           {languageLabel && (
             <span className="text-[10px] text-muted-foreground/50 font-medium shrink-0">
               {languageLabel}
+            </span>
+          )}
+          {performanceLabel && (
+            <span className="text-[10px] text-muted-foreground/40 shrink-0 hidden sm:inline">
+              {performanceLabel}
             </span>
           )}
         </div>
@@ -193,19 +210,17 @@ interface TranscriptionModelPickerProps {
   setCloudTranscriptionBaseUrl?: (url: string) => void;
   className?: string;
   variant?: "onboarding" | "settings";
+  /** Whether Whisper is running in CPU-only mode (no CUDA). Controls the 3-engine selector. */
+  whisperForceCpu?: boolean;
+  onWhisperForceCpuChange?: (forceCpu: boolean) => void;
+  /** Whether this platform supports GPU acceleration (NVIDIA CUDA detected). */
+  gpuSupported?: boolean;
 }
 
 const CLOUD_PROVIDER_TABS = [
   { id: "openai", name: "OpenAI" },
   { id: "groq", name: "Groq", recommended: true },
   { id: "custom", name: "Custom" },
-];
-
-const VALID_CLOUD_PROVIDER_IDS = CLOUD_PROVIDER_TABS.map((p) => p.id);
-
-const LOCAL_PROVIDER_TABS = [
-  { id: "whisper", name: "OpenAI Whisper" },
-  { id: "nvidia", name: "NVIDIA Parakeet" },
 ];
 
 // Mode toggle component - defined outside to prevent recreation on every render
@@ -266,25 +281,22 @@ export default function TranscriptionModelPicker({
   setCloudTranscriptionBaseUrl,
   className = "",
   variant = "settings",
+  whisperForceCpu = false,
+  onWhisperForceCpuChange,
+  gpuSupported = false,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
-  const [parakeetModels, setParakeetModels] = useState<LocalModel[]>([]);
-  const [internalLocalProvider, setInternalLocalProvider] = useState(selectedLocalProvider);
-  const [showAllWhisperModels, setShowAllWhisperModels] = useState(false);
+  const [showAllLocalModels, setShowAllLocalModels] = useState(false);
   const hasLoadedRef = useRef(false);
-  const hasLoadedParakeetRef = useRef(false);
 
-  // Sync internal state with prop when it changes externally
+  // Normalize legacy provider selections to Whisper-only local mode.
   useEffect(() => {
-    if (selectedLocalProvider !== internalLocalProvider) {
-      setInternalLocalProvider(selectedLocalProvider);
+    if (selectedLocalProvider && selectedLocalProvider !== "whisper") {
+      onLocalProviderSelect?.("whisper");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocalProvider]);
+  }, [selectedLocalProvider, onLocalProviderSelect]);
   const isLoadingRef = useRef(false);
-  const isLoadingParakeetRef = useRef(false);
   const loadLocalModelsRef = useRef<(() => Promise<void>) | null>(null);
-  const loadParakeetModelsRef = useRef<(() => Promise<void>) | null>(null);
   const ensureValidCloudSelectionRef = useRef<(() => void) | null>(null);
   const selectedLocalModelRef = useRef(selectedLocalModel);
   const onLocalModelSelectRef = useRef(onLocalModelSelect);
@@ -293,6 +305,17 @@ export default function TranscriptionModelPicker({
   const colorScheme: ColorScheme = variant === "settings" ? "purple" : "blue";
   const styles = useMemo(() => MODEL_PICKER_COLORS[colorScheme], [colorScheme]);
   const cloudProviders = useMemo(() => getTranscriptionProviders(), []);
+  const availableCloudProviderTabs = useMemo(
+    () =>
+      variant === "onboarding"
+        ? CLOUD_PROVIDER_TABS.filter((provider) => provider.id !== "custom")
+        : CLOUD_PROVIDER_TABS,
+    [variant]
+  );
+  const validCloudProviderIds = useMemo(
+    () => availableCloudProviderTabs.map((provider) => provider.id),
+    [availableCloudProviderTabs]
+  );
 
   useEffect(() => {
     selectedLocalModelRef.current = selectedLocalModel;
@@ -333,25 +356,9 @@ export default function TranscriptionModelPicker({
     }
   }, [validateAndSelectModel]);
 
-  const loadParakeetModels = useCallback(async () => {
-    if (isLoadingParakeetRef.current) return;
-    isLoadingParakeetRef.current = true;
-
-    try {
-      const result = await window.electronAPI?.listParakeetModels();
-      if (result?.success) {
-        setParakeetModels(result.models);
-      }
-    } catch (error) {
-      console.error("[TranscriptionModelPicker] Failed to load Parakeet models:", error);
-      setParakeetModels([]);
-    } finally {
-      isLoadingParakeetRef.current = false;
-    }
-  }, []);
-
   const ensureValidCloudSelection = useCallback(() => {
-    const isValidProvider = VALID_CLOUD_PROVIDER_IDS.includes(selectedCloudProvider);
+    const isValidProvider = validCloudProviderIds.includes(selectedCloudProvider);
+    const customUrlValidation = isValidApiUrl(cloudTranscriptionBaseUrl || "");
 
     if (!isValidProvider) {
       // Check if we have a custom URL that differs from known providers
@@ -360,7 +367,9 @@ export default function TranscriptionModelPicker({
         cloudTranscriptionBaseUrl &&
         cloudTranscriptionBaseUrl.trim() !== "" &&
         cloudTranscriptionBaseUrl !== API_ENDPOINTS.TRANSCRIPTION_BASE &&
-        !knownProviderUrls.includes(cloudTranscriptionBaseUrl);
+        customUrlValidation.valid &&
+        !knownProviderUrls.includes(cloudTranscriptionBaseUrl) &&
+        variant !== "onboarding";
 
       if (hasCustomUrl) {
         onCloudProviderSelect("custom");
@@ -386,14 +395,13 @@ export default function TranscriptionModelPicker({
     selectedCloudModel,
     onCloudProviderSelect,
     onCloudModelSelect,
+    validCloudProviderIds,
+    variant,
   ]);
 
   useEffect(() => {
     loadLocalModelsRef.current = loadLocalModels;
   }, [loadLocalModels]);
-  useEffect(() => {
-    loadParakeetModelsRef.current = loadParakeetModels;
-  }, [loadParakeetModels]);
   useEffect(() => {
     ensureValidCloudSelectionRef.current = ensureValidCloudSelection;
   }, [ensureValidCloudSelection]);
@@ -402,14 +410,11 @@ export default function TranscriptionModelPicker({
   useEffect(() => {
     if (!useLocalWhisper) return;
 
-    if (internalLocalProvider === "whisper" && !hasLoadedRef.current) {
+    if (!hasLoadedRef.current) {
       hasLoadedRef.current = true;
       loadLocalModelsRef.current?.();
-    } else if (internalLocalProvider === "nvidia" && !hasLoadedParakeetRef.current) {
-      hasLoadedParakeetRef.current = true;
-      loadParakeetModelsRef.current?.();
     }
-  }, [useLocalWhisper, internalLocalProvider]);
+  }, [useLocalWhisper]);
 
   // Handle cloud mode initialization - only when switching to cloud mode
   useEffect(() => {
@@ -417,14 +422,14 @@ export default function TranscriptionModelPicker({
 
     // Reset local model load flags when switching to cloud
     hasLoadedRef.current = false;
-    hasLoadedParakeetRef.current = false;
     ensureValidCloudSelectionRef.current?.();
   }, [useLocalWhisper]);
 
   useEffect(() => {
     const handleModelsCleared = () => loadLocalModels();
-    window.addEventListener("Privoca-models-cleared", handleModelsCleared);
-    return () => window.removeEventListener("Privoca-models-cleared", handleModelsCleared);
+    window.addEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
+    return () =>
+      window.removeEventListener("PrivateTranscribe-models-cleared", handleModelsCleared);
   }, [loadLocalModels]);
 
   const {
@@ -443,22 +448,6 @@ export default function TranscriptionModelPicker({
     onDownloadComplete: loadLocalModels,
   });
 
-  const {
-    downloadingModel: downloadingParakeetModel,
-    downloadProgress: parakeetDownloadProgress,
-    downloadModel: downloadParakeetModel,
-    deleteModel: deleteParakeetModel,
-    isDownloadingModel: isDownloadingParakeetModel,
-    isInstalling: isInstallingParakeet,
-    cancelDownload: cancelParakeetDownload,
-    isCancelling: isCancellingParakeet,
-    failedModel: failedParakeetModel,
-    retryDownload: retryParakeetDownload,
-  } = useModelDownload({
-    modelType: "parakeet",
-    onDownloadComplete: loadParakeetModels,
-  });
-
   const handleModeChange = useCallback(
     (isLocal: boolean) => {
       onModeChange(isLocal);
@@ -469,6 +458,9 @@ export default function TranscriptionModelPicker({
 
   const handleCloudProviderChange = useCallback(
     (providerId: string) => {
+      if (variant === "onboarding" && providerId === "custom") {
+        return;
+      }
       onCloudProviderSelect(providerId);
       const provider = cloudProviders.find((p) => p.id === providerId);
 
@@ -488,33 +480,34 @@ export default function TranscriptionModelPicker({
         }
       }
     },
-    [cloudProviders, onCloudProviderSelect, onCloudModelSelect, setCloudTranscriptionBaseUrl]
+    [
+      cloudProviders,
+      onCloudProviderSelect,
+      onCloudModelSelect,
+      setCloudTranscriptionBaseUrl,
+      variant,
+    ]
   );
 
-  const handleLocalProviderChange = useCallback(
-    (providerId: string) => {
-      const tab = LOCAL_PROVIDER_TABS.find((t) => t.id === providerId);
-      if (tab?.disabled) return;
-      setInternalLocalProvider(providerId);
-      onLocalProviderSelect?.(providerId);
+  // Derives a single "engine" value for Whisper.
+  type LocalEngine = "cpu" | "gpu";
+  const selectedEngine: LocalEngine = useMemo(
+    () => (whisperForceCpu ? "cpu" : "gpu"),
+    [whisperForceCpu]
+  );
+
+  const handleEngineChange = useCallback(
+    (engine: LocalEngine) => {
+      onLocalProviderSelect?.("whisper");
+      onWhisperForceCpuChange?.(engine === "cpu");
     },
-    [onLocalProviderSelect]
+    [onLocalProviderSelect, onWhisperForceCpuChange]
   );
 
   // Wrapper to set both model and provider when selecting a local model
   const handleWhisperModelSelect = useCallback(
     (modelId: string) => {
       onLocalProviderSelect?.("whisper");
-      setInternalLocalProvider("whisper");
-      onLocalModelSelect(modelId);
-    },
-    [onLocalModelSelect, onLocalProviderSelect]
-  );
-
-  const handleParakeetModelSelect = useCallback(
-    (modelId: string) => {
-      onLocalProviderSelect?.("nvidia");
-      setInternalLocalProvider("nvidia");
       onLocalModelSelect(modelId);
     },
     [onLocalModelSelect, onLocalProviderSelect]
@@ -553,6 +546,11 @@ export default function TranscriptionModelPicker({
     onCloudModelSelect,
     cloudProviders,
   ]);
+
+  const customBaseUrlValidation = useMemo(
+    () => isValidApiUrl(cloudTranscriptionBaseUrl || ""),
+    [cloudTranscriptionBaseUrl]
+  );
 
   const handleDelete = useCallback(
     (modelId: string) => {
@@ -594,7 +592,7 @@ export default function TranscriptionModelPicker({
   const progressDisplay = useMemo(() => {
     if (!useLocalWhisper) return null;
 
-    if (downloadingModel && internalLocalProvider === "whisper") {
+    if (downloadingModel) {
       const modelInfo = WHISPER_MODEL_INFO[downloadingModel];
       return (
         <DownloadProgressBar
@@ -605,50 +603,21 @@ export default function TranscriptionModelPicker({
       );
     }
 
-    if (downloadingParakeetModel && internalLocalProvider === "nvidia") {
-      const modelInfo = PARAKEET_MODEL_INFO[downloadingParakeetModel];
-      return (
-        <DownloadProgressBar
-          modelName={modelInfo?.name || downloadingParakeetModel}
-          progress={parakeetDownloadProgress}
-          isInstalling={isInstallingParakeet}
-        />
-      );
-    }
-
     return null;
-  }, [
-    downloadingModel,
-    downloadProgress,
-    isInstalling,
-    downloadingParakeetModel,
-    parakeetDownloadProgress,
-    isInstallingParakeet,
-    useLocalWhisper,
-    internalLocalProvider,
-  ]);
+  }, [downloadingModel, downloadProgress, isInstalling, useLocalWhisper]);
 
   const diskUsageMb = useMemo(() => {
-    const whisperMb = localModels
+    return localModels
       .filter((m) => m.downloaded && m.size_mb)
       .reduce((sum, m) => sum + (m.size_mb ?? 0), 0);
-    const parakeetMb = parakeetModels
-      .filter((m) => m.downloaded && m.size_mb)
-      .reduce((sum, m) => sum + (m.size_mb ?? 0), 0);
-    return whisperMb + parakeetMb;
-  }, [localModels, parakeetModels]);
+  }, [localModels]);
 
   const retryBanner = useMemo(() => {
     if (!useLocalWhisper) return null;
-    const failedModel =
-      internalLocalProvider === "whisper" ? failedWhisperModel : failedParakeetModel;
-    const retryFn =
-      internalLocalProvider === "whisper" ? retryWhisperDownload : retryParakeetDownload;
+    const failedModel = failedWhisperModel;
+    const retryFn = retryWhisperDownload;
     if (!failedModel) return null;
-    const info =
-      internalLocalProvider === "whisper"
-        ? WHISPER_MODEL_INFO[failedModel]
-        : PARAKEET_MODEL_INFO[failedModel];
+    const info = WHISPER_MODEL_INFO[failedModel];
     return (
       <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/8 px-3 py-2">
         <span className="text-xs text-destructive truncate">
@@ -665,14 +634,7 @@ export default function TranscriptionModelPicker({
         </Button>
       </div>
     );
-  }, [
-    useLocalWhisper,
-    internalLocalProvider,
-    failedWhisperModel,
-    failedParakeetModel,
-    retryWhisperDownload,
-    retryParakeetDownload,
-  ]);
+  }, [useLocalWhisper, failedWhisperModel, retryWhisperDownload]);
 
   const renderLocalModels = () => {
     const allModelEntries =
@@ -684,26 +646,25 @@ export default function TranscriptionModelPicker({
           }))
         : localModels;
 
-    // In onboarding mode, show only the recommended model + tiny (lightweight option)
-    // plus the currently selected model (so it's never hidden). Settings mode shows all.
     const isOnboarding = variant === "onboarding";
-    const ALWAYS_SHOW_IDS = new Set(["turbo", "base", "tiny"]);
-
-    const visibleModels =
-      isOnboarding && !showAllWhisperModels
-        ? allModelEntries.filter(
-            (m) =>
-              ALWAYS_SHOW_IDS.has(m.model) ||
-              m.model === selectedLocalModel ||
-              (WHISPER_MODEL_INFO[m.model]?.recommended ?? false)
-          )
-        : allModelEntries;
-
-    const hiddenCount = allModelEntries.length - visibleModels.length;
+    const displayedModelEntries = isOnboarding
+      ? (showAllLocalModels
+          ? allModelEntries
+          : allModelEntries.filter((model) => model.model === "turbo")
+        ).sort((a, b) => {
+          const rank = (model: LocalModel): number => {
+            if (model.model === "turbo") return 0;
+            if (model.model === selectedLocalModel) return 1;
+            if (model.downloaded) return 2;
+            return 9;
+          };
+          return rank(a) - rank(b);
+        })
+      : allModelEntries;
 
     return (
       <div className="space-y-1">
-        {visibleModels.map((model) => {
+        {displayedModelEntries.map((model) => {
           const modelId = model.model;
           const info = WHISPER_MODEL_INFO[modelId] || {
             name: modelId,
@@ -711,11 +672,15 @@ export default function TranscriptionModelPicker({
             size: "Unknown",
           };
 
+          const perf = WHISPER_PERF_LABELS[modelId];
+          const performanceLabel =
+            isOnboarding && perf ? `${perf.speed} · ${perf.quality}` : undefined;
+
           return (
             <LocalModelCard
               key={modelId}
               modelId={modelId}
-              name={info.name}
+              name={isOnboarding && modelId === "turbo" ? "Whisper Turbo" : info.name}
               description={info.description}
               size={info.size}
               actualSizeMb={model.size_mb}
@@ -725,6 +690,7 @@ export default function TranscriptionModelPicker({
               isCancelling={isCancelling}
               recommended={info.recommended}
               provider="whisper"
+              performanceLabel={performanceLabel}
               onSelect={() => handleWhisperModelSelect(modelId)}
               onDelete={() => handleDelete(modelId)}
               onDownload={() => downloadModel(modelId, handleWhisperModelSelect)}
@@ -733,89 +699,17 @@ export default function TranscriptionModelPicker({
             />
           );
         })}
-        {isOnboarding && hiddenCount > 0 && !showAllWhisperModels && (
-          <button
+        {isOnboarding && (
+          <Button
             type="button"
-            onClick={() => setShowAllWhisperModels(true)}
-            className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground py-1 transition-colors"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAllLocalModels((value) => !value)}
+            className="mt-1 h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
           >
-            Show {hiddenCount} more {hiddenCount === 1 ? "option" : "options"}
-          </button>
+            {showAllLocalModels ? "Hide advanced models" : "Show all models"}
+          </Button>
         )}
-      </div>
-    );
-  };
-
-  const handleParakeetDelete = useCallback(
-    (modelId: string) => {
-      showConfirmDialog({
-        title: "Delete Model",
-        description:
-          "Are you sure you want to delete this model? You'll need to re-download it if you want to use it again.",
-        onConfirm: async () => {
-          await deleteParakeetModel(modelId, async () => {
-            const result = await window.electronAPI?.listParakeetModels();
-            if (result?.success) {
-              setParakeetModels(result.models);
-            }
-          });
-        },
-        variant: "destructive",
-      });
-    },
-    [showConfirmDialog, deleteParakeetModel]
-  );
-
-  // Helper to get language label for Parakeet models
-  const getParakeetLanguageLabel = (language: string) => {
-    return language === "multilingual" ? "25 languages" : "English";
-  };
-
-  const renderParakeetModels = () => {
-    // When no models are loaded yet, show all available models from registry
-    const modelsToRender =
-      parakeetModels.length === 0
-        ? Object.entries(PARAKEET_MODEL_INFO).map(([modelId, info]) => ({
-            model: modelId,
-            downloaded: false,
-            size_mb: info.sizeMb,
-          }))
-        : parakeetModels;
-
-    return (
-      <div className="space-y-1">
-        {modelsToRender.map((model) => {
-          const modelId = model.model;
-          const info = PARAKEET_MODEL_INFO[modelId] || {
-            name: modelId,
-            description: "NVIDIA Parakeet Model",
-            size: "Unknown",
-            language: "en",
-          };
-
-          return (
-            <LocalModelCard
-              key={modelId}
-              modelId={modelId}
-              name={info.name}
-              description={info.description}
-              size={info.size}
-              actualSizeMb={model.size_mb}
-              isSelected={modelId === selectedLocalModel}
-              isDownloaded={model.downloaded ?? false}
-              isDownloading={isDownloadingParakeetModel(modelId)}
-              isCancelling={isCancellingParakeet}
-              recommended={info.recommended}
-              provider="nvidia"
-              languageLabel={getParakeetLanguageLabel(info.language)}
-              onSelect={() => handleParakeetModelSelect(modelId)}
-              onDelete={() => handleParakeetDelete(modelId)}
-              onDownload={() => downloadParakeetModel(modelId, handleParakeetModelSelect)}
-              onCancel={cancelParakeetDownload}
-              styles={styles}
-            />
-          );
-        })}
       </div>
     );
   };
@@ -838,7 +732,7 @@ export default function TranscriptionModelPicker({
         <div className={styles.container}>
           <div className="p-2.5 pb-0">
             <ProviderTabs
-              providers={CLOUD_PROVIDER_TABS}
+              providers={availableCloudProviderTabs}
               selectedId={selectedCloudProvider}
               onSelect={handleCloudProviderChange}
               colorScheme={colorScheme === "purple" ? "purple" : "indigo"}
@@ -859,6 +753,9 @@ export default function TranscriptionModelPicker({
                     placeholder="https://your-api.example.com/v1"
                     className="h-8 text-sm"
                   />
+                  {!customBaseUrlValidation.valid && customBaseUrlValidation.reason && (
+                    <p className="text-xs text-destructive">{customBaseUrlValidation.reason}</p>
+                  )}
                 </div>
 
                 {/* API Key */}
@@ -922,21 +819,81 @@ export default function TranscriptionModelPicker({
         </div>
       ) : (
         <div className={styles.container}>
-          <div className="p-2.5 pb-0">
-            <ProviderTabs
-              providers={LOCAL_PROVIDER_TABS}
-              selectedId={internalLocalProvider}
-              onSelect={handleLocalProviderChange}
-              colorScheme={colorScheme === "purple" ? "purple" : "indigo"}
-            />
+          <div className="grid grid-cols-2 gap-1.5 p-2.5 pb-2.5">
+            {(
+              [
+                {
+                  id: "cpu" as const,
+                  icon: Cpu,
+                  label: "CPU",
+                  subtitle: "Always available",
+                  recommended: !gpuSupported,
+                  disabled: false,
+                  title: undefined,
+                },
+                {
+                  id: "gpu" as const,
+                  icon: Zap,
+                  label: "GPU · Whisper",
+                  subtitle: gpuSupported ? "Faster · translation" : "Needs NVIDIA GPU",
+                  recommended: gpuSupported,
+                  disabled: !gpuSupported,
+                  title: !gpuSupported ? "Requires an NVIDIA GPU with CUDA support" : undefined,
+                },
+              ] as const
+            ).map((engine) => {
+              const isActive = selectedEngine === engine.id;
+              const Icon = engine.icon;
+              // Show "Recommended" badge when: GPU is available and this is recommended,
+              // and this engine is NOT already selected (don't show badge on active card)
+              const showRecommended = engine.recommended && !isActive && !engine.disabled;
+              return (
+                <button
+                  key={engine.id}
+                  onClick={() => !engine.disabled && handleEngineChange(engine.id)}
+                  disabled={engine.disabled}
+                  title={engine.title}
+                  className={`flex flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-all duration-150 ${
+                    engine.disabled
+                      ? "opacity-40 cursor-not-allowed border-border-subtle/40 bg-surface-raised/20"
+                      : isActive
+                        ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
+                        : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-0.5">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Icon
+                        className={`w-3 h-3 shrink-0 ${isActive && !engine.disabled ? "text-primary" : "text-muted-foreground"}`}
+                      />
+                      <span
+                        className={`text-[10px] font-semibold leading-tight truncate ${isActive && !engine.disabled ? "text-foreground" : "text-muted-foreground"}`}
+                      >
+                        {engine.label}
+                      </span>
+                    </div>
+                    {isActive && !engine.disabled && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 ml-1" />
+                    )}
+                  </div>
+                  <span className="text-[9px] text-muted-foreground/50 leading-tight">
+                    {engine.subtitle}
+                  </span>
+                  {showRecommended && (
+                    <span className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-primary/70 bg-primary/10 px-1 py-0.5 rounded leading-none">
+                      Recommended
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {progressDisplay}
           {retryBanner}
 
-          <div className="p-3">
-            {internalLocalProvider === "whisper" && renderLocalModels()}
-            {internalLocalProvider === "nvidia" && renderParakeetModels()}
+          <div className="p-3 pt-0">
+            {renderLocalModels()}
             {diskUsageMb > 0 && (
               <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
                 <HardDrive size={10} />

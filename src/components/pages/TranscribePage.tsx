@@ -35,7 +35,6 @@ const ACCEPT_ATTR = [
 ].join(",");
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
-const DEFAULT_PARAKEET_MODEL = "parakeet-tdt-0.6b-v3";
 
 type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
 
@@ -62,9 +61,7 @@ export default function TranscribePage() {
   const { toast } = useToast();
   const {
     useLocalWhisper,
-    localTranscriptionProvider,
     whisperModel,
-    parakeetModel,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     preferredLanguage,
@@ -105,20 +102,10 @@ export default function TranscribePage() {
 
   const activeModelLabel = useMemo(() => {
     if (useLocalWhisper) {
-      if (localTranscriptionProvider === "nvidia") {
-        return `NVIDIA Parakeet (${parakeetModel || DEFAULT_PARAKEET_MODEL})`;
-      }
       return `Whisper (${whisperModel || "base"})`;
     }
     return `${cloudTranscriptionProvider.toUpperCase()} (${cloudTranscriptionModel || "default"})`;
-  }, [
-    useLocalWhisper,
-    localTranscriptionProvider,
-    parakeetModel,
-    whisperModel,
-    cloudTranscriptionProvider,
-    cloudTranscriptionModel,
-  ]);
+  }, [useLocalWhisper, whisperModel, cloudTranscriptionProvider, cloudTranscriptionModel]);
 
   const activeLanguageLabel = useMemo(
     () => getLanguageLabel(preferredLanguage || "auto"),
@@ -199,15 +186,7 @@ export default function TranscribePage() {
 
       let result;
       if (useLocalWhisper) {
-        if (localTranscriptionProvider === "nvidia") {
-          result = await manager.processWithLocalParakeet(
-            file,
-            parakeetModel || DEFAULT_PARAKEET_MODEL,
-            metadata
-          );
-        } else {
-          result = await manager.processWithLocalWhisper(file, whisperModel || "base", metadata);
-        }
+        result = await manager.processWithLocalWhisper(file, whisperModel || "base", metadata);
       } else {
         result = await manager.processWithOpenAIAPI(file, metadata);
       }

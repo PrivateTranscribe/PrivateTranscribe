@@ -44,6 +44,11 @@ function isSafeModelFilename(filename) {
   return true;
 }
 
+function safeSend(sender, channel, payload) {
+  if (!sender || sender.isDestroyed()) return;
+  sender.send(channel, payload);
+}
+
 /**
  * Search for a filename inside `dir` up to `maxDepth` directory levels deep.
  * Returns the first matching absolute path found, or null.
@@ -88,6 +93,8 @@ class IPCHandlers {
     this.windowsKeyManager = managers.windowsKeyManager;
     this.actionEngineManager = managers.actionEngineManager || null;
     this.benchmarkManager = managers.benchmarkManager || null;
+    this.getCudaAutoUpdateState = managers.getCudaAutoUpdateState || null;
+    this.clearCudaAutoUpdateFailure = managers.clearCudaAutoUpdateFailure || null;
     this.hardwareDetector = new HardwareDetector();
     // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
@@ -184,8 +191,9 @@ class IPCHandlers {
       return { success: true };
     });
 
-    ipcMain.handle("resize-main-window", (event, sizeKey) => {
-      return this.windowManager.resizeMainWindow(sizeKey);
+    ipcMain.handle("resize-main-window", (_event, _sizeKey) => {
+      // No-op: window now uses a fixed transparent container; see windowManager.resizeMainWindow.
+      return { success: true };
     });
 
     // Environment handlers
@@ -222,7 +230,7 @@ class IPCHandlers {
             this.databaseManager.trimTranscriptions(this.historyLimit);
           } catch (trimErr) {
             // Non-fatal - the save itself succeeded; log and continue.
-            console.error("Failed to trim transcriptions after save:", trimErr);
+            debugLogger.error("Failed to trim transcriptions after save:", trimErr);
           }
           setImmediate(() => {
             this.broadcastToWindows("transcription-added", result.transcription);
@@ -230,7 +238,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-save-transcription] error:", err.message);
+        debugLogger.error("[IPC:db-save-transcription] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -240,7 +248,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getTranscriptions(safeLimit);
       } catch (err) {
-        console.error("[IPC:db-get-transcriptions] error:", err.message);
+        debugLogger.error("[IPC:db-get-transcriptions] error:", err.message);
         return { success: true, data: [] };
       }
     });
@@ -257,7 +265,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-clear-transcriptions] error:", err.message);
+        debugLogger.error("[IPC:db-clear-transcriptions] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -272,7 +280,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-delete-transcription] error:", err.message);
+        debugLogger.error("[IPC:db-delete-transcription] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -290,7 +298,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-trim-transcriptions] error:", err.message);
+        debugLogger.error("[IPC:db-trim-transcriptions] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -300,28 +308,28 @@ class IPCHandlers {
       try {
         return this.databaseManager.getDictionary();
       } catch (err) {
-        console.error("[IPC:db-get-dictionary] error:", err.message);
+        debugLogger.error("[IPC:db-get-dictionary] error:", err.message);
         return { success: true, data: [] };
       }
     });
 
     ipcMain.handle("db-set-dictionary", async (event, words) => {
-      if (!Array.isArray(words)) {
-        throw new Error("words must be an array");
-      }
-      if (words.length > 10_000) {
-        throw new Error("Dictionary too large: maximum 10,000 entries allowed");
-      }
-      // Coerce all entries to trimmed strings and drop empties.
-      // This prevents non-string values from reaching the database layer.
-      const sanitized = words
-        .filter((w) => typeof w === "string")
-        .map((w) => w.trim().substring(0, 200))
-        .filter(Boolean);
       try {
+        if (!Array.isArray(words)) {
+          throw new Error("words must be an array");
+        }
+        if (words.length > 10_000) {
+          throw new Error("Dictionary too large: maximum 10,000 entries allowed");
+        }
+        // Coerce all entries to trimmed strings and drop empties.
+        // This prevents non-string values from reaching the database layer.
+        const sanitized = words
+          .filter((w) => typeof w === "string")
+          .map((w) => w.trim().substring(0, 200))
+          .filter(Boolean);
         return this.databaseManager.setDictionary(sanitized);
       } catch (err) {
-        console.error("[IPC:db-set-dictionary] error:", err.message);
+        debugLogger.error("[IPC:db-set-dictionary] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -331,7 +339,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getCorrectionMemory(limit);
       } catch (err) {
-        console.error("[IPC:db-get-correction-memory] error:", err.message);
+        debugLogger.error("[IPC:db-get-correction-memory] error:", err.message);
         return [];
       }
     });
@@ -340,7 +348,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.upsertCorrection(source, target);
       } catch (err) {
-        console.error("[IPC:db-upsert-correction] error:", err.message);
+        debugLogger.error("[IPC:db-upsert-correction] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -349,7 +357,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.confirmCorrection(source, target);
       } catch (err) {
-        console.error("[IPC:db-confirm-correction] error:", err.message);
+        debugLogger.error("[IPC:db-confirm-correction] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -358,7 +366,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.deleteCorrection(source);
       } catch (err) {
-        console.error("[IPC:db-delete-correction] error:", err.message);
+        debugLogger.error("[IPC:db-delete-correction] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -368,7 +376,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getStats();
       } catch (err) {
-        console.error("[IPC:db-get-stats] error:", err.message);
+        debugLogger.error("[IPC:db-get-stats] error:", err.message);
         return null;
       }
     });
@@ -377,7 +385,7 @@ class IPCHandlers {
       try {
         return this.databaseManager.getStreakDates();
       } catch (err) {
-        console.error("[IPC:db-get-streak-dates] error:", err.message);
+        debugLogger.error("[IPC:db-get-streak-dates] error:", err.message);
         return [];
       }
     });
@@ -391,7 +399,7 @@ class IPCHandlers {
         }
         return result;
       } catch (err) {
-        console.error("[IPC:db-reset-stats] error:", err.message);
+        debugLogger.error("[IPC:db-reset-stats] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -552,7 +560,7 @@ class IPCHandlers {
 
     ipcMain.handle("download-whisper-model", async (event, modelName) => {
       return this.whisperManager.downloadWhisperModel(modelName, (progressData) => {
-        event.sender.send("whisper-download-progress", progressData);
+        safeSend(event.sender, "whisper-download-progress", progressData);
       });
     });
 
@@ -586,14 +594,25 @@ class IPCHandlers {
     });
 
     ipcMain.handle("get-cuda-binary-status", async () => {
-      return this.whisperManager.getCudaBinaryStatus();
+      const cudaStatus = this.whisperManager.getCudaBinaryStatus();
+      const autoUpdateState = this.getCudaAutoUpdateState ? this.getCudaAutoUpdateState() : null;
+      return {
+        ...cudaStatus,
+        cudaAutoUpdateFailed: !!autoUpdateState?.failed,
+      };
     });
 
     ipcMain.handle("download-cuda-binary", async (event) => {
       try {
         const result = await this.whisperManager.downloadGpuBinary((progress) => {
-          event.sender.send("cuda-binary-download-progress", progress);
+          safeSend(event.sender, "cuda-binary-download-progress", progress);
         });
+        if (result?.success) {
+          await this.whisperManager.invalidateServerCache({ stopRunningServer: true });
+          if (this.clearCudaAutoUpdateFailure) {
+            this.clearCudaAutoUpdateFailure();
+          }
+        }
         return result;
       } catch (error) {
         return { success: false, error: error.message };
@@ -603,6 +622,21 @@ class IPCHandlers {
     ipcMain.handle("cancel-cuda-binary-download", async () => {
       this.whisperManager.cancelGpuBinaryDownload();
       return { success: true };
+    });
+
+    ipcMain.handle("set-whisper-force-cpu", async (_event, value) => {
+      try {
+        if (this.whisperManager.isProcessing && this.whisperManager.isProcessing()) {
+          return {
+            success: false,
+            error: "Cannot change engine while transcription is in progress",
+          };
+        }
+        await this.whisperManager.setForceCpu(!!value);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
     });
 
     ipcMain.handle("whisper-server-status", async () => {
@@ -693,7 +727,7 @@ class IPCHandlers {
 
     ipcMain.handle("download-parakeet-model", async (event, modelName) => {
       return this.parakeetManager.downloadParakeetModel(modelName, (progressData) => {
-        event.sender.send("parakeet-download-progress", progressData);
+        safeSend(event.sender, "parakeet-download-progress", progressData);
       });
     });
 
@@ -918,7 +952,7 @@ class IPCHandlers {
         const result = await modelManager.downloadModel(
           modelId,
           (progress, downloadedSize, totalSize) => {
-            event.sender.send("model-download-progress", {
+            safeSend(event.sender, "model-download-progress", {
               modelId,
               progress,
               downloadedSize,
@@ -1053,6 +1087,9 @@ class IPCHandlers {
     });
 
     ipcMain.handle("sync-startup-preferences", async (event, prefs) => {
+      if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
+        return { success: false, synced: false };
+      }
       const setVars = {};
       const clearVars = [];
 
@@ -1105,6 +1142,17 @@ class IPCHandlers {
         clearVars.push("LLAMA_SERVER_IDLE_TIMEOUT_MINUTES");
       }
 
+      if (typeof prefs.whisperForceCpu === "boolean") {
+        if (prefs.whisperForceCpu) {
+          setVars.WHISPER_FORCE_CPU = "true";
+        } else {
+          clearVars.push("WHISPER_FORCE_CPU");
+        }
+        if (this.whisperManager) {
+          this.whisperManager.setForceCpu(prefs.whisperForceCpu).catch(() => {});
+        }
+      }
+
       if (prefs.useLocalWhisper && prefs.model) {
         // Local mode with model selected - set provider and model for pre-warming
         setVars.LOCAL_TRANSCRIPTION_PROVIDER = prefs.localTranscriptionProvider;
@@ -1131,6 +1179,7 @@ class IPCHandlers {
       }
 
       this._syncStartupEnv(setVars, clearVars);
+      return { success: true, synced: true };
     });
 
     // Local reasoning handler
@@ -1478,26 +1527,24 @@ class IPCHandlers {
 
         // Parse lines
         const lines = envContent.split("\n");
-        const logLevelIndex = lines.findIndex((line) =>
-          line.trim().startsWith("Privoca_LOG_LEVEL=")
-        );
+        const logLevelIndex = lines.findIndex((line) => line.trim().startsWith("PT_LOG_LEVEL="));
 
         if (enabled) {
           // Set to debug
           if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "Privoca_LOG_LEVEL=debug";
+            lines[logLevelIndex] = "PT_LOG_LEVEL=debug";
           } else {
             // Add new line
             if (lines.length > 0 && lines[lines.length - 1] !== "") {
               lines.push("");
             }
             lines.push("# Debug logging setting");
-            lines.push("Privoca_LOG_LEVEL=debug");
+            lines.push("PT_LOG_LEVEL=debug");
           }
         } else {
           // Remove or set to info
           if (logLevelIndex !== -1) {
-            lines[logLevelIndex] = "Privoca_LOG_LEVEL=info";
+            lines[logLevelIndex] = "PT_LOG_LEVEL=info";
           }
         }
 
@@ -1505,7 +1552,7 @@ class IPCHandlers {
         fs.writeFileSync(envPath, lines.join("\n"), "utf8");
 
         // Update environment variable
-        process.env.Privoca_LOG_LEVEL = enabled ? "debug" : "info";
+        process.env.PT_LOG_LEVEL = enabled ? "debug" : "info";
 
         // Refresh logger state
         debugLogger.refreshLogLevel();
@@ -1642,7 +1689,6 @@ class IPCHandlers {
 
     // Media pause — stop playing media while recording, resume when done
     ipcMain.handle("media-pause", async () => {
-      console.log("[IPC] media-pause received");
       try {
         await mediaController.pauseMedia();
       } catch (_) {
@@ -1652,7 +1698,6 @@ class IPCHandlers {
     });
 
     ipcMain.handle("media-resume", async () => {
-      console.log("[IPC] media-resume received");
       try {
         // resumeMedia() is async — it awaits any in-flight pauseMedia() state
         // check before deciding whether to send the resume key.
@@ -1705,7 +1750,7 @@ class IPCHandlers {
       try {
         return analyticsManager.needsConsentPrompt();
       } catch (err) {
-        console.error("[IPC:analytics-needs-consent] error:", err.message);
+        debugLogger.error("[IPC:analytics-needs-consent] error:", err.message);
         return false;
       }
     });
@@ -1713,7 +1758,7 @@ class IPCHandlers {
       try {
         return analyticsManager.setConsent(granted);
       } catch (err) {
-        console.error("[IPC:analytics-set-consent] error:", err.message);
+        debugLogger.error("[IPC:analytics-set-consent] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -1721,7 +1766,7 @@ class IPCHandlers {
       try {
         return analyticsManager.track(event, extra);
       } catch (err) {
-        console.error("[IPC:analytics-track] error:", err.message);
+        debugLogger.error("[IPC:analytics-track] error:", err.message);
         return { success: false, error: err.message };
       }
     });

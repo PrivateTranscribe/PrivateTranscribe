@@ -75,10 +75,10 @@ describe("HardwareDetector.generateRecommendations", () => {
       });
     }
 
-    it("recommends Parakeet (nvidia) for CUDA-capable GPUs", () => {
+    it("recommends Whisper (not Parakeet) for CUDA-capable GPUs", () => {
       const rec = detector.generateRecommendations(nvidiaDetection());
-      expect(rec.localTranscriptionProvider).toBe("nvidia");
-      expect(rec.parakeetModel).toBe("parakeet-tdt-0.6b-v3");
+      expect(rec.localTranscriptionProvider).toBe("whisper");
+      expect(rec.parakeetModel).toBeUndefined();
       expect(rec.transcriptionProvider).toBe("local");
     });
 

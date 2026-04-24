@@ -6,6 +6,8 @@ export interface ProviderTabItem {
   id: string;
   name: string;
   recommended?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 type ColorScheme = Exclude<BaseColorScheme, "blue"> | "dynamic";
@@ -86,10 +88,12 @@ export function ProviderTabs({
           <button
             key={provider.id}
             data-tab-button
-            onClick={() => onSelect(provider.id)}
+            onClick={() => !provider.disabled && onSelect(provider.id)}
+            disabled={provider.disabled}
+            title={provider.disabled ? provider.disabledReason : undefined}
             className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md font-medium text-xs transition-colors duration-150 ${
               scrollable ? "whitespace-nowrap" : ""
-            } ${isSelected ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            } ${provider.disabled ? "opacity-40 cursor-not-allowed" : isSelected ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {renderIcon ? renderIcon(provider.id) : <ProviderIcon provider={provider.id} />}
             <span>{provider.name}</span>

@@ -721,13 +721,31 @@ declare global {
       }>;
 
       // CUDA binary download
-      getCudaBinaryStatus?: () => Promise<{ installed: boolean; version?: string }>;
+      getCudaBinaryStatus?: () => Promise<{
+        installed: boolean;
+        path: string | null;
+        platform: string;
+        supported: boolean;
+        version: string | null;
+        upToDate: boolean;
+        expectedVersion: string;
+        forceCpu: boolean;
+        cudaAutoUpdateFailed?: boolean;
+      }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
       cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;
+      setWhisperForceCpu?: (value: boolean) => Promise<{ success: boolean; error?: string }>;
       onCudaBinaryDownloadProgress?: (
         callback: (
           event: unknown,
-          data: { progress: number; downloadedBytes?: number; totalBytes?: number }
+          data: {
+            progress?: number;
+            percent?: number;
+            phase?: string;
+            downloadedBytes?: number;
+            bytesDownloaded?: number;
+            totalBytes?: number;
+          }
         ) => void
       ) => () => void;
     };

@@ -134,14 +134,16 @@ class AudioManager {
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
     this._cachedSmartContext = null;
+    this._deviceChangeHandler = null;
 
     // Pre-warm device cache and keep it fresh
     if (navigator.mediaDevices) {
       this._warmDeviceCache();
-      navigator.mediaDevices.addEventListener("devicechange", () => {
+      this._deviceChangeHandler = () => {
         this._warmDeviceCache();
         this._clearPooledStream();
-      });
+      };
+      navigator.mediaDevices.addEventListener("devicechange", this._deviceChangeHandler);
     }
 
     if (window.electronAPI?.onTranscriptionSettingsChanged) {
@@ -2160,6 +2162,10 @@ class AudioManager {
     this.onStateChange = null;
     this.onError = null;
     this.onTranscriptionComplete = null;
+    if (navigator.mediaDevices && this._deviceChangeHandler) {
+      navigator.mediaDevices.removeEventListener("devicechange", this._deviceChangeHandler);
+      this._deviceChangeHandler = null;
+    }
   }
 }
 

@@ -28,19 +28,28 @@ if (!gotSingleInstanceLock) {
 
 const isLiveWindow = (window) => window && !window.isDestroyed();
 
+let debugLogger = null;
+
+function logMainError(...args) {
+  if (!debugLogger) {
+    debugLogger = require("./src/helpers/debugLogger");
+  }
+  debugLogger.error(...args);
+}
+
 // Add global error handling for uncaught exceptions
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught Exception:", error);
+  logMainError("Uncaught Exception:", error);
   // Don't exit the process for EPIPE errors as they're harmless
   if (error.code === "EPIPE") {
     return;
   }
   // For other errors, log and continue
-  console.error("Error stack:", error.stack);
+  logMainError("Error stack:", error.stack);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  logMainError("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // Import helper module classes (but don't instantiate yet - wait for app.whenReady())
@@ -60,7 +69,6 @@ const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
 const HardwareDetector = require("./src/helpers/hardwareDetector");
 
 // Manager instances - initialized after app.whenReady()
-let debugLogger = null;
 let environmentManager = null;
 let windowManager = null;
 let hotkeyManager = null;
@@ -75,6 +83,8 @@ let windowsKeyManager = null;
 let actionEngineManager = null;
 let benchmarkManager = null;
 let globeKeyAlertShown = false;
+let cudaAutoUpdateFailed = false;
+let cudaAutoUpdateError = null;
 
 // Set up PATH for production builds to find system tools (whisper.cpp, ffmpeg)
 function setupProductionPath() {
@@ -181,7 +191,59 @@ function initializeManagers() {
     windowsKeyManager,
     actionEngineManager,
     benchmarkManager,
+    getCudaAutoUpdateState: () => ({
+      failed: cudaAutoUpdateFailed,
+      error: cudaAutoUpdateError,
+    }),
+    clearCudaAutoUpdateFailure: () => {
+      cudaAutoUpdateFailed = false;
+      cudaAutoUpdateError = null;
+    },
   });
+}
+
+async function autoUpdateCudaBinaryIfNeeded() {
+  if (!whisperManager) return;
+
+  try {
+    if (!whisperManager.wasCudaPreviouslyInstalled()) {
+      return;
+    }
+
+    const migrationResult = whisperManager.migrateLegacyCudaBinary();
+    if (migrationResult?.migrated) {
+      await whisperManager.invalidateServerCache({ stopRunningServer: true });
+    }
+
+    if (whisperManager.isCudaBinaryUpToDate()) {
+      cudaAutoUpdateFailed = false;
+      cudaAutoUpdateError = null;
+      return;
+    }
+
+    debugLogger.info("Startup CUDA auto-update: outdated binary detected, downloading silently");
+    const result = await whisperManager.downloadGpuBinary();
+    if (result?.success) {
+      await whisperManager.invalidateServerCache({ stopRunningServer: true });
+      cudaAutoUpdateFailed = false;
+      cudaAutoUpdateError = null;
+      debugLogger.info("Startup CUDA auto-update: download succeeded");
+      return;
+    }
+
+    cudaAutoUpdateFailed = true;
+    cudaAutoUpdateError = result?.error || "Unknown CUDA auto-update failure";
+    debugLogger.warn("Startup CUDA auto-update failed", {
+      error: cudaAutoUpdateError,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    cudaAutoUpdateFailed = true;
+    cudaAutoUpdateError = errorMessage;
+    debugLogger.warn("Startup CUDA auto-update threw an error", {
+      error: errorMessage,
+    });
+  }
 }
 
 // Main application startup
@@ -276,6 +338,14 @@ async function startApp() {
 
   // Create control panel window
   await windowManager.createControlPanelWindow();
+
+  // If a user previously installed CUDA, keep it in sync silently after app updates.
+  autoUpdateCudaBinaryIfNeeded().catch((error) => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    cudaAutoUpdateFailed = true;
+    cudaAutoUpdateError = errorMessage;
+    debugLogger.warn("Startup CUDA auto-update failed unexpectedly", { error: errorMessage });
+  });
 
   // Track app launch (fire-and-forget, non-fatal)
   const _analyticsManager = require("./src/helpers/analyticsManager");
@@ -553,7 +623,7 @@ if (gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     startApp().catch((error) => {
-      console.error("Failed to start app:", error);
+      logMainError("Failed to start app:", error);
       dialog.showErrorBox(
         "PrivateTranscribe Startup Error",
         `Failed to start the application:\n\n${error.message}\n\nPlease report this issue.`
@@ -612,7 +682,16 @@ if (gotSingleInstanceLock) {
     }
   });
 
-  app.on("will-quit", () => {
+  // Use before-quit so we can await async server teardown before the process
+  // exits. Without this, whisper-server / parakeet-ws-server / llama-server
+  // become orphan processes that survive past the app quit.
+  let isQuittingAsync = false;
+  app.on("before-quit", (event) => {
+    if (isQuittingAsync) return; // second call after we call app.quit() below
+    event.preventDefault();
+    isQuittingAsync = true;
+
+    // Synchronous teardown first (no async needed).
     if (trayManager) {
       trayManager.stopHealthCheck();
     }
@@ -630,16 +709,16 @@ if (gotSingleInstanceLock) {
     if (updateManager) {
       updateManager.cleanup();
     }
-    // Stop whisper server if running
-    if (whisperManager) {
-      whisperManager.stopServer().catch(() => {});
-    }
-    // Stop parakeet WS server if running
-    if (parakeetManager) {
-      parakeetManager.stopServer().catch(() => {});
-    }
-    // Stop llama-server if running
+
+    // Async teardown: stop all child-process servers and then let the app exit.
     const modelManager = require("./src/helpers/modelManagerBridge").default;
-    modelManager.stopServer().catch(() => {});
+    const stopAll = [
+      whisperManager ? whisperManager.stopServer() : Promise.resolve(),
+      parakeetManager ? parakeetManager.stopServer() : Promise.resolve(),
+      modelManager.stopServer(),
+    ];
+    Promise.allSettled(stopAll).then(() => {
+      app.quit(); // re-triggers before-quit; isQuittingAsync guard skips straight through
+    });
   });
 }

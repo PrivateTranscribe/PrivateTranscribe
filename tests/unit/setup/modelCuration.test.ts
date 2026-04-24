@@ -94,8 +94,8 @@ describe("Model curation invariants", () => {
     });
   });
 
-  describe("Whisper progressive disclosure", () => {
-    it("TranscriptionModelPicker ALWAYS_SHOW_IDS covers turbo, base, and tiny", () => {
+  describe("Whisper onboarding cues", () => {
+    it("TranscriptionModelPicker still detects the onboarding variant", () => {
       const pickerPath = path.join(
         process.cwd(),
         "src",
@@ -104,14 +104,10 @@ describe("Model curation invariants", () => {
       );
       const contents = fs.readFileSync(pickerPath, "utf8");
 
-      // The constant must include the three foundational onboarding models
-      expect(contents).toMatch(/ALWAYS_SHOW_IDS\s*=\s*new\s+Set\s*\(\s*\[/);
-      expect(contents).toMatch(/"turbo"/);
-      expect(contents).toMatch(/"base"/);
-      expect(contents).toMatch(/"tiny"/);
+      expect(contents).toMatch(/const isOnboarding = variant === "onboarding"/);
     });
 
-    it("progressive disclosure is gated on the onboarding variant only", () => {
+    it("performance labels are gated on the onboarding variant only", () => {
       const pickerPath = path.join(
         process.cwd(),
         "src",
@@ -120,11 +116,10 @@ describe("Model curation invariants", () => {
       );
       const contents = fs.readFileSync(pickerPath, "utf8");
 
-      // isOnboarding guard must exist before the ALWAYS_SHOW_IDS filter
-      expect(contents).toMatch(/isOnboarding\s*&&\s*!showAllWhisperModels/);
+      expect(contents).toMatch(/isOnboarding && perf \? `\$\{perf\.speed\} · \$\{perf\.quality\}` : undefined/);
     });
 
-    it("Show-more button reveals hidden count, not a generic label", () => {
+    it("Whisper performance labels still cover turbo, base, and tiny", () => {
       const pickerPath = path.join(
         process.cwd(),
         "src",
@@ -133,8 +128,9 @@ describe("Model curation invariants", () => {
       );
       const contents = fs.readFileSync(pickerPath, "utf8");
 
-      // Button text must dynamically reflect hidden count so users know what's coming
-      expect(contents).toMatch(/Show\s+\{hiddenCount\}/);
+      expect(contents).toMatch(/tiny:\s*\{\s*speed: "Fastest",\s*quality: "Basic"\s*\}/);
+      expect(contents).toMatch(/base:\s*\{\s*speed: "Fast",\s*quality: "Good"\s*\}/);
+      expect(contents).toMatch(/turbo:\s*\{\s*speed: "Fast",\s*quality: "Great"\s*\}/);
     });
   });
 

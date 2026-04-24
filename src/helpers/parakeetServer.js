@@ -168,7 +168,11 @@ class ParakeetServerManager {
   }
 
   setServerIdleTimeoutMinutes(minutes) {
-    const ms = Number.isFinite(minutes) && minutes >= 0 ? Math.floor(minutes) * 60 * 1000 : 0;
+    const parsedMinutes = Number(minutes);
+    const ms =
+      Number.isFinite(parsedMinutes) && parsedMinutes >= 0
+        ? Math.floor(parsedMinutes) * 60 * 1000
+        : 0;
     this.wsServer.setIdleTimeoutMs(ms);
     return { success: true };
   }

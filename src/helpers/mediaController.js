@@ -18,6 +18,50 @@
  *              routes the key to the current SMTC session, which at this point
  *              is the session we just verified as playing.
  *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * TODO: Windows "Pause Media" feature is currently DISABLED IN UI (shows as
+ * "Coming Soon") because it has not been reliable enough to ship.
+ *
+ * Full history of attempts (2026-03-26):
+ *
+ * 1. Original implementation: sent VK_MEDIA_PLAY_PAUSE global media key via
+ *    nircmd.exe or PowerShell `$wshell.SendKeys([char]179)`. This is inherently
+ *    unreliable on Windows because the key is routed to the active SMTC session,
+ *    which is not always the app that is playing. Could accidentally start a
+ *    paused Spotify while YouTube was focused, etc.
+ *
+ * 2. PowerShell VBScript approach: used wscript.exe to avoid PowerShell AV
+ *    heuristics. Triggered a Windows Script Host popup bug — reverted.
+ *
+ * 3. SMTC direct session control: used WinRT GlobalSystemMediaTransportControls
+ *    SessionManager via PowerShell reflection to call TryPauseAsync on the
+ *    specific playing session. This is correct architecture but TryPauseAsync
+ *    returns false for Spotify Win32 (non-Store) — Spotify registers with SMTC
+ *    but does not honour the WinRT pause API. Added nircmd fallback when
+ *    TryPauseAsync fails, only after confirming something IS playing.
+ *
+ * 4. Wiring bug discovered: the overlay button click path used a different
+ *    code path that completely bypassed pauseMedia(). Fixed by consolidating
+ *    into beginRecordingFlow()/endRecordingFlow() in useAudioRecording.js.
+ *
+ * 5. Despite all fixes, Windows media pause still unreliable in testing.
+ *    Decision: disable in UI on Windows, show "Coming Soon" badge.
+ *
+ * What a proper Windows fix would look like:
+ *  - Option A: Spotify Web API local control (requires Spotify app to be
+ *    running and user to be authenticated) — complex but targeted
+ *  - Option B: Detect media player by process and send app-specific commands
+ *    (e.g. Spotify keyboard shortcut Ctrl+Space) — fragile, app-specific
+ *  - Option C: Use a native Node addon (e.g. node-win-media-control) that
+ *    wraps SMTC in a way that works for all SMTC-registered apps including
+ *    Spotify Win32 — cleanest long-term solution, needs native build pipeline
+ *  - Option D: Use Windows audio session API to detect what is playing, then
+ *    send app-specific pause commands — possible with PowerShell but complex
+ *
+ * Until one of these is implemented and tested, the feature remains disabled
+ * on Windows at the UI level (SettingsPage.tsx).
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  *  - macOS   : checks Spotify/Music.app state via AppleScript, then sends
  *              key code 100 (F8 / media play-pause).
  *  - Linux   : playerctl status check, then playerctl play-pause / xdotool fallback.

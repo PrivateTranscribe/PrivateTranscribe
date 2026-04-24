@@ -14,7 +14,7 @@ describe("HardwareDetector.generateRecommendations", () => {
     expect(rec.reasoning.length).toBeGreaterThan(0);
   });
 
-  it("recommends Parakeet when NVIDIA CUDA is available", () => {
+  it("recommends Whisper (not Parakeet) when NVIDIA CUDA is available", () => {
     const detector = new HardwareDetector();
 
     const rec = detector.generateRecommendations({
@@ -31,8 +31,8 @@ describe("HardwareDetector.generateRecommendations", () => {
 
     expect(rec).toBeTruthy();
     expect(rec.transcriptionProvider).toBe("local");
-    expect(rec.localTranscriptionProvider).toBe("nvidia");
-    expect(rec.parakeetModel).toBeTruthy();
+    expect(rec.localTranscriptionProvider).toBe("whisper");
+    expect(rec.parakeetModel).toBeUndefined();
     expect(rec.reasoning.length).toBeGreaterThan(0);
   });
 });

@@ -1,16 +1,24 @@
 const path = require("path");
 
+// Fixed transparent container — the overlay window is always this size.
+// All UI (button, menu, toast) expands/collapses inside with CSS.
+// Electron never calls setBounds for state changes, only for user drag repositioning.
+const CONTAINER_W = 400;
+const CONTAINER_H = 500;
+
+// Button (44×44px) is positioned at bottom:58px, left:50% (transform translateX(-50%))
+// within the container. These offsets describe the button's center from the container's
+// top-left corner and are used to convert between window position and button screen position.
+const BUTTON_OFFSET_X = CONTAINER_W / 2; // 200 — horizontal center of container
+const BUTTON_OFFSET_Y = CONTAINER_H - 58 - 22; // 420 — 58px from bottom + half button height
+
+// Legacy size constants kept for reference only. The overlay no longer resizes
+// between these states at runtime.
 const WINDOW_SIZES = {
-  // 110×110 gives the MicHalo room to expand without being clipped
-  // by the OS window boundary. Extra space is transparent and click-through.
   BASE: { width: 160, height: 160 },
   WITH_MENU: { width: 300, height: 360 },
-  // WITH_TOAST: narrower and shorter than before - the toast only needs ~180px of height
-  // (toast ~70px + bottom button clearance ~90px + gap) and the width just needs to fit
-  // the 320px toast with its 6px margin.  Keeping it tighter reduces the visual jolt when
-  // the window expands near the right screen edge.
   WITH_TOAST: { width: 380, height: 180 },
-  EXPANDED: { width: 400, height: 500 },
+  EXPANDED: { width: CONTAINER_W, height: CONTAINER_H },
 };
 
 // Helper to get icon path for Windows
@@ -33,8 +41,8 @@ function getWindowIcon() {
 
 // Main dictation window configuration
 const MAIN_WINDOW_CONFIG = {
-  width: WINDOW_SIZES.BASE.width,
-  height: WINDOW_SIZES.BASE.height,
+  width: CONTAINER_W,
+  height: CONTAINER_H,
   title: "Voice Recorder",
   icon: getWindowIcon(),
   webPreferences: {
@@ -92,31 +100,34 @@ const CONTROL_PANEL_CONFIG = {
 
 // Window positioning utilities
 class WindowPositionUtil {
-  static getMainWindowPosition(display, customSize = null) {
-    const { width, height } = customSize || WINDOW_SIZES.BASE;
+  static getMainWindowPosition(display) {
     const workArea = display.workArea || display.bounds;
-    // Default: bottom-center of the display workArea
-    const x = Math.round(workArea.x + (workArea.width - width) / 2);
-    const y = Math.round(workArea.y + workArea.height - height);
-    return { x, y, width, height };
+    // Position the fixed CONTAINER_W×CONTAINER_H window so the button lands at
+    // bottom-center of the work area (matching the old BASE-window default position).
+    const x = Math.round(workArea.x + (workArea.width - CONTAINER_W) / 2);
+    const y = Math.round(workArea.y + workArea.height - CONTAINER_H);
+    return { x, y, width: CONTAINER_W, height: CONTAINER_H };
   }
 
   static clampPosition(x, y, width, height, workArea) {
-    // The BASE window is 160×160px transparent; the button (44×44px) is centered at
-    // left:58, bottom:58 — (160-44)/2 = 58px from every edge.  Allow the window to
-    // overhang by 58px on all four sides so the *button* (not the window frame) clamps
-    // to the workArea edges symmetrically.
-    const isBase = width === WINDOW_SIZES.BASE.width && height === WINDOW_SIZES.BASE.height;
-    const margin = isBase ? 58 : 0;
-    const cx = Math.max(
-      workArea.x - margin,
-      Math.min(x, workArea.x + workArea.width - width + margin)
+    // Clamp so the full 44px button stays visible within the work area.
+    // We clamp against the button *edge* (not just center) so the button can't hang off screen.
+    // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
+    const BUTTON_HALF = 22; // half of 44px button
+    const btnX = x + BUTTON_OFFSET_X;
+    const btnY = y + BUTTON_OFFSET_Y;
+    const clampedBtnX = Math.max(
+      workArea.x + BUTTON_HALF,
+      Math.min(btnX, workArea.x + workArea.width - BUTTON_HALF)
     );
-    const cy = Math.max(
-      workArea.y - margin,
-      Math.min(y, workArea.y + workArea.height - height + margin)
+    const clampedBtnY = Math.max(
+      workArea.y + BUTTON_HALF,
+      Math.min(btnY, workArea.y + workArea.height - BUTTON_HALF)
     );
-    return { x: cx, y: cy };
+    return {
+      x: Math.round(clampedBtnX - BUTTON_OFFSET_X),
+      y: Math.round(clampedBtnY - BUTTON_OFFSET_Y),
+    };
   }
 
   static setupAlwaysOnTop(window) {
@@ -172,5 +183,9 @@ module.exports = {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
   WINDOW_SIZES,
+  CONTAINER_W,
+  CONTAINER_H,
+  BUTTON_OFFSET_X,
+  BUTTON_OFFSET_Y,
   WindowPositionUtil,
 };

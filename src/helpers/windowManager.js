@@ -10,7 +10,10 @@ const { DEV_SERVER_PORT } = DevServerManager;
 const {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
-  WINDOW_SIZES,
+  CONTAINER_W,
+  CONTAINER_H,
+  BUTTON_OFFSET_X,
+  BUTTON_OFFSET_Y,
   WindowPositionUtil,
 } = require("./windowConfig");
 
@@ -37,6 +40,11 @@ class WindowManager {
     this._positionFile = null;
     this._positionSaveTimer = null;
     this._pendingPosition = null;
+    this._displayMetricsTimer = null;
+    this._lastDisplayMetricsEventAt = 0;
+    this._stablePosition = null; // {x, y} button center snapshot used during transient display instability
+    this._displacedFromDisplayId = null; // tracks original display when overlay is displaced
+    this._preDisplacementPosition = null; // {x, y} button position before displacement
 
     this._registerExitHandlers();
 
@@ -108,12 +116,26 @@ class WindowManager {
   }
 
   _loadSavedPosition() {
+    // Returns {x, y} as button screen center position, or null.
     try {
       const raw = fs.readFileSync(this._getPositionFile(), "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.x === "number" && typeof parsed.y === "number") {
-        debugLogger.info("[Window] Loaded saved overlay position:", parsed);
-        return parsed;
+        if (parsed.v === 2 || parsed.v === 3) {
+          const result = { x: parsed.x, y: parsed.y, v: 3 };
+          if (parsed.displayId) result.displayId = parsed.displayId;
+          debugLogger.info("[Window] Loaded saved overlay position (v" + parsed.v + "):", parsed);
+          return result;
+        } else {
+          // v1 format: x,y is the old 160×160 window top-left.
+          // Button center was at (x+80, y+80) in the old BASE window.
+          const migrated = { x: parsed.x + 80, y: parsed.y + 80, v: 3 };
+          debugLogger.info("[Window] Migrated saved overlay position v1→v3:", {
+            from: parsed,
+            to: migrated,
+          });
+          return migrated;
+        }
       }
 
       debugLogger.warn("[Window] Overlay position file invalid, resetting:", parsed);
@@ -130,8 +152,9 @@ class WindowManager {
   }
 
   _scheduleSavePosition(x, y) {
-    // Keep the last seen position around so we can flush it on close even if the debounce hasn't fired.
-    this._pendingPosition = { x, y };
+    // x,y is the button's screen center position (v3 format).
+    const currentDisplay = screen.getDisplayNearestPoint({ x, y });
+    this._pendingPosition = { x, y, v: 3, displayId: currentDisplay.id };
 
     if (this._positionSaveTimer) {
       clearTimeout(this._positionSaveTimer);
@@ -154,50 +177,169 @@ class WindowManager {
     }, 500);
   }
 
+  _snapshotStablePosition(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const bounds = this.mainWindow.getBounds();
+    this._stablePosition = {
+      x: bounds.x + BUTTON_OFFSET_X,
+      y: bounds.y + BUTTON_OFFSET_Y,
+    };
+    debugLogger.debug("[Window] Snapshot stable overlay position:", {
+      reason,
+      position: this._stablePosition,
+    });
+  }
+
+  _restoreFromStablePosition(reason, width, height) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this._stablePosition) return false;
+    const stableBtnX = this._stablePosition.x;
+    const stableBtnY = this._stablePosition.y;
+    const stableDisplay = screen.getDisplayNearestPoint({ x: stableBtnX, y: stableBtnY });
+    const stableWorkArea = stableDisplay.workArea || stableDisplay.bounds;
+    const winX = stableBtnX - BUTTON_OFFSET_X;
+    const winY = stableBtnY - BUTTON_OFFSET_Y;
+    const clamped = WindowPositionUtil.clampPosition(winX, winY, width, height, stableWorkArea);
+    this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
+    this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
+    debugLogger.warn("[Window] Restored overlay from stable snapshot:", {
+      reason,
+      restoredTo: clamped,
+      stablePosition: this._stablePosition,
+    });
+    return true;
+  }
+
   _reclampOverlayPosition(reason) {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const bounds = this.mainWindow.getBounds();
     const { width, height } = bounds;
-    const display = screen.getDisplayNearestPoint({
-      x: bounds.x + width / 2,
-      y: bounds.y + height / 2,
-    });
+
+    // Use button screen position for display detection.
+    const btnX = bounds.x + BUTTON_OFFSET_X;
+    const btnY = bounds.y + BUTTON_OFFSET_Y;
+    const display = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
     const workArea = display.workArea || display.bounds;
+    const hasSaneWorkArea = workArea && workArea.width > 100 && workArea.height > 100;
+
+    if (!hasSaneWorkArea) {
+      debugLogger.warn("[Window] Skipping overlay re-clamp due to implausible display bounds", {
+        reason,
+        displayId: display?.id,
+        workArea,
+      });
+      this._restoreFromStablePosition(`${reason}:bad-workArea`, width, height);
+      return;
+    }
+
+    // Check if we have a displaced state and the original display is back.
+    if (this._displacedFromDisplayId !== null) {
+      const allDisplays = screen.getAllDisplays();
+      const originalDisplay = allDisplays.find((d) => d.id === this._displacedFromDisplayId);
+
+      if (originalDisplay) {
+        // Original display is back; restore to it.
+        const origWorkArea = originalDisplay.workArea || originalDisplay.bounds;
+        const restoreX = this._preDisplacementPosition
+          ? this._preDisplacementPosition.x - BUTTON_OFFSET_X
+          : origWorkArea.x + Math.round((origWorkArea.width - width) / 2);
+        const restoreY = this._preDisplacementPosition
+          ? this._preDisplacementPosition.y - BUTTON_OFFSET_Y
+          : origWorkArea.y + Math.round((origWorkArea.height - height) / 2);
+
+        const restoreClamped = WindowPositionUtil.clampPosition(
+          restoreX,
+          restoreY,
+          width,
+          height,
+          origWorkArea
+        );
+
+        debugLogger.info("[Window] Restoring overlay to original display", {
+          displayId: this._displacedFromDisplayId,
+          to: restoreClamped,
+          hadPreDisplacementPosition: !!this._preDisplacementPosition,
+        });
+
+        this.mainWindow.setBounds({
+          x: restoreClamped.x,
+          y: restoreClamped.y,
+          width,
+          height,
+        });
+        this._scheduleSavePosition(
+          restoreClamped.x + BUTTON_OFFSET_X,
+          restoreClamped.y + BUTTON_OFFSET_Y
+        );
+
+        // Clear displaced state.
+        this._displacedFromDisplayId = null;
+        this._preDisplacementPosition = null;
+        return;
+      }
+    }
+
     const clamped = WindowPositionUtil.clampPosition(bounds.x, bounds.y, width, height, workArea);
     if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+      // Check if this displacement is because our original display went away.
+      const saved = this._loadSavedPosition();
+      if (saved && saved.displayId) {
+        const allDisplays = screen.getAllDisplays();
+        const originalDisplay = allDisplays.find((d) => d.id === saved.displayId);
+
+        if (!originalDisplay) {
+          // Our original display is gone; save displacement state.
+          if (this._displacedFromDisplayId === null) {
+            debugLogger.info("[Window] Original display gone, saving displacement state", {
+              originalDisplayId: saved.displayId,
+              displacedTo: { x: clamped.x, y: clamped.y },
+            });
+            this._displacedFromDisplayId = saved.displayId;
+            this._preDisplacementPosition = { x: saved.x, y: saved.y };
+          }
+        }
+      }
+
       debugLogger.info("[Window] Re-clamping overlay after", reason, {
         from: { x: bounds.x, y: bounds.y },
         to: clamped,
         workArea,
       });
       this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
-      this._scheduleSavePosition(clamped.x, clamped.y);
+      this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
     } else {
       debugLogger.debug("[Window] Overlay already within bounds after", reason);
+    }
+
+    // Only refresh the stable snapshot after display events have been quiet for 3 seconds.
+    if (Date.now() - this._lastDisplayMetricsEventAt >= 3000) {
+      this._snapshotStablePosition(`stable:${reason}`);
     }
   }
 
   async createMainWindow() {
     const display = screen.getPrimaryDisplay();
-    const { width, height } = WINDOW_SIZES.BASE;
-    const workArea = display.workArea || display.bounds;
 
     const saved = this._loadSavedPosition();
     let position;
     if (saved) {
-      // Clamp against the display that *contains* the saved position, not always the primary.
-      // Without this, an overlay saved on a secondary monitor gets snapped to the primary
-      // display bounds on the next launch, causing it to jump across monitors.
-      const savedDisplay = screen.getDisplayNearestPoint({ x: saved.x, y: saved.y });
+      // saved.x, saved.y is the button's screen center position (v2 format).
+      // Clamp against the display that *contains* the saved button position, not always
+      // the primary. Without this, an overlay saved on a secondary monitor gets snapped
+      // to the primary display bounds on the next launch, causing it to jump across monitors.
+      const btnX = saved.x;
+      const btnY = saved.y;
+      const winX = btnX - BUTTON_OFFSET_X;
+      const winY = btnY - BUTTON_OFFSET_Y;
+      const savedDisplay = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
       const savedWorkArea = savedDisplay.workArea || savedDisplay.bounds;
       const clamped = WindowPositionUtil.clampPosition(
-        saved.x,
-        saved.y,
-        width,
-        height,
+        winX,
+        winY,
+        CONTAINER_W,
+        CONTAINER_H,
         savedWorkArea
       );
-      position = { ...clamped, width, height };
+      position = { ...clamped, width: CONTAINER_W, height: CONTAINER_H };
     } else {
       position = WindowPositionUtil.getMainWindowPosition(display);
     }
@@ -249,7 +391,12 @@ class WindowManager {
     await this.loadMainWindow();
     await this.initializeHotkey();
     this.dragManager.setTargetWindow(this.mainWindow);
-    this.dragManager.setPositionChangeCallback((x, y) => this._scheduleSavePosition(x, y));
+    this.dragManager.setPositionChangeCallback((winX, winY) => {
+      // User manually moved overlay; clear any displaced state.
+      this._displacedFromDisplayId = null;
+      this._preDisplacementPosition = null;
+      this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
+    });
     MenuManager.setupMainMenu();
 
     // Re-clamp the overlay after sleep/wake so it doesn't drift when the workArea
@@ -258,10 +405,45 @@ class WindowManager {
     powerMonitor.on("resume", () => {
       setTimeout(() => this._reclampOverlayPosition("resume"), 1000);
     });
+    if (typeof powerMonitor.on === "function") {
+      powerMonitor.on("lock-screen", () => {
+        this._snapshotStablePosition("lock-screen");
+      });
+      powerMonitor.on("unlock-screen", () => {
+        setTimeout(() => {
+          if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+          const bounds = this.mainWindow.getBounds();
+          this._restoreFromStablePosition("unlock-screen", bounds.width, bounds.height);
+          this._reclampOverlayPosition("unlock-screen");
+        }, 2000);
+      });
+    }
 
     // Re-clamp whenever the display resolution, scale, or work area changes.
+    // Debounce: this event fires many times during sleep/wake and screen on/off while
+    // the work area is in flux (taskbar not yet registered, DPI not yet settled).
+    // Firing immediately can save a wrong clamped position, which persists across reboots.
+    // Wait 3 s after the last event so we act on the final stable work area.
     screen.on("display-metrics-changed", () => {
-      this._reclampOverlayPosition("display-metrics-changed");
+      // Lock current known-good position at the start of a metrics burst.
+      if (!this._displayMetricsTimer) {
+        this._snapshotStablePosition("display-metrics-burst-start");
+      }
+      this._lastDisplayMetricsEventAt = Date.now();
+      if (this._displayMetricsTimer) clearTimeout(this._displayMetricsTimer);
+      this._displayMetricsTimer = setTimeout(() => {
+        this._displayMetricsTimer = null;
+        this._reclampOverlayPosition("display-metrics-changed");
+      }, 3000);
+    });
+
+    // When a display is added (e.g. monitor wakes up), check if we need to restore.
+    screen.on("display-added", (_event, newDisplay) => {
+      if (this._displacedFromDisplayId !== null && newDisplay.id === this._displacedFromDisplayId) {
+        debugLogger.info("[Window] Original display reconnected:", newDisplay.id);
+        // Small delay to let the display settle.
+        setTimeout(() => this._reclampOverlayPosition("display-added"), 500);
+      }
     });
   }
 
@@ -278,82 +460,11 @@ class WindowManager {
     this.isMainWindowInteractive = shouldCapture;
   }
 
-  resizeMainWindow(sizeKey) {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return { success: false, message: "Window not available" };
-    }
-
-    const newSize = WINDOW_SIZES[sizeKey] || WINDOW_SIZES.BASE;
-    const currentBounds = this.mainWindow.getBounds();
-
-    // Preserve the original BASE position so we can restore it accurately after
-    // any temporary expansion (toast, menu, etc.).
-    // Save aggressively: update whenever we're at BASE size, or initialize from
-    // current bounds if we have no saved position yet (prevents drift on first call).
-    const isCurrentlyBase =
-      currentBounds.width === WINDOW_SIZES.BASE.width &&
-      currentBounds.height === WINDOW_SIZES.BASE.height;
-    if (isCurrentlyBase) {
-      this._originalBaseX = currentBounds.x;
-      this._originalBaseY = currentBounds.y;
-      this._originalBaseBottomY = currentBounds.y + currentBounds.height;
-    } else if (this._originalBaseX == null) {
-      // Not at BASE but no saved anchor yet — initialize so we have a stable reference.
-      this._originalBaseX = currentBounds.x;
-      this._originalBaseY = currentBounds.y;
-      this._originalBaseBottomY = currentBounds.y + currentBounds.height;
-    }
-
-    // Use the saved base bottom as the stable vertical anchor so repeated
-    // expand/collapse cycles don't drift the position upward.
-    const bottomY = this._originalBaseBottomY ?? currentBounds.y + currentBounds.height;
-    const bottomLeftX = this._originalBaseX ?? currentBounds.x;
-
-    const display = screen.getDisplayNearestPoint({ x: currentBounds.x, y: bottomY });
-    const workArea = display.workArea || display.bounds;
-
-    // Expand to the right by default; if that overflows the screen, anchor to the right edge instead.
-    // This applies to both WITH_TOAST and WITH_MENU expansions.
-    const wouldOverflowRight = bottomLeftX + newSize.width > workArea.x + workArea.width;
-    const expandLeft = (sizeKey === "WITH_TOAST" || sizeKey === "WITH_MENU") && wouldOverflowRight;
-
-    let newX = bottomLeftX;
-    if (expandLeft) {
-      // Anchor to right: original right edge minus new width
-      newX = Math.round(bottomLeftX + WINDOW_SIZES.BASE.width - newSize.width);
-    }
-
-    let newY = bottomY - newSize.height;
-
-    // Clamp so the *visible button* (not the window) clamps to screen edges.
-    // Button is centered in the 160px BASE window at left:58, bottom:58 (44px button),
-    // so all four transparent margins are equal at 58px — use symmetric clamping.
-    const isBase =
-      newSize.width === WINDOW_SIZES.BASE.width && newSize.height === WINDOW_SIZES.BASE.height;
-    const margin = isBase ? 58 : 0;
-    newX = Math.max(
-      workArea.x - margin,
-      Math.min(newX, workArea.x + workArea.width - newSize.width + margin)
-    );
-    newY = Math.max(
-      workArea.y - margin,
-      Math.min(newY, workArea.y + workArea.height - newSize.height + margin)
-    );
-
-    // For non-BASE sizes (menu, toast), also clamp the top edge so the expanded
-    // window cannot go above the top of the work area.
-    if (!isBase) {
-      newY = Math.max(workArea.y, newY);
-    }
-
-    this.mainWindow.setBounds({
-      x: newX,
-      y: newY,
-      width: newSize.width,
-      height: newSize.height,
-    });
-
-    return { success: true, bounds: { x: newX, y: newY, ...newSize } };
+  resizeMainWindow(_sizeKey) {
+    // No-op: the overlay uses a fixed CONTAINER_W × CONTAINER_H transparent window.
+    // Menu, toast, and recording state expand/collapse inside with CSS — Electron never
+    // calls setBounds for these transitions, eliminating the button-jump on resize.
+    return { success: true };
   }
 
   /**
@@ -714,7 +825,7 @@ class WindowManager {
     this.mainWindow.on("moved", () => {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         const [x, y] = this.mainWindow.getPosition();
-        this._scheduleSavePosition(x, y);
+        this._scheduleSavePosition(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y);
       }
     });
 
@@ -722,6 +833,10 @@ class WindowManager {
       if (this.mainWindowOnTopRepairTimer) {
         clearTimeout(this.mainWindowOnTopRepairTimer);
         this.mainWindowOnTopRepairTimer = null;
+      }
+      if (this._displayMetricsTimer) {
+        clearTimeout(this._displayMetricsTimer);
+        this._displayMetricsTimer = null;
       }
       if (this._positionSaveTimer) {
         clearTimeout(this._positionSaveTimer);

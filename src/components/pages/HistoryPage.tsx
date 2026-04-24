@@ -8,6 +8,7 @@ import { ConfirmDialog } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useSettings } from "../../hooks/useSettings";
+import { formatHotkeyLabel } from "../../utils/hotkeys";
 import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
 
 // ---------------------------------------------------------------------------
@@ -65,7 +66,8 @@ export default function HistoryPage() {
   const transcriptions = useTranscriptions();
   const { toast } = useToast();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
-  const { historyLimit } = useSettings();
+  const { historyLimit, dictationKey } = useSettings();
+  const hotkeyLabel = formatHotkeyLabel(dictationKey);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -75,13 +77,22 @@ export default function HistoryPage() {
   }, [historyLimit]);
 
   // ------- Filtered + grouped data -------
+  const activeQuery = searchQuery.trim();
+
   const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return transcriptions;
-    const q = searchQuery.toLowerCase();
+    if (!activeQuery) return transcriptions;
+    const q = activeQuery.toLowerCase();
     return transcriptions.filter((t) => t.text.toLowerCase().includes(q));
-  }, [transcriptions, searchQuery]);
+  }, [transcriptions, activeQuery]);
 
   const groups = useMemo(() => groupTranscriptions(filtered), [filtered]);
+
+  // Precompute id → position map to avoid O(n²) findIndex inside the render loop
+  const indexById = useMemo(() => {
+    const map = new Map<number, number>();
+    transcriptions.forEach((t, i) => map.set(t.id, i));
+    return map;
+  }, [transcriptions]);
 
   // ------- Actions -------
   const handleCopy = useCallback(
@@ -214,7 +225,11 @@ export default function HistoryPage() {
             <div className="text-center space-y-1.5">
               <p className="text-lg font-medium text-foreground">No transcriptions yet</p>
               <p className="text-sm text-muted-foreground max-w-xs">
-                Start dictating to see your history here
+                Press{" "}
+                <kbd className="inline-flex items-center px-1.5 py-0.5 rounded border border-border-subtle bg-surface-1 text-xs font-mono text-foreground/70">
+                  {hotkeyLabel}
+                </kbd>{" "}
+                to start dictating
               </p>
             </div>
           </div>
@@ -254,8 +269,9 @@ export default function HistoryPage() {
                       {idx > 0 && <div className="mx-6 h-px bg-border-subtle/50" />}
                       <TranscriptionItem
                         item={item}
-                        index={transcriptions.findIndex((t) => t.id === item.id)}
+                        index={indexById.get(item.id) ?? 0}
                         total={transcriptions.length}
+                        searchQuery={activeQuery}
                         onCopy={handleCopy}
                         onDelete={handleDelete}
                       />

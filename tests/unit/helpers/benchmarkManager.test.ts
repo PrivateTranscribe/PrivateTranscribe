@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 // Import pure helpers from benchmarkManager (CJS module)
 const {
-  generateSilentWav,
+  generateBenchmarkAudio,
   computeRealtimeFactor,
   buildBenchmarkRecord,
   formatRealtimeFactor,
@@ -12,11 +12,11 @@ const {
   BENCHMARK_AUDIO_DURATION_SEC,
 } = require("../../../src/helpers/benchmarkManager");
 
-// ── generateSilentWav ────────────────────────────────────────────────────
+// ── generateBenchmarkAudio ───────────────────────────────────────────────
 
-describe("generateSilentWav", () => {
-  it("generates a valid WAV header for 1-second silence", () => {
-    const buf = generateSilentWav(1);
+describe("generateBenchmarkAudio", () => {
+  it("generates a valid WAV header for 1-second audio", () => {
+    const buf = generateBenchmarkAudio(1);
 
     // WAV header: RIFF....WAVE
     expect(buf.toString("ascii", 0, 4)).toBe("RIFF");
@@ -42,28 +42,34 @@ describe("generateSilentWav", () => {
   });
 
   it("generates correct length for 10 seconds", () => {
-    const buf = generateSilentWav(10);
+    const buf = generateBenchmarkAudio(10);
     const expectedDataSize = 16000 * 10 * 2; // 320000 bytes
     expect(buf.readUInt32LE(40)).toBe(expectedDataSize);
     expect(buf.length).toBe(44 + expectedDataSize);
   });
 
-  it("generates silence (all PCM samples are zero)", () => {
-    const buf = generateSilentWav(1);
+  it("generates non-silent audio (contains non-zero PCM samples)", () => {
+    const buf = generateBenchmarkAudio(1);
     const pcmData = buf.slice(44);
-    const allZero = pcmData.every((b: number) => b === 0);
-    expect(allZero).toBe(true);
+    const hasNonZero = pcmData.some((b: number) => b !== 0);
+    expect(hasNonZero).toBe(true);
+  });
+
+  it("produces deterministic output (same bytes on every call)", () => {
+    const buf1 = generateBenchmarkAudio(1);
+    const buf2 = generateBenchmarkAudio(1);
+    expect(buf1.equals(buf2)).toBe(true);
   });
 
   it("rejects invalid duration", () => {
-    expect(() => generateSilentWav(0)).toThrow();
-    expect(() => generateSilentWav(-1)).toThrow();
-    expect(() => generateSilentWav(61)).toThrow();
-    expect(() => generateSilentWav(NaN)).toThrow();
+    expect(() => generateBenchmarkAudio(0)).toThrow();
+    expect(() => generateBenchmarkAudio(-1)).toThrow();
+    expect(() => generateBenchmarkAudio(61)).toThrow();
+    expect(() => generateBenchmarkAudio(NaN)).toThrow();
   });
 
   it("accepts fractional durations", () => {
-    const buf = generateSilentWav(0.5);
+    const buf = generateBenchmarkAudio(0.5);
     // 0.5s * 16000 * 2 = 16000 bytes
     expect(buf.readUInt32LE(40)).toBe(16000);
   });

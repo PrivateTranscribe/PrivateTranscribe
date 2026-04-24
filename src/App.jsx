@@ -334,20 +334,8 @@ export default function App() {
     }
   }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
 
-  useEffect(() => {
-    const resizeWindow = () => {
-      if (isCommandMenuOpen && toastCount > 0) {
-        window.electronAPI?.resizeMainWindow?.("EXPANDED");
-      } else if (isCommandMenuOpen) {
-        window.electronAPI?.resizeMainWindow?.("WITH_MENU");
-      } else if (toastCount > 0) {
-        window.electronAPI?.resizeMainWindow?.("WITH_TOAST");
-      } else {
-        window.electronAPI?.resizeMainWindow?.("BASE");
-      }
-    };
-    resizeWindow();
-  }, [isCommandMenuOpen, toastCount]);
+  // No resize effect needed: the overlay uses a fixed 400×500 transparent window.
+  // Menu, toast, and recording states expand/collapse inside the container via CSS.
 
   useEffect(() => {
     if (!isCommandMenuOpen) {
@@ -558,6 +546,12 @@ export default function App() {
   };
 
   // Compute fixed-window position for context menu, clamped to stay in bounds.
+  // The overlay is a fixed CONTAINER_W×CONTAINER_H transparent Electron window.
+  // The menu must remain within the window bounds (no OS-level repositioning).
+  // Direction logic: open upward unless there is less than MENU_EST_HEIGHT px above
+  // the button, in which case open downward. This prevents the menu from being
+  // clipped or triggering OS window repositioning when the overlay is near the
+  // top of the screen.
   const menuStyle = (() => {
     const btn = buttonRef.current;
     if (!btn) return null;
@@ -567,22 +561,44 @@ export default function App() {
     const edge = 8;
 
     const menuWidth = 248;
+    // Conservative estimate of the tallest menu state (root + audio submenu)
+    const MENU_EST_HEIGHT = 320;
+    const GAP = 12; // gap between button edge and menu
+
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
-    const menuBottom = iH - rect.top + 12;
 
-    return {
-      position: "absolute",
-      left: menuLeft,
-      bottom: menuBottom,
-      pointerEvents: "auto",
-    };
+    // Space available above the button (top of button to top of window)
+    const spaceAbove = rect.top - edge;
+    // Space available below the button (bottom of button to bottom of window)
+    const spaceBelow = iH - (rect.bottom + edge);
+
+    if (spaceAbove >= MENU_EST_HEIGHT || spaceAbove >= spaceBelow) {
+      // Open upward.
+      // CSS `bottom` is distance from container bottom edge.
+      // To keep menu within container: iH - bottom - MENU_EST_HEIGHT >= edge
+      //   → bottom <= iH - MENU_EST_HEIGHT - edge  (cap to prevent overflow above the container)
+      // Also floor at edge so menu doesn't hang below container.
+      const menuBottom = iH - rect.top + GAP;
+      const clampedBottom = Math.min(iH - MENU_EST_HEIGHT - edge, Math.max(edge, menuBottom));
+      return {
+        position: "absolute",
+        left: menuLeft,
+        bottom: clampedBottom,
+        pointerEvents: "auto",
+      };
+    } else {
+      // Flip: open downward — clamp so menu doesn't exceed bottom of window
+      const menuTop = rect.bottom + GAP;
+      const clampedTop = Math.max(edge, Math.min(iH - MENU_EST_HEIGHT - edge, menuTop));
+      return {
+        position: "absolute",
+        left: menuLeft,
+        top: clampedTop,
+        pointerEvents: "auto",
+      };
+    }
   })();
-
-  const toastWidthDelta = 380 - 96;
-  const toastWouldOverflowRight =
-    typeof window !== "undefined" && window.screenX + 380 > window.screen.width;
-  const keepMicAnchoredRight = !isCommandMenuOpen && toastCount > 0 && toastWouldOverflowRight;
 
   return (
     <div className="dictation-window">
@@ -600,26 +616,23 @@ export default function App() {
       `}</style>
 
       {/*
-        Absolute-position root: fills the entire Electron window.
+        Absolute-position root: fills the fixed 400×500 transparent Electron window.
         pointer-events: none on the root so transparent areas stay click-through;
-        pointer-events: auto re-enabled on the icon anchor only.
-        This ensures the icon at bottom: 58 / left: 58 never shifts due to sibling
-        elements (cancel button, menu) entering or leaving the DOM.
+        pointer-events: auto re-enabled only on interactive children (button, menu, toast).
       */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none" }}>
         {/*
-          Hover container: 16px padding around icon expands the hit-area so moving
-          the cursor toward the cancel button doesn't immediately leave hover state.
-          bottom: 42 + padding 16 = icon visually at bottom:58 = (160-44)/2 (centered).
-          left:   42 + padding 16 = icon visually at left:58  = (160-44)/2 (centered).
-          Button center is 80px from all window edges — 70px halo radius fits on all sides.
-          Cancel button lives inside via flexbox — no gap to cross when moving right.
+          Button anchor: positioned at bottom:58px, horizontally centered in the fixed
+          400×500 container. The 16px padding provides a hover buffer without affecting
+          the button's visual position. Menu expands upward; toast appears above via
+          ToastViewport. The container never resizes — all state changes use CSS only.
         */}
         <div
           style={{
             position: "absolute",
             bottom: 42,
-            left: keepMicAnchoredRight ? 42 + toastWidthDelta : 42,
+            left: "50%",
+            transform: "translateX(-50%)",
             padding: 16,
             display: "flex",
             alignItems: "center",

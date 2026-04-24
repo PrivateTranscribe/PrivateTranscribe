@@ -7,34 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **Cancel Processing Button**: Added ability to cancel ongoing transcription processing
-- **Dark Mode Icon Inversion**: Monochrome provider icons now automatically invert in dark mode for better visibility
-- **Dynamic Window Resizing**: Window automatically resizes based on command menu and toast visibility
+- No unreleased changes yet.
 
-### Changed
-- **Design System Overhaul**: Complete refactor of styling to use design tokens throughout the codebase
-  - Button component now uses `text-foreground`, `bg-muted`, `border-border` instead of hardcoded hex values
-  - Removed hardcoded classes and inline styles across components
-  - Improved button and badge consistency
-- **Settings UI Redesign**: Overhauled all settings pages with unified panel system, redesigned sidebar, and extracted permissions section
-- **Dark Mode Polish**: Premium button styling, glass morphism toasts, and streamlined visuals
-- **Onboarding Improvements**:
-  - Streamlined to 4-step flow
-  - Extended to support multiple local transcription providers (Whisper and NVIDIA Parakeet)
-  - Improved contrast and design system usage
+## [0.4.1] - 2026-03-29
 
 ### Fixed
-- **Light Mode UI Visibility**: Fixed multiple UI elements that were invisible or hard to see in light mode:
-  - Settings gear icon in permission cards now uses `text-foreground`
-  - Troubleshoot button uses proper foreground color
-  - Reset button in developer settings now correctly shows destructive color
-  - Settings and Help icons in the toolbar are now properly visible
-  - Check for Updates button now renders correctly in light mode
-- **Provider Tab Flashing**: Resolved TranscriptionModelPicker tab flashing by extracting ModeToggle component and syncing internal state with props
-- **Local Reasoning Model Persistence**: Fixed local reasoning model selection not persisting correctly
-- **Parakeet Model Status**: Added dedicated IPC channel for Parakeet model status checks
-- **Groq Qwen3 Models**: Removed thinking tokens from Qwen3 models on Groq provider
+- **Overlay context menu overflow**: Context menu now detects available space above and below the trigger button and flips direction accordingly, preventing the OS from repositioning the Electron window when the overlay is near the top of the screen.
+- **Action Engine double-fire**: Added a per-action transcript debounce guard (default 2 s, tunable via `PRIVOCA_ACTION_DEBOUNCE_MS`) so overlapping final segments from streaming transcription can no longer trigger the same voice command twice. Manual Test-button runs bypass the cooldown.
+- **Stale Privoca brand references**: Removed remaining "Privoca" brand references from docs and legal copy, completing the rename to PrivateTranscribe.
+
+### Changed
+- **History empty state**: When no transcriptions exist, the empty state now shows the user's actual configured hotkey (e.g. `` ` ``) in a styled `<kbd>` element instead of the generic "Start dictating to see your history here" message.
+
+## [0.4.0] - 2026-03-25
+
+### Added
+- **Anonymous usage analytics with consent gate**: Added an explicit opt-in analytics consent modal on the dashboard before any usage telemetry is sent.
+- **GPU setup + benchmarking tools**: Added GPU status and driver guidance in Settings, downloadable GPU binaries from Cloudflare R2, bundled benchmark audio, and CLI benchmarks for CPU/GPU comparison and Smart Context overhead checks.
+- **Smart Context foundation**: Added the standalone Smart Context pipeline with shared context capture, optional file identifier extraction, and source-level tests around privacy-sensitive behavior.
+- **Action Engine v1**: Added the first production-ready Action Engine surface with safer validation, starter templates, better empty states, app picking, kill switch, and run-history visibility.
+- **Correction Memory improvements**: Added learning status UI, manual edit support, clear-all controls, and tighter Pro gating so advanced memory behavior stays aligned with entitlement.
+- **Production release pipeline**: Added the Windows production workflow that builds on `production` and uploads release artifacts and `latest.yml` to Cloudflare R2 via `updates.privatetranscribe.com`.
+
+### Changed
+- **Branding + release posture**: Finalized the PrivateTranscribe rename, switched the repo to `UNLICENSED`, and updated the README for the proprietary beta release.
+- **Overlay polish**: Refined the idle/recording overlay with the 5-bar logo shape, better voice-reactive animation, more reliable click-through behavior, and steadier positioning across sleep/wake, drag, and multi-display changes.
+- **Local setup UX**: Improved onboarding and Settings around Whisper/Parakeet choices, CUDA classification, recommended defaults, and model-selection clarity.
+- **Update delivery**: Migrated update artifacts and GPU binary delivery away from GitHub releases toward the PrivateTranscribe R2/CDN path.
+
+### Fixed
+- **Whisper repetition regression**: Reduced repeated-word hallucinations in local transcription (`58967fd`).
+- **Streak counter reliability**: Fixed several streak regressions so day handling now uses the right local/UTC boundaries, keeps long streaks, and survives history trimming.
+- **Analytics consent flow**: Fixed the consent modal to appear in the dashboard window at the right size, added hover polish, and locked the flow with a regression test (`fe03af6`).
+- **Overlay stability bugs**: Fixed position drift, toast-induced mic jumps, hidden-on-startup failures, muted voice bars after sleep/wake, and transparent click dead zones.
+- **Media pause on record**: Hardened pause/resume handling across overlay and hotkey flows, with safer Windows fallbacks.
+- **Benchmark accuracy**: Fixed benchmark labeling, WAV parsing, cold-start bias, and CPU/GPU mode consistency so reported numbers are honest.
 
 ## [1.3.3] - 2026-01-28
 
