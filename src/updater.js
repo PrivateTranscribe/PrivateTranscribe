@@ -224,8 +224,10 @@ class UpdateManager {
       console.log("🔄 Installing update and restarting...");
 
       const { app } = require("electron");
-      app.emit("before-quit");
 
+      // Do NOT emit "before-quit" manually — the handler calls event.preventDefault()
+      // which crashes if the event object is missing. autoUpdater.quitAndInstall()
+      // triggers the proper app shutdown flow which fires before-quit with a real event.
       setTimeout(() => {
         const isSilent = process.platform === "win32";
         autoUpdater.quitAndInstall(isSilent, true);
