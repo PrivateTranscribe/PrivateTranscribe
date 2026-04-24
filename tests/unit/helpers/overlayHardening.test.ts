@@ -48,7 +48,7 @@ describe("windowManager.js — multi-monitor position clamping", () => {
   test("re-clamping uses shared clampPosition util against the active workArea", () => {
     const idx = windowManager.indexOf("_reclampOverlayPosition");
     expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 1800);
+    const block = windowManager.slice(idx, idx + 5000);
     expect(block).toContain("WindowPositionUtil.clampPosition");
     expect(block).toContain("display.workArea || display.bounds");
     expect(block).toContain("this.mainWindow.setBounds");

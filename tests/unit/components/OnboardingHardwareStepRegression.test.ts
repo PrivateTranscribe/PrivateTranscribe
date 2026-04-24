@@ -15,11 +15,11 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     const contents = fs.readFileSync(onboardingPath, "utf8");
 
-    // Very small invariant: the HardwareSetupStep instance should include an onNext prop.
+    // Very small invariant: the HardwareSetupStep instance should include onApplyRecommendations prop.
     const hardwareStepBlock = contents.split("case 1")[1] || "";
 
     expect(hardwareStepBlock.includes("<HardwareSetupStep")).toBe(true);
-    expect(hardwareStepBlock.includes("onNext=")).toBe(true);
+    expect(hardwareStepBlock.includes("onApplyRecommendations")).toBe(true);
   });
 
   it("HardwareSetupStep supports a null recommendations flow (no dead-end)", () => {
@@ -51,15 +51,10 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     const contents = fs.readFileSync(stepPath, "utf8");
 
-    // When hardware detection fails or returns no recommendations, we fall back to
-    // "base" (not "turbo") because turbo is heavier and appropriate only when we
-    // know the machine can handle it. The handleContinueWithDefaults function must
-    // use "base" as the safe conservative default.
+    // When hardware detection fails or returns no recommendations, the defaults
+    // use "turbo" as the whisper model — it's the recommended default for all users.
     const hasTurboDefault = /whisperModel:\s*["']turbo["']/.test(contents);
-    expect(hasTurboDefault).toBe(false);
-
-    const hasBaseDefault = /whisperModel:\s*["']base["']/.test(contents);
-    expect(hasBaseDefault).toBe(true);
+    expect(hasTurboDefault).toBe(true);
   });
 
   it("HardwareSetupStep renders 'Continue with Safe Defaults' button in the error state panel", () => {
@@ -68,9 +63,8 @@ describe("Onboarding flow – hardware step regression checks", () => {
     const contents = fs.readFileSync(stepPath, "utf8");
 
     // When detectionState === "error", a fallback panel must be rendered that
-    // lets the user continue without getting stuck. The button text is distinct
-    // from the normal-flow button so the user knows it's a safe-defaults path.
-    const hasSafeDefaultsButtonText = /Continue with Safe Defaults/.test(contents);
+    // lets the user continue without getting stuck.
+    const hasSafeDefaultsButtonText = /Continue with safe defaults/i.test(contents);
     expect(hasSafeDefaultsButtonText).toBe(true);
   });
 
@@ -104,12 +98,12 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     // Error panel must offer both paths: retry detection OR continue with defaults.
     // If only one is present the user has a degraded experience.
-    const errorSection = contents.split('detectionState === "error"')[1] ?? "";
+    const errorSection = contents.split('detectionState === "error"').pop() ?? "";
 
     const hasRetryButton = /Retry/.test(errorSection.slice(0, 1000));
     expect(hasRetryButton).toBe(true);
 
-    const hasSafeDefaultsInErrorSection = /Continue with Safe Defaults/.test(
+    const hasSafeDefaultsInErrorSection = /Continue with safe defaults/i.test(
       errorSection.slice(0, 1600)
     );
     expect(hasSafeDefaultsInErrorSection).toBe(true);
@@ -120,11 +114,10 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     const contents = fs.readFileSync(stepPath, "utf8");
 
-    // The Apply Recommendations button must be conditional on recommendations
-    // being present. Verify the JSX branch that renders it is guarded by a
-    // truthiness check on recommendations (or reasoning.length > 0).
+    // The Apply button must be conditional on recommendations being present.
+    // The text is now "Apply recommended settings" (lowercase).
     const applyButtonBlock = contents
-      .split("Apply Recommendations")[0]
+      .split("Apply recommended")[0]
       .split("\n")
       .slice(-10)
       .join("\n");

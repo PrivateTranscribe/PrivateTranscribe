@@ -322,7 +322,7 @@ describe("generateRecommendations — Windows: NVIDIA GPU, CUDA absent", () => {
 describe("generateRecommendations — Windows: NVIDIA GPU, CUDA present", () => {
   beforeEach(() => mockPlatform("win32"));
 
-  it("recommends nvidia_cuda + Parakeet", () => {
+  it("recommends nvidia_cuda + Whisper (not Parakeet)", () => {
     const rec = new HardwareDetector().generateRecommendations({
       gpu: {
         available: true,
@@ -335,8 +335,8 @@ describe("generateRecommendations — Windows: NVIDIA GPU, CUDA present", () => 
       cpu: { count: 8 },
     });
     expect(rec.gpuCategory).toBe("nvidia_cuda");
-    expect(rec.localTranscriptionProvider).toBe("nvidia");
-    expect(rec.parakeetModel).toBe("parakeet-tdt-0.6b-v3");
+    expect(rec.localTranscriptionProvider).toBe("whisper");
+    expect(rec.parakeetModel).toBeUndefined();
   });
 
   it("produces no recovery steps when CUDA is available", () => {
