@@ -497,34 +497,6 @@ class WindowManager {
     await this.loadWindowContent(this.mainWindow, false);
   }
 
-  showMainWindowForDictation(options = {}) {
-    const { focus = false } = options;
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return;
-    }
-
-    if (this.mainWindow.isMinimized && this.mainWindow.isMinimized()) {
-      this.mainWindow.restore();
-    }
-
-    this.enforceMainWindowOnTop();
-
-    if (!this.mainWindow.isVisible()) {
-      if (!focus && typeof this.mainWindow.showInactive === "function") {
-        this.mainWindow.showInactive();
-      } else {
-        this.mainWindow.show();
-      }
-    }
-
-    this.enforceMainWindowOnTop();
-
-    if (focus) {
-      this.mainWindow.focus();
-      this.enforceMainWindowOnTop();
-    }
-  }
-
   createHotkeyCallback() {
     let lastToggleTime = 0;
     const DEBOUNCE_MS = 150;
@@ -561,7 +533,14 @@ class WindowManager {
       }
       lastToggleTime = now;
 
-      this.showMainWindowForDictation({ focus: process.platform === "win32" });
+      if (!this.mainWindow.isVisible()) {
+        // Use showInactive to avoid stealing focus from the target app
+        if (typeof this.mainWindow.showInactive === "function") {
+          this.mainWindow.showInactive();
+        } else {
+          this.mainWindow.show();
+        }
+      }
       this.mainWindow.webContents.send("toggle-dictation");
     };
   }
@@ -571,7 +550,14 @@ class WindowManager {
       return;
     }
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.showMainWindowForDictation({ focus: process.platform === "win32" });
+      if (!this.mainWindow.isVisible()) {
+        // Use showInactive to avoid stealing focus from the target app
+        if (typeof this.mainWindow.showInactive === "function") {
+          this.mainWindow.showInactive();
+        } else {
+          this.mainWindow.show();
+        }
+      }
       this.mainWindow.webContents.send("start-dictation");
     }
   }
@@ -717,7 +703,16 @@ class WindowManager {
   showDictationPanel(options = {}) {
     const { focus = false } = options;
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.showMainWindowForDictation({ focus });
+      if (!this.mainWindow.isVisible()) {
+        if (typeof this.mainWindow.showInactive === "function") {
+          this.mainWindow.showInactive();
+        } else {
+          this.mainWindow.show();
+        }
+      }
+      if (focus) {
+        this.mainWindow.focus();
+      }
     }
   }
 

@@ -147,9 +147,10 @@ class WindowPositionUtil {
       }
     } else if (process.platform === "win32") {
       // Windows can demote weaker levels behind active Chromium windows after
-      // focus changes. Use Electron's strongest topmost hint so the overlay
-      // stays above normal app windows while OS/system dialogs still win.
-      window.setAlwaysOnTop(true, "screen-saver");
+      // focus changes. Use "pop-up-menu" (stronger than "floating") combined with
+      // moveTop() to stay above Chrome without going full screen-saver (which can
+      // make the window invisible on some Windows versions).
+      window.setAlwaysOnTop(true, "pop-up-menu");
       window.moveTop();
     } else {
       // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
