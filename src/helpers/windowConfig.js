@@ -146,12 +146,7 @@ class WindowPositionUtil {
         window.setAlwaysOnTop(true, "floating", 1);
       }
     } else if (process.platform === "win32") {
-      // Windows can demote weaker levels behind active Chromium windows after
-      // focus changes. Use "pop-up-menu" (stronger than "floating") combined with
-      // moveTop() to stay above Chrome without going full screen-saver (which can
-      // make the window invisible on some Windows versions).
       window.setAlwaysOnTop(true, "pop-up-menu");
-      window.moveTop();
     } else {
       // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
       // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should
