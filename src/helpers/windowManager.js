@@ -390,6 +390,7 @@ class WindowManager {
           this.mainWindow.show();
         }
       }
+      this.mainWindow.moveTop(); // Force z-order refresh on Windows
       this.mainWindow.webContents.send("toggle-dictation");
     };
   }
