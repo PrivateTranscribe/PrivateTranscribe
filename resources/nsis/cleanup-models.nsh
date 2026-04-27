@@ -1,9 +1,34 @@
+; Custom uninstall hook for PrivateTranscribe.
+; Only asks about removing model caches during a MANUAL uninstall (not during updates).
+;
+; When the NSIS installer triggers the uninstaller as part of an update, it passes
+; _?=<install_path> on the command line. We check $CMDLINE for "_?=" to detect this.
+
+!include "LogicLib.nsh"
+!include "WordFunc.nsh"
+
 !macro customUnInstall
-  ; Ask before removing model caches (can be several GB).
-  MessageBox MB_YESNO|MB_ICONQUESTION \
-    "Remove downloaded model caches (Whisper, Parakeet, GGUF)?$\r$\nThese can be several GB. Click No to keep them." \
-    IDYES do_wipe_models IDNO skip_wipe_models
-  do_wipe_models:
+  ; Check if this is an update (uninstaller called by new installer)
+  ; During updates, $CMDLINE will contain "_?=<path>"
+  StrCpy $R9 "0"   ; assume manual uninstall
+
+  ${WordFind} "$CMDLINE" "_?=" "E+1{" $R8
+  ; If _?= was found, $R8 won't be empty (or an error)
+  StrCmp "$R8" "" +3 0
+    StrCmp "$R8" "$CMDLINE" +2 0
+      StrCpy $R9 "1"   ; this is an update
+
+  ${If} $R9 == "0"
+    MessageBox MB_YESNO|MB_ICONQUESTION \
+      "Remove downloaded model caches (Whisper, Parakeet, GGUF)?$\r$\nThese can be several GB. Click No to keep them." \
+      IDYES do_wipe_models IDNO skip_wipe_models
+  ${Else}
+    ; During updates, silently skip — models are preserved across versions.
+    DetailPrint "Update detected — keeping model caches."
+    Goto skip_wipe_models
+  ${EndIf}
+
+do_wipe_models:
 
   ; Clean up current PrivateTranscribe model cache subdirectories
   StrCpy $R0 "$PROFILE\.cache\PrivateTranscribe"
@@ -53,5 +78,5 @@
   StrCpy $1 "$PROFILE\.cache\dictatevoice"
   RMDir "$1"
 
-  skip_wipe_models:
+skip_wipe_models:
 !macroend
