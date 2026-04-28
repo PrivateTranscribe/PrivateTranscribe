@@ -10,6 +10,7 @@ class UpdateManager {
     this.isInstalling = false;
     this.isDownloading = false;
     this.eventListeners = [];
+    this.beforeQuitAndInstall = null;
 
     this.setupAutoUpdater();
   }
@@ -17,6 +18,10 @@ class UpdateManager {
   setWindows(mainWindow, controlPanelWindow) {
     this.mainWindow = mainWindow;
     this.controlPanelWindow = controlPanelWindow;
+  }
+
+  setBeforeQuitAndInstall(callback) {
+    this.beforeQuitAndInstall = callback;
   }
 
   setupAutoUpdater() {
@@ -223,7 +228,9 @@ class UpdateManager {
       this.isInstalling = true;
       console.log("🔄 Installing update and restarting...");
 
-      const { app } = require("electron");
+      if (typeof this.beforeQuitAndInstall === "function") {
+        await this.beforeQuitAndInstall();
+      }
 
       // Do NOT emit "before-quit" manually — the handler calls event.preventDefault()
       // which crashes if the event object is missing. autoUpdater.quitAndInstall()

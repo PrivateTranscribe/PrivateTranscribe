@@ -136,6 +136,14 @@ function initializeManagers() {
   parakeetManager = new ParakeetManager();
   trayManager = new TrayManager();
   updateManager = new UpdateManager();
+  updateManager.setBeforeQuitAndInstall(async () => {
+    const modelManager = require("./src/helpers/modelManagerBridge").default;
+    await Promise.allSettled([
+      whisperManager ? whisperManager.stopServer() : Promise.resolve(),
+      parakeetManager ? parakeetManager.stopServer() : Promise.resolve(),
+      modelManager.stopServer(),
+    ]);
+  });
   globeKeyManager = new GlobeKeyManager();
   windowsKeyManager = new WindowsKeyManager();
   windowManager._windowsKeyManagerRef = windowsKeyManager;
@@ -688,9 +696,8 @@ if (gotSingleInstanceLock) {
   let isQuittingAsync = false;
   app.on("before-quit", (event) => {
     if (isQuittingAsync) return; // second call after we call app.quit() below
-    // autoUpdater.quitAndInstall() calls quit internally — let it through
-    if (updateManager && updateManager.isInstalling) return;
-    if (event && event.preventDefault) {
+    const isInstalling = updateManager && updateManager.isInstalling;
+    if (!isInstalling && event && event.preventDefault) {
       event.preventDefault();
     }
     isQuittingAsync = true;
@@ -722,7 +729,9 @@ if (gotSingleInstanceLock) {
       modelManager.stopServer(),
     ];
     Promise.allSettled(stopAll).then(() => {
-      app.quit(); // re-triggers before-quit; isQuittingAsync guard skips straight through
+      if (!isInstalling) {
+        app.quit(); // re-triggers before-quit; isQuittingAsync guard skips straight through
+      }
     });
   });
 }
