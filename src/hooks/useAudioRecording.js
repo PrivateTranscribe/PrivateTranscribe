@@ -559,10 +559,15 @@ export const useAudioRecording = (toast, options = {}) => {
   }, []);
 
   const cancelRecording = useCallback(() => {
-    if (audioManagerRef.current) {
-      return audioManagerRef.current.cancelRecording();
+    try {
+      if (audioManagerRef.current) {
+        return audioManagerRef.current.cancelRecording();
+      }
+      return false;
+    } finally {
+      window.electronAPI?.restoreSystemAudio?.();
+      window.electronAPI?.mediaResume?.();
     }
-    return false;
   }, []);
 
   const cancelProcessing = useCallback(() => {
