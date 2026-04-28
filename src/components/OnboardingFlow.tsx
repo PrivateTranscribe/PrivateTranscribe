@@ -194,27 +194,27 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     checkHotkeyMode();
   }, [setActivationMode]);
 
-  useEffect(() => {
+  const checkModelStatus = useCallback(async () => {
     if (!useLocalWhisper || !whisperModel) {
       setIsModelDownloaded(false);
       return;
     }
 
-    const checkStatus = async () => {
-      beginStatusCheck();
-      try {
-        const result = await window.electronAPI?.checkModelStatus(whisperModel);
-        setIsModelDownloaded(result?.downloaded ?? false);
-      } catch (error) {
-        console.error("Failed to check model status:", error);
-        setIsModelDownloaded(false);
-      } finally {
-        endStatusCheck();
-      }
-    };
-
-    checkStatus();
+    beginStatusCheck();
+    try {
+      const result = await window.electronAPI?.checkModelStatus(whisperModel);
+      setIsModelDownloaded(result?.downloaded ?? false);
+    } catch (error) {
+      console.error("Failed to check model status:", error);
+      setIsModelDownloaded(false);
+    } finally {
+      endStatusCheck();
+    }
   }, [useLocalWhisper, whisperModel, beginStatusCheck, endStatusCheck]);
+
+  useEffect(() => {
+    void checkModelStatus();
+  }, [checkModelStatus]);
 
   const loadCudaStatus = useCallback(async () => {
     beginStatusCheck();
@@ -713,6 +713,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               setCloudTranscriptionBaseUrl={(url) =>
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
+              onDownloadComplete={checkModelStatus}
               variant="onboarding"
             />
             {shouldShowCudaDownload && (
