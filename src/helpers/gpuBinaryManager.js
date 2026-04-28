@@ -17,12 +17,14 @@ const CUDA_BINARIES = {
   "linux-x64": {
     outputName: "whisper-server-linux-x64-cuda",
     remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-linux-x64-cuda`,
-    approxBytes: 265000000, // ~253MB
+    approxBytes: 1302128,
+    sha256: "422eb4edbf95dd9ea644bf554059c90088f9afcc86bed93f50363963e7ccac5f",
   },
   "win32-x64": {
     outputName: "whisper-server-win32-x64-cuda.exe",
     remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-win32-x64-cuda.exe`,
-    approxBytes: 683000000, // ~652MB
+    approxBytes: 727040,
+    sha256: "d186e49898233acee5fb34c6351d163042c38e590527278a6d7568a8bbe99567",
   },
 };
 
@@ -239,7 +241,8 @@ class GpuBinaryManager {
       }
 
       const binarySize = fs.statSync(binaryPath).size;
-      if (binarySize < 1_000_000) {
+      const minBinarySize = Math.max(100_000, Math.floor((spec.approxBytes || 0) * 0.5));
+      if (binarySize < minBinarySize) {
         try {
           fs.unlinkSync(binaryPath);
         } catch {
@@ -255,12 +258,32 @@ class GpuBinaryManager {
       try {
         const sha256 = await this.computeSha256(binaryPath);
         debugLogger.info("GpuBinaryManager: CUDA binary SHA256", { binaryPath, sha256 });
-        // TODO: Compare SHA256 against a signed manifest and fail download on mismatch.
+        if (!spec.sha256) {
+          throw new Error("No trusted SHA256 configured for CUDA binary");
+        }
+        if (sha256 !== spec.sha256) {
+          try {
+            fs.unlinkSync(binaryPath);
+          } catch {
+            /* ignore */
+          }
+          throw new Error(
+            `CUDA binary checksum mismatch: expected ${spec.sha256}, got ${sha256}`
+          );
+        }
       } catch (hashError) {
-        debugLogger.warn("GpuBinaryManager: failed to compute CUDA binary SHA256", {
+        if (fs.existsSync(binaryPath)) {
+          try {
+            fs.unlinkSync(binaryPath);
+          } catch {
+            /* ignore */
+          }
+        }
+        debugLogger.error("GpuBinaryManager: CUDA binary SHA256 verification failed", {
           binaryPath,
           error: hashError.message,
         });
+        throw hashError;
       }
 
       const versionPath = this.writeCudaBinaryVersionFile();
