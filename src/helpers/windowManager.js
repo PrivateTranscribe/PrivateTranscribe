@@ -41,6 +41,8 @@ class WindowManager {
     this._positionSaveTimer = null;
     this._pendingPosition = null;
     this._displayMetricsTimer = null;
+    this._powerResumeHandler = null;
+    this._displayMetricsChangedHandler = null;
 
     this._registerExitHandlers();
 
@@ -278,22 +280,24 @@ class WindowManager {
     // Re-clamp the overlay after sleep/wake so it doesn't drift when the workArea
     // changes (e.g. taskbar reappears at a different height, DPI scaling adjusts).
     // Delay slightly to let the OS finish restoring display configuration.
-    powerMonitor.on("resume", () => {
+    this._powerResumeHandler = () => {
       setTimeout(() => this._reclampOverlayPosition("resume"), 1000);
-    });
+    };
+    powerMonitor.on("resume", this._powerResumeHandler);
 
     // Re-clamp whenever the display resolution, scale, or work area changes.
     // Debounce: this event fires many times during sleep/wake and screen on/off while
     // the work area is in flux (taskbar not yet registered, DPI not yet settled).
     // Firing immediately can save a wrong clamped position, which persists across reboots.
     // Wait 2 s after the last event so we act on the final stable work area.
-    screen.on("display-metrics-changed", () => {
+    this._displayMetricsChangedHandler = () => {
       if (this._displayMetricsTimer) clearTimeout(this._displayMetricsTimer);
       this._displayMetricsTimer = setTimeout(() => {
         this._displayMetricsTimer = null;
         this._reclampOverlayPosition("display-metrics-changed");
       }, 2000);
-    });
+    };
+    screen.on("display-metrics-changed", this._displayMetricsChangedHandler);
   }
 
   setMainWindowInteractivity(shouldCapture) {
@@ -687,6 +691,14 @@ class WindowManager {
       if (this._displayMetricsTimer) {
         clearTimeout(this._displayMetricsTimer);
         this._displayMetricsTimer = null;
+      }
+      if (this._powerResumeHandler) {
+        powerMonitor.removeListener("resume", this._powerResumeHandler);
+        this._powerResumeHandler = null;
+      }
+      if (this._displayMetricsChangedHandler) {
+        screen.removeListener("display-metrics-changed", this._displayMetricsChangedHandler);
+        this._displayMetricsChangedHandler = null;
       }
       if (this._positionSaveTimer) {
         clearTimeout(this._positionSaveTimer);
