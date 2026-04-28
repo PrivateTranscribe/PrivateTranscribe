@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "./button";
 import {
   Cpu,
@@ -68,7 +68,7 @@ export default function HardwareSetupStep({
     runDetection();
   }, []);
 
-  const handleApply = () => {
+  const handleApply = useCallback(() => {
     if (!detection?.recommendations) return;
 
     const rec = detection.recommendations;
@@ -79,9 +79,9 @@ export default function HardwareSetupStep({
       whisperForceCpu: rec.gpuCategory !== "nvidia_cuda",
     });
     setApplied(true);
-  };
+  }, [detection, onApplyRecommendations]);
 
-  const handleContinueWithDefaults = () => {
+  const handleContinueWithDefaults = useCallback(() => {
     // Even if no recommendations, apply safe defaults
     onApplyRecommendations({
       useLocalWhisper: true,
@@ -90,7 +90,7 @@ export default function HardwareSetupStep({
       whisperForceCpu: true,
     });
     setApplied(true);
-  };
+  }, [onApplyRecommendations]);
 
   const handleUseCpuInstead = () => {
     onApplyRecommendations({
