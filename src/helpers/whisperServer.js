@@ -395,7 +395,14 @@ class WhisperServerManager {
       this._clearIdleCheck();
     });
 
-    await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
+    try {
+      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
+    } catch (error) {
+      debugLogger.error("whisper-server failed readiness check", { error: error.message });
+      await this.stop();
+      throw error;
+    }
+
     this.startHealthCheck();
 
     // Initialize idle timer on successful start.
