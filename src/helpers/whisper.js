@@ -275,9 +275,9 @@ class WhisperManager {
   getCudaBinaryStatus() {
     const key = this.gpuBinaryManager.getPlatformKey();
     const installedPath = this.gpuBinaryManager.getCudaBinaryFilePath();
-    const installed = !!installedPath;
     const version = this.gpuBinaryManager.getCudaBinaryVersion();
     const upToDate = this.gpuBinaryManager.isCudaBinaryUpToDate();
+    const installed = !!installedPath && upToDate;
     const expectedVersion = this.gpuBinaryManager.getExpectedCudaBinaryVersion();
     return {
       installed,
