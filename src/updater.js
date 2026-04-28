@@ -236,8 +236,13 @@ class UpdateManager {
       // which crashes if the event object is missing. autoUpdater.quitAndInstall()
       // triggers the proper app shutdown flow which fires before-quit with a real event.
       setTimeout(() => {
-        const isSilent = process.platform === "win32";
-        autoUpdater.quitAndInstall(isSilent, true);
+        try {
+          const isSilent = process.platform === "win32";
+          autoUpdater.quitAndInstall(isSilent, true);
+        } catch (error) {
+          this.isInstalling = false;
+          console.error("❌ Update installation error:", error);
+        }
       }, 100);
 
       return { success: true, message: "Update installation started" };
