@@ -348,7 +348,7 @@ export default function HardwareSetupStep({
         )}
 
         {/* Recovery steps - shown when NVIDIA GPU is detected but CUDA is not usable */}
-        {isNvidiaNocuda && recoverySteps.length > 0 && !applied && (
+        {isNvidiaNocuda && recoverySteps.length > 0 && (
           <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
             <div className="flex items-start gap-2.5">
               <div className="w-7 h-7 rounded-md bg-warning/10 flex items-center justify-center shrink-0 mt-0.5">
