@@ -987,14 +987,17 @@ class WhisperServerManager {
    */
   getEngineStatus() {
     const base = this.getStatus();
+    const effectiveEngine = this.activeServerBinaryPath
+      ? (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
+      : (this.ready ? "unknown" : "stopped");
     return {
       ...base,
       desiredMode: this.forceCpu ? "cpu" : "gpu",
-      effectiveEngine: this.activeServerBinaryPath
-        ? (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
-        : (this.ready ? "unknown" : "stopped"),
+      effectiveEngine,
       fallback: {
-        active: !this.forceCpu && this.cudaDisabledForSession,
+        // Only show fallback when user wants GPU but effective engine is NOT CUDA.
+        // Check actual running binary, not just the sticky flag.
+        active: !this.forceCpu && effectiveEngine !== "cuda" && this.cudaDisabledForSession,
         reason: this.cudaDisabledForSession ? "cuda_startup_failure" : null,
         since: this._cudaDisabledAt || null,
       },
