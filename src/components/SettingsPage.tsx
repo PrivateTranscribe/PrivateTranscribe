@@ -2224,7 +2224,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Idle shutdown (minutes)"
-                      description="Stops the local whisper-server after being idle to free RAM/VRAM. Set to 0 to keep it running."
+                      description="Stops the local Whisper server after being idle to free memory. GPU mode may also free VRAM. Set to 0 to keep it running."
                     >
                       <div className="flex items-center gap-2">
                         <input

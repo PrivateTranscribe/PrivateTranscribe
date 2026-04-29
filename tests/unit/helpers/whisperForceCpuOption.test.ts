@@ -1,0 +1,68 @@
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import path from "path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("electron", () => ({
+  app: {
+    getPath: () => tmpdir(),
+    isReady: () => false,
+  },
+}));
+
+const WhisperManager = require("../../../src/helpers/whisper");
+
+describe("WhisperManager engine mode", () => {
+  let tempDir: string | null = null;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = null;
+    }
+  });
+
+  it("does NOT mutate engine mode from transcribe options", async () => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-engine-"));
+    const modelPath = path.join(tempDir, "ggml-turbo.bin");
+    writeFileSync(modelPath, "model");
+
+    const manager = new WhisperManager();
+    manager.getModelPath = vi.fn(() => modelPath);
+    manager.serverManager = {
+      forceCpu: false,
+      activeServerBinaryPath: path.join(tempDir, "whisper-server-win32-x64-cuda.exe"),
+      isAvailable: vi.fn(() => true),
+      ready: true,
+      stoppedDueToIdle: false,
+      port: 8178,
+      setForceCpu: vi.fn(async () => {}),
+      start: vi.fn(async () => {}),
+      transcribe: vi.fn(async () => ({ success: true, text: "hello" })),
+      checkIdleAndStop: vi.fn(async () => {}),
+    };
+
+    await manager.transcribeLocalWhisper(Buffer.from("audio"), {
+      model: "turbo",
+      forceCpu: true, // Should be ignored — engine mode changes go through IPC only
+    });
+
+    // setForceCpu must NOT be called from the transcribe path
+    expect(manager.serverManager.setForceCpu).not.toHaveBeenCalled();
+    expect(manager.serverManager.isAvailable).toHaveBeenCalled();
+    expect(manager.serverManager.transcribe).toHaveBeenCalled();
+  });
+
+  it("delegates getEngineStatus to serverManager", () => {
+    const manager = new WhisperManager();
+    const mockStatus = { desiredMode: "gpu", effectiveEngine: "cuda", fallback: { active: false } };
+    manager.serverManager = {
+      getEngineStatus: vi.fn(() => mockStatus),
+      getStatus: vi.fn(() => ({})),
+    };
+
+    const result = manager.getEngineStatus();
+    expect(manager.serverManager.getEngineStatus).toHaveBeenCalled();
+    expect(result).toEqual(mockStatus);
+  });
+});

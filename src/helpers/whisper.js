@@ -78,6 +78,10 @@ class WhisperManager {
         this.serverManager.setIdleTimeoutMs(minutes * 60 * 1000);
       }
 
+      if (typeof settings.whisperForceCpu === "boolean") {
+        await this.serverManager.setForceCpu(settings.whisperForceCpu);
+      }
+
       if (
         localTranscriptionProvider === "whisper" &&
         whisperModel &&
@@ -236,6 +240,10 @@ class WhisperManager {
     return this.serverManager.getStatus();
   }
 
+  getEngineStatus() {
+    return this.serverManager.getEngineStatus();
+  }
+
   hasCudaBinary() {
     return this.gpuBinaryManager.hasCudaBinary();
   }
@@ -312,7 +320,13 @@ class WhisperManager {
       audioBlobSize: audioBlob?.byteLength || audioBlob?.size || 0,
       serverAvailable: this.serverManager.isAvailable(),
       serverReady: this.serverManager.ready,
+      forceCpu: this.serverManager.forceCpu,
+      activeServerBinaryPath: this.serverManager.activeServerBinaryPath,
     });
+
+    // Engine mode is managed exclusively via setDesiredMode/setForceCpu IPC.
+    // Per-request mutation was removed to prevent server restart churn.
+    // Benchmark manager calls setForceCpu() directly for comparison legs.
 
     // Server mode required
     if (!this.serverManager.isAvailable()) {
@@ -412,10 +426,6 @@ class WhisperManager {
       elapsed,
       resultKeys: Object.keys(result),
     });
-
-    // Trigger idle-timeout bookkeeping after a successful transcription.
-    // (This is mostly a no-op immediately after use, but ensures the idle timer is scheduled.)
-    await this.serverManager.checkIdleAndStop();
 
     return this.parseWhisperResult(result);
   }

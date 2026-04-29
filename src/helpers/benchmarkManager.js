@@ -500,8 +500,16 @@ class BenchmarkManager {
       throw new Error("A benchmark is already running");
     }
     this._running = true;
+    const previousWhisperForceCpu = this.whisperManager.serverManager?.forceCpu;
 
     try {
+      // Force CPU mode for the Whisper benchmark leg — the user's normal
+      // preference (which may be GPU) is restored in finally.
+      try {
+        await this.whisperManager.setForceCpu(true);
+      } catch {
+        // Non-fatal: proceed with whatever engine is active
+      }
       debugLogger.info("Comparison benchmark starting", { cpuModel, gpuModel });
 
       // Load test audio — same sample used for both engines so the comparison is fair
@@ -559,16 +567,10 @@ class BenchmarkManager {
       }
 
       // ── Run CPU (Whisper) benchmark ──
-      // Whisper label reflects the actual binary used, not just hardware capability.
-      let whisperGpuCategory = hwContext.gpuCategory;
-      try {
-        const cudaStatus = this.whisperManager.getCudaBinaryStatus?.();
-        if (cudaStatus?.installed && cudaStatus?.forceCpu) {
-          whisperGpuCategory = "cpu_only";
-        }
-      } catch {
-        // Non-fatal
-      }
+      // This comparison leg is explicitly CPU-only, regardless of the user's
+      // normal Whisper engine preference. The previous preference is restored
+      // in finally so benchmarks do not leave the app in the wrong mode.
+      const whisperGpuCategory = "cpu_only";
 
       const cpuStart = Date.now();
       await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
@@ -623,6 +625,16 @@ class BenchmarkManager {
 
       return comparison;
     } finally {
+      if (typeof previousWhisperForceCpu === "boolean") {
+        try {
+          await this.whisperManager.setForceCpu(previousWhisperForceCpu);
+        } catch (err) {
+          debugLogger.warn("Failed to restore Whisper CPU/GPU preference after benchmark", {
+            error: err.message,
+            previousWhisperForceCpu,
+          });
+        }
+      }
       this._running = false;
     }
   }

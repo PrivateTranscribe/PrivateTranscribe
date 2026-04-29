@@ -640,7 +640,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("whisper-server-status", async () => {
-      return this.whisperManager.getServerStatus();
+      return this.whisperManager.getEngineStatus?.() || this.whisperManager.getServerStatus();
     });
 
     ipcMain.handle("whisper-server-set-idle-timeout-minutes", async (_event, minutes) => {
@@ -1101,6 +1101,11 @@ class IPCHandlers {
         setVars.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES = String(
           Math.max(0, Math.floor(prefs.whisperServerIdleTimeoutMinutes))
         );
+        if (this.whisperManager) {
+          this.whisperManager.setServerIdleTimeoutMinutes(
+            Math.max(0, Math.floor(prefs.whisperServerIdleTimeoutMinutes))
+          );
+        }
       } else {
         clearVars.push("WHISPER_SERVER_IDLE_TIMEOUT_MINUTES");
       }

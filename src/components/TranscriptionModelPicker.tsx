@@ -289,6 +289,12 @@ export default function TranscriptionModelPicker({
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [showAllLocalModels, setShowAllLocalModels] = useState(false);
+  const [engineStatus, setEngineStatus] = useState<{
+    desiredMode?: string;
+    effectiveEngine?: string;
+    fallback?: { active: boolean; reason: string | null };
+    running?: boolean;
+  } | null>(null);
   const hasLoadedRef = useRef(false);
 
   // Normalize legacy provider selections to Whisper-only local mode.
@@ -297,6 +303,21 @@ export default function TranscriptionModelPicker({
       onLocalProviderSelect?.("whisper");
     }
   }, [selectedLocalProvider, onLocalProviderSelect]);
+
+  // Fetch engine status to show actual backend state
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI?.whisperServerStatus) return;
+    let active = true;
+    const fetchStatus = () => {
+      window.electronAPI?.whisperServerStatus?.()?.then((status: any) => {
+        if (active) setEngineStatus(status);
+      }).catch(() => {});
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, [whisperForceCpu]);
+
   const isLoadingRef = useRef(false);
   const loadLocalModelsRef = useRef<(() => Promise<void>) | null>(null);
   const ensureValidCloudSelectionRef = useRef<(() => void) | null>(null);
@@ -830,8 +851,8 @@ export default function TranscriptionModelPicker({
                 {
                   id: "cpu" as const,
                   icon: Cpu,
-                  label: "CPU",
-                  subtitle: "Always available",
+                  label: "CPU only",
+                  subtitle: "Never uses GPU",
                   recommended: !gpuSupported,
                   disabled: false,
                   title: undefined,
@@ -839,7 +860,7 @@ export default function TranscriptionModelPicker({
                 {
                   id: "gpu" as const,
                   icon: Zap,
-                  label: "GPU · Whisper",
+                  label: "GPU (CUDA)",
                   subtitle: gpuSupported ? "Faster · translation" : "Needs NVIDIA GPU",
                   recommended: gpuSupported,
                   disabled: !gpuSupported,
@@ -893,6 +914,31 @@ export default function TranscriptionModelPicker({
               );
             })}
           </div>
+
+          {engineStatus && (
+            <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
+              <div
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  engineStatus.fallback?.active
+                    ? "bg-amber-500"
+                    : engineStatus.running
+                      ? "bg-emerald-500"
+                      : "bg-zinc-500"
+                }`}
+              />
+              <span className="text-[9px] text-muted-foreground/60">
+                {engineStatus.fallback?.active
+                  ? "CPU fallback (CUDA unavailable)"
+                  : engineStatus.effectiveEngine === "cuda"
+                    ? "CUDA active"
+                    : engineStatus.effectiveEngine === "cpu"
+                      ? "CPU active"
+                      : engineStatus.running
+                        ? "Running"
+                        : "Idle"}
+              </span>
+            </div>
+          )}
 
           {progressDisplay}
           {retryBanner}

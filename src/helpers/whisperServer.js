@@ -59,12 +59,14 @@ class WhisperServerManager {
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.cachedServerBinaryPath = null;
+    this.activeServerBinaryPath = null;
     this.cachedFFmpegPath = null;
     this.canConvert = false;
 
     // When true, always use the CPU binary even if the CUDA binary is present.
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
     this.cudaDisabledForSession = false;
+    this._cudaDisabledAt = null;
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -172,11 +174,31 @@ class WhisperServerManager {
    * any running server so the next transcription starts with the correct binary.
    */
   async setForceCpu(value) {
-    if (this.forceCpu === value) return;
+    const activeBinaryIsWrongForMode =
+      this.process &&
+      this.activeServerBinaryPath &&
+      ((value && this.isCudaServerBinaryPath(this.activeServerBinaryPath)) ||
+        (!value &&
+          !this.cudaDisabledForSession &&
+          gpuBinaryManager.getCudaBinaryPath() &&
+          !this.isCudaServerBinaryPath(this.activeServerBinaryPath)));
+
+    const retryCudaAfterPreviousFailure = !value && this.forceCpu && this.cudaDisabledForSession;
+
+    if (this.forceCpu === value && !activeBinaryIsWrongForMode && !retryCudaAfterPreviousFailure) {
+      return;
+    }
     this.forceCpu = value;
+    if (!value) {
+      this.cudaDisabledForSession = false;
+    }
     this.cachedServerBinaryPath = null;
     await this.stop();
-    debugLogger.info("WhisperServer: forceCpu changed", { forceCpu: value });
+    debugLogger.info("WhisperServer: forceCpu applied", {
+      forceCpu: value,
+      stoppedWrongModeServer: !!activeBinaryIsWrongForMode,
+      retriedCudaAfterPreviousFailure: retryCudaAfterPreviousFailure,
+    });
   }
 
   async invalidateServerCache({ stopRunningServer = false } = {}) {
@@ -269,8 +291,15 @@ class WhisperServerManager {
 
   isRecoverableCudaStartupFailure(error) {
     const message = error?.message || "";
+    const code = error?.code ? String(error.code).toUpperCase() : "";
+    const syscall = error?.syscall ? String(error.syscall).toLowerCase() : "";
+    const recoverableSpawnCodes = new Set(["ENOENT", "EACCES", "EPERM", "UNKNOWN"]);
+
     return (
       this.isMissingDllStartupFailure(error) ||
+      recoverableSpawnCodes.has(code) ||
+      syscall.startsWith("spawn") ||
+      /\bspawn\s+(UNKNOWN|ENOENT|EACCES|EPERM)\b/i.test(message) ||
       message.includes("process died during startup") ||
       message.includes("failed to start within")
     );
@@ -379,6 +408,7 @@ class WhisperServerManager {
       }
 
       this.cudaDisabledForSession = true;
+      this._cudaDisabledAt = Date.now();
       this.cachedServerBinaryPath = null;
 
       const cpuBinary = this.getCpuServerBinaryPath();
@@ -456,15 +486,27 @@ class WhisperServerManager {
       cwd: serverBinaryDir,
     });
 
-    this.process = spawn(serverBinary, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      env: spawnEnv,
-      cwd: serverBinaryDir,
-    });
-
     let stderrBuffer = "";
     let exitCode = null;
+    let startupError = null;
+
+    try {
+      this.process = spawn(serverBinary, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env: spawnEnv,
+        cwd: serverBinaryDir,
+      });
+    } catch (error) {
+      debugLogger.error("whisper-server spawn failed", {
+        error: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        serverBinary,
+      });
+      throw error;
+    }
 
     this.process.stdout.on("data", (data) => {
       debugLogger.debug("whisper-server stdout", { data: data.toString().trim() });
@@ -476,7 +518,14 @@ class WhisperServerManager {
     });
 
     this.process.on("error", (error) => {
-      debugLogger.error("whisper-server process error", { error: error.message });
+      startupError = error;
+      debugLogger.error("whisper-server process error", {
+        error: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        serverBinary,
+      });
       this.ready = false;
     });
 
@@ -485,12 +534,13 @@ class WhisperServerManager {
       debugLogger.debug("whisper-server process exited", { code });
       this.ready = false;
       this.process = null;
+      this.activeServerBinaryPath = null;
       this.stopHealthCheck();
       this._clearIdleCheck();
     });
 
     try {
-      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
+      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode, startupError }));
     } catch (error) {
       debugLogger.error("whisper-server failed readiness check", {
         error: error.message,
@@ -502,6 +552,8 @@ class WhisperServerManager {
     }
 
     this.startHealthCheck();
+
+    this.activeServerBinaryPath = serverBinary;
 
     // Initialize idle timer on successful start.
     this.lastUsedTime = Date.now();
@@ -524,8 +576,19 @@ class WhisperServerManager {
     const STARTUP_POLL_INTERVAL_MS = 100;
 
     while (Date.now() - startTime < STARTUP_TIMEOUT_MS) {
+      const info = getProcessInfo ? getProcessInfo() : {};
+
+      if (info.startupError) {
+        const error = info.startupError;
+        const stderr = info.stderr ? info.stderr.trim().slice(0, 200) : "";
+        if (stderr && !error.stderr) error.stderr = stderr;
+        if (info.exitCode !== null && error.exitCode === undefined) {
+          error.exitCode = info.exitCode;
+        }
+        throw error;
+      }
+
       if (!this.process || this.process.killed) {
-        const info = getProcessInfo ? getProcessInfo() : {};
         const stderr = info.stderr ? info.stderr.trim().slice(0, 200) : "";
         const details = stderr || (info.exitCode !== null ? `exit code: ${info.exitCode}` : "");
         const error = new Error(
@@ -633,6 +696,13 @@ class WhisperServerManager {
     // No process => nothing to do.
     if (!this.process || !this.ready) return false;
 
+    if (this.activeTranscriptions > 0) {
+      this.lastUsedTime = Date.now();
+      this.stoppedDueToIdle = false;
+      this._scheduleIdleCheck();
+      return false;
+    }
+
     const now = Date.now();
     const last = this.lastUsedTime || 0;
     const idleForMs = now - last;
@@ -684,6 +754,9 @@ class WhisperServerManager {
       throw new Error("whisper-server is not running");
     }
     this.activeTranscriptions += 1;
+    this.lastUsedTime = Date.now();
+    this.stoppedDueToIdle = false;
+    this._scheduleIdleCheck();
 
     // Debug: Log audio buffer info
     debugLogger.debug("whisper-server transcribe called", {
@@ -801,8 +874,6 @@ class WhisperServerManager {
               this.lastUsedTime = Date.now();
               this.stoppedDueToIdle = false;
               this._scheduleIdleCheck();
-              // Ensure idle shutdown logic is engaged (fire-and-forget).
-              this.checkIdleAndStop().catch(() => {});
 
               resolve(parsed);
             } catch (e) {
@@ -889,6 +960,7 @@ class WhisperServerManager {
     this.ready = false;
     this.port = null;
     this.modelPath = null;
+    this.activeServerBinaryPath = null;
     this.lastUsedTime = 0;
   }
 
@@ -899,6 +971,43 @@ class WhisperServerManager {
       port: this.port,
       modelPath: this.modelPath,
       modelName: this.modelPath ? path.basename(this.modelPath, ".bin").replace("ggml-", "") : null,
+      forceCpu: this.forceCpu,
+      activeServerBinaryPath: this.activeServerBinaryPath,
+      activeEngine: this.activeServerBinaryPath
+        ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
+          ? "gpu"
+          : "cpu"
+        : null,
+    };
+  }
+
+  /**
+   * Rich engine status for UI and debugging.
+   * Separates desired mode from effective engine and exposes fallback state.
+   */
+  getEngineStatus() {
+    const base = this.getStatus();
+    const effectiveEngine = this.activeServerBinaryPath
+      ? (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
+      : (this.ready ? "unknown" : "stopped");
+    return {
+      ...base,
+      desiredMode: this.forceCpu ? "cpu" : "gpu",
+      effectiveEngine,
+      fallback: {
+        // Only show fallback when user wants GPU but effective engine is NOT CUDA.
+        // Check actual running binary, not just the sticky flag.
+        active: !this.forceCpu && effectiveEngine !== "cuda" && this.cudaDisabledForSession,
+        reason: this.cudaDisabledForSession ? "cuda_startup_failure" : null,
+        since: this._cudaDisabledAt || null,
+      },
+      transition: this.startupPromise
+        ? "starting"
+        : (this.activeTranscriptions > 0
+          ? "transcribing"
+          : (this.ready ? "idle" : "stopped")),
+      activeTranscriptions: this.activeTranscriptions,
+      stoppedDueToIdle: this.stoppedDueToIdle || false,
     };
   }
 }
