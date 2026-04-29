@@ -311,6 +311,7 @@ export interface TranscriptionSettingsBroadcast {
   useLocalWhisper?: string;
   whisperModel?: string;
   localTranscriptionProvider?: LocalTranscriptionProvider;
+  whisperForceCpu?: string;
   parakeetModel?: string;
   allowOpenAIFallback?: string;
   allowLocalFallback?: string;

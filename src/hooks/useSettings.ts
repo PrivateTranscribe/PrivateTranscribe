@@ -509,6 +509,7 @@ export function useSettings() {
         useLocalWhisper: String(useLocalWhisper),
         whisperModel,
         localTranscriptionProvider,
+        whisperForceCpu: String(whisperForceCpu),
         allowOpenAIFallback: String(allowOpenAIFallback),
         allowLocalFallback: String(allowLocalFallback),
         fallbackWhisperModel,
@@ -524,6 +525,7 @@ export function useSettings() {
       useLocalWhisper,
       whisperModel,
       localTranscriptionProvider,
+      whisperForceCpu,
       allowOpenAIFallback,
       allowLocalFallback,
       fallbackWhisperModel,
@@ -719,7 +721,11 @@ export function useSettings() {
   // Apply force-CPU toggle immediately when it changes (no restart needed)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.electronAPI?.setWhisperForceCpu?.(whisperForceCpu);
+    window.electronAPI?.setWhisperForceCpu?.(whisperForceCpu)?.then((result) => {
+      if (result && result.success === false) {
+        console.error("Failed to apply Whisper CPU/GPU preference:", result.error);
+      }
+    });
   }, [whisperForceCpu]);
 
   // Batch operations
@@ -812,6 +818,9 @@ export function useSettings() {
       }
       if (settings.localTranscriptionProvider !== undefined) {
         transcriptionOverrides.localTranscriptionProvider = settings.localTranscriptionProvider;
+      }
+      if (settings.whisperForceCpu !== undefined) {
+        transcriptionOverrides.whisperForceCpu = String(settings.whisperForceCpu);
       }
       if (settings.allowOpenAIFallback !== undefined) {
         transcriptionOverrides.allowOpenAIFallback = String(settings.allowOpenAIFallback);

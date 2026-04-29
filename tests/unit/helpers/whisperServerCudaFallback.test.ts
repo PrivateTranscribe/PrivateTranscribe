@@ -62,4 +62,19 @@ describe("WhisperServerManager CUDA startup fallback", () => {
     expect(manager.cudaDisabledForSession).toBe(true);
     expect(manager.cachedServerBinaryPath).toBe(cpuPath);
   });
+
+  it("stops a running CUDA server when CPU mode is selected", async () => {
+    const manager = new WhisperServerManager();
+    const stop = vi.spyOn(manager, "stop").mockResolvedValue(undefined);
+
+    manager.forceCpu = true;
+    manager.process = {};
+    manager.activeServerBinaryPath = "C:\\PrivateTranscribe\\bin\\whisper-server-win32-x64-cuda.exe";
+    manager.cachedServerBinaryPath = manager.activeServerBinaryPath;
+
+    await manager.setForceCpu(true);
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(manager.cachedServerBinaryPath).toBeNull();
+  });
 });

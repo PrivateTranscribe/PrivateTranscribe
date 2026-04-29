@@ -78,6 +78,10 @@ class WhisperManager {
         this.serverManager.setIdleTimeoutMs(minutes * 60 * 1000);
       }
 
+      if (typeof settings.whisperForceCpu === "boolean") {
+        await this.serverManager.setForceCpu(settings.whisperForceCpu);
+      }
+
       if (
         localTranscriptionProvider === "whisper" &&
         whisperModel &&
@@ -312,7 +316,16 @@ class WhisperManager {
       audioBlobSize: audioBlob?.byteLength || audioBlob?.size || 0,
       serverAvailable: this.serverManager.isAvailable(),
       serverReady: this.serverManager.ready,
+      forceCpu: this.serverManager.forceCpu,
+      activeServerBinaryPath: this.serverManager.activeServerBinaryPath,
     });
+
+    // Treat the renderer's selected engine as the source of truth for each
+    // transcription. This prevents UI/backend drift where Settings shows CPU
+    // but an already-running CUDA server keeps handling requests.
+    if (typeof options.forceCpu === "boolean") {
+      await this.serverManager.setForceCpu(options.forceCpu);
+    }
 
     // Server mode required
     if (!this.serverManager.isAvailable()) {

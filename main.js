@@ -288,6 +288,7 @@ async function startApp() {
   const whisperSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     whisperModel: process.env.LOCAL_WHISPER_MODEL,
+    whisperForceCpu: process.env.WHISPER_FORCE_CPU === "true",
     whisperServerIdleTimeoutMinutes: (() => {
       // Important: "0" is a valid value (disable idle auto-stop), so we can't use a truthy check.
       if (process.env.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES === undefined) return undefined;

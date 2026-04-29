@@ -59,6 +59,7 @@ class WhisperServerManager {
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.cachedServerBinaryPath = null;
+    this.activeServerBinaryPath = null;
     this.cachedFFmpegPath = null;
     this.canConvert = false;
 
@@ -172,11 +173,31 @@ class WhisperServerManager {
    * any running server so the next transcription starts with the correct binary.
    */
   async setForceCpu(value) {
-    if (this.forceCpu === value) return;
+    const activeBinaryIsWrongForMode =
+      this.process &&
+      this.activeServerBinaryPath &&
+      ((value && this.isCudaServerBinaryPath(this.activeServerBinaryPath)) ||
+        (!value &&
+          !this.cudaDisabledForSession &&
+          gpuBinaryManager.getCudaBinaryPath() &&
+          !this.isCudaServerBinaryPath(this.activeServerBinaryPath)));
+
+    const retryCudaAfterPreviousFailure = !value && this.cudaDisabledForSession;
+
+    if (this.forceCpu === value && !activeBinaryIsWrongForMode && !retryCudaAfterPreviousFailure) {
+      return;
+    }
     this.forceCpu = value;
+    if (!value) {
+      this.cudaDisabledForSession = false;
+    }
     this.cachedServerBinaryPath = null;
     await this.stop();
-    debugLogger.info("WhisperServer: forceCpu changed", { forceCpu: value });
+    debugLogger.info("WhisperServer: forceCpu applied", {
+      forceCpu: value,
+      stoppedWrongModeServer: !!activeBinaryIsWrongForMode,
+      retriedCudaAfterPreviousFailure: retryCudaAfterPreviousFailure,
+    });
   }
 
   async invalidateServerCache({ stopRunningServer = false } = {}) {
@@ -511,6 +532,7 @@ class WhisperServerManager {
       debugLogger.debug("whisper-server process exited", { code });
       this.ready = false;
       this.process = null;
+      this.activeServerBinaryPath = null;
       this.stopHealthCheck();
       this._clearIdleCheck();
     });
@@ -528,6 +550,8 @@ class WhisperServerManager {
     }
 
     this.startHealthCheck();
+
+    this.activeServerBinaryPath = serverBinary;
 
     // Initialize idle timer on successful start.
     this.lastUsedTime = Date.now();
@@ -926,6 +950,7 @@ class WhisperServerManager {
     this.ready = false;
     this.port = null;
     this.modelPath = null;
+    this.activeServerBinaryPath = null;
     this.lastUsedTime = 0;
   }
 
@@ -936,6 +961,13 @@ class WhisperServerManager {
       port: this.port,
       modelPath: this.modelPath,
       modelName: this.modelPath ? path.basename(this.modelPath, ".bin").replace("ggml-", "") : null,
+      forceCpu: this.forceCpu,
+      activeServerBinaryPath: this.activeServerBinaryPath,
+      activeEngine: this.activeServerBinaryPath
+        ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
+          ? "gpu"
+          : "cpu"
+        : null,
     };
   }
 }

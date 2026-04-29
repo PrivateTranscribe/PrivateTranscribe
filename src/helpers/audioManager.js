@@ -891,7 +891,10 @@ class AudioManager {
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const translateToEnglish = this.getTranscriptionSetting("translateToEnglish", "off");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
-      const options = { model };
+      const options = {
+        model,
+        forceCpu: this.getTranscriptionSetting("whisperForceCpu", "false") === "true",
+      };
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
       }
@@ -1918,7 +1921,10 @@ class AudioManager {
       if (allowLocalFallback && isOpenAIMode) {
         try {
           const arrayBuffer = await audioBlob.arrayBuffer();
-          const options = { model: fallbackModel };
+          const options = {
+            model: fallbackModel,
+            forceCpu: this.getTranscriptionSetting("whisperForceCpu", "false") === "true",
+          };
           if (language && language !== "auto") {
             options.language = language;
           }
