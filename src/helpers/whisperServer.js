@@ -18,6 +18,8 @@ const STARTUP_TIMEOUT_MS = 30000;
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const DEFAULT_INPUT_EXTENSION = ".webm";
+const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
+const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const ALLOWED_INPUT_EXTENSIONS = new Set([
   ".wav",
   ".mp3",
@@ -62,6 +64,7 @@ class WhisperServerManager {
 
     // When true, always use the CPU binary even if the CUDA binary is present.
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
+    this.cudaDisabledForSession = false;
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -186,7 +189,7 @@ class WhisperServerManager {
   getServerBinaryPath() {
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
-    if (!this.forceCpu) {
+    if (!this.forceCpu && !this.cudaDisabledForSession) {
       const cudaPath = gpuBinaryManager.getCudaBinaryPath();
       if (cudaPath) {
         debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
@@ -194,9 +197,17 @@ class WhisperServerManager {
         return cudaPath;
       }
     } else {
-      debugLogger.info("WhisperServer: CUDA binary skipped (CPU mode forced)");
+      debugLogger.info("WhisperServer: CUDA binary skipped", {
+        reason: this.forceCpu ? "CPU mode forced" : "disabled after startup failure",
+      });
     }
 
+    const cpuPath = this.getCpuServerBinaryPath();
+    if (cpuPath) this.cachedServerBinaryPath = cpuPath;
+    return cpuPath;
+  }
+
+  getCpuServerBinaryPath() {
     const platform = process.platform;
     const arch = process.arch;
     const platformArch = `${platform}-${arch}`;
@@ -233,6 +244,36 @@ class WhisperServerManager {
     }
 
     return null;
+  }
+
+  isCudaServerBinaryPath(serverBinary) {
+    return !!serverBinary && /-cuda(?:\.exe)?$/i.test(path.basename(serverBinary));
+  }
+
+  isMissingDllStartupFailure(error) {
+    const exitCode = error?.exitCode;
+    if (
+      exitCode === WINDOWS_STATUS_DLL_NOT_FOUND ||
+      exitCode === WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED
+    ) {
+      return true;
+    }
+
+    const message = error?.message || "";
+    return (
+      message.includes(String(WINDOWS_STATUS_DLL_NOT_FOUND)) ||
+      message.includes(String(WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED)) ||
+      /STATUS_DLL_NOT_FOUND/i.test(message)
+    );
+  }
+
+  isRecoverableCudaStartupFailure(error) {
+    const message = error?.message || "";
+    return (
+      this.isMissingDllStartupFailure(error) ||
+      message.includes("process died during startup") ||
+      message.includes("failed to start within")
+    );
   }
 
   isAvailable() {
@@ -313,6 +354,44 @@ class WhisperServerManager {
     if (!serverBinary) throw new Error("whisper-server binary not found");
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 
+    try {
+      await this._startWithBinary(serverBinary, modelPath, options);
+    } catch (error) {
+      if (
+        !this.isCudaServerBinaryPath(serverBinary) ||
+        !this.isRecoverableCudaStartupFailure(error)
+      ) {
+        throw error;
+      }
+
+      if (this.isMissingDllStartupFailure(error)) {
+        debugLogger.warn("CUDA binary failed (missing DLLs), falling back to CPU binary", {
+          cudaPath: serverBinary,
+          error: error.message,
+          exitCode: error.exitCode,
+        });
+      } else {
+        debugLogger.warn("CUDA binary failed during startup, falling back to CPU binary", {
+          cudaPath: serverBinary,
+          error: error.message,
+          exitCode: error.exitCode,
+        });
+      }
+
+      this.cudaDisabledForSession = true;
+      this.cachedServerBinaryPath = null;
+
+      const cpuBinary = this.getCpuServerBinaryPath();
+      if (!cpuBinary) {
+        throw error;
+      }
+
+      this.cachedServerBinaryPath = cpuBinary;
+      await this._startWithBinary(cpuBinary, modelPath, options);
+    }
+  }
+
+  async _startWithBinary(serverBinary, modelPath, options = {}) {
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;
 
@@ -358,6 +437,7 @@ class WhisperServerManager {
     debugLogger.debug("Starting whisper-server", {
       port: this.port,
       modelPath,
+      serverBinary,
       args,
       cwd: serverBinaryDir,
     });
@@ -395,7 +475,18 @@ class WhisperServerManager {
       this._clearIdleCheck();
     });
 
-    await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
+    try {
+      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
+    } catch (error) {
+      debugLogger.error("whisper-server failed readiness check", {
+        error: error.message,
+        serverBinary,
+        exitCode: error.exitCode,
+      });
+      await this.stop();
+      throw error;
+    }
+
     this.startHealthCheck();
 
     // Initialize idle timer on successful start.
@@ -406,6 +497,7 @@ class WhisperServerManager {
     debugLogger.info("whisper-server started successfully", {
       port: this.port,
       model: path.basename(modelPath),
+      serverBinary,
     });
   }
 
@@ -422,9 +514,12 @@ class WhisperServerManager {
         const info = getProcessInfo ? getProcessInfo() : {};
         const stderr = info.stderr ? info.stderr.trim().slice(0, 200) : "";
         const details = stderr || (info.exitCode !== null ? `exit code: ${info.exitCode}` : "");
-        throw new Error(
+        const error = new Error(
           `whisper-server process died during startup${details ? `: ${details}` : ""}`
         );
+        error.exitCode = info.exitCode;
+        error.stderr = stderr;
+        throw error;
       }
 
       pollCount++;

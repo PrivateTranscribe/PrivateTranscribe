@@ -31,6 +31,7 @@ class WhisperManager {
   constructor() {
     this.cachedFFmpegPath = null;
     this.currentDownloadProcess = null;
+    this.activeDownloadModel = null;
     this.ffmpegAvailabilityCache = { result: null, expiresAt: 0 };
     this.isInitialized = false;
     // Server manager for HTTP-based transcription
@@ -275,9 +276,9 @@ class WhisperManager {
   getCudaBinaryStatus() {
     const key = this.gpuBinaryManager.getPlatformKey();
     const installedPath = this.gpuBinaryManager.getCudaBinaryFilePath();
-    const installed = !!installedPath;
     const version = this.gpuBinaryManager.getCudaBinaryVersion();
     const upToDate = this.gpuBinaryManager.isCudaBinaryUpToDate();
+    const installed = !!installedPath && upToDate;
     const expectedVersion = this.gpuBinaryManager.getExpectedCudaBinaryVersion();
     return {
       installed,
@@ -534,8 +535,19 @@ class WhisperManager {
       };
     }
 
+    if (this.currentDownloadProcess) {
+      return {
+        model: modelName,
+        downloaded: false,
+        success: false,
+        error: `Whisper model download already in progress: ${this.activeDownloadModel || "unknown"}`,
+      };
+    }
+
     const { signal, abort } = createDownloadSignal();
-    this.currentDownloadProcess = { abort };
+    const downloadProcess = { abort };
+    this.currentDownloadProcess = downloadProcess;
+    this.activeDownloadModel = modelName;
 
     try {
       await downloadFile(modelConfig.url, modelPath, {
@@ -591,7 +603,10 @@ class WhisperManager {
       }
       throw error;
     } finally {
-      this.currentDownloadProcess = null;
+      if (this.currentDownloadProcess === downloadProcess) {
+        this.currentDownloadProcess = null;
+        this.activeDownloadModel = null;
+      }
     }
   }
 
@@ -599,6 +614,7 @@ class WhisperManager {
     if (this.currentDownloadProcess) {
       this.currentDownloadProcess.abort();
       this.currentDownloadProcess = null;
+      this.activeDownloadModel = null;
       return { success: true, message: "Download cancelled" };
     }
     return { success: false, error: "No active download to cancel" };

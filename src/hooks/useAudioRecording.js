@@ -521,7 +521,18 @@ export const useAudioRecording = (toast, options = {}) => {
       window.electronAPI?.mediaPause?.();
     }
 
-    return await audioManagerRef.current.startRecording();
+    try {
+      const started = await audioManagerRef.current.startRecording();
+      if (!started) {
+        window.electronAPI?.restoreSystemAudio?.();
+        window.electronAPI?.mediaResume?.();
+      }
+      return started;
+    } catch (error) {
+      window.electronAPI?.restoreSystemAudio?.();
+      window.electronAPI?.mediaResume?.();
+      throw error;
+    }
   }, []);
 
   const stopRecording = useCallback(() => {
@@ -548,10 +559,15 @@ export const useAudioRecording = (toast, options = {}) => {
   }, []);
 
   const cancelRecording = useCallback(() => {
-    if (audioManagerRef.current) {
-      return audioManagerRef.current.cancelRecording();
+    try {
+      if (audioManagerRef.current) {
+        return audioManagerRef.current.cancelRecording();
+      }
+      return false;
+    } finally {
+      window.electronAPI?.restoreSystemAudio?.();
+      window.electronAPI?.mediaResume?.();
     }
-    return false;
   }, []);
 
   const cancelProcessing = useCallback(() => {

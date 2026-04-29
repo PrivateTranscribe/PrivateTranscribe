@@ -76,7 +76,7 @@ function resolveRedirects(url, timeout) {
             return;
           }
           redirectCount++;
-          follow(location);
+          follow(new URL(location, currentUrl).toString());
           return;
         }
         resolve({ finalUrl: currentUrl, statusCode: res.statusCode });

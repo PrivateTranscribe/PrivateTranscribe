@@ -98,6 +98,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     path: string | null;
     platform: string;
     supported: boolean;
+    upToDate: boolean;
     forceCpu: boolean;
   } | null>(null);
   const [cudaDownloadState, setCudaDownloadState] = useState<
@@ -109,7 +110,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     totalBytes: 0,
   });
   const [cudaDownloadError, setCudaDownloadError] = useState<string | null>(null);
-  const [cudaInstalled, setCudaInstalled] = useState(false);
   const [skippedModelSetup, setSkippedModelSetup] = useState(false);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
   const [onboardingGpuSupported, setOnboardingGpuSupported] = useState(false);
@@ -194,27 +194,27 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     checkHotkeyMode();
   }, [setActivationMode]);
 
-  useEffect(() => {
+  const checkModelStatus = useCallback(async () => {
     if (!useLocalWhisper || !whisperModel) {
       setIsModelDownloaded(false);
       return;
     }
 
-    const checkStatus = async () => {
-      beginStatusCheck();
-      try {
-        const result = await window.electronAPI?.checkModelStatus(whisperModel);
-        setIsModelDownloaded(result?.downloaded ?? false);
-      } catch (error) {
-        console.error("Failed to check model status:", error);
-        setIsModelDownloaded(false);
-      } finally {
-        endStatusCheck();
-      }
-    };
-
-    checkStatus();
+    beginStatusCheck();
+    try {
+      const result = await window.electronAPI?.checkModelStatus(whisperModel);
+      setIsModelDownloaded(result?.downloaded ?? false);
+    } catch (error) {
+      console.error("Failed to check model status:", error);
+      setIsModelDownloaded(false);
+    } finally {
+      endStatusCheck();
+    }
   }, [useLocalWhisper, whisperModel, beginStatusCheck, endStatusCheck]);
+
+  useEffect(() => {
+    void checkModelStatus();
+  }, [checkModelStatus]);
 
   const loadCudaStatus = useCallback(async () => {
     beginStatusCheck();
@@ -225,18 +225,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         path: null,
         platform: "unknown",
         supported: false,
+        upToDate: false,
         forceCpu: whisperForceCpu,
       };
-      setCudaInstalled(resolvedStatus.installed);
       setCudaStatus(resolvedStatus);
     } catch (error) {
       console.error("Failed to check CUDA binary status:", error);
-      setCudaInstalled(false);
       setCudaStatus({
         installed: false,
         path: null,
         platform: "unknown",
         supported: false,
+        upToDate: false,
         forceCpu: whisperForceCpu,
       });
     } finally {
@@ -585,6 +585,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }, [useLocalWhisper]);
 
   const renderStep = () => {
+    const cudaBinaryReady = !!(cudaStatus?.installed && cudaStatus.upToDate);
+
     switch (currentStep) {
       case 0: // Welcome
         return (
@@ -662,7 +664,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           isModelDownloaded &&
           !whisperForceCpu &&
           cudaStatus?.supported &&
-          !cudaStatus.installed;
+          !cudaBinaryReady;
 
         return (
           <div className="space-y-5">
@@ -711,6 +713,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               setCloudTranscriptionBaseUrl={(url) =>
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
+              onDownloadComplete={checkModelStatus}
               variant="onboarding"
             />
             {shouldShowCudaDownload && (
@@ -765,7 +768,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               isModelDownloaded &&
               !whisperForceCpu &&
               cudaStatus?.supported &&
-              cudaInstalled &&
+              cudaBinaryReady &&
               cudaDownloadState !== "downloading" && (
                 <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
                   ✓ GPU engine installed
@@ -1057,7 +1060,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             if (!cudaStatus) {
               return false;
             }
-            if (cudaStatus.supported && !cudaStatus.installed) {
+            if (cudaStatus.supported && (!cudaStatus.installed || !cudaStatus.upToDate)) {
               return false;
             }
           }
@@ -1112,7 +1115,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             : !skippedModelSetup &&
                 !whisperForceCpu &&
                 cudaStatus?.supported &&
-                !cudaStatus.installed
+                (!cudaStatus.installed || !cudaStatus.upToDate)
               ? "Download GPU engine, or switch to CPU mode"
               : "Select a setup option to continue"
       : null;

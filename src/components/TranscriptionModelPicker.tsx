@@ -215,6 +215,7 @@ interface TranscriptionModelPickerProps {
   onWhisperForceCpuChange?: (forceCpu: boolean) => void;
   /** Whether this platform supports GPU acceleration (NVIDIA CUDA detected). */
   gpuSupported?: boolean;
+  onDownloadComplete?: () => void;
 }
 
 const CLOUD_PROVIDER_TABS = [
@@ -284,6 +285,7 @@ export default function TranscriptionModelPicker({
   whisperForceCpu = false,
   onWhisperForceCpuChange,
   gpuSupported = false,
+  onDownloadComplete,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [showAllLocalModels, setShowAllLocalModels] = useState(false);
@@ -445,7 +447,10 @@ export default function TranscriptionModelPicker({
     retryDownload: retryWhisperDownload,
   } = useModelDownload({
     modelType: "whisper",
-    onDownloadComplete: loadLocalModels,
+    onDownloadComplete: () => {
+      void loadLocalModels();
+      onDownloadComplete?.();
+    },
   });
 
   const handleModeChange = useCallback(
