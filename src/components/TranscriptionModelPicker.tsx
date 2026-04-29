@@ -830,8 +830,8 @@ export default function TranscriptionModelPicker({
                 {
                   id: "cpu" as const,
                   icon: Cpu,
-                  label: "CPU",
-                  subtitle: "Always available",
+                  label: "CPU only",
+                  subtitle: "Never uses GPU",
                   recommended: !gpuSupported,
                   disabled: false,
                   title: undefined,
@@ -839,7 +839,7 @@ export default function TranscriptionModelPicker({
                 {
                   id: "gpu" as const,
                   icon: Zap,
-                  label: "GPU · Whisper",
+                  label: "GPU (CUDA)",
                   subtitle: gpuSupported ? "Faster · translation" : "Needs NVIDIA GPU",
                   recommended: gpuSupported,
                   disabled: !gpuSupported,
