@@ -915,7 +915,7 @@ export default function TranscriptionModelPicker({
             })}
           </div>
 
-          {engineStatus && engineStatus.running && (
+          {engineStatus && (
             <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
               <div
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
