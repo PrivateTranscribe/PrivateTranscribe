@@ -387,7 +387,21 @@ class WhisperServerManager {
       }
 
       this.cachedServerBinaryPath = cpuBinary;
-      await this._startWithBinary(cpuBinary, modelPath, options);
+      try {
+        await this._startWithBinary(cpuBinary, modelPath, options);
+      } catch (cpuError) {
+        debugLogger.error("CPU binary fallback failed after CUDA startup failure", {
+          cudaPath: serverBinary,
+          cpuPath: cpuBinary,
+          cudaError: error.message,
+          cudaExitCode: error.exitCode,
+          cpuError: cpuError.message,
+          cpuExitCode: cpuError.exitCode,
+        });
+        throw new Error(
+          `Local transcription failed: GPU binary failed (missing CUDA runtime) and CPU binary also failed: ${cpuError.message}`
+        );
+      }
     }
   }
 
