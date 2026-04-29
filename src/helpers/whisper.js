@@ -1,7 +1,6 @@
 const fs = require("fs");
 const fsPromises = require("fs").promises;
 const path = require("path");
-const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 const WhisperServerManager = require("./whisperServer");
@@ -21,7 +20,6 @@ function getWhisperModelConfig(modelName) {
     url: modelInfo.downloadUrl,
     size: modelInfo.sizeMb * 1_000_000,
     fileName: modelInfo.fileName,
-    sha256: modelInfo.sha256,
   };
 }
 
@@ -60,16 +58,6 @@ class WhisperManager {
     this.validateModelName(modelName);
     const config = getWhisperModelConfig(modelName);
     return path.join(this.getModelsDir(), config.fileName);
-  }
-
-  async computeSha256(filePath) {
-    return new Promise((resolve, reject) => {
-      const hash = crypto.createHash("sha256");
-      const stream = fs.createReadStream(filePath);
-      stream.on("error", reject);
-      stream.on("data", (chunk) => hash.update(chunk));
-      stream.on("end", () => resolve(hash.digest("hex")));
-    });
   }
 
   async initializeAtStartup(settings = {}) {
@@ -594,19 +582,6 @@ class WhisperManager {
           `Downloaded Whisper model is too small (${Math.round(
             stats.size / (1024 * 1024)
           )}MB, ${expectedDescription})`
-        );
-      }
-
-      if (!modelConfig.sha256) {
-        await fsPromises.unlink(modelPath).catch(() => {});
-        throw new Error(`No trusted SHA256 configured for Whisper model: ${modelName}`);
-      }
-
-      const actualSha256 = await this.computeSha256(modelPath);
-      if (actualSha256 !== modelConfig.sha256) {
-        await fsPromises.unlink(modelPath).catch(() => {});
-        throw new Error(
-          `Whisper model checksum mismatch for ${modelName}: expected ${modelConfig.sha256}, got ${actualSha256}`
         );
       }
 

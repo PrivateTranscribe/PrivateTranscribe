@@ -46,7 +46,6 @@
       "sizeMb": 1600,
       "fileName": "ggml-large-v3-turbo.bin",
       "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
       "recommended": true
     },
     "base": {
@@ -55,8 +54,7 @@
       "size": "142MB",
       "sizeMb": 142,
       "fileName": "ggml-base.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-      "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
     },
     "tiny": {
       "name": "Tiny",
@@ -64,8 +62,7 @@
       "size": "75MB",
       "sizeMb": 75,
       "fileName": "ggml-tiny.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
-      "sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
     },
     "small": {
       "name": "Small",
@@ -73,8 +70,7 @@
       "size": "466MB",
       "sizeMb": 466,
       "fileName": "ggml-small.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-      "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
     },
     "medium": {
       "name": "Medium",
@@ -82,8 +78,7 @@
       "size": "1.5GB",
       "sizeMb": 1500,
       "fileName": "ggml-medium.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
-      "sha256": "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
     },
     "large": {
       "name": "Large",
@@ -91,8 +86,7 @@
       "size": "3GB",
       "sizeMb": 3000,
       "fileName": "ggml-large-v3.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
-      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
     }
   },
   "transcriptionProviders": [
