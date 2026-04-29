@@ -503,6 +503,13 @@ class BenchmarkManager {
     const previousWhisperForceCpu = this.whisperManager.serverManager?.forceCpu;
 
     try {
+      // Force CPU mode for the Whisper benchmark leg — the user's normal
+      // preference (which may be GPU) is restored in finally.
+      try {
+        await this.whisperManager.setForceCpu(true);
+      } catch {
+        // Non-fatal: proceed with whatever engine is active
+      }
       debugLogger.info("Comparison benchmark starting", { cpuModel, gpuModel });
 
       // Load test audio — same sample used for both engines so the comparison is fair
@@ -547,7 +554,6 @@ class BenchmarkManager {
         await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
           model: cpuModelName,
           inputFileName: "benchmark.wav",
-          forceCpu: true,
         });
       } catch {
         // Warmup failure is non-fatal — proceed to timed run
@@ -570,7 +576,6 @@ class BenchmarkManager {
       await this.whisperManager.transcribeLocalWhisper(audioBuffer, {
         model: cpuModelName,
         inputFileName: "benchmark.wav",
-        forceCpu: true,
       });
       const cpuElapsed = Date.now() - cpuStart;
 

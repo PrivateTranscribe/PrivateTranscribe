@@ -12,7 +12,7 @@ vi.mock("electron", () => ({
 
 const WhisperManager = require("../../../src/helpers/whisper");
 
-describe("WhisperManager forceCpu option", () => {
+describe("WhisperManager engine mode", () => {
   let tempDir: string | null = null;
 
   afterEach(() => {
@@ -22,8 +22,8 @@ describe("WhisperManager forceCpu option", () => {
     }
   });
 
-  it("applies per-transcription CPU/GPU preference before choosing a server binary", async () => {
-    tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-force-cpu-"));
+  it("does NOT mutate engine mode from transcribe options", async () => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-engine-"));
     const modelPath = path.join(tempDir, "ggml-turbo.bin");
     writeFileSync(modelPath, "model");
 
@@ -44,11 +44,25 @@ describe("WhisperManager forceCpu option", () => {
 
     await manager.transcribeLocalWhisper(Buffer.from("audio"), {
       model: "turbo",
-      forceCpu: true,
+      forceCpu: true, // Should be ignored — engine mode changes go through IPC only
     });
 
-    expect(manager.serverManager.setForceCpu).toHaveBeenCalledWith(true);
+    // setForceCpu must NOT be called from the transcribe path
+    expect(manager.serverManager.setForceCpu).not.toHaveBeenCalled();
     expect(manager.serverManager.isAvailable).toHaveBeenCalled();
     expect(manager.serverManager.transcribe).toHaveBeenCalled();
+  });
+
+  it("delegates getEngineStatus to serverManager", () => {
+    const manager = new WhisperManager();
+    const mockStatus = { desiredMode: "gpu", effectiveEngine: "cuda", fallback: { active: false } };
+    manager.serverManager = {
+      getEngineStatus: vi.fn(() => mockStatus),
+      getStatus: vi.fn(() => ({})),
+    };
+
+    const result = manager.getEngineStatus();
+    expect(manager.serverManager.getEngineStatus).toHaveBeenCalled();
+    expect(result).toEqual(mockStatus);
   });
 });

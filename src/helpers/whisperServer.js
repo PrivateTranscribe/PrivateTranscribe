@@ -66,6 +66,7 @@ class WhisperServerManager {
     // When true, always use the CPU binary even if the CUDA binary is present.
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
     this.cudaDisabledForSession = false;
+    this._cudaDisabledAt = null;
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -407,6 +408,7 @@ class WhisperServerManager {
       }
 
       this.cudaDisabledForSession = true;
+      this._cudaDisabledAt = Date.now();
       this.cachedServerBinaryPath = null;
 
       const cpuBinary = this.getCpuServerBinaryPath();
@@ -976,6 +978,33 @@ class WhisperServerManager {
           ? "gpu"
           : "cpu"
         : null,
+    };
+  }
+
+  /**
+   * Rich engine status for UI and debugging.
+   * Separates desired mode from effective engine and exposes fallback state.
+   */
+  getEngineStatus() {
+    const base = this.getStatus();
+    return {
+      ...base,
+      desiredMode: this.forceCpu ? "cpu" : "gpu",
+      effectiveEngine: this.activeServerBinaryPath
+        ? (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
+        : (this.ready ? "unknown" : "stopped"),
+      fallback: {
+        active: !this.forceCpu && this.cudaDisabledForSession,
+        reason: this.cudaDisabledForSession ? "cuda_startup_failure" : null,
+        since: this._cudaDisabledAt || null,
+      },
+      transition: this.startupPromise
+        ? "starting"
+        : (this.activeTranscriptions > 0
+          ? "transcribing"
+          : (this.ready ? "idle" : "stopped")),
+      activeTranscriptions: this.activeTranscriptions,
+      stoppedDueToIdle: this.stoppedDueToIdle || false,
     };
   }
 }

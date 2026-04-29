@@ -127,4 +127,72 @@ describe("WhisperServerManager CUDA startup fallback", () => {
     expect(stop).not.toHaveBeenCalled();
     expect(manager.stoppedDueToIdle).toBe(false);
   });
+
+  describe("getEngineStatus", () => {
+    it("reports CPU fallback when CUDA failed and user wants GPU", () => {
+      const manager = new WhisperServerManager();
+      manager.forceCpu = false;
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = 12345;
+      manager.ready = true;
+      manager.activeServerBinaryPath = "/fake/whisper-server-win32-x64.exe";
+
+      const status = manager.getEngineStatus();
+      expect(status.desiredMode).toBe("gpu");
+      expect(status.effectiveEngine).toBe("cpu");
+      expect(status.fallback.active).toBe(true);
+      expect(status.fallback.reason).toBe("cuda_startup_failure");
+      expect(status.fallback.since).toBe(12345);
+    });
+
+    it("reports CUDA active when GPU mode is working", () => {
+      const manager = new WhisperServerManager();
+      manager.forceCpu = false;
+      manager.cudaDisabledForSession = false;
+      manager.ready = true;
+      manager.activeServerBinaryPath = "/fake/whisper-server-win32-x64-cuda.exe";
+
+      const status = manager.getEngineStatus();
+      expect(status.desiredMode).toBe("gpu");
+      expect(status.effectiveEngine).toBe("cuda");
+      expect(status.fallback.active).toBe(false);
+      expect(status.transition).toBe("idle");
+    });
+
+    it("reports correct transition states", () => {
+      const manager = new WhisperServerManager();
+      manager.ready = true;
+      manager.activeServerBinaryPath = "/fake/whisper-server-win32-x64.exe";
+
+      // Idle
+      expect(manager.getEngineStatus().transition).toBe("idle");
+
+      // Transcribing
+      manager.activeTranscriptions = 1;
+      expect(manager.getEngineStatus().transition).toBe("transcribing");
+
+      // Starting
+      manager.activeTranscriptions = 0;
+      manager.startupPromise = Promise.resolve();
+      expect(manager.getEngineStatus().transition).toBe("starting");
+      manager.startupPromise = null;
+
+      // Stopped
+      manager.ready = false;
+      manager.activeServerBinaryPath = null;
+      expect(manager.getEngineStatus().transition).toBe("stopped");
+    });
+
+    it("reports CPU mode correctly", () => {
+      const manager = new WhisperServerManager();
+      manager.forceCpu = true;
+      manager.ready = true;
+      manager.activeServerBinaryPath = "/fake/whisper-server-win32-x64.exe";
+
+      const status = manager.getEngineStatus();
+      expect(status.desiredMode).toBe("cpu");
+      expect(status.effectiveEngine).toBe("cpu");
+      expect(status.fallback.active).toBe(false);
+    });
+  });
 });

@@ -240,6 +240,10 @@ class WhisperManager {
     return this.serverManager.getStatus();
   }
 
+  getEngineStatus() {
+    return this.serverManager.getEngineStatus();
+  }
+
   hasCudaBinary() {
     return this.gpuBinaryManager.hasCudaBinary();
   }
@@ -320,12 +324,9 @@ class WhisperManager {
       activeServerBinaryPath: this.serverManager.activeServerBinaryPath,
     });
 
-    // Treat the renderer's selected engine as the source of truth for each
-    // transcription. This prevents UI/backend drift where Settings shows CPU
-    // but an already-running CUDA server keeps handling requests.
-    if (typeof options.forceCpu === "boolean") {
-      await this.serverManager.setForceCpu(options.forceCpu);
-    }
+    // Engine mode is managed exclusively via setDesiredMode/setForceCpu IPC.
+    // Per-request mutation was removed to prevent server restart churn.
+    // Benchmark manager calls setForceCpu() directly for comparison legs.
 
     // Server mode required
     if (!this.serverManager.isAvailable()) {

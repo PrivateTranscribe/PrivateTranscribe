@@ -893,7 +893,6 @@ class AudioManager {
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
       const options = {
         model,
-        forceCpu: this.getTranscriptionSetting("whisperForceCpu", "false") === "true",
       };
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
@@ -1923,7 +1922,6 @@ class AudioManager {
           const arrayBuffer = await audioBlob.arrayBuffer();
           const options = {
             model: fallbackModel,
-            forceCpu: this.getTranscriptionSetting("whisperForceCpu", "false") === "true",
           };
           if (language && language !== "auto") {
             options.language = language;

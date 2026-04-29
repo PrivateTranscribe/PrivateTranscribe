@@ -640,7 +640,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("whisper-server-status", async () => {
-      return this.whisperManager.getServerStatus();
+      return this.whisperManager.getEngineStatus?.() || this.whisperManager.getServerStatus();
     });
 
     ipcMain.handle("whisper-server-set-idle-timeout-minutes", async (_event, minutes) => {
