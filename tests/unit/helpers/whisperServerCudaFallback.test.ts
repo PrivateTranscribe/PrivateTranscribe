@@ -77,4 +77,54 @@ describe("WhisperServerManager CUDA startup fallback", () => {
     expect(stop).toHaveBeenCalledTimes(1);
     expect(manager.cachedServerBinaryPath).toBeNull();
   });
+
+  it("does not stop the fallback CPU server on every GPU-mode request after CUDA failed", async () => {
+    const manager = new WhisperServerManager();
+    const stop = vi.spyOn(manager, "stop").mockResolvedValue(undefined);
+
+    manager.forceCpu = false;
+    manager.cudaDisabledForSession = true;
+    manager.process = {};
+    manager.activeServerBinaryPath = "C:\\PrivateTranscribe\\bin\\whisper-server-win32-x64.exe";
+    manager.cachedServerBinaryPath = manager.activeServerBinaryPath;
+
+    await manager.setForceCpu(false);
+
+    expect(stop).not.toHaveBeenCalled();
+    expect(manager.cudaDisabledForSession).toBe(true);
+    expect(manager.cachedServerBinaryPath).toBe(manager.activeServerBinaryPath);
+  });
+
+  it("retries CUDA when the user explicitly switches from CPU mode to GPU mode", async () => {
+    const manager = new WhisperServerManager();
+    const stop = vi.spyOn(manager, "stop").mockResolvedValue(undefined);
+
+    manager.forceCpu = true;
+    manager.cudaDisabledForSession = true;
+    manager.process = {};
+    manager.activeServerBinaryPath = "C:\\PrivateTranscribe\\bin\\whisper-server-win32-x64.exe";
+    manager.cachedServerBinaryPath = manager.activeServerBinaryPath;
+
+    await manager.setForceCpu(false);
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(manager.cudaDisabledForSession).toBe(false);
+    expect(manager.cachedServerBinaryPath).toBeNull();
+  });
+
+  it("does not idle-stop while a transcription is active", async () => {
+    const manager = new WhisperServerManager();
+    const stop = vi.spyOn(manager, "stop").mockResolvedValue(undefined);
+
+    manager.process = {};
+    manager.ready = true;
+    manager.activeTranscriptions = 1;
+    manager.lastUsedTime = Date.now() - 60_000;
+    manager.idleTimeoutMs = 1;
+
+    await expect(manager.checkIdleAndStop()).resolves.toBe(false);
+
+    expect(stop).not.toHaveBeenCalled();
+    expect(manager.stoppedDueToIdle).toBe(false);
+  });
 });

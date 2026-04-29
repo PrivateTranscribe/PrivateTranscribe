@@ -426,10 +426,6 @@ class WhisperManager {
       resultKeys: Object.keys(result),
     });
 
-    // Trigger idle-timeout bookkeeping after a successful transcription.
-    // (This is mostly a no-op immediately after use, but ensures the idle timer is scheduled.)
-    await this.serverManager.checkIdleAndStop();
-
     return this.parseWhisperResult(result);
   }
 

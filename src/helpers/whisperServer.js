@@ -182,7 +182,7 @@ class WhisperServerManager {
           gpuBinaryManager.getCudaBinaryPath() &&
           !this.isCudaServerBinaryPath(this.activeServerBinaryPath)));
 
-    const retryCudaAfterPreviousFailure = !value && this.cudaDisabledForSession;
+    const retryCudaAfterPreviousFailure = !value && this.forceCpu && this.cudaDisabledForSession;
 
     if (this.forceCpu === value && !activeBinaryIsWrongForMode && !retryCudaAfterPreviousFailure) {
       return;
@@ -694,6 +694,13 @@ class WhisperServerManager {
     // No process => nothing to do.
     if (!this.process || !this.ready) return false;
 
+    if (this.activeTranscriptions > 0) {
+      this.lastUsedTime = Date.now();
+      this.stoppedDueToIdle = false;
+      this._scheduleIdleCheck();
+      return false;
+    }
+
     const now = Date.now();
     const last = this.lastUsedTime || 0;
     const idleForMs = now - last;
@@ -745,6 +752,9 @@ class WhisperServerManager {
       throw new Error("whisper-server is not running");
     }
     this.activeTranscriptions += 1;
+    this.lastUsedTime = Date.now();
+    this.stoppedDueToIdle = false;
+    this._scheduleIdleCheck();
 
     // Debug: Log audio buffer info
     debugLogger.debug("whisper-server transcribe called", {
@@ -862,8 +872,6 @@ class WhisperServerManager {
               this.lastUsedTime = Date.now();
               this.stoppedDueToIdle = false;
               this._scheduleIdleCheck();
-              // Ensure idle shutdown logic is engaged (fire-and-forget).
-              this.checkIdleAndStop().catch(() => {});
 
               resolve(parsed);
             } catch (e) {
