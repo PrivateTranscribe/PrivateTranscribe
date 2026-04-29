@@ -269,8 +269,15 @@ class WhisperServerManager {
 
   isRecoverableCudaStartupFailure(error) {
     const message = error?.message || "";
+    const code = error?.code ? String(error.code).toUpperCase() : "";
+    const syscall = error?.syscall ? String(error.syscall).toLowerCase() : "";
+    const recoverableSpawnCodes = new Set(["ENOENT", "EACCES", "EPERM", "UNKNOWN"]);
+
     return (
       this.isMissingDllStartupFailure(error) ||
+      recoverableSpawnCodes.has(code) ||
+      syscall.startsWith("spawn") ||
+      /\bspawn\s+(UNKNOWN|ENOENT|EACCES|EPERM)\b/i.test(message) ||
       message.includes("process died during startup") ||
       message.includes("failed to start within")
     );
@@ -456,15 +463,27 @@ class WhisperServerManager {
       cwd: serverBinaryDir,
     });
 
-    this.process = spawn(serverBinary, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      env: spawnEnv,
-      cwd: serverBinaryDir,
-    });
-
     let stderrBuffer = "";
     let exitCode = null;
+    let startupError = null;
+
+    try {
+      this.process = spawn(serverBinary, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        env: spawnEnv,
+        cwd: serverBinaryDir,
+      });
+    } catch (error) {
+      debugLogger.error("whisper-server spawn failed", {
+        error: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        serverBinary,
+      });
+      throw error;
+    }
 
     this.process.stdout.on("data", (data) => {
       debugLogger.debug("whisper-server stdout", { data: data.toString().trim() });
@@ -476,7 +495,14 @@ class WhisperServerManager {
     });
 
     this.process.on("error", (error) => {
-      debugLogger.error("whisper-server process error", { error: error.message });
+      startupError = error;
+      debugLogger.error("whisper-server process error", {
+        error: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        serverBinary,
+      });
       this.ready = false;
     });
 
@@ -490,7 +516,7 @@ class WhisperServerManager {
     });
 
     try {
-      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode }));
+      await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode, startupError }));
     } catch (error) {
       debugLogger.error("whisper-server failed readiness check", {
         error: error.message,
@@ -524,8 +550,19 @@ class WhisperServerManager {
     const STARTUP_POLL_INTERVAL_MS = 100;
 
     while (Date.now() - startTime < STARTUP_TIMEOUT_MS) {
+      const info = getProcessInfo ? getProcessInfo() : {};
+
+      if (info.startupError) {
+        const error = info.startupError;
+        const stderr = info.stderr ? info.stderr.trim().slice(0, 200) : "";
+        if (stderr && !error.stderr) error.stderr = stderr;
+        if (info.exitCode !== null && error.exitCode === undefined) {
+          error.exitCode = info.exitCode;
+        }
+        throw error;
+      }
+
       if (!this.process || this.process.killed) {
-        const info = getProcessInfo ? getProcessInfo() : {};
         const stderr = info.stderr ? info.stderr.trim().slice(0, 200) : "";
         const details = stderr || (info.exitCode !== null ? `exit code: ${info.exitCode}` : "");
         const error = new Error(
