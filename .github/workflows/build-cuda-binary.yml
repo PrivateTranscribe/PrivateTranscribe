@@ -87,7 +87,19 @@ jobs:
       - name: Collect binary
         shell: bash
         run: |
-          find whisper-src/build -name "whisper-server.exe" | head -1 | xargs -I{} cp {} whisper-server-win32-x64-cuda.exe
+          BINARY=$(find whisper-src/build -name "whisper-server.exe" | head -1)
+          if [ -z "$BINARY" ]; then
+            echo "ERROR: whisper-server.exe not found in build output"
+            find whisper-src/build -type f -name "whisper*" 2>/dev/null || echo "No whisper files found at all"
+            exit 1
+          fi
+          cp "$BINARY" whisper-server-win32-x64-cuda.exe
+          SIZE=$(stat -c%s whisper-server-win32-x64-cuda.exe 2>/dev/null || stat -f%z whisper-server-win32-x64-cuda.exe 2>/dev/null)
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "ERROR: Binary is only $SIZE bytes — expected >10MB. Build likely failed."
+            ls -lh whisper-server-win32-x64-cuda.exe
+            exit 1
+          fi
           ls -lh whisper-server-win32-x64-cuda.exe
 
       - name: Upload artifact
@@ -107,11 +119,16 @@ jobs:
         run: |
           aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
           aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          SIZE=$(stat -c%s whisper-server-win32-x64-cuda.exe 2>/dev/null)
+          if [ -z "$SIZE" ] || [ "$SIZE" -lt 10000000 ]; then
+            echo "ERROR: Refusing to upload binary — size is only $SIZE bytes"
+            exit 1
+          fi
           aws s3 cp whisper-server-win32-x64-cuda.exe \
             s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-win32-x64-cuda.exe"
+          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-win32-x64-cuda.exe ($SIZE bytes)"
 
   build-cuda-linux:
     name: Build Linux CUDA binary
@@ -165,8 +182,20 @@ jobs:
 
       - name: Collect binary
         run: |
-          cp whisper-src/build/bin/whisper-server whisper-server-linux-x64-cuda.bin
+          BINARY=whisper-src/build/bin/whisper-server
+          if [ ! -f "$BINARY" ]; then
+            echo "ERROR: whisper-server binary not found in build output"
+            find whisper-src/build -type f -name "whisper*" 2>/dev/null || echo "No whisper files found at all"
+            exit 1
+          fi
+          cp "$BINARY" whisper-server-linux-x64-cuda.bin
           chmod +x whisper-server-linux-x64-cuda.bin
+          SIZE=$(stat -c%s whisper-server-linux-x64-cuda.bin 2>/dev/null)
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "ERROR: Binary is only $SIZE bytes — expected >10MB. Build likely failed."
+            ls -lh whisper-server-linux-x64-cuda.bin
+            exit 1
+          fi
           ls -lh whisper-server-linux-x64-cuda.bin
 
       - name: Upload artifact
@@ -185,8 +214,13 @@ jobs:
         run: |
           aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
           aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          SIZE=$(stat -c%s whisper-server-linux-x64-cuda.bin 2>/dev/null)
+          if [ -z "$SIZE" ] || [ "$SIZE" -lt 10000000 ]; then
+            echo "ERROR: Refusing to upload binary — size is only $SIZE bytes"
+            exit 1
+          fi
           aws s3 cp whisper-server-linux-x64-cuda.bin \
             s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-linux-x64-cuda \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-linux-x64-cuda"
+          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-linux-x64-cuda ($SIZE bytes)"
