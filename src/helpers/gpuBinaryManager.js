@@ -3,26 +3,31 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const unzipper = require("unzipper");
 const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal, isRetryable } = require("./downloadUtils");
 
 // R2 public CDN — binaries served directly (no zip extraction needed)
 const R2_BASE_URL = "https://updates.privatetranscribe.com";
-const BINARY_VERSION = "v0.0.7";
+const BINARY_VERSION = "v0.0.8";
 const USER_AGENT = "PrivateTranscribe/1.0";
 const CUDA_VERSION_FILE = "whisper-server-cuda-version.txt";
 
 const CUDA_BINARIES = {
   "linux-x64": {
     outputName: "whisper-server-linux-x64-cuda",
-    remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-linux-x64-cuda`,
-    approxBytes: 265000000, // ~253MB
+    archiveName: "whisper-server-linux-x64-cuda.zip",
+    remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-linux-x64-cuda.zip`,
+    companionPattern: /\.so(?:\.\d+)*$/,
+    approxBytes: 300000000, // CUDA server + runtime libs package
   },
   "win32-x64": {
     outputName: "whisper-server-win32-x64-cuda.exe",
-    remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-win32-x64-cuda.exe`,
-    approxBytes: 683000000, // ~652MB
+    archiveName: "whisper-server-win32-x64-cuda.zip",
+    remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-win32-x64-cuda.zip`,
+    companionPattern: /\.dll$/i,
+    approxBytes: 700000000, // CUDA server + cudart/cublas DLL package
   },
 };
 
@@ -175,6 +180,88 @@ class GpuBinaryManager {
     });
   }
 
+  async extractArchive(archivePath, extractDir) {
+    await fs.promises.mkdir(extractDir, { recursive: true });
+    await fs
+      .createReadStream(archivePath)
+      .pipe(unzipper.Extract({ path: extractDir }))
+      .promise();
+  }
+
+  findFileRecursive(rootDir, predicate) {
+    const stack = [rootDir];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(entryPath);
+        } else if (predicate(entry.name, entryPath)) {
+          return entryPath;
+        }
+      }
+    }
+    return null;
+  }
+
+  findFilesRecursive(rootDir, predicate) {
+    const matches = [];
+    const stack = [rootDir];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(entryPath);
+        } else if (predicate(entry.name, entryPath)) {
+          matches.push(entryPath);
+        }
+      }
+    }
+    return matches;
+  }
+
+  copyFileAtomic(sourcePath, destPath, { executable = false } = {}) {
+    const tempPath = `${destPath}.tmp`;
+    fs.copyFileSync(sourcePath, tempPath);
+    if (executable && process.platform !== "win32") {
+      fs.chmodSync(tempPath, 0o755);
+    }
+    fs.renameSync(tempPath, destPath);
+  }
+
+  async installCudaPackage(archivePath, spec, binDir) {
+    const extractDir = path.join(binDir, `cuda-package-${Date.now()}`);
+    try {
+      await this.extractArchive(archivePath, extractDir);
+
+      const extractedBinary = this.findFileRecursive(
+        extractDir,
+        (name) => name === spec.outputName || name === path.basename(spec.outputName)
+      );
+      if (!extractedBinary) {
+        throw new Error(`CUDA package did not contain ${spec.outputName}`);
+      }
+
+      const binaryPath = path.join(binDir, spec.outputName);
+      this.copyFileAtomic(extractedBinary, binaryPath, { executable: true });
+
+      const companionFiles = this.findFilesRecursive(extractDir, (name) =>
+        spec.companionPattern?.test(name)
+      );
+      for (const companion of companionFiles) {
+        const dest = path.join(binDir, path.basename(companion));
+        this.copyFileAtomic(companion, dest, { executable: process.platform !== "win32" });
+      }
+
+      return { binaryPath, companionCount: companionFiles.length };
+    } finally {
+      await fs.promises.rm(extractDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   writeCudaBinaryVersionFile() {
     const versionPath = this.getCudaVersionFilePath();
     const tempVersionPath = `${versionPath}.tmp`;
@@ -195,6 +282,7 @@ class GpuBinaryManager {
       return { success: false, error: "CUDA binary download already in progress" };
     }
     this._downloading = true;
+    let archivePath = null;
     let binaryPath = null;
 
     try {
@@ -203,17 +291,18 @@ class GpuBinaryManager {
 
       const binDir = this.getBinDir();
       fs.mkdirSync(binDir, { recursive: true });
-      binaryPath = path.join(binDir, spec.outputName);
+      archivePath = path.join(binDir, spec.archiveName);
       const totalBytes = spec.approxBytes;
 
-      debugLogger.info("GpuBinaryManager: downloading CUDA binary from R2", {
+      debugLogger.info("GpuBinaryManager: downloading CUDA package from R2", {
         url: spec.remoteUrl,
+        archiveName: spec.archiveName,
         outputName: spec.outputName,
       });
 
-      await downloadFile(spec.remoteUrl, binaryPath, {
+      await downloadFile(spec.remoteUrl, archivePath, {
         signal,
-        timeout: 600000, // 10 min for large files
+        timeout: 600000, // 10 min for large packages
         maxRetries: 2,
         onProgress: (bytesDownloaded, total) => {
           if (!onProgress) return;
@@ -233,10 +322,12 @@ class GpuBinaryManager {
         throw Object.assign(new Error("Download cancelled"), { isAbort: true });
       }
 
-      // Set executable bit on non-Windows
-      if (process.platform !== "win32") {
-        fs.chmodSync(binaryPath, 0o755);
+      if (onProgress) {
+        onProgress({ phase: "installing", percent: 99, bytesDownloaded: totalBytes, totalBytes });
       }
+
+      const installed = await this.installCudaPackage(archivePath, spec, binDir);
+      binaryPath = installed.binaryPath;
 
       const binarySize = fs.statSync(binaryPath).size;
       if (binarySize < 1_000_000) {
@@ -245,11 +336,11 @@ class GpuBinaryManager {
         } catch {
           /* ignore */
         }
-        debugLogger.error("GpuBinaryManager: downloaded CUDA binary is too small", {
+        debugLogger.error("GpuBinaryManager: extracted CUDA binary is too small", {
           binaryPath,
           size: binarySize,
         });
-        return { success: false, error: "Downloaded binary is too small, likely corrupted" };
+        return { success: false, error: "Extracted binary is too small, likely corrupted" };
       }
 
       try {
@@ -269,20 +360,28 @@ class GpuBinaryManager {
         onProgress({ phase: "done", percent: 100, bytesDownloaded: totalBytes, totalBytes });
       }
 
-      debugLogger.info("GpuBinaryManager: CUDA binary downloaded successfully", {
+      try {
+        if (archivePath && fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
+      } catch {
+        /* ignore */
+      }
+
+      debugLogger.info("GpuBinaryManager: CUDA package installed successfully", {
         binaryPath,
+        companionCount: installed.companionCount,
         version: BINARY_VERSION,
         versionPath,
       });
       return { success: true, binaryPath };
     } catch (error) {
-      // downloadFile writes to binaryPath.tmp and only renames on success. Keep
+      // downloadFile writes to archivePath.tmp and only renames on success. Keep
       // any existing final binary/version file intact when an update fails.
       const shouldPreservePartialDownload = error.isAbort || isRetryable(error);
       if (!shouldPreservePartialDownload) {
         try {
-          const tempPath = binaryPath ? `${binaryPath}.tmp` : null;
+          const tempPath = archivePath ? `${archivePath}.tmp` : null;
           if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+          if (archivePath && fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
         } catch {
           /* ignore */
         }

@@ -554,6 +554,9 @@ class WhisperServerManager {
     // Add the whisper-server directory to PATH so any companion DLLs are found
     const serverBinaryDir = path.dirname(serverBinary);
     spawnEnv.PATH = serverBinaryDir + pathSep + (process.env.PATH || "");
+    if (process.platform !== "win32") {
+      spawnEnv.LD_LIBRARY_PATH = serverBinaryDir + pathSep + (process.env.LD_LIBRARY_PATH || "");
+    }
 
     const args = ["--model", modelPath, "--host", "127.0.0.1", "--port", String(this.port)];
 
