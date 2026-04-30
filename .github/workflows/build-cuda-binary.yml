@@ -85,28 +85,51 @@ jobs:
           cmake --build build --config Release --target whisper-server -j4
 
       - name: Collect binary
-        shell: bash
+        shell: pwsh
         run: |
-          BINARY=$(find whisper-src/build -name "whisper-server.exe" | head -1)
-          if [ -z "$BINARY" ]; then
-            echo "ERROR: whisper-server.exe not found in build output"
-            find whisper-src/build -type f -name "whisper*" 2>/dev/null || echo "No whisper files found at all"
+          $binary = Get-ChildItem -Path whisper-src/build -Recurse -Filter whisper-server.exe | Select-Object -First 1
+          if (-not $binary) {
+            Write-Error "whisper-server.exe not found in build output"
+            Get-ChildItem -Path whisper-src/build -Recurse -Filter "whisper*" -ErrorAction SilentlyContinue
             exit 1
-          fi
-          cp "$BINARY" whisper-server-win32-x64-cuda.exe
-          SIZE=$(stat -c%s whisper-server-win32-x64-cuda.exe 2>/dev/null || stat -f%z whisper-server-win32-x64-cuda.exe 2>/dev/null)
-          if [ "$SIZE" -lt 10000000 ]; then
-            echo "ERROR: Binary is only $SIZE bytes — expected >10MB. Build likely failed."
-            ls -lh whisper-server-win32-x64-cuda.exe
+          }
+
+          $packageDir = "cuda-package-win32-x64"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          Copy-Item $binary.FullName "$packageDir/whisper-server-win32-x64-cuda.exe" -Force
+
+          # Modern whisper.cpp builds the server as a small executable plus
+          # runtime DLLs (whisper.dll, ggml*.dll) beside it. Package those too.
+          Get-ChildItem -Path $binary.DirectoryName -Filter "*.dll" | ForEach-Object {
+            Copy-Item $_.FullName "$packageDir/$($_.Name)" -Force
+          }
+
+          $cudaBin = Join-Path $env:CUDA_PATH "bin"
+          $requiredDlls = @("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+          foreach ($dll in $requiredDlls) {
+            $source = Join-Path $cudaBin $dll
+            if (-not (Test-Path $source)) {
+              Write-Error "Required CUDA runtime DLL missing from build machine: $source"
+              exit 1
+            }
+            Copy-Item $source "$packageDir/$dll" -Force
+          }
+
+          Compress-Archive -Path "$packageDir/*" -DestinationPath whisper-server-win32-x64-cuda.zip -Force
+          $packageSize = (Get-Item whisper-server-win32-x64-cuda.zip).Length
+          if ($packageSize -lt 10000000) {
+            Write-Error "CUDA package is only $packageSize bytes — expected >10MB. Packaging likely failed."
+            Get-ChildItem $packageDir
             exit 1
-          fi
-          ls -lh whisper-server-win32-x64-cuda.exe
+          }
+          Get-ChildItem $packageDir
+          Get-Item whisper-server-win32-x64-cuda.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-server-win32-x64-cuda-blackwell
-          path: whisper-server-win32-x64-cuda.exe
+          name: whisper-server-win32-x64-cuda-package
+          path: whisper-server-win32-x64-cuda.zip
           retention-days: 30
 
       - name: Upload to R2
@@ -119,16 +142,16 @@ jobs:
         run: |
           aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
           aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
-          SIZE=$(stat -c%s whisper-server-win32-x64-cuda.exe 2>/dev/null)
+          SIZE=$(stat -c%s whisper-server-win32-x64-cuda.zip 2>/dev/null)
           if [ -z "$SIZE" ] || [ "$SIZE" -lt 10000000 ]; then
-            echo "ERROR: Refusing to upload binary — size is only $SIZE bytes"
+            echo "ERROR: Refusing to upload CUDA package — size is only $SIZE bytes"
             exit 1
           fi
-          aws s3 cp whisper-server-win32-x64-cuda.exe \
-            s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-win32-x64-cuda.exe \
+          aws s3 cp whisper-server-win32-x64-cuda.zip \
+            s3://privatetranscribe-assets/binaries/v0.0.8/whisper-server-win32-x64-cuda.zip \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-win32-x64-cuda.exe ($SIZE bytes)"
+          echo "Uploaded to R2: binaries/v0.0.8/whisper-server-win32-x64-cuda.zip ($SIZE bytes)"
 
   build-cuda-linux:
     name: Build Linux CUDA binary
@@ -144,6 +167,7 @@ jobs:
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update -qq
           sudo apt-get install -y \
+            zip \
             cuda-nvcc-12-8 \
             libcublas-12-8 \
             libcublas-dev-12-8 \
@@ -188,21 +212,40 @@ jobs:
             find whisper-src/build -type f -name "whisper*" 2>/dev/null || echo "No whisper files found at all"
             exit 1
           fi
-          cp "$BINARY" whisper-server-linux-x64-cuda.bin
-          chmod +x whisper-server-linux-x64-cuda.bin
-          SIZE=$(stat -c%s whisper-server-linux-x64-cuda.bin 2>/dev/null)
-          if [ "$SIZE" -lt 10000000 ]; then
-            echo "ERROR: Binary is only $SIZE bytes — expected >10MB. Build likely failed."
-            ls -lh whisper-server-linux-x64-cuda.bin
+          PACKAGE_DIR=cuda-package-linux-x64
+          mkdir -p "$PACKAGE_DIR"
+          cp "$BINARY" "$PACKAGE_DIR/whisper-server-linux-x64-cuda"
+          chmod +x "$PACKAGE_DIR/whisper-server-linux-x64-cuda"
+
+          # Modern whisper.cpp builds the server as a small executable plus
+          # runtime shared libraries. Package whisper/ggml libraries beside it.
+          find whisper-src/build -type f \( -name "libwhisper.so*" -o -name "libggml*.so*" \) -exec cp -L {} "$PACKAGE_DIR/" \;
+
+          CUDA_LIB_DIR=/usr/local/cuda-12.8/targets/x86_64-linux/lib
+          for LIB in libcudart.so.12 libcublas.so.12 libcublasLt.so.12; do
+            SOURCE=$(find "$CUDA_LIB_DIR" -maxdepth 1 -name "$LIB*" | sort | head -1)
+            if [ -z "$SOURCE" ]; then
+              echo "ERROR: Required CUDA runtime library missing from build machine: $LIB"
+              exit 1
+            fi
+            cp -L "$SOURCE" "$PACKAGE_DIR/$LIB"
+          done
+
+          (cd "$PACKAGE_DIR" && zip -9 -r ../whisper-server-linux-x64-cuda.zip .)
+          PACKAGE_SIZE=$(stat -c%s whisper-server-linux-x64-cuda.zip 2>/dev/null)
+          if [ -z "$PACKAGE_SIZE" ] || [ "$PACKAGE_SIZE" -lt 10000000 ]; then
+            echo "ERROR: CUDA package is only $PACKAGE_SIZE bytes — expected >10MB. Packaging likely failed."
+            ls -lh "$PACKAGE_DIR"
             exit 1
           fi
-          ls -lh whisper-server-linux-x64-cuda.bin
+          ls -lh "$PACKAGE_DIR"
+          ls -lh whisper-server-linux-x64-cuda.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-server-linux-x64-cuda-blackwell
-          path: whisper-server-linux-x64-cuda.bin
+          name: whisper-server-linux-x64-cuda-package
+          path: whisper-server-linux-x64-cuda.zip
           retention-days: 30
 
       - name: Upload to R2
@@ -214,13 +257,13 @@ jobs:
         run: |
           aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
           aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
-          SIZE=$(stat -c%s whisper-server-linux-x64-cuda.bin 2>/dev/null)
+          SIZE=$(stat -c%s whisper-server-linux-x64-cuda.zip 2>/dev/null)
           if [ -z "$SIZE" ] || [ "$SIZE" -lt 10000000 ]; then
-            echo "ERROR: Refusing to upload binary — size is only $SIZE bytes"
+            echo "ERROR: Refusing to upload CUDA package — size is only $SIZE bytes"
             exit 1
           fi
-          aws s3 cp whisper-server-linux-x64-cuda.bin \
-            s3://privatetranscribe-assets/binaries/v0.0.7/whisper-server-linux-x64-cuda \
+          aws s3 cp whisper-server-linux-x64-cuda.zip \
+            s3://privatetranscribe-assets/binaries/v0.0.8/whisper-server-linux-x64-cuda.zip \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.7/whisper-server-linux-x64-cuda ($SIZE bytes)"
+          echo "Uploaded to R2: binaries/v0.0.8/whisper-server-linux-x64-cuda.zip ($SIZE bytes)"

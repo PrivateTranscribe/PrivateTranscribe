@@ -112,6 +112,11 @@ export default function TranscribePage() {
     [preferredLanguage]
   );
 
+  const forcedLanguageWarning = useMemo(() => {
+    if (!preferredLanguage || preferredLanguage === "auto") return null;
+    return `This upload will be forced as ${getLanguageLabel(preferredLanguage)}. If the file is a different language, set Language to Auto-detect or the real spoken language first.`;
+  }, [preferredLanguage]);
+
   const fallbackLabel = useMemo(() => {
     if (useLocalWhisper) {
       return allowOpenAIFallback ? "Enabled (local -> cloud)" : "Disabled";
@@ -450,6 +455,12 @@ export default function TranscribePage() {
             <p className="text-foreground">{fallbackLabel}</p>
           </div>
         </div>
+        {forcedLanguageWarning && (
+          <div className="mt-3 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <p>{forcedLanguageWarning}</p>
+          </div>
+        )}
       </div>
     </div>
   );
