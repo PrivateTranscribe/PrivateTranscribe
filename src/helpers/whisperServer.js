@@ -155,6 +155,7 @@ class WhisperServerManager {
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
     this.cudaDisabledForSession = false;
     this._cudaDisabledAt = null;
+    this._lastCudaStartupFailure = null;
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -279,6 +280,8 @@ class WhisperServerManager {
     this.forceCpu = value;
     if (!value) {
       this.cudaDisabledForSession = false;
+      this._cudaDisabledAt = null;
+      this._lastCudaStartupFailure = null;
     }
     this.cachedServerBinaryPath = null;
     await this.stop();
@@ -473,6 +476,9 @@ class WhisperServerManager {
 
     try {
       await this._startWithBinary(serverBinary, modelPath, options);
+      if (this.isCudaServerBinaryPath(serverBinary)) {
+        this._lastCudaStartupFailure = null;
+      }
     } catch (error) {
       if (
         !this.isCudaServerBinaryPath(serverBinary) ||
@@ -497,6 +503,13 @@ class WhisperServerManager {
 
       this.cudaDisabledForSession = true;
       this._cudaDisabledAt = Date.now();
+      this._lastCudaStartupFailure = {
+        kind: this.isMissingDllStartupFailure(error) ? "missing_dll_or_runtime" : "startup_failure",
+        message: error.message || String(error),
+        code: error.code || null,
+        exitCode: error.exitCode ?? null,
+        syscall: error.syscall || null,
+      };
       this.cachedServerBinaryPath = null;
 
       const cpuBinary = this.getCpuServerBinaryPath();
@@ -1173,6 +1186,7 @@ class WhisperServerManager {
         active: !this.forceCpu && effectiveEngine !== "cuda" && this.cudaDisabledForSession,
         reason: this.cudaDisabledForSession ? "cuda_startup_failure" : null,
         since: this._cudaDisabledAt || null,
+        diagnostic: this._lastCudaStartupFailure,
       },
       transition: this.startupPromise
         ? "starting"
