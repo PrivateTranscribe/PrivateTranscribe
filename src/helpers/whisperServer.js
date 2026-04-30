@@ -20,6 +20,12 @@ const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const DEFAULT_INPUT_EXTENSION = ".webm";
 const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
+const WAV_HEADER_BYTES = 44;
+const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
+const WHISPER_CHUNK_SECONDS = 10 * 60;
+const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
+const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
+const WHISPER_REQUEST_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const ALLOWED_INPUT_EXTENSIONS = new Set([
   ".wav",
   ".mp3",
@@ -45,6 +51,88 @@ function resolveTempInputExtension(inputFileName) {
   }
 
   return DEFAULT_INPUT_EXTENSION;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseWavPcmInfo(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < WAV_HEADER_BYTES) return null;
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    return null;
+  }
+
+  let offset = 12;
+  let format = null;
+  let dataOffset = -1;
+  let dataSize = 0;
+
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkDataOffset = offset + 8;
+
+    if (chunkId === "fmt " && chunkDataOffset + 16 <= buffer.length) {
+      format = {
+        audioFormat: buffer.readUInt16LE(chunkDataOffset),
+        channels: buffer.readUInt16LE(chunkDataOffset + 2),
+        sampleRate: buffer.readUInt32LE(chunkDataOffset + 4),
+        byteRate: buffer.readUInt32LE(chunkDataOffset + 8),
+        blockAlign: buffer.readUInt16LE(chunkDataOffset + 12),
+        bitsPerSample: buffer.readUInt16LE(chunkDataOffset + 14),
+      };
+    } else if (chunkId === "data") {
+      dataOffset = chunkDataOffset;
+      dataSize = Math.min(chunkSize, buffer.length - chunkDataOffset);
+      break;
+    }
+
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+
+  if (!format || dataOffset < 0 || dataSize <= 0 || format.byteRate <= 0) return null;
+
+  return {
+    ...format,
+    dataOffset,
+    dataSize,
+    durationSeconds: dataSize / format.byteRate,
+  };
+}
+
+function createPcm16WavBuffer(pcmData, sampleRate = 16000, channels = 1, bitsPerSample = 16) {
+  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
+  const blockAlign = (channels * bitsPerSample) / 8;
+  const header = Buffer.alloc(WAV_HEADER_BYTES);
+
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcmData.length, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcmData.length, 40);
+
+  return Buffer.concat([header, pcmData]);
+}
+
+function getWhisperRequestTimeoutMs(durationSeconds) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return WHISPER_REQUEST_MIN_TIMEOUT_MS;
+  }
+
+  return clamp(
+    Math.ceil(durationSeconds * WHISPER_REQUEST_MS_PER_AUDIO_SECOND),
+    WHISPER_REQUEST_MIN_TIMEOUT_MS,
+    WHISPER_REQUEST_MAX_TIMEOUT_MS
+  );
 }
 
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
@@ -770,23 +858,71 @@ class WhisperServerManager {
           : "too short",
     });
 
-    const { language, translate, initialPrompt, inputFileName } = options;
-
-    // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
-    let finalBuffer = audioBuffer;
     try {
+      const { language, translate, initialPrompt, inputFileName } = options;
+
+      // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
+      let finalBuffer = audioBuffer;
       if (!this.canConvert) {
         throw new Error("FFmpeg not found - required for audio conversion");
       }
       finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
-    } catch (error) {
-      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
-      throw error;
-    }
 
-    const boundary = `----WhisperBoundary${Date.now()}`;
+      const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer);
+      if (chunks.length > 1) {
+        debugLogger.info("Long audio detected; transcribing in chunks", {
+          chunks: chunks.length,
+          totalDurationSeconds: chunks.reduce((sum, chunk) => sum + chunk.durationSeconds, 0),
+          chunkSeconds: WHISPER_CHUNK_SECONDS,
+        });
+      }
+
+      const results = [];
+      for (let index = 0; index < chunks.length; index += 1) {
+        const chunk = chunks[index];
+        debugLogger.debug("Submitting whisper-server chunk", {
+          chunk: index + 1,
+          chunks: chunks.length,
+          durationSeconds: Math.round(chunk.durationSeconds),
+          sizeBytes: chunk.buffer.length,
+        });
+        const result = await this._postInference(chunk.buffer, {
+          language,
+          translate,
+          initialPrompt,
+          chunkIndex: index,
+          chunkCount: chunks.length,
+          durationSeconds: chunk.durationSeconds,
+        });
+        results.push(result);
+      }
+
+      if (results.length === 1) return results[0];
+
+      return {
+        text: results
+          .map((result) => (typeof result?.text === "string" ? result.text.trim() : ""))
+          .filter(Boolean)
+          .join(" "),
+        chunks: results.length,
+      };
+    } finally {
+      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
+    }
+  }
+
+  _postInference(wavBuffer, options = {}) {
+    const {
+      language,
+      translate,
+      initialPrompt,
+      chunkIndex = 0,
+      chunkCount = 1,
+      durationSeconds,
+    } = options;
+    const boundary = `----WhisperBoundary${Date.now()}-${chunkIndex}`;
     const parts = [];
-    const fileName = "audio.wav";
+    const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
     const contentType = "audio/wav";
 
     parts.push(
@@ -794,7 +930,7 @@ class WhisperServerManager {
         `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
         `Content-Type: ${contentType}\r\n\r\n`
     );
-    parts.push(finalBuffer);
+    parts.push(wavBuffer);
     parts.push("\r\n");
 
     if (language && language !== "auto") {
@@ -805,7 +941,6 @@ class WhisperServerManager {
       );
     }
 
-    // Translate to English when explicitly enabled by the user
     if (translate) {
       parts.push(
         `--${boundary}\r\n` +
@@ -814,7 +949,6 @@ class WhisperServerManager {
       );
     }
 
-    // Add initial prompt for custom dictionary words
     if (initialPrompt) {
       parts.push(
         `--${boundary}\r\n` +
@@ -833,6 +967,7 @@ class WhisperServerManager {
 
     const bodyParts = parts.map((part) => (typeof part === "string" ? Buffer.from(part) : part));
     const body = Buffer.concat(bodyParts);
+    const timeoutMs = getWhisperRequestTimeoutMs(durationSeconds);
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
@@ -847,7 +982,7 @@ class WhisperServerManager {
             "Content-Type": `multipart/form-data; boundary=${boundary}`,
             "Content-Length": body.length,
           },
-          timeout: 300000,
+          timeout: timeoutMs,
         },
         (res) => {
           let data = "";
@@ -858,6 +993,9 @@ class WhisperServerManager {
             debugLogger.debug("whisper-server transcription completed", {
               statusCode: res.statusCode,
               elapsed: Date.now() - startTime,
+              timeoutMs,
+              chunk: chunkIndex + 1,
+              chunks: chunkCount,
               responseLength: data.length,
               responsePreview: data.slice(0, 500),
             });
@@ -870,7 +1008,6 @@ class WhisperServerManager {
             try {
               const parsed = JSON.parse(data);
 
-              // Mark server as used on successful transcription.
               this.lastUsedTime = Date.now();
               this.stoppedDueToIdle = false;
               this._scheduleIdleCheck();
@@ -888,14 +1025,46 @@ class WhisperServerManager {
       });
       req.on("timeout", () => {
         req.destroy();
-        reject(new Error("whisper-server request timed out"));
+        reject(
+          new Error(
+            `whisper-server request timed out after ${Math.round(timeoutMs / 1000)}s while processing ${Math.round(durationSeconds || 0)}s of audio`
+          )
+        );
       });
 
       req.write(body);
       req.end();
-    }).finally(() => {
-      this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
     });
+  }
+
+  _splitWavIntoTranscriptionChunks(wavBuffer) {
+    const info = parseWavPcmInfo(wavBuffer);
+    if (!info || info.durationSeconds <= WHISPER_LONG_AUDIO_THRESHOLD_SECONDS) {
+      return [{ buffer: wavBuffer, durationSeconds: info?.durationSeconds || 0 }];
+    }
+
+    const bytesPerChunk =
+      Math.floor((info.byteRate * WHISPER_CHUNK_SECONDS) / info.blockAlign) * info.blockAlign;
+    if (bytesPerChunk <= 0 || bytesPerChunk >= info.dataSize) {
+      return [{ buffer: wavBuffer, durationSeconds: info.durationSeconds }];
+    }
+
+    const chunks = [];
+    const dataEnd = info.dataOffset + info.dataSize;
+    for (let start = info.dataOffset; start < dataEnd; start += bytesPerChunk) {
+      const end = Math.min(start + bytesPerChunk, dataEnd);
+      const alignedEnd = end === dataEnd ? end : end - ((end - info.dataOffset) % info.blockAlign);
+      const pcmData = wavBuffer.slice(start, alignedEnd);
+      if (pcmData.length === 0) continue;
+      chunks.push({
+        buffer: createPcm16WavBuffer(pcmData, info.sampleRate, info.channels, info.bitsPerSample),
+        durationSeconds: pcmData.length / info.byteRate,
+      });
+    }
+
+    return chunks.length > 0
+      ? chunks
+      : [{ buffer: wavBuffer, durationSeconds: info.durationSeconds }];
   }
 
   async _convertToWav(audioBuffer, inputFileName = null) {
@@ -988,8 +1157,12 @@ class WhisperServerManager {
   getEngineStatus() {
     const base = this.getStatus();
     const effectiveEngine = this.activeServerBinaryPath
-      ? (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
-      : (this.ready ? "unknown" : "stopped");
+      ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
+        ? "cuda"
+        : "cpu"
+      : this.ready
+        ? "unknown"
+        : "stopped";
     return {
       ...base,
       desiredMode: this.forceCpu ? "cpu" : "gpu",
@@ -1003,9 +1176,11 @@ class WhisperServerManager {
       },
       transition: this.startupPromise
         ? "starting"
-        : (this.activeTranscriptions > 0
+        : this.activeTranscriptions > 0
           ? "transcribing"
-          : (this.ready ? "idle" : "stopped")),
+          : this.ready
+            ? "idle"
+            : "stopped",
       activeTranscriptions: this.activeTranscriptions,
       stoppedDueToIdle: this.stoppedDueToIdle || false,
     };

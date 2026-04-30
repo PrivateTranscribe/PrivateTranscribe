@@ -22,6 +22,59 @@ describe("WhisperServerManager CUDA startup fallback", () => {
     }
   });
 
+  const makeSilentWav = (durationSeconds: number) => {
+    const sampleRate = 16000;
+    const channels = 1;
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const dataSize = durationSeconds * byteRate;
+    const header = Buffer.alloc(44);
+    header.write("RIFF", 0, "ascii");
+    header.writeUInt32LE(36 + dataSize, 4);
+    header.write("WAVE", 8, "ascii");
+    header.write("fmt ", 12, "ascii");
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(channels * (bitsPerSample / 8), 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write("data", 36, "ascii");
+    header.writeUInt32LE(dataSize, 40);
+    return Buffer.concat([header, Buffer.alloc(dataSize)]);
+  };
+
+  it("splits long WAV files into bounded chunks before whisper-server requests", () => {
+    const manager = new WhisperServerManager();
+    const longWav = makeSilentWav(40 * 60);
+
+    const chunks = manager._splitWavIntoTranscriptionChunks(longWav);
+
+    expect(chunks).toHaveLength(4);
+    expect(
+      chunks.every((chunk: { durationSeconds: number }) => chunk.durationSeconds <= 10 * 60)
+    ).toBe(true);
+    expect(
+      Math.round(
+        chunks.reduce(
+          (sum: number, chunk: { durationSeconds: number }) => sum + chunk.durationSeconds,
+          0
+        )
+      )
+    ).toBe(40 * 60);
+  });
+
+  it("does not split normal-length WAV files", () => {
+    const manager = new WhisperServerManager();
+    const shortWav = makeSilentWav(5 * 60);
+
+    const chunks = manager._splitWavIntoTranscriptionChunks(shortWav);
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].buffer).toBe(shortWav);
+  });
+
   it("treats spawn UNKNOWN as a recoverable CUDA startup failure", () => {
     const manager = new WhisperServerManager();
     const error = Object.assign(new Error("spawn UNKNOWN"), {
@@ -69,7 +122,8 @@ describe("WhisperServerManager CUDA startup fallback", () => {
 
     manager.forceCpu = true;
     manager.process = {};
-    manager.activeServerBinaryPath = "C:\\PrivateTranscribe\\bin\\whisper-server-win32-x64-cuda.exe";
+    manager.activeServerBinaryPath =
+      "C:\\PrivateTranscribe\\bin\\whisper-server-win32-x64-cuda.exe";
     manager.cachedServerBinaryPath = manager.activeServerBinaryPath;
 
     await manager.setForceCpu(true);

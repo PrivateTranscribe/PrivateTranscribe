@@ -21,6 +21,36 @@ const PLACEHOLDER_KEYS = {
   groq: "your_groq_api_key_here",
 };
 
+const LONG_LOCAL_WHISPER_HINT =
+  "For long recordings, try Whisper Turbo/Medium or CPU only if Large exhausts GPU memory.";
+
+const formatLocalWhisperFailure = (message) => {
+  const rawMessage = (message || "Unknown error").replace(/^Local Whisper failed:\s*/i, "");
+  const normalized = rawMessage.toLowerCase();
+
+  if (normalized.includes("request timed out") || normalized.includes("timed out")) {
+    return `Local Whisper took too long to finish this file. PrivateTranscribe now processes long files in smaller chunks, but this recording/model combination may still be too slow on this machine. ${LONG_LOCAL_WHISPER_HINT}`;
+  }
+
+  if (
+    normalized.includes("out of memory") ||
+    normalized.includes("bad_alloc") ||
+    normalized.includes("cannot allocate") ||
+    normalized.includes("allocation failed") ||
+    normalized.includes("exit code 137") ||
+    normalized.includes("sigkill") ||
+    normalized.includes("killed")
+  ) {
+    return `Local Whisper ran out of memory while transcribing this file. ${LONG_LOCAL_WHISPER_HINT}`;
+  }
+
+  if (normalized.includes("whisper-server returned status 500")) {
+    return `Local Whisper crashed while processing this file. This is common with very long recordings on Whisper Large when GPU/VRAM is tight. ${LONG_LOCAL_WHISPER_HINT}`;
+  }
+
+  return `Local Whisper failed: ${rawMessage}`;
+};
+
 const isValidApiKey = (key, provider = "openai") => {
   if (!key || key.trim() === "") return false;
   const placeholder = PLACEHOLDER_KEYS[provider] || PLACEHOLDER_KEYS.openai;
@@ -982,11 +1012,11 @@ class AudioManager {
           return { ...fallbackResult, source: "openai-fallback" };
         } catch (fallbackError) {
           throw new Error(
-            `Local Whisper failed: ${error.message}. OpenAI fallback also failed: ${fallbackError.message}`
+            `${formatLocalWhisperFailure(error.message)} OpenAI fallback also failed: ${fallbackError.message}`
           );
         }
       } else {
-        throw new Error(`Local Whisper failed: ${error.message}`);
+        throw new Error(formatLocalWhisperFailure(error.message));
       }
     }
   }
