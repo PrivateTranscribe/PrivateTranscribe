@@ -57,7 +57,7 @@ Restart PrivateTranscribe after changing `.env`.
 1. whisper.cpp is bundled with the app - try reinstalling
 2. If running from source, run `npm run download:whisper-cpp` and confirm `resources\\bin\\whisper-cpp-win32-x64.exe` exists
 3. Check antivirus isn't blocking the whisper-cpp executable
-4. Clear model cache: delete `%USERPROFILE%\.cache\Privoca\whisper-models`
+4. Clear model cache: delete `%USERPROFILE%\.cache\PrivateTranscribe\whisper-models`
 5. Try cloud mode as fallback
 
 ### FFmpeg Issues
@@ -76,7 +76,7 @@ Restart PrivateTranscribe after changing `.env`.
 PrivateTranscribe.exe --log-level=debug
 
 # Or set in .env file at %APPDATA%\PrivateTranscribe\.env
-Privoca_LOG_LEVEL=debug
+PRIVATETRANSCRIBE_LOG_LEVEL=debug
 ```
 
 Logs saved to: `%APPDATA%\PrivateTranscribe\logs\`
@@ -119,7 +119,7 @@ That removes PrivateTranscribe data, caches, logs, and legacy DictateVoice lefto
 ```batch
 rd /s /q "%APPDATA%\PrivateTranscribe"
 rd /s /q "%LOCALAPPDATA%\PrivateTranscribe"
-rd /s /q "%USERPROFILE%\.cache\Privoca"
+rd /s /q "%USERPROFILE%\.cache\PrivateTranscribe"
 ```
 
 Then reinstall.
