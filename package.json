@@ -1,6 +1,6 @@
 {
   "name": "privatetranscribe",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "PrivateTranscribe",
   "main": "main.js",
   "private": true,

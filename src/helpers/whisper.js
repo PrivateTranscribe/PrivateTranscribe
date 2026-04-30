@@ -297,6 +297,7 @@ class WhisperManager {
       upToDate,
       expectedVersion,
       forceCpu: this.serverManager.forceCpu,
+      engineStatus: this.serverManager.getEngineStatus?.() || null,
     };
   }
 
