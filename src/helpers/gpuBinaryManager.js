@@ -13,6 +13,8 @@ const R2_BASE_URL = "https://updates.privatetranscribe.com";
 const BINARY_VERSION = "v0.0.8";
 const USER_AGENT = "PrivateTranscribe/1.0";
 const CUDA_VERSION_FILE = "whisper-server-cuda-version.txt";
+const MIN_CUDA_LAUNCHER_BYTES = 100_000;
+const MIN_CUDA_PACKAGE_BYTES = 10_000_000;
 
 const CUDA_BINARIES = {
   "linux-x64": {
@@ -251,12 +253,28 @@ class GpuBinaryManager {
       const companionFiles = this.findFilesRecursive(extractDir, (name) =>
         spec.companionPattern?.test(name)
       );
+      const companionPaths = [];
+      let companionBytes = 0;
       for (const companion of companionFiles) {
         const dest = path.join(binDir, path.basename(companion));
         this.copyFileAtomic(companion, dest, { executable: process.platform !== "win32" });
+        companionPaths.push(dest);
+        try {
+          companionBytes += fs.statSync(dest).size;
+        } catch {
+          /* ignore */
+        }
       }
 
-      return { binaryPath, companionCount: companionFiles.length };
+      const binaryBytes = fs.statSync(binaryPath).size;
+      return {
+        binaryPath,
+        binaryBytes,
+        companionCount: companionFiles.length,
+        companionBytes,
+        companionPaths,
+        totalBytes: binaryBytes + companionBytes,
+      };
     } finally {
       await fs.promises.rm(extractDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -329,18 +347,23 @@ class GpuBinaryManager {
       const installed = await this.installCudaPackage(archivePath, spec, binDir);
       binaryPath = installed.binaryPath;
 
-      const binarySize = fs.statSync(binaryPath).size;
-      if (binarySize < 1_000_000) {
-        try {
-          fs.unlinkSync(binaryPath);
-        } catch {
-          /* ignore */
+      const binarySize = installed.binaryBytes ?? fs.statSync(binaryPath).size;
+      const totalInstalledBytes = installed.totalBytes ?? binarySize;
+      if (binarySize < MIN_CUDA_LAUNCHER_BYTES || totalInstalledBytes < MIN_CUDA_PACKAGE_BYTES) {
+        for (const installedPath of [binaryPath, ...(installed.companionPaths || [])]) {
+          try {
+            if (installedPath && fs.existsSync(installedPath)) fs.unlinkSync(installedPath);
+          } catch {
+            /* ignore */
+          }
         }
-        debugLogger.error("GpuBinaryManager: extracted CUDA binary is too small", {
+        debugLogger.error("GpuBinaryManager: extracted CUDA package is too small", {
           binaryPath,
-          size: binarySize,
+          binarySize,
+          companionCount: installed.companionCount,
+          totalInstalledBytes,
         });
-        return { success: false, error: "Extracted binary is too small, likely corrupted" };
+        return { success: false, error: "Extracted CUDA package is too small, likely corrupted" };
       }
 
       try {

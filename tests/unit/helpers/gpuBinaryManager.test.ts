@@ -1,5 +1,5 @@
 import { execFileSync } from "child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -50,6 +50,11 @@ describe("GpuBinaryManager CUDA package install", () => {
 
     expect(result.binaryPath).toBe(path.join(binDir, "whisper-server-win32-x64-cuda.exe"));
     expect(result.companionCount).toBe(3);
+    expect(result.binaryBytes).toBe(
+      statSync(path.join(binDir, "whisper-server-win32-x64-cuda.exe")).size
+    );
+    expect(result.companionBytes).toBeGreaterThan(0);
+    expect(result.totalBytes).toBe(result.binaryBytes + result.companionBytes);
     expect(existsSync(path.join(binDir, "whisper-server-win32-x64-cuda.exe"))).toBe(true);
     expect(existsSync(path.join(binDir, "cudart64_12.dll"))).toBe(true);
     expect(existsSync(path.join(binDir, "cublas64_12.dll"))).toBe(true);

@@ -249,7 +249,7 @@ function convertToWav(inputPath) {
   });
 }
 
-async function transcribe(audioBuffer, port, inputFileName = "audio.wav") {
+async function transcribe(audioBuffer, port, _inputFileName = "audio.wav") {
   const boundary = `----WB${Date.now()}`;
   const parts = [
     Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\nContent-Type: audio/wav\r\n\r\n`),
