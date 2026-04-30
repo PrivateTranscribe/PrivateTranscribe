@@ -309,13 +309,19 @@ export default function TranscriptionModelPicker({
     if (typeof window === "undefined" || !window.electronAPI?.whisperServerStatus) return;
     let active = true;
     const fetchStatus = () => {
-      window.electronAPI?.whisperServerStatus?.()?.then((status: any) => {
-        if (active) setEngineStatus(status);
-      }).catch(() => {});
+      window.electronAPI
+        ?.whisperServerStatus?.()
+        ?.then((status: any) => {
+          if (active) setEngineStatus(status);
+        })
+        .catch(() => {});
     };
     fetchStatus();
     const interval = setInterval(fetchStatus, 5000);
-    return () => { active = false; clearInterval(interval); };
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [whisperForceCpu]);
 
   const isLoadingRef = useRef(false);
