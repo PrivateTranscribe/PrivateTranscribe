@@ -143,7 +143,7 @@ function SectionHeader({ title, description }: { title: string; description?: st
 type GpuDetectState = "idle" | "detecting" | "done" | "error";
 
 const GPU_CATEGORY_LABELS: Record<HardwareGpuCategory, string> = {
-  nvidia_cuda: "NVIDIA + CUDA ready",
+  nvidia_cuda: "NVIDIA GPU detected",
   nvidia_no_cuda: "NVIDIA GPU - CUDA not ready",
   non_nvidia_gpu: "Non-NVIDIA GPU",
   metal: "Apple Metal ready",
@@ -217,6 +217,11 @@ function GpuStatusCard({
     version?: string | null;
     upToDate?: boolean;
     expectedVersion?: string;
+    engineStatus?: {
+      effectiveEngine?: "cuda" | "cpu" | "stopped" | "unknown";
+      transition?: string;
+      fallback?: { active?: boolean; reason?: string | null };
+    } | null;
   } | null>(null);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
     "idle"
@@ -338,6 +343,8 @@ function GpuStatusCard({
         provider === "nvidia" ? "parakeet-tdt-0.6b-v3" : settings.whisperModel || "turbo";
 
       const res = await window.electronAPI?.benchmarkRun?.({ provider, model });
+      const status = await window.electronAPI?.getCudaBinaryStatus?.().catch(() => null);
+      if (status) setCudaStatus(status);
       if (res?.success && res.result) {
         setBenchResult(res.result);
         setBenchState("done");
@@ -394,6 +401,8 @@ function GpuStatusCard({
     usingGpu &&
     gpuSupported &&
     (shouldShowCudaDownloadState || needsInitialCudaInstall || needsCudaUpdate);
+  const cudaEffectiveEngine = cudaStatus?.engineStatus?.effectiveEngine;
+  const cudaFallbackActive = cudaStatus?.engineStatus?.fallback?.active === true;
 
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
@@ -445,9 +454,21 @@ function GpuStatusCard({
                     </div>
                   </div>
                 ) : downloadState === "done" ? (
-                  <div className="flex items-center gap-1.5 text-xs text-success">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>CUDA engine installed — GPU acceleration active.</span>
+                  <div
+                    className={`flex items-center gap-1.5 text-xs ${cudaEffectiveEngine === "cuda" ? "text-success" : "text-amber-500"}`}
+                  >
+                    {cudaEffectiveEngine === "cuda" ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {cudaEffectiveEngine === "cuda"
+                        ? "CUDA engine active — Whisper is using GPU acceleration."
+                        : cudaFallbackActive
+                          ? "CUDA engine installed, but Whisper fell back to CPU."
+                          : "CUDA engine installed — run a transcription or speed test to verify GPU use."}
+                    </span>
                   </div>
                 ) : downloadState === "error" ? (
                   <div className="space-y-2">
