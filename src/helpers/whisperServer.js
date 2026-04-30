@@ -578,9 +578,12 @@ class WhisperServerManager {
     args.push("--suppress-nst");
 
     if (options.threads) args.push("--threads", String(options.threads));
-    if (options.language && options.language !== "auto") {
-      args.push("--language", options.language);
-    }
+    // whisper.cpp defaults to English in some server builds when language is omitted.
+    // Pass auto explicitly so multilingual/local-file transcription really auto-detects.
+    args.push(
+      "--language",
+      options.language && options.language !== "auto" ? options.language : "auto"
+    );
 
     debugLogger.debug("Starting whisper-server", {
       port: this.port,
