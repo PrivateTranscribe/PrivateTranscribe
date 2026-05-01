@@ -65,4 +65,26 @@ describe("WhisperManager engine mode", () => {
     expect(manager.serverManager.getEngineStatus).toHaveBeenCalled();
     expect(result).toEqual(mockStatus);
   });
+
+  it("reports outdated CUDA engines as installed but not up to date", () => {
+    const manager = new WhisperManager();
+    manager.gpuBinaryManager = {
+      getPlatformKey: vi.fn(() => "win32-x64"),
+      getCudaBinaryFilePath: vi.fn(() => "C:\\PrivateTranscribe\\whisper-server-win32-x64-cuda.exe"),
+      getCudaBinaryVersion: vi.fn(() => "v0.0.7"),
+      isCudaBinaryUpToDate: vi.fn(() => false),
+      getExpectedCudaBinaryVersion: vi.fn(() => "v0.0.8"),
+    };
+    manager.serverManager = {
+      forceCpu: false,
+      getEngineStatus: vi.fn(() => ({ effectiveEngine: "stopped" })),
+    };
+
+    const status = manager.getCudaBinaryStatus();
+
+    expect(status.installed).toBe(true);
+    expect(status.upToDate).toBe(false);
+    expect(status.version).toBe("v0.0.7");
+    expect(status.expectedVersion).toBe("v0.0.8");
+  });
 });
