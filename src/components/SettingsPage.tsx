@@ -184,6 +184,244 @@ function formatBenchmarkDate(iso: string): string {
 
 type BenchmarkState = "idle" | "running" | "done" | "error";
 
+type CudaBinaryStatus = {
+  installed: boolean;
+  path: string | null;
+  platform: string;
+  supported: boolean;
+  forceCpu: boolean;
+  cudaAutoUpdateFailed?: boolean;
+  version?: string | null;
+  upToDate?: boolean;
+  expectedVersion?: string;
+  engineStatus?: {
+    effectiveEngine?: "cuda" | "cpu" | "stopped" | "unknown";
+    transition?: string;
+    fallback?: { active?: boolean; reason?: string | null };
+  } | null;
+};
+
+type CudaDownloadState = "idle" | "downloading" | "done" | "error";
+
+function formatBytes(bytes?: number) {
+  if (!bytes || !Number.isFinite(bytes)) return "";
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  if (bytes >= 1_000_000) return `${Math.round(bytes / 1_000_000)} MB`;
+  return `${Math.round(bytes / 1000)} KB`;
+}
+
+function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
+  const [cudaStatus, setCudaStatus] = useState<CudaBinaryStatus | null>(null);
+  const [downloadState, setDownloadState] = useState<CudaDownloadState>("idle");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadBytes, setDownloadBytes] = useState<{ downloaded?: number; total?: number }>({});
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      if (status) setCudaStatus(status as CudaBinaryStatus);
+    } catch {
+      /* keep current status */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    const interval = setInterval(refreshStatus, 30000);
+    return () => clearInterval(interval);
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
+      setDownloadProgress(Math.round(data?.percent ?? data?.progress ?? 0));
+      setDownloadBytes({
+        downloaded: data?.bytesDownloaded ?? data?.downloadedBytes,
+        total: data?.totalBytes,
+      });
+    });
+    return () => cleanup?.();
+  }, []);
+
+  const handleDownloadCuda = useCallback(async () => {
+    setDownloadState("downloading");
+    setDownloadProgress(0);
+    setDownloadBytes({});
+    setDownloadError(null);
+    try {
+      const result = await window.electronAPI?.downloadCudaBinary?.();
+      if (!result?.success) {
+        setDownloadState("error");
+        setDownloadError(result?.error || "CUDA engine download failed");
+        await refreshStatus();
+        return;
+      }
+      setDownloadState("done");
+      await refreshStatus();
+    } catch (error: unknown) {
+      setDownloadState("error");
+      setDownloadError(error instanceof Error ? error.message : "CUDA engine download failed");
+      await refreshStatus();
+    }
+  }, [refreshStatus]);
+
+  const handleCancelDownload = useCallback(async () => {
+    await window.electronAPI?.cancelCudaBinaryDownload?.().catch(() => {});
+    setDownloadState("idle");
+    setDownloadProgress(0);
+    setDownloadBytes({});
+    await refreshStatus();
+  }, [refreshStatus]);
+
+  const isSupported = cudaStatus?.supported ?? false;
+  const isInstalled = cudaStatus?.installed ?? false;
+  const isUpToDate = cudaStatus?.upToDate ?? false;
+  const needsUpdate = isInstalled && !isUpToDate;
+  const needsInstall = isSupported && !isInstalled;
+  const autoUpdateFailed = !!cudaStatus?.cudaAutoUpdateFailed && !isUpToDate;
+  const currentVersion = cudaStatus?.version || (isInstalled ? "legacy/unknown" : "not installed");
+  const expectedVersion = cudaStatus?.expectedVersion || "latest";
+  const engine = cudaStatus?.engineStatus?.effectiveEngine;
+  const fallbackActive = cudaStatus?.engineStatus?.fallback?.active === true;
+  const byteLabel = downloadBytes.total
+    ? `${formatBytes(downloadBytes.downloaded)} / ${formatBytes(downloadBytes.total)}`
+    : "";
+
+  const badge = !isSupported ? (
+    <Badge variant="secondary">Unsupported</Badge>
+  ) : downloadState === "downloading" ? (
+    <Badge variant="outline">Downloading</Badge>
+  ) : needsUpdate ? (
+    <Badge variant="warning">Update available</Badge>
+  ) : isUpToDate ? (
+    <Badge variant="success">Current</Badge>
+  ) : (
+    <Badge variant="outline">Not installed</Badge>
+  );
+
+  const description = !isSupported
+    ? "CUDA engine downloads are available on Windows/Linux x64 with NVIDIA GPUs."
+    : downloadState === "downloading"
+      ? `Downloading CUDA engine… ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}`
+      : autoUpdateFailed
+        ? "Automatic CUDA engine update failed. Retry manually here."
+        : needsUpdate
+          ? "A newer CUDA engine is available. Update before testing GPU transcription."
+          : isUpToDate
+            ? fallbackActive
+              ? "CUDA engine is current, but Whisper recently fell back to CPU. Run a benchmark and check diagnostics if it stays slow."
+              : engine === "cuda"
+                ? "CUDA engine is current and currently active."
+                : "CUDA engine is current. Run a transcription or benchmark to verify active GPU use."
+            : "CUDA engine is not installed. Download it to enable GPU Whisper acceleration.";
+
+  return (
+    <SettingsPanel>
+      <SettingsPanelRow>
+        <SettingsRow label="CUDA engine" description={description}>
+          <div className="flex items-center gap-2.5 flex-wrap justify-end">{badge}</div>
+        </SettingsRow>
+      </SettingsPanelRow>
+
+      <SettingsPanelRow>
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-muted-foreground">
+            <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
+              <p className="uppercase tracking-wider text-muted-foreground/50 mb-1">Installed</p>
+              <p className="text-foreground font-mono">{currentVersion}</p>
+            </div>
+            <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
+              <p className="uppercase tracking-wider text-muted-foreground/50 mb-1">Required</p>
+              <p className="text-foreground font-mono">{expectedVersion}</p>
+            </div>
+            <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
+              <p className="uppercase tracking-wider text-muted-foreground/50 mb-1">Backend</p>
+              <p className="text-foreground font-mono">
+                {engine === "cuda"
+                  ? "cuda active"
+                  : fallbackActive
+                    ? "cpu fallback"
+                    : engine || "idle"}
+              </p>
+            </div>
+          </div>
+
+          {downloadState === "downloading" && (
+            <div className="space-y-1.5">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-200"
+                  style={{ width: `${Math.min(100, Math.max(0, downloadProgress))}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {downloadState === "error" && downloadError && (
+            <div className="flex items-center gap-1.5 text-xs text-destructive">
+              <XCircle className="w-3.5 h-3.5" />
+              <span>{downloadError}</span>
+            </div>
+          )}
+
+          {downloadState === "done" && (
+            <div className="flex items-center gap-1.5 text-xs text-success">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>
+                CUDA engine installed. Restarting Whisper on next transcription if needed.
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {downloadState === "downloading" ? (
+              <Button
+                onClick={handleCancelDownload}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+              >
+                Cancel download
+              </Button>
+            ) : (
+              <Button
+                onClick={handleDownloadCuda}
+                variant={needsInstall || needsUpdate || autoUpdateFailed ? "default" : "outline"}
+                size="sm"
+                className="gap-1.5"
+                disabled={!isSupported}
+              >
+                <Download className="w-3.5 h-3.5" />
+                {autoUpdateFailed
+                  ? "Retry CUDA Update"
+                  : needsUpdate
+                    ? "Update CUDA Engine"
+                    : needsInstall
+                      ? "Download CUDA Engine"
+                      : "Reinstall CUDA Engine"}
+              </Button>
+            )}
+            <Button onClick={refreshStatus} variant="ghost" size="sm" className="gap-1.5">
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh status
+            </Button>
+          </div>
+
+          {!compact && (
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+              This updates the separate Whisper CUDA runtime, not the main app. Use this before GPU
+              benchmark tests after installing a new PrivateTranscribe version.
+            </p>
+          )}
+        </div>
+      </SettingsPanelRow>
+    </SettingsPanel>
+  );
+}
+
 function GpuStatusCard({
   activeProvider,
   activeWhisperForceCpu,
@@ -207,25 +445,8 @@ function GpuStatusCard({
   const [compError, setCompError] = useState<string | null>(null);
 
   // CUDA binary download state
-  const [cudaStatus, setCudaStatus] = useState<{
-    installed: boolean;
-    path: string | null;
-    platform: string;
-    supported: boolean;
-    forceCpu: boolean;
-    cudaAutoUpdateFailed?: boolean;
-    version?: string | null;
-    upToDate?: boolean;
-    expectedVersion?: string;
-    engineStatus?: {
-      effectiveEngine?: "cuda" | "cpu" | "stopped" | "unknown";
-      transition?: string;
-      fallback?: { active?: boolean; reason?: string | null };
-    } | null;
-  } | null>(null);
-  const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "done" | "error">(
-    "idle"
-  );
+  const [cudaStatus, setCudaStatus] = useState<CudaBinaryStatus | null>(null);
+  const [downloadState, setDownloadState] = useState<CudaDownloadState>("idle");
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -1710,6 +1931,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   )}
                 </SettingsPanelRow>
               </SettingsPanel>
+            </div>
+
+            {/* CUDA Engine Updates */}
+            <div>
+              <SectionHeader
+                title="CUDA Engine"
+                description="Manage the separate GPU runtime used by local Whisper transcription"
+              />
+              <CudaEngineUpdateCard />
             </div>
 
             {/* Dictation Hotkey */}

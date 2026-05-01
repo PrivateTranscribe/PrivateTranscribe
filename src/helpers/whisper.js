@@ -286,7 +286,10 @@ class WhisperManager {
     const installedPath = this.gpuBinaryManager.getCudaBinaryFilePath();
     const version = this.gpuBinaryManager.getCudaBinaryVersion();
     const upToDate = this.gpuBinaryManager.isCudaBinaryUpToDate();
-    const installed = !!installedPath && upToDate;
+    // "installed" should mean a CUDA engine exists, even if it is outdated.
+    // Readiness is represented by installed && upToDate. The UI needs this
+    // distinction to show "Update CUDA Engine" instead of hiding update state.
+    const installed = !!installedPath;
     const expectedVersion = this.gpuBinaryManager.getExpectedCudaBinaryVersion();
     return {
       installed,
