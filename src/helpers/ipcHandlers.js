@@ -806,7 +806,7 @@ class IPCHandlers {
         if (
           currentHotkey &&
           currentHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(currentHotkey)
+          hotkeyManager.isGlobalShortcutCompatible(currentHotkey)
         ) {
           debugLogger.log(
             `[IPC] Unregistering globalShortcut "${currentHotkey}" for hotkey capture mode`
@@ -834,7 +834,7 @@ class IPCHandlers {
         if (
           effectiveHotkey &&
           effectiveHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(effectiveHotkey)
+          hotkeyManager.isGlobalShortcutCompatible(effectiveHotkey)
         ) {
           const { globalShortcut } = require("electron");
           if (!globalShortcut.isRegistered(effectiveHotkey)) {
@@ -852,9 +852,16 @@ class IPCHandlers {
           debugLogger.log(
             `[IPC] Exiting hotkey capture mode, activationMode="${activationMode}", hotkey="${effectiveHotkey}"`
           );
-          if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
-            debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
-            this.windowsKeyManager.start(effectiveHotkey);
+          if (effectiveHotkey && effectiveHotkey !== "GLOBE") {
+            const shouldUseNativeListener = hotkeyManager.shouldUseWindowsNativeListener(
+              effectiveHotkey,
+              activationMode
+            );
+            if (shouldUseNativeListener) {
+              const nativeHotkey = hotkeyManager.normalizeForWindowsListener(effectiveHotkey);
+              debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${nativeHotkey}`);
+              this.windowsKeyManager.start(nativeHotkey);
+            }
           }
         }
 

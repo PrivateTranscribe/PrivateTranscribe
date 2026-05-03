@@ -47,6 +47,39 @@ class HotkeyManager {
     return base === "Mouse4" || base === "Mouse5" || base === "XButton1" || base === "XButton2";
   }
 
+  getHotkeyBase(hotkey) {
+    if (!hotkey || typeof hotkey !== "string") return "";
+    return hotkey.includes("+") ? hotkey.split("+").pop() : hotkey;
+  }
+
+  normalizeForWindowsListener(hotkey) {
+    if (!hotkey || typeof hotkey !== "string") return hotkey;
+    const baseKey = this.getHotkeyBase(hotkey);
+    const modifiers = hotkey.includes("+") ? hotkey.split("+").slice(0, -1) : [];
+
+    // Nordic "½" key is the physical Backquote key on many layouts.
+    const normalizedBase = baseKey === "½" ? "Backquote" : baseKey;
+    return modifiers.length > 0 ? [...modifiers, normalizedBase].join("+") : normalizedBase;
+  }
+
+  isGlobalShortcutCompatible(hotkey) {
+    if (!hotkey || typeof hotkey !== "string") return false;
+    if (hotkey === "GLOBE") return false;
+    if (this.isMouseHotkey(hotkey)) return false;
+    const baseKey = this.getHotkeyBase(hotkey);
+    if (!baseKey) return false;
+    // Electron accelerators are ASCII/token based; locale glyph keys (e.g. "½")
+    // are handled through the native Windows listener fallback.
+    if (/[^\x20-\x7E]/.test(baseKey)) return false;
+    return true;
+  }
+
+  shouldUseWindowsNativeListener(hotkey, activationMode = this.activationMode) {
+    if (!hotkey || hotkey === "GLOBE") return false;
+    if (activationMode === "push") return true;
+    return !this.isGlobalShortcutCompatible(hotkey);
+  }
+
   getFailureReason(hotkey) {
     if (globalShortcut.isRegistered(hotkey)) {
       return {
@@ -143,18 +176,19 @@ class HotkeyManager {
         return { success: true, hotkey };
       }
 
-      // Mouse side buttons are not supported by Electron globalShortcut.
-      // On Windows, these are handled by the native WindowsKeyManager listener (push-to-talk).
-      if (process.platform === "win32" && this.isMouseHotkey(hotkey)) {
+      // Windows-only native fallback for keys unsupported by Electron globalShortcut
+      // (mouse side buttons, locale-specific glyph keys, etc.).
+      if (process.platform === "win32" && !this.isGlobalShortcutCompatible(hotkey)) {
         this.currentHotkey = hotkey;
         debugLogger.log(
-          `[HotkeyManager] Mouse hotkey "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
+          `[HotkeyManager] Native-only hotkey "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
         );
+        const normalized = this.normalizeForWindowsListener(hotkey);
         return {
           success: true,
           hotkey,
-          message:
-            "Mouse hotkeys require Windows Push-to-Talk mode (hold-to-talk). Tap-to-talk via globalShortcut is not available for mouse buttons.",
+          nativeHotkey: normalized,
+          message: `Hotkey updated to: ${hotkey} (Windows native listener)`,
         };
       }
 

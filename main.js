@@ -175,7 +175,9 @@ function initializeManagers() {
           "Run `npm run compile:globe` and rebuild the app to regenerate the listener binary."
         );
       } else {
-        detailLines.push("Try reinstalling PrivateTranscribe or contact support if the issue persists.");
+        detailLines.push(
+          "Try reinstalling PrivateTranscribe or contact support if the issue persists."
+        );
       }
 
       dialog.showMessageBox({
@@ -442,18 +444,37 @@ async function startApp() {
     };
 
     // Helper to check if hotkey is valid for Windows key listener
-    // Supports compound hotkeys like "CommandOrControl+F11"
     const isValidHotkey = (hotkey) => {
       if (!hotkey) return false;
       if (hotkey === "GLOBE") return false; // GLOBE is macOS only
       return true;
     };
 
+    const shouldUseNativeListener = (hotkey, mode) =>
+      hotkeyManager.shouldUseWindowsNativeListener(hotkey, mode);
+
+    const toNativeListenerHotkey = (hotkey) => hotkeyManager.normalizeForWindowsListener(hotkey);
+
     windowsKeyManager.on("key-down", (key) => {
       debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
 
-      // Handle dictation only in push-to-talk mode.
-      if (!isLiveWindow(windowManager.mainWindow) || currentActivationMode !== "push") {
+      if (!isLiveWindow(windowManager.mainWindow)) {
+        return;
+      }
+
+      const currentHotkey = hotkeyManager.getCurrentHotkey();
+      if (currentActivationMode === "tap") {
+        if (!shouldUseNativeListener(currentHotkey, "tap")) {
+          return;
+        }
+        if (typeof hotkeyManager.hotkeyCallback === "function") {
+          hotkeyManager.hotkeyCallback();
+        }
+        return;
+      }
+
+      // Handle dictation only in push-to-talk mode beyond this point.
+      if (currentActivationMode !== "push") {
         return;
       }
 
@@ -537,17 +558,19 @@ async function startApp() {
         currentHotkey,
       });
 
-      if (currentActivationMode === "push") {
+      if (shouldUseNativeListener(currentHotkey, currentActivationMode)) {
         if (isValidHotkey(currentHotkey)) {
+          const nativeHotkey = toNativeListenerHotkey(currentHotkey);
           debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
-            hotkey: currentHotkey,
+            hotkey: nativeHotkey,
           });
-          windowsKeyManager.start(currentHotkey);
+          windowsKeyManager.start(nativeHotkey);
         } else {
           debugLogger.debug("[Push-to-Talk] No valid hotkey to start listener");
         }
       } else {
-        debugLogger.debug("[Push-to-Talk] Not in push mode, skipping listener start");
+        debugLogger.debug("[Push-to-Talk] Native listener not required for current mode/hotkey");
+        windowsKeyManager.stop();
       }
     };
 
@@ -571,15 +594,13 @@ async function startApp() {
         stopPushToTalkRecording("activation-mode-changed");
       }
 
-      if (mode === "push") {
-        const currentHotkey = hotkeyManager.getCurrentHotkey();
-        debugLogger.debug("[Push-to-Talk] Current hotkey", { hotkey: currentHotkey });
-        if (isValidHotkey(currentHotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
-          windowsKeyManager.start(currentHotkey);
-        }
+      const currentHotkey = hotkeyManager.getCurrentHotkey();
+      if (shouldUseNativeListener(currentHotkey, currentActivationMode)) {
+        const nativeHotkey = toNativeListenerHotkey(currentHotkey);
+        debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: nativeHotkey });
+        windowsKeyManager.start(nativeHotkey);
       } else {
-        debugLogger.debug("[Push-to-Talk] Stopping listener (mode is tap)");
+        debugLogger.debug("[Push-to-Talk] Stopping listener (native listener not needed)");
         windowsKeyManager.stop();
       }
     });
@@ -593,13 +614,18 @@ async function startApp() {
       debugLogger.debug("[Push-to-Talk] Current activation mode", {
         activationMode: currentActivationMode,
       });
-      if (currentActivationMode === "push") {
+      if (shouldUseNativeListener(hotkey, currentActivationMode)) {
         stopPushToTalkRecording("hotkey-changed");
         windowsKeyManager.stop();
         if (isValidHotkey(hotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
-          windowsKeyManager.start(hotkey);
+          const nativeHotkey = toNativeListenerHotkey(hotkey);
+          debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", {
+            hotkey: nativeHotkey,
+          });
+          windowsKeyManager.start(nativeHotkey);
         }
+      } else {
+        windowsKeyManager.stop();
       }
     });
   }
