@@ -834,7 +834,8 @@ class IPCHandlers {
         if (
           effectiveHotkey &&
           effectiveHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(effectiveHotkey)
+          !hotkeyManager.isMouseHotkey(effectiveHotkey) &&
+          process.platform !== "win32"
         ) {
           const { globalShortcut } = require("electron");
           if (!globalShortcut.isRegistered(effectiveHotkey)) {

@@ -28,6 +28,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+static DWORD ParseLocaleCharacterKey(const char* keyName) {
+    if (!keyName || keyName[0] == '\0') return 0;
+
+    wchar_t wideKey[8];
+    int chars = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, keyName, -1, wideKey, 8);
+    if (chars <= 1 || chars > 2) return 0;
+
+    SHORT vkAndShift = VkKeyScanExW(wideKey[0], GetKeyboardLayout(0));
+    if (vkAndShift == -1) return 0;
+
+    return (DWORD)(vkAndShift & 0xFF);
+}
+
 static HHOOK g_keyboardHook = NULL;
 static HHOOK g_mouseHook = NULL;
 
@@ -119,8 +132,15 @@ static DWORD ParseKeyCode(const char* keyName) {
     if (_stricmp(keyName, "Space") == 0) return VK_SPACE;
     if (_stricmp(keyName, "Escape") == 0 || _stricmp(keyName, "Esc") == 0) return VK_ESCAPE;
     if (_stricmp(keyName, "Tab") == 0) return VK_TAB;
+    if (_stricmp(keyName, "Enter") == 0 || _stricmp(keyName, "Return") == 0) return VK_RETURN;
+    if (_stricmp(keyName, "Backspace") == 0) return VK_BACK;
+    if (_stricmp(keyName, "Delete") == 0 || _stricmp(keyName, "Del") == 0) return VK_DELETE;
     if (_stricmp(keyName, "CapsLock") == 0) return VK_CAPITAL;
     if (_stricmp(keyName, "NumLock") == 0) return VK_NUMLOCK;
+    if (_stricmp(keyName, "Up") == 0 || _stricmp(keyName, "ArrowUp") == 0) return VK_UP;
+    if (_stricmp(keyName, "Down") == 0 || _stricmp(keyName, "ArrowDown") == 0) return VK_DOWN;
+    if (_stricmp(keyName, "Left") == 0 || _stricmp(keyName, "ArrowLeft") == 0) return VK_LEFT;
+    if (_stricmp(keyName, "Right") == 0 || _stricmp(keyName, "ArrowRight") == 0) return VK_RIGHT;
 
     // Backtick/tilde - default hotkey
     if (strcmp(keyName, "`") == 0 || _stricmp(keyName, "Backquote") == 0) return VK_OEM_3;
@@ -137,6 +157,23 @@ static DWORD ParseKeyCode(const char* keyName) {
     if (strcmp(keyName, ".") == 0) return VK_OEM_PERIOD;
     if (strcmp(keyName, "/") == 0) return VK_OEM_2;
 
+    // Numpad keys (Electron-style names produced by HotkeyInput)
+    if (_stricmp(keyName, "num0") == 0) return VK_NUMPAD0;
+    if (_stricmp(keyName, "num1") == 0) return VK_NUMPAD1;
+    if (_stricmp(keyName, "num2") == 0) return VK_NUMPAD2;
+    if (_stricmp(keyName, "num3") == 0) return VK_NUMPAD3;
+    if (_stricmp(keyName, "num4") == 0) return VK_NUMPAD4;
+    if (_stricmp(keyName, "num5") == 0) return VK_NUMPAD5;
+    if (_stricmp(keyName, "num6") == 0) return VK_NUMPAD6;
+    if (_stricmp(keyName, "num7") == 0) return VK_NUMPAD7;
+    if (_stricmp(keyName, "num8") == 0) return VK_NUMPAD8;
+    if (_stricmp(keyName, "num9") == 0) return VK_NUMPAD9;
+    if (_stricmp(keyName, "numadd") == 0) return VK_ADD;
+    if (_stricmp(keyName, "numsub") == 0) return VK_SUBTRACT;
+    if (_stricmp(keyName, "nummult") == 0) return VK_MULTIPLY;
+    if (_stricmp(keyName, "numdiv") == 0) return VK_DIVIDE;
+    if (_stricmp(keyName, "numdec") == 0) return VK_DECIMAL;
+
     // Single letter/number
     if (strlen(keyName) == 1) {
         char c = keyName[0];
@@ -144,6 +181,11 @@ static DWORD ParseKeyCode(const char* keyName) {
         if (c >= 'A' && c <= 'Z') return (DWORD)c;
         if (c >= '0' && c <= '9') return (DWORD)c;
     }
+
+    // Locale-specific printable keys, e.g. Danish/Nordic ½. Resolve through the
+    // active Windows keyboard layout instead of assuming a US keyboard VK mapping.
+    DWORD localeVk = ParseLocaleCharacterKey(keyName);
+    if (localeVk != 0) return localeVk;
 
     // Hex or decimal VK code
     if (keyName[0] == '0' && (keyName[1] == 'x' || keyName[1] == 'X')) {

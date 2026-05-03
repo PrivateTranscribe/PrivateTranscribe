@@ -137,6 +137,19 @@ const MODIFIER_CODES = new Set([
   "CapsLock",
 ]);
 
+function isPrintableLocaleKey(key: string | undefined): key is string {
+  if (!key || key.length !== 1 || key === " ") {
+    return false;
+  }
+
+  // Keep the existing physical-key mapping for ASCII letters/digits/punctuation so
+  // Shift+1 stays Shift+1 instead of becoming Shift+!. Locale-specific keys such as
+  // the Danish ½ key do not have stable Electron accelerator names, so preserve the
+  // actual character and let the Windows native listener resolve it through the
+  // active keyboard layout.
+  return !/^[\x20-\x7E]$/.test(key);
+}
+
 export interface HotkeyInputProps {
   value: string;
   onChange: (hotkey: string) => void;
@@ -151,7 +164,7 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
     return null;
   }
 
-  const baseKey = CODE_TO_KEY[e.code];
+  const baseKey = isPrintableLocaleKey(e.key) ? e.key : CODE_TO_KEY[e.code];
   if (!baseKey) {
     return null;
   }
