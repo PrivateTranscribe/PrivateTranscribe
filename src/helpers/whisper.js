@@ -66,9 +66,6 @@ class WhisperManager {
     try {
       this.isInitialized = true;
 
-      // Pre-warm whisper-server if local mode enabled (eliminates 2-5s cold-start delay)
-      const { localTranscriptionProvider, whisperModel } = settings;
-
       if (
         typeof settings.whisperServerIdleTimeoutMinutes === "number" &&
         Number.isFinite(settings.whisperServerIdleTimeoutMinutes)
@@ -80,53 +77,6 @@ class WhisperManager {
 
       if (typeof settings.whisperForceCpu === "boolean") {
         await this.serverManager.setForceCpu(settings.whisperForceCpu);
-      }
-
-      if (
-        localTranscriptionProvider === "whisper" &&
-        whisperModel &&
-        this.serverManager.isAvailable()
-      ) {
-        const modelPath = this.getModelPath(whisperModel);
-
-        if (fs.existsSync(modelPath)) {
-          debugLogger.info("Pre-warming whisper-server", {
-            model: whisperModel,
-            modelPath,
-          });
-
-          try {
-            const serverStartTime = Date.now();
-            await this.serverManager.start(modelPath);
-            this.currentServerModel = whisperModel;
-
-            debugLogger.info("whisper-server pre-warmed successfully", {
-              model: whisperModel,
-              startupTimeMs: Date.now() - serverStartTime,
-              port: this.serverManager.port,
-            });
-          } catch (err) {
-            debugLogger.warn("Server pre-warm failed (will start on first use)", {
-              error: err.message,
-              model: whisperModel,
-            });
-            // Non-fatal: server will start on first transcription
-          }
-        } else {
-          debugLogger.debug("Skipping server pre-warm: model not downloaded", {
-            model: whisperModel,
-            modelPath,
-          });
-        }
-      } else {
-        debugLogger.debug("Skipping server pre-warm", {
-          reason:
-            localTranscriptionProvider !== "whisper"
-              ? "provider not whisper"
-              : !whisperModel
-                ? "no model selected"
-                : "server binary not available",
-        });
       }
     } catch (error) {
       debugLogger.warn("Whisper initialization error", {

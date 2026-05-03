@@ -283,10 +283,9 @@ async function startApp() {
     app.setActivationPolicy("regular");
   }
 
-  // Initialize Whisper manager at startup (don't await to avoid blocking)
-  // Settings can be provided via environment variables for server pre-warming:
-  // - LOCAL_TRANSCRIPTION_PROVIDER=whisper to enable local whisper mode
-  // - LOCAL_WHISPER_MODEL=base (or tiny, small, medium, large, turbo)
+  // Initialize Whisper manager at startup (don't await to avoid blocking).
+  // Startup init only applies config (idle timeout / force CPU) and dependency checks.
+  // whisper-server starts on first transcription or explicit server action.
   const whisperSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     whisperModel: process.env.LOCAL_WHISPER_MODEL,
@@ -303,10 +302,9 @@ async function startApp() {
     debugLogger.debug("Whisper startup init error (non-fatal)", { error: err.message });
   });
 
-  // Initialize Parakeet manager at startup (don't await to avoid blocking)
-  // Settings can be provided via environment variables for server pre-warming:
-  // - LOCAL_TRANSCRIPTION_PROVIDER=nvidia to enable parakeet
-  // - PARAKEET_MODEL=parakeet-tdt-0.6b-v3 (model name)
+  // Initialize Parakeet manager at startup (don't await to avoid blocking).
+  // Startup init only applies config and dependency checks.
+  // Parakeet server starts on first transcription or explicit server action.
   const parakeetSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     parakeetModel: process.env.PARAKEET_MODEL,

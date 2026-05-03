@@ -30,6 +30,7 @@ class WindowManager {
     this.windowsPushToTalkAvailable = false;
     this._windowsKeyManagerRef = null;
     this.activationModeCache = "tap";
+    this.isMainWindowOverlaySuspended = false;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
@@ -313,6 +314,31 @@ class WindowManager {
     this.isMainWindowInteractive = shouldCapture;
   }
 
+  suspendMainWindowOverlay() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    // Windows compositor sensitivity: when the overlay is hidden, fully drop
+    // always-on-top so transparent window layering cannot interfere with
+    // windowed games (e.g. Minecraft/Tekkit camera stutter reports).
+    if (process.platform === "win32") {
+      this.mainWindow.setAlwaysOnTop(false);
+      this.isMainWindowOverlaySuspended = true;
+    }
+  }
+
+  resumeMainWindowOverlay() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    if (process.platform === "win32" && this.isMainWindowOverlaySuspended) {
+      this.isMainWindowOverlaySuspended = false;
+      this.enforceMainWindowOnTop();
+    }
+  }
+
   resizeMainWindow(_sizeKey) {
     // No-op: the overlay uses a fixed CONTAINER_W × CONTAINER_H transparent window.
     // Menu, toast, and recording state expand/collapse inside with CSS — Electron never
@@ -387,6 +413,7 @@ class WindowManager {
       lastToggleTime = now;
 
       if (!this.mainWindow.isVisible()) {
+        this.resumeMainWindowOverlay();
         // Use showInactive to avoid stealing focus from the target app
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
@@ -405,6 +432,7 @@ class WindowManager {
     }
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       if (!this.mainWindow.isVisible()) {
+        this.resumeMainWindowOverlay();
         // Use showInactive to avoid stealing focus from the target app
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
@@ -558,6 +586,7 @@ class WindowManager {
     const { focus = false } = options;
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       if (!this.mainWindow.isVisible()) {
+        this.resumeMainWindowOverlay();
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
         } else {
@@ -585,11 +614,8 @@ class WindowManager {
 
   hideDictationPanel() {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (process.platform === "darwin") {
-        this.mainWindow.hide();
-      } else {
-        this.mainWindow.minimize();
-      }
+      this.suspendMainWindowOverlay();
+      this.mainWindow.hide();
     }
   }
 
@@ -669,6 +695,7 @@ class WindowManager {
 
     this.mainWindow.on("restore", () => {
       debugLogger.debug("[Window] main restore");
+      this.resumeMainWindowOverlay();
       this.enforceMainWindowOnTop();
     });
 
@@ -715,6 +742,9 @@ class WindowManager {
 
   enforceMainWindowOnTop() {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      if (process.platform === "win32" && this.isMainWindowOverlaySuspended) {
+        return;
+      }
       WindowPositionUtil.setupAlwaysOnTop(this.mainWindow);
     }
   }

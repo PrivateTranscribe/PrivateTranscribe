@@ -1104,7 +1104,7 @@ class IPCHandlers {
         typeof prefs.whisperServerIdleTimeoutMinutes === "number" &&
         Number.isFinite(prefs.whisperServerIdleTimeoutMinutes)
       ) {
-        // Persist as env var so it applies at next cold start / pre-warm.
+        // Persist as env var so it applies at next cold start.
         setVars.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES = String(
           Math.max(0, Math.floor(prefs.whisperServerIdleTimeoutMinutes))
         );
@@ -1164,24 +1164,9 @@ class IPCHandlers {
           this.whisperManager.setForceCpu(prefs.whisperForceCpu).catch(() => {});
         }
       }
-
-      if (prefs.useLocalWhisper && prefs.model) {
-        // Local mode with model selected - set provider and model for pre-warming
-        setVars.LOCAL_TRANSCRIPTION_PROVIDER = prefs.localTranscriptionProvider;
-        if (prefs.localTranscriptionProvider === "nvidia") {
-          setVars.PARAKEET_MODEL = prefs.model;
-          clearVars.push("LOCAL_WHISPER_MODEL");
-        } else {
-          setVars.LOCAL_WHISPER_MODEL = prefs.model;
-          clearVars.push("PARAKEET_MODEL");
-        }
-      } else if (prefs.useLocalWhisper) {
-        // Local mode enabled but no model selected - clear pre-warming vars
-        clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
-      } else {
-        // Cloud mode - clear all local transcription vars
-        clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
-      }
+      // Startup no longer pre-warms local transcription servers.
+      // Clear any stale pre-warm vars from prior versions.
+      clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
 
       if (prefs.reasoningProvider === "local" && prefs.reasoningModel) {
         setVars.REASONING_PROVIDER = "local";

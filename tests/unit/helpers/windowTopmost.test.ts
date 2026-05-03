@@ -94,6 +94,12 @@ describe("windowManager.js — blur repair", () => {
     expect(windowManager).toContain("WindowPositionUtil.setupAlwaysOnTop");
   });
 
+  test("windows skips topmost re-apply while overlay is explicitly suspended", () => {
+    expect(windowManager).toContain("isMainWindowOverlaySuspended");
+    expect(windowManager).toContain('platform === "win32" && this.isMainWindowOverlaySuspended');
+    expect(windowManager).toContain("return;");
+  });
+
   test("always-on-top is re-enforced on show, focus, and restore events", () => {
     expect(windowManager).toContain('"show"');
     expect(windowManager).toContain('"focus"');
@@ -101,6 +107,19 @@ describe("windowManager.js — blur repair", () => {
     // Each should call enforceMainWindowOnTop
     const showCount = (windowManager.match(/enforceMainWindowOnTop/g) || []).length;
     expect(showCount).toBeGreaterThanOrEqual(4); // ready-to-show, show, focus, restore, + enforceMainWindowOnTop def
+  });
+});
+
+describe("windowManager.js — hidden overlay suspension on Windows", () => {
+  test("hideDictationPanel hides the window and suspends Windows topmost state", () => {
+    expect(windowManager).toContain("suspendMainWindowOverlay()");
+    expect(windowManager).toContain("this.mainWindow.hide()");
+    expect(windowManager).not.toContain("this.mainWindow.minimize()");
+  });
+
+  test("show paths resume suspended Windows overlay before showing", () => {
+    expect(windowManager).toContain("resumeMainWindowOverlay()");
+    expect(windowManager).toContain("showInactive");
   });
 });
 
