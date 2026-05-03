@@ -1,5 +1,11 @@
 const { screen } = require("electron");
-const { BUTTON_OFFSET_X, BUTTON_OFFSET_Y } = require("./windowConfig");
+const {
+  CONTAINER_W,
+  CONTAINER_H,
+  BUTTON_OFFSET_X,
+  BUTTON_OFFSET_Y,
+  WindowPositionUtil,
+} = require("./windowConfig");
 
 class DragManager {
   constructor() {
@@ -87,33 +93,31 @@ class DragManager {
       const newX = cursorPos.x - this.dragOffset.x;
       const newY = cursorPos.y - this.dragOffset.y;
 
-      // Get screen bounds to keep the button within the work area.
-      const display = screen.getDisplayNearestPoint(cursorPos);
-      const bounds = display.workArea;
-
-      // Constrain so the full 44px button stays visible — clamp against the button *edge*,
-      // not just its center. Using the center caused half the button to hang off screen.
-      const BUTTON_HALF = 22; // half of 44px button
-      const btnX = newX + BUTTON_OFFSET_X;
-      const btnY = newY + BUTTON_OFFSET_Y;
-      const clampedBtnX = Math.max(
-        bounds.x + BUTTON_HALF,
-        Math.min(btnX, bounds.x + bounds.width - BUTTON_HALF)
+      // Clamp against the display nearest to the proposed button position, not
+      // the raw cursor. Touchpads can fling the cursor into the taskbar or across
+      // a monitor edge; the durable thing we care about is the overlay button
+      // staying inside the active display work area.
+      const proposedButtonPoint = {
+        x: newX + BUTTON_OFFSET_X,
+        y: newY + BUTTON_OFFSET_Y,
+      };
+      const display = screen.getDisplayNearestPoint(proposedButtonPoint);
+      const workArea = display.workArea || display.bounds;
+      const constrained = WindowPositionUtil.clampPosition(
+        newX,
+        newY,
+        CONTAINER_W,
+        CONTAINER_H,
+        workArea
       );
-      const clampedBtnY = Math.max(
-        bounds.y + BUTTON_HALF,
-        Math.min(btnY, bounds.y + bounds.height - BUTTON_HALF)
-      );
-      const constrainedX = clampedBtnX - BUTTON_OFFSET_X;
-      const constrainedY = clampedBtnY - BUTTON_OFFSET_Y;
 
-      this.targetWindow.setPosition(constrainedX, constrainedY);
+      this.targetWindow.setPosition(constrained.x, constrained.y);
 
       // Note: BrowserWindow's `moved` event is not guaranteed to fire for programmatic
       // setPosition() on all platforms. Notify our consumer (WindowManager) so it can
       // persist the last known position reliably.
       if (this._positionChangeCallback) {
-        this._positionChangeCallback(constrainedX, constrainedY);
+        this._positionChangeCallback(constrained.x, constrained.y);
       }
     } catch (error) {
       console.error("Error updating window position:", error);

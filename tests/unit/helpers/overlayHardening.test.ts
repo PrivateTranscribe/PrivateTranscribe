@@ -19,7 +19,9 @@ function readSrc(relPath: string): string {
 
 const windowManager = readHelper("windowManager.js");
 const windowConfig = readHelper("windowConfig.js");
+const dragManager = readHelper("dragManager.js");
 const appJsx = readSrc("App.jsx");
+const useWindowDrag = readSrc("hooks/useWindowDrag.js");
 const toastTsx = readSrc("components/ui/Toast.tsx");
 
 // ─── Multi-monitor position clamping ─────────────────────────────────────────
@@ -60,6 +62,27 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(windowManager).toContain("BUTTON_OFFSET_Y");
     expect(windowManager).toContain("winX = btnX - BUTTON_OFFSET_X");
     expect(windowManager).toContain("winY = btnY - BUTTON_OFFSET_Y");
+  });
+});
+
+// ─── Drag handling — touchpad release and work-area bounds ──────────────────
+
+describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => {
+  test("dragging reuses shared WindowPositionUtil.clampPosition", () => {
+    expect(dragManager).toContain("WindowPositionUtil.clampPosition");
+    expect(dragManager).toContain("display.workArea || display.bounds");
+  });
+
+  test("drag clamping uses proposed button position for display selection", () => {
+    expect(dragManager).toContain("proposedButtonPoint");
+    expect(dragManager).toContain("getDisplayNearestPoint(proposedButtonPoint)");
+  });
+
+  test("drag stop listens beyond document mouseup for touchpad/outside-window releases", () => {
+    expect(useWindowDrag).toContain('window.addEventListener("mouseup"');
+    expect(useWindowDrag).toContain('window.addEventListener("pointerup"');
+    expect(useWindowDrag).toContain('window.addEventListener("pointercancel"');
+    expect(useWindowDrag).toContain('window.addEventListener("blur"');
   });
 });
 
