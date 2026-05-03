@@ -56,8 +56,12 @@ const MAIN_WINDOW_CONFIG = {
   resizable: false,
   transparent: true,
   show: false, // Start hidden, show after setup
-  skipTaskbar: false, // Keep visible in Dock/taskbar so app stays discoverable
-  focusable: true,
+  // The dictation overlay is a passive control, not the main application surface.
+  // Keeping it out of Alt-Tab/taskbar and non-focusable on Windows avoids stealing
+  // focus from fullscreen games and reduces DWM/topmost-window churn while gaming.
+  // The control panel remains the discoverable taskbar window.
+  skipTaskbar: process.platform === "win32",
+  focusable: process.platform !== "win32",
   visibleOnAllWorkspaces: process.platform !== "win32",
   fullScreenable: false,
   hasShadow: false, // Remove shadow for cleaner look
@@ -146,7 +150,11 @@ class WindowPositionUtil {
         window.setAlwaysOnTop(true, "floating", 1);
       }
     } else if (process.platform === "win32") {
-      window.setAlwaysOnTop(true, "pop-up-menu");
+      // Avoid the very high pop-up-menu level for the passive overlay. That level
+      // can fight exclusive/borderless fullscreen games and cause compositor churn
+      // (reported with Minecraft/Tekkit). "floating" keeps the overlay above normal
+      // windows without behaving like an active menu layered over the game.
+      window.setAlwaysOnTop(true, "floating");
     } else {
       // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
       // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should

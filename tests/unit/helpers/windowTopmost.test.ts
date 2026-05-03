@@ -27,8 +27,14 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
     expect(windowConfig).toContain("visibleOnFullScreen: true");
   });
 
-  test("Windows uses screen-saver level", () => {
-    expect(windowConfig).toContain('setAlwaysOnTop(true, "screen-saver")');
+  test("Windows uses floating level to avoid fullscreen game compositor churn", () => {
+    expect(windowConfig).toContain('setAlwaysOnTop(true, "floating")');
+    expect(windowConfig).toContain("reported with Minecraft/Tekkit");
+  });
+
+  test("Windows overlay is non-focusable and hidden from taskbar", () => {
+    expect(windowConfig).toContain('skipTaskbar: process.platform === "win32"');
+    expect(windowConfig).toContain('focusable: process.platform !== "win32"');
   });
 
   test("Linux uses screen-saver level (highest X11 hint available)", () => {
