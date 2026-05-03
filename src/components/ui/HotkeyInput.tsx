@@ -151,26 +151,7 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
     return null;
   }
 
-  let baseKey = CODE_TO_KEY[e.code];
-
-  // Layout fallback for printable keys not represented in CODE_TO_KEY.
-  // This captures locale-specific glyph keys (e.g., Nordic "½") so they can
-  // be routed to the Windows native listener when Electron accelerators cannot represent them.
-  if (!baseKey && e.key && e.key.length === 1 && !/\s/.test(e.key)) {
-    baseKey = e.key;
-  }
-
-  // Prefer the actual typed locale glyph over US default mapping for Backquote-like keys.
-  if (
-    baseKey === "`" &&
-    e.key &&
-    e.key.length === 1 &&
-    !/\s/.test(e.key) &&
-    /[^\x20-\x7E]/.test(e.key)
-  ) {
-    baseKey = e.key;
-  }
-
+  const baseKey = CODE_TO_KEY[e.code];
   if (!baseKey) {
     return null;
   }
