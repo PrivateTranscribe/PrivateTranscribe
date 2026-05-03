@@ -430,8 +430,6 @@ async function startApp() {
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
     let winKeyIsRecording = false;
     let currentActivationMode = "tap";
-    let lastWindowsTapToggleTime = 0;
-    const WINDOWS_TAP_DEBOUNCE_MS = 150;
 
     const stopPushToTalkRecording = (reason) => {
       if (!winKeyIsRecording) {
@@ -451,41 +449,11 @@ async function startApp() {
       return true;
     };
 
-    const shouldUseWindowsKeyListener = (hotkey) => {
-      if (!isValidHotkey(hotkey)) return false;
-      // The native listener is now the Windows source of truth. It supports
-      // side mouse buttons and locale-specific OEM keys (e.g. Danish ½) that
-      // Electron globalShortcut either cannot register or reports unreliably.
-      return true;
-    };
-
     windowsKeyManager.on("key-down", (key) => {
       debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
 
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        return;
-      }
-
-      if (currentActivationMode !== "push") {
-        const now = Date.now();
-        if (now - lastWindowsTapToggleTime < WINDOWS_TAP_DEBOUNCE_MS) {
-          return;
-        }
-        lastWindowsTapToggleTime = now;
-
-        if (hotkeyManager.isInListeningMode()) {
-          return;
-        }
-        debugLogger.debug("[Push-to-Talk] Native Windows tap hotkey toggling dictation", { key });
-        if (!windowManager.mainWindow.isVisible()) {
-          if (typeof windowManager.mainWindow.showInactive === "function") {
-            windowManager.mainWindow.showInactive();
-          } else {
-            windowManager.mainWindow.show();
-          }
-        }
-        windowManager.mainWindow.moveTop();
-        windowManager.mainWindow.webContents.send("toggle-dictation");
+      // Handle dictation only in push-to-talk mode.
+      if (!isLiveWindow(windowManager.mainWindow) || currentActivationMode !== "push") {
         return;
       }
 
@@ -569,13 +537,17 @@ async function startApp() {
         currentHotkey,
       });
 
-      if (shouldUseWindowsKeyListener(currentHotkey)) {
-        debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
-          hotkey: currentHotkey,
-        });
-        windowsKeyManager.start(currentHotkey);
+      if (currentActivationMode === "push") {
+        if (isValidHotkey(currentHotkey)) {
+          debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
+            hotkey: currentHotkey,
+          });
+          windowsKeyManager.start(currentHotkey);
+        } else {
+          debugLogger.debug("[Push-to-Talk] No valid hotkey to start listener");
+        }
       } else {
-        debugLogger.debug("[Push-to-Talk] No valid hotkey to start listener");
+        debugLogger.debug("[Push-to-Talk] Not in push mode, skipping listener start");
       }
     };
 
@@ -599,10 +571,10 @@ async function startApp() {
         stopPushToTalkRecording("activation-mode-changed");
       }
 
-      if (mode === "push" || mode === "tap") {
+      if (mode === "push") {
         const currentHotkey = hotkeyManager.getCurrentHotkey();
         debugLogger.debug("[Push-to-Talk] Current hotkey", { hotkey: currentHotkey });
-        if (shouldUseWindowsKeyListener(currentHotkey)) {
+        if (isValidHotkey(currentHotkey)) {
           debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
           windowsKeyManager.start(currentHotkey);
         }
@@ -621,10 +593,10 @@ async function startApp() {
       debugLogger.debug("[Push-to-Talk] Current activation mode", {
         activationMode: currentActivationMode,
       });
-      if (currentActivationMode === "push" || currentActivationMode === "tap") {
+      if (currentActivationMode === "push") {
         stopPushToTalkRecording("hotkey-changed");
         windowsKeyManager.stop();
-        if (shouldUseWindowsKeyListener(hotkey)) {
+        if (isValidHotkey(hotkey)) {
           debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
           windowsKeyManager.start(hotkey);
         }

@@ -47,15 +47,6 @@ class HotkeyManager {
     return base === "Mouse4" || base === "Mouse5" || base === "XButton1" || base === "XButton2";
   }
 
-  canUseWindowsNativeHotkey(hotkey) {
-    if (process.platform !== "win32" || !hotkey || hotkey === "GLOBE") {
-      return false;
-    }
-
-    const reserved = ["PrintScreen", "Win", "Super", "Meta"];
-    return !reserved.some((key) => hotkey.includes(key));
-  }
-
   getFailureReason(hotkey) {
     if (globalShortcut.isRegistered(hotkey)) {
       return {
@@ -191,17 +182,6 @@ class HotkeyManager {
         debugLogger.log(`[HotkeyManager] Hotkey "${hotkey}" registered successfully`);
         return { success: true, hotkey };
       } else {
-        if (this.canUseWindowsNativeHotkey(hotkey)) {
-          this.currentHotkey = hotkey;
-          const message = this.isMouseHotkey(hotkey)
-            ? "Mouse hotkey will be handled by the native Windows listener."
-            : "Hotkey will be handled by the native Windows listener.";
-          debugLogger.log(
-            `[HotkeyManager] globalShortcut failed for "${hotkey}"; accepting via Windows native listener`
-          );
-          return { success: true, hotkey, message };
-        }
-
         const failureInfo = this.getFailureReason(hotkey);
         console.error(`[HotkeyManager] Failed to register hotkey: ${hotkey}`, failureInfo);
         debugLogger.log(`[HotkeyManager] Registration failed:`, failureInfo);
@@ -219,19 +199,6 @@ class HotkeyManager {
         };
       }
     } catch (error) {
-      if (this.canUseWindowsNativeHotkey(hotkey)) {
-        this.currentHotkey = hotkey;
-        debugLogger.log(
-          `[HotkeyManager] globalShortcut threw for "${hotkey}"; accepting via Windows native listener:`,
-          error.message
-        );
-        return {
-          success: true,
-          hotkey,
-          message: "Hotkey will be handled by the native Windows listener.",
-        };
-      }
-
       console.error("[HotkeyManager] Error setting up shortcuts:", error);
       debugLogger.log(`[HotkeyManager] Exception during registration:`, error.message);
       return { success: false, error: error.message };
