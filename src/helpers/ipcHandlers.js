@@ -847,17 +847,13 @@ class IPCHandlers {
           }
         }
 
-        // On Windows, restart the native listener after capture for both tap and
-        // push modes. Capture mode stops it so keys/buttons are not consumed while
-        // the user is choosing a new hotkey; if we only restart in push mode then
-        // tap hotkeys such as Ctrl+Space, Mouse4, and locale keys like ½ go dead
-        // immediately after being saved.
+        // On Windows, restart the listener if in push mode
         if (process.platform === "win32" && this.windowsKeyManager) {
           const activationMode = await this.windowManager.getActivationMode();
           debugLogger.log(
             `[IPC] Exiting hotkey capture mode, activationMode="${activationMode}", hotkey="${effectiveHotkey}"`
           );
-          if (effectiveHotkey && effectiveHotkey !== "GLOBE") {
+          if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
             debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
             this.windowsKeyManager.start(effectiveHotkey);
           }
