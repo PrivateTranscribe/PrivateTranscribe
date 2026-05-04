@@ -38,6 +38,7 @@ jobs:
           node scripts/download-nircmd.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLAMA_CPP_VERSION: b9016
 
       - name: Build renderer
         run: npm run build:renderer
