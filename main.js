@@ -351,14 +351,11 @@ async function startApp() {
     debugLogger.debug("Windows paste tool status", nircmdStatus);
   }
 
-  // Create main window. On Windows, the transparent overlay can interfere with
-  // windowed games even while idle, so it is created lazily when dictation starts.
+  // Create main window
   if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
     debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
-  } else if (process.platform !== "win32") {
-    await windowManager.createMainWindow();
   } else {
-    debugLogger.info("[Window] Deferring Windows dictation overlay creation until use");
+    await windowManager.createMainWindow();
   }
 
   // Create control panel window

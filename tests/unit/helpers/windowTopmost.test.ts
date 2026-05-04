@@ -110,25 +110,17 @@ describe("windowManager.js — blur repair", () => {
   });
 });
 
-describe("windowManager.js — Windows game-safe overlay lifecycle", () => {
-  test("hideDictationPanel destroys the Windows overlay immediately instead of leaving it hidden", () => {
+describe("windowManager.js — overlay show/hide lifecycle", () => {
+  test("hideDictationPanel hides the overlay without destroying it", () => {
     expect(windowManager).toContain("suspendMainWindowOverlay()");
-    expect(windowManager).toContain('process.platform === "win32"');
-    expect(windowManager).toContain("this.mainWindow.close()");
-    expect(windowManager).toContain("slow composition path for windowed games");
-    expect(windowManager).not.toContain("_overlayIdleDestroyTimer");
+    expect(windowManager).toContain("this.mainWindow.hide()");
+    expect(windowManager).not.toContain("this.mainWindow.close()");
     expect(windowManager).not.toContain("this.mainWindow.minimize()");
   });
 
-  test("show paths lazily recreate and resume the overlay", () => {
-    expect(windowManager).toContain("await this.createMainWindow()");
+  test("showDictationPanel resumes and shows the overlay", () => {
     expect(windowManager).toContain("resumeMainWindowOverlay()");
     expect(windowManager).toContain("showInactive");
-  });
-
-  test("hotkey start path uses the lazily created window returned from showDictationPanel", () => {
-    expect(windowManager).toContain("const dictationWindow = await this.showDictationPanel()");
-    expect(windowManager).toContain('dictationWindow.webContents.send("start-dictation")');
   });
 });
 

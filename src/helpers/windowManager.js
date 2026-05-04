@@ -682,16 +682,7 @@ class WindowManager {
     }
 
     this.suspendMainWindowOverlay();
-
-    if (process.platform === "win32") {
-      // On Windows, even a hidden transparent always-on-top BrowserWindow can
-      // keep DWM in a slow composition path for windowed games. Hiding the
-      // dictation panel is therefore an explicit user action to end the overlay
-      // session and destroy the BrowserWindow.
-      this.mainWindow.close();
-    } else {
-      this.mainWindow.hide();
-    }
+    this.mainWindow.hide();
   }
 
   isDictationPanelVisible() {
