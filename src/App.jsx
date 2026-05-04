@@ -202,6 +202,10 @@ export default function App() {
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
 
+  useEffect(() => {
+    window.electronAPI?.notifyDictationOverlayReady?.();
+  }, []);
+
   const setWindowInteractivity = useCallback((shouldCapture) => {
     window.electronAPI?.setMainWindowInteractivity?.(shouldCapture);
   }, []);

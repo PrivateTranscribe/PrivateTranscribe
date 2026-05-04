@@ -181,6 +181,13 @@ class IPCHandlers {
       await this.windowManager.showDictationPanel();
     });
 
+    ipcMain.handle("dictation-overlay-ready", (event) => {
+      if (event.sender === this.windowManager.mainWindow?.webContents) {
+        this.windowManager.markMainWindowRendererReady();
+      }
+      return { success: true };
+    });
+
     ipcMain.handle("open-control-panel", async () => {
       await this.windowManager.createControlPanelWindow();
       return { success: true };

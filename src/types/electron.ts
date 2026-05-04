@@ -333,6 +333,7 @@ declare global {
       pasteText: (text: string) => Promise<void>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
+      notifyDictationOverlayReady?: () => Promise<{ success: boolean }>;
       openControlPanel?: () => Promise<{ success: boolean }>;
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;

@@ -37,6 +37,7 @@ class WindowManager {
     this._windowsKeyManagerRef = null;
     this.activationModeCache = "tap";
     this.isMainWindowOverlaySuspended = false;
+    this.mainWindowRendererReady = false;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
@@ -277,6 +278,7 @@ class WindowManager {
 
     // Now load the window content
     await this.loadMainWindow();
+    await this.waitForMainWindowRendererReady();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((winX, winY) => {
       this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
@@ -378,7 +380,31 @@ class WindowManager {
   }
 
   async loadMainWindow() {
+    this.mainWindowRendererReady = false;
     await this.loadWindowContent(this.mainWindow, false);
+  }
+
+  markMainWindowRendererReady() {
+    this.mainWindowRendererReady = true;
+  }
+
+  async waitForMainWindowRendererReady(timeoutMs = 1500) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return false;
+    }
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        return false;
+      }
+      if (this.mainWindowRendererReady) {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return false;
   }
 
   createHotkeyCallback() {
@@ -757,6 +783,7 @@ class WindowManager {
       }
       this.dragManager.cleanup();
       this.mainWindow = null;
+      this.mainWindowRendererReady = false;
       this.isMainWindowInteractive = false;
     });
   }
