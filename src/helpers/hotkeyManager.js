@@ -16,6 +16,13 @@ const SUGGESTED_HOTKEYS = {
   ],
 };
 
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
 class HotkeyManager {
   constructor() {
     this.currentHotkey = "`";
@@ -103,6 +110,17 @@ class HotkeyManager {
     debugLogger.log(`[HotkeyManager] Setting up hotkey: "${hotkey}"`);
     debugLogger.log(`[HotkeyManager] Platform: ${process.platform}, Arch: ${process.arch}`);
     debugLogger.log(`[HotkeyManager] Current hotkey: "${this.currentHotkey}"`);
+
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT")) {
+      this.currentHotkey = hotkey;
+      this.hotkeyCallback = callback;
+      debugLogger.warn(`[Diagnostics] Skipping globalShortcut registration for "${hotkey}"`);
+      return {
+        success: true,
+        hotkey,
+        diagnostic: "globalShortcut registration disabled by environment flag",
+      };
+    }
 
     // If we're already using this hotkey AND it's actually registered, return success
     // Note: We need to check isRegistered because on first run, currentHotkey is set to "`"

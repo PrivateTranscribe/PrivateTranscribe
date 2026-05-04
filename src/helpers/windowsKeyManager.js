@@ -11,6 +11,13 @@ const EventEmitter = require("events");
 const fs = require("fs");
 const debugLogger = require("./debugLogger");
 
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
 class WindowsKeyManager extends EventEmitter {
   constructor() {
     super();
@@ -28,6 +35,12 @@ class WindowsKeyManager extends EventEmitter {
    */
   start(key = "`") {
     if (!this.isSupported) {
+      return;
+    }
+
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_WINDOWS_KEY_LISTENER")) {
+      debugLogger.warn("[Diagnostics] Windows native key listener start skipped");
+      this.stop();
       return;
     }
 

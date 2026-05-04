@@ -28,6 +28,17 @@ if (!gotSingleInstanceLock) {
 
 const isLiveWindow = (window) => window && !window.isDestroyed();
 
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
+if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_HARDWARE_ACCELERATION")) {
+  app.disableHardwareAcceleration();
+}
+
 let debugLogger = null;
 
 function logMainError(...args) {
@@ -341,10 +352,18 @@ async function startApp() {
   }
 
   // Create main window
-  await windowManager.createMainWindow();
+  if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
+    debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
+  } else {
+    await windowManager.createMainWindow();
+  }
 
   // Create control panel window
-  await windowManager.createControlPanelWindow();
+  if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_CONTROL_PANEL_WINDOW")) {
+    debugLogger.warn("[Diagnostics] Skipping control panel window creation");
+  } else {
+    await windowManager.createControlPanelWindow();
+  }
 
   // If a user previously installed CUDA, keep it in sync silently after app updates.
   autoUpdateCudaBinaryIfNeeded().catch((error) => {
@@ -362,8 +381,16 @@ async function startApp() {
   trayManager.setWindows(windowManager.mainWindow, windowManager.controlPanelWindow);
   trayManager.setWindowManager(windowManager);
   trayManager.setCreateControlPanelCallback(() => windowManager.createControlPanelWindow());
-  await trayManager.createTray();
-  trayManager.startHealthCheck();
+  if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_TRAY")) {
+    debugLogger.warn("[Diagnostics] Skipping tray creation");
+  } else {
+    await trayManager.createTray();
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_TRAY_HEALTH_CHECK")) {
+      debugLogger.warn("[Diagnostics] Skipping tray health check timers");
+    } else {
+      trayManager.startHealthCheck();
+    }
+  }
 
   // Set windows for update manager and check for updates
   updateManager.setWindows(windowManager.mainWindow, windowManager.controlPanelWindow);
@@ -425,6 +452,11 @@ async function startApp() {
 
   // Set up Windows Push-to-Talk handling
   if (process.platform === "win32") {
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_WINDOWS_KEY_LISTENER")) {
+      debugLogger.warn("[Diagnostics] Skipping Windows native key listener setup");
+      return;
+    }
+
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
     let winKeyIsRecording = false;
     let currentActivationMode = "tap";
