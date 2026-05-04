@@ -224,7 +224,7 @@ class TrayManager {
   buildContextMenuTemplate() {
     const dictationVisible = this.windowManager?.isDictationPanelVisible?.() ?? false;
 
-    return [
+    const items = [
       {
         label: dictationVisible ? "Hide Dictation Panel" : "Show Dictation Panel",
         click: () => {
@@ -237,6 +237,24 @@ class TrayManager {
           this.updateTrayMenu();
         },
       },
+    ];
+
+    if (
+      process.platform === "win32" &&
+      this.windowManager?.mainWindow &&
+      !this.windowManager.mainWindow.isDestroyed()
+    ) {
+      items.push({
+        label: "Close Dictation Panel",
+        click: () => {
+          if (!this.windowManager) return;
+          this.windowManager.mainWindow?.close?.();
+          this.updateTrayMenu();
+        },
+      });
+    }
+
+    items.push(
       {
         label: "Open PrivateTranscribe",
         click: async () => {
@@ -250,8 +268,10 @@ class TrayManager {
           console.log("Quitting app via tray menu");
           app.quit();
         },
-      },
-    ];
+      }
+    );
+
+    return items;
   }
 
   updateTrayMenu() {

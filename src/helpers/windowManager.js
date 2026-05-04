@@ -675,10 +675,10 @@ class WindowManager {
       }
       this._overlayIdleDestroyTimer = setTimeout(() => {
         this._overlayIdleDestroyTimer = null;
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        if (this.mainWindow && !this.mainWindow.isDestroyed() && !this.mainWindow.isVisible()) {
           this.mainWindow.close();
         }
-      }, 30_000);
+      }, 10_000);
     } else {
       this.mainWindow.hide();
     }
