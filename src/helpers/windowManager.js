@@ -38,6 +38,7 @@ class WindowManager {
     this.activationModeCache = "tap";
     this.isMainWindowOverlaySuspended = false;
     this.mainWindowRendererReady = false;
+    this._overlayIdleDestroyTimer = null;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
@@ -620,6 +621,11 @@ class WindowManager {
       return;
     }
 
+    if (this._overlayIdleDestroyTimer) {
+      clearTimeout(this._overlayIdleDestroyTimer);
+      this._overlayIdleDestroyTimer = null;
+    }
+
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
       await this.createMainWindow();
     }
@@ -653,16 +659,28 @@ class WindowManager {
   }
 
   hideDictationPanel() {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.suspendMainWindowOverlay();
-      if (process.platform === "win32") {
-        // Windows windowed games can stutter from the transparent Electron overlay
-        // merely existing, even when hidden. Destroy it while idle; it is lazily
-        // recreated on the next dictation hotkey/use.
-        this.mainWindow.close();
-      } else {
-        this.mainWindow.hide();
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    this.suspendMainWindowOverlay();
+
+    if (process.platform === "win32") {
+      // Hide immediately so the overlay is gone from view, but give the user a
+      // grace period to bring it back before destroying the window (which avoids
+      // DWM stutter in windowed games).
+      this.mainWindow.hide();
+      if (this._overlayIdleDestroyTimer) {
+        clearTimeout(this._overlayIdleDestroyTimer);
       }
+      this._overlayIdleDestroyTimer = setTimeout(() => {
+        this._overlayIdleDestroyTimer = null;
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.close();
+        }
+      }, 30_000);
+    } else {
+      this.mainWindow.hide();
     }
   }
 
@@ -780,6 +798,10 @@ class WindowManager {
 
         // If we were mid-debounce when the app is closed, flush the last seen position immediately.
         this._flushPendingOverlayPosition("closed");
+      }
+      if (this._overlayIdleDestroyTimer) {
+        clearTimeout(this._overlayIdleDestroyTimer);
+        this._overlayIdleDestroyTimer = null;
       }
       this.dragManager.cleanup();
       this.mainWindow = null;

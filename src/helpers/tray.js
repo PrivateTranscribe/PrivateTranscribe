@@ -20,6 +20,7 @@ class TrayManager {
       this.mainWindow.on("hide", () => this.updateTrayMenu?.());
       this.mainWindow.on("minimize", () => this.updateTrayMenu?.());
       this.mainWindow.on("restore", () => this.updateTrayMenu?.());
+      this.mainWindow.on("closed", () => this.updateTrayMenu?.());
     }
 
     if (this.controlPanelWindow) {
@@ -271,6 +272,7 @@ class TrayManager {
         void this.showControlPanelFromTray();
       });
       this.tray.on("right-click", () => {
+        this.updateTrayMenu();
         this.tray?.popUpContextMenu();
       });
     } else {
