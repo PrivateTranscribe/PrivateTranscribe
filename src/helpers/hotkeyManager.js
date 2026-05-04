@@ -23,6 +23,175 @@ const isDiagFlagEnabled = (name) => {
   return raw === "1" || raw === "true" || raw === "yes";
 };
 
+// Keys that Electron globalShortcut cannot handle. These must be routed through
+// native OS listeners (WindowsKeyManager on Windows, etc.) or rejected.
+const NON_ACCELERATOR_KEYS = new Set([
+  "Mouse4",
+  "Mouse5",
+  "XButton1",
+  "XButton2",
+  "½",
+  "§",
+  "°",
+  "´",
+  "`",
+  "¨",
+  "^",
+  "~",
+]);
+
+// Valid accelerator key names per Electron docs (partial list for validation).
+// See: https://www.electronjs.org/docs/latest/api/accelerator
+const VALID_ELECTRON_KEYS = new Set([
+  // Modifiers
+  "Command",
+  "Cmd",
+  "Control",
+  "Ctrl",
+  "CommandOrControl",
+  "CmdOrCtrl",
+  "Alt",
+  "Option",
+  "AltGr",
+  "Shift",
+  "Super",
+  "Meta",
+  "Win",
+  // Special keys
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
+  "F8",
+  "F9",
+  "F10",
+  "F11",
+  "F12",
+  "F13",
+  "F14",
+  "F15",
+  "F16",
+  "F17",
+  "F18",
+  "F19",
+  "F20",
+  "F21",
+  "F22",
+  "F23",
+  "F24",
+  "Plus",
+  "Space",
+  "Tab",
+  "Backspace",
+  "Delete",
+  "Insert",
+  "Return",
+  "Enter",
+  "Up",
+  "Down",
+  "Left",
+  "Right",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Escape",
+  "Esc",
+  "VolumeUp",
+  "VolumeDown",
+  "VolumeMute",
+  "MediaNextTrack",
+  "MediaPreviousTrack",
+  "MediaStop",
+  "MediaPlayPause",
+  "PrintScreen",
+  "Numlock",
+  "Scrolllock",
+  "Capslock",
+  // Mouse buttons (Electron doesn't support these via globalShortcut, but we list them for completeness)
+  "LeftButton",
+  "RightButton",
+  "MiddleButton",
+  // Digits
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  // Letters
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "U",
+  "V",
+  "W",
+  "X",
+  "Y",
+  "Z",
+  // Numpad
+  "num0",
+  "num1",
+  "num2",
+  "num3",
+  "num4",
+  "num5",
+  "num6",
+  "num7",
+  "num8",
+  "num9",
+  "numadd",
+  "numsub",
+  "nummult",
+  "numdiv",
+  "numdec",
+]);
+
+function isValidAccelerator(hotkey) {
+  if (!hotkey || typeof hotkey !== "string") return false;
+
+  // Check for known non-accelerator keys first
+  const baseKey = hotkey.includes("+") ? hotkey.split("+").pop().trim() : hotkey.trim();
+  if (NON_ACCELERATOR_KEYS.has(baseKey)) return false;
+
+  // Validate each part of the accelerator
+  const parts = hotkey.split("+").map((p) => p.trim());
+  for (const part of parts) {
+    // Allow numpad keys with 'num' prefix (case-insensitive)
+    if (/^num\d$/.test(part.toLowerCase())) continue;
+    if (/^num(add|sub|mult|div|dec)$/.test(part.toLowerCase())) continue;
+    if (!VALID_ELECTRON_KEYS.has(part)) {
+      // Unknown key — likely not a valid accelerator
+      return false;
+    }
+  }
+  return true;
+}
+
 class HotkeyManager {
   constructor() {
     this.currentHotkey = "`";
@@ -122,13 +291,28 @@ class HotkeyManager {
       };
     }
 
+    // Validate the hotkey before attempting registration.
+    // This prevents Electron crashes on keys like "½" that it cannot parse.
+    const isValid = isValidAccelerator(hotkey);
+    const isMouse = this.isMouseHotkey(hotkey);
+    if (!isValid && !isMouse && hotkey !== "GLOBE") {
+      debugLogger.warn(
+        `[HotkeyManager] Invalid accelerator "${hotkey}" — not a key globalShortcut can handle`
+      );
+      const suggestions = this.getSuggestions(hotkey);
+      return {
+        success: false,
+        error: `"${hotkey}" is not a supported hotkey. Mouse buttons and special characters cannot be used with global shortcuts. Try: ${suggestions.join(", ")}`,
+        reason: "unsupported_key",
+        suggestions,
+      };
+    }
+
     // If we're already using this hotkey AND it's actually registered, return success
-    // Note: We need to check isRegistered because on first run, currentHotkey is set to "`"
-    // but it's not actually registered yet
     if (
       hotkey === this.currentHotkey &&
       hotkey !== "GLOBE" &&
-      !this.isMouseHotkey(hotkey) &&
+      !isMouse &&
       globalShortcut.isRegistered(hotkey)
     ) {
       debugLogger.log(
@@ -163,7 +347,7 @@ class HotkeyManager {
 
       // Mouse side buttons are not supported by Electron globalShortcut.
       // On Windows, these are handled by the native WindowsKeyManager listener (push-to-talk).
-      if (process.platform === "win32" && this.isMouseHotkey(hotkey)) {
+      if (process.platform === "win32" && isMouse) {
         this.currentHotkey = hotkey;
         debugLogger.log(
           `[HotkeyManager] Mouse hotkey "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
