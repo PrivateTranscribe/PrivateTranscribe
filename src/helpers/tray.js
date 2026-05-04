@@ -223,9 +223,18 @@ class TrayManager {
   buildContextMenuTemplate() {
     const dictationVisible = this.windowManager?.isDictationPanelVisible?.() ?? false;
 
+    const overlayLabel =
+      process.platform === "win32"
+        ? dictationVisible
+          ? "Hide Overlay (game safe)"
+          : "Show Overlay Temporarily"
+        : dictationVisible
+          ? "Hide Overlay"
+          : "Show Overlay";
+
     return [
       {
-        label: dictationVisible ? "Hide Overlay" : "Show Overlay",
+        label: overlayLabel,
         click: () => {
           if (!this.windowManager) return;
           if (this.windowManager.isDictationPanelVisible()) {
