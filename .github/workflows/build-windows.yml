@@ -32,12 +32,15 @@ jobs:
         run: npm ci
 
       - name: Download native binaries
-        run: npm run compile:native
+        run: |
+          npm run compile:native
+          npm run download:whisper-cpp
+          node scripts/download-nircmd.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build app
-        run: npm run build
+      - name: Build renderer
+        run: npm run build:renderer
 
       - name: Package (Windows NSIS + Portable)
         run: npx electron-builder --win --publish never
