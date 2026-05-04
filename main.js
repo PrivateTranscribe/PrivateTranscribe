@@ -351,11 +351,14 @@ async function startApp() {
     debugLogger.debug("Windows paste tool status", nircmdStatus);
   }
 
-  // Create main window
+  // Create main window. On Windows, the transparent overlay can interfere with
+  // windowed games even while idle, so it is created lazily when dictation starts.
   if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
     debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
-  } else {
+  } else if (process.platform !== "win32") {
     await windowManager.createMainWindow();
+  } else {
+    debugLogger.info("[Window] Deferring Windows dictation overlay creation until use");
   }
 
   // Create control panel window
@@ -411,7 +414,7 @@ async function startApp() {
       if (hotkeyManager.getCurrentHotkey && hotkeyManager.getCurrentHotkey() === "GLOBE") {
         if (isLiveWindow(windowManager.mainWindow)) {
           const activationMode = await windowManager.getActivationMode();
-          windowManager.showDictationPanel();
+          await windowManager.showDictationPanel();
           if (activationMode === "push") {
             // Track when key was pressed for push-to-talk
             globeKeyDownTime = Date.now();
@@ -483,7 +486,7 @@ async function startApp() {
       debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
 
       // Handle dictation only in push-to-talk mode.
-      if (!isLiveWindow(windowManager.mainWindow) || currentActivationMode !== "push") {
+      if (currentActivationMode !== "push") {
         return;
       }
 
@@ -495,17 +498,18 @@ async function startApp() {
       }
 
       debugLogger.debug("[Push-to-Talk] Starting recording sequence");
-      windowManager.showDictationPanel();
       winKeyIsRecording = true;
-      windowManager.sendStartDictation();
+      windowManager.sendStartDictation().then(() => {
+        // If the user released the key while the lazy overlay was still loading,
+        // stop immediately so push-to-talk cannot get stuck recording.
+        if (!winKeyIsRecording) {
+          windowManager.sendStopDictation();
+        }
+      });
     });
 
     windowsKeyManager.on("key-up", () => {
       debugLogger.debug("[Push-to-Talk] Key UP received");
-
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        return;
-      }
 
       // Always stop if recording is active, even if activation mode state drifted.
       if (winKeyIsRecording) {
@@ -556,10 +560,6 @@ async function startApp() {
     // Start the Windows key listener with the current hotkey
     const startWindowsKeyListener = async () => {
       debugLogger.debug("[Push-to-Talk] Checking if should start Windows key listener");
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        debugLogger.debug("[Push-to-Talk] Main window not live, skipping");
-        return;
-      }
       await refreshActivationMode();
       const currentHotkey = hotkeyManager.getCurrentHotkey();
       debugLogger.debug("[Push-to-Talk] Current state", {
@@ -617,9 +617,6 @@ async function startApp() {
     // Listen for hotkey changes from renderer
     ipcMain.on("hotkey-changed", async (_event, hotkey) => {
       debugLogger.debug("[Push-to-Talk] IPC: Hotkey changed", { hotkey });
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        return;
-      }
       debugLogger.debug("[Push-to-Talk] Current activation mode", {
         activationMode: currentActivationMode,
       });
@@ -655,8 +652,6 @@ if (gotSingleInstanceLock) {
 
     if (isLiveWindow(windowManager.mainWindow)) {
       windowManager.enforceMainWindowOnTop();
-    } else {
-      windowManager.createMainWindow();
     }
   });
 

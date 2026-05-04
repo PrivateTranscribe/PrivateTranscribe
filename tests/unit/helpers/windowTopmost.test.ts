@@ -110,14 +110,17 @@ describe("windowManager.js — blur repair", () => {
   });
 });
 
-describe("windowManager.js — hidden overlay suspension on Windows", () => {
-  test("hideDictationPanel hides the window and suspends Windows topmost state", () => {
+describe("windowManager.js — Windows game-safe overlay lifecycle", () => {
+  test("hideDictationPanel destroys the Windows overlay instead of leaving it hidden", () => {
     expect(windowManager).toContain("suspendMainWindowOverlay()");
+    expect(windowManager).toContain('process.platform === "win32"');
+    expect(windowManager).toContain("this.mainWindow.close()");
     expect(windowManager).toContain("this.mainWindow.hide()");
     expect(windowManager).not.toContain("this.mainWindow.minimize()");
   });
 
-  test("show paths resume suspended Windows overlay before showing", () => {
+  test("show paths lazily recreate and resume the overlay", () => {
+    expect(windowManager).toContain("await this.createMainWindow()");
     expect(windowManager).toContain("resumeMainWindowOverlay()");
     expect(windowManager).toContain("showInactive");
   });

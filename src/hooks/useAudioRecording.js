@@ -256,6 +256,15 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
+        // On Windows, the transparent overlay window can interfere with some windowed
+        // games even when hidden. Release it after transcription completes; the global
+        // hotkey recreates it lazily on the next dictation.
+        if (window.electronAPI?.getPlatform?.() === "win32") {
+          window.setTimeout(() => {
+            window.electronAPI?.hideWindow?.();
+          }, 250);
+        }
+
         // Correction memory: only surface the learn action after the user has actually
         // copied a changed version, not after every transcription.
         try {

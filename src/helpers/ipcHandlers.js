@@ -177,8 +177,8 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("show-dictation-panel", () => {
-      this.windowManager.showDictationPanel();
+    ipcMain.handle("show-dictation-panel", async () => {
+      await this.windowManager.showDictationPanel();
     });
 
     ipcMain.handle("open-control-panel", async () => {

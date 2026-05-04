@@ -7,6 +7,12 @@ const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
 const { DEV_SERVER_PORT } = DevServerManager;
+const isEnvFlagEnabled = (name) => {
+  const value = process.env[name];
+  if (value === undefined || value === null) return false;
+  return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+};
+
 const {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
@@ -271,7 +277,6 @@ class WindowManager {
 
     // Now load the window content
     await this.loadMainWindow();
-    await this.initializeHotkey();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((winX, winY) => {
       this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
@@ -412,34 +417,18 @@ class WindowManager {
       }
       lastToggleTime = now;
 
-      if (!this.mainWindow.isVisible()) {
-        this.resumeMainWindowOverlay();
-        // Use showInactive to avoid stealing focus from the target app
-        if (typeof this.mainWindow.showInactive === "function") {
-          this.mainWindow.showInactive();
-        } else {
-          this.mainWindow.show();
-        }
-      }
+      await this.showDictationPanel();
       this.mainWindow.moveTop(); // Force z-order refresh on Windows
       this.mainWindow.webContents.send("toggle-dictation");
     };
   }
 
-  sendStartDictation() {
+  async sendStartDictation() {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+    await this.showDictationPanel();
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (!this.mainWindow.isVisible()) {
-        this.resumeMainWindowOverlay();
-        // Use showInactive to avoid stealing focus from the target app
-        if (typeof this.mainWindow.showInactive === "function") {
-          this.mainWindow.showInactive();
-        } else {
-          this.mainWindow.show();
-        }
-      }
       this.mainWindow.webContents.send("start-dictation");
     }
   }
@@ -454,11 +443,12 @@ class WindowManager {
   }
 
   async getActivationMode() {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+    const hostWindow = this.getHotkeyHostWindow();
+    if (!hostWindow) {
       return this.activationModeCache;
     }
     try {
-      const mode = await this.mainWindow.webContents.executeJavaScript(
+      const mode = await hostWindow.webContents.executeJavaScript(
         `localStorage.getItem("activationMode") || "tap"`
       );
       this.setActivationMode(mode);
@@ -472,8 +462,22 @@ class WindowManager {
     this.hotkeyManager.setListeningMode(enabled);
   }
 
-  async initializeHotkey() {
-    await this.hotkeyManager.initializeHotkey(this.mainWindow, this.createHotkeyCallback());
+  getHotkeyHostWindow() {
+    if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
+      return this.controlPanelWindow;
+    }
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      return this.mainWindow;
+    }
+    return null;
+  }
+
+  async initializeHotkey(hostWindow = this.getHotkeyHostWindow()) {
+    if (!hostWindow || hostWindow.isDestroyed()) {
+      debugLogger.warn("[Hotkey] No live window available for hotkey initialization");
+      return;
+    }
+    await this.hotkeyManager.initializeHotkey(hostWindow, this.createHotkeyCallback());
   }
 
   async updateHotkey(hotkey) {
@@ -576,14 +580,24 @@ class WindowManager {
     );
 
     await this.loadControlPanel();
+    await this.initializeHotkey(this.controlPanelWindow);
   }
 
   async loadControlPanel() {
     await this.loadWindowContent(this.controlPanelWindow, true);
   }
 
-  showDictationPanel(options = {}) {
+  async showDictationPanel(options = {}) {
     const { focus = false } = options;
+    if (isEnvFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
+      debugLogger.warn("[Diagnostics] Dictation overlay requested but disabled by env flag");
+      return;
+    }
+
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      await this.createMainWindow();
+    }
+
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       if (!this.mainWindow.isVisible()) {
         this.resumeMainWindowOverlay();
@@ -615,7 +629,14 @@ class WindowManager {
   hideDictationPanel() {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.suspendMainWindowOverlay();
-      this.mainWindow.hide();
+      if (process.platform === "win32") {
+        // Windows windowed games can stutter from the transparent Electron overlay
+        // merely existing, even when hidden. Destroy it while idle; it is lazily
+        // recreated on the next dictation hotkey/use.
+        this.mainWindow.close();
+      } else {
+        this.mainWindow.hide();
+      }
     }
   }
 
