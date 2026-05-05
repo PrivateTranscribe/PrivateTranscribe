@@ -32,9 +32,9 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
     expect(windowConfig).toContain("reported with Minecraft/Tekkit");
   });
 
-  test("Windows overlay is non-focusable and hidden from taskbar", () => {
+  test("Windows overlay is hidden from taskbar but focusable for clicks and drag", () => {
     expect(windowConfig).toContain('skipTaskbar: process.platform === "win32"');
-    expect(windowConfig).toContain('focusable: process.platform !== "win32"');
+    expect(windowConfig).toContain('focusable: true,');
   });
 
   test("Linux uses screen-saver level (highest X11 hint available)", () => {

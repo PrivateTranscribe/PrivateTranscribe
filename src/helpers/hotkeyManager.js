@@ -234,6 +234,16 @@ class HotkeyManager {
     return this.isListeningMode;
   }
 
+  /**
+   * Returns true for hotkeys that must be handled by the native WindowsKeyManager
+   * rather than Electron globalShortcut. This covers:
+   * - Mouse side buttons (Mouse4/Mouse5)
+   * - Modifier-only combos like Control+Super (Windows key)
+   */
+  isNativeListenerHotkey(hotkey) {
+    return this.isMouseHotkey(hotkey) || isModifierOnlyHotkey(hotkey);
+  }
+
   isMouseHotkey(hotkey) {
     if (!hotkey) return false;
     const base = hotkey.includes("+") ? hotkey.split("+").pop() : hotkey;

@@ -831,7 +831,7 @@ class IPCHandlers {
         if (
           currentHotkey &&
           currentHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(currentHotkey)
+          !hotkeyManager.isNativeListenerHotkey(currentHotkey)
         ) {
           debugLogger.log(
             `[IPC] Unregistering globalShortcut "${currentHotkey}" for hotkey capture mode`
@@ -855,11 +855,11 @@ class IPCHandlers {
         }
       } else {
         // Exiting capture mode - re-register globalShortcut if not already registered
-        // (Skip mouse hotkeys; they are handled by the native WindowsKeyManager in push-to-talk.)
+        // (Skip native-listener hotkeys: mouse buttons and modifier-only combos like Control+Super)
         if (
           effectiveHotkey &&
           effectiveHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(effectiveHotkey)
+          !hotkeyManager.isNativeListenerHotkey(effectiveHotkey)
         ) {
           const { globalShortcut } = require("electron");
           if (!globalShortcut.isRegistered(effectiveHotkey)) {
@@ -871,14 +871,17 @@ class IPCHandlers {
           }
         }
 
-        // On Windows, restart the listener if in push mode
+        // On Windows, restart the native listener if the hotkey needs it
         if (process.platform === "win32" && this.windowsKeyManager) {
           const activationMode = await this.windowManager.getActivationMode();
           debugLogger.log(
             `[IPC] Exiting hotkey capture mode, activationMode="${activationMode}", hotkey="${effectiveHotkey}"`
           );
-          if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
+          if (effectiveHotkey && effectiveHotkey !== "GLOBE" &&
+            hotkeyManager.isNativeListenerHotkey(effectiveHotkey)) {
             debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
+            this.windowsKeyManager.start(effectiveHotkey);
+          } else if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
             this.windowsKeyManager.start(effectiveHotkey);
           }
         }

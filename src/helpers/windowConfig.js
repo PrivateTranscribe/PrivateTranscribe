@@ -61,7 +61,7 @@ const MAIN_WINDOW_CONFIG = {
   // focus from fullscreen games and reduces DWM/topmost-window churn while gaming.
   // The control panel remains the discoverable taskbar window.
   skipTaskbar: process.platform === "win32",
-  focusable: process.platform !== "win32",
+  focusable: true, // Must be true to allow clicking the mic button and dragging the overlay
   visibleOnAllWorkspaces: process.platform !== "win32",
   fullScreenable: false,
   hasShadow: false, // Remove shadow for cleaner look
