@@ -331,14 +331,13 @@ class WindowManager {
       return;
     }
 
-    // On Windows, setIgnoreMouseEvents(true, { forward: true }) installs a
-    // WH_MOUSE_LL global low-level mouse hook that intercepts EVERY mouse
-    // movement system-wide before forwarding it. This adds measurable latency
-    // to mouse input in windowed games (Minecraft/Tekkit camera stutter).
-    // Windows doesn't need the hook: the overlay is non-focusable and
-    // skipTaskbar=true already, so clicks fall through to the game naturally.
+    // On Windows, always keep the overlay interactive.
+    // setIgnoreMouseEvents(true, { forward: true }) installs a WH_MOUSE_LL
+    // global hook intercepting every mouse event system-wide — causing game
+    // input lag. And setIgnoreMouseEvents(true) without forward makes the
+    // overlay completely unclickable. Just keep it always interactive on Windows.
     if (process.platform === "win32") {
-      this.mainWindow.setIgnoreMouseEvents(!shouldCapture);
+      this.mainWindow.setIgnoreMouseEvents(false);
       this.isMainWindowInteractive = shouldCapture;
       return;
     }
