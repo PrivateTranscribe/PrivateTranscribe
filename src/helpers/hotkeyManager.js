@@ -336,10 +336,12 @@ class HotkeyManager {
     }
 
     // If we're already using this hotkey AND it's actually registered, return success
+    // (Skip globalShortcut check for native-listener hotkeys — they are never registered there)
     if (
       hotkey === this.currentHotkey &&
       hotkey !== "GLOBE" &&
       !isMouse &&
+      !isModifierOnlyHotkey(hotkey) &&
       globalShortcut.isRegistered(hotkey)
     ) {
       debugLogger.log(
@@ -348,14 +350,19 @@ class HotkeyManager {
       return { success: true, hotkey };
     }
 
-    // Unregister the previous hotkey (if it's not GLOBE or a mouse hotkey)
+    // Unregister the previous hotkey (if it's not GLOBE, mouse, or modifier-only)
     if (
       this.currentHotkey &&
       this.currentHotkey !== "GLOBE" &&
-      !this.isMouseHotkey(this.currentHotkey)
+      !this.isMouseHotkey(this.currentHotkey) &&
+      !isModifierOnlyHotkey(this.currentHotkey)
     ) {
       debugLogger.log(`[HotkeyManager] Unregistering previous hotkey: "${this.currentHotkey}"`);
-      globalShortcut.unregister(this.currentHotkey);
+      try {
+        globalShortcut.unregister(this.currentHotkey);
+      } catch (err) {
+        debugLogger.warn(`[HotkeyManager] Unregister failed for "${this.currentHotkey}": ${err.message}`);
+      }
     }
 
     try {
@@ -731,6 +738,7 @@ class HotkeyManager {
   }
 
   isHotkeyRegistered(hotkey) {
+    if (isModifierOnlyHotkey(hotkey) || this.isMouseHotkey(hotkey)) return false;
     return globalShortcut.isRegistered(hotkey);
   }
 }
