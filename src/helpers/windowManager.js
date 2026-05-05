@@ -377,34 +377,10 @@ class WindowManager {
     }
   }
 
-  resizeMainWindow(sizeKey) {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      return { success: false };
-    }
-
-    const newSize = WINDOW_SIZES[sizeKey] || WINDOW_SIZES.BASE;
-    const currentBounds = this.mainWindow.getBounds();
-
-    // Current button screen position (anchor point we must preserve)
-    const btnScreenX = currentBounds.x + BUTTON_OFFSET_X;
-    const btnScreenY = currentBounds.y + BUTTON_OFFSET_Y;
-
-    // New window top-left so button stays at same screen position
-    // BUTTON_OFFSET_Y = distance from window top to button center
-    // We need: newY + BUTTON_OFFSET_Y_FOR_NEW_SIZE = btnScreenY
-    // Button is always 80px from bottom (58px margin + 22px half-button)
-    const BUTTON_FROM_BOTTOM = 80;
-    const newX = Math.round(btnScreenX - newSize.width / 2);
-    const newY = Math.round(btnScreenY - (newSize.height - BUTTON_FROM_BOTTOM));
-
-    // Clamp to display work area
-    const { screen } = require("electron");
-    const display = screen.getDisplayNearestPoint({ x: btnScreenX, y: btnScreenY });
-    const workArea = display.workArea || display.bounds;
-    const clampedX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - newSize.width));
-    const clampedY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - newSize.height));
-
-    this.mainWindow.setBounds({ x: clampedX, y: clampedY, width: newSize.width, height: newSize.height });
+  resizeMainWindow(_sizeKey) {
+    // No-op: the overlay uses a fixed CONTAINER_W × CONTAINER_H transparent window.
+    // Menu, toast, and recording state expand/collapse inside with CSS — Electron never
+    // calls setBounds for these transitions, eliminating the button-jump on resize.
     return { success: true };
   }
 
@@ -871,11 +847,6 @@ class WindowManager {
         debugLogger.debug(`[Window] main blur (linux desktop=${desktop} session=${session})`);
       } else {
         debugLogger.debug("[Window] main blur");
-      }
-
-      // Notify renderer so it can keep AudioContext alive when a game steals focus
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send("main-window-blur");
       }
 
       if (process.platform === "darwin") return;

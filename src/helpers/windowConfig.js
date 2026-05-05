@@ -41,8 +41,8 @@ function getWindowIcon() {
 
 // Main dictation window configuration
 const MAIN_WINDOW_CONFIG = {
-  width: WINDOW_SIZES.BASE.width,
-  height: WINDOW_SIZES.BASE.height,
+  width: CONTAINER_W,
+  height: CONTAINER_H,
   title: "Voice Recorder",
   icon: getWindowIcon(),
   webPreferences: {
@@ -109,13 +109,11 @@ const CONTROL_PANEL_CONFIG = {
 class WindowPositionUtil {
   static getMainWindowPosition(display) {
     const workArea = display.workArea || display.bounds;
-    const size = WINDOW_SIZES.BASE;
-    // Position so button lands at bottom-center of work area
-    const btnX = Math.round(workArea.x + workArea.width / 2);
-    const btnY = Math.round(workArea.y + workArea.height - 80);
-    const x = btnX - size.width / 2;
-    const y = btnY - (size.height - 80);
-    return { x: Math.round(x), y: Math.round(y), width: size.width, height: size.height };
+    // Position the fixed CONTAINER_W×CONTAINER_H window so the button lands at
+    // bottom-center of the work area (matching the old BASE-window default position).
+    const x = Math.round(workArea.x + (workArea.width - CONTAINER_W) / 2);
+    const y = Math.round(workArea.y + workArea.height - CONTAINER_H);
+    return { x, y, width: CONTAINER_W, height: CONTAINER_H };
   }
 
   static clampPosition(x, y, width, height, workArea) {

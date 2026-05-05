@@ -216,8 +216,9 @@ class IPCHandlers {
       return { success: true };
     });
 
-    ipcMain.handle("resize-main-window", (_event, sizeKey) => {
-      return this.windowManager.resizeMainWindow(sizeKey);
+    ipcMain.handle("resize-main-window", (_event, _sizeKey) => {
+      // No-op: window now uses a fixed transparent container; see windowManager.resizeMainWindow.
+      return { success: true };
     });
 
     // Environment handlers
