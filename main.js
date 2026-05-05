@@ -75,6 +75,7 @@ const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
+const { isModifierOnlyHotkey } = require("./src/helpers/hotkeyManager");
 const { ActionEngineManager } = require("./src/helpers/actionEngineManager");
 const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
 const HardwareDetector = require("./src/helpers/hardwareDetector");
@@ -479,10 +480,29 @@ async function startApp() {
       return true;
     };
 
+    // Modifier-only combos (e.g. Control+Super) and mouse buttons cannot use
+    // globalShortcut. On Windows they must always go through the native listener,
+    // regardless of tap vs push mode.
+    const needsNativeListener = (hotkey, mode) => {
+      if (!isValidHotkey(hotkey)) return false;
+      if (mode === "push") return true;
+      const isMouse = /Mouse[45]|XButton[12]/i.test(hotkey);
+      return isMouse || isModifierOnlyHotkey(hotkey);
+    };
+
     windowsKeyManager.on("key-down", (key) => {
       debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
 
-      // Handle dictation only in push-to-talk mode.
+      if (currentActivationMode === "tap") {
+        // Tap mode: native listener is only used for modifier-only/mouse hotkeys.
+        // key-down fires the toggle (key-up is ignored in tap mode).
+        if (isLiveWindow(windowManager.mainWindow)) {
+          windowManager.sendToggleDictation();
+        }
+        return;
+      }
+
+      // Push mode below
       if (currentActivationMode !== "push") {
         return;
       }
@@ -564,17 +584,13 @@ async function startApp() {
         currentHotkey,
       });
 
-      if (currentActivationMode === "push") {
-        if (isValidHotkey(currentHotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
-            hotkey: currentHotkey,
-          });
-          windowsKeyManager.start(currentHotkey);
-        } else {
-          debugLogger.debug("[Push-to-Talk] No valid hotkey to start listener");
-        }
+      if (needsNativeListener(currentHotkey, currentActivationMode)) {
+        debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
+          hotkey: currentHotkey,
+        });
+        windowsKeyManager.start(currentHotkey);
       } else {
-        debugLogger.debug("[Push-to-Talk] Not in push mode, skipping listener start");
+        debugLogger.debug("[Push-to-Talk] Native listener not needed for this hotkey/mode");
       }
     };
 
@@ -598,32 +614,22 @@ async function startApp() {
         stopPushToTalkRecording("activation-mode-changed");
       }
 
-      if (mode === "push") {
-        const currentHotkey = hotkeyManager.getCurrentHotkey();
-        debugLogger.debug("[Push-to-Talk] Current hotkey", { hotkey: currentHotkey });
-        if (isValidHotkey(currentHotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
-          windowsKeyManager.start(currentHotkey);
-        }
-      } else {
-        debugLogger.debug("[Push-to-Talk] Stopping listener (mode is tap)");
-        windowsKeyManager.stop();
+      const currentHotkey = hotkeyManager.getCurrentHotkey();
+      windowsKeyManager.stop();
+      if (needsNativeListener(currentHotkey, currentActivationMode)) {
+        debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
+        windowsKeyManager.start(currentHotkey);
       }
     });
 
     // Listen for hotkey changes from renderer
     ipcMain.on("hotkey-changed", async (_event, hotkey) => {
       debugLogger.debug("[Push-to-Talk] IPC: Hotkey changed", { hotkey });
-      debugLogger.debug("[Push-to-Talk] Current activation mode", {
-        activationMode: currentActivationMode,
-      });
-      if (currentActivationMode === "push") {
-        stopPushToTalkRecording("hotkey-changed");
-        windowsKeyManager.stop();
-        if (isValidHotkey(hotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
-          windowsKeyManager.start(hotkey);
-        }
+      stopPushToTalkRecording("hotkey-changed");
+      windowsKeyManager.stop();
+      if (needsNativeListener(hotkey, currentActivationMode)) {
+        debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
+        windowsKeyManager.start(hotkey);
       }
     });
   }

@@ -662,7 +662,7 @@ export function useSettings() {
 
   const [activationMode, setActivationModeLocal] = useLocalStorage<"tap" | "push">(
     "activationMode",
-    "push",
+    "tap",
     {
       serialize: String,
       deserialize: (value) => (value === "push" ? "push" : "tap"),

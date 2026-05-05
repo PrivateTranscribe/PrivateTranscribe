@@ -40,6 +40,20 @@ const NON_ACCELERATOR_KEYS = new Set([
   "~",
 ]);
 
+// Modifier key names — a combo of only these cannot be registered via globalShortcut.
+// On Windows, modifier-only combos (e.g. Control+Super) must go through the native
+// WindowsKeyManager listener instead.
+const MODIFIER_NAMES = new Set([
+  "control", "ctrl", "commandorcontrol", "cmdorctrl",
+  "alt", "option", "altgr", "shift",
+  "super", "meta", "win", "command", "cmd",
+]);
+
+function isModifierOnlyHotkey(hotkey) {
+  if (!hotkey || !hotkey.includes("+")) return false;
+  return hotkey.split("+").every((part) => MODIFIER_NAMES.has(part.trim().toLowerCase()));
+}
+
 // Valid accelerator key names per Electron docs (partial list for validation).
 // See: https://www.electronjs.org/docs/latest/api/accelerator
 const VALID_ELECTRON_KEYS = new Set([
@@ -194,7 +208,10 @@ function isValidAccelerator(hotkey) {
 
 class HotkeyManager {
   constructor() {
-    this.currentHotkey = "`";
+    // Default: Control+Super (Ctrl+Win) on Windows — matches OpenWhispr default and
+    // works via the native WindowsKeyManager listener (not globalShortcut).
+    // Backtick on other platforms as before.
+    this.currentHotkey = process.platform === "win32" ? "Control+Super" : "`";
     this.isInitialized = false;
     this.isListeningMode = false;
     this.gnomeManager = null;
@@ -360,6 +377,17 @@ class HotkeyManager {
         };
       }
 
+      // Modifier-only combos (e.g. Control+Super) cannot be captured by Electron's
+      // globalShortcut on Windows — they are handled by the native WindowsKeyManager
+      // listener for both tap and push modes.
+      if (process.platform === "win32" && isModifierOnlyHotkey(hotkey)) {
+        this.currentHotkey = hotkey;
+        debugLogger.log(
+          `[HotkeyManager] Modifier-only "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
+        );
+        return { success: true, hotkey };
+      }
+
       const alreadyRegistered = globalShortcut.isRegistered(hotkey);
       debugLogger.log(`[HotkeyManager] Is "${hotkey}" already registered? ${alreadyRegistered}`);
 
@@ -518,7 +546,7 @@ class HotkeyManager {
         this.notifyHotkeyFailure(savedHotkey, result);
       }
 
-      const defaultHotkey = process.platform === "darwin" ? "GLOBE" : "`";
+      const defaultHotkey = process.platform === "darwin" ? "GLOBE" : process.platform === "win32" ? "Control+Super" : "`";
 
       if (defaultHotkey === "GLOBE") {
         this.currentHotkey = "GLOBE";
@@ -698,3 +726,4 @@ class HotkeyManager {
 }
 
 module.exports = HotkeyManager;
+module.exports.isModifierOnlyHotkey = isModifierOnlyHotkey;
