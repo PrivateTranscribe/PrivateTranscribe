@@ -248,8 +248,8 @@ class TrayManager {
         // Unified hide/show: hiding destroys the overlay (eliminates DWM lag);
         // showing re-creates it. Dictation works in the background regardless.
         label: overlayDisabled || !dictationVisible
-          ? "Show Dictation Panel"
-          : "Hide Dictation Panel",
+          ? "Show Overlay"
+          : "Hide Overlay",
         click: () => {
           if (!this.windowManager) return;
           if (overlayDisabled) {
