@@ -817,6 +817,11 @@ class WindowManager {
     this.mainWindow.on("show", () => {
       this.enforceMainWindowOnTop();
       this._notifyOverlayStateChanged();
+      // Notify renderer so it can restart the mic-level AudioContext if it was
+      // suspended while the window was hidden (voice bars stuck bug).
+      if (!this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("main-window-shown");
+      }
     });
 
     this.mainWindow.on("focus", () => {
