@@ -597,7 +597,12 @@ class WindowManager {
     return result;
   }
 
-  async createControlPanelWindow() {
+  async createControlPanelWindow(options = {}) {
+    // On Windows, start minimized to taskbar so there's a persistent taskbar
+    // entry even when the user hasn't opened the control panel yet.
+    // (The overlay is skipTaskbar:true to avoid game compositor issues, so
+    // this is the only taskbar presence on Windows.)
+    this._controlPanelStartMinimized = options.startMinimized ?? (process.platform === "win32");
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
@@ -632,8 +637,16 @@ class WindowManager {
       if (process.platform === "darwin" && app.dock) {
         app.dock.show();
       }
-      this.controlPanelWindow.show();
-      this.controlPanelWindow.focus();
+      if (this._controlPanelStartMinimized) {
+        // Show minimized to taskbar — gives Windows a taskbar entry without
+        // stealing focus on startup (the overlay is now skipTaskbar:true so
+        // this is the only persistent taskbar presence).
+        this.controlPanelWindow.minimize();
+        this.controlPanelWindow.showInactive();
+      } else {
+        this.controlPanelWindow.show();
+        this.controlPanelWindow.focus();
+      }
     });
 
     this.controlPanelWindow.on("close", (event) => {
