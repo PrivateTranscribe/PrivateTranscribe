@@ -15,7 +15,7 @@ const BUTTON_OFFSET_Y = CONTAINER_H - 58 - 22; // 420 — 58px from bottom + hal
 // Legacy size constants kept for reference only. The overlay no longer resizes
 // between these states at runtime.
 const WINDOW_SIZES = {
-  BASE: { width: 160, height: 160 },
+  BASE: { width: 96, height: 96 },
   WITH_MENU: { width: 300, height: 360 },
   WITH_TOAST: { width: 380, height: 180 },
   EXPANDED: { width: CONTAINER_W, height: CONTAINER_H },
@@ -110,12 +110,10 @@ class WindowPositionUtil {
   static getMainWindowPosition(display) {
     const workArea = display.workArea || display.bounds;
     const size = WINDOW_SIZES.BASE;
-    // Position so button lands at bottom-center of work area
-    const btnX = Math.round(workArea.x + workArea.width / 2);
-    const btnY = Math.round(workArea.y + workArea.height - 80);
-    const x = btnX - size.width / 2;
-    const y = btnY - (size.height - 80);
-    return { x: Math.round(x), y: Math.round(y), width: size.width, height: size.height };
+    // Start at bottom-right of work area (matching default overlay position)
+    const x = Math.round(workArea.x + workArea.width - size.width);
+    const y = Math.round(workArea.y + workArea.height - size.height);
+    return { x, y, width: size.width, height: size.height };
   }
 
   static clampPosition(x, y, width, height, workArea) {
