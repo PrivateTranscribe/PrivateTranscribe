@@ -124,7 +124,7 @@ describe("App.jsx — Escape key during recording/processing", () => {
     // hideWindow must not appear BEFORE the isRecording/isProcessing guard in the
     // Escape branch — i.e. hideWindow is only called in the idle else branch.
     const escIdx = appJsx.indexOf('"Escape"');
-    const block = appJsx.slice(escIdx, escIdx + 700);
+    const block = appJsx.slice(escIdx, escIdx + 900);
     const hideIdx = block.indexOf("hideWindow");
     const recordingIdx = block.indexOf("isRecording");
     // hideWindow must come after the recording guard (higher offset in the block)

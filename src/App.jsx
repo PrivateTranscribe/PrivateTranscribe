@@ -386,7 +386,9 @@ export default function App() {
           } else {
             cancelProcessing();
           }
-        } else {
+        } else if (!isDragging) {
+          // Don't hide while dragging — releasing Escape mid-drag should just
+          // cancel the escape key, not hide the overlay.
           window.electronAPI?.hideWindow?.();
         }
       }
@@ -408,6 +410,7 @@ export default function App() {
     isProcessing,
     cancelRecording,
     cancelProcessing,
+    isDragging,
   ]);
 
   useEffect(() => {
