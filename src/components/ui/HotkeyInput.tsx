@@ -205,6 +205,26 @@ export function HotkeyInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const lastCapturedHotkeyRef = useRef<string | null>(null);
   const isMac = typeof navigator !== "undefined" && /Mac|Darwin/.test(navigator.platform);
+  const isWindows = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
+
+  // Track held modifier state for modifier-only combo capture (e.g. Ctrl+Win)
+  const heldModifiersRef = useRef({ ctrl: false, meta: false, alt: false, shift: false });
+  const keyDownTimeRef = useRef(0);
+  // How long a modifier combo must be held to register (avoids accidental captures)
+  const MODIFIER_HOLD_THRESHOLD_MS = 300;
+
+  const finalizeCapture = useCallback(
+    (hotkey: string) => {
+      lastCapturedHotkeyRef.current = hotkey;
+      onChange(hotkey);
+      setIsCapturing(false);
+      setActiveModifiers(new Set());
+      heldModifiersRef.current = { ctrl: false, meta: false, alt: false, shift: false };
+      keyDownTimeRef.current = 0;
+      containerRef.current?.blur();
+    },
+    [onChange]
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -212,27 +232,68 @@ export function HotkeyInput({
       e.preventDefault();
       e.stopPropagation();
 
+      // Track held modifiers for modifier-only combo capture
+      heldModifiersRef.current = {
+        ctrl: e.ctrlKey,
+        meta: e.metaKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+      };
+      if (keyDownTimeRef.current === 0) {
+        keyDownTimeRef.current = Date.now();
+      }
+
       const mods = new Set<string>();
-      if (e.ctrlKey || e.metaKey) mods.add(isMac ? "Cmd" : "Ctrl");
+      if (e.ctrlKey) mods.add("Ctrl");
+      if (e.metaKey) mods.add(isWindows ? "Win" : isMac ? "Cmd" : "Super");
       if (e.altKey) mods.add(isMac ? "Option" : "Alt");
       if (e.shiftKey) mods.add("Shift");
       setActiveModifiers(mods);
 
       const hotkey = mapKeyboardEventToHotkey(e.nativeEvent);
       if (hotkey) {
-        lastCapturedHotkeyRef.current = hotkey;
-        onChange(hotkey);
-        setIsCapturing(false);
-        setActiveModifiers(new Set());
-        containerRef.current?.blur();
+        finalizeCapture(hotkey);
       }
+      // If no base key yet, modifiers are being held — don't finalize until keyup
     },
-    [disabled, onChange, isMac]
+    [disabled, isMac, isWindows, finalizeCapture]
   );
 
-  const handleKeyUp = useCallback(() => {
-    setActiveModifiers(new Set());
-  }, []);
+  const handleKeyUp = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (disabled) return;
+      e.preventDefault();
+
+      const wasHoldingModifiers =
+        heldModifiersRef.current.ctrl ||
+        heldModifiersRef.current.meta ||
+        heldModifiersRef.current.alt ||
+        heldModifiersRef.current.shift;
+
+      // Attempt modifier-only combo capture on keyup of a modifier key
+      if (wasHoldingModifiers && MODIFIER_CODES.has(e.nativeEvent.code)) {
+        const holdDuration = Date.now() - keyDownTimeRef.current;
+        if (holdDuration >= MODIFIER_HOLD_THRESHOLD_MS) {
+          // Build combo from held modifiers
+          const parts: string[] = [];
+          if (heldModifiersRef.current.ctrl) parts.push("Control");
+          if (heldModifiersRef.current.meta) parts.push(isMac ? "Command" : "Super");
+          if (heldModifiersRef.current.alt) parts.push(isMac ? "Alt" : "Alt");
+          if (heldModifiersRef.current.shift) parts.push("Shift");
+          // Require 2+ modifiers for modifier-only combos (e.g. Ctrl+Win)
+          if (parts.length >= 2) {
+            finalizeCapture(parts.join("+"));
+            return;
+          }
+        }
+      }
+
+      heldModifiersRef.current = { ctrl: false, meta: false, alt: false, shift: false };
+      keyDownTimeRef.current = 0;
+      setActiveModifiers(new Set());
+    },
+    [disabled, isMac, finalizeCapture]
+  );
 
   const handleFocus = useCallback(() => {
     if (!disabled) {
