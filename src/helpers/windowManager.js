@@ -331,19 +331,12 @@ class WindowManager {
       return;
     }
 
-    // On Windows, never use setIgnoreMouseEvents(true, { forward: true }).
-    // That flag installs a WH_MOUSE_LL global low-level mouse hook which intercepts
-    // ALL mouse input system-wide before forwarding it — causing mouse stutter in
-    // windowed games (Minecraft/Tekkit) even when the game has mouse capture.
-    // OpenWhispr uses the same approach: always setIgnoreMouseEvents(false) on Windows.
-    // Trade-off: transparent areas of the overlay window block desktop clicks behind
-    // it, but this is acceptable (same as OpenWhispr's design decision).
-    if (process.platform === "win32") {
-      this.mainWindow.setIgnoreMouseEvents(false);
-      this.isMainWindowInteractive = shouldCapture;
-      return;
-    }
-
+    // On Windows, always keep the overlay interactive.
+    // setIgnoreMouseEvents(true, { forward: true }) installs a WH_MOUSE_LL
+    // global hook intercepting every mouse event system-wide — this caused
+    // game input lag on Electron 36. On Electron 41 this is fixed, so we
+    // use the same approach as other platforms: forward:true when idle so
+    // transparent areas pass clicks through, false when hovering interactive UI.
     if (shouldCapture) {
       this.mainWindow.setIgnoreMouseEvents(false);
     } else {
