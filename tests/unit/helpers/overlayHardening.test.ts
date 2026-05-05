@@ -56,12 +56,10 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(block).toContain("this.mainWindow.setBounds");
   });
 
-  test("saved/restored overlay math still anchors to button offsets", () => {
-    // The fixed transparent container keeps the button as the durable anchor.
-    expect(windowManager).toContain("BUTTON_OFFSET_X");
-    expect(windowManager).toContain("BUTTON_OFFSET_Y");
-    expect(windowManager).toContain("winX = btnX - BUTTON_OFFSET_X");
-    expect(windowManager).toContain("winY = btnY - BUTTON_OFFSET_Y");
+  test("saved/restored overlay math anchors to button screen position", () => {
+    // Position save/restore uses button screen center as durable anchor.
+    expect(windowManager).toContain("_scheduleSavePosition");
+    expect(windowManager).toContain("_getButtonScreenPos");
   });
 });
 

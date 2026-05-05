@@ -145,19 +145,15 @@ class WindowManager {
       const raw = fs.readFileSync(this._getPositionFile(), "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.x === "number" && typeof parsed.y === "number") {
-        if (parsed.v === 2) {
-          // v2 format: x,y is the button's screen center position
-          debugLogger.info("[Window] Loaded saved overlay position (v2):", parsed);
+        if (parsed.v === 3) {
+          // v3 format: x,y is the button's screen center position (96×96 BASE window era)
+          debugLogger.info("[Window] Loaded saved overlay position (v3):", parsed);
           return parsed;
         } else {
-          // v1 format: x,y is the old 160×160 window top-left.
-          // Button center was at (x+80, y+80) in the old BASE window.
-          const migrated = { x: parsed.x + 80, y: parsed.y + 80, v: 2 };
-          debugLogger.info("[Window] Migrated saved overlay position v1→v2:", {
-            from: parsed,
-            to: migrated,
-          });
-          return migrated;
+          // v1/v2: saved with old 400×500 window offsets — discard and use default position
+          debugLogger.info("[Window] Discarding old overlay position (v" + (parsed.v || 1) + ") — window size changed");
+          try { fs.unlinkSync(this._getPositionFile()); } catch { /* ignore */ }
+          return null;
         }
       }
 
@@ -174,9 +170,19 @@ class WindowManager {
     return null;
   }
 
+  _getButtonScreenPos() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return null;
+    const b = this.mainWindow.getBounds();
+    // Button is horizontally centered and 42px from the bottom of the current window
+    return {
+      x: b.x + Math.round(b.width / 2),
+      y: b.y + b.height - 42,
+    };
+  }
+
   _scheduleSavePosition(x, y) {
-    // x,y is the button's screen center position (v2 format).
-    this._pendingPosition = { x, y, v: 2 };
+    // x,y is the button's screen center position (v3 format).
+    this._pendingPosition = { x, y, v: 3 };
 
     if (this._positionSaveTimer) {
       clearTimeout(this._positionSaveTimer);
@@ -203,10 +209,10 @@ class WindowManager {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const bounds = this.mainWindow.getBounds();
     const { width, height } = bounds;
-    // Use button screen position for display detection (more accurate than window center).
-    const display = screen.getDisplayNearestPoint({
-      x: bounds.x + BUTTON_OFFSET_X,
-      y: bounds.y + BUTTON_OFFSET_Y,
+    const btnPos = this._getButtonScreenPos();
+    const display = screen.getDisplayNearestPoint(btnPos || {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height,
     });
     const workArea = display.workArea || display.bounds;
     const clamped = WindowPositionUtil.clampPosition(bounds.x, bounds.y, width, height, workArea);
@@ -217,7 +223,8 @@ class WindowManager {
         workArea,
       });
       this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
-      this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
+      const newBtn = this._getButtonScreenPos();
+      if (newBtn) this._scheduleSavePosition(newBtn.x, newBtn.y);
     } else {
       debugLogger.debug("[Window] Overlay already within bounds after", reason);
     }
@@ -235,18 +242,21 @@ class WindowManager {
       // to the primary display bounds on the next launch, causing it to jump across monitors.
       const btnX = saved.x;
       const btnY = saved.y;
-      const winX = btnX - BUTTON_OFFSET_X;
-      const winY = btnY - BUTTON_OFFSET_Y;
+      // Button is centered horizontally and ~42px from bottom in BASE window
+      const baseW = WINDOW_SIZES.BASE.width;
+      const baseH = WINDOW_SIZES.BASE.height;
+      const winX = btnX - baseW / 2;
+      const winY = btnY - (baseH - 42);
       const savedDisplay = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
       const savedWorkArea = savedDisplay.workArea || savedDisplay.bounds;
       const clamped = WindowPositionUtil.clampPosition(
         winX,
         winY,
-        CONTAINER_W,
-        CONTAINER_H,
+        WINDOW_SIZES.BASE.width,
+        WINDOW_SIZES.BASE.height,
         savedWorkArea
       );
-      position = { ...clamped, width: CONTAINER_W, height: CONTAINER_H };
+      position = { ...clamped, width: WINDOW_SIZES.BASE.width, height: WINDOW_SIZES.BASE.height };
     } else {
       position = WindowPositionUtil.getMainWindowPosition(display);
     }
@@ -299,7 +309,10 @@ class WindowManager {
     await this.waitForMainWindowRendererReady();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((winX, winY) => {
-      this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
+      // Use current window width to compute button center (window may have been resized)
+      const currentW = this.mainWindow?.isDestroyed() ? WINDOW_SIZES.BASE.width : (this.mainWindow?.getBounds().width ?? WINDOW_SIZES.BASE.width);
+      const currentH = this.mainWindow?.isDestroyed() ? WINDOW_SIZES.BASE.height : (this.mainWindow?.getBounds().height ?? WINDOW_SIZES.BASE.height);
+      this._scheduleSavePosition(winX + Math.round(currentW / 2), winY + currentH - 42);
     });
     MenuManager.setupMainMenu();
 
@@ -905,8 +918,8 @@ class WindowManager {
 
     this.mainWindow.on("moved", () => {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        const [x, y] = this.mainWindow.getPosition();
-        this._scheduleSavePosition(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y);
+        const btnPos = this._getButtonScreenPos();
+        if (btnPos) this._scheduleSavePosition(btnPos.x, btnPos.y);
       }
     });
 
