@@ -158,7 +158,8 @@ export function useMicLevel(audioManagerRef, isRecording) {
         };
         document.addEventListener("visibilitychange", handleVisibility);
 
-        // Resume when the Electron window is shown after being hidden
+        // Also restart the RAF loop when the Electron window is shown after being
+        // hidden — visibilitychange may not fire in that case.
         const handleWindowShown = () => {
           if (!cancelled) {
             cancelAnimationFrame(rafRef.current);
@@ -171,25 +172,6 @@ export function useMicLevel(audioManagerRef, isRecording) {
         };
         const unsubWindowShown = window.electronAPI?.onMainWindowShown?.(handleWindowShown);
 
-        // Resume when window loses focus to a game — Chromium may suspend AudioContext on blur
-        const handleWindowBlur = () => {
-          if (!cancelled && ctx.state === "suspended") {
-            ctx.resume().catch(() => {});
-          }
-        };
-        const unsubWindowBlur = window.electronAPI?.onMainWindowBlur?.(handleWindowBlur);
-
-        // Poll every 500ms while recording to catch any suspension missed by events
-        const resumeInterval = setInterval(() => {
-          if (!cancelled && ctx.state === "suspended") {
-            ctx.resume().then(() => {
-              if (!cancelled && rafRef.current === null) {
-                rafRef.current = requestAnimationFrame(tick);
-              }
-            }).catch(() => {});
-          }
-        }, 500);
-
         // Extend cleanup to also remove the statechange and visibility listeners.
         const prevCleanup = cleanupRef.current;
         cleanupRef.current = () => {
@@ -197,8 +179,6 @@ export function useMicLevel(audioManagerRef, isRecording) {
           ctx.removeEventListener("statechange", handleStateChange);
           document.removeEventListener("visibilitychange", handleVisibility);
           unsubWindowShown?.();
-          unsubWindowBlur?.();
-          clearInterval(resumeInterval);
         };
 
         // Chromium/Electron creates AudioContext in "suspended" state when the
