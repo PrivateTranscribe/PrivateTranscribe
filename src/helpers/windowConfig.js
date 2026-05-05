@@ -54,12 +54,7 @@ const MAIN_WINDOW_CONFIG = {
   frame: false,
   alwaysOnTop: true,
   resizable: false,
-  // Windows DWM compositor lag fix: transparent windows force the compositor to
-  // blend the desktop behind the overlay, which causes mouse stutter in windowed
-  // games (Minecraft/Tekkit). Use an opaque background on Windows; macOS/Linux
-  // keep transparency for the floating aesthetic.
-  transparent: process.platform !== "win32",
-  ...(process.platform === "win32" ? { backgroundColor: "#080908" } : {}),
+  transparent: true,
   show: false, // Start hidden, show after setup
   // The dictation overlay is a passive control, not the main application surface.
   // Keeping it out of Alt-Tab/taskbar and non-focusable on Windows avoids stealing
