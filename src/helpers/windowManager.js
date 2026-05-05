@@ -333,15 +333,10 @@ class WindowManager {
 
     // On Windows, always keep the overlay interactive.
     // setIgnoreMouseEvents(true, { forward: true }) installs a WH_MOUSE_LL
-    // global hook intercepting every mouse event system-wide — causing game
-    // input lag. And setIgnoreMouseEvents(true) without forward makes the
-    // overlay completely unclickable. Just keep it always interactive on Windows.
-    if (process.platform === "win32") {
-      this.mainWindow.setIgnoreMouseEvents(false);
-      this.isMainWindowInteractive = shouldCapture;
-      return;
-    }
-
+    // global hook intercepting every mouse event system-wide — this caused
+    // game input lag on Electron 36. On Electron 41 this is fixed, so we
+    // use the same approach as other platforms: forward:true when idle so
+    // transparent areas pass clicks through, false when hovering interactive UI.
     if (shouldCapture) {
       this.mainWindow.setIgnoreMouseEvents(false);
     } else {
