@@ -9,6 +9,14 @@ const APP_ID = "com.privatetranscribe.app";
 // with the pinned shortcut (which reads AppUserModelID from the EXE resource).
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
+
+  // Disable DirectComposition overlay planes on Windows.
+  // Transparent always-on-top BrowserWindows use DWM overlay planes by default,
+  // which forces the desktop compositor to redraw continuously — causing mouse
+  // stutter and camera lag in windowed games (Minecraft/Tekkit).
+  // This disables only the overlay plane feature; GPU rendering stays fully
+  // enabled (unlike disable-gpu-compositing which breaks HiDPI rendering).
+  app.commandLine.appendSwitch("disable-features", "DirectCompositionOverlays");
 }
 
 // Enable native Wayland global shortcuts: https://github.com/electron/electron/pull/45171
