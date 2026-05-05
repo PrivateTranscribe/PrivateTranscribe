@@ -50,9 +50,6 @@ const MAIN_WINDOW_CONFIG = {
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
-    // Prevent Chromium from throttling/suspending the AudioContext when the
-    // overlay loses focus to a game. Without this the voice bars freeze.
-    backgroundThrottling: false,
   },
   frame: false,
   alwaysOnTop: true,
