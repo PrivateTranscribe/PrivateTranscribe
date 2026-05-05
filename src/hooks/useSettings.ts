@@ -64,6 +64,7 @@ export interface BehaviorSettings {
   audioFeedback: boolean;
   errorNotifications: boolean;
   successConfirmation: boolean;
+  overlayDisabled: boolean;
 }
 
 export function useSettings() {
@@ -761,6 +762,12 @@ export function useSettings() {
     boolSerializer
   );
 
+  const [overlayDisabled, setOverlayDisabled] = useLocalStorage(
+    "overlayDisabled",
+    false,
+    boolSerializer
+  );
+
   const updateBehaviorSettings = useCallback(
     (settings: Partial<BehaviorSettings>) => {
       if (settings.autoPaste !== undefined) setAutoPaste(settings.autoPaste);
@@ -771,6 +778,7 @@ export function useSettings() {
         setErrorNotifications(settings.errorNotifications);
       if (settings.successConfirmation !== undefined)
         setSuccessConfirmation(settings.successConfirmation);
+      if (settings.overlayDisabled !== undefined) setOverlayDisabled(settings.overlayDisabled);
     },
     [
       setAutoPaste,
@@ -779,6 +787,7 @@ export function useSettings() {
       setAudioFeedback,
       setErrorNotifications,
       setSuccessConfirmation,
+      setOverlayDisabled,
     ]
   );
 
@@ -999,6 +1008,8 @@ export function useSettings() {
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
+    overlayDisabled,
+    setOverlayDisabled,
     updateBehaviorSettings,
     apiKeySyncError,
     clearApiKeySyncError,

@@ -204,6 +204,14 @@ export default function App() {
 
   useEffect(() => {
     window.electronAPI?.notifyDictationOverlayReady?.();
+
+    // Sync overlay disabled state from localStorage to main process.
+    // If the user previously disabled the overlay, tell main to destroy it
+    // immediately so it doesn't cause DWM lag at startup.
+    const overlayDisabled = localStorage.getItem("overlayDisabled") === "true";
+    if (overlayDisabled) {
+      window.electronAPI?.setOverlayDisabled?.(true).catch(() => {});
+    }
   }, []);
 
   const setWindowInteractivity = useCallback((shouldCapture) => {

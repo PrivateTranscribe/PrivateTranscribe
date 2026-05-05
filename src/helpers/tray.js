@@ -241,16 +241,26 @@ class TrayManager {
 
   buildContextMenuTemplate() {
     const dictationVisible = this.windowManager?.isDictationPanelVisible?.() ?? false;
+    const overlayDisabled = this.windowManager?.isOverlayDisabled?.() ?? false;
 
     return [
       {
-        label: dictationVisible ? "Hide Dictation Panel" : "Show Dictation Panel",
+        // Unified hide/show: hiding destroys the overlay (eliminates DWM lag);
+        // showing re-creates it. Dictation works in the background regardless.
+        label: overlayDisabled || !dictationVisible
+          ? "Show Dictation Panel"
+          : "Hide Dictation Panel",
         click: () => {
           if (!this.windowManager) return;
-          if (this.windowManager.isDictationPanelVisible()) {
-            this.windowManager.hideDictationPanel();
-          } else {
+          if (overlayDisabled) {
+            // Overlay is disabled — re-enable and show it
+            this.windowManager.setOverlayDisabled(false);
+          } else if (!dictationVisible) {
+            // Overlay exists but is hidden — just show it
             this.windowManager.showDictationPanel({ focus: true });
+          } else {
+            // Overlay is visible — hide and disable (destroy window to eliminate DWM lag)
+            this.windowManager.setOverlayDisabled(true);
           }
           this.updateTrayMenu();
         },

@@ -111,10 +111,11 @@ describe("windowManager.js — blur repair", () => {
 });
 
 describe("windowManager.js — overlay show/hide lifecycle", () => {
-  test("hideDictationPanel hides the overlay without destroying it", () => {
+  test("hideDictationPanel hides the overlay; close() is present for overlay-disabled mode", () => {
     expect(windowManager).toContain("suspendMainWindowOverlay()");
     expect(windowManager).toContain("this.mainWindow.hide()");
-    expect(windowManager).not.toContain("this.mainWindow.close()");
+    // close() is used when overlayDisabled is true to destroy the window
+    expect(windowManager).toContain("this.mainWindow.close()");
     expect(windowManager).not.toContain("this.mainWindow.minimize()");
   });
 

@@ -112,6 +112,10 @@ export const useAudioRecording = (toast, options = {}) => {
         if (openPanel && window.electronAPI?.openControlPanel) {
           window.electronAPI.openControlPanel();
         }
+
+        // Notify main process that dictation ended (even on error).
+        // When overlay is disabled, this triggers the window to be destroyed.
+        window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
       },
       onTranscriptionComplete: async (result, commitContext = {}) => {
         // Always restore audio when transcription finishes (safety net)
@@ -373,6 +377,11 @@ export const useAudioRecording = (toast, options = {}) => {
             variant: "default",
           });
         }
+
+        // Notify main process that dictation is complete.
+        // When overlay is disabled, this triggers the window to be destroyed
+        // so it doesn't cause DWM lag while gaming.
+        window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
       },
     });
 
@@ -567,14 +576,23 @@ export const useAudioRecording = (toast, options = {}) => {
     } finally {
       window.electronAPI?.restoreSystemAudio?.();
       window.electronAPI?.mediaResume?.();
+      // Notify main process that dictation was cancelled.
+      // When overlay is disabled, this triggers the window to be destroyed.
+      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
     }
   }, []);
 
   const cancelProcessing = useCallback(() => {
-    if (audioManagerRef.current) {
-      return audioManagerRef.current.cancelProcessing();
+    try {
+      if (audioManagerRef.current) {
+        return audioManagerRef.current.cancelProcessing();
+      }
+      return false;
+    } finally {
+      // Notify main process that dictation was cancelled.
+      // When overlay is disabled, this triggers the window to be destroyed.
+      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
     }
-    return false;
   }, []);
 
   const toggleListening = useCallback(() => {

@@ -181,6 +181,24 @@ class IPCHandlers {
       await this.windowManager.showDictationPanel();
     });
 
+    ipcMain.handle("set-overlay-disabled", (_event, disabled) => {
+      this.windowManager.setOverlayDisabled(Boolean(disabled));
+      return { success: true, disabled: Boolean(disabled) };
+    });
+
+    ipcMain.handle("get-overlay-disabled", () => {
+      return { disabled: this.windowManager.isOverlayDisabled() };
+    });
+
+    ipcMain.handle("notify-dictation-completed", () => {
+      // When overlay is disabled, destroy the hidden window after dictation
+      // to eliminate DWM lag while gaming.
+      if (this.windowManager.isOverlayDisabled()) {
+        this.windowManager.hideDictationPanel();
+      }
+      return { success: true };
+    });
+
     ipcMain.handle("dictation-overlay-ready", (event) => {
       if (event.sender === this.windowManager.mainWindow?.webContents) {
         this.windowManager.markMainWindowRendererReady();

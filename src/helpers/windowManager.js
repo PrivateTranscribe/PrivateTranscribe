@@ -39,6 +39,7 @@ class WindowManager {
     this.isMainWindowOverlaySuspended = false;
     this.mainWindowRendererReady = false;
     this._overlayStateChangeCallback = null;
+    this.overlayDisabled = false;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
@@ -460,6 +461,19 @@ class WindowManager {
       }
       lastToggleTime = now;
 
+      // When overlay is disabled, create the window hidden (not shown) and send
+      // dictation IPC to it. The hidden renderer handles audio recording without
+      // any visible overlay, eliminating DWM lag in windowed games.
+      if (this.overlayDisabled) {
+        if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+          await this.createMainWindow();
+        }
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send("toggle-dictation");
+        }
+        return;
+      }
+
       const dictationWindow = await this.showDictationPanel();
       if (!dictationWindow || dictationWindow.isDestroyed()) {
         return;
@@ -473,6 +487,20 @@ class WindowManager {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+
+    // When overlay is disabled, create the window hidden (not shown) and send
+    // dictation IPC to it. The hidden renderer handles audio recording without
+    // any visible overlay, eliminating DWM lag in windowed games.
+    if (this.overlayDisabled) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        await this.createMainWindow();
+      }
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("start-dictation");
+      }
+      return;
+    }
+
     const dictationWindow = await this.showDictationPanel();
     if (dictationWindow && !dictationWindow.isDestroyed()) {
       dictationWindow.webContents.send("start-dictation");
@@ -483,6 +511,15 @@ class WindowManager {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+
+    // When overlay is disabled, send stop to the hidden main window
+    if (this.overlayDisabled) {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("stop-dictation");
+      }
+      return;
+    }
+
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("stop-dictation");
     }
@@ -681,8 +718,39 @@ class WindowManager {
       return;
     }
 
+    // When overlay is disabled, destroy the window completely to eliminate
+    // DWM composition lag in windowed games (Windows issue with transparent
+    // always-on-top BrowserWindow).
+    if (this.overlayDisabled) {
+      this.mainWindow.close();
+      // mainWindow will be nulled in the 'closed' event handler
+      return;
+    }
+
     this.suspendMainWindowOverlay();
     this.mainWindow.hide();
+  }
+
+  setOverlayDisabled(disabled) {
+    const changed = this.overlayDisabled !== disabled;
+    this.overlayDisabled = disabled;
+
+    if (changed) {
+      debugLogger.info("[Overlay] Overlay disabled state changed:", disabled);
+      if (disabled) {
+        // Destroy overlay immediately when disabling
+        this.hideDictationPanel();
+      } else {
+        // Show overlay when re-enabling
+        this.showDictationPanel();
+      }
+      // Notify tray so menu labels update
+      this._notifyOverlayStateChanged();
+    }
+  }
+
+  isOverlayDisabled() {
+    return this.overlayDisabled;
   }
 
   isDictationPanelVisible() {
@@ -712,6 +780,12 @@ class WindowManager {
     this.mainWindow.once("ready-to-show", () => {
       clearTimeout(showTimeout);
       this.enforceMainWindowOnTop();
+      // When overlay is disabled, keep the window hidden to avoid DWM lag.
+      // Dictation still works in the background via the hidden renderer.
+      if (this.overlayDisabled) {
+        debugLogger.debug("[Overlay] Window ready but overlayDisabled=true, keeping hidden");
+        return;
+      }
       if (!this.mainWindow.isVisible()) {
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
