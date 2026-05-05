@@ -346,8 +346,21 @@ export default function App() {
     }
   }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
 
-  // No resize effect needed: the overlay uses a fixed 400×500 transparent window.
-  // Menu, toast, and recording states expand/collapse inside the container via CSS.
+  // Resize the BrowserWindow to match visible content so the hitbox is tight.
+  // BASE = small circle only; WITH_MENU/WITH_TOAST = expanded; EXPANDED = both.
+  useEffect(() => {
+    let sizeKey;
+    if (isCommandMenuOpen && toastCount > 0) {
+      sizeKey = "EXPANDED";
+    } else if (isCommandMenuOpen) {
+      sizeKey = "WITH_MENU";
+    } else if (toastCount > 0) {
+      sizeKey = "WITH_TOAST";
+    } else {
+      sizeKey = "BASE";
+    }
+    window.electronAPI?.resizeMainWindow?.(sizeKey);
+  }, [isCommandMenuOpen, toastCount]);
 
   useEffect(() => {
     if (!isCommandMenuOpen) {
