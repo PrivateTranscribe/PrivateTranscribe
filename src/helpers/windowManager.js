@@ -385,24 +385,26 @@ class WindowManager {
     const newSize = WINDOW_SIZES[sizeKey] || WINDOW_SIZES.BASE;
     const currentBounds = this.mainWindow.getBounds();
 
+    // Current button screen position (anchor point we must preserve)
+    const btnScreenX = currentBounds.x + BUTTON_OFFSET_X;
+    const btnScreenY = currentBounds.y + BUTTON_OFFSET_Y;
+
+    // New window top-left so button stays at same screen position
+    // BUTTON_OFFSET_Y = distance from window top to button center
+    // We need: newY + BUTTON_OFFSET_Y_FOR_NEW_SIZE = btnScreenY
+    // Button is always 80px from bottom (58px margin + 22px half-button)
+    const BUTTON_FROM_BOTTOM = 80;
+    const newX = Math.round(btnScreenX - newSize.width / 2);
+    const newY = Math.round(btnScreenY - (newSize.height - BUTTON_FROM_BOTTOM));
+
+    // Clamp to display work area
     const { screen } = require("electron");
-    const display = screen.getDisplayNearestPoint({
-      x: currentBounds.x + currentBounds.width / 2,
-      y: currentBounds.y + currentBounds.height,
-    });
+    const display = screen.getDisplayNearestPoint({ x: btnScreenX, y: btnScreenY });
     const workArea = display.workArea || display.bounds;
+    const clampedX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - newSize.width));
+    const clampedY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - newSize.height));
 
-    // Anchor: bottom-right corner stays fixed, window expands left and up
-    const bottomRightX = currentBounds.x + currentBounds.width;
-    const bottomY = currentBounds.y + currentBounds.height;
-    let newX = bottomRightX - newSize.width;
-    let newY = bottomY - newSize.height;
-
-    // Clamp to work area
-    newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - newSize.width));
-    newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - newSize.height));
-
-    this.mainWindow.setBounds({ x: newX, y: newY, width: newSize.width, height: newSize.height });
+    this.mainWindow.setBounds({ x: clampedX, y: clampedY, width: newSize.width, height: newSize.height });
     return { success: true };
   }
 
