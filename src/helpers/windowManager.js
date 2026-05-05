@@ -20,6 +20,7 @@ const {
   CONTAINER_H,
   BUTTON_OFFSET_X,
   BUTTON_OFFSET_Y,
+  WINDOW_SIZES,
   WindowPositionUtil,
 } = require("./windowConfig");
 
