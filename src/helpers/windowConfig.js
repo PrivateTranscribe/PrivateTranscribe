@@ -117,12 +117,10 @@ class WindowPositionUtil {
   }
 
   static clampPosition(x, y, width, height, workArea) {
-    // Clamp so the full 44px button stays visible within the work area.
-    // We clamp against the button *edge* (not just center) so the button can't hang off screen.
-    // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
+    // Button is centered horizontally and 42px from the bottom of the window.
     const BUTTON_HALF = 22; // half of 44px button
-    const btnX = x + BUTTON_OFFSET_X;
-    const btnY = y + BUTTON_OFFSET_Y;
+    const btnX = x + Math.round(width / 2);
+    const btnY = y + height - 42;
     const clampedBtnX = Math.max(
       workArea.x + BUTTON_HALF,
       Math.min(btnX, workArea.x + workArea.width - BUTTON_HALF)
@@ -132,8 +130,8 @@ class WindowPositionUtil {
       Math.min(btnY, workArea.y + workArea.height - BUTTON_HALF)
     );
     return {
-      x: Math.round(clampedBtnX - BUTTON_OFFSET_X),
-      y: Math.round(clampedBtnY - BUTTON_OFFSET_Y),
+      x: Math.round(clampedBtnX - Math.round(width / 2)),
+      y: Math.round(clampedBtnY - (height - 42)),
     };
   }
 
