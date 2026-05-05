@@ -6,13 +6,14 @@ on:
       - 'resources/windows-key-listener.c'
       - '.github/workflows/build-windows-key-listener.yml'
     branches:
+      - main
       - production
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., 1.0.0)'
+        description: 'Version tag (e.g., 1.0.1)'
         required: false
-        default: '1.0.0'
+        default: '1.0.1'
         type: string
 
 permissions:
@@ -60,8 +61,8 @@ jobs:
       - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: windows-key-listener-v${{ inputs.version || '1.0.0' }}
-          name: Windows Key Listener v${{ inputs.version || '1.0.0' }}
+          tag_name: windows-key-listener-v${{ inputs.version || '1.0.1' }}
+          name: Windows Key Listener v${{ inputs.version || '1.0.1' }}
           body: |
             Prebuilt Windows key listener binary for Push-to-Talk functionality.
 
