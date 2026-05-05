@@ -75,7 +75,7 @@ const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
-const { isModifierOnlyHotkey } = require("./src/helpers/hotkeyManager");
+const { shouldUseWindowsNativeListener } = require("./src/helpers/hotkeyManager");
 const { ActionEngineManager } = require("./src/helpers/actionEngineManager");
 const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
 const HardwareDetector = require("./src/helpers/hardwareDetector");
@@ -187,7 +187,9 @@ function initializeManagers() {
           "Run `npm run compile:globe` and rebuild the app to regenerate the listener binary."
         );
       } else {
-        detailLines.push("Try reinstalling PrivateTranscribe or contact support if the issue persists.");
+        detailLines.push(
+          "Try reinstalling PrivateTranscribe or contact support if the issue persists."
+        );
       }
 
       dialog.showMessageBox({
@@ -480,14 +482,10 @@ async function startApp() {
       return true;
     };
 
-    // Modifier-only combos (e.g. Control+Super) and mouse buttons cannot use
-    // globalShortcut. On Windows they must always go through the native listener,
-    // regardless of tap vs push mode.
+    // Mouse buttons, modifier-only combos, and locale/OEM keys cannot use
+    // globalShortcut safely. Push mode also needs native key-up detection.
     const needsNativeListener = (hotkey, mode) => {
-      if (!isValidHotkey(hotkey)) return false;
-      if (mode === "push") return true;
-      const isMouse = /Mouse[45]|XButton[12]/i.test(hotkey);
-      return isMouse || isModifierOnlyHotkey(hotkey);
+      return isValidHotkey(hotkey) && shouldUseWindowsNativeListener(hotkey, mode);
     };
 
     windowsKeyManager.on("key-down", (key) => {
