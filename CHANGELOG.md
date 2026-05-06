@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **CUDA active-state copy**: Clarify whether the CUDA engine is active or transcription has fallen back to CPU.
 
+## [0.8.1] - 2026-04-30
+
+### Changed
+- **CUDA engine status copy**: Clarify how CUDA active state is reported so users can tell whether GPU acceleration is actually being used.
+
 ## [0.8.0] - 2026-04-30
 
 ### Added
@@ -63,6 +68,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **CUDA fallback startup**: Harden startup when CUDA binaries or drivers are unavailable.
 - **CUDA workflow guardrails**: Add binary size checks to catch broken CUDA artifact uploads earlier.
+
+## [0.5.2] - 2026-04-24
+
+### Fixed
+- **Update install crash**: Make the before-quit path null-safe during app updates.
+- **Auto-update UX**: Skip model cache prompts during automatic updates so updates can proceed without unnecessary interruption.
+
+## [0.5.1] - 2026-04-24
+
+### Fixed
+- **Install/restart stability**: Remove a manual before-quit emit that could crash during update installation.
+- **CI polish**: Clean up lint and formatting issues after the v0.5.0 release work.
+
+## [0.5.0] - 2026-04-23
+
+### Added
+- **CUDA binary version tracking**: Track CUDA binary version and SHA256 hash so the app can detect stale or mismatched GPU runtimes.
+- **CUDA update prompt**: Prompt users when a newer CUDA binary is available.
+- **Silent CUDA binary updates after app updates**: Keep the GPU runtime aligned with the installed app version automatically.
+- **Blackwell GPU support path**: Add CUDA Blackwell build workflow and benchmark UI warning for GPU compatibility.
+- **Pro license generation script**: Add `generate-license.js` for issuing Pro license keys.
+
+### Changed
+- **Onboarding simplification**: Simplify the first-run flow, improve hardware step layout, de-jargon copy, and add a more realistic microphone test.
+- **CUDA onboarding**: Add CUDA binary download to onboarding and gate setup on the current CUDA binary.
+- **Whisper-only recommendation path**: Remove Parakeet from the recommended setup path and clean stale Parakeet settings/warnings.
+- **Windows polish**: Remove the version number from the Windows Add/Remove Programs display name.
+
+### Fixed
+- **CUDA download safety**: Prevent concurrent CUDA binary downloads, handle safe download failures, and fix stale update banners.
+- **Hardware detection**: Improve migration/version stamping, hardware detection, size checks, and logging around the v0.5.0 CUDA changes.
+- **Onboarding bugs**: Fix skipped-setup/cloud-mode gating, logo packaging, button overflow, and 14 reviewed onboarding UX issues.
+- **Overlay wake behavior**: Restore overlay position to the correct display after monitor wake/reconnect and prevent displacement after quick screen off/on cycles.
+- **Security/stability review fixes**: Patch reviewed stability issues and custom API URL validation.
 
 ## [0.4.1] - 2026-03-29
 
