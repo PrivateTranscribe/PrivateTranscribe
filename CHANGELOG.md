@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.8.4] - 2026-05-06
+
+### Fixed
+- **Windows native-only hotkeys**: Route Mouse4/Mouse5, modifier-only combinations, and Danish/OEM keys such as `½` through the native Windows listener while keeping normal Electron accelerators such as `CommandOrControl+Space` on `globalShortcut`.
+- **Hotkey normalization**: Normalize Windows listener keys internally without changing the user-visible hotkey label.
+- **Dependency/security cleanup**: Resolved dependency audit issues and updated native dependencies for the newer Electron runtime.
+
+### Changed
+- **Tray wording**: Rename tray actions from “Dictation Panel” to “Overlay” for clearer, consistent product language.
+
+## [0.8.3] - 2026-05-01
+
+### Fixed
+- **CUDA split runtime validation**: Improve validation for split CUDA runtime builds so GPU acceleration is detected more accurately.
+- **Whisper language selection**: Pass auto-language explicitly to Whisper for more predictable transcription behavior.
+
+### Changed
+- **CUDA status visibility**: Surface clearer CUDA engine updates in Settings → General.
+- **Long-file coverage**: Add regression coverage for longer local audio transcription flows.
+
+## [0.8.2] - 2026-04-30
+
+### Changed
+- **Packaged Whisper runtime**: Bundle required Whisper and CUDA runtime libraries with the Windows app so installs are more self-contained.
+- **CUDA diagnostics**: Expose startup fallback diagnostics when CUDA cannot be used, making CPU fallback easier to understand and support.
+- **Language default**: Default transcription language to auto-detect for a smoother first-run experience.
+
+### Fixed
+- **CUDA active-state copy**: Clarify whether the CUDA engine is active or transcription has fallen back to CPU.
+
+## [0.8.0] - 2026-04-30
+
+### Added
+- **Long local file transcription**: Handle longer local Whisper file transcriptions more reliably.
+
+### Changed
+- **Engine status visibility**: Show engine status even when the Whisper server is idle so users can see which backend is ready.
+- **Whisper server stability**: Reduce restart churn between local transcription requests.
+
+### Fixed
+- **CPU/GPU fallback handling**: Fix CPU-only mode enforcement and CUDA-to-CPU fallback behavior.
+
+## [0.7.0] - 2026-04-29
+
+### Added
+- **Windows CPU Whisper binary**: Package the Windows CPU `whisper-server` binary so local transcription works without CUDA.
+
+### Changed
+- **Whisper engine refactor**: Remove per-request engine mutation and add explicit engine status reporting.
+- **Engine labels**: Clarify CPU/CUDA engine labels and fallback indicators.
+
+### Fixed
+- **CUDA fallback startup**: Harden startup when CUDA binaries or drivers are unavailable.
+- **CUDA workflow guardrails**: Add binary size checks to catch broken CUDA artifact uploads earlier.
+
 ## [0.4.1] - 2026-03-29
 
 ### Fixed
