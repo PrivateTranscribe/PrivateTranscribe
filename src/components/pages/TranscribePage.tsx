@@ -65,6 +65,7 @@ export default function TranscribePage() {
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     preferredLanguage,
+    translateToEnglish,
     useReasoningModel,
     reasoningModel,
     allowOpenAIFallback,
@@ -107,15 +108,33 @@ export default function TranscribePage() {
     return `${cloudTranscriptionProvider.toUpperCase()} (${cloudTranscriptionModel || "default"})`;
   }, [useLocalWhisper, whisperModel, cloudTranscriptionProvider, cloudTranscriptionModel]);
 
-  const activeLanguageLabel = useMemo(
-    () => getLanguageLabel(preferredLanguage || "auto"),
-    [preferredLanguage]
-  );
+  const activeLanguageLabel = useMemo(() => {
+    const spokenLanguage = getLanguageLabel(preferredLanguage || "auto");
+    if (
+      translateToEnglish === "on" &&
+      preferredLanguage &&
+      preferredLanguage !== "auto" &&
+      preferredLanguage !== "en"
+    ) {
+      return `${spokenLanguage} → English`;
+    }
+    return spokenLanguage;
+  }, [preferredLanguage, translateToEnglish]);
 
-  const forcedLanguageWarning = useMemo(() => {
+  const languageHintNotice = useMemo(() => {
     if (!preferredLanguage || preferredLanguage === "auto") return null;
-    return `This upload will be forced as ${getLanguageLabel(preferredLanguage)}. If the file is a different language, set Language to Auto-detect or the real spoken language first.`;
-  }, [preferredLanguage]);
+    const spokenLanguage = getLanguageLabel(preferredLanguage);
+
+    if (translateToEnglish === "on" && preferredLanguage !== "en") {
+      return `This upload will use ${spokenLanguage} as the spoken-language hint and translate the result to English.`;
+    }
+
+    if (preferredLanguage === "en") {
+      return "Language is set to English as the spoken-language hint. If this file is Danish or another language, choose Auto-detect or the real spoken language. This is not a translation setting.";
+    }
+
+    return `Language is set to ${spokenLanguage} as the spoken-language hint. If the file uses another language, choose Auto-detect or the real spoken language first.`;
+  }, [preferredLanguage, translateToEnglish]);
 
   const fallbackLabel = useMemo(() => {
     if (useLocalWhisper) {
@@ -455,10 +474,10 @@ export default function TranscribePage() {
             <p className="text-foreground">{fallbackLabel}</p>
           </div>
         </div>
-        {forcedLanguageWarning && (
+        {languageHintNotice && (
           <div className="mt-3 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <p>{forcedLanguageWarning}</p>
+            <p>{languageHintNotice}</p>
           </div>
         )}
       </div>
