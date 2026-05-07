@@ -67,6 +67,8 @@ export interface BehaviorSettings {
   overlayDisabled: boolean;
 }
 
+let lastSyncedStartupPreferencesKey = "";
+
 export function useSettings() {
   const [useLocalWhisper, setUseLocalWhisper] = useLocalStorage("useLocalWhisper", false, {
     serialize: String,
@@ -692,22 +694,31 @@ export function useSettings() {
     deserialize: String,
   });
 
-  // Sync startup pre-warming preferences to main process
+  // Sync startup pre-warming preferences to main process.
+  // Several pages call useSettings(); avoid re-applying identical startup prefs on every tab mount.
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI?.syncStartupPreferences) return;
 
+    const startupPreferences = {
+      useLocalWhisper,
+      localTranscriptionProvider,
+      model: whisperModel || undefined,
+      whisperServerIdleTimeoutMinutes,
+      llamaServerIdleTimeoutMinutes,
+      reasoningProvider,
+      reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
+      whisperForceCpu,
+    };
+    const startupPreferencesKey = JSON.stringify(startupPreferences);
+    if (startupPreferencesKey === lastSyncedStartupPreferencesKey) return;
+    lastSyncedStartupPreferencesKey = startupPreferencesKey;
+
     window.electronAPI
-      .syncStartupPreferences({
-        useLocalWhisper,
-        localTranscriptionProvider,
-        model: whisperModel || undefined,
-        whisperServerIdleTimeoutMinutes,
-        llamaServerIdleTimeoutMinutes,
-        reasoningProvider,
-        reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
-        whisperForceCpu,
-      })
-      .catch((err) => console.error("Failed to sync startup preferences:", err));
+      .syncStartupPreferences(startupPreferences)
+      .catch((err) => {
+        lastSyncedStartupPreferencesKey = "";
+        console.error("Failed to sync startup preferences:", err);
+      });
   }, [
     useLocalWhisper,
     localTranscriptionProvider,
