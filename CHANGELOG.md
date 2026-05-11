@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-05-12
+
+### Fixed
+- **File transcription settings crash**: Fix the Transcribe File tab crash caused by reading saved speaker-detection settings before initialization.
+- **File transcription preferences**: Remember Noise reduction and Speaker detection choices across tab switches and app sessions.
+
 ## [0.10.0] - 2026-05-11
 
 ### Added
