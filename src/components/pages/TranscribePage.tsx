@@ -565,48 +565,50 @@ export default function TranscribePage() {
           <span className="text-xs text-muted-foreground">{settingsOpen ? "Hide" : "Show"}</span>
         </button>
         {settingsOpen && (
-          <div className="px-5 pb-5 grid gap-4 sm:grid-cols-3 border-t border-border-subtle/40 pt-4">
-            <label className="flex items-start gap-3 text-sm">
-              <input type="checkbox" checked={noiseReduction} onChange={(e) => setNoiseReduction(e.target.checked)} />
-              <span><span className="block font-medium">Noise reduction</span><span className="block text-xs text-muted-foreground">Default on for uploaded files.</span></span>
-            </label>
-            <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                checked={speakerDetection}
-                onChange={(e) => handleSpeakerDetectionChange(e.target.checked)}
-              />
-              <span>
-                <span className="block font-medium">Speaker detection</span>
-                <span className="block text-xs text-muted-foreground">
+          <div className="border-t border-border-subtle/40 px-5 pb-5 pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    id="file-noise-reduction"
+                    type="checkbox"
+                    checked={noiseReduction}
+                    onChange={(event) => setNoiseReduction(event.target.checked)}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                  />
+                  <span className="text-sm font-medium text-foreground">Noise reduction</span>
+                </div>
+                <p className="ml-7 mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Cleans uploaded audio before transcription. Best for noisy calls, podcasts, and screen recordings.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    id="file-speaker-detection"
+                    type="checkbox"
+                    checked={speakerDetection}
+                    onChange={(event) => handleSpeakerDetectionChange(event.target.checked)}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                  />
+                  <span className="text-sm font-medium text-foreground">Speaker detection</span>
+                </div>
+                <p className="ml-7 mt-1 text-xs leading-relaxed text-muted-foreground">
                   {tdrzDownloaded
-                    ? "Ready for uploaded English files."
-                    : "Downloads a local speaker model when enabled."}
-                </span>
+                    ? `Adds Speaker 1 / Speaker 2 labels for English files. Language: ${activeLanguageLabel}.`
+                    : "Downloads a local English speaker model when enabled."}
+                </p>
                 {!tdrzDownloaded && (
                   <button
                     type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      openSpeakerModelDialog();
-                    }}
-                    className="mt-1 text-xs font-medium text-primary hover:text-primary/80"
+                    onClick={openSpeakerModelDialog}
+                    className="ml-7 mt-2 text-xs font-medium text-primary hover:text-primary/80"
                   >
                     Set up speaker detection
                   </button>
                 )}
-              </span>
-            </label>
-            <div className="text-sm">
-              <span className="block font-medium mb-1">Result</span>
-              <div className="rounded-lg border border-border-subtle/70 bg-background/40 px-3 py-2">
-                <p className="text-sm text-foreground">Copyable transcript + downloads</p>
-                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                  After transcription you get readable text to copy, plus .txt and .srt downloads.
-                  {speakerDetection ? " Speaker labels are included automatically." : " Timestamps are included automatically."}
-                </p>
               </div>
-              <span className="block text-xs text-muted-foreground/70 mt-1">Language: {activeLanguageLabel}</span>
             </div>
           </div>
         )}
