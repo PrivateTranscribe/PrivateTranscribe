@@ -67,7 +67,7 @@ export default function TranscribePage() {
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [noiseReduction, setNoiseReduction] = useState(true);
   const [speakerDetection, setSpeakerDetection] = useState(false);
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>("timestamped");
+  const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
   const [speakerModelDownloadStatus, setSpeakerModelDownloadStatus] = useState<
@@ -223,13 +223,11 @@ export default function TranscribePage() {
   const handleSpeakerDetectionChange = (checked: boolean) => {
     if (!checked) {
       setSpeakerDetection(false);
-      if (outputFormat === "speakers") setOutputFormat("timestamped");
       return;
     }
 
     if (tdrzDownloaded) {
       setSpeakerDetection(true);
-      setOutputFormat("speakers");
       return;
     }
 
@@ -250,7 +248,6 @@ export default function TranscribePage() {
       setSpeakerModelDownloadStatus("success");
       setSpeakerModelProgress(100);
       setSpeakerDetection(true);
-      setOutputFormat("speakers");
       setSpeakerModelDialogOpen(false);
       toast({
         title: "Speaker detection ready",
@@ -545,8 +542,7 @@ export default function TranscribePage() {
                 size="sm"
                 onClick={tdrzDownloaded ? () => {
                   setSpeakerDetection(true);
-                  setOutputFormat("speakers");
-                  setSpeakerModelDialogOpen(false);
+                              setSpeakerModelDialogOpen(false);
                 } : downloadSpeakerModel}
                 disabled={speakerModelDownloadStatus === "downloading"}
               >
@@ -601,26 +597,17 @@ export default function TranscribePage() {
                 )}
               </span>
             </label>
-            <label className="text-sm">
-              <span className="block font-medium mb-1">Transcript style</span>
-              <select
-                className="w-full rounded-md bg-background border border-border-subtle px-2 py-1.5"
-                value={outputFormat}
-                onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
-              >
-                <option value="timestamped">Readable transcript + timestamps</option>
-                <option value="speakers" disabled={!speakerDetection}>Speaker-labeled transcript</option>
-                <option value="plain">Clean text only</option>
-              </select>
-              <span className="block text-xs text-muted-foreground mt-1">
-                {outputFormat === "speakers"
-                  ? "Copy text or download .txt/.srt with speaker labels after transcription."
-                  : outputFormat === "timestamped"
-                    ? "Recommended default. Copy text or download .txt/.srt after transcription."
-                    : "Minimal copyable text. .srt download is still available after transcription."}
-              </span>
+            <div className="text-sm">
+              <span className="block font-medium mb-1">Result</span>
+              <div className="rounded-lg border border-border-subtle/70 bg-background/40 px-3 py-2">
+                <p className="text-sm text-foreground">Copyable transcript + downloads</p>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  After transcription you get readable text to copy, plus .txt and .srt downloads.
+                  {speakerDetection ? " Speaker labels are included automatically." : " Timestamps are included automatically."}
+                </p>
+              </div>
               <span className="block text-xs text-muted-foreground/70 mt-1">Language: {activeLanguageLabel}</span>
-            </label>
+            </div>
           </div>
         )}
       </div>
