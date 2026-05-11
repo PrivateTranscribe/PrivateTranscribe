@@ -66,8 +66,6 @@ export default function TranscribePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const [noiseReduction, setNoiseReduction] = useState(true);
-  const [speakerDetection, setSpeakerDetection] = useState(false);
   const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
@@ -89,6 +87,10 @@ export default function TranscribePage() {
     allowOpenAIFallback,
     allowLocalFallback,
     historyLimit,
+    fileTranscriptionNoiseReduction: noiseReduction,
+    setFileTranscriptionNoiseReduction: setNoiseReduction,
+    fileTranscriptionSpeakerDetection: speakerDetection,
+    setFileTranscriptionSpeakerDetection: setSpeakerDetection,
   } = useSettings();
 
   useEffect(() => {

@@ -352,6 +352,25 @@ export function useSettings() {
     }
   );
 
+  // File transcription preferences — remember the upload-panel toggles across tabs/sessions.
+  const [fileTranscriptionNoiseReduction, setFileTranscriptionNoiseReduction] = useLocalStorage<boolean>(
+    "fileTranscriptionNoiseReduction",
+    true,
+    {
+      serialize: String,
+      deserialize: (value) => value !== "false",
+    }
+  );
+
+  const [fileTranscriptionSpeakerDetection, setFileTranscriptionSpeakerDetection] = useLocalStorage<boolean>(
+    "fileTranscriptionSpeakerDetection",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
   // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
   // Points to the same key — deprecated, use smartContextEnabled going forward.
   const [enableContextCapture, setEnableContextCapture] = useLocalStorage<boolean>(
@@ -997,6 +1016,10 @@ export function useSettings() {
     setEnableCorrectionLearning,
     smartContextEnabled,
     setSmartContextEnabled,
+    fileTranscriptionNoiseReduction,
+    setFileTranscriptionNoiseReduction,
+    fileTranscriptionSpeakerDetection,
+    setFileTranscriptionSpeakerDetection,
     enableContextCapture,
     setEnableContextCapture,
     enableFileIdentifiers,
