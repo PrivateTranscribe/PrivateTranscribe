@@ -18,6 +18,7 @@ import {
   Copy,
   Download,
   Settings2,
+  X,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
@@ -68,6 +69,12 @@ export default function TranscribePage() {
   const [speakerDetection, setSpeakerDetection] = useState(false);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("plain");
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
+  const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
+  const [speakerModelDownloadStatus, setSpeakerModelDownloadStatus] = useState<
+    "idle" | "downloading" | "success" | "error"
+  >("idle");
+  const [speakerModelProgress, setSpeakerModelProgress] = useState(0);
+  const [speakerModelError, setSpeakerModelError] = useState("");
   const { toast } = useToast();
   const {
     useLocalWhisper,
@@ -93,11 +100,37 @@ export default function TranscribePage() {
     };
   }, []);
 
+  const refreshSpeakerModelStatus = async () => {
+    try {
+      const status = await window.electronAPI?.checkModelStatus?.("small-en-tdrz");
+      setTdrzDownloaded(Boolean(status?.downloaded));
+      return Boolean(status?.downloaded);
+    } catch {
+      setTdrzDownloaded(false);
+      return false;
+    }
+  };
+
   useEffect(() => {
-    window.electronAPI
-      ?.checkModelStatus?.("small-en-tdrz")
-      ?.then((status: any) => setTdrzDownloaded(Boolean(status?.downloaded)))
-      .catch(() => setTdrzDownloaded(false));
+    refreshSpeakerModelStatus();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWhisperDownloadProgress?.((_event: unknown, data: any) => {
+      if (data?.model !== "small-en-tdrz") return;
+      if (data?.type === "progress") {
+        setSpeakerModelDownloadStatus("downloading");
+        setSpeakerModelProgress(Number(data?.percentage) || 0);
+      }
+      if (data?.type === "complete") {
+        setSpeakerModelProgress(100);
+        setSpeakerModelDownloadStatus("success");
+        setTdrzDownloaded(true);
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   const currentMaxBytes = useMemo(
@@ -176,6 +209,73 @@ export default function TranscribePage() {
     }
 
     return null;
+  };
+
+  const openSpeakerModelDialog = () => {
+    setSpeakerModelDialogOpen(true);
+    setSpeakerModelError("");
+    if (!tdrzDownloaded && speakerModelDownloadStatus !== "downloading") {
+      setSpeakerModelDownloadStatus("idle");
+      setSpeakerModelProgress(0);
+    }
+  };
+
+  const handleSpeakerDetectionChange = (checked: boolean) => {
+    if (!checked) {
+      setSpeakerDetection(false);
+      if (outputFormat === "speakers") setOutputFormat("plain");
+      return;
+    }
+
+    if (tdrzDownloaded) {
+      setSpeakerDetection(true);
+      setOutputFormat("speakers");
+      return;
+    }
+
+    openSpeakerModelDialog();
+  };
+
+  const downloadSpeakerModel = async () => {
+    setSpeakerModelDownloadStatus("downloading");
+    setSpeakerModelProgress(0);
+    setSpeakerModelError("");
+
+    try {
+      const result = await window.electronAPI?.downloadWhisperModel?.("small-en-tdrz");
+      if (!result?.success && !result?.downloaded) {
+        throw new Error(result?.error || "Speaker model download failed.");
+      }
+      await refreshSpeakerModelStatus();
+      setSpeakerModelDownloadStatus("success");
+      setSpeakerModelProgress(100);
+      setSpeakerDetection(true);
+      setOutputFormat("speakers");
+      setSpeakerModelDialogOpen(false);
+      toast({
+        title: "Speaker detection ready",
+        description: "Multi-speaker file transcription is now enabled.",
+        variant: "success",
+      });
+    } catch (error) {
+      const message = toErrorMessage(error);
+      setSpeakerModelDownloadStatus("error");
+      setSpeakerModelError(message);
+      toast({
+        title: "Model download failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const cancelSpeakerModelDownload = async () => {
+    try {
+      await window.electronAPI?.cancelWhisperDownload?.();
+    } finally {
+      setSpeakerModelDownloadStatus("idle");
+      setSpeakerModelProgress(0);
+    }
   };
 
   const handleBrowse = () => {
@@ -371,6 +471,92 @@ export default function TranscribePage() {
         className="hidden"
       />
 
+      {speakerModelDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border-subtle bg-background shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Enable speaker detection</h2>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  PrivateTranscribe needs to download a local speaker model before it can label
+                  speakers in uploaded files. This stays on your computer.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSpeakerModelDialogOpen(false)}
+                disabled={speakerModelDownloadStatus === "downloading"}
+                className="rounded-md p-1 text-muted-foreground hover:bg-surface-raised hover:text-foreground disabled:opacity-40"
+                aria-label="Close speaker model dialog"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-xl border border-border-subtle bg-surface-raised/40 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Small English speaker model</p>
+                    <p className="text-xs text-muted-foreground">~466 MB · one-time download · fully local</p>
+                  </div>
+                  <Badge variant={tdrzDownloaded ? "success" : "outline"} className="text-[10px]">
+                    {tdrzDownloaded ? "Ready" : "Required"}
+                  </Badge>
+                </div>
+                {speakerModelDownloadStatus === "downloading" && (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-200"
+                        style={{ width: `${Math.min(100, Math.max(0, speakerModelProgress))}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Downloading… {speakerModelProgress}%
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                After this, users can upload a meeting, podcast, or interview and get copyable text
+                plus SRT export with Speaker 1, Speaker 2, etc.
+              </p>
+
+              {speakerModelError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {speakerModelError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-4">
+              {speakerModelDownloadStatus === "downloading" ? (
+                <Button variant="outline" size="sm" onClick={cancelSpeakerModelDownload}>
+                  Cancel download
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setSpeakerModelDialogOpen(false)}>
+                  Not now
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={tdrzDownloaded ? () => {
+                  setSpeakerDetection(true);
+                  setOutputFormat("speakers");
+                  setSpeakerModelDialogOpen(false);
+                } : downloadSpeakerModel}
+                disabled={speakerModelDownloadStatus === "downloading"}
+              >
+                {tdrzDownloaded ? "Enable" : speakerModelDownloadStatus === "downloading" ? "Downloading…" : "Download & enable"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-5 rounded-xl border border-border-subtle/50 bg-surface-raised/30 overflow-hidden">
         <button
           type="button"
@@ -389,8 +575,31 @@ export default function TranscribePage() {
               <span><span className="block font-medium">Noise reduction</span><span className="block text-xs text-muted-foreground">Default on for uploaded files.</span></span>
             </label>
             <label className="flex items-start gap-3 text-sm">
-              <input type="checkbox" checked={speakerDetection} onChange={(e) => setSpeakerDetection(e.target.checked)} />
-              <span><span className="block font-medium">Speaker detection</span><span className="block text-xs text-muted-foreground">Requires English tdrz model. {tdrzDownloaded ? "Ready." : "Download in model settings."}</span></span>
+              <input
+                type="checkbox"
+                checked={speakerDetection}
+                onChange={(e) => handleSpeakerDetectionChange(e.target.checked)}
+              />
+              <span>
+                <span className="block font-medium">Speaker detection</span>
+                <span className="block text-xs text-muted-foreground">
+                  {tdrzDownloaded
+                    ? "Ready for uploaded English files."
+                    : "Downloads a local speaker model when enabled."}
+                </span>
+                {!tdrzDownloaded && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openSpeakerModelDialog();
+                    }}
+                    className="mt-1 text-xs font-medium text-primary hover:text-primary/80"
+                  >
+                    Set up speaker detection
+                  </button>
+                )}
+              </span>
             </label>
             <label className="text-sm">
               <span className="block font-medium mb-1">Output</span>
