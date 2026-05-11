@@ -66,7 +66,6 @@ export default function TranscribePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
   const [speakerModelDownloadStatus, setSpeakerModelDownloadStatus] = useState<
@@ -92,6 +91,7 @@ export default function TranscribePage() {
     fileTranscriptionSpeakerDetection: speakerDetection,
     setFileTranscriptionSpeakerDetection: setSpeakerDetection,
   } = useSettings();
+  const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
 
   useEffect(() => {
     const mgr = new AudioManager();
