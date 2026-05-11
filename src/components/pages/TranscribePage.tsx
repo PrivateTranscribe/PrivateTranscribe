@@ -67,7 +67,7 @@ export default function TranscribePage() {
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [noiseReduction, setNoiseReduction] = useState(true);
   const [speakerDetection, setSpeakerDetection] = useState(false);
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>("plain");
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("timestamped");
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
   const [speakerModelDownloadStatus, setSpeakerModelDownloadStatus] = useState<
@@ -223,7 +223,7 @@ export default function TranscribePage() {
   const handleSpeakerDetectionChange = (checked: boolean) => {
     if (!checked) {
       setSpeakerDetection(false);
-      if (outputFormat === "speakers") setOutputFormat("plain");
+      if (outputFormat === "speakers") setOutputFormat("timestamped");
       return;
     }
 
@@ -602,13 +602,24 @@ export default function TranscribePage() {
               </span>
             </label>
             <label className="text-sm">
-              <span className="block font-medium mb-1">Output</span>
-              <select className="w-full rounded-md bg-background border border-border-subtle px-2 py-1.5" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}>
-                <option value="plain">Plain text</option>
-                <option value="timestamped">With timestamps</option>
-                <option value="speakers">With speakers</option>
+              <span className="block font-medium mb-1">Transcript style</span>
+              <select
+                className="w-full rounded-md bg-background border border-border-subtle px-2 py-1.5"
+                value={outputFormat}
+                onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
+              >
+                <option value="timestamped">Readable transcript + timestamps</option>
+                <option value="speakers" disabled={!speakerDetection}>Speaker-labeled transcript</option>
+                <option value="plain">Clean text only</option>
               </select>
-              <span className="block text-xs text-muted-foreground mt-1">Language: {activeLanguageLabel}</span>
+              <span className="block text-xs text-muted-foreground mt-1">
+                {outputFormat === "speakers"
+                  ? "Copy text or download .txt/.srt with speaker labels after transcription."
+                  : outputFormat === "timestamped"
+                    ? "Recommended default. Copy text or download .txt/.srt after transcription."
+                    : "Minimal copyable text. .srt download is still available after transcription."}
+              </span>
+              <span className="block text-xs text-muted-foreground/70 mt-1">Language: {activeLanguageLabel}</span>
             </label>
           </div>
         )}
