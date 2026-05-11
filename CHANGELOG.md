@@ -7,12 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-11
+
 ### Added
 - **File transcription v2**: Add local Whisper `verbose_json` file mode with timestamps, SRT export, optional noise reduction, and tdrz speaker-turn detection support.
-- **Speaker-ready model**: Add the `base-tdrz` Whisper model registry entry for English speaker turn detection.
+- **Speaker-ready model**: Add the `small-en-tdrz` Whisper model registry entry for English speaker turn detection.
 
 ### Changed
 - **Transcribe page**: Add a collapsible file transcription settings panel, copyable transcript output, `.txt`/`.srt` downloads, and speaker count badges.
+
+### Fixed
+- **Speaker detection output**: Preserve TinyDiarize speaker-turn markers from whisper-server realtime output so file transcription correctly labels multiple speakers.
 
 ## [0.8.4] - 2026-05-06
 
