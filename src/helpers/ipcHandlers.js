@@ -11,6 +11,7 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
+const { formatTranscript } = require("./transcriptFormatter");
 
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
@@ -572,6 +573,41 @@ class IPCHandlers {
         }
 
         throw error;
+      }
+    });
+
+    ipcMain.handle("transcribe-file-v2", async (event, audioBlob, options = {}) => {
+      debugLogger.log("transcribe-file-v2 called", {
+        audioBlobType: typeof audioBlob,
+        audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
+        options,
+      });
+
+      try {
+        const result = await this.whisperManager.transcribeFileV2(audioBlob, {
+          ...options,
+          fileMode: true,
+        });
+        if (!result.success) return result;
+
+        const formatted = formatTranscript(result.raw || { text: result.text, segments: result.segments }, options.outputFormat || "plain", {
+          includeSpeakers: options.speakerDetection === true,
+        });
+
+        return {
+          success: true,
+          text: formatted.text || result.text,
+          srt: formatted.srt,
+          speakerCount: formatted.speakerCount,
+          speakers: formatted.speakers,
+          segments: formatted.segments,
+          format: options.outputFormat || "plain",
+          model: result.model,
+          speakerDetectionActive: result.speakerDetectionActive,
+        };
+      } catch (error) {
+        debugLogger.error("File transcription v2 error", error);
+        return { success: false, error: error.message || "File transcription failed" };
       }
     });
 

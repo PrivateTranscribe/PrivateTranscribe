@@ -422,6 +422,7 @@ declare global {
 
       // Whisper operations (whisper.cpp)
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
+      transcribeFileV2: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       checkWhisperInstallation: () => Promise<WhisperCheckResult>;
       downloadWhisperModel: (modelName: string) => Promise<WhisperModelResult>;
       onWhisperDownloadProgress: (

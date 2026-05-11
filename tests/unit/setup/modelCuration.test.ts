@@ -49,10 +49,10 @@ describe("Model curation invariants", () => {
       expect(recommended).toEqual(["turbo"]);
     });
 
-    it("whisper models appear in curated order: turbo, base, tiny, small, medium, large", () => {
+    it("whisper models appear in curated order: turbo, base, small-en-tdrz, tiny, small, medium, large", () => {
       const data = readRegistry();
       const keys = Object.keys(data.whisperModels);
-      const expectedOrder = ["turbo", "base", "tiny", "small", "medium", "large"];
+      const expectedOrder = ["turbo", "base", "small-en-tdrz", "tiny", "small", "medium", "large"];
       expect(keys).toEqual(expectedOrder);
     });
 

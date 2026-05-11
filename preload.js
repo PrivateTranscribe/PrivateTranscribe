@@ -103,6 +103,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
+  transcribeFileV2: (audioBlob, options) => ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
   checkWhisperInstallation: () => ipcRenderer.invoke("check-whisper-installation"),
   downloadWhisperModel: (modelName) => ipcRenderer.invoke("download-whisper-model", modelName),
   onWhisperDownloadProgress: registerListener("whisper-download-progress"),

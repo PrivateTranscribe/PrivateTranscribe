@@ -56,6 +56,14 @@
       "fileName": "ggml-base.bin",
       "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
     },
+    "small-en-tdrz": {
+      "name": "Small EN TDRZ",
+      "description": "Small English model with speaker turn detection (for multi-speaker files)",
+      "size": "466MB",
+      "sizeMb": 466,
+      "fileName": "ggml-small.en-tdrz.bin",
+      "downloadUrl": "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/main/ggml-small.en-tdrz.bin"
+    },
     "tiny": {
       "name": "Tiny",
       "description": "Smallest download, lowest quality",

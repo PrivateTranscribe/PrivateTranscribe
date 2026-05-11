@@ -933,6 +933,12 @@ class AudioManager {
       if (metadata?.originalFileName) {
         options.inputFileName = metadata.originalFileName;
       }
+      if (metadata?.fileMode) {
+        options.fileMode = true;
+        options.noiseReduction = metadata.noiseReduction === true;
+        options.speakerDetection = metadata.speakerDetection === true;
+        options.outputFormat = metadata.outputFormat || "plain";
+      }
 
       logger.info(
         "Language resolved for local Whisper",
@@ -1980,6 +1986,28 @@ class AudioManager {
     } finally {
       this.clearActiveTranscriptionAbortController(processingGeneration);
     }
+  }
+
+  async processFileTranscriptionV2(audioBlob, model = "base", metadata = {}) {
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const rawLanguage = metadata.language ?? this.getTranscriptionSetting("preferredLanguage", "");
+    const translateToEnglish = metadata.translate === true || this.getTranscriptionSetting("translateToEnglish", "off") === "on";
+    const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
+    const options = {
+      model,
+      fileMode: true,
+      noiseReduction: metadata.noiseReduction !== false,
+      speakerDetection: metadata.speakerDetection === true,
+      outputFormat: metadata.outputFormat || "plain",
+      inputFileName: metadata.originalFileName,
+    };
+    if (resolvedLanguage) options.language = resolvedLanguage;
+    if (translateToEnglish) options.translate = true;
+    const result = await window.electronAPI.transcribeFileV2(arrayBuffer, options);
+    if (result?.success && result.text) {
+      return { success: true, ...result, source: "local-file-v2" };
+    }
+    throw new Error(result?.message || result?.error || "Local file transcription failed");
   }
 
   getTranscriptionModel() {

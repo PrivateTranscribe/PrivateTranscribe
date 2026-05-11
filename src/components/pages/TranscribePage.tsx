@@ -16,6 +16,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Copy,
+  Download,
+  Settings2,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
@@ -35,6 +37,7 @@ const ACCEPT_ATTR = [
 ].join(",");
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
+type OutputFormat = "plain" | "timestamped" | "speakers";
 
 type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
 
@@ -56,8 +59,15 @@ export default function TranscribePage() {
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFileSize, setSelectedFileSize] = useState(0);
   const [transcript, setTranscript] = useState("");
+  const [srt, setSrt] = useState("");
+  const [speakerCount, setSpeakerCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [noiseReduction, setNoiseReduction] = useState(true);
+  const [speakerDetection, setSpeakerDetection] = useState(false);
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("plain");
+  const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const { toast } = useToast();
   const {
     useLocalWhisper,
@@ -81,6 +91,13 @@ export default function TranscribePage() {
       audioManagerRef.current?.cleanup();
       audioManagerRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    window.electronAPI
+      ?.checkModelStatus?.("small-en-tdrz")
+      ?.then((status: any) => setTdrzDownloaded(Boolean(status?.downloaded)))
+      .catch(() => setTdrzDownloaded(false));
   }, []);
 
   const currentMaxBytes = useMemo(
@@ -186,6 +203,8 @@ export default function TranscribePage() {
     setSelectedFileName("");
     setSelectedFileSize(0);
     setTranscript("");
+    setSrt("");
+    setSpeakerCount(0);
     setErrorMessage("");
     setCopied(false);
   };
@@ -210,7 +229,14 @@ export default function TranscribePage() {
 
       let result;
       if (useLocalWhisper) {
-        result = await manager.processWithLocalWhisper(file, whisperModel || "base", metadata);
+        result = await manager.processFileTranscriptionV2(file, whisperModel || "base", {
+          ...metadata,
+          noiseReduction,
+          speakerDetection,
+          outputFormat,
+          language: preferredLanguage,
+          translate: translateToEnglish === "on",
+        });
       } else {
         result = await manager.processWithOpenAIAPI(file, metadata);
       }
@@ -224,6 +250,8 @@ export default function TranscribePage() {
         await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
       }
       setTranscript(text);
+      setSrt(result?.srt || "");
+      setSpeakerCount(Number(result?.speakerCount) || 0);
       setStatus("success");
       toast({
         title: "Transcription complete",
@@ -240,6 +268,20 @@ export default function TranscribePage() {
         variant: "destructive",
       });
     }
+  };
+
+  const downloadText = (content: string, extension: "txt" | "srt") => {
+    if (!content) return;
+    const baseName = selectedFileName.replace(/\.[^/.]+$/, "") || "transcript";
+    const blob = new Blob([content], { type: extension === "srt" ? "application/x-subrip" : "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${baseName}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleFiles = (files: FileList | null) => {
@@ -329,6 +371,40 @@ export default function TranscribePage() {
         className="hidden"
       />
 
+      <div className="mb-5 rounded-xl border border-border-subtle/50 bg-surface-raised/30 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setSettingsOpen((open) => !open)}
+          className="w-full px-5 py-3 flex items-center justify-between text-left"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Settings2 size={15} /> File transcription settings
+          </span>
+          <span className="text-xs text-muted-foreground">{settingsOpen ? "Hide" : "Show"}</span>
+        </button>
+        {settingsOpen && (
+          <div className="px-5 pb-5 grid gap-4 sm:grid-cols-3 border-t border-border-subtle/40 pt-4">
+            <label className="flex items-start gap-3 text-sm">
+              <input type="checkbox" checked={noiseReduction} onChange={(e) => setNoiseReduction(e.target.checked)} />
+              <span><span className="block font-medium">Noise reduction</span><span className="block text-xs text-muted-foreground">Default on for uploaded files.</span></span>
+            </label>
+            <label className="flex items-start gap-3 text-sm">
+              <input type="checkbox" checked={speakerDetection} onChange={(e) => setSpeakerDetection(e.target.checked)} />
+              <span><span className="block font-medium">Speaker detection</span><span className="block text-xs text-muted-foreground">Requires English tdrz model. {tdrzDownloaded ? "Ready." : "Download in model settings."}</span></span>
+            </label>
+            <label className="text-sm">
+              <span className="block font-medium mb-1">Output</span>
+              <select className="w-full rounded-md bg-background border border-border-subtle px-2 py-1.5" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}>
+                <option value="plain">Plain text</option>
+                <option value="timestamped">With timestamps</option>
+                <option value="speakers">With speakers</option>
+              </select>
+              <span className="block text-xs text-muted-foreground mt-1">Language: {activeLanguageLabel}</span>
+            </label>
+          </div>
+        )}
+      </div>
+
       <div
         role="button"
         tabIndex={0}
@@ -376,6 +452,9 @@ export default function TranscribePage() {
               <CheckCircle2 size={32} className="text-success" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Transcription complete</h3>
+            {speakerCount > 0 && (
+              <Badge variant="secondary" className="mb-3">{speakerCount} speaker{speakerCount === 1 ? "" : "s"} detected</Badge>
+            )}
             <p className="text-sm text-muted-foreground mb-2">{selectedFileName}</p>
             <p className="text-xs text-muted-foreground/70 tabular-nums mb-5">
               {formatBytes(selectedFileSize)}
@@ -390,8 +469,12 @@ export default function TranscribePage() {
                 <Copy size={14} />
                 {copied ? "Copied" : "Copy transcript"}
               </Button>
+              <Button size="sm" variant="outline" onClick={() => downloadText(transcript, "txt")} data-prevent-browse="true">
+                <Download size={14} /> .txt
+              </Button>
+              {srt && <Button size="sm" variant="outline" onClick={() => downloadText(srt, "srt")} data-prevent-browse="true"><Download size={14} /> .srt</Button>}
               <Button size="sm" onClick={resetState} data-prevent-browse="true">
-                Upload another
+                Clear
               </Button>
             </div>
           </>
@@ -431,9 +514,11 @@ export default function TranscribePage() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-            {transcript}
-          </p>
+          <textarea
+            readOnly
+            value={transcript}
+            className="w-full min-h-52 resize-y rounded-lg border border-border-subtle bg-background/60 p-3 text-sm text-foreground leading-relaxed whitespace-pre-wrap"
+          />
         </div>
       )}
 

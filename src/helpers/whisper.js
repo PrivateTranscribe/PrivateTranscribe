@@ -307,7 +307,15 @@ class WhisperManager {
       language,
       initialPrompt,
       inputFileName,
-      translate
+      translate,
+      {
+        fileMode: options.fileMode === true,
+        noiseReduction: options.noiseReduction === true,
+        speakerDetection: options.speakerDetection === true,
+        outputFormat: options.outputFormat || "plain",
+        diarize: options.diarize === true,
+        vad: options.vad === true,
+      }
     );
   }
 
@@ -317,7 +325,8 @@ class WhisperManager {
     language,
     initialPrompt = null,
     inputFileName = null,
-    translate = false
+    translate = false,
+    requestOptions = {}
   ) {
     debugLogger.info("Transcription mode: SERVER", { model, language: language || "auto" });
     const modelPath = this.getModelPath(model);
@@ -373,6 +382,7 @@ class WhisperManager {
       translate,
       initialPrompt,
       inputFileName,
+      ...requestOptions,
     });
     const elapsed = Date.now() - startTime;
 
@@ -381,7 +391,34 @@ class WhisperManager {
       resultKeys: Object.keys(result),
     });
 
-    return this.parseWhisperResult(result);
+    const parsed = this.parseWhisperResult(result);
+    if (requestOptions.fileMode && parsed.success) {
+      return { ...parsed, raw: result, segments: result?.segments || [] };
+    }
+    return parsed;
+  }
+
+  isModelDownloaded(modelName) {
+    try {
+      return fs.existsSync(this.getModelPath(modelName));
+    } catch {
+      return false;
+    }
+  }
+
+  async transcribeFileV2(audioBlob, options = {}) {
+    const requestedSpeakerDetection = options.speakerDetection === true;
+    const model = requestedSpeakerDetection && this.isModelDownloaded("small-en-tdrz") ? "small-en-tdrz" : options.model || "turbo";
+    const result = await this.transcribeLocalWhisper(audioBlob, {
+      ...options,
+      model,
+      fileMode: true,
+      speakerDetection: requestedSpeakerDetection && model === "small-en-tdrz",
+      // VAD requires a separate Silero VAD model with whisper-server. Keep it opt-in
+      // so normal file transcription does not fail on installations without that model.
+      vad: options.vad === true,
+    });
+    return { ...result, model, speakerDetectionActive: requestedSpeakerDetection && model === "small-en-tdrz" };
   }
 
   // Normalize whitespace: replace newlines with spaces and collapse multiple spaces

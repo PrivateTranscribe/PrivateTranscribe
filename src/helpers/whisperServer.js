@@ -135,6 +135,40 @@ function getWhisperRequestTimeoutMs(durationSeconds) {
   );
 }
 
+function stripSpeakerTurnTokens(text) {
+  return typeof text === "string" ? text.replace(/\[\s*SPEAKER_TURN\s*\]/gi, " ").replace(/\s+/g, " ").trim() : "";
+}
+
+function offsetVerboseJsonSegments(result, offsetSeconds) {
+  if (!result) {
+    return result;
+  }
+  const cleanedText = stripSpeakerTurnTokens(result.text || "");
+  if (!Array.isArray(result.segments)) {
+    return cleanedText ? { ...result, text: cleanedText } : result;
+  }
+  const timestampOffset = Number.isFinite(offsetSeconds) ? offsetSeconds : 0;
+  return {
+    ...result,
+    text: cleanedText,
+    segments: result.segments.map((segment) => ({
+      ...segment,
+      start: typeof segment.start === "number" ? segment.start + timestampOffset : segment.start,
+      end: typeof segment.end === "number" ? segment.end + timestampOffset : segment.end,
+      text: stripSpeakerTurnTokens(segment.text) || segment.text,
+    })),
+  };
+}
+
+function mergeVerboseJsonResults(results) {
+  const segments = results.flatMap((result) => (Array.isArray(result?.segments) ? result.segments : []));
+  const text = results
+    .map((result) => stripSpeakerTurnTokens(result?.text || ""))
+    .filter(Boolean)
+    .join(" ");
+  return { ...results[0], text, segments, chunks: results.length };
+}
+
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -878,14 +912,18 @@ class WhisperServerManager {
     });
 
     try {
-      const { language, translate, initialPrompt, inputFileName } = options;
+      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false } = options;
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
       if (!this.canConvert) {
         throw new Error("FFmpeg not found - required for audio conversion");
       }
-      finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
+      finalBuffer = await this._convertToWav(audioBuffer, inputFileName, {
+        // whisper.cpp stereo diarization needs two channels; tdrz/tinydiarize stays mono.
+        channels: fileMode && diarize ? 2 : 1,
+        noiseReduction: fileMode && noiseReduction,
+      });
 
       const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer);
       if (chunks.length > 1) {
@@ -905,18 +943,57 @@ class WhisperServerManager {
           durationSeconds: Math.round(chunk.durationSeconds),
           sizeBytes: chunk.buffer.length,
         });
-        const result = await this._postInference(chunk.buffer, {
-          language,
-          translate,
-          initialPrompt,
-          chunkIndex: index,
-          chunkCount: chunks.length,
-          durationSeconds: chunk.durationSeconds,
-        });
-        results.push(result);
+        let result;
+        try {
+          result = await this._postInference(chunk.buffer, {
+            language,
+            translate,
+            initialPrompt,
+            chunkIndex: index,
+            chunkCount: chunks.length,
+            durationSeconds: chunk.durationSeconds,
+            fileMode,
+            diarize,
+            tinydiarize: fileMode && speakerDetection,
+            vad,
+          });
+        } catch (error) {
+          if (!fileMode) throw error;
+          debugLogger.warn("verbose_json file transcription failed; retrying with json compatibility fallback", {
+            error: error.message,
+            chunk: index + 1,
+            chunks: chunks.length,
+          });
+          const activeModelPath = this.modelPath;
+          if (activeModelPath) {
+            await this.stop();
+            await this.start(activeModelPath);
+          }
+          result = await this._postInference(chunk.buffer, {
+            language,
+            translate,
+            initialPrompt,
+            chunkIndex: index,
+            chunkCount: chunks.length,
+            durationSeconds: chunk.durationSeconds,
+            fileMode: false,
+          });
+          if (!Array.isArray(result?.segments) && result?.text) {
+            result = {
+              ...result,
+              segments: [{ start: 0, end: chunk.durationSeconds || 0, text: result.text }],
+              verboseJsonFallback: true,
+            };
+          }
+        }
+        results.push(fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result);
       }
 
       if (results.length === 1) return results[0];
+
+      if (fileMode && results.some((result) => Array.isArray(result?.segments))) {
+        return mergeVerboseJsonResults(results);
+      }
 
       return {
         text: results
@@ -938,6 +1015,10 @@ class WhisperServerManager {
       chunkIndex = 0,
       chunkCount = 1,
       durationSeconds,
+      fileMode = false,
+      diarize = false,
+      tinydiarize = false,
+      vad = false,
     } = options;
     const boundary = `----WhisperBoundary${Date.now()}-${chunkIndex}`;
     const parts = [];
@@ -980,8 +1061,17 @@ class WhisperServerManager {
     parts.push(
       `--${boundary}\r\n` +
         `Content-Disposition: form-data; name="response_format"\r\n\r\n` +
-        `json\r\n`
+        `${fileMode ? "verbose_json" : "json"}\r\n`
     );
+
+    for (const [name, enabled] of Object.entries({ diarize, tinydiarize, vad })) {
+      if (!enabled) continue;
+      parts.push(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="${name}"\r\n\r\n` +
+          `true\r\n`
+      );
+    }
     parts.push(`--${boundary}--\r\n`);
 
     const bodyParts = parts.map((part) => (typeof part === "string" ? Buffer.from(part) : part));
@@ -1078,6 +1168,7 @@ class WhisperServerManager {
       chunks.push({
         buffer: createPcm16WavBuffer(pcmData, info.sampleRate, info.channels, info.bitsPerSample),
         durationSeconds: pcmData.length / info.byteRate,
+        offsetSeconds: (start - info.dataOffset) / info.byteRate,
       });
     }
 
@@ -1086,7 +1177,7 @@ class WhisperServerManager {
       : [{ buffer: wavBuffer, durationSeconds: info.durationSeconds }];
   }
 
-  async _convertToWav(audioBuffer, inputFileName = null) {
+  async _convertToWav(audioBuffer, inputFileName = null, options = {}) {
     const tempDir = getSafeTempDir();
     const tempId = crypto.randomUUID();
     const inputExtension = resolveTempInputExtension(inputFileName);
@@ -1095,7 +1186,11 @@ class WhisperServerManager {
 
     try {
       fs.writeFileSync(tempInputPath, audioBuffer);
-      await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1 });
+      await convertToWav(tempInputPath, tempWavPath, {
+        sampleRate: 16000,
+        channels: options.channels || 1,
+        audioFilters: options.noiseReduction ? ["afftdn=nf=-25"] : [],
+      });
       return fs.readFileSync(tempWavPath);
     } finally {
       for (const f of [tempInputPath, tempWavPath]) {
