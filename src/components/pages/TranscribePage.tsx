@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  FileText,
   Settings2,
   X,
 } from "lucide-react";
@@ -192,6 +193,15 @@ export default function TranscribePage() {
     }
     return allowLocalFallback ? "Enabled (cloud -> local)" : "Disabled";
   }, [useLocalWhisper, allowOpenAIFallback, allowLocalFallback]);
+
+  const transcriptStats = useMemo(() => {
+    const trimmed = transcript.trim();
+    if (!trimmed) return { words: 0, lines: 0 };
+    return {
+      words: trimmed.split(/\s+/).filter(Boolean).length,
+      lines: trimmed.split(/\n+/).filter((line) => line.trim()).length,
+    };
+  }, [transcript]);
 
   const validateFile = (file: File): string | null => {
     const extension = getFileExtension(file.name);
@@ -661,31 +671,16 @@ export default function TranscribePage() {
               <CheckCircle2 size={32} className="text-success" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Transcription complete</h3>
-            {speakerCount > 0 && (
-              <Badge variant="secondary" className="mb-3">{speakerCount} speaker{speakerCount === 1 ? "" : "s"} detected</Badge>
-            )}
             <p className="text-sm text-muted-foreground mb-2">{selectedFileName}</p>
-            <p className="text-xs text-muted-foreground/70 tabular-nums mb-5">
-              {formatBytes(selectedFileSize)}
-            </p>
-            <div className="flex items-center gap-2" data-prevent-browse="true">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={copyTranscript}
-                data-prevent-browse="true"
-              >
-                <Copy size={14} />
-                {copied ? "Copied" : "Copy transcript"}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => downloadText(transcript, "txt")} data-prevent-browse="true">
-                <Download size={14} /> .txt
-              </Button>
-              {srt && <Button size="sm" variant="outline" onClick={() => downloadText(srt, "srt")} data-prevent-browse="true"><Download size={14} /> .srt</Button>}
-              <Button size="sm" onClick={resetState} data-prevent-browse="true">
-                Clear
-              </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground/70">
+              <span className="tabular-nums">{formatBytes(selectedFileSize)}</span>
+              {speakerCount > 0 && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {speakerCount} speaker{speakerCount === 1 ? "" : "s"} detected
+                </Badge>
+              )}
             </div>
+            <p className="mt-5 text-xs text-muted-foreground/60">Transcript is ready below.</p>
           </>
         ) : (
           <>
@@ -714,21 +709,64 @@ export default function TranscribePage() {
       </div>
 
       {status === "success" && transcript && (
-        <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-foreground">Transcript</p>
-            {historyLimit !== 0 && (
-              <Badge variant="info" className="text-[10px]">
-                Saved to History
-              </Badge>
-            )}
+        <section className="mt-6 overflow-hidden rounded-2xl border border-border-subtle bg-surface-raised/40 shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-border-subtle/60 px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FileText size={16} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Transcript result</p>
+                  <p className="truncate text-xs text-muted-foreground">{selectedFileName}</p>
+                </div>
+                {historyLimit !== 0 && (
+                  <Badge variant="info" className="text-[10px]">
+                    Saved to History
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/75">
+                <span>{transcriptStats.words.toLocaleString()} words</span>
+                <span className="text-muted-foreground/35">•</span>
+                <span>{transcriptStats.lines.toLocaleString()} lines</span>
+                {speakerCount > 0 && (
+                  <>
+                    <span className="text-muted-foreground/35">•</span>
+                    <span>{speakerCount} speaker{speakerCount === 1 ? "" : "s"}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2" data-prevent-browse="true">
+              <Button size="sm" variant="outline" onClick={copyTranscript} data-prevent-browse="true">
+                <Copy size={14} />
+                {copied ? "Copied" : "Copy"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => downloadText(transcript, "txt")} data-prevent-browse="true">
+                <Download size={14} />
+                TXT
+              </Button>
+              {srt && (
+                <Button size="sm" variant="outline" onClick={() => downloadText(srt, "srt")} data-prevent-browse="true">
+                  <Download size={14} />
+                  SRT
+                </Button>
+              )}
+              <Button size="sm" onClick={resetState} data-prevent-browse="true">
+                New file
+              </Button>
+            </div>
           </div>
+
           <textarea
             readOnly
             value={transcript}
-            className="w-full min-h-52 resize-y rounded-lg border border-border-subtle bg-background/60 p-3 text-sm text-foreground leading-relaxed whitespace-pre-wrap"
+            spellCheck={false}
+            className="block min-h-72 w-full resize-y border-0 bg-background/55 p-5 text-sm leading-7 text-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-0"
           />
-        </div>
+        </section>
       )}
 
       <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
