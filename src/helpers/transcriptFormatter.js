@@ -27,20 +27,27 @@ function normalizeSegments(verboseJson = {}) {
       ? [{ start: 0, end: 0, text: verboseJson.text }]
       : [];
 
-  let currentSpeaker = "Speaker 1";
-  let nextSpeakerNumber = 1;
+  let currentSpeakerIndex = 1;
   const speakers = new Set();
 
   return rawSegments
     .map((segment) => {
       const rawText = String(segment.text || "");
-      if (/\[\s*SPEAKER_TURN\s*\]/i.test(rawText)) {
-        nextSpeakerNumber += speakers.size === 0 ? 0 : 1;
-        currentSpeaker = `Speaker ${nextSpeakerNumber}`;
+      const startsWithTurn = /^\s*\[\s*SPEAKER_TURN\s*\]/i.test(rawText);
+      const hasTurnAfterSegment = /\[\s*SPEAKER_TURN\s*\]\s*$/i.test(rawText) && !startsWithTurn;
+
+      if (startsWithTurn && speakers.size > 0) {
+        currentSpeakerIndex = currentSpeakerIndex === 1 ? 2 : 1;
       }
+
       const explicitSpeaker = segment.speaker || segment.speaker_label || segment.speakerLabel;
-      const speaker = explicitSpeaker ? String(explicitSpeaker) : currentSpeaker;
+      const speaker = explicitSpeaker ? String(explicitSpeaker) : `Speaker ${currentSpeakerIndex}`;
       const text = cleanText(rawText);
+
+      if (hasTurnAfterSegment) {
+        currentSpeakerIndex = currentSpeakerIndex === 1 ? 2 : 1;
+      }
+
       if (!text) return null;
       speakers.add(speaker);
       return {

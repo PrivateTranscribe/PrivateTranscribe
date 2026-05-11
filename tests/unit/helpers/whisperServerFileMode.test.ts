@@ -1,4 +1,3 @@
-import { EventEmitter } from "events";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import fs from "fs";
 import http from "http";
@@ -20,33 +19,37 @@ describe("WhisperServer file mode", () => {
   });
 
   it("uses verbose_json, diarize, tinydiarize, and vad in file mode posts", async () => {
-    const manager: any = new WhisperServerManager();
-    manager.port = 8178;
-    const written: Buffer[] = [];
-
-    http.request = ((options: any, callback: any) => {
-      const req: any = new EventEmitter();
-      req.write = (chunk: Buffer) => written.push(Buffer.from(chunk));
-      req.end = () => {
-        const res: any = new EventEmitter();
-        res.statusCode = 200;
-        callback(res);
-        res.emit("data", JSON.stringify({ text: "ok", segments: [] }));
-        res.emit("end");
-      };
-      req.destroy = vi.fn();
-      return req;
-    }) as any;
-
-    await manager._postInference(Buffer.from("wav"), {
-      fileMode: true,
-      diarize: true,
-      tinydiarize: true,
-      vad: true,
-      durationSeconds: 1,
+    let body = "";
+    const server = http.createServer((req, res) => {
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ text: "ok", segments: [] }));
+      });
     });
 
-    const body = Buffer.concat(written).toString("utf8");
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Failed to start test server");
+
+    const manager: any = new WhisperServerManager();
+    manager.port = address.port;
+
+    try {
+      await manager._postInference(Buffer.from("wav"), {
+        fileMode: true,
+        diarize: true,
+        tinydiarize: true,
+        vad: true,
+        durationSeconds: 1,
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+
     expect(body).toContain('name="response_format"');
     expect(body).toContain("verbose_json");
     expect(body).toContain('name="diarize"');

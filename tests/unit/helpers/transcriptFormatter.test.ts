@@ -42,4 +42,22 @@ describe("transcriptFormatter", () => {
     expect(result.speakerCount).toBe(1);
     expect(result.text).toBe("[00:00:00] Alex: Test");
   });
+
+  it("turns trailing TinyDiarize markers into alternating speaker labels", () => {
+    const result = formatTranscript(
+      {
+        segments: [
+          { start: 0, end: 1, text: "Host question [SPEAKER_TURN]" },
+          { start: 1, end: 2, text: "Guest answer [SPEAKER_TURN]" },
+          { start: 2, end: 3, text: "Host follow-up" },
+        ],
+      },
+      "plain",
+      { includeSpeakers: true }
+    );
+
+    expect(result.speakerCount).toBe(2);
+    expect(result.text).toContain("Speaker 1: Host question");
+    expect(result.text).toContain("Speaker 2: Guest answer");
+  });
 });
