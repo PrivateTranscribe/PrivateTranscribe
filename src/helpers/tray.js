@@ -8,19 +8,14 @@ class TrayManager {
     this.mainWindow = null;
     this.controlPanelWindow = null;
     this.windowManager = null;
-    this.attachedControlPanels = new WeakSet();
+    this.attachedWindows = new WeakSet();
   }
 
   setWindows(mainWindow, controlPanelWindow) {
     this.mainWindow = mainWindow;
     this.controlPanelWindow = controlPanelWindow;
 
-    if (this.mainWindow) {
-      this.mainWindow.on("show", () => this.updateTrayMenu?.());
-      this.mainWindow.on("hide", () => this.updateTrayMenu?.());
-      this.mainWindow.on("minimize", () => this.updateTrayMenu?.());
-      this.mainWindow.on("restore", () => this.updateTrayMenu?.());
-    }
+    this.attachMainWindowListeners(this.mainWindow);
 
     if (this.controlPanelWindow) {
       this.attachControlPanelListeners(this.controlPanelWindow);
@@ -31,18 +26,42 @@ class TrayManager {
 
   setWindowManager(windowManager) {
     this.windowManager = windowManager;
+    this.windowManager?.setOverlayStateChangeCallback?.((mainWindow) => {
+      this.mainWindow = mainWindow;
+      this.attachMainWindowListeners(mainWindow);
+      this.updateTrayMenu?.();
+    });
   }
 
   setCreateControlPanelCallback(callback) {
     this.createControlPanelCallback = callback;
   }
 
-  attachControlPanelListeners(window) {
-    if (!window || this.attachedControlPanels.has(window)) {
+  attachMainWindowListeners(window) {
+    if (!window || this.attachedWindows.has(window)) {
       return;
     }
 
-    this.attachedControlPanels.add(window);
+    this.attachedWindows.add(window);
+
+    window.on("show", () => this.updateTrayMenu?.());
+    window.on("hide", () => this.updateTrayMenu?.());
+    window.on("minimize", () => this.updateTrayMenu?.());
+    window.on("restore", () => this.updateTrayMenu?.());
+    window.on("closed", () => {
+      if (this.mainWindow === window) {
+        this.mainWindow = null;
+      }
+      this.updateTrayMenu?.();
+    });
+  }
+
+  attachControlPanelListeners(window) {
+    if (!window || this.attachedWindows.has(window)) {
+      return;
+    }
+
+    this.attachedWindows.add(window);
 
     window.on("show", () => {
       this.updateTrayMenu?.();
@@ -222,16 +241,26 @@ class TrayManager {
 
   buildContextMenuTemplate() {
     const dictationVisible = this.windowManager?.isDictationPanelVisible?.() ?? false;
+    const overlayDisabled = this.windowManager?.isOverlayDisabled?.() ?? false;
 
     return [
       {
-        label: dictationVisible ? "Hide Overlay" : "Show Overlay",
+        // Unified hide/show: hiding destroys the overlay (eliminates DWM lag);
+        // showing re-creates it. Dictation works in the background regardless.
+        label: overlayDisabled || !dictationVisible
+          ? "Show Overlay"
+          : "Hide Overlay",
         click: () => {
           if (!this.windowManager) return;
-          if (this.windowManager.isDictationPanelVisible()) {
-            this.windowManager.hideDictationPanel();
-          } else {
+          if (overlayDisabled) {
+            // Overlay is disabled — re-enable and show it
+            this.windowManager.setOverlayDisabled(false);
+          } else if (!dictationVisible) {
+            // Overlay exists but is hidden — just show it
             this.windowManager.showDictationPanel({ focus: true });
+          } else {
+            // Overlay is visible — hide and disable (destroy window to eliminate DWM lag)
+            this.windowManager.setOverlayDisabled(true);
           }
           this.updateTrayMenu();
         },
@@ -271,6 +300,7 @@ class TrayManager {
         void this.showControlPanelFromTray();
       });
       this.tray.on("right-click", () => {
+        this.updateTrayMenu();
         this.tray?.popUpContextMenu();
       });
     } else {

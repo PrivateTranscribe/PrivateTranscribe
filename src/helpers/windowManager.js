@@ -7,6 +7,12 @@ const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
 const { DEV_SERVER_PORT } = DevServerManager;
+const isEnvFlagEnabled = (name) => {
+  const value = process.env[name];
+  if (value === undefined || value === null) return false;
+  return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+};
+
 const {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
@@ -30,6 +36,10 @@ class WindowManager {
     this.windowsPushToTalkAvailable = false;
     this._windowsKeyManagerRef = null;
     this.activationModeCache = "tap";
+    this.isMainWindowOverlaySuspended = false;
+    this.mainWindowRendererReady = false;
+    this._overlayStateChangeCallback = null;
+    this.overlayDisabled = false;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
@@ -103,6 +113,22 @@ class WindowManager {
 
   setActivationMode(mode) {
     this.activationModeCache = mode === "push" ? "push" : "tap";
+  }
+
+  setOverlayStateChangeCallback(callback) {
+    this._overlayStateChangeCallback = typeof callback === "function" ? callback : null;
+  }
+
+  _notifyOverlayStateChanged() {
+    if (!this._overlayStateChangeCallback) {
+      return;
+    }
+
+    try {
+      this._overlayStateChangeCallback(this.mainWindow);
+    } catch (error) {
+      debugLogger.debug("[Window] Overlay state callback failed:", error?.message || String(error));
+    }
   }
 
   _getPositionFile() {
@@ -270,7 +296,7 @@ class WindowManager {
 
     // Now load the window content
     await this.loadMainWindow();
-    await this.initializeHotkey();
+    await this.waitForMainWindowRendererReady();
     this.dragManager.setTargetWindow(this.mainWindow);
     this.dragManager.setPositionChangeCallback((winX, winY) => {
       this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
@@ -305,12 +331,43 @@ class WindowManager {
       return;
     }
 
+    // On Windows, always keep the overlay interactive.
+    // setIgnoreMouseEvents(true, { forward: true }) installs a WH_MOUSE_LL
+    // global hook intercepting every mouse event system-wide — this caused
+    // game input lag on Electron 36. On Electron 41 this is fixed, so we
+    // use the same approach as other platforms: forward:true when idle so
+    // transparent areas pass clicks through, false when hovering interactive UI.
     if (shouldCapture) {
       this.mainWindow.setIgnoreMouseEvents(false);
     } else {
       this.mainWindow.setIgnoreMouseEvents(true, { forward: true });
     }
     this.isMainWindowInteractive = shouldCapture;
+  }
+
+  suspendMainWindowOverlay() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    // Windows compositor sensitivity: when the overlay is hidden, fully drop
+    // always-on-top so transparent window layering cannot interfere with
+    // windowed games (e.g. Minecraft/Tekkit camera stutter reports).
+    if (process.platform === "win32") {
+      this.mainWindow.setAlwaysOnTop(false);
+      this.isMainWindowOverlaySuspended = true;
+    }
+  }
+
+  resumeMainWindowOverlay() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    if (process.platform === "win32" && this.isMainWindowOverlaySuspended) {
+      this.isMainWindowOverlaySuspended = false;
+      this.enforceMainWindowOnTop();
+    }
   }
 
   resizeMainWindow(_sizeKey) {
@@ -347,7 +404,31 @@ class WindowManager {
   }
 
   async loadMainWindow() {
+    this.mainWindowRendererReady = false;
     await this.loadWindowContent(this.mainWindow, false);
+  }
+
+  markMainWindowRendererReady() {
+    this.mainWindowRendererReady = true;
+  }
+
+  async waitForMainWindowRendererReady(timeoutMs = 1500) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return false;
+    }
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        return false;
+      }
+      if (this.mainWindowRendererReady) {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return false;
   }
 
   createHotkeyCallback() {
@@ -386,33 +467,49 @@ class WindowManager {
       }
       lastToggleTime = now;
 
-      if (!this.mainWindow.isVisible()) {
-        // Use showInactive to avoid stealing focus from the target app
-        if (typeof this.mainWindow.showInactive === "function") {
-          this.mainWindow.showInactive();
-        } else {
-          this.mainWindow.show();
+      // When overlay is disabled, create the window hidden (not shown) and send
+      // dictation IPC to it. The hidden renderer handles audio recording without
+      // any visible overlay, eliminating DWM lag in windowed games.
+      if (this.overlayDisabled) {
+        if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+          await this.createMainWindow();
         }
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send("toggle-dictation");
+        }
+        return;
       }
-      this.mainWindow.moveTop(); // Force z-order refresh on Windows
-      this.mainWindow.webContents.send("toggle-dictation");
+
+      const dictationWindow = await this.showDictationPanel();
+      if (!dictationWindow || dictationWindow.isDestroyed()) {
+        return;
+      }
+      dictationWindow.moveTop(); // Force z-order refresh on Windows
+      dictationWindow.webContents.send("toggle-dictation");
     };
   }
 
-  sendStartDictation() {
+  async sendStartDictation() {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (!this.mainWindow.isVisible()) {
-        // Use showInactive to avoid stealing focus from the target app
-        if (typeof this.mainWindow.showInactive === "function") {
-          this.mainWindow.showInactive();
-        } else {
-          this.mainWindow.show();
-        }
+
+    // When overlay is disabled, create the window hidden (not shown) and send
+    // dictation IPC to it. The hidden renderer handles audio recording without
+    // any visible overlay, eliminating DWM lag in windowed games.
+    if (this.overlayDisabled) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        await this.createMainWindow();
       }
-      this.mainWindow.webContents.send("start-dictation");
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("start-dictation");
+      }
+      return;
+    }
+
+    const dictationWindow = await this.showDictationPanel();
+    if (dictationWindow && !dictationWindow.isDestroyed()) {
+      dictationWindow.webContents.send("start-dictation");
     }
   }
 
@@ -420,17 +517,27 @@ class WindowManager {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+
+    // When overlay is disabled, send stop to the hidden main window
+    if (this.overlayDisabled) {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("stop-dictation");
+      }
+      return;
+    }
+
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("stop-dictation");
     }
   }
 
   async getActivationMode() {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+    const hostWindow = this.getHotkeyHostWindow();
+    if (!hostWindow) {
       return this.activationModeCache;
     }
     try {
-      const mode = await this.mainWindow.webContents.executeJavaScript(
+      const mode = await hostWindow.webContents.executeJavaScript(
         `localStorage.getItem("activationMode") || "tap"`
       );
       this.setActivationMode(mode);
@@ -444,8 +551,22 @@ class WindowManager {
     this.hotkeyManager.setListeningMode(enabled);
   }
 
-  async initializeHotkey() {
-    await this.hotkeyManager.initializeHotkey(this.mainWindow, this.createHotkeyCallback());
+  getHotkeyHostWindow() {
+    if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
+      return this.controlPanelWindow;
+    }
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      return this.mainWindow;
+    }
+    return null;
+  }
+
+  async initializeHotkey(hostWindow = this.getHotkeyHostWindow()) {
+    if (!hostWindow || hostWindow.isDestroyed()) {
+      debugLogger.warn("[Hotkey] No live window available for hotkey initialization");
+      return;
+    }
+    await this.hotkeyManager.initializeHotkey(hostWindow, this.createHotkeyCallback());
   }
 
   async updateHotkey(hotkey) {
@@ -470,7 +591,12 @@ class WindowManager {
     return result;
   }
 
-  async createControlPanelWindow() {
+  async createControlPanelWindow(options = {}) {
+    // On Windows, start minimized to taskbar so there's a persistent taskbar
+    // entry even when the user hasn't opened the control panel yet.
+    // (The overlay is skipTaskbar:true to avoid game compositor issues, so
+    // this is the only taskbar presence on Windows.)
+    this._controlPanelStartMinimized = options.startMinimized ?? (process.platform === "win32");
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
@@ -505,8 +631,16 @@ class WindowManager {
       if (process.platform === "darwin" && app.dock) {
         app.dock.show();
       }
-      this.controlPanelWindow.show();
-      this.controlPanelWindow.focus();
+      if (this._controlPanelStartMinimized) {
+        // Show minimized to taskbar — gives Windows a taskbar entry without
+        // stealing focus on startup (the overlay is now skipTaskbar:true so
+        // this is the only persistent taskbar presence).
+        this.controlPanelWindow.minimize();
+        this.controlPanelWindow.showInactive();
+      } else {
+        this.controlPanelWindow.show();
+        this.controlPanelWindow.focus();
+      }
     });
 
     this.controlPanelWindow.on("close", (event) => {
@@ -548,16 +682,27 @@ class WindowManager {
     );
 
     await this.loadControlPanel();
+    await this.initializeHotkey(this.controlPanelWindow);
   }
 
   async loadControlPanel() {
     await this.loadWindowContent(this.controlPanelWindow, true);
   }
 
-  showDictationPanel(options = {}) {
+  async showDictationPanel(options = {}) {
     const { focus = false } = options;
+    if (isEnvFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
+      debugLogger.warn("[Diagnostics] Dictation overlay requested but disabled by env flag");
+      return null;
+    }
+
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      await this.createMainWindow();
+    }
+
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       if (!this.mainWindow.isVisible()) {
+        this.resumeMainWindowOverlay();
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
         } else {
@@ -567,7 +712,11 @@ class WindowManager {
       if (focus) {
         this.mainWindow.focus();
       }
+      this._notifyOverlayStateChanged();
+      return this.mainWindow;
     }
+
+    return null;
   }
 
   hideControlPanelToTray() {
@@ -584,13 +733,43 @@ class WindowManager {
   }
 
   hideDictationPanel() {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      if (process.platform === "darwin") {
-        this.mainWindow.hide();
-      } else {
-        this.mainWindow.minimize();
-      }
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
     }
+
+    // When overlay is disabled, destroy the window completely to eliminate
+    // DWM composition lag in windowed games (Windows issue with transparent
+    // always-on-top BrowserWindow).
+    if (this.overlayDisabled) {
+      this.mainWindow.close();
+      // mainWindow will be nulled in the 'closed' event handler
+      return;
+    }
+
+    this.suspendMainWindowOverlay();
+    this.mainWindow.hide();
+  }
+
+  setOverlayDisabled(disabled) {
+    const changed = this.overlayDisabled !== disabled;
+    this.overlayDisabled = disabled;
+
+    if (changed) {
+      debugLogger.info("[Overlay] Overlay disabled state changed:", disabled);
+      if (disabled) {
+        // Destroy overlay immediately when disabling
+        this.hideDictationPanel();
+      } else {
+        // Show overlay when re-enabling
+        this.showDictationPanel();
+      }
+      // Notify tray so menu labels update
+      this._notifyOverlayStateChanged();
+    }
+  }
+
+  isOverlayDisabled() {
+    return this.overlayDisabled;
   }
 
   isDictationPanelVisible() {
@@ -620,6 +799,12 @@ class WindowManager {
     this.mainWindow.once("ready-to-show", () => {
       clearTimeout(showTimeout);
       this.enforceMainWindowOnTop();
+      // When overlay is disabled, keep the window hidden to avoid DWM lag.
+      // Dictation still works in the background via the hidden renderer.
+      if (this.overlayDisabled) {
+        debugLogger.debug("[Overlay] Window ready but overlayDisabled=true, keeping hidden");
+        return;
+      }
       if (!this.mainWindow.isVisible()) {
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
@@ -631,6 +816,12 @@ class WindowManager {
 
     this.mainWindow.on("show", () => {
       this.enforceMainWindowOnTop();
+      this._notifyOverlayStateChanged();
+      // Notify renderer so it can restart the mic-level AudioContext if it was
+      // suspended while the window was hidden (voice bars stuck bug).
+      if (!this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("main-window-shown");
+      }
     });
 
     this.mainWindow.on("focus", () => {
@@ -669,11 +860,13 @@ class WindowManager {
 
     this.mainWindow.on("restore", () => {
       debugLogger.debug("[Window] main restore");
+      this.resumeMainWindowOverlay();
       this.enforceMainWindowOnTop();
     });
 
     this.mainWindow.on("hide", () => {
       debugLogger.debug("[Window] main hide");
+      this._notifyOverlayStateChanged();
     });
 
     this.mainWindow.on("moved", () => {
@@ -709,12 +902,18 @@ class WindowManager {
       }
       this.dragManager.cleanup();
       this.mainWindow = null;
+      this.mainWindowRendererReady = false;
       this.isMainWindowInteractive = false;
+      this.isMainWindowOverlaySuspended = false;
+      this._notifyOverlayStateChanged();
     });
   }
 
   enforceMainWindowOnTop() {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      if (process.platform === "win32" && this.isMainWindowOverlaySuspended) {
+        return;
+      }
       WindowPositionUtil.setupAlwaysOnTop(this.mainWindow);
     }
   }

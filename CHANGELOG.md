@@ -7,7 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+## [0.10.1] - 2026-05-12
+
+### Fixed
+- **File transcription settings crash**: Fix the Transcribe File tab crash caused by reading saved speaker-detection settings before initialization.
+- **File transcription preferences**: Remember Noise reduction and Speaker detection choices across tab switches and app sessions.
+
+## [0.10.0] - 2026-05-11
+
+### Added
+- **File transcription v2**: Add local Whisper `verbose_json` file mode with timestamps, SRT export, optional noise reduction, and tdrz speaker-turn detection support.
+- **Speaker-ready model**: Add the `small-en-tdrz` Whisper model registry entry for English speaker turn detection.
+
+### Changed
+- **Transcribe page**: Add a collapsible file transcription settings panel, copyable transcript output, `.txt`/`.srt` downloads, and speaker count badges.
+
+### Fixed
+- **Speaker detection output**: Preserve TinyDiarize speaker-turn markers from whisper-server realtime output so file transcription correctly labels multiple speakers.
+
+## [0.8.4] - 2026-05-06
+
+### Fixed
+- **Windows native-only hotkeys**: Route Mouse4/Mouse5, modifier-only combinations, and Danish/OEM keys such as `½` through the native Windows listener while keeping normal Electron accelerators such as `CommandOrControl+Space` on `globalShortcut`.
+- **Hotkey normalization**: Normalize Windows listener keys internally without changing the user-visible hotkey label.
+- **Dependency/security cleanup**: Resolved dependency audit issues and updated native dependencies for the newer Electron runtime.
+
+### Changed
+- **Tray wording**: Rename tray actions from “Dictation Panel” to “Overlay” for clearer, consistent product language.
+
+## [0.8.3] - 2026-05-01
+
+### Fixed
+- **CUDA split runtime validation**: Improve validation for split CUDA runtime builds so GPU acceleration is detected more accurately.
+- **Whisper language selection**: Pass auto-language explicitly to Whisper for more predictable transcription behavior.
+
+### Changed
+- **CUDA status visibility**: Surface clearer CUDA engine updates in Settings → General.
+- **Long-file coverage**: Add regression coverage for longer local audio transcription flows.
+
+## [0.8.2] - 2026-04-30
+
+### Changed
+- **Packaged Whisper runtime**: Bundle required Whisper and CUDA runtime libraries with the Windows app so installs are more self-contained.
+- **CUDA diagnostics**: Expose startup fallback diagnostics when CUDA cannot be used, making CPU fallback easier to understand and support.
+- **Language default**: Default transcription language to auto-detect for a smoother first-run experience.
+
+### Fixed
+- **CUDA active-state copy**: Clarify whether the CUDA engine is active or transcription has fallen back to CPU.
+
+## [0.8.1] - 2026-04-30
+
+### Changed
+- **CUDA engine status copy**: Clarify how CUDA active state is reported so users can tell whether GPU acceleration is actually being used.
+
+## [0.8.0] - 2026-04-30
+
+### Added
+- **Long local file transcription**: Handle longer local Whisper file transcriptions more reliably.
+
+### Changed
+- **Engine status visibility**: Show engine status even when the Whisper server is idle so users can see which backend is ready.
+- **Whisper server stability**: Reduce restart churn between local transcription requests.
+
+### Fixed
+- **CPU/GPU fallback handling**: Fix CPU-only mode enforcement and CUDA-to-CPU fallback behavior.
+
+## [0.7.0] - 2026-04-29
+
+### Added
+- **Windows CPU Whisper binary**: Package the Windows CPU `whisper-server` binary so local transcription works without CUDA.
+
+### Changed
+- **Whisper engine refactor**: Remove per-request engine mutation and add explicit engine status reporting.
+- **Engine labels**: Clarify CPU/CUDA engine labels and fallback indicators.
+
+### Fixed
+- **CUDA fallback startup**: Harden startup when CUDA binaries or drivers are unavailable.
+- **CUDA workflow guardrails**: Add binary size checks to catch broken CUDA artifact uploads earlier.
+
+## [0.5.2] - 2026-04-24
+
+### Fixed
+- **Update install crash**: Make the before-quit path null-safe during app updates.
+- **Auto-update UX**: Skip model cache prompts during automatic updates so updates can proceed without unnecessary interruption.
+
+## [0.5.1] - 2026-04-24
+
+### Fixed
+- **Install/restart stability**: Remove a manual before-quit emit that could crash during update installation.
+- **CI polish**: Clean up lint and formatting issues after the v0.5.0 release work.
+
+## [0.5.0] - 2026-04-23
+
+### Added
+- **CUDA binary version tracking**: Track CUDA binary version and SHA256 hash so the app can detect stale or mismatched GPU runtimes.
+- **CUDA update prompt**: Prompt users when a newer CUDA binary is available.
+- **Silent CUDA binary updates after app updates**: Keep the GPU runtime aligned with the installed app version automatically.
+- **Blackwell GPU support path**: Add CUDA Blackwell build workflow and benchmark UI warning for GPU compatibility.
+- **Pro license generation script**: Add `generate-license.js` for issuing Pro license keys.
+
+### Changed
+- **Onboarding simplification**: Simplify the first-run flow, improve hardware step layout, de-jargon copy, and add a more realistic microphone test.
+- **CUDA onboarding**: Add CUDA binary download to onboarding and gate setup on the current CUDA binary.
+- **Whisper-only recommendation path**: Remove Parakeet from the recommended setup path and clean stale Parakeet settings/warnings.
+- **Windows polish**: Remove the version number from the Windows Add/Remove Programs display name.
+
+### Fixed
+- **CUDA download safety**: Prevent concurrent CUDA binary downloads, handle safe download failures, and fix stale update banners.
+- **Hardware detection**: Improve migration/version stamping, hardware detection, size checks, and logging around the v0.5.0 CUDA changes.
+- **Onboarding bugs**: Fix skipped-setup/cloud-mode gating, logo packaging, button overflow, and 14 reviewed onboarding UX issues.
+- **Overlay wake behavior**: Restore overlay position to the correct display after monitor wake/reconnect and prevent displacement after quick screen off/on cycles.
+- **Security/stability review fixes**: Patch reviewed stability issues and custom API URL validation.
 
 ## [0.4.1] - 2026-03-29
 

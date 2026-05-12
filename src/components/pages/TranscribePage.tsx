@@ -16,6 +16,10 @@ import {
   AlertCircle,
   CheckCircle2,
   Copy,
+  Download,
+  FileText,
+  Settings2,
+  X,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
@@ -35,6 +39,7 @@ const ACCEPT_ATTR = [
 ].join(",");
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
+type OutputFormat = "plain" | "timestamped" | "speakers";
 
 type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
 
@@ -56,8 +61,18 @@ export default function TranscribePage() {
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFileSize, setSelectedFileSize] = useState(0);
   const [transcript, setTranscript] = useState("");
+  const [srt, setSrt] = useState("");
+  const [speakerCount, setSpeakerCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
+  const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
+  const [speakerModelDownloadStatus, setSpeakerModelDownloadStatus] = useState<
+    "idle" | "downloading" | "success" | "error"
+  >("idle");
+  const [speakerModelProgress, setSpeakerModelProgress] = useState(0);
+  const [speakerModelError, setSpeakerModelError] = useState("");
   const { toast } = useToast();
   const {
     useLocalWhisper,
@@ -65,12 +80,18 @@ export default function TranscribePage() {
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     preferredLanguage,
+    translateToEnglish,
     useReasoningModel,
     reasoningModel,
     allowOpenAIFallback,
     allowLocalFallback,
     historyLimit,
+    fileTranscriptionNoiseReduction: noiseReduction,
+    setFileTranscriptionNoiseReduction: setNoiseReduction,
+    fileTranscriptionSpeakerDetection: speakerDetection,
+    setFileTranscriptionSpeakerDetection: setSpeakerDetection,
   } = useSettings();
+  const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
 
   useEffect(() => {
     const mgr = new AudioManager();
@@ -79,6 +100,39 @@ export default function TranscribePage() {
     return () => {
       audioManagerRef.current?.cleanup();
       audioManagerRef.current = null;
+    };
+  }, []);
+
+  const refreshSpeakerModelStatus = async () => {
+    try {
+      const status = await window.electronAPI?.checkModelStatus?.("small-en-tdrz");
+      setTdrzDownloaded(Boolean(status?.downloaded));
+      return Boolean(status?.downloaded);
+    } catch {
+      setTdrzDownloaded(false);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    refreshSpeakerModelStatus();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWhisperDownloadProgress?.((_event: unknown, data: any) => {
+      if (data?.model !== "small-en-tdrz") return;
+      if (data?.type === "progress") {
+        setSpeakerModelDownloadStatus("downloading");
+        setSpeakerModelProgress(Number(data?.percentage) || 0);
+      }
+      if (data?.type === "complete") {
+        setSpeakerModelProgress(100);
+        setSpeakerModelDownloadStatus("success");
+        setTdrzDownloaded(true);
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
     };
   }, []);
 
@@ -107,15 +161,33 @@ export default function TranscribePage() {
     return `${cloudTranscriptionProvider.toUpperCase()} (${cloudTranscriptionModel || "default"})`;
   }, [useLocalWhisper, whisperModel, cloudTranscriptionProvider, cloudTranscriptionModel]);
 
-  const activeLanguageLabel = useMemo(
-    () => getLanguageLabel(preferredLanguage || "auto"),
-    [preferredLanguage]
-  );
+  const activeLanguageLabel = useMemo(() => {
+    const spokenLanguage = getLanguageLabel(preferredLanguage || "auto");
+    if (
+      translateToEnglish === "on" &&
+      preferredLanguage &&
+      preferredLanguage !== "auto" &&
+      preferredLanguage !== "en"
+    ) {
+      return `${spokenLanguage} → English`;
+    }
+    return spokenLanguage;
+  }, [preferredLanguage, translateToEnglish]);
 
-  const forcedLanguageWarning = useMemo(() => {
+  const languageHintNotice = useMemo(() => {
     if (!preferredLanguage || preferredLanguage === "auto") return null;
-    return `This upload will be forced as ${getLanguageLabel(preferredLanguage)}. If the file is a different language, set Language to Auto-detect or the real spoken language first.`;
-  }, [preferredLanguage]);
+    const spokenLanguage = getLanguageLabel(preferredLanguage);
+
+    if (translateToEnglish === "on" && preferredLanguage !== "en") {
+      return `This upload will use ${spokenLanguage} as the spoken-language hint and translate the result to English.`;
+    }
+
+    if (preferredLanguage === "en") {
+      return "Language is set to English as the spoken-language hint. If this file is Danish or another language, choose Auto-detect or the real spoken language. This is not a translation setting.";
+    }
+
+    return `Language is set to ${spokenLanguage} as the spoken-language hint. If the file uses another language, choose Auto-detect or the real spoken language first.`;
+  }, [preferredLanguage, translateToEnglish]);
 
   const fallbackLabel = useMemo(() => {
     if (useLocalWhisper) {
@@ -123,6 +195,15 @@ export default function TranscribePage() {
     }
     return allowLocalFallback ? "Enabled (cloud -> local)" : "Disabled";
   }, [useLocalWhisper, allowOpenAIFallback, allowLocalFallback]);
+
+  const transcriptStats = useMemo(() => {
+    const trimmed = transcript.trim();
+    if (!trimmed) return { words: 0, lines: 0 };
+    return {
+      words: trimmed.split(/\s+/).filter(Boolean).length,
+      lines: trimmed.split(/\n+/).filter((line) => line.trim()).length,
+    };
+  }, [transcript]);
 
   const validateFile = (file: File): string | null => {
     const extension = getFileExtension(file.name);
@@ -140,6 +221,70 @@ export default function TranscribePage() {
     }
 
     return null;
+  };
+
+  const openSpeakerModelDialog = () => {
+    setSpeakerModelDialogOpen(true);
+    setSpeakerModelError("");
+    if (!tdrzDownloaded && speakerModelDownloadStatus !== "downloading") {
+      setSpeakerModelDownloadStatus("idle");
+      setSpeakerModelProgress(0);
+    }
+  };
+
+  const handleSpeakerDetectionChange = (checked: boolean) => {
+    if (!checked) {
+      setSpeakerDetection(false);
+      return;
+    }
+
+    if (tdrzDownloaded) {
+      setSpeakerDetection(true);
+      return;
+    }
+
+    openSpeakerModelDialog();
+  };
+
+  const downloadSpeakerModel = async () => {
+    setSpeakerModelDownloadStatus("downloading");
+    setSpeakerModelProgress(0);
+    setSpeakerModelError("");
+
+    try {
+      const result = await window.electronAPI?.downloadWhisperModel?.("small-en-tdrz");
+      if (!result?.success && !result?.downloaded) {
+        throw new Error(result?.error || "Speaker model download failed.");
+      }
+      await refreshSpeakerModelStatus();
+      setSpeakerModelDownloadStatus("success");
+      setSpeakerModelProgress(100);
+      setSpeakerDetection(true);
+      setSpeakerModelDialogOpen(false);
+      toast({
+        title: "Speaker detection ready",
+        description: "Multi-speaker file transcription is now enabled.",
+        variant: "success",
+      });
+    } catch (error) {
+      const message = toErrorMessage(error);
+      setSpeakerModelDownloadStatus("error");
+      setSpeakerModelError(message);
+      toast({
+        title: "Model download failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const cancelSpeakerModelDownload = async () => {
+    try {
+      await window.electronAPI?.cancelWhisperDownload?.();
+    } finally {
+      setSpeakerModelDownloadStatus("idle");
+      setSpeakerModelProgress(0);
+    }
   };
 
   const handleBrowse = () => {
@@ -167,6 +312,8 @@ export default function TranscribePage() {
     setSelectedFileName("");
     setSelectedFileSize(0);
     setTranscript("");
+    setSrt("");
+    setSpeakerCount(0);
     setErrorMessage("");
     setCopied(false);
   };
@@ -191,7 +338,14 @@ export default function TranscribePage() {
 
       let result;
       if (useLocalWhisper) {
-        result = await manager.processWithLocalWhisper(file, whisperModel || "base", metadata);
+        result = await manager.processFileTranscriptionV2(file, whisperModel || "base", {
+          ...metadata,
+          noiseReduction,
+          speakerDetection,
+          outputFormat,
+          language: preferredLanguage,
+          translate: translateToEnglish === "on",
+        });
       } else {
         result = await manager.processWithOpenAIAPI(file, metadata);
       }
@@ -205,6 +359,8 @@ export default function TranscribePage() {
         await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
       }
       setTranscript(text);
+      setSrt(result?.srt || "");
+      setSpeakerCount(Number(result?.speakerCount) || 0);
       setStatus("success");
       toast({
         title: "Transcription complete",
@@ -221,6 +377,20 @@ export default function TranscribePage() {
         variant: "destructive",
       });
     }
+  };
+
+  const downloadText = (content: string, extension: "txt" | "srt") => {
+    if (!content) return;
+    const baseName = selectedFileName.replace(/\.[^/.]+$/, "") || "transcript";
+    const blob = new Blob([content], { type: extension === "srt" ? "application/x-subrip" : "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${baseName}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleFiles = (files: FileList | null) => {
@@ -310,6 +480,152 @@ export default function TranscribePage() {
         className="hidden"
       />
 
+      {speakerModelDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border-subtle bg-background shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Enable speaker detection</h2>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  PrivateTranscribe needs to download a local speaker model before it can label
+                  speakers in uploaded files. This stays on your computer.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSpeakerModelDialogOpen(false)}
+                disabled={speakerModelDownloadStatus === "downloading"}
+                className="rounded-md p-1 text-muted-foreground hover:bg-surface-raised hover:text-foreground disabled:opacity-40"
+                aria-label="Close speaker model dialog"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-xl border border-border-subtle bg-surface-raised/40 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Small English speaker model</p>
+                    <p className="text-xs text-muted-foreground">~466 MB · one-time download · fully local</p>
+                  </div>
+                  <Badge variant={tdrzDownloaded ? "success" : "outline"} className="text-[10px]">
+                    {tdrzDownloaded ? "Ready" : "Required"}
+                  </Badge>
+                </div>
+                {speakerModelDownloadStatus === "downloading" && (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-200"
+                        style={{ width: `${Math.min(100, Math.max(0, speakerModelProgress))}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Downloading… {speakerModelProgress}%
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                After this, users can upload a meeting, podcast, or interview and get copyable text
+                plus SRT export with Speaker 1, Speaker 2, etc.
+              </p>
+
+              {speakerModelError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {speakerModelError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-4">
+              {speakerModelDownloadStatus === "downloading" ? (
+                <Button variant="outline" size="sm" onClick={cancelSpeakerModelDownload}>
+                  Cancel download
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setSpeakerModelDialogOpen(false)}>
+                  Not now
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={tdrzDownloaded ? () => {
+                  setSpeakerDetection(true);
+                              setSpeakerModelDialogOpen(false);
+                } : downloadSpeakerModel}
+                disabled={speakerModelDownloadStatus === "downloading"}
+              >
+                {tdrzDownloaded ? "Enable" : speakerModelDownloadStatus === "downloading" ? "Downloading…" : "Download & enable"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-5 rounded-xl border border-border-subtle/50 bg-surface-raised/30 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setSettingsOpen((open) => !open)}
+          className="w-full px-5 py-3 flex items-center justify-between text-left"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Settings2 size={15} /> File transcription settings
+          </span>
+          <span className="text-xs text-muted-foreground">{settingsOpen ? "Hide" : "Show"}</span>
+        </button>
+        {settingsOpen && (
+          <div className="border-t border-border-subtle/40 px-5 pb-5 pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    id="file-noise-reduction"
+                    type="checkbox"
+                    checked={noiseReduction}
+                    onChange={(event) => setNoiseReduction(event.target.checked)}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                  />
+                  <span className="text-sm font-medium text-foreground">Noise reduction</span>
+                </div>
+                <p className="ml-7 mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Cleans uploaded audio before transcription. Best for noisy calls, podcasts, and screen recordings.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    id="file-speaker-detection"
+                    type="checkbox"
+                    checked={speakerDetection}
+                    onChange={(event) => handleSpeakerDetectionChange(event.target.checked)}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                  />
+                  <span className="text-sm font-medium text-foreground">Speaker detection</span>
+                </div>
+                <p className="ml-7 mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {tdrzDownloaded
+                    ? `Adds Speaker 1 / Speaker 2 labels for English files. Language: ${activeLanguageLabel}.`
+                    : "Downloads a local English speaker model when enabled."}
+                </p>
+                {!tdrzDownloaded && (
+                  <button
+                    type="button"
+                    onClick={openSpeakerModelDialog}
+                    className="ml-7 mt-2 text-xs font-medium text-primary hover:text-primary/80"
+                  >
+                    Set up speaker detection
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div
         role="button"
         tabIndex={0}
@@ -358,23 +674,15 @@ export default function TranscribePage() {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Transcription complete</h3>
             <p className="text-sm text-muted-foreground mb-2">{selectedFileName}</p>
-            <p className="text-xs text-muted-foreground/70 tabular-nums mb-5">
-              {formatBytes(selectedFileSize)}
-            </p>
-            <div className="flex items-center gap-2" data-prevent-browse="true">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={copyTranscript}
-                data-prevent-browse="true"
-              >
-                <Copy size={14} />
-                {copied ? "Copied" : "Copy transcript"}
-              </Button>
-              <Button size="sm" onClick={resetState} data-prevent-browse="true">
-                Upload another
-              </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground/70">
+              <span className="tabular-nums">{formatBytes(selectedFileSize)}</span>
+              {speakerCount > 0 && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {speakerCount} speaker{speakerCount === 1 ? "" : "s"} detected
+                </Badge>
+              )}
             </div>
+            <p className="mt-5 text-xs text-muted-foreground/60">Transcript is ready below.</p>
           </>
         ) : (
           <>
@@ -403,19 +711,64 @@ export default function TranscribePage() {
       </div>
 
       {status === "success" && transcript && (
-        <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-foreground">Transcript</p>
-            {historyLimit !== 0 && (
-              <Badge variant="info" className="text-[10px]">
-                Saved to History
-              </Badge>
-            )}
+        <section className="mt-6 overflow-hidden rounded-2xl border border-border-subtle bg-surface-raised/40 shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-border-subtle/60 px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FileText size={16} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Transcript result</p>
+                  <p className="truncate text-xs text-muted-foreground">{selectedFileName}</p>
+                </div>
+                {historyLimit !== 0 && (
+                  <Badge variant="info" className="text-[10px]">
+                    Saved to History
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground/75">
+                <span>{transcriptStats.words.toLocaleString()} words</span>
+                <span className="text-muted-foreground/35">•</span>
+                <span>{transcriptStats.lines.toLocaleString()} lines</span>
+                {speakerCount > 0 && (
+                  <>
+                    <span className="text-muted-foreground/35">•</span>
+                    <span>{speakerCount} speaker{speakerCount === 1 ? "" : "s"}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2" data-prevent-browse="true">
+              <Button size="sm" variant="outline" onClick={copyTranscript} data-prevent-browse="true">
+                <Copy size={14} />
+                {copied ? "Copied" : "Copy"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => downloadText(transcript, "txt")} data-prevent-browse="true">
+                <Download size={14} />
+                TXT
+              </Button>
+              {srt && (
+                <Button size="sm" variant="outline" onClick={() => downloadText(srt, "srt")} data-prevent-browse="true">
+                  <Download size={14} />
+                  SRT
+                </Button>
+              )}
+              <Button size="sm" onClick={resetState} data-prevent-browse="true">
+                New file
+              </Button>
+            </div>
           </div>
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-            {transcript}
-          </p>
-        </div>
+
+          <textarea
+            readOnly
+            value={transcript}
+            spellCheck={false}
+            className="block min-h-72 w-full resize-y border-0 bg-background/55 p-5 text-sm leading-7 text-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+          />
+        </section>
       )}
 
       <div className="mt-6 rounded-xl border border-border-subtle bg-surface-raised/30 p-5">
@@ -455,10 +808,10 @@ export default function TranscribePage() {
             <p className="text-foreground">{fallbackLabel}</p>
           </div>
         </div>
-        {forcedLanguageWarning && (
+        {languageHintNotice && (
           <div className="mt-3 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <p>{forcedLanguageWarning}</p>
+            <p>{languageHintNotice}</p>
           </div>
         )}
       </div>

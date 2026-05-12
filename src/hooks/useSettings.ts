@@ -64,7 +64,10 @@ export interface BehaviorSettings {
   audioFeedback: boolean;
   errorNotifications: boolean;
   successConfirmation: boolean;
+  overlayDisabled: boolean;
 }
+
+let lastSyncedStartupPreferencesKey = "";
 
 export function useSettings() {
   const [useLocalWhisper, setUseLocalWhisper] = useLocalStorage("useLocalWhisper", false, {
@@ -342,6 +345,25 @@ export function useSettings() {
   // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
   const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
     "smartContextEnabled",
+    false,
+    {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    }
+  );
+
+  // File transcription preferences — remember the upload-panel toggles across tabs/sessions.
+  const [fileTranscriptionNoiseReduction, setFileTranscriptionNoiseReduction] = useLocalStorage<boolean>(
+    "fileTranscriptionNoiseReduction",
+    true,
+    {
+      serialize: String,
+      deserialize: (value) => value !== "false",
+    }
+  );
+
+  const [fileTranscriptionSpeakerDetection, setFileTranscriptionSpeakerDetection] = useLocalStorage<boolean>(
+    "fileTranscriptionSpeakerDetection",
     false,
     {
       serialize: String,
@@ -661,7 +683,7 @@ export function useSettings() {
 
   const [activationMode, setActivationModeLocal] = useLocalStorage<"tap" | "push">(
     "activationMode",
-    "push",
+    "tap",
     {
       serialize: String,
       deserialize: (value) => (value === "push" ? "push" : "tap"),
@@ -691,22 +713,31 @@ export function useSettings() {
     deserialize: String,
   });
 
-  // Sync startup pre-warming preferences to main process
+  // Sync startup pre-warming preferences to main process.
+  // Several pages call useSettings(); avoid re-applying identical startup prefs on every tab mount.
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI?.syncStartupPreferences) return;
 
+    const startupPreferences = {
+      useLocalWhisper,
+      localTranscriptionProvider,
+      model: whisperModel || undefined,
+      whisperServerIdleTimeoutMinutes,
+      llamaServerIdleTimeoutMinutes,
+      reasoningProvider,
+      reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
+      whisperForceCpu,
+    };
+    const startupPreferencesKey = JSON.stringify(startupPreferences);
+    if (startupPreferencesKey === lastSyncedStartupPreferencesKey) return;
+    lastSyncedStartupPreferencesKey = startupPreferencesKey;
+
     window.electronAPI
-      .syncStartupPreferences({
-        useLocalWhisper,
-        localTranscriptionProvider,
-        model: whisperModel || undefined,
-        whisperServerIdleTimeoutMinutes,
-        llamaServerIdleTimeoutMinutes,
-        reasoningProvider,
-        reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
-        whisperForceCpu,
-      })
-      .catch((err) => console.error("Failed to sync startup preferences:", err));
+      .syncStartupPreferences(startupPreferences)
+      .catch((err) => {
+        lastSyncedStartupPreferencesKey = "";
+        console.error("Failed to sync startup preferences:", err);
+      });
   }, [
     useLocalWhisper,
     localTranscriptionProvider,
@@ -761,6 +792,12 @@ export function useSettings() {
     boolSerializer
   );
 
+  const [overlayDisabled, setOverlayDisabled] = useLocalStorage(
+    "overlayDisabled",
+    false,
+    boolSerializer
+  );
+
   const updateBehaviorSettings = useCallback(
     (settings: Partial<BehaviorSettings>) => {
       if (settings.autoPaste !== undefined) setAutoPaste(settings.autoPaste);
@@ -771,6 +808,7 @@ export function useSettings() {
         setErrorNotifications(settings.errorNotifications);
       if (settings.successConfirmation !== undefined)
         setSuccessConfirmation(settings.successConfirmation);
+      if (settings.overlayDisabled !== undefined) setOverlayDisabled(settings.overlayDisabled);
     },
     [
       setAutoPaste,
@@ -779,6 +817,7 @@ export function useSettings() {
       setAudioFeedback,
       setErrorNotifications,
       setSuccessConfirmation,
+      setOverlayDisabled,
     ]
   );
 
@@ -977,6 +1016,10 @@ export function useSettings() {
     setEnableCorrectionLearning,
     smartContextEnabled,
     setSmartContextEnabled,
+    fileTranscriptionNoiseReduction,
+    setFileTranscriptionNoiseReduction,
+    fileTranscriptionSpeakerDetection,
+    setFileTranscriptionSpeakerDetection,
     enableContextCapture,
     setEnableContextCapture,
     enableFileIdentifiers,
@@ -999,6 +1042,8 @@ export function useSettings() {
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
+    overlayDisabled,
+    setOverlayDisabled,
     updateBehaviorSettings,
     apiKeySyncError,
     clearApiKeySyncError,

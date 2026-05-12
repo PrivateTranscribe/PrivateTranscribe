@@ -70,41 +70,10 @@ class ParakeetManager {
           Math.max(0, parakeetServerIdleTimeoutMinutes)
         );
       }
-
-      if (
-        localTranscriptionProvider === "nvidia" &&
-        parakeetModel &&
-        this.serverManager.isAvailable()
-      ) {
-        if (this.serverManager.isModelDownloaded(parakeetModel)) {
-          debugLogger.info("Pre-warming parakeet server", { model: parakeetModel });
-
-          try {
-            const serverStartTime = Date.now();
-            await this.serverManager.startServer(parakeetModel);
-            debugLogger.info("Parakeet server pre-warmed successfully", {
-              model: parakeetModel,
-              startupTimeMs: Date.now() - serverStartTime,
-            });
-          } catch (err) {
-            debugLogger.warn("Parakeet server pre-warm failed (will start on first use)", {
-              error: err.message,
-              model: parakeetModel,
-            });
-          }
-        } else {
-          debugLogger.debug("Skipping parakeet server pre-warm: model not downloaded", {
-            model: parakeetModel,
-          });
-        }
-      } else {
-        debugLogger.debug("Skipping parakeet server pre-warm", {
-          reason:
-            localTranscriptionProvider !== "nvidia"
-              ? "provider not nvidia"
-              : !parakeetModel
-                ? "no model selected"
-                : "server binary not available",
+      if (localTranscriptionProvider || parakeetModel) {
+        debugLogger.debug("Parakeet startup initialization does not pre-warm server", {
+          localTranscriptionProvider,
+          hasModel: Boolean(parakeetModel),
         });
       }
     } catch (error) {

@@ -32,12 +32,16 @@ jobs:
         run: npm ci
 
       - name: Download native binaries
-        run: npm run compile:native
+        run: |
+          npm run compile:native
+          npm run download:whisper-cpp
+          node scripts/download-nircmd.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLAMA_CPP_VERSION: b9016
 
-      - name: Build app
-        run: npm run build
+      - name: Build renderer
+        run: npm run build:renderer
 
       - name: Package (Windows NSIS + Portable)
         run: npx electron-builder --win --publish never
@@ -55,14 +59,20 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: privoca-windows-setup
-          path: dist/PrivateTranscribe-Setup-*.exe
+          path: |
+            dist/PrivateTranscribe Setup *.exe
+            dist/PrivateTranscribe-Setup-*.exe
           retention-days: 7
 
       - name: Upload portable
         uses: actions/upload-artifact@v4
         with:
           name: privoca-windows-portable
-          path: dist/PrivateTranscribe-*.exe
+          path: |
+            dist/PrivateTranscribe-*.exe
+            !dist/PrivateTranscribe Setup *.exe
+            !dist/PrivateTranscribe-Setup-*.exe
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Upload latest.yml (update manifest)

@@ -11,6 +11,7 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
+const { formatTranscript } = require("./transcriptFormatter");
 
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
@@ -177,8 +178,33 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("show-dictation-panel", () => {
-      this.windowManager.showDictationPanel();
+    ipcMain.handle("show-dictation-panel", async () => {
+      await this.windowManager.showDictationPanel();
+    });
+
+    ipcMain.handle("set-overlay-disabled", (_event, disabled) => {
+      this.windowManager.setOverlayDisabled(Boolean(disabled));
+      return { success: true, disabled: Boolean(disabled) };
+    });
+
+    ipcMain.handle("get-overlay-disabled", () => {
+      return { disabled: this.windowManager.isOverlayDisabled() };
+    });
+
+    ipcMain.handle("notify-dictation-completed", () => {
+      // When overlay is disabled, destroy the hidden window after dictation
+      // to eliminate DWM lag while gaming.
+      if (this.windowManager.isOverlayDisabled()) {
+        this.windowManager.hideDictationPanel();
+      }
+      return { success: true };
+    });
+
+    ipcMain.handle("dictation-overlay-ready", (event) => {
+      if (event.sender === this.windowManager.mainWindow?.webContents) {
+        this.windowManager.markMainWindowRendererReady();
+      }
+      return { success: true };
     });
 
     ipcMain.handle("open-control-panel", async () => {
@@ -550,6 +576,41 @@ class IPCHandlers {
       }
     });
 
+    ipcMain.handle("transcribe-file-v2", async (event, audioBlob, options = {}) => {
+      debugLogger.log("transcribe-file-v2 called", {
+        audioBlobType: typeof audioBlob,
+        audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
+        options,
+      });
+
+      try {
+        const result = await this.whisperManager.transcribeFileV2(audioBlob, {
+          ...options,
+          fileMode: true,
+        });
+        if (!result.success) return result;
+
+        const formatted = formatTranscript(result.raw || { text: result.text, segments: result.segments }, options.outputFormat || "plain", {
+          includeSpeakers: options.speakerDetection === true,
+        });
+
+        return {
+          success: true,
+          text: formatted.text || result.text,
+          srt: formatted.srt,
+          speakerCount: formatted.speakerCount,
+          speakers: formatted.speakers,
+          segments: formatted.segments,
+          format: options.outputFormat || "plain",
+          model: result.model,
+          speakerDetectionActive: result.speakerDetectionActive,
+        };
+      } catch (error) {
+        debugLogger.error("File transcription v2 error", error);
+        return { success: false, error: error.message || "File transcription failed" };
+      }
+    });
+
     ipcMain.handle("check-whisper-installation", async (event) => {
       return this.whisperManager.checkWhisperInstallation();
     });
@@ -806,7 +867,7 @@ class IPCHandlers {
         if (
           currentHotkey &&
           currentHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(currentHotkey)
+          !hotkeyManager.isNativeListenerHotkey(currentHotkey)
         ) {
           debugLogger.log(
             `[IPC] Unregistering globalShortcut "${currentHotkey}" for hotkey capture mode`
@@ -830,11 +891,11 @@ class IPCHandlers {
         }
       } else {
         // Exiting capture mode - re-register globalShortcut if not already registered
-        // (Skip mouse hotkeys; they are handled by the native WindowsKeyManager in push-to-talk.)
+        // (Skip native-listener hotkeys: mouse buttons and modifier-only combos like Control+Super)
         if (
           effectiveHotkey &&
           effectiveHotkey !== "GLOBE" &&
-          !hotkeyManager.isMouseHotkey(effectiveHotkey)
+          !hotkeyManager.isNativeListenerHotkey(effectiveHotkey)
         ) {
           const { globalShortcut } = require("electron");
           if (!globalShortcut.isRegistered(effectiveHotkey)) {
@@ -846,14 +907,17 @@ class IPCHandlers {
           }
         }
 
-        // On Windows, restart the listener if in push mode
+        // On Windows, restart the native listener if the hotkey needs it
         if (process.platform === "win32" && this.windowsKeyManager) {
           const activationMode = await this.windowManager.getActivationMode();
           debugLogger.log(
             `[IPC] Exiting hotkey capture mode, activationMode="${activationMode}", hotkey="${effectiveHotkey}"`
           );
-          if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
+          if (effectiveHotkey && effectiveHotkey !== "GLOBE" &&
+            hotkeyManager.isNativeListenerHotkey(effectiveHotkey)) {
             debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
+            this.windowsKeyManager.start(effectiveHotkey);
+          } else if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
             this.windowsKeyManager.start(effectiveHotkey);
           }
         }
@@ -1097,7 +1161,7 @@ class IPCHandlers {
         typeof prefs.whisperServerIdleTimeoutMinutes === "number" &&
         Number.isFinite(prefs.whisperServerIdleTimeoutMinutes)
       ) {
-        // Persist as env var so it applies at next cold start / pre-warm.
+        // Persist as env var so it applies at next cold start.
         setVars.WHISPER_SERVER_IDLE_TIMEOUT_MINUTES = String(
           Math.max(0, Math.floor(prefs.whisperServerIdleTimeoutMinutes))
         );
@@ -1157,24 +1221,9 @@ class IPCHandlers {
           this.whisperManager.setForceCpu(prefs.whisperForceCpu).catch(() => {});
         }
       }
-
-      if (prefs.useLocalWhisper && prefs.model) {
-        // Local mode with model selected - set provider and model for pre-warming
-        setVars.LOCAL_TRANSCRIPTION_PROVIDER = prefs.localTranscriptionProvider;
-        if (prefs.localTranscriptionProvider === "nvidia") {
-          setVars.PARAKEET_MODEL = prefs.model;
-          clearVars.push("LOCAL_WHISPER_MODEL");
-        } else {
-          setVars.LOCAL_WHISPER_MODEL = prefs.model;
-          clearVars.push("PARAKEET_MODEL");
-        }
-      } else if (prefs.useLocalWhisper) {
-        // Local mode enabled but no model selected - clear pre-warming vars
-        clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
-      } else {
-        // Cloud mode - clear all local transcription vars
-        clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
-      }
+      // Startup no longer pre-warms local transcription servers.
+      // Clear any stale pre-warm vars from prior versions.
+      clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
 
       if (prefs.reasoningProvider === "local" && prefs.reasoningModel) {
         setVars.REASONING_PROVIDER = "local";

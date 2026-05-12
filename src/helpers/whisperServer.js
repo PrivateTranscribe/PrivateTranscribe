@@ -3,6 +3,7 @@ const fs = require("fs");
 const net = require("net");
 const path = require("path");
 const http = require("http");
+const FormData = require("form-data");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
@@ -135,6 +136,40 @@ function getWhisperRequestTimeoutMs(durationSeconds) {
   );
 }
 
+function stripSpeakerTurnTokens(text) {
+  return typeof text === "string" ? text.replace(/\[\s*SPEAKER_TURN\s*\]/gi, " ").replace(/\s+/g, " ").trim() : "";
+}
+
+function offsetVerboseJsonSegments(result, offsetSeconds) {
+  if (!result) {
+    return result;
+  }
+  const cleanedText = stripSpeakerTurnTokens(result.text || "");
+  if (!Array.isArray(result.segments)) {
+    return cleanedText ? { ...result, text: cleanedText } : result;
+  }
+  const timestampOffset = Number.isFinite(offsetSeconds) ? offsetSeconds : 0;
+  return {
+    ...result,
+    text: cleanedText,
+    segments: result.segments.map((segment) => ({
+      ...segment,
+      start: typeof segment.start === "number" ? segment.start + timestampOffset : segment.start,
+      end: typeof segment.end === "number" ? segment.end + timestampOffset : segment.end,
+      text: segment.text,
+    })),
+  };
+}
+
+function mergeVerboseJsonResults(results) {
+  const segments = results.flatMap((result) => (Array.isArray(result?.segments) ? result.segments : []));
+  const text = results
+    .map((result) => stripSpeakerTurnTokens(result?.text || ""))
+    .filter(Boolean)
+    .join(" ");
+  return { ...results[0], text, segments, chunks: results.length };
+}
+
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -166,6 +201,8 @@ class WhisperServerManager {
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     this.activeTranscriptions = 0;
+    this.stdoutCapture = null;
+    this.printRealtimeEnabled = false;
   }
 
   getFFmpegPath() {
@@ -422,7 +459,8 @@ class WhisperServerManager {
   async start(modelPath, options = {}) {
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
-    if (this.ready && this.modelPath === modelPath && !this.startupPromise) {
+    const wantsPrintRealtime = options.printRealtime === true;
+    if (this.ready && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime && !this.startupPromise) {
       this.lastUsedTime = Date.now();
       this.stoppedDueToIdle = false;
       this._scheduleIdleCheck();
@@ -431,7 +469,7 @@ class WhisperServerManager {
 
     // If a startup is already in-flight for this exact model, share the promise
     // so the second caller waits for the same result instead of spawning again.
-    if (this.startupPromise && this.modelPath === modelPath) {
+    if (this.startupPromise && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
       return this.startupPromise;
     }
 
@@ -449,7 +487,7 @@ class WhisperServerManager {
       .then(async () => {
         // Re-check after the previous promise settled: the server may have
         // become ready for this model (e.g. from a concurrent caller).
-        if (this.ready && this.modelPath === modelPath) {
+        if (this.ready && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
           this.lastUsedTime = Date.now();
           this.stoppedDueToIdle = false;
           this._scheduleIdleCheck();
@@ -578,6 +616,10 @@ class WhisperServerManager {
     args.push("--suppress-nst");
 
     if (options.threads) args.push("--threads", String(options.threads));
+    if (options.printRealtime) {
+      args.push("--print-realtime");
+      args.push("--tinydiarize");
+    }
     // whisper.cpp defaults to English in some server builds when language is omitted.
     // Pass auto explicitly so multilingual/local-file transcription really auto-detects.
     args.push(
@@ -616,12 +658,16 @@ class WhisperServerManager {
     }
 
     this.process.stdout.on("data", (data) => {
-      debugLogger.debug("whisper-server stdout", { data: data.toString().trim() });
+      const text = data.toString();
+      if (this.stdoutCapture !== null) this.stdoutCapture += text;
+      debugLogger.debug("whisper-server stdout", { data: text.trim() });
     });
 
     this.process.stderr.on("data", (data) => {
-      stderrBuffer += data.toString();
-      debugLogger.debug("whisper-server stderr", { data: data.toString().trim() });
+      const text = data.toString();
+      stderrBuffer += text;
+      if (this.stdoutCapture !== null) this.stdoutCapture += text;
+      debugLogger.debug("whisper-server stderr", { data: text.trim() });
     });
 
     this.process.on("error", (error) => {
@@ -640,6 +686,8 @@ class WhisperServerManager {
       exitCode = code;
       debugLogger.debug("whisper-server process exited", { code });
       this.ready = false;
+      this.printRealtimeEnabled = false;
+      this.stdoutCapture = null;
       this.process = null;
       this.activeServerBinaryPath = null;
       this.stopHealthCheck();
@@ -648,6 +696,7 @@ class WhisperServerManager {
 
     try {
       await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode, startupError }));
+      this.printRealtimeEnabled = options.printRealtime === true;
     } catch (error) {
       debugLogger.error("whisper-server failed readiness check", {
         error: error.message,
@@ -878,14 +927,18 @@ class WhisperServerManager {
     });
 
     try {
-      const { language, translate, initialPrompt, inputFileName } = options;
+      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false } = options;
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
       if (!this.canConvert) {
         throw new Error("FFmpeg not found - required for audio conversion");
       }
-      finalBuffer = await this._convertToWav(audioBuffer, inputFileName);
+      finalBuffer = await this._convertToWav(audioBuffer, inputFileName, {
+        // whisper.cpp stereo diarization needs two channels; tdrz/tinydiarize stays mono.
+        channels: fileMode && diarize ? 2 : 1,
+        noiseReduction: fileMode && noiseReduction,
+      });
 
       const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer);
       if (chunks.length > 1) {
@@ -905,18 +958,57 @@ class WhisperServerManager {
           durationSeconds: Math.round(chunk.durationSeconds),
           sizeBytes: chunk.buffer.length,
         });
-        const result = await this._postInference(chunk.buffer, {
-          language,
-          translate,
-          initialPrompt,
-          chunkIndex: index,
-          chunkCount: chunks.length,
-          durationSeconds: chunk.durationSeconds,
-        });
-        results.push(result);
+        let result;
+        try {
+          result = await this._postInference(chunk.buffer, {
+            language,
+            translate,
+            initialPrompt,
+            chunkIndex: index,
+            chunkCount: chunks.length,
+            durationSeconds: chunk.durationSeconds,
+            fileMode,
+            diarize,
+            tinydiarize: fileMode && speakerDetection,
+            vad,
+          });
+        } catch (error) {
+          if (!fileMode) throw error;
+          debugLogger.warn("verbose_json file transcription failed; retrying with json compatibility fallback", {
+            error: error.message,
+            chunk: index + 1,
+            chunks: chunks.length,
+          });
+          const activeModelPath = this.modelPath;
+          if (activeModelPath) {
+            await this.stop();
+            await this.start(activeModelPath);
+          }
+          result = await this._postInference(chunk.buffer, {
+            language,
+            translate,
+            initialPrompt,
+            chunkIndex: index,
+            chunkCount: chunks.length,
+            durationSeconds: chunk.durationSeconds,
+            fileMode: false,
+          });
+          if (!Array.isArray(result?.segments) && result?.text) {
+            result = {
+              ...result,
+              segments: [{ start: 0, end: chunk.durationSeconds || 0, text: result.text }],
+              verboseJsonFallback: true,
+            };
+          }
+        }
+        results.push(fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result);
       }
 
       if (results.length === 1) return results[0];
+
+      if (fileMode && results.some((result) => Array.isArray(result?.segments))) {
+        return mergeVerboseJsonResults(results);
+      }
 
       return {
         text: results
@@ -930,6 +1022,36 @@ class WhisperServerManager {
     }
   }
 
+  _beginStdoutCapture() {
+    this.stdoutCapture = "";
+  }
+
+  _endStdoutCapture() {
+    const captured = this.stdoutCapture || "";
+    this.stdoutCapture = null;
+    return captured;
+  }
+
+  _attachTinydiarizeMarkers(parsed, stdoutText) {
+    if (!parsed || !Array.isArray(parsed.segments) || !stdoutText) return parsed;
+    const realtimeSegments = stdoutText
+      .split(/\r?\n/)
+      .filter((line) => /\[\d{2}:\d{2}:\d{2}\.\d{3}\s+-->/.test(line));
+
+    if (realtimeSegments.length === 0) return parsed;
+
+    const segments = parsed.segments.map((segment, index) => {
+      const realtimeLine = realtimeSegments[index] || "";
+      if (!/\[\s*SPEAKER_TURN\s*\]/i.test(realtimeLine)) return segment;
+      const text = String(segment.text || "");
+      return /\[\s*SPEAKER_TURN\s*\]/i.test(text)
+        ? segment
+        : { ...segment, text: `${text} [SPEAKER_TURN]` };
+    });
+
+    return { ...parsed, segments, tdrzRealtimeText: stdoutText };
+  }
+
   _postInference(wavBuffer, options = {}) {
     const {
       language,
@@ -938,55 +1060,32 @@ class WhisperServerManager {
       chunkIndex = 0,
       chunkCount = 1,
       durationSeconds,
+      fileMode = false,
+      diarize = false,
+      tinydiarize = false,
+      vad = false,
     } = options;
-    const boundary = `----WhisperBoundary${Date.now()}-${chunkIndex}`;
-    const parts = [];
+    const form = new FormData();
     const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
-    const contentType = "audio/wav";
 
-    parts.push(
-      `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-        `Content-Type: ${contentType}\r\n\r\n`
-    );
-    parts.push(wavBuffer);
-    parts.push("\r\n");
+    form.append("file", wavBuffer, { filename: fileName, contentType: "audio/wav" });
 
-    if (language && language !== "auto") {
-      parts.push(
-        `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="language"\r\n\r\n` +
-          `${language}\r\n`
-      );
-    }
-
-    if (translate) {
-      parts.push(
-        `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="translate"\r\n\r\n` +
-          `true\r\n`
-      );
-    }
-
+    if (language && language !== "auto") form.append("language", language);
+    if (translate) form.append("translate", "true");
     if (initialPrompt) {
-      parts.push(
-        `--${boundary}\r\n` +
-          `Content-Disposition: form-data; name="prompt"\r\n\r\n` +
-          `${initialPrompt}\r\n`
-      );
+      form.append("prompt", initialPrompt);
       debugLogger.info("Using custom dictionary prompt", { prompt: initialPrompt });
     }
 
-    parts.push(
-      `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="response_format"\r\n\r\n` +
-        `json\r\n`
-    );
-    parts.push(`--${boundary}--\r\n`);
+    form.append("response_format", fileMode ? "verbose_json" : "json");
 
-    const bodyParts = parts.map((part) => (typeof part === "string" ? Buffer.from(part) : part));
-    const body = Buffer.concat(bodyParts);
+    for (const [name, enabled] of Object.entries({ diarize, tinydiarize, vad })) {
+      if (enabled) form.append(name, "true");
+    }
+
     const timeoutMs = getWhisperRequestTimeoutMs(durationSeconds);
+
+    if (tinydiarize) this._beginStdoutCapture();
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
@@ -997,10 +1096,7 @@ class WhisperServerManager {
           port: this.port,
           path: "/inference",
           method: "POST",
-          headers: {
-            "Content-Type": `multipart/form-data; boundary=${boundary}`,
-            "Content-Length": body.length,
-          },
+          headers: form.getHeaders(),
           timeout: timeoutMs,
         },
         (res) => {
@@ -1025,14 +1121,27 @@ class WhisperServerManager {
             }
 
             try {
-              const parsed = JSON.parse(data);
+              let parsed = JSON.parse(data);
 
-              this.lastUsedTime = Date.now();
-              this.stoppedDueToIdle = false;
-              this._scheduleIdleCheck();
+              const finish = () => {
+                if (tinydiarize) {
+                  parsed = this._attachTinydiarizeMarkers(parsed, this._endStdoutCapture());
+                }
 
-              resolve(parsed);
+                this.lastUsedTime = Date.now();
+                this.stoppedDueToIdle = false;
+                this._scheduleIdleCheck();
+
+                resolve(parsed);
+              };
+
+              // whisper.cpp writes tinydiarize speaker-turn markers to realtime stdout,
+              // not to verbose_json. The HTTP response can finish before Node has
+              // delivered the final stdout chunk, so give the pipe one tick to flush.
+              if (tinydiarize) setTimeout(finish, 1200);
+              else finish();
             } catch (e) {
+              if (tinydiarize) this._endStdoutCapture();
               reject(new Error(`Failed to parse whisper-server response: ${e.message}`));
             }
           });
@@ -1040,9 +1149,11 @@ class WhisperServerManager {
       );
 
       req.on("error", (error) => {
+        if (tinydiarize) this._endStdoutCapture();
         reject(new Error(`whisper-server request failed: ${error.message}`));
       });
       req.on("timeout", () => {
+        if (tinydiarize) this._endStdoutCapture();
         req.destroy();
         reject(
           new Error(
@@ -1051,8 +1162,7 @@ class WhisperServerManager {
         );
       });
 
-      req.write(body);
-      req.end();
+      form.pipe(req);
     });
   }
 
@@ -1078,6 +1188,7 @@ class WhisperServerManager {
       chunks.push({
         buffer: createPcm16WavBuffer(pcmData, info.sampleRate, info.channels, info.bitsPerSample),
         durationSeconds: pcmData.length / info.byteRate,
+        offsetSeconds: (start - info.dataOffset) / info.byteRate,
       });
     }
 
@@ -1086,7 +1197,7 @@ class WhisperServerManager {
       : [{ buffer: wavBuffer, durationSeconds: info.durationSeconds }];
   }
 
-  async _convertToWav(audioBuffer, inputFileName = null) {
+  async _convertToWav(audioBuffer, inputFileName = null, options = {}) {
     const tempDir = getSafeTempDir();
     const tempId = crypto.randomUUID();
     const inputExtension = resolveTempInputExtension(inputFileName);
@@ -1095,7 +1206,11 @@ class WhisperServerManager {
 
     try {
       fs.writeFileSync(tempInputPath, audioBuffer);
-      await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1 });
+      await convertToWav(tempInputPath, tempWavPath, {
+        sampleRate: 16000,
+        channels: options.channels || 1,
+        audioFilters: options.noiseReduction ? ["afftdn=nf=-25"] : [],
+      });
       return fs.readFileSync(tempWavPath);
     } finally {
       for (const f of [tempInputPath, tempWavPath]) {

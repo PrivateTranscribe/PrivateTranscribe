@@ -26,10 +26,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   pasteText: (text) => ipcRenderer.invoke("paste-text", text),
   hideWindow: () => ipcRenderer.invoke("hide-window"),
   showDictationPanel: () => ipcRenderer.invoke("show-dictation-panel"),
+  setOverlayDisabled: (disabled) => ipcRenderer.invoke("set-overlay-disabled", disabled),
+  getOverlayDisabled: () => ipcRenderer.invoke("get-overlay-disabled"),
+  notifyDictationCompleted: () => ipcRenderer.invoke("notify-dictation-completed"),
   openControlPanel: () => ipcRenderer.invoke("open-control-panel"),
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
+  onMainWindowShown: registerListener("main-window-shown", (callback) => () => callback()),
+  notifyDictationOverlayReady: () => ipcRenderer.invoke("dictation-overlay-ready"),
 
   // Database functions
   saveTranscription: (text, durationSeconds, options) =>
@@ -98,6 +103,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
+  transcribeFileV2: (audioBlob, options) => ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
   checkWhisperInstallation: () => ipcRenderer.invoke("check-whisper-installation"),
   downloadWhisperModel: (modelName) => ipcRenderer.invoke("download-whisper-model", modelName),
   onWhisperDownloadProgress: registerListener("whisper-download-progress"),

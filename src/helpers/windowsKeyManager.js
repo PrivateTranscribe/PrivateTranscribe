@@ -11,6 +11,21 @@ const EventEmitter = require("events");
 const fs = require("fs");
 const debugLogger = require("./debugLogger");
 
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
+function normalizeForWindowsListener(key) {
+  if (!key || typeof key !== "string") return key;
+  const parts = key.split("+").map((part) => part.trim());
+  const base = parts.pop();
+  const normalizedBase = base === "½" || base === "`" ? "Backquote" : base;
+  return [...parts, normalizedBase].filter(Boolean).join("+");
+}
+
 class WindowsKeyManager extends EventEmitter {
   constructor() {
     super();
@@ -31,6 +46,12 @@ class WindowsKeyManager extends EventEmitter {
       return;
     }
 
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_WINDOWS_KEY_LISTENER")) {
+      debugLogger.warn("[Diagnostics] Windows native key listener start skipped");
+      this.stop();
+      return;
+    }
+
     // If already running with the same key, do nothing
     if (this.process && this.currentKey === key) {
       return;
@@ -46,6 +67,8 @@ class WindowsKeyManager extends EventEmitter {
       return;
     }
 
+    const listenerKey = normalizeForWindowsListener(key);
+
     this.hasReportedError = false;
     this.isReady = false;
     this.isStopping = false;
@@ -53,11 +76,12 @@ class WindowsKeyManager extends EventEmitter {
 
     debugLogger.debug("[WindowsKeyManager] Starting key listener", {
       key,
+      listenerKey,
       binaryPath: listenerPath,
     });
 
     try {
-      const child = spawn(listenerPath, [key], {
+      const child = spawn(listenerPath, [listenerKey], {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });

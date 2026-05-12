@@ -87,4 +87,31 @@ describe("WhisperManager engine mode", () => {
     expect(status.version).toBe("v0.0.7");
     expect(status.expectedVersion).toBe("v0.0.8");
   });
+
+  it("does not pre-warm whisper-server during startup initialization", async () => {
+    const manager = new WhisperManager();
+    manager.serverManager = {
+      ready: false,
+      setIdleTimeoutMs: vi.fn(),
+      setForceCpu: vi.fn(async () => {}),
+      start: vi.fn(async () => {}),
+      isAvailable: vi.fn(() => true),
+      getServerBinaryPath: vi.fn(() => null),
+      getStatus: vi.fn(() => ({})),
+      getEngineStatus: vi.fn(() => ({})),
+      port: 8178,
+    };
+    manager.logDependencyStatus = vi.fn(async () => {});
+
+    await manager.initializeAtStartup({
+      localTranscriptionProvider: "whisper",
+      whisperModel: "turbo",
+      whisperServerIdleTimeoutMinutes: 3,
+      whisperForceCpu: true,
+    });
+
+    expect(manager.serverManager.setIdleTimeoutMs).toHaveBeenCalledWith(3 * 60 * 1000);
+    expect(manager.serverManager.setForceCpu).toHaveBeenCalledWith(true);
+    expect(manager.serverManager.start).not.toHaveBeenCalled();
+  });
 });

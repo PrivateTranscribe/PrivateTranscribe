@@ -1,6 +1,6 @@
 {
   "name": "privatetranscribe",
-  "version": "0.8.4",
+  "version": "0.10.1",
   "description": "PrivateTranscribe",
   "main": "main.js",
   "private": true,
@@ -49,7 +49,8 @@
     "uninstall:full:mac": "bash scripts/complete-uninstall.sh",
     "uninstall:full:linux": "bash scripts/complete-uninstall-linux.sh",
     "uninstall:full:windows": "scripts\\complete-uninstall-windows.bat",
-    "audit:branding": "node scripts/audit-branding.js"
+    "audit:branding": "node scripts/audit-branding.js",
+    "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js"
   },
   "keywords": [
     "dictation",
@@ -75,22 +76,20 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
     "cross-env": "^10.0.0",
-    "electron": "^36.9.5",
+    "electron": "^41.5.0",
     "electron-builder": "^26.4.0",
     "electron-winstaller": "5.4.0",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
-    "icojs": "^0.20.1",
+    "icojs": "^0.23.0",
     "icon-gen": "^5.0.0",
-    "png-to-ico": "^3.0.1",
     "pngjs": "^7.0.0",
     "postcss": "^8.5.6",
     "prettier": "^3.4.2",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.10",
-    "to-ico": "^1.1.5",
     "typescript-eslint": "^8.20.0",
     "vite": "^6.3.5",
     "vitest": "^4.0.18"
@@ -103,13 +102,13 @@
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dbus-next": "^0.10.2",
     "dotenv": "^16.3.1",
     "electron-updater": "^6.6.2",
     "ffmpeg-static": "^5.2.0",
+    "form-data": "^4.0.5",
     "lucide-react": "^0.518.0",
     "node-machine-id": "^1.1.12",
     "react": "^19.1.0",
@@ -117,9 +116,15 @@
     "react-markdown": "^10.1.0",
     "shadcn-ui": "^0.9.5",
     "tailwind-merge": "^3.3.1",
-    "tar": "^7.4.3",
+    "tar": "^7.5.13",
     "tw-animate-css": "^1.3.4",
     "unzipper": "^0.12.3",
     "ws": "^8.19.0"
+  },
+  "overrides": {
+    "xml2js": "^0.6.2",
+    "qs": "^6.14.1",
+    "tough-cookie": "^4.1.3",
+    "uuid": "^14.0.0"
   }
 }

@@ -1120,6 +1120,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
+    overlayDisabled,
+    setOverlayDisabled,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
@@ -1154,6 +1156,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       .then((rows) => setCorrectionCount(Array.isArray(rows) ? rows.length : 0))
       .catch(() => setCorrectionCount(0));
   }, [enableCorrectionLearning]);
+
+  // Sync overlay disabled state to main process on settings mount
+  useEffect(() => {
+    window.electronAPI?.setOverlayDisabled?.(overlayDisabled).catch(() => {});
+  }, []);
 
   const handleClearCorrections = useCallback(async () => {
     if (!clearConfirmPending) {
@@ -2295,6 +2302,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description="Automatically open settings when transcription fails"
                   >
                     <Toggle checked={showPanelOnError} onChange={setShowPanelOnError} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Disable visual overlay"
+                    description="Completely hide the dictation panel. Dictation still works in the background when you press your hotkey. Useful for gaming or fullscreen apps to prevent lag."
+                  >
+                    <Toggle
+                      checked={overlayDisabled}
+                      onChange={(checked) => {
+                        setOverlayDisabled(checked);
+                        window.electronAPI?.setOverlayDisabled?.(checked).catch(() => {});
+                      }}
+                    />
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>

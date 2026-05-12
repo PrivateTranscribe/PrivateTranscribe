@@ -19,7 +19,9 @@ function readSrc(relPath: string): string {
 
 const windowManager = readHelper("windowManager.js");
 const windowConfig = readHelper("windowConfig.js");
+const dragManager = readHelper("dragManager.js");
 const appJsx = readSrc("App.jsx");
+const useWindowDrag = readSrc("hooks/useWindowDrag.js");
 const toastTsx = readSrc("components/ui/Toast.tsx");
 
 // ─── Multi-monitor position clamping ─────────────────────────────────────────
@@ -63,6 +65,27 @@ describe("windowManager.js — multi-monitor position clamping", () => {
   });
 });
 
+// ─── Drag handling — touchpad release and work-area bounds ──────────────────
+
+describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => {
+  test("dragging reuses shared WindowPositionUtil.clampPosition", () => {
+    expect(dragManager).toContain("WindowPositionUtil.clampPosition");
+    expect(dragManager).toContain("display.workArea || display.bounds");
+  });
+
+  test("drag clamping uses proposed button position for display selection", () => {
+    expect(dragManager).toContain("proposedButtonPoint");
+    expect(dragManager).toContain("getDisplayNearestPoint(proposedButtonPoint)");
+  });
+
+  test("drag stop listens beyond document mouseup for touchpad/outside-window releases", () => {
+    expect(useWindowDrag).toContain('window.addEventListener("mouseup"');
+    expect(useWindowDrag).toContain('window.addEventListener("pointerup"');
+    expect(useWindowDrag).toContain('window.addEventListener("pointercancel"');
+    expect(useWindowDrag).toContain('window.addEventListener("blur"');
+  });
+});
+
 // ─── Toast positioning — adaptive side placement in tiny overlay ────────────
 
 describe("Toast.tsx — adaptive toast placement for dictation overlay", () => {
@@ -101,7 +124,7 @@ describe("App.jsx — Escape key during recording/processing", () => {
     // hideWindow must not appear BEFORE the isRecording/isProcessing guard in the
     // Escape branch — i.e. hideWindow is only called in the idle else branch.
     const escIdx = appJsx.indexOf('"Escape"');
-    const block = appJsx.slice(escIdx, escIdx + 700);
+    const block = appJsx.slice(escIdx, escIdx + 900);
     const hideIdx = block.indexOf("hideWindow");
     const recordingIdx = block.indexOf("isRecording");
     // hideWindow must come after the recording guard (higher offset in the block)

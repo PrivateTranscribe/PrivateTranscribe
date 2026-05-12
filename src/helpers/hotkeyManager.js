@@ -16,9 +16,247 @@ const SUGGESTED_HOTKEYS = {
   ],
 };
 
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
+// Keys that Electron globalShortcut cannot handle. These must be routed through
+// native OS listeners (WindowsKeyManager on Windows, etc.) or rejected.
+const NON_ACCELERATOR_KEYS = new Set([
+  "Mouse4",
+  "Mouse5",
+  "XButton1",
+  "XButton2",
+  "½",
+  "§",
+  "°",
+  "´",
+  "`",
+  "¨",
+  "^",
+  "~",
+]);
+
+// Modifier key names — a combo of only these cannot be registered via globalShortcut.
+// On Windows, modifier-only combos (e.g. Control+Super) must go through the native
+// WindowsKeyManager listener instead.
+const MODIFIER_NAMES = new Set([
+  "control",
+  "ctrl",
+  "commandorcontrol",
+  "cmdorctrl",
+  "alt",
+  "option",
+  "altgr",
+  "shift",
+  "super",
+  "meta",
+  "win",
+  "command",
+  "cmd",
+]);
+
+function isModifierOnlyHotkey(hotkey) {
+  if (!hotkey || !hotkey.includes("+")) return false;
+  return hotkey.split("+").every((part) => MODIFIER_NAMES.has(part.trim().toLowerCase()));
+}
+
+function getHotkeyBaseKey(hotkey) {
+  if (!hotkey || typeof hotkey !== "string") return "";
+  return hotkey.includes("+") ? hotkey.split("+").pop().trim() : hotkey.trim();
+}
+
+function isNonAcceleratorHotkey(hotkey) {
+  return NON_ACCELERATOR_KEYS.has(getHotkeyBaseKey(hotkey));
+}
+
+function isWindowsNativeOnlyHotkey(hotkey) {
+  return (
+    isNonAcceleratorHotkey(hotkey) || isModifierOnlyHotkey(hotkey) || isMouseHotkeyValue(hotkey)
+  );
+}
+
+function normalizeForWindowsListener(hotkey) {
+  if (!hotkey || typeof hotkey !== "string") return hotkey;
+  const parts = hotkey.split("+").map((part) => part.trim());
+  const base = parts.pop();
+
+  // On Danish/Nordic layouts the physical Backquote/OEM_3 key is often labelled
+  // as `½`. The native listener is layout-agnostic and expects the physical key.
+  const normalizedBase = base === "½" || base === "`" ? "Backquote" : base;
+  return [...parts, normalizedBase].filter(Boolean).join("+");
+}
+
+function shouldUseWindowsNativeListener(hotkey, activationMode = "tap") {
+  if (!hotkey || hotkey === "GLOBE") return false;
+  if (isWindowsNativeOnlyHotkey(hotkey)) return true;
+
+  // Push-to-talk needs key-up detection. Electron globalShortcut can reserve
+  // normal accelerators, but it cannot tell us when the user releases them.
+  return activationMode === "push" && isValidAccelerator(hotkey);
+}
+
+// Valid accelerator key names per Electron docs (partial list for validation).
+// See: https://www.electronjs.org/docs/latest/api/accelerator
+const VALID_ELECTRON_KEYS = new Set([
+  // Modifiers
+  "Command",
+  "Cmd",
+  "Control",
+  "Ctrl",
+  "CommandOrControl",
+  "CmdOrCtrl",
+  "Alt",
+  "Option",
+  "AltGr",
+  "Shift",
+  "Super",
+  "Meta",
+  "Win",
+  // Special keys
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
+  "F8",
+  "F9",
+  "F10",
+  "F11",
+  "F12",
+  "F13",
+  "F14",
+  "F15",
+  "F16",
+  "F17",
+  "F18",
+  "F19",
+  "F20",
+  "F21",
+  "F22",
+  "F23",
+  "F24",
+  "Plus",
+  "Space",
+  "Tab",
+  "Backspace",
+  "Delete",
+  "Insert",
+  "Return",
+  "Enter",
+  "Up",
+  "Down",
+  "Left",
+  "Right",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Escape",
+  "Esc",
+  "VolumeUp",
+  "VolumeDown",
+  "VolumeMute",
+  "MediaNextTrack",
+  "MediaPreviousTrack",
+  "MediaStop",
+  "MediaPlayPause",
+  "PrintScreen",
+  "Numlock",
+  "Scrolllock",
+  "Capslock",
+  // Mouse buttons (Electron doesn't support these via globalShortcut, but we list them for completeness)
+  "LeftButton",
+  "RightButton",
+  "MiddleButton",
+  // Digits
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  // Letters
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "U",
+  "V",
+  "W",
+  "X",
+  "Y",
+  "Z",
+  // Numpad
+  "num0",
+  "num1",
+  "num2",
+  "num3",
+  "num4",
+  "num5",
+  "num6",
+  "num7",
+  "num8",
+  "num9",
+  "numadd",
+  "numsub",
+  "nummult",
+  "numdiv",
+  "numdec",
+]);
+
+function isValidAccelerator(hotkey) {
+  if (!hotkey || typeof hotkey !== "string") return false;
+
+  // Check for known non-accelerator keys first
+  const baseKey = hotkey.includes("+") ? hotkey.split("+").pop().trim() : hotkey.trim();
+  if (NON_ACCELERATOR_KEYS.has(baseKey)) return false;
+
+  // Validate each part of the accelerator
+  const parts = hotkey.split("+").map((p) => p.trim());
+  for (const part of parts) {
+    // Allow numpad keys with 'num' prefix (case-insensitive)
+    if (/^num\d$/.test(part.toLowerCase())) continue;
+    if (/^num(add|sub|mult|div|dec)$/.test(part.toLowerCase())) continue;
+    if (!VALID_ELECTRON_KEYS.has(part)) {
+      // Unknown key — likely not a valid accelerator
+      return false;
+    }
+  }
+  return true;
+}
+
 class HotkeyManager {
   constructor() {
-    this.currentHotkey = "`";
+    // Default: Control+Super (Ctrl+Win) on Windows — matches OpenWhispr default and
+    // works via the native WindowsKeyManager listener (not globalShortcut).
+    // Backtick on other platforms as before.
+    this.currentHotkey = process.platform === "win32" ? "Control+Super" : "`";
     this.isInitialized = false;
     this.isListeningMode = false;
     this.gnomeManager = null;
@@ -41,10 +279,18 @@ class HotkeyManager {
     return this.isListeningMode;
   }
 
+  /**
+   * Returns true for hotkeys that must be handled by the native WindowsKeyManager
+   * rather than Electron globalShortcut. This covers:
+   * - Mouse side buttons (Mouse4/Mouse5)
+   * - Modifier-only combos like Control+Super (Windows key)
+   */
+  isNativeListenerHotkey(hotkey) {
+    return isWindowsNativeOnlyHotkey(hotkey);
+  }
+
   isMouseHotkey(hotkey) {
-    if (!hotkey) return false;
-    const base = hotkey.includes("+") ? hotkey.split("+").pop() : hotkey;
-    return base === "Mouse4" || base === "Mouse5" || base === "XButton1" || base === "XButton2";
+    return isMouseHotkeyValue(hotkey);
   }
 
   getFailureReason(hotkey) {
@@ -104,13 +350,40 @@ class HotkeyManager {
     debugLogger.log(`[HotkeyManager] Platform: ${process.platform}, Arch: ${process.arch}`);
     debugLogger.log(`[HotkeyManager] Current hotkey: "${this.currentHotkey}"`);
 
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT")) {
+      this.currentHotkey = hotkey;
+      this.hotkeyCallback = callback;
+      debugLogger.warn(`[Diagnostics] Skipping globalShortcut registration for "${hotkey}"`);
+      return {
+        success: true,
+        hotkey,
+        diagnostic: "globalShortcut registration disabled by environment flag",
+      };
+    }
+
+    // Validate the hotkey before attempting registration.
+    // This prevents Electron crashes on keys like "½" that it cannot parse.
+    const isValid = isValidAccelerator(hotkey);
+    const isWindowsNativeOnly = process.platform === "win32" && isWindowsNativeOnlyHotkey(hotkey);
+    if (!isValid && !isWindowsNativeOnly && hotkey !== "GLOBE") {
+      debugLogger.warn(
+        `[HotkeyManager] Invalid accelerator "${hotkey}" — not a key globalShortcut can handle`
+      );
+      const suggestions = this.getSuggestions(hotkey);
+      return {
+        success: false,
+        error: `"${hotkey}" is not a supported hotkey. Mouse buttons and special characters cannot be used with global shortcuts. Try: ${suggestions.join(", ")}`,
+        reason: "unsupported_key",
+        suggestions,
+      };
+    }
+
     // If we're already using this hotkey AND it's actually registered, return success
-    // Note: We need to check isRegistered because on first run, currentHotkey is set to "`"
-    // but it's not actually registered yet
+    // (Skip globalShortcut check for native-listener hotkeys — they are never registered there)
     if (
       hotkey === this.currentHotkey &&
       hotkey !== "GLOBE" &&
-      !this.isMouseHotkey(hotkey) &&
+      !isWindowsNativeOnlyHotkey(hotkey) &&
       globalShortcut.isRegistered(hotkey)
     ) {
       debugLogger.log(
@@ -119,14 +392,20 @@ class HotkeyManager {
       return { success: true, hotkey };
     }
 
-    // Unregister the previous hotkey (if it's not GLOBE or a mouse hotkey)
+    // Unregister the previous hotkey (if it's not GLOBE, mouse, or modifier-only)
     if (
       this.currentHotkey &&
       this.currentHotkey !== "GLOBE" &&
-      !this.isMouseHotkey(this.currentHotkey)
+      !isWindowsNativeOnlyHotkey(this.currentHotkey)
     ) {
       debugLogger.log(`[HotkeyManager] Unregistering previous hotkey: "${this.currentHotkey}"`);
-      globalShortcut.unregister(this.currentHotkey);
+      try {
+        globalShortcut.unregister(this.currentHotkey);
+      } catch (err) {
+        debugLogger.warn(
+          `[HotkeyManager] Unregister failed for "${this.currentHotkey}": ${err.message}`
+        );
+      }
     }
 
     try {
@@ -143,18 +422,18 @@ class HotkeyManager {
         return { success: true, hotkey };
       }
 
-      // Mouse side buttons are not supported by Electron globalShortcut.
-      // On Windows, these are handled by the native WindowsKeyManager listener (push-to-talk).
-      if (process.platform === "win32" && this.isMouseHotkey(hotkey)) {
+      // Mouse side buttons, modifier-only combos, and locale/OEM keys are not
+      // supported safely by Electron globalShortcut. On Windows, these are
+      // handled by the native WindowsKeyManager listener.
+      if (process.platform === "win32" && isWindowsNativeOnlyHotkey(hotkey)) {
         this.currentHotkey = hotkey;
         debugLogger.log(
-          `[HotkeyManager] Mouse hotkey "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
+          `[HotkeyManager] Native-only hotkey "${hotkey}" accepted (WindowsKeyManager handles it; globalShortcut not used)`
         );
         return {
           success: true,
           hotkey,
-          message:
-            "Mouse hotkeys require Windows Push-to-Talk mode (hold-to-talk). Tap-to-talk via globalShortcut is not available for mouse buttons.",
+          message: `Hotkey updated to: ${hotkey} (via Windows native listener)`,
         };
       }
 
@@ -316,7 +595,12 @@ class HotkeyManager {
         this.notifyHotkeyFailure(savedHotkey, result);
       }
 
-      const defaultHotkey = process.platform === "darwin" ? "GLOBE" : "`";
+      const defaultHotkey =
+        process.platform === "darwin"
+          ? "GLOBE"
+          : process.platform === "win32"
+            ? "Control+Super"
+            : "`";
 
       if (defaultHotkey === "GLOBE") {
         this.currentHotkey = "GLOBE";
@@ -491,8 +775,20 @@ class HotkeyManager {
   }
 
   isHotkeyRegistered(hotkey) {
+    if (isWindowsNativeOnlyHotkey(hotkey)) return false;
     return globalShortcut.isRegistered(hotkey);
   }
 }
 
+function isMouseHotkeyValue(hotkey) {
+  if (!hotkey) return false;
+  const base = getHotkeyBaseKey(hotkey);
+  return base === "Mouse4" || base === "Mouse5" || base === "XButton1" || base === "XButton2";
+}
+
 module.exports = HotkeyManager;
+module.exports.isModifierOnlyHotkey = isModifierOnlyHotkey;
+module.exports.isNonAcceleratorHotkey = isNonAcceleratorHotkey;
+module.exports.isWindowsNativeOnlyHotkey = isWindowsNativeOnlyHotkey;
+module.exports.normalizeForWindowsListener = normalizeForWindowsListener;
+module.exports.shouldUseWindowsNativeListener = shouldUseWindowsNativeListener;

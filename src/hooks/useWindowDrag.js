@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 export const useWindowDrag = () => {
   const [isDragging, setIsDragging] = useState(false);
@@ -19,7 +19,7 @@ export const useWindowDrag = () => {
     e.preventDefault();
   };
 
-  const handleMouseUp = () => {
+  const stopDragging = useCallback(() => {
     if (!isDraggingRef.current) {
       return;
     }
@@ -27,6 +27,10 @@ export const useWindowDrag = () => {
     setIsDragging(false);
     isDraggingRef.current = false;
     window.electronAPI.stopWindowDrag?.();
+  }, []);
+
+  const handleMouseUp = () => {
+    stopDragging();
   };
 
   const handleClick = (e) => {
@@ -34,18 +38,36 @@ export const useWindowDrag = () => {
     e.preventDefault();
   };
 
-  // Set up global mouse up listener when dragging
+  // Set up global release/cancel listeners while dragging. Laptop touchpads and
+  // borderless/fullscreen apps can deliver the release outside the tiny overlay
+  // document; listening only on document.mouseup leaves the native drag interval
+  // running, which looks like the overlay slowly travelling downward after release.
   useEffect(() => {
     if (isDragging) {
-      const handleGlobalMouseUp = () => handleMouseUp();
+      const handleGlobalStop = () => stopDragging();
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "hidden") {
+          stopDragging();
+        }
+      };
 
-      document.addEventListener("mouseup", handleGlobalMouseUp);
+      document.addEventListener("mouseup", handleGlobalStop, true);
+      window.addEventListener("mouseup", handleGlobalStop, true);
+      window.addEventListener("pointerup", handleGlobalStop, true);
+      window.addEventListener("pointercancel", handleGlobalStop, true);
+      window.addEventListener("blur", handleGlobalStop, true);
+      document.addEventListener("visibilitychange", handleVisibilityChange, true);
 
       return () => {
-        document.removeEventListener("mouseup", handleGlobalMouseUp);
+        document.removeEventListener("mouseup", handleGlobalStop, true);
+        window.removeEventListener("mouseup", handleGlobalStop, true);
+        window.removeEventListener("pointerup", handleGlobalStop, true);
+        window.removeEventListener("pointercancel", handleGlobalStop, true);
+        window.removeEventListener("blur", handleGlobalStop, true);
+        document.removeEventListener("visibilitychange", handleVisibilityChange, true);
       };
     }
-  }, [isDragging]);
+  }, [isDragging, stopDragging]);
 
   return {
     isDragging,

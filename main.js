@@ -28,6 +28,17 @@ if (!gotSingleInstanceLock) {
 
 const isLiveWindow = (window) => window && !window.isDestroyed();
 
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
+if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_HARDWARE_ACCELERATION")) {
+  app.disableHardwareAcceleration();
+}
+
 let debugLogger = null;
 
 function logMainError(...args) {
@@ -64,6 +75,7 @@ const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
+const { shouldUseWindowsNativeListener } = require("./src/helpers/hotkeyManager");
 const { ActionEngineManager } = require("./src/helpers/actionEngineManager");
 const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
 const HardwareDetector = require("./src/helpers/hardwareDetector");
@@ -175,7 +187,9 @@ function initializeManagers() {
           "Run `npm run compile:globe` and rebuild the app to regenerate the listener binary."
         );
       } else {
-        detailLines.push("Try reinstalling PrivateTranscribe or contact support if the issue persists.");
+        detailLines.push(
+          "Try reinstalling PrivateTranscribe or contact support if the issue persists."
+        );
       }
 
       dialog.showMessageBox({
@@ -281,10 +295,9 @@ async function startApp() {
     app.setActivationPolicy("regular");
   }
 
-  // Initialize Whisper manager at startup (don't await to avoid blocking)
-  // Settings can be provided via environment variables for server pre-warming:
-  // - LOCAL_TRANSCRIPTION_PROVIDER=whisper to enable local whisper mode
-  // - LOCAL_WHISPER_MODEL=base (or tiny, small, medium, large, turbo)
+  // Initialize Whisper manager at startup (don't await to avoid blocking).
+  // Startup init only applies config (idle timeout / force CPU) and dependency checks.
+  // whisper-server starts on first transcription or explicit server action.
   const whisperSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     whisperModel: process.env.LOCAL_WHISPER_MODEL,
@@ -301,10 +314,9 @@ async function startApp() {
     debugLogger.debug("Whisper startup init error (non-fatal)", { error: err.message });
   });
 
-  // Initialize Parakeet manager at startup (don't await to avoid blocking)
-  // Settings can be provided via environment variables for server pre-warming:
-  // - LOCAL_TRANSCRIPTION_PROVIDER=nvidia to enable parakeet
-  // - PARAKEET_MODEL=parakeet-tdt-0.6b-v3 (model name)
+  // Initialize Parakeet manager at startup (don't await to avoid blocking).
+  // Startup init only applies config and dependency checks.
+  // Parakeet server starts on first transcription or explicit server action.
   const parakeetSettings = {
     localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
     parakeetModel: process.env.PARAKEET_MODEL,
@@ -343,10 +355,18 @@ async function startApp() {
   }
 
   // Create main window
-  await windowManager.createMainWindow();
+  if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
+    debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
+  } else {
+    await windowManager.createMainWindow();
+  }
 
   // Create control panel window
-  await windowManager.createControlPanelWindow();
+  if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_CONTROL_PANEL_WINDOW")) {
+    debugLogger.warn("[Diagnostics] Skipping control panel window creation");
+  } else {
+    await windowManager.createControlPanelWindow();
+  }
 
   // If a user previously installed CUDA, keep it in sync silently after app updates.
   autoUpdateCudaBinaryIfNeeded().catch((error) => {
@@ -364,8 +384,16 @@ async function startApp() {
   trayManager.setWindows(windowManager.mainWindow, windowManager.controlPanelWindow);
   trayManager.setWindowManager(windowManager);
   trayManager.setCreateControlPanelCallback(() => windowManager.createControlPanelWindow());
-  await trayManager.createTray();
-  trayManager.startHealthCheck();
+  if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_TRAY")) {
+    debugLogger.warn("[Diagnostics] Skipping tray creation");
+  } else {
+    await trayManager.createTray();
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_TRAY_HEALTH_CHECK")) {
+      debugLogger.warn("[Diagnostics] Skipping tray health check timers");
+    } else {
+      trayManager.startHealthCheck();
+    }
+  }
 
   // Set windows for update manager and check for updates
   updateManager.setWindows(windowManager.mainWindow, windowManager.controlPanelWindow);
@@ -386,7 +414,7 @@ async function startApp() {
       if (hotkeyManager.getCurrentHotkey && hotkeyManager.getCurrentHotkey() === "GLOBE") {
         if (isLiveWindow(windowManager.mainWindow)) {
           const activationMode = await windowManager.getActivationMode();
-          windowManager.showDictationPanel();
+          await windowManager.showDictationPanel();
           if (activationMode === "push") {
             // Track when key was pressed for push-to-talk
             globeKeyDownTime = Date.now();
@@ -427,6 +455,11 @@ async function startApp() {
 
   // Set up Windows Push-to-Talk handling
   if (process.platform === "win32") {
+    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_WINDOWS_KEY_LISTENER")) {
+      debugLogger.warn("[Diagnostics] Skipping Windows native key listener setup");
+      return;
+    }
+
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
     let winKeyIsRecording = false;
     let currentActivationMode = "tap";
@@ -449,11 +482,26 @@ async function startApp() {
       return true;
     };
 
+    // Mouse buttons, modifier-only combos, and locale/OEM keys cannot use
+    // globalShortcut safely. Push mode also needs native key-up detection.
+    const needsNativeListener = (hotkey, mode) => {
+      return isValidHotkey(hotkey) && shouldUseWindowsNativeListener(hotkey, mode);
+    };
+
     windowsKeyManager.on("key-down", (key) => {
       debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
 
-      // Handle dictation only in push-to-talk mode.
-      if (!isLiveWindow(windowManager.mainWindow) || currentActivationMode !== "push") {
+      if (currentActivationMode === "tap") {
+        // Tap mode: native listener is only used for modifier-only/mouse hotkeys.
+        // key-down fires the toggle (key-up is ignored in tap mode).
+        if (isLiveWindow(windowManager.mainWindow)) {
+          windowManager.sendToggleDictation();
+        }
+        return;
+      }
+
+      // Push mode below
+      if (currentActivationMode !== "push") {
         return;
       }
 
@@ -465,17 +513,18 @@ async function startApp() {
       }
 
       debugLogger.debug("[Push-to-Talk] Starting recording sequence");
-      windowManager.showDictationPanel();
       winKeyIsRecording = true;
-      windowManager.sendStartDictation();
+      windowManager.sendStartDictation().then(() => {
+        // If the user released the key while the lazy overlay was still loading,
+        // stop immediately so push-to-talk cannot get stuck recording.
+        if (!winKeyIsRecording) {
+          windowManager.sendStopDictation();
+        }
+      });
     });
 
     windowsKeyManager.on("key-up", () => {
       debugLogger.debug("[Push-to-Talk] Key UP received");
-
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        return;
-      }
 
       // Always stop if recording is active, even if activation mode state drifted.
       if (winKeyIsRecording) {
@@ -526,10 +575,6 @@ async function startApp() {
     // Start the Windows key listener with the current hotkey
     const startWindowsKeyListener = async () => {
       debugLogger.debug("[Push-to-Talk] Checking if should start Windows key listener");
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        debugLogger.debug("[Push-to-Talk] Main window not live, skipping");
-        return;
-      }
       await refreshActivationMode();
       const currentHotkey = hotkeyManager.getCurrentHotkey();
       debugLogger.debug("[Push-to-Talk] Current state", {
@@ -537,17 +582,13 @@ async function startApp() {
         currentHotkey,
       });
 
-      if (currentActivationMode === "push") {
-        if (isValidHotkey(currentHotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
-            hotkey: currentHotkey,
-          });
-          windowsKeyManager.start(currentHotkey);
-        } else {
-          debugLogger.debug("[Push-to-Talk] No valid hotkey to start listener");
-        }
+      if (needsNativeListener(currentHotkey, currentActivationMode)) {
+        debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
+          hotkey: currentHotkey,
+        });
+        windowsKeyManager.start(currentHotkey);
       } else {
-        debugLogger.debug("[Push-to-Talk] Not in push mode, skipping listener start");
+        debugLogger.debug("[Push-to-Talk] Native listener not needed for this hotkey/mode");
       }
     };
 
@@ -571,35 +612,22 @@ async function startApp() {
         stopPushToTalkRecording("activation-mode-changed");
       }
 
-      if (mode === "push") {
-        const currentHotkey = hotkeyManager.getCurrentHotkey();
-        debugLogger.debug("[Push-to-Talk] Current hotkey", { hotkey: currentHotkey });
-        if (isValidHotkey(currentHotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
-          windowsKeyManager.start(currentHotkey);
-        }
-      } else {
-        debugLogger.debug("[Push-to-Talk] Stopping listener (mode is tap)");
-        windowsKeyManager.stop();
+      const currentHotkey = hotkeyManager.getCurrentHotkey();
+      windowsKeyManager.stop();
+      if (needsNativeListener(currentHotkey, currentActivationMode)) {
+        debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
+        windowsKeyManager.start(currentHotkey);
       }
     });
 
     // Listen for hotkey changes from renderer
     ipcMain.on("hotkey-changed", async (_event, hotkey) => {
       debugLogger.debug("[Push-to-Talk] IPC: Hotkey changed", { hotkey });
-      if (!isLiveWindow(windowManager.mainWindow)) {
-        return;
-      }
-      debugLogger.debug("[Push-to-Talk] Current activation mode", {
-        activationMode: currentActivationMode,
-      });
-      if (currentActivationMode === "push") {
-        stopPushToTalkRecording("hotkey-changed");
-        windowsKeyManager.stop();
-        if (isValidHotkey(hotkey)) {
-          debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
-          windowsKeyManager.start(hotkey);
-        }
+      stopPushToTalkRecording("hotkey-changed");
+      windowsKeyManager.stop();
+      if (needsNativeListener(hotkey, currentActivationMode)) {
+        debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
+        windowsKeyManager.start(hotkey);
       }
     });
   }
@@ -625,8 +653,6 @@ if (gotSingleInstanceLock) {
 
     if (isLiveWindow(windowManager.mainWindow)) {
       windowManager.enforceMainWindowOnTop();
-    } else {
-      windowManager.createMainWindow();
     }
   });
 

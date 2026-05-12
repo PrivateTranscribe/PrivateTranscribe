@@ -27,8 +27,14 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
     expect(windowConfig).toContain("visibleOnFullScreen: true");
   });
 
-  test("Windows uses screen-saver level", () => {
-    expect(windowConfig).toContain('setAlwaysOnTop(true, "screen-saver")');
+  test("Windows uses floating level to avoid fullscreen game compositor churn", () => {
+    expect(windowConfig).toContain('setAlwaysOnTop(true, "floating")');
+    expect(windowConfig).toContain("reported with Minecraft/Tekkit");
+  });
+
+  test("Windows overlay is hidden from taskbar but focusable for clicks and drag", () => {
+    expect(windowConfig).toContain('skipTaskbar: process.platform === "win32"');
+    expect(windowConfig).toContain('focusable: true,');
   });
 
   test("Linux uses screen-saver level (highest X11 hint available)", () => {
@@ -88,6 +94,12 @@ describe("windowManager.js — blur repair", () => {
     expect(windowManager).toContain("WindowPositionUtil.setupAlwaysOnTop");
   });
 
+  test("windows skips topmost re-apply while overlay is explicitly suspended", () => {
+    expect(windowManager).toContain("isMainWindowOverlaySuspended");
+    expect(windowManager).toContain('platform === "win32" && this.isMainWindowOverlaySuspended');
+    expect(windowManager).toContain("return;");
+  });
+
   test("always-on-top is re-enforced on show, focus, and restore events", () => {
     expect(windowManager).toContain('"show"');
     expect(windowManager).toContain('"focus"');
@@ -95,6 +107,21 @@ describe("windowManager.js — blur repair", () => {
     // Each should call enforceMainWindowOnTop
     const showCount = (windowManager.match(/enforceMainWindowOnTop/g) || []).length;
     expect(showCount).toBeGreaterThanOrEqual(4); // ready-to-show, show, focus, restore, + enforceMainWindowOnTop def
+  });
+});
+
+describe("windowManager.js — overlay show/hide lifecycle", () => {
+  test("hideDictationPanel hides the overlay; close() is present for overlay-disabled mode", () => {
+    expect(windowManager).toContain("suspendMainWindowOverlay()");
+    expect(windowManager).toContain("this.mainWindow.hide()");
+    // close() is used when overlayDisabled is true to destroy the window
+    expect(windowManager).toContain("this.mainWindow.close()");
+    expect(windowManager).not.toContain("this.mainWindow.minimize()");
+  });
+
+  test("showDictationPanel resumes and shows the overlay", () => {
+    expect(windowManager).toContain("resumeMainWindowOverlay()");
+    expect(windowManager).toContain("showInactive");
   });
 });
 

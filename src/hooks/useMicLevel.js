@@ -45,6 +45,14 @@ function getSharedAudioContext() {
         sharedCtx.resume().catch(() => {});
       }
     });
+
+    // Also resume when the Electron window is shown after being hidden
+    // (visibilitychange does not always fire for Electron window show/hide)
+    window.electronAPI?.onMainWindowShown?.(() => {
+      if (sharedCtx?.state === "suspended") {
+        sharedCtx.resume().catch(() => {});
+      }
+    });
   }
 
   return sharedCtx;
@@ -142,16 +150,27 @@ export function useMicLevel(audioManagerRef, isRecording) {
           if (document.visibilityState === "visible" && !cancelled) {
             cancelAnimationFrame(rafRef.current);
             rafRef.current = null;
-            // AudioContext may still be suspended; resume it first.
             if (ctx.state === "suspended") {
               ctx.resume().catch(() => {});
             }
-            // Start a new tick regardless — if ctx is still suspended the
-            // analyser returns zeros (flat bars) until it catches up.
             rafRef.current = requestAnimationFrame(tick);
           }
         };
         document.addEventListener("visibilitychange", handleVisibility);
+
+        // Also restart the RAF loop when the Electron window is shown after being
+        // hidden — visibilitychange may not fire in that case.
+        const handleWindowShown = () => {
+          if (!cancelled) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+            if (ctx.state === "suspended") {
+              ctx.resume().catch(() => {});
+            }
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        };
+        const unsubWindowShown = window.electronAPI?.onMainWindowShown?.(handleWindowShown);
 
         // Extend cleanup to also remove the statechange and visibility listeners.
         const prevCleanup = cleanupRef.current;
@@ -159,6 +178,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
           prevCleanup?.();
           ctx.removeEventListener("statechange", handleStateChange);
           document.removeEventListener("visibilitychange", handleVisibility);
+          unsubWindowShown?.();
         };
 
         // Chromium/Electron creates AudioContext in "suspended" state when the

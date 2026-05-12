@@ -42,11 +42,13 @@ static DWORD g_targetXButton = 0; // 1 = XBUTTON1 (Mouse4), 2 = XBUTTON2 (Mouse5
 static BOOL g_requireCtrl = FALSE;
 static BOOL g_requireAlt = FALSE;
 static BOOL g_requireShift = FALSE;
+static BOOL g_requireWin = FALSE;
 
 static BOOL AreModifiersPressed(void) {
     if (g_requireCtrl && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) return FALSE;
     if (g_requireAlt && !(GetAsyncKeyState(VK_MENU) & 0x8000)) return FALSE;
     if (g_requireShift && !(GetAsyncKeyState(VK_SHIFT) & 0x8000)) return FALSE;
+    if (g_requireWin && !((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000))) return FALSE;
     return TRUE;
 }
 
@@ -162,6 +164,7 @@ static DWORD ParseCompoundHotkey(const char* hotkey) {
     g_requireCtrl = FALSE;
     g_requireAlt = FALSE;
     g_requireShift = FALSE;
+    g_requireWin = FALSE;
     g_isMouseButton = FALSE;
     g_targetXButton = 0;
 
@@ -184,10 +187,11 @@ static DWORD ParseCompoundHotkey(const char* hotkey) {
             g_requireShift = TRUE;
         } else if (_stricmp(token, "Super") == 0 ||
                    _stricmp(token, "Meta") == 0 ||
+                   _stricmp(token, "Win") == 0 ||
                    _stricmp(token, "Command") == 0 ||
                    _stricmp(token, "Cmd") == 0) {
-            // For our purposes, treat Win/Cmd as Ctrl on Windows
-            g_requireCtrl = TRUE;
+            // Windows key (VK_LWIN/VK_RWIN)
+            g_requireWin = TRUE;
         } else {
             mainKeyVk = ParseKeyCode(token);
         }
@@ -214,6 +218,9 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
                 modifierReleased = TRUE;
             }
             if (g_requireShift && (kbd->vkCode == VK_SHIFT || kbd->vkCode == VK_LSHIFT || kbd->vkCode == VK_RSHIFT)) {
+                modifierReleased = TRUE;
+            }
+            if (g_requireWin && (kbd->vkCode == VK_LWIN || kbd->vkCode == VK_RWIN)) {
                 modifierReleased = TRUE;
             }
             if (modifierReleased) {
@@ -321,12 +328,28 @@ int main(int argc, char* argv[]) {
     g_targetVk = ParseCompoundHotkey(hotkey);
 
     if (!g_isMouseButton && g_targetVk == 0) {
-        fprintf(stderr, "Error: Invalid hotkey '%s'\n", hotkey);
-        return 1;
+        // Modifier-only combo (e.g. Control+Super): use the Win key as trigger
+        // if Win is required, otherwise Ctrl, Alt, Shift in that order.
+        if (g_requireWin) {
+            g_targetVk = VK_LWIN;
+            g_requireWin = FALSE; // Win key IS the trigger, not a modifier check
+        } else if (g_requireCtrl) {
+            g_targetVk = VK_CONTROL;
+            g_requireCtrl = FALSE;
+        } else if (g_requireAlt) {
+            g_targetVk = VK_MENU;
+            g_requireAlt = FALSE;
+        } else if (g_requireShift) {
+            g_targetVk = VK_SHIFT;
+            g_requireShift = FALSE;
+        } else {
+            fprintf(stderr, "Error: Invalid hotkey '%s'\n", hotkey);
+            return 1;
+        }
     }
 
-    fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d)\n",
-            hotkey, g_isMouseButton, g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift);
+    fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
+            hotkey, g_isMouseButton, g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin);
 
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 

@@ -129,7 +129,7 @@ function isWavFormat(buffer) {
  * @returns {Promise<void>}
  */
 function convertToWav(inputPath, outputPath, options = {}) {
-  const { sampleRate = 16000, channels = 1 } = options;
+  const { sampleRate = 16000, channels = 1, audioFilters = [] } = options;
 
   return new Promise((resolve, reject) => {
     const ffmpegPath = getFFmpegPath();
@@ -138,9 +138,11 @@ function convertToWav(inputPath, outputPath, options = {}) {
       return;
     }
 
-    const args = [
-      "-i",
-      inputPath,
+    const args = ["-i", inputPath];
+    if (Array.isArray(audioFilters) && audioFilters.length > 0) {
+      args.push("-af", audioFilters.filter(Boolean).join(","));
+    }
+    args.push(
       "-ar",
       String(sampleRate),
       "-ac",
@@ -148,8 +150,8 @@ function convertToWav(inputPath, outputPath, options = {}) {
       "-c:a",
       "pcm_s16le",
       "-y", // Overwrite output file
-      outputPath,
-    ];
+      outputPath
+    );
 
     debugLogger.debug("Converting audio with FFmpeg", {
       input: inputPath,
