@@ -529,9 +529,12 @@ export default function TranscribePage() {
               </div>
 
               <p className="text-xs text-muted-foreground leading-relaxed">
-                After this, users can upload a meeting, podcast, or interview and get copyable text
+                After this, users can upload an English meeting, podcast, or interview and get copyable text
                 plus SRT export with Speaker 1, Speaker 2, etc.
               </p>
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
+                Speaker detection currently requires English audio. For Danish or other languages, leave it off for now.
+              </div>
 
               {speakerModelError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -608,8 +611,11 @@ export default function TranscribePage() {
                 </div>
                 <p className="ml-7 mt-1 text-xs leading-relaxed text-muted-foreground">
                   {tdrzDownloaded
-                    ? `Adds Speaker 1 / Speaker 2 labels for English files. Language: ${activeLanguageLabel}.`
-                    : "Downloads a local English speaker model when enabled."}
+                    ? `Adds Speaker 1 / Speaker 2 labels for English audio. Current language: ${activeLanguageLabel}.`
+                    : "Downloads a local English-only speaker model when enabled."}
+                </p>
+                <p className="ml-7 mt-1 text-xs leading-relaxed text-amber-200/90">
+                  English only for now — Danish and other languages may transcribe poorly with speaker detection enabled.
                 </p>
                 {!tdrzDownloaded && (
                   <button
