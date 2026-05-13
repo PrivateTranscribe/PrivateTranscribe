@@ -39,6 +39,7 @@ const ACCEPT_ATTR = [
 ].join(",");
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_LOCAL_DIARIZATION_SPEAKERS = 2;
 type OutputFormat = "plain" | "timestamped" | "speakers";
 type SpeakerDetectionMode = "off" | "tiny-diarize-en" | "local-diarization";
 
@@ -67,6 +68,8 @@ export default function TranscribePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
+  const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [diarizationReady, setDiarizationReady] = useState(false);
   const [diarizationDownloadStatus, setDiarizationDownloadStatus] = useState<
@@ -102,6 +105,33 @@ export default function TranscribePage() {
   } = useSettings();
   const speakerDetectionMode = (speakerDetectionModeRaw || (speakerDetection ? "tiny-diarize-en" : "off")) as SpeakerDetectionMode;
   const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
+  const isLocalDiarizationSelected = speakerDetection && speakerDetectionMode === "local-diarization";
+
+  useEffect(() => {
+    if (status !== "processing" || !processingStartedAt) return undefined;
+    const updateElapsed = () => {
+      setProcessingElapsedSeconds(Math.max(0, Math.floor((Date.now() - processingStartedAt) / 1000)));
+    };
+    updateElapsed();
+    const id = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(id);
+  }, [processingStartedAt, status]);
+
+  const processingHint = useMemo(() => {
+    if (isLocalDiarizationSelected) {
+      return "Transcribing and detecting speakers locally. Long files can take several minutes — keep this window open.";
+    }
+    if (useLocalWhisper) {
+      return "Transcribing locally. Long files can take a little while.";
+    }
+    return "Uploading for cloud transcription. Keep this window open.";
+  }, [isLocalDiarizationSelected, useLocalWhisper]);
+
+  const elapsedLabel = useMemo(() => {
+    const minutes = Math.floor(processingElapsedSeconds / 60);
+    const seconds = processingElapsedSeconds % 60;
+    return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+  }, [processingElapsedSeconds]);
 
   useEffect(() => {
     const mgr = new AudioManager();
@@ -409,6 +439,8 @@ export default function TranscribePage() {
     if (!manager) return;
 
     setStatus("processing");
+    setProcessingStartedAt(Date.now());
+    setProcessingElapsedSeconds(0);
     setErrorMessage("");
     setTranscript("");
     setCopied(false);
@@ -433,6 +465,7 @@ export default function TranscribePage() {
           noiseReduction,
           speakerDetection,
           speakerDetectionMode: speakerDetection ? speakerDetectionMode : "off",
+          expectedSpeakers: isLocalDiarizationSelected ? DEFAULT_LOCAL_DIARIZATION_SPEAKERS : undefined,
           outputFormat,
           language: preferredLanguage,
           translate: translateToEnglish === "on",
@@ -453,6 +486,7 @@ export default function TranscribePage() {
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
       setStatus("success");
+      setProcessingStartedAt(null);
       toast({
         title: "Transcription complete",
         description: `${file.name} was transcribed successfully.`,
@@ -462,6 +496,7 @@ export default function TranscribePage() {
       const message = toErrorMessage(error);
       setErrorMessage(message);
       setStatus("error");
+      setProcessingStartedAt(null);
       toast({
         title: "Transcription failed",
         description: message,
@@ -731,7 +766,7 @@ export default function TranscribePage() {
                       />
                       <span>
                         <span className="font-medium text-foreground">Multilingual beta</span>
-                        <br />Uses local sherpa-onnx diarization for real Speaker 1 / 2 / 3 labels.
+                        <br />Uses local sherpa-onnx diarization. Tuned for 2-speaker Danish/multilingual conversations in beta.
                       </span>
                     </label>
                   </div>
@@ -757,6 +792,11 @@ export default function TranscribePage() {
                         {diarizationReady ? "Ready" : "Beta"}
                       </Badge>
                     </div>
+                    {diarizationReady && (
+                      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                        Uses a 2-speaker hint for now. Auto speaker count can over-split long recordings.
+                      </p>
+                    )}
                     {diarizationDownloadStatus === "downloading" && (
                       <div className="mt-2 space-y-1.5">
                         <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
@@ -812,6 +852,14 @@ export default function TranscribePage() {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Transcribing file...</h3>
             <p className="text-sm text-muted-foreground mb-2">{selectedFileName}</p>
+            <p className="max-w-md text-xs leading-relaxed text-muted-foreground mb-3">
+              {processingHint}
+            </p>
+            <div className="mb-3 flex items-center gap-2 rounded-full border border-border-subtle bg-surface-raised/60 px-3 py-1 text-[11px] text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="tabular-nums">Elapsed {elapsedLabel}</span>
+              {isLocalDiarizationSelected && <span>· speaker detection beta</span>}
+            </div>
             <p className="text-xs text-muted-foreground/70 tabular-nums">
               {formatBytes(selectedFileSize)}
             </p>
