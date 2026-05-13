@@ -371,6 +371,20 @@ export function useSettings() {
     }
   );
 
+  const [fileTranscriptionSpeakerDetectionMode, setFileTranscriptionSpeakerDetectionMode] = useLocalStorage<string>(
+    "fileTranscriptionSpeakerDetectionMode",
+    "off",
+    {
+      serialize: String,
+      deserialize: (value) =>
+        ["off", "tiny-diarize-en", "local-diarization"].includes(value)
+          ? value
+          : value === "true"
+            ? "tiny-diarize-en"
+            : "off",
+    }
+  );
+
   // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
   // Points to the same key — deprecated, use smartContextEnabled going forward.
   const [enableContextCapture, setEnableContextCapture] = useLocalStorage<boolean>(
@@ -1020,6 +1034,8 @@ export function useSettings() {
     setFileTranscriptionNoiseReduction,
     fileTranscriptionSpeakerDetection,
     setFileTranscriptionSpeakerDetection,
+    fileTranscriptionSpeakerDetectionMode,
+    setFileTranscriptionSpeakerDetectionMode,
     enableContextCapture,
     setEnableContextCapture,
     enableFileIdentifiers,

@@ -1022,6 +1022,16 @@ class WhisperServerManager {
     }
   }
 
+  async convertToDiarizationWav(audioBuffer, inputFileName = null, options = {}) {
+    if (!this.canConvert) {
+      throw new Error("FFmpeg not found - required for audio conversion");
+    }
+    return await this._convertToWav(audioBuffer, inputFileName, {
+      channels: 1,
+      noiseReduction: options.noiseReduction === true,
+    });
+  }
+
   _beginStdoutCapture() {
     this.stdoutCapture = "";
   }

@@ -1998,6 +1998,9 @@ class AudioManager {
       fileMode: true,
       noiseReduction: metadata.noiseReduction !== false,
       speakerDetection: metadata.speakerDetection === true,
+      speakerDetectionMode: metadata.speakerDetectionMode,
+      expectedSpeakers: metadata.expectedSpeakers,
+      diarizationThreshold: metadata.diarizationThreshold,
       outputFormat: metadata.outputFormat || "plain",
       inputFileName: metadata.originalFileName,
     };

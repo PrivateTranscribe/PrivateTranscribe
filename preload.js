@@ -104,6 +104,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
   transcribeFileV2: (audioBlob, options) => ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  checkDiarizationModelStatus: () => ipcRenderer.invoke("check-diarization-model-status"),
+  downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
+  onDiarizationDownloadProgress: registerListener("diarization-download-progress"),
   checkWhisperInstallation: () => ipcRenderer.invoke("check-whisper-installation"),
   downloadWhisperModel: (modelName) => ipcRenderer.invoke("download-whisper-model", modelName),
   onWhisperDownloadProgress: registerListener("whisper-download-progress"),

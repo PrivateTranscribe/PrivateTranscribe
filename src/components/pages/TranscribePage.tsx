@@ -40,6 +40,7 @@ const ACCEPT_ATTR = [
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
 type OutputFormat = "plain" | "timestamped" | "speakers";
+type SpeakerDetectionMode = "off" | "tiny-diarize-en" | "local-diarization";
 
 type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
 
@@ -67,6 +68,12 @@ export default function TranscribePage() {
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
+  const [diarizationReady, setDiarizationReady] = useState(false);
+  const [diarizationDownloadStatus, setDiarizationDownloadStatus] = useState<
+    "idle" | "downloading" | "success" | "error"
+  >("idle");
+  const [diarizationProgress, setDiarizationProgress] = useState(0);
+  const [diarizationError, setDiarizationError] = useState("");
   const [speakerModelDialogOpen, setSpeakerModelDialogOpen] = useState(false);
   const [speakerModelDownloadStatus, setSpeakerModelDownloadStatus] = useState<
     "idle" | "downloading" | "success" | "error"
@@ -90,7 +97,10 @@ export default function TranscribePage() {
     setFileTranscriptionNoiseReduction: setNoiseReduction,
     fileTranscriptionSpeakerDetection: speakerDetection,
     setFileTranscriptionSpeakerDetection: setSpeakerDetection,
+    fileTranscriptionSpeakerDetectionMode: speakerDetectionModeRaw,
+    setFileTranscriptionSpeakerDetectionMode: setSpeakerDetectionMode,
   } = useSettings();
+  const speakerDetectionMode = (speakerDetectionModeRaw || (speakerDetection ? "tiny-diarize-en" : "off")) as SpeakerDetectionMode;
   const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
 
   useEffect(() => {
@@ -114,8 +124,20 @@ export default function TranscribePage() {
     }
   };
 
+  const refreshDiarizationModelStatus = async () => {
+    try {
+      const status = await window.electronAPI?.checkDiarizationModelStatus?.();
+      setDiarizationReady(Boolean(status?.ready));
+      return Boolean(status?.ready);
+    } catch {
+      setDiarizationReady(false);
+      return false;
+    }
+  };
+
   useEffect(() => {
     refreshSpeakerModelStatus();
+    refreshDiarizationModelStatus();
   }, []);
 
   useEffect(() => {
@@ -129,6 +151,27 @@ export default function TranscribePage() {
         setSpeakerModelProgress(100);
         setSpeakerModelDownloadStatus("success");
         setTdrzDownloaded(true);
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onDiarizationDownloadProgress?.((_event: unknown, data: any) => {
+      if (data?.type === "progress") {
+        setDiarizationDownloadStatus("downloading");
+        setDiarizationProgress(Number(data?.percentage) || 0);
+      }
+      if (data?.type === "complete" || data?.stage === "complete") {
+        setDiarizationProgress(100);
+        setDiarizationDownloadStatus("success");
+        setDiarizationReady(true);
+      }
+      if (data?.type === "error") {
+        setDiarizationDownloadStatus("error");
+        setDiarizationError(data?.error || "Diarization model download failed.");
       }
     });
     return () => {
@@ -235,15 +278,25 @@ export default function TranscribePage() {
   const handleSpeakerDetectionChange = (checked: boolean) => {
     if (!checked) {
       setSpeakerDetection(false);
+      setSpeakerDetectionMode("off");
       return;
     }
 
     if (tdrzDownloaded) {
       setSpeakerDetection(true);
+      setSpeakerDetectionMode("tiny-diarize-en");
       return;
     }
 
     openSpeakerModelDialog();
+  };
+
+  const handleSpeakerDetectionModeChange = (mode: SpeakerDetectionMode) => {
+    setSpeakerDetectionMode(mode);
+    setSpeakerDetection(mode !== "off");
+    if (mode === "tiny-diarize-en" && !tdrzDownloaded) {
+      openSpeakerModelDialog();
+    }
   };
 
   const downloadSpeakerModel = async () => {
@@ -260,6 +313,7 @@ export default function TranscribePage() {
       setSpeakerModelDownloadStatus("success");
       setSpeakerModelProgress(100);
       setSpeakerDetection(true);
+      setSpeakerDetectionMode("tiny-diarize-en");
       setSpeakerModelDialogOpen(false);
       toast({
         title: "Speaker detection ready",
@@ -284,6 +338,38 @@ export default function TranscribePage() {
     } finally {
       setSpeakerModelDownloadStatus("idle");
       setSpeakerModelProgress(0);
+    }
+  };
+
+  const downloadDiarizationModels = async () => {
+    setDiarizationDownloadStatus("downloading");
+    setDiarizationProgress(0);
+    setDiarizationError("");
+
+    try {
+      const result = await window.electronAPI?.downloadDiarizationModels?.();
+      if (!result?.success && !result?.ready) {
+        throw new Error(result?.error || "Diarization model download failed.");
+      }
+      await refreshDiarizationModelStatus();
+      setDiarizationDownloadStatus("success");
+      setDiarizationProgress(100);
+      setSpeakerDetection(true);
+      setSpeakerDetectionMode("local-diarization");
+      toast({
+        title: "Multilingual speaker detection ready",
+        description: "Local diarization models are installed for uploaded files.",
+        variant: "success",
+      });
+    } catch (error) {
+      const message = toErrorMessage(error);
+      setDiarizationDownloadStatus("error");
+      setDiarizationError(message);
+      toast({
+        title: "Diarization setup failed",
+        description: message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -330,6 +416,10 @@ export default function TranscribePage() {
     setSelectedFileSize(file.size);
 
     try {
+      if (speakerDetection && speakerDetectionMode === "local-diarization" && !diarizationReady) {
+        throw new Error("Download the multilingual speaker detection models before transcribing with Multilingual beta.");
+      }
+
       const metadata = {
         source: "upload",
         originalFileName: file.name,
@@ -342,6 +432,7 @@ export default function TranscribePage() {
           ...metadata,
           noiseReduction,
           speakerDetection,
+          speakerDetectionMode: speakerDetection ? speakerDetectionMode : "off",
           outputFormat,
           language: preferredLanguage,
           translate: translateToEnglish === "on",
@@ -557,7 +648,8 @@ export default function TranscribePage() {
                 size="sm"
                 onClick={tdrzDownloaded ? () => {
                   setSpeakerDetection(true);
-                              setSpeakerModelDialogOpen(false);
+                  setSpeakerDetectionMode("tiny-diarize-en");
+                  setSpeakerModelDialogOpen(false);
                 } : downloadSpeakerModel}
                 disabled={speakerModelDownloadStatus === "downloading"}
               >
@@ -610,21 +702,85 @@ export default function TranscribePage() {
                   <span className="text-sm font-medium text-foreground">Speaker detection</span>
                 </div>
                 <p className="ml-7 mt-1 text-xs leading-relaxed text-muted-foreground">
-                  {tdrzDownloaded
-                    ? `Adds Speaker 1 / Speaker 2 labels for English audio. Current language: ${activeLanguageLabel}.`
-                    : "Downloads a local English-only speaker model when enabled."}
+                  Label speakers in uploaded files. Current language: {activeLanguageLabel}.
                 </p>
-                <p className="ml-7 mt-1 text-xs leading-relaxed text-amber-200/90">
-                  English only for now — Danish and other languages may transcribe poorly with speaker detection enabled.
-                </p>
-                {!tdrzDownloaded && (
+                {speakerDetection && (
+                  <div className="ml-7 mt-3 space-y-2">
+                    <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="radio"
+                        name="file-speaker-detection-mode"
+                        value="tiny-diarize-en"
+                        checked={speakerDetectionMode === "tiny-diarize-en"}
+                        onChange={() => handleSpeakerDetectionModeChange("tiny-diarize-en")}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span>
+                        <span className="font-medium text-foreground">English quick mode</span>
+                        <br />Uses the existing TinyDiarize model. Best for English 1–2 speaker audio.
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="radio"
+                        name="file-speaker-detection-mode"
+                        value="local-diarization"
+                        checked={speakerDetectionMode === "local-diarization"}
+                        onChange={() => handleSpeakerDetectionModeChange("local-diarization")}
+                        className="mt-0.5 accent-primary"
+                      />
+                      <span>
+                        <span className="font-medium text-foreground">Multilingual beta</span>
+                        <br />Uses local sherpa-onnx diarization for real Speaker 1 / 2 / 3 labels.
+                      </span>
+                    </label>
+                  </div>
+                )}
+                {speakerDetectionMode === "tiny-diarize-en" && !tdrzDownloaded && (
                   <button
                     type="button"
                     onClick={openSpeakerModelDialog}
                     className="ml-7 mt-2 text-xs font-medium text-primary hover:text-primary/80"
                   >
-                    Set up speaker detection
+                    Set up English speaker detection
                   </button>
+                )}
+                {speakerDetectionMode === "local-diarization" && (
+                  <div className="ml-7 mt-3 rounded-lg border border-border-subtle/60 bg-surface-raised/30 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        {diarizationReady
+                          ? "Multilingual diarization models are installed."
+                          : "Requires a one-time local model download."}
+                      </p>
+                      <Badge variant={diarizationReady ? "success" : "outline"} className="text-[10px]">
+                        {diarizationReady ? "Ready" : "Beta"}
+                      </Badge>
+                    </div>
+                    {diarizationDownloadStatus === "downloading" && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all duration-200"
+                            style={{ width: `${Math.min(100, Math.max(0, diarizationProgress))}%` }}
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">Downloading… {diarizationProgress}%</p>
+                      </div>
+                    )}
+                    {diarizationError && (
+                      <p className="mt-2 text-xs text-destructive">{diarizationError}</p>
+                    )}
+                    {!diarizationReady && diarizationDownloadStatus !== "downloading" && (
+                      <button
+                        type="button"
+                        onClick={downloadDiarizationModels}
+                        className="mt-2 text-xs font-medium text-primary hover:text-primary/80"
+                      >
+                        Download multilingual models
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

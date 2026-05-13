@@ -590,8 +590,9 @@ class IPCHandlers {
         });
         if (!result.success) return result;
 
+        const speakerDetectionMode = result.speakerDetectionMode || options.speakerDetectionMode || (options.speakerDetection === true ? "tiny-diarize-en" : "off");
         const formatted = formatTranscript(result.raw || { text: result.text, segments: result.segments }, options.outputFormat || "plain", {
-          includeSpeakers: options.speakerDetection === true,
+          includeSpeakers: options.speakerDetection === true || speakerDetectionMode !== "off",
         });
 
         return {
@@ -604,10 +605,36 @@ class IPCHandlers {
           format: options.outputFormat || "plain",
           model: result.model,
           speakerDetectionActive: result.speakerDetectionActive,
+          speakerDetectionMode,
+          diarizationEngine: result.diarizationEngine,
+          diarization: result.diarization,
         };
       } catch (error) {
         debugLogger.error("File transcription v2 error", error);
         return { success: false, error: error.message || "File transcription failed" };
+      }
+    });
+
+    ipcMain.handle("check-diarization-model-status", async () => {
+      try {
+        return { success: true, ...this.whisperManager.getDiarizationModelStatus() };
+      } catch (error) {
+        return { success: false, ready: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("download-diarization-models", async (event) => {
+      try {
+        return await this.whisperManager.downloadDiarizationModels((progress) => {
+          event.sender.send("diarization-download-progress", progress);
+        });
+      } catch (error) {
+        event.sender.send("diarization-download-progress", {
+          type: "error",
+          model: "sherpa-onnx-multilingual-v1",
+          error: error.message,
+        });
+        return { success: false, error: error.message };
       }
     });
 

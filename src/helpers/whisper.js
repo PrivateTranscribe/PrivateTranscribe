@@ -6,6 +6,8 @@ const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 const WhisperServerManager = require("./whisperServer");
 const GpuBinaryManager = require("./gpuBinaryManager");
 const { getModelsDirForService } = require("./modelDirUtils");
+const { DiarizationManager } = require("./diarizationManager");
+const { assignSpeakersToSegments } = require("./diarizationMerge");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
 
@@ -39,6 +41,7 @@ class WhisperManager {
     this.currentServerModel = null;
     // GPU binary manager for on-demand CUDA binary downloads
     this.gpuBinaryManager = new GpuBinaryManager();
+    this.diarizationManager = new DiarizationManager();
   }
 
   getModelsDir() {
@@ -398,6 +401,22 @@ class WhisperManager {
     return parsed;
   }
 
+  audioBlobToBuffer(audioBlob) {
+    if (Buffer.isBuffer(audioBlob)) {
+      return audioBlob;
+    }
+    if (ArrayBuffer.isView(audioBlob)) {
+      return Buffer.from(audioBlob.buffer, audioBlob.byteOffset, audioBlob.byteLength);
+    }
+    if (audioBlob instanceof ArrayBuffer) {
+      return Buffer.from(audioBlob);
+    }
+    if (typeof audioBlob === "string") {
+      return fs.readFileSync(audioBlob);
+    }
+    throw new Error(`Unsupported audio data type for diarization: ${typeof audioBlob}`);
+  }
+
   isModelDownloaded(modelName) {
     try {
       return fs.existsSync(this.getModelPath(modelName));
@@ -406,19 +425,58 @@ class WhisperManager {
     }
   }
 
+  getDiarizationModelStatus() {
+    return this.diarizationManager.getModelStatus();
+  }
+
+  async downloadDiarizationModels(onProgress) {
+    return await this.diarizationManager.downloadModels(onProgress);
+  }
+
   async transcribeFileV2(audioBlob, options = {}) {
-    const requestedSpeakerDetection = options.speakerDetection === true;
-    const model = requestedSpeakerDetection && this.isModelDownloaded("small-en-tdrz") ? "small-en-tdrz" : options.model || "turbo";
+    const speakerDetectionMode = options.speakerDetectionMode || (options.speakerDetection === true ? "tiny-diarize-en" : "off");
+    const requestedTinyDiarize = speakerDetectionMode === "tiny-diarize-en";
+    const requestedLocalDiarization = speakerDetectionMode === "local-diarization";
+    const model = requestedTinyDiarize && this.isModelDownloaded("small-en-tdrz") ? "small-en-tdrz" : options.model || "turbo";
     const result = await this.transcribeLocalWhisper(audioBlob, {
       ...options,
       model,
       fileMode: true,
-      speakerDetection: requestedSpeakerDetection && model === "small-en-tdrz",
+      speakerDetection: requestedTinyDiarize && model === "small-en-tdrz",
       // VAD requires a separate Silero VAD model with whisper-server. Keep it opt-in
       // so normal file transcription does not fail on installations without that model.
       vad: options.vad === true,
     });
-    return { ...result, model, speakerDetectionActive: requestedSpeakerDetection && model === "small-en-tdrz" };
+
+    if (requestedLocalDiarization && result?.success && Array.isArray(result.segments)) {
+      const inputBuffer = this.audioBlobToBuffer(audioBlob);
+      const wavBuffer = await this.serverManager.convertToDiarizationWav(inputBuffer, options.inputFileName, {
+        noiseReduction: options.noiseReduction === true,
+      });
+      const diarization = await this.diarizationManager.diarizeWavBuffer(wavBuffer, {
+        expectedSpeakers: options.expectedSpeakers,
+        threshold: options.diarizationThreshold,
+      });
+      const segments = assignSpeakersToSegments(result.segments, diarization.segments);
+      return {
+        ...result,
+        raw: { ...(result.raw || {}), segments },
+        segments,
+        model,
+        speakerDetectionActive: true,
+        speakerDetectionMode: "local-diarization",
+        diarizationEngine: diarization.engine,
+        diarization,
+        speakerCount: diarization.speakerCount,
+      };
+    }
+
+    return {
+      ...result,
+      model,
+      speakerDetectionActive: requestedTinyDiarize && model === "small-en-tdrz",
+      speakerDetectionMode: requestedTinyDiarize && model === "small-en-tdrz" ? "tiny-diarize-en" : "off",
+    };
   }
 
   // Normalize whitespace: replace newlines with spaces and collapse multiple spaces
