@@ -96,7 +96,7 @@ describe("AudioManager recorder lifecycle", () => {
     await manager.startRecording();
 
     const recorder = MockMediaRecorder.instances[0];
-    expect(recorder.start).toHaveBeenCalledWith(10000);
+    expect(recorder.start).toHaveBeenCalledWith(30000);
   });
 
   it("does not force-process partial recorder chunks after only 2.5 seconds", async () => {
