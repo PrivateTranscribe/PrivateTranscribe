@@ -25,6 +25,7 @@ import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import LanguageSelector from "../ui/LanguageSelector";
 import { useToast } from "../ui/Toast";
 import { useSettings } from "../../hooks/useSettings";
 import { formatBytes } from "../../utils/formatBytes";
@@ -68,6 +69,10 @@ export default function TranscribePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [fileLanguage, setFileLanguageState] = useState(() => {
+    if (typeof window === "undefined") return "auto";
+    return window.localStorage?.getItem("fileTranscriptionLanguage") || "auto";
+  });
   const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
@@ -89,7 +94,6 @@ export default function TranscribePage() {
     whisperModel,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
-    preferredLanguage,
     translateToEnglish,
     useReasoningModel,
     reasoningModel,
@@ -106,6 +110,12 @@ export default function TranscribePage() {
   const speakerDetectionMode = (speakerDetectionModeRaw || (speakerDetection ? "tiny-diarize-en" : "off")) as SpeakerDetectionMode;
   const outputFormat: OutputFormat = speakerDetection ? "speakers" : "timestamped";
   const isLocalDiarizationSelected = speakerDetection && speakerDetectionMode === "local-diarization";
+
+  const setFileLanguage = (language: string) => {
+    const next = language || "auto";
+    setFileLanguageState(next);
+    window.localStorage?.setItem("fileTranscriptionLanguage", next);
+  };
 
   useEffect(() => {
     if (status !== "processing" || !processingStartedAt) return undefined;
@@ -235,32 +245,34 @@ export default function TranscribePage() {
   }, [useLocalWhisper, whisperModel, cloudTranscriptionProvider, cloudTranscriptionModel]);
 
   const activeLanguageLabel = useMemo(() => {
-    const spokenLanguage = getLanguageLabel(preferredLanguage || "auto");
+    const spokenLanguage = getLanguageLabel(fileLanguage || "auto");
     if (
       translateToEnglish === "on" &&
-      preferredLanguage &&
-      preferredLanguage !== "auto" &&
-      preferredLanguage !== "en"
+      fileLanguage &&
+      fileLanguage !== "auto" &&
+      fileLanguage !== "en"
     ) {
       return `${spokenLanguage} → English`;
     }
     return spokenLanguage;
-  }, [preferredLanguage, translateToEnglish]);
+  }, [fileLanguage, translateToEnglish]);
 
   const languageHintNotice = useMemo(() => {
-    if (!preferredLanguage || preferredLanguage === "auto") return null;
-    const spokenLanguage = getLanguageLabel(preferredLanguage);
+    if (!fileLanguage || fileLanguage === "auto") {
+      return "Upload language is set to Auto-detect. For long Danish files, choosing Danish can improve accuracy.";
+    }
+    const spokenLanguage = getLanguageLabel(fileLanguage);
 
-    if (translateToEnglish === "on" && preferredLanguage !== "en") {
+    if (translateToEnglish === "on" && fileLanguage !== "en") {
       return `This upload will use ${spokenLanguage} as the spoken-language hint and translate the result to English.`;
     }
 
-    if (preferredLanguage === "en") {
-      return "Language is set to English as the spoken-language hint. If this file is Danish or another language, choose Auto-detect or the real spoken language. This is not a translation setting.";
+    if (fileLanguage === "en") {
+      return "Upload language is set to English. If this file is Danish or another language, choose Auto-detect or the real spoken language. This is not a translation setting.";
     }
 
-    return `Language is set to ${spokenLanguage} as the spoken-language hint. If the file uses another language, choose Auto-detect or the real spoken language first.`;
-  }, [preferredLanguage, translateToEnglish]);
+    return `Upload language is set to ${spokenLanguage}. If the file uses another language, choose Auto-detect or the real spoken language first.`;
+  }, [fileLanguage, translateToEnglish]);
 
   const fallbackLabel = useMemo(() => {
     if (useLocalWhisper) {
@@ -467,7 +479,7 @@ export default function TranscribePage() {
           speakerDetectionMode: speakerDetection ? speakerDetectionMode : "off",
           expectedSpeakers: isLocalDiarizationSelected ? DEFAULT_LOCAL_DIARIZATION_SPEAKERS : undefined,
           outputFormat,
-          language: preferredLanguage,
+          language: fileLanguage,
           translate: translateToEnglish === "on",
         });
       } else {
@@ -709,6 +721,21 @@ export default function TranscribePage() {
         {settingsOpen && (
           <div className="border-t border-border-subtle/40 px-5 pb-5 pt-4">
             <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3 sm:col-span-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Upload language</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      Separate from dictation language. Use Auto-detect unless you know the file language; for long Danish files, choose Danish.
+                    </p>
+                  </div>
+                  <LanguageSelector
+                    value={fileLanguage || "auto"}
+                    onChange={setFileLanguage}
+                    className="min-w-[220px]"
+                  />
+                </div>
+              </div>
               <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
                 <div className="flex items-center gap-3">
                   <input
