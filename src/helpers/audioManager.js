@@ -58,6 +58,13 @@ const isValidApiKey = (key, provider = "openai") => {
   return key !== placeholder;
 };
 
+const toIpcSafeArrayBuffer = (arrayBuffer) => {
+  const source = new Uint8Array(arrayBuffer);
+  const copy = new Uint8Array(source.byteLength);
+  copy.set(source);
+  return copy.buffer;
+};
+
 const MIME_EXTENSION_MAP = {
   "audio/mpeg": "mp3",
   "audio/mp3": "mp3",
@@ -924,7 +931,7 @@ class AudioManager {
 
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
-      const arrayBuffer = await audioBlob.arrayBuffer();
+      const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const translateToEnglish = this.getTranscriptionSetting("translateToEnglish", "off");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
@@ -1038,7 +1045,7 @@ class AudioManager {
     const timings = {};
 
     try {
-      const arrayBuffer = await audioBlob.arrayBuffer();
+      const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "parakeet", model);
       const options = { model };
@@ -1962,7 +1969,7 @@ class AudioManager {
 
       if (allowLocalFallback && isOpenAIMode) {
         try {
-          const arrayBuffer = await audioBlob.arrayBuffer();
+          const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
           const options = {
             model: fallbackModel,
           };
@@ -1996,7 +2003,7 @@ class AudioManager {
   }
 
   async processFileTranscriptionV2(audioBlob, model = "base", metadata = {}) {
-    const arrayBuffer = await audioBlob.arrayBuffer();
+    const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
     const rawLanguage = metadata.language ?? this.getTranscriptionSetting("preferredLanguage", "");
     const translateToEnglish = metadata.translate === true || this.getTranscriptionSetting("translateToEnglish", "off") === "on";
     const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
