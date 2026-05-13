@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout PrivateTranscribe
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install CUDA 12.8 (Windows)
         shell: pwsh
@@ -58,7 +58,7 @@ jobs:
           echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
 
       - name: Set up MSVC + Ninja (Windows)
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: step-security/msvc-dev-cmd@v1
 
       - name: Install Ninja (Windows)
         shell: pwsh
@@ -126,7 +126,7 @@ jobs:
           Get-Item whisper-server-win32-x64-cuda.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whisper-server-win32-x64-cuda-package
           path: whisper-server-win32-x64-cuda.zip
@@ -159,7 +159,7 @@ jobs:
 
     steps:
       - name: Checkout PrivateTranscribe
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install CUDA 12.8 (Linux)
         run: |
@@ -242,7 +242,7 @@ jobs:
           ls -lh whisper-server-linux-x64-cuda.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whisper-server-linux-x64-cuda-package
           path: whisper-server-linux-x64-cuda.zip
