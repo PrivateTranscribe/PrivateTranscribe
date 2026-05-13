@@ -7,6 +7,7 @@ const {
   DiarizationManager,
   DEFAULT_EMBEDDING_RELATIVE_PATH,
   DEFAULT_SEGMENTATION_RELATIVE_PATH,
+  copyFloat32Samples,
   normalizeDiarizationResult,
   normalizeSpeakerId,
 } = require("../../../src/helpers/diarizationManager");
@@ -45,6 +46,18 @@ describe("DiarizationManager", () => {
     expect(result.speakerCount).toBe(2);
     expect(result.speakers).toEqual(["SPEAKER_00", "SPEAKER_01"]);
     expect(result.segments[0]).toMatchObject({ start: 0.123, end: 1.568 });
+  });
+
+  it("copies sherpa wave samples into a JS-owned Float32Array", () => {
+    const samples = new Float32Array([0.1, -0.2, 0.3]);
+    const copy = copyFloat32Samples(samples);
+
+    expect(copy).toBeInstanceOf(Float32Array);
+    expect(copy).not.toBe(samples);
+    expect(Array.from(copy)).toEqual(Array.from(samples));
+
+    samples[0] = 0.9;
+    expect(copy[0]).toBeCloseTo(0.1);
   });
 
   it("reports missing model files", () => {

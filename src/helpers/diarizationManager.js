@@ -17,6 +17,15 @@ const DEFAULT_EMBEDDING_RELATIVE_PATH = "3dspeaker_speech_eres2net_base_sv_zh-cn
 const SEGMENTATION_ARCHIVE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
 const EMBEDDING_MODEL_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
 
+function copyFloat32Samples(samples) {
+  if (samples instanceof Float32Array) {
+    const copy = new Float32Array(samples.length);
+    copy.set(samples);
+    return copy;
+  }
+  return Float32Array.from(samples || []);
+}
+
 function toFiniteNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -208,7 +217,11 @@ class DiarizationManager {
         throw new Error(`Diarization expects ${diarizer.sampleRate} Hz audio, got ${wave.sampleRate} Hz.`);
       }
 
-      const rawSegments = diarizer.process(wave.samples);
+      // In Electron, sherpa.readWave() can return a typed array backed by native
+      // external memory. sherpa's N-API bindings reject that when passed back into
+      // process() ("External buffers are not allowed"). Copy into a JS-owned
+      // Float32Array first; CLI Node is fine either way, Electron needs this.
+      const rawSegments = diarizer.process(copyFloat32Samples(wave.samples));
       const elapsedMs = Date.now() - startedAt;
       const durationSec = wave.samples.length / wave.sampleRate;
       const result = normalizeDiarizationResult(rawSegments, {
@@ -248,6 +261,7 @@ module.exports = {
   DEFAULT_SEGMENTATION_RELATIVE_PATH,
   EMBEDDING_MODEL_URL,
   SEGMENTATION_ARCHIVE_URL,
+  copyFloat32Samples,
   normalizeDiarizationResult,
   normalizeSpeakerId,
 };
