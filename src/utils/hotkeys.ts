@@ -121,11 +121,11 @@ export function isCompoundHotkey(hotkey: string): boolean {
 /**
  * Gets the default hotkey for the current platform.
  * - macOS: GLOBE key (Fn key on modern Macs)
- * - Windows/Linux: Backtick (`)
+ * - Windows/Linux: Ctrl+Space
  */
 export function getDefaultHotkey(): string {
   const isMac = isMacPlatform();
-  return isMac ? "GLOBE" : "`";
+  return isMac ? "GLOBE" : "CommandOrControl+Space";
 }
 
 /**
