@@ -50,7 +50,8 @@
     "uninstall:full:linux": "bash scripts/complete-uninstall-linux.sh",
     "uninstall:full:windows": "scripts\\complete-uninstall-windows.bat",
     "audit:branding": "node scripts/audit-branding.js",
-    "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js"
+    "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js",
+    "smoke:diarization": "node scripts/diarization-smoke.js"
   },
   "keywords": [
     "dictation",
