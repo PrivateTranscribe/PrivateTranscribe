@@ -212,15 +212,17 @@ class DiarizationManager {
     try {
       const sherpa = this.loadSherpa();
       const diarizer = new sherpa.OfflineSpeakerDiarization(config);
-      const wave = sherpa.readWave(wavPath);
+      // Electron >= 21 disallows native external buffers. sherpa-onnx supports
+      // opting out via the second readWave argument; without this, Electron apps
+      // fail with "External buffers are not allowed" while plain Node CLIs work.
+      // See sherpa-onnx FAQ: readWave(filename, false).
+      const wave = sherpa.readWave(wavPath, false);
       if (diarizer.sampleRate !== wave.sampleRate) {
         throw new Error(`Diarization expects ${diarizer.sampleRate} Hz audio, got ${wave.sampleRate} Hz.`);
       }
 
-      // In Electron, sherpa.readWave() can return a typed array backed by native
-      // external memory. sherpa's N-API bindings reject that when passed back into
-      // process() ("External buffers are not allowed"). Copy into a JS-owned
-      // Float32Array first; CLI Node is fine either way, Electron needs this.
+      // Keep a defensive copy as well. It is cheap compared with diarization and
+      // protects against runtimes/addon versions that still expose external data.
       const rawSegments = diarizer.process(copyFloat32Samples(wave.samples));
       const elapsedMs = Date.now() - startedAt;
       const durationSec = wave.samples.length / wave.sampleRate;
