@@ -14,7 +14,8 @@ import {
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
-const RECORDER_STOP_TIMEOUT_MS = 2500;
+const RECORDER_TIMESLICE_MS = 10000;
+const RECORDER_STOP_TIMEOUT_MS = 30000;
 
 const PLACEHOLDER_KEYS = {
   openai: "your_openai_api_key_here",
@@ -477,6 +478,7 @@ class AudioManager {
         blobSize: audioBlob.size,
         blobType: audioBlob.type,
         chunksCount,
+        durationSeconds,
       },
       "audio"
     );
@@ -639,6 +641,7 @@ class AudioManager {
             blobSize: audioBlob.size,
             blobType: audioBlob.type,
             chunksCount,
+            durationSeconds,
           },
           "audio"
         );
@@ -646,7 +649,11 @@ class AudioManager {
         await this.processAudio(audioBlob, { durationSeconds });
       };
 
-      this.mediaRecorder.start();
+      // Flush long dictations into periodic chunks. Without a timeslice, Electron
+      // can keep most of a multi-minute recording inside MediaRecorder until the
+      // final stop flush. If that final flush is slow, the watchdog may process
+      // only earlier data and the transcript appears truncated.
+      this.mediaRecorder.start(RECORDER_TIMESLICE_MS);
       this.isRecording = true;
       this.isProcessing = false;
       this.isStartingRecording = false;
