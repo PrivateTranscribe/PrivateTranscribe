@@ -453,7 +453,7 @@ class WhisperManager {
       const wavBuffer = await this.serverManager.convertToDiarizationWav(inputBuffer, options.inputFileName, {
         noiseReduction: options.noiseReduction === true,
       });
-      const diarization = await this.diarizationManager.diarizeWavBuffer(wavBuffer, {
+      const diarization = await this.diarizationManager.diarizeWavBufferInWorker(wavBuffer, {
         expectedSpeakers: options.expectedSpeakers,
         threshold: options.diarizationThreshold,
       });

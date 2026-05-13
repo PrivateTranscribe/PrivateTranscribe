@@ -204,6 +204,78 @@ class DiarizationManager {
     }
   }
 
+  async diarizeWavBufferInWorker(wavBuffer, options = {}) {
+    if (!Buffer.isBuffer(wavBuffer)) {
+      throw new Error("diarizeWavBufferInWorker expects a WAV Buffer.");
+    }
+
+    const tempPath = path.join(os.tmpdir(), `privatetranscribe-diarization-${crypto.randomUUID()}.wav`);
+    fs.writeFileSync(tempPath, wavBuffer);
+    try {
+      return await this.diarizeWavFileInWorker(tempPath, options);
+    } finally {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+  }
+
+  async diarizeWavFileInWorker(wavPath, options = {}) {
+    const payloadPath = path.join(os.tmpdir(), `privatetranscribe-diarization-${crypto.randomUUID()}.json`);
+    const workerPath = path.join(__dirname, "diarizationWorker.js");
+    const payload = {
+      wavPath,
+      options,
+      managerOptions: {
+        modelsDir: this.modelsDir,
+        bundleId: this.bundleId,
+        segmentationRelativePath: this.segmentationRelativePath,
+        embeddingRelativePath: this.embeddingRelativePath,
+      },
+    };
+    fs.writeFileSync(payloadPath, JSON.stringify(payload));
+
+    try {
+      return await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [workerPath, payloadPath], {
+          windowsHide: true,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (data) => {
+          stdout += data.toString();
+        });
+        child.stderr.on("data", (data) => {
+          stderr += data.toString();
+        });
+        child.on("error", reject);
+        child.on("close", (code) => {
+          let parsed;
+          try {
+            parsed = JSON.parse(stdout.trim() || "{}");
+          } catch (parseError) {
+            reject(new Error(`Diarization worker returned invalid JSON (code ${code}): ${stderr || stdout}`));
+            return;
+          }
+          if (code === 0 && parsed.success) {
+            resolve(parsed.result);
+          } else {
+            reject(new Error(parsed.error || stderr.trim() || `Diarization worker exited with code ${code}`));
+          }
+        });
+      });
+    } finally {
+      try {
+        fs.unlinkSync(payloadPath);
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+  }
+
   async diarizeWavFile(wavPath, options = {}) {
     const config = this.buildConfig(options);
     const status = this.getModelStatus();

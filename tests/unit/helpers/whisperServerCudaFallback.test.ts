@@ -51,9 +51,9 @@ describe("WhisperServerManager CUDA startup fallback", () => {
 
     const chunks = manager._splitWavIntoTranscriptionChunks(longWav);
 
-    expect(chunks).toHaveLength(4);
+    expect(chunks).toHaveLength(40);
     expect(
-      chunks.every((chunk: { durationSeconds: number }) => chunk.durationSeconds <= 10 * 60)
+      chunks.every((chunk: { durationSeconds: number }) => chunk.durationSeconds <= 60)
     ).toBe(true);
     expect(
       Math.round(

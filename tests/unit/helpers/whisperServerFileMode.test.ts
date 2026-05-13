@@ -55,5 +55,10 @@ describe("WhisperServer file mode", () => {
     expect(body).toContain('name="diarize"');
     expect(body).toContain('name="tinydiarize"');
     expect(body).toContain('name="vad"');
+    expect(body).toContain('name="no_context"');
+    expect(body).toContain('name="suppress_nst"');
+    expect(body).toContain('name="temperature"');
+    expect(body).toContain('name="temperature_inc"');
+    expect(body).toContain('name="no_speech_thold"');
   });
 });

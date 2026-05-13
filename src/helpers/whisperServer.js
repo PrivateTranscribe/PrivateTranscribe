@@ -23,7 +23,7 @@ const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const WAV_HEADER_BYTES = 44;
 const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
-const WHISPER_CHUNK_SECONDS = 10 * 60;
+const WHISPER_CHUNK_SECONDS = 60;
 const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
 const WHISPER_REQUEST_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -1088,6 +1088,18 @@ class WhisperServerManager {
     }
 
     form.append("response_format", fileMode ? "verbose_json" : "json");
+
+    if (fileMode) {
+      // Long files are especially prone to Whisper repeating stale context after
+      // silence/noise. Keep each request independent and ask whisper.cpp to be
+      // more conservative about non-speech so one bad short window does not poison
+      // the rest of a 45+ minute upload.
+      form.append("no_context", "true");
+      form.append("suppress_nst", "true");
+      form.append("temperature", "0.0");
+      form.append("temperature_inc", "0.0");
+      form.append("no_speech_thold", "0.45");
+    }
 
     for (const [name, enabled] of Object.entries({ diarize, tinydiarize, vad })) {
       if (enabled) form.append(name, "true");
