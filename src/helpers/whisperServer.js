@@ -179,6 +179,7 @@ class WhisperServerManager {
     this.port = null;
     this.ready = false;
     this.modelPath = null;
+    this.loadedModelPath = null;
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.cachedServerBinaryPath = null;
@@ -460,7 +461,7 @@ class WhisperServerManager {
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
     const wantsPrintRealtime = options.printRealtime === true;
-    if (this.ready && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime && !this.startupPromise) {
+    if (this.ready && this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime && !this.startupPromise) {
       this.lastUsedTime = Date.now();
       this.stoppedDueToIdle = false;
       this._scheduleIdleCheck();
@@ -487,7 +488,7 @@ class WhisperServerManager {
       .then(async () => {
         // Re-check after the previous promise settled: the server may have
         // become ready for this model (e.g. from a concurrent caller).
-        if (this.ready && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
+        if (this.ready && this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
           this.lastUsedTime = Date.now();
           this.stoppedDueToIdle = false;
           this._scheduleIdleCheck();
@@ -690,6 +691,7 @@ class WhisperServerManager {
       this.stdoutCapture = null;
       this.process = null;
       this.activeServerBinaryPath = null;
+      this.loadedModelPath = null;
       this.stopHealthCheck();
       this._clearIdleCheck();
     });
@@ -697,6 +699,8 @@ class WhisperServerManager {
     try {
       await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode, startupError }));
       this.printRealtimeEnabled = options.printRealtime === true;
+      this.loadedModelPath = modelPath;
+      this.modelPath = modelPath;
     } catch (error) {
       debugLogger.error("whisper-server failed readiness check", {
         error: error.message,
@@ -1285,17 +1289,19 @@ class WhisperServerManager {
     this.ready = false;
     this.port = null;
     this.modelPath = null;
+    this.loadedModelPath = null;
     this.activeServerBinaryPath = null;
     this.lastUsedTime = 0;
   }
 
   getStatus() {
+    const activeModelPath = this.loadedModelPath || this.modelPath;
     return {
       available: this.isAvailable(),
       running: this.ready && this.process !== null,
       port: this.port,
-      modelPath: this.modelPath,
-      modelName: this.modelPath ? path.basename(this.modelPath, ".bin").replace("ggml-", "") : null,
+      modelPath: activeModelPath,
+      modelName: activeModelPath ? path.basename(activeModelPath, ".bin").replace("ggml-", "") : null,
       forceCpu: this.forceCpu,
       activeServerBinaryPath: this.activeServerBinaryPath,
       activeEngine: this.activeServerBinaryPath

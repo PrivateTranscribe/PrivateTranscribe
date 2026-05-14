@@ -163,7 +163,7 @@ class WhisperManager {
     }
 
     try {
-      await this.serverManager.start(modelPath, { printRealtime: requestOptions.fileMode === true && requestOptions.speakerDetection === true });
+      await this.serverManager.start(modelPath, { printRealtime: false });
       this.currentServerModel = modelName;
       debugLogger.info("whisper-server started", {
         model: modelName,
