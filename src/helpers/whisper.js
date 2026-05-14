@@ -331,7 +331,13 @@ class WhisperManager {
     translate = false,
     requestOptions = {}
   ) {
-    debugLogger.info("Transcription mode: SERVER", { model, language: language || "auto" });
+    debugLogger.info("Transcription mode: SERVER", {
+      model,
+      language: language || "auto",
+      currentServerModel: this.currentServerModel,
+      loadedServerModelPath: this.serverManager.loadedModelPath || null,
+      serverPid: this.serverManager.process?.pid || null,
+    });
     const modelPath = this.getModelPath(model);
 
     // Start server if not running, was auto-stopped due to idleness, or if model changed
@@ -342,6 +348,10 @@ class WhisperManager {
     ) {
       debugLogger.debug("Starting/restarting whisper-server for model", {
         model,
+        modelPath,
+        previousModel: this.currentServerModel,
+        previousLoadedModelPath: this.serverManager.loadedModelPath || null,
+        previousPid: this.serverManager.process?.pid || null,
         reason: !this.serverManager.ready
           ? "not running"
           : this.serverManager.stoppedDueToIdle

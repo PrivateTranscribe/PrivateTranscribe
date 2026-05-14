@@ -723,6 +723,8 @@ class WhisperServerManager {
     debugLogger.info("whisper-server started successfully", {
       port: this.port,
       model: path.basename(modelPath),
+      modelPath,
+      pid: this.process?.pid || null,
       serverBinary,
     });
   }

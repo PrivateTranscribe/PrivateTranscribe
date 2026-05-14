@@ -2455,23 +2455,28 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
             <TranscriptionModelPicker
               selectedCloudProvider={cloudTranscriptionProvider}
-              onCloudProviderSelect={setCloudTranscriptionProvider}
+              onCloudProviderSelect={(provider) =>
+                updateTranscriptionSettings({ cloudTranscriptionProvider: provider })
+              }
               selectedCloudModel={cloudTranscriptionModel}
-              onCloudModelSelect={setCloudTranscriptionModel}
+              onCloudModelSelect={(model) =>
+                updateTranscriptionSettings({ cloudTranscriptionModel: model })
+              }
               selectedLocalModel={whisperModel}
               onLocalModelSelect={(modelId) => {
-                setWhisperModel(modelId);
+                updateTranscriptionSettings({ whisperModel: modelId });
               }}
               selectedLocalProvider={localTranscriptionProvider}
               onLocalProviderSelect={(providerId) => {
-                setLocalTranscriptionProvider(providerId);
+                updateTranscriptionSettings({ localTranscriptionProvider: providerId });
               }}
               whisperForceCpu={whisperForceCpu}
-              onWhisperForceCpuChange={setWhisperForceCpu}
+              onWhisperForceCpuChange={(forceCpu) =>
+                updateTranscriptionSettings({ whisperForceCpu: forceCpu })
+              }
               gpuSupported={gpuSupportedForPicker}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
-                setUseLocalWhisper(isLocal);
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });
               }}
               openaiApiKey={openaiApiKey}
