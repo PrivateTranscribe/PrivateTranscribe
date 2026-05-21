@@ -84,6 +84,23 @@ describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => 
     expect(useWindowDrag).toContain('window.addEventListener("pointercancel"');
     expect(useWindowDrag).toContain('window.addEventListener("blur"');
   });
+
+  test("main process refreshes overlay mouse forwarding after display wake changes", () => {
+    expect(windowManager).toContain("_refreshMainWindowInteractivity");
+    expect(windowManager).toContain("setIgnoreMouseEvents(false)");
+    expect(windowManager).toContain("this.setMainWindowInteractivity(shouldCapture)");
+    expect(windowManager).toContain('this._refreshMainWindowInteractivity("resume")');
+    expect(windowManager).toContain(
+      'this._refreshMainWindowInteractivity("display-metrics-changed")'
+    );
+  });
+
+  test("renderer requests interactivity refresh when Chromium becomes active again", () => {
+    expect(appJsx).toContain("refreshMainWindowInteractivity");
+    expect(appJsx).toContain('document.addEventListener("visibilitychange"');
+    expect(appJsx).toContain('window.addEventListener("pageshow"');
+    expect(appJsx).toContain('window.addEventListener("focus"');
+  });
 });
 
 // ─── Toast positioning — adaptive side placement in tiny overlay ────────────

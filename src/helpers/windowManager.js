@@ -51,6 +51,7 @@ class WindowManager {
     this._positionSaveTimer = null;
     this._pendingPosition = null;
     this._displayMetricsTimer = null;
+    this._interactivityRefreshTimer = null;
     this._powerResumeHandler = null;
     this._displayMetricsChangedHandler = null;
 
@@ -307,7 +308,10 @@ class WindowManager {
     // changes (e.g. taskbar reappears at a different height, DPI scaling adjusts).
     // Delay slightly to let the OS finish restoring display configuration.
     this._powerResumeHandler = () => {
-      setTimeout(() => this._reclampOverlayPosition("resume"), 1000);
+      setTimeout(() => {
+        this._reclampOverlayPosition("resume");
+        this._refreshMainWindowInteractivity("resume");
+      }, 1000);
     };
     powerMonitor.on("resume", this._powerResumeHandler);
 
@@ -321,6 +325,7 @@ class WindowManager {
       this._displayMetricsTimer = setTimeout(() => {
         this._displayMetricsTimer = null;
         this._reclampOverlayPosition("display-metrics-changed");
+        this._refreshMainWindowInteractivity("display-metrics-changed");
       }, 2000);
     };
     screen.on("display-metrics-changed", this._displayMetricsChangedHandler);
@@ -343,6 +348,41 @@ class WindowManager {
       this.mainWindow.setIgnoreMouseEvents(true, { forward: true });
     }
     this.isMainWindowInteractive = shouldCapture;
+  }
+
+  _refreshMainWindowInteractivity(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    if (this._interactivityRefreshTimer) {
+      clearTimeout(this._interactivityRefreshTimer);
+      this._interactivityRefreshTimer = null;
+    }
+
+    const shouldCapture = this.isMainWindowInteractive;
+
+    try {
+      // After display sleep/wake, Electron's forwarded mouse-event hook can get
+      // stale while the transparent overlay remains visible. Toggling capture
+      // re-arms the native ignore/forward state so hover can make the mic button
+      // interactive again for dragging.
+      this.mainWindow.setIgnoreMouseEvents(false);
+      this._interactivityRefreshTimer = setTimeout(() => {
+        this._interactivityRefreshTimer = null;
+        this.setMainWindowInteractivity(shouldCapture);
+      }, 150);
+      debugLogger.debug("[Window] Refreshed overlay interactivity", { reason, shouldCapture });
+    } catch (error) {
+      debugLogger.warn("[Window] Failed to refresh overlay interactivity", {
+        reason,
+        error: error?.message || String(error),
+      });
+    }
+  }
+
+  refreshMainWindowInteractivity(reason = "manual") {
+    this._refreshMainWindowInteractivity(reason);
   }
 
   suspendMainWindowOverlay() {
@@ -596,7 +636,7 @@ class WindowManager {
     // entry even when the user hasn't opened the control panel yet.
     // (The overlay is skipTaskbar:true to avoid game compositor issues, so
     // this is the only taskbar presence on Windows.)
-    this._controlPanelStartMinimized = options.startMinimized ?? (process.platform === "win32");
+    this._controlPanelStartMinimized = options.startMinimized ?? process.platform === "win32";
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
@@ -884,6 +924,10 @@ class WindowManager {
       if (this._displayMetricsTimer) {
         clearTimeout(this._displayMetricsTimer);
         this._displayMetricsTimer = null;
+      }
+      if (this._interactivityRefreshTimer) {
+        clearTimeout(this._interactivityRefreshTimer);
+        this._interactivityRefreshTimer = null;
       }
       if (this._powerResumeHandler) {
         powerMonitor.removeListener("resume", this._powerResumeHandler);

@@ -217,6 +217,11 @@ class IPCHandlers {
       return { success: true };
     });
 
+    ipcMain.handle("refresh-main-window-interactivity", () => {
+      this.windowManager.refreshMainWindowInteractivity("renderer");
+      return { success: true };
+    });
+
     ipcMain.handle("resize-main-window", (_event, _sizeKey) => {
       // No-op: window now uses a fixed transparent container; see windowManager.resizeMainWindow.
       return { success: true };
@@ -590,10 +595,17 @@ class IPCHandlers {
         });
         if (!result.success) return result;
 
-        const speakerDetectionMode = result.speakerDetectionMode || options.speakerDetectionMode || (options.speakerDetection === true ? "tiny-diarize-en" : "off");
-        const formatted = formatTranscript(result.raw || { text: result.text, segments: result.segments }, options.outputFormat || "plain", {
-          includeSpeakers: options.speakerDetection === true || speakerDetectionMode !== "off",
-        });
+        const speakerDetectionMode =
+          result.speakerDetectionMode ||
+          options.speakerDetectionMode ||
+          (options.speakerDetection === true ? "tiny-diarize-en" : "off");
+        const formatted = formatTranscript(
+          result.raw || { text: result.text, segments: result.segments },
+          options.outputFormat || "plain",
+          {
+            includeSpeakers: options.speakerDetection === true || speakerDetectionMode !== "off",
+          }
+        );
 
         return {
           success: true,
@@ -940,8 +952,11 @@ class IPCHandlers {
           debugLogger.log(
             `[IPC] Exiting hotkey capture mode, activationMode="${activationMode}", hotkey="${effectiveHotkey}"`
           );
-          if (effectiveHotkey && effectiveHotkey !== "GLOBE" &&
-            hotkeyManager.isNativeListenerHotkey(effectiveHotkey)) {
+          if (
+            effectiveHotkey &&
+            effectiveHotkey !== "GLOBE" &&
+            hotkeyManager.isNativeListenerHotkey(effectiveHotkey)
+          ) {
             debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
             this.windowsKeyManager.start(effectiveHotkey);
           } else if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {

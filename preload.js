@@ -103,7 +103,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
-  transcribeFileV2: (audioBlob, options) => ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  transcribeFileV2: (audioBlob, options) =>
+    ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
   checkDiarizationModelStatus: () => ipcRenderer.invoke("check-diarization-model-status"),
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
   onDiarizationDownloadProgress: registerListener("diarization-download-progress"),
@@ -168,6 +169,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopWindowDrag: () => ipcRenderer.invoke("stop-window-drag"),
   setMainWindowInteractivity: (interactive) =>
     ipcRenderer.invoke("set-main-window-interactivity", interactive),
+  refreshMainWindowInteractivity: () => ipcRenderer.invoke("refresh-main-window-interactivity"),
   resizeMainWindow: (sizeKey) => ipcRenderer.invoke("resize-main-window", sizeKey),
 
   // Update functions
