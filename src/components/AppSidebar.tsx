@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 import { shouldShowProBadge } from "../hooks/useProStatus";
+import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 
 export type PageId =
@@ -91,7 +92,10 @@ interface AppSidebarProps {
 }
 
 export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps) {
-  const [hotkey, setHotkey] = useState("`");
+  const [hotkey] = useLocalStorage("dictationKey", "", {
+    serialize: String,
+    deserialize: String,
+  });
   const [currentVersion, setCurrentVersion] = useState("");
   // Re-render when the Pro preview toggle changes so badges update immediately.
   const [, forceUpdate] = useState(0);
@@ -99,11 +103,6 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
     const handler = () => forceUpdate((n) => n + 1);
     window.addEventListener("privatetranscribe-pro-preview-changed", handler);
     return () => window.removeEventListener("privatetranscribe-pro-preview-changed", handler);
-  }, []);
-
-  useEffect(() => {
-    const savedHotkey = localStorage.getItem("dictationKey");
-    if (savedHotkey) setHotkey(savedHotkey);
   }, []);
 
   useEffect(() => {
