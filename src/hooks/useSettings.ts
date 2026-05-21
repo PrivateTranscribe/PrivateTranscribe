@@ -353,28 +353,20 @@ export function useSettings() {
   );
 
   // File transcription preferences — remember the upload-panel toggles across tabs/sessions.
-  const [fileTranscriptionNoiseReduction, setFileTranscriptionNoiseReduction] = useLocalStorage<boolean>(
-    "fileTranscriptionNoiseReduction",
-    true,
-    {
+  const [fileTranscriptionNoiseReduction, setFileTranscriptionNoiseReduction] =
+    useLocalStorage<boolean>("fileTranscriptionNoiseReduction", true, {
       serialize: String,
       deserialize: (value) => value !== "false",
-    }
-  );
+    });
 
-  const [fileTranscriptionSpeakerDetection, setFileTranscriptionSpeakerDetection] = useLocalStorage<boolean>(
-    "fileTranscriptionSpeakerDetection",
-    false,
-    {
+  const [fileTranscriptionSpeakerDetection, setFileTranscriptionSpeakerDetection] =
+    useLocalStorage<boolean>("fileTranscriptionSpeakerDetection", false, {
       serialize: String,
       deserialize: (value) => value === "true",
-    }
-  );
+    });
 
-  const [fileTranscriptionSpeakerDetectionMode, setFileTranscriptionSpeakerDetectionMode] = useLocalStorage<string>(
-    "fileTranscriptionSpeakerDetectionMode",
-    "off",
-    {
+  const [fileTranscriptionSpeakerDetectionMode, setFileTranscriptionSpeakerDetectionMode] =
+    useLocalStorage<string>("fileTranscriptionSpeakerDetectionMode", "off", {
       serialize: String,
       deserialize: (value) =>
         ["off", "tiny-diarize-en", "local-diarization"].includes(value)
@@ -382,8 +374,15 @@ export function useSettings() {
           : value === "true"
             ? "tiny-diarize-en"
             : "off",
-    }
-  );
+    });
+
+  // Expected number of speakers for file transcription diarization.
+  // "auto" = let the clustering algorithm decide; "2"-"6" = fixed hint.
+  const [fileTranscriptionExpectedSpeakers, setFileTranscriptionExpectedSpeakers] =
+    useLocalStorage<string>("fileTranscriptionExpectedSpeakers", "auto", {
+      serialize: String,
+      deserialize: (value) => (["auto", "2", "3", "4", "5", "6"].includes(value) ? value : "auto"),
+    });
 
   // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
   // Points to the same key — deprecated, use smartContextEnabled going forward.
@@ -746,12 +745,10 @@ export function useSettings() {
     if (startupPreferencesKey === lastSyncedStartupPreferencesKey) return;
     lastSyncedStartupPreferencesKey = startupPreferencesKey;
 
-    window.electronAPI
-      .syncStartupPreferences(startupPreferences)
-      .catch((err) => {
-        lastSyncedStartupPreferencesKey = "";
-        console.error("Failed to sync startup preferences:", err);
-      });
+    window.electronAPI.syncStartupPreferences(startupPreferences).catch((err) => {
+      lastSyncedStartupPreferencesKey = "";
+      console.error("Failed to sync startup preferences:", err);
+    });
   }, [
     useLocalWhisper,
     localTranscriptionProvider,
@@ -1036,6 +1033,8 @@ export function useSettings() {
     setFileTranscriptionSpeakerDetection,
     fileTranscriptionSpeakerDetectionMode,
     setFileTranscriptionSpeakerDetectionMode,
+    fileTranscriptionExpectedSpeakers,
+    setFileTranscriptionExpectedSpeakers,
     enableContextCapture,
     setEnableContextCapture,
     enableFileIdentifiers,
