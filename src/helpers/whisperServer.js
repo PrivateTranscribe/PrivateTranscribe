@@ -933,13 +933,18 @@ class WhisperServerManager {
     });
 
     try {
-      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false } = options;
+      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false, onProgress } = options;
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
       if (!this.canConvert) {
         throw new Error("FFmpeg not found - required for audio conversion");
       }
+
+      if (typeof onProgress === "function") {
+        onProgress({ stage: "converting", percentage: 0 });
+      }
+
       finalBuffer = await this._convertToWav(audioBuffer, inputFileName, {
         // whisper.cpp stereo diarization needs two channels; tdrz/tinydiarize stays mono.
         channels: fileMode && diarize ? 2 : 1,
@@ -953,6 +958,10 @@ class WhisperServerManager {
           totalDurationSeconds: chunks.reduce((sum, chunk) => sum + chunk.durationSeconds, 0),
           chunkSeconds: WHISPER_CHUNK_SECONDS,
         });
+      }
+
+      if (typeof onProgress === "function") {
+        onProgress({ stage: "transcribing", percentage: 0, chunksTotal: chunks.length, chunksCompleted: 0 });
       }
 
       const results = [];
@@ -1008,6 +1017,11 @@ class WhisperServerManager {
           }
         }
         results.push(fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result);
+
+        if (typeof onProgress === "function") {
+          const percentage = Math.round(((index + 1) / chunks.length) * 100);
+          onProgress({ stage: "transcribing", percentage, chunksTotal: chunks.length, chunksCompleted: index + 1 });
+        }
       }
 
       if (results.length === 1) return results[0];

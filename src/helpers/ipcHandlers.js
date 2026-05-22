@@ -589,9 +589,18 @@ class IPCHandlers {
       });
 
       try {
+        const onProgress = (progress) => {
+          try {
+            event.sender.send("file-transcription-progress", progress);
+          } catch {
+            // Window may have been closed
+          }
+        };
+
         const result = await this.whisperManager.transcribeFileV2(audioBlob, {
           ...options,
           fileMode: true,
+          onProgress,
         });
         if (!result.success) return result;
 

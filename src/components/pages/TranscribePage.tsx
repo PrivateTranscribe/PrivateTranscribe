@@ -83,6 +83,12 @@ export default function TranscribePage() {
   });
   const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<{
+    stage: string;
+    percentage: number;
+    chunksTotal?: number;
+    chunksCompleted?: number;
+  } | null>(null);
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [diarizationReady, setDiarizationReady] = useState(false);
   const [diarizationDownloadStatus, setDiarizationDownloadStatus] = useState<
@@ -145,6 +151,19 @@ export default function TranscribePage() {
     const id = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(id);
   }, [processingStartedAt, status]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onFileTranscriptionProgress?.(
+      (_event: unknown, data: any) => {
+        if (data && typeof data.stage === "string") {
+          setTranscriptionProgress(data);
+        }
+      }
+    );
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
 
   const processingHint = useMemo(() => {
     if (speakerLabelsEnabled && isUsingLocalDiarization) {
@@ -361,6 +380,7 @@ export default function TranscribePage() {
     setSpeakerCount(0);
     setErrorMessage("");
     setCopied(false);
+    setTranscriptionProgress(null);
   };
 
   const processFile = async (file: File) => {
@@ -370,6 +390,7 @@ export default function TranscribePage() {
     setStatus("processing");
     setProcessingStartedAt(Date.now());
     setProcessingElapsedSeconds(0);
+    setTranscriptionProgress(null);
     setErrorMessage("");
     setTranscript("");
     setCopied(false);
@@ -787,9 +808,35 @@ export default function TranscribePage() {
             <div className="w-16 h-16 rounded-2xl bg-surface-raised flex items-center justify-center mb-5 shadow-lg">
               <Loader2 size={28} className="text-primary animate-spin" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-1">Transcribing…</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-1">
+              {transcriptionProgress?.stage === "converting"
+                ? "Preparing audio…"
+                : transcriptionProgress?.stage === "diarizing"
+                  ? "Identifying speakers…"
+                  : "Transcribing…"}
+            </h3>
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <p className="max-w-md text-xs text-muted-foreground mb-3">{processingHint}</p>
+
+            {/* Progress bar */}
+            {transcriptionProgress && transcriptionProgress.percentage > 0 && (
+              <div className="w-full max-w-xs mb-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                    style={{ width: `${Math.min(100, transcriptionProgress.percentage)}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground tabular-nums text-center">
+                  {transcriptionProgress.stage === "transcribing" &&
+                  transcriptionProgress.chunksTotal &&
+                  transcriptionProgress.chunksTotal > 1
+                    ? `${transcriptionProgress.percentage}% — chunk ${transcriptionProgress.chunksCompleted} of ${transcriptionProgress.chunksTotal}`
+                    : `${transcriptionProgress.percentage}%`}
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 rounded-full border border-border-subtle bg-surface-raised/60 px-3 py-1 text-[11px] text-muted-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
               <span className="tabular-nums">{elapsedLabel}</span>

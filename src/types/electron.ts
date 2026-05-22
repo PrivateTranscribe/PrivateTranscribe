@@ -423,6 +423,9 @@ declare global {
       // Whisper operations (whisper.cpp)
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       transcribeFileV2: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
+      onFileTranscriptionProgress: (
+        callback: (event: any, data: { stage: string; percentage: number; chunksTotal?: number; chunksCompleted?: number }) => void
+      ) => (() => void) | void;
       checkDiarizationModelStatus: () => Promise<any>;
       downloadDiarizationModels: () => Promise<any>;
       onDiarizationDownloadProgress: (

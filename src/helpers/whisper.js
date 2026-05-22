@@ -318,6 +318,7 @@ class WhisperManager {
         outputFormat: options.outputFormat || "plain",
         diarize: options.diarize === true,
         vad: options.vad === true,
+        onProgress: options.onProgress,
       }
     );
   }
@@ -448,6 +449,7 @@ class WhisperManager {
     const requestedTinyDiarize = speakerDetectionMode === "tiny-diarize-en";
     const requestedLocalDiarization = speakerDetectionMode === "local-diarization";
     const model = requestedTinyDiarize && this.isModelDownloaded("small-en-tdrz") ? "small-en-tdrz" : options.model || "turbo";
+    const onProgress = options.onProgress;
     const result = await this.transcribeLocalWhisper(audioBlob, {
       ...options,
       model,
@@ -456,9 +458,13 @@ class WhisperManager {
       // VAD requires a separate Silero VAD model with whisper-server. Keep it opt-in
       // so normal file transcription does not fail on installations without that model.
       vad: options.vad === true,
+      onProgress,
     });
 
     if (requestedLocalDiarization && result?.success && Array.isArray(result.segments)) {
+      if (typeof onProgress === "function") {
+        onProgress({ stage: "diarizing", percentage: 0 });
+      }
       const inputBuffer = this.audioBlobToBuffer(audioBlob);
       const wavBuffer = await this.serverManager.convertToDiarizationWav(inputBuffer, options.inputFileName, {
         noiseReduction: options.noiseReduction === true,
@@ -467,6 +473,9 @@ class WhisperManager {
         expectedSpeakers: options.expectedSpeakers,
         threshold: options.diarizationThreshold,
       });
+      if (typeof onProgress === "function") {
+        onProgress({ stage: "diarizing", percentage: 100 });
+      }
       const segments = assignSpeakersToSegments(result.segments, diarization.segments);
       return {
         ...result,

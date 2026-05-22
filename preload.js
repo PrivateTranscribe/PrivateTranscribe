@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
   transcribeFileV2: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  onFileTranscriptionProgress: registerListener("file-transcription-progress"),
   checkDiarizationModelStatus: () => ipcRenderer.invoke("check-diarization-model-status"),
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
   onDiarizationDownloadProgress: registerListener("diarization-download-progress"),
