@@ -256,17 +256,24 @@ class DiarizationManager {
         });
         child.on("error", reject);
         child.on("close", (code) => {
+          // Filter out benign Chromium crashpad warnings that always appear on
+          // Windows when running Electron with ELECTRON_RUN_AS_NODE.
+          const filteredStderr = stderr
+            .split(/\r?\n/)
+            .filter(line => !line.includes("crashpad") && !line.includes("not connected"))
+            .join("\n")
+            .trim();
           let parsed;
           try {
             parsed = JSON.parse(stdout.trim() || "{}");
           } catch (parseError) {
-            reject(new Error(`Diarization worker returned invalid JSON (code ${code}): ${stderr || stdout}`));
+            reject(new Error(`Diarization worker returned invalid JSON (code ${code}): ${filteredStderr || stdout}`));
             return;
           }
           if (code === 0 && parsed.success) {
             resolve(parsed.result);
           } else {
-            reject(new Error(parsed.error || stderr.trim() || `Diarization worker exited with code ${code}`));
+            reject(new Error(parsed.error || filteredStderr || `Diarization worker exited with code ${code}`));
           }
         });
       });
@@ -302,19 +309,46 @@ class DiarizationManager {
       const samples = copyFloat32Samples(wave.samples);
       let rawSegments = diarizer.process(samples);
 
-      // Safety cap: if auto-detect produced too many speakers, re-cluster with a
-      // hard limit. This handles cases where the embedding model produces poor
-      // similarity scores (e.g., non-English audio, noisy recordings).
-      if (config.clustering.numClusters <= 0) {
-        const uniqueSpeakers = new Set((rawSegments || []).map(s => s.speaker ?? s.label ?? s.speakerLabel));
-        if (uniqueSpeakers.size > maxAutoSpeakers) {
-          debugLogger.info("Diarization auto-detect exceeded max speakers, re-clustering", {
-            detectedSpeakers: uniqueSpeakers.size,
+      // Safety cap: if auto-detect produced too many speakers, merge the least
+      // frequent ones into their nearest (by temporal proximity) frequent speaker.
+      // We do NOT create a second native diarizer instance — that crashes sherpa-onnx.
+      if (config.clustering.numClusters <= 0 && Array.isArray(rawSegments)) {
+        const speakerCounts = {};
+        for (const seg of rawSegments) {
+          const id = seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0;
+          speakerCounts[id] = (speakerCounts[id] || 0) + 1;
+        }
+        const uniqueCount = Object.keys(speakerCounts).length;
+        if (uniqueCount > maxAutoSpeakers) {
+          debugLogger.info("Diarization auto-detect exceeded max speakers, merging excess", {
+            detectedSpeakers: uniqueCount,
             maxAutoSpeakers,
           });
-          const cappedConfig = { ...config, clustering: { ...config.clustering, numClusters: maxAutoSpeakers } };
-          const cappedDiarizer = new sherpa.OfflineSpeakerDiarization(cappedConfig);
-          rawSegments = cappedDiarizer.process(samples);
+          // Keep the top N speakers by segment count; reassign the rest
+          const sorted = Object.entries(speakerCounts).sort((a, b) => b[1] - a[1]);
+          const keepSet = new Set(sorted.slice(0, maxAutoSpeakers).map(([id]) => id));
+          const keptSegments = rawSegments.filter(s => keepSet.has(String(s.speaker ?? s.label ?? s.speakerLabel ?? 0)));
+
+          rawSegments = rawSegments.map(seg => {
+            const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
+            if (keepSet.has(id)) return seg;
+            // Find nearest kept segment by time midpoint
+            const mid = ((seg.start || 0) + (seg.end || 0)) / 2;
+            let nearest = null;
+            let nearestDist = Infinity;
+            for (const kept of keptSegments) {
+              const keptMid = ((kept.start || 0) + (kept.end || 0)) / 2;
+              const dist = Math.abs(mid - keptMid);
+              if (dist < nearestDist) {
+                nearestDist = dist;
+                nearest = kept;
+              }
+            }
+            if (nearest) {
+              return { ...seg, speaker: nearest.speaker ?? nearest.label ?? nearest.speakerLabel };
+            }
+            return seg;
+          });
         }
       }
 
