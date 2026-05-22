@@ -291,7 +291,7 @@ class DiarizationManager {
     const config = this.buildConfig(options);
     const status = this.getModelStatus();
     const startedAt = Date.now();
-    const maxAutoSpeakers = options.maxSpeakers || 8;
+    const maxAutoSpeakers = options.maxSpeakers || 6;
 
     try {
       const sherpa = this.loadSherpa();
@@ -311,22 +311,24 @@ class DiarizationManager {
       let rawSegments = diarizer.process(samples);
 
       // Safety cap: if auto-detect produced too many speakers, merge the least
-      // frequent ones into their nearest (by temporal proximity) frequent speaker.
+      // significant ones into their nearest (by temporal proximity) frequent speaker.
       // We do NOT create a second native diarizer instance — that crashes sherpa-onnx.
+      // Uses total speech DURATION per speaker (not segment count) for ranking.
       if (config.clustering.numClusters <= 0 && Array.isArray(rawSegments)) {
-        const speakerCounts = {};
+        const speakerDurations = {};
         for (const seg of rawSegments) {
-          const id = seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0;
-          speakerCounts[id] = (speakerCounts[id] || 0) + 1;
+          const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
+          const duration = Math.max(0, (seg.end || 0) - (seg.start || 0));
+          speakerDurations[id] = (speakerDurations[id] || 0) + duration;
         }
-        const uniqueCount = Object.keys(speakerCounts).length;
+        const uniqueCount = Object.keys(speakerDurations).length;
         if (uniqueCount > maxAutoSpeakers) {
           debugLogger.info("Diarization auto-detect exceeded max speakers, merging excess", {
             detectedSpeakers: uniqueCount,
             maxAutoSpeakers,
           });
-          // Keep the top N speakers by segment count; reassign the rest
-          const sorted = Object.entries(speakerCounts).sort((a, b) => b[1] - a[1]);
+          // Keep the top N speakers by total speech duration; reassign the rest
+          const sorted = Object.entries(speakerDurations).sort((a, b) => b[1] - a[1]);
           const keepSet = new Set(sorted.slice(0, maxAutoSpeakers).map(([id]) => id));
           const keptSegments = rawSegments.filter(s => keepSet.has(String(s.speaker ?? s.label ?? s.speakerLabel ?? 0)));
 
@@ -349,6 +351,21 @@ class DiarizationManager {
               return { ...seg, speaker: nearest.speaker ?? nearest.label ?? nearest.speakerLabel };
             }
             return seg;
+          });
+        }
+
+        // Renumber speaker IDs sequentially (0, 1, 2, ...) so output labels are
+        // "Speaker 1", "Speaker 2", etc. instead of confusing original cluster IDs.
+        const seenIds = [];
+        for (const seg of rawSegments) {
+          const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
+          if (!seenIds.includes(id)) seenIds.push(id);
+        }
+        if (seenIds.length > 1) {
+          const idMap = new Map(seenIds.map((id, idx) => [id, idx]));
+          rawSegments = rawSegments.map(seg => {
+            const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
+            return { ...seg, speaker: idMap.get(id) ?? 0 };
           });
         }
       }

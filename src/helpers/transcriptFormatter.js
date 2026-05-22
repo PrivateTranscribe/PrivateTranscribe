@@ -34,8 +34,9 @@ function removeRepetitions(text) {
     cleaned = cleaned.replace(phrasePattern, "$1");
   }
 
-  // 2) Collapse single-word stutters (5+ consecutive identical words)
-  cleaned = cleaned.replace(/\b(\w+)(?:\s+\1){4,}\b/gi, "$1");
+  // 2) Collapse single-word stutters (3+ consecutive identical words/tokens including punctuation)
+  // Handles "Ja. Ja. Ja. Ja." and "Hvad? Hvad? Hvad?" patterns
+  cleaned = cleaned.replace(/(\S+[.!?]?)(?:\s+\1){2,}/gi, "$1");
 
   // 3) Collapse repeated single characters (e.g. "åååååå..." → "å")
   cleaned = cleaned.replace(/(.)\1{9,}/g, "$1");
@@ -105,6 +106,30 @@ function buildAnalysis(verboseJson) {
   return { speakerCount: speakers.length, speakers, segments };
 }
 
+/**
+ * Remove consecutive turns that contain the same text (cross-speaker hallucination).
+ * Whisper sometimes hallucinates a phrase repeatedly across chunk boundaries, and
+ * diarization assigns each repetition to a different speaker. This collapses runs
+ * of identical (or substring-contained) consecutive turns.
+ */
+function deduplicateConsecutiveTurns(turns) {
+  if (turns.length <= 1) return turns;
+  const result = [turns[0]];
+  for (let i = 1; i < turns.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = turns[i];
+    const prevNorm = prev.text.toLowerCase().replace(/[.!?,;:\s]+/g, " ").trim();
+    const currNorm = curr.text.toLowerCase().replace(/[.!?,;:\s]+/g, " ").trim();
+    // Skip if identical or if one is a substring of the other (catches partial repeats)
+    if (currNorm === prevNorm) continue;
+    if (prevNorm.length > 10 && currNorm.length > 10) {
+      if (prevNorm.includes(currNorm) || currNorm.includes(prevNorm)) continue;
+    }
+    result.push(curr);
+  }
+  return result;
+}
+
 function formatTranscript(verboseJson, format = "plain", options = {}) {
   const analysis = buildAnalysis(verboseJson);
   const turns = options.mergeTurns === false ? analysis.segments : mergeTurns(analysis.segments);
@@ -119,8 +144,8 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
     segment.text = removeRepetitions(segment.text);
   }
   // Remove turns/segments that became empty after cleaning
-  const cleanTurns = turns.filter(t => t.text);
-  const cleanSegments = analysis.segments.filter(s => s.text);
+  const cleanTurns = deduplicateConsecutiveTurns(turns.filter(t => t.text));
+  const cleanSegments = deduplicateConsecutiveTurns(analysis.segments.filter(s => s.text));
 
   let text = "";
   if (format === "srt") {
