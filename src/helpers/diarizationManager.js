@@ -172,7 +172,10 @@ class DiarizationManager {
     const expectedSpeakers = Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
       ? options.expectedSpeakers
       : -1;
-    const threshold = toFiniteNumber(options.threshold, 0.5);
+    // In sherpa-onnx agglomerative clustering, HIGHER threshold = fewer speakers.
+    // 0.5 (sherpa default) is far too low for real-world multi-speaker recordings,
+    // producing hundreds of phantom speakers. 1.5 works well for meetings/interviews.
+    const threshold = toFiniteNumber(options.threshold, 1.5);
 
     return {
       segmentation: { pyannote: { model: status.segmentationModel } },
@@ -280,6 +283,7 @@ class DiarizationManager {
     const config = this.buildConfig(options);
     const status = this.getModelStatus();
     const startedAt = Date.now();
+    const maxAutoSpeakers = options.maxSpeakers || 15;
 
     try {
       const sherpa = this.loadSherpa();
@@ -295,7 +299,25 @@ class DiarizationManager {
 
       // Keep a defensive copy as well. It is cheap compared with diarization and
       // protects against runtimes/addon versions that still expose external data.
-      const rawSegments = diarizer.process(copyFloat32Samples(wave.samples));
+      const samples = copyFloat32Samples(wave.samples);
+      let rawSegments = diarizer.process(samples);
+
+      // Safety cap: if auto-detect produced too many speakers, re-cluster with a
+      // hard limit. This handles cases where the embedding model produces poor
+      // similarity scores (e.g., non-English audio, noisy recordings).
+      if (config.clustering.numClusters <= 0) {
+        const uniqueSpeakers = new Set((rawSegments || []).map(s => s.speaker ?? s.label ?? s.speakerLabel));
+        if (uniqueSpeakers.size > maxAutoSpeakers) {
+          debugLogger.info("Diarization auto-detect exceeded max speakers, re-clustering", {
+            detectedSpeakers: uniqueSpeakers.size,
+            maxAutoSpeakers,
+          });
+          const cappedConfig = { ...config, clustering: { ...config.clustering, numClusters: maxAutoSpeakers } };
+          const cappedDiarizer = new sherpa.OfflineSpeakerDiarization(cappedConfig);
+          rawSegments = cappedDiarizer.process(samples);
+        }
+      }
+
       const elapsedMs = Date.now() - startedAt;
       const durationSec = wave.samples.length / wave.sampleRate;
       const result = normalizeDiarizationResult(rawSegments, {
