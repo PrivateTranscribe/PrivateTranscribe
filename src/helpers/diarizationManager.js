@@ -172,10 +172,11 @@ class DiarizationManager {
     const expectedSpeakers = Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
       ? options.expectedSpeakers
       : -1;
-    // In sherpa-onnx agglomerative clustering, HIGHER threshold = fewer speakers.
-    // 0.5 (sherpa default) is far too low for real-world multi-speaker recordings,
-    // producing hundreds of phantom speakers. 1.5 works well for meetings/interviews.
-    const threshold = toFiniteNumber(options.threshold, 1.5);
+    // In sherpa-onnx agglomerative clustering, higher threshold = fewer speakers.
+    // Valid range appears to be 0.0–1.0; values above 1.0 crash the native library.
+    // 0.9 produces fewer clusters than 0.5, but still over-segments for long files.
+    // The post-processing cap in diarizeWavFile handles the excess.
+    const threshold = toFiniteNumber(options.threshold, 0.9);
 
     return {
       segmentation: { pyannote: { model: status.segmentationModel } },
@@ -290,7 +291,7 @@ class DiarizationManager {
     const config = this.buildConfig(options);
     const status = this.getModelStatus();
     const startedAt = Date.now();
-    const maxAutoSpeakers = options.maxSpeakers || 15;
+    const maxAutoSpeakers = options.maxSpeakers || 8;
 
     try {
       const sherpa = this.loadSherpa();
