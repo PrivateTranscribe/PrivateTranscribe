@@ -43,7 +43,6 @@ const ACCEPT_ATTR = [
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
 const SPEAKER_COUNT_OPTIONS = [
-  { value: "auto", label: "Auto-detect" },
   { value: "2", label: "2 speakers" },
   { value: "3", label: "3 speakers" },
   { value: "4", label: "4 speakers" },
@@ -410,9 +409,9 @@ export default function TranscribePage() {
         skipOptimization: true,
       };
 
-      // Resolve expected speakers: "auto" → undefined (let clustering decide), otherwise parse as number
+      // Resolve expected speakers: always pass the numeric value when speaker labels are enabled
       const resolvedExpectedSpeakers =
-        speakerLabelsEnabled && expectedSpeakers !== "auto" ? Number(expectedSpeakers) : undefined;
+        speakerLabelsEnabled ? Number(expectedSpeakers) || 2 : undefined;
 
       let result;
       if (useLocalWhisper) {
