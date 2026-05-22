@@ -172,7 +172,7 @@ class DiarizationManager {
     const expectedSpeakers = Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
       ? options.expectedSpeakers
       : -1;
-    const threshold = toFiniteNumber(options.threshold, 0.9);
+    const threshold = toFiniteNumber(options.threshold, 0.5);
 
     return {
       segmentation: { pyannote: { model: status.segmentationModel } },
