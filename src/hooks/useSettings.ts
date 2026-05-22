@@ -377,11 +377,11 @@ export function useSettings() {
     });
 
   // Expected number of speakers for file transcription diarization.
-  // "2"-"6" = fixed cluster count hint passed to sherpa-onnx.
+  // "auto" = let the clustering algorithm decide; "2"-"6" = fixed hint.
   const [fileTranscriptionExpectedSpeakers, setFileTranscriptionExpectedSpeakers] =
-    useLocalStorage<string>("fileTranscriptionExpectedSpeakers", "2", {
+    useLocalStorage<string>("fileTranscriptionExpectedSpeakers", "auto", {
       serialize: String,
-      deserialize: (value) => (["2", "3", "4", "5", "6"].includes(value) ? value : "2"),
+      deserialize: (value) => (["auto", "2", "3", "4", "5", "6"].includes(value) ? value : "auto"),
     });
 
   // Legacy alias kept so older settings exports still work (SettingsPage may import this name).

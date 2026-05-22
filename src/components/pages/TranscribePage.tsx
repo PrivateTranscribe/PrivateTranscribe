@@ -43,6 +43,7 @@ const ACCEPT_ATTR = [
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
 const SPEAKER_COUNT_OPTIONS = [
+  { value: "auto", label: "Auto-detect" },
   { value: "2", label: "2 speakers" },
   { value: "3", label: "3 speakers" },
   { value: "4", label: "4 speakers" },
@@ -409,9 +410,9 @@ export default function TranscribePage() {
         skipOptimization: true,
       };
 
-      // Resolve expected speakers: always pass the numeric value when speaker labels are enabled
+      // Resolve expected speakers: "auto" → undefined (let clustering decide), otherwise parse as number
       const resolvedExpectedSpeakers =
-        speakerLabelsEnabled ? Number(expectedSpeakers) || 2 : undefined;
+        speakerLabelsEnabled && expectedSpeakers !== "auto" ? Number(expectedSpeakers) : undefined;
 
       let result;
       if (useLocalWhisper) {
@@ -735,7 +736,7 @@ export default function TranscribePage() {
                     <div>
                       <p className="text-sm font-medium text-foreground">Number of speakers</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Auto-detect is recommended. Only set manually if you&apos;re certain.
+                        Set the number of speakers for best results. Auto-detect may over-segment.
                       </p>
                     </div>
                   </div>
