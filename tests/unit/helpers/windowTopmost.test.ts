@@ -103,6 +103,16 @@ describe("windowManager.js — blur repair", () => {
     expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
+  test("turning taskbar snap off reclamps before downgrading z-order", () => {
+    const idx = windowManager.indexOf("setOverlaySnapToTaskbar");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 900);
+    const disabledClampIdx = block.indexOf('this._reclampOverlayPosition("taskbar-snap-disabled")');
+    const enforceIdx = block.indexOf("this.enforceMainWindowOnTop()");
+    expect(disabledClampIdx).toBeGreaterThan(-1);
+    expect(enforceIdx).toBeGreaterThan(disabledClampIdx);
+  });
+
   test("windows skips topmost re-apply while overlay is explicitly suspended", () => {
     expect(windowManager).toContain("isMainWindowOverlaySuspended");
     expect(windowManager).toContain('platform === "win32" && this.isMainWindowOverlaySuspended');

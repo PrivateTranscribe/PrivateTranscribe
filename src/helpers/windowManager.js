@@ -839,6 +839,8 @@ class WindowManager {
       debugLogger.info("[Overlay] Taskbar snap state changed:", next);
       if (next) {
         this._reclampOverlayPosition("taskbar-snap-enabled");
+      } else {
+        this._reclampOverlayPosition("taskbar-snap-disabled");
       }
       this.enforceMainWindowOnTop();
     }
