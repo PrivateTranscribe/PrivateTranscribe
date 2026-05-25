@@ -140,20 +140,73 @@ class WindowPositionUtil {
     return edge;
   }
 
+  static getTaskbarInset(display, edge) {
+    const bounds = display.bounds || {};
+    const workArea = display.workArea || bounds;
+    const insets = {
+      left: Math.max(0, workArea.x - bounds.x),
+      right: Math.max(0, bounds.x + bounds.width - (workArea.x + workArea.width)),
+      top: Math.max(0, workArea.y - bounds.y),
+      bottom: Math.max(0, bounds.y + bounds.height - (workArea.y + workArea.height)),
+    };
+    return insets[edge] || 0;
+  }
+
+  static clampButtonCenter(btnX, btnY, area) {
+    const clampedBtnX = Math.max(
+      area.x + BUTTON_HALF,
+      Math.min(btnX, area.x + area.width - BUTTON_HALF)
+    );
+    const clampedBtnY = Math.max(
+      area.y + BUTTON_HALF,
+      Math.min(btnY, area.y + area.height - BUTTON_HALF)
+    );
+    return {
+      x: Math.round(clampedBtnX - BUTTON_OFFSET_X),
+      y: Math.round(clampedBtnY - BUTTON_OFFSET_Y),
+    };
+  }
+
   static getTaskbarSnappedPosition(x, y, width, height, display) {
+    const bounds = display.bounds || {};
     const workArea = display.workArea || display.bounds;
     const edge = this.getTaskbarEdge(display);
+    const taskbarInset = this.getTaskbarInset(display, edge);
     const proposedBtnX = x + BUTTON_OFFSET_X;
     const proposedBtnY = y + BUTTON_OFFSET_Y;
 
     let btnX = proposedBtnX;
     let btnY = proposedBtnY;
 
+    // Auto-hidden taskbars can make workArea match bounds. In that case there is
+    // no visible taskbar band to sit on, so keep the button just inside the screen.
+    if (taskbarInset <= 0) {
+      if (edge === "left" || edge === "right") {
+        btnX =
+          edge === "left"
+            ? workArea.x + TASKBAR_SNAP_OFFSET
+            : workArea.x + workArea.width - TASKBAR_SNAP_OFFSET;
+      } else {
+        btnY =
+          edge === "top"
+            ? workArea.y + TASKBAR_SNAP_OFFSET
+            : workArea.y + workArea.height - TASKBAR_SNAP_OFFSET;
+      }
+      return this.clampPosition(
+        Math.round(btnX - BUTTON_OFFSET_X),
+        Math.round(btnY - BUTTON_OFFSET_Y),
+        width,
+        height,
+        workArea
+      );
+    }
+
     if (edge === "left" || edge === "right") {
-      btnX =
+      const taskbarStart =
         edge === "left"
-          ? workArea.x + TASKBAR_SNAP_OFFSET
-          : workArea.x + workArea.width - TASKBAR_SNAP_OFFSET;
+          ? bounds.x
+          : workArea.x + workArea.width;
+      btnX = taskbarStart + taskbarInset / 2;
       btnY = Math.max(
         workArea.y + BUTTON_HALF,
         Math.min(proposedBtnY, workArea.y + workArea.height - BUTTON_HALF)
@@ -163,39 +216,21 @@ class WindowPositionUtil {
         workArea.x + BUTTON_HALF,
         Math.min(proposedBtnX, workArea.x + workArea.width - BUTTON_HALF)
       );
-      btnY =
+      const taskbarStart =
         edge === "top"
-          ? workArea.y + TASKBAR_SNAP_OFFSET
-          : workArea.y + workArea.height - TASKBAR_SNAP_OFFSET;
+          ? bounds.y
+          : workArea.y + workArea.height;
+      btnY = taskbarStart + taskbarInset / 2;
     }
 
-    return this.clampPosition(
-      Math.round(btnX - BUTTON_OFFSET_X),
-      Math.round(btnY - BUTTON_OFFSET_Y),
-      width,
-      height,
-      workArea
-    );
+    return this.clampButtonCenter(btnX, btnY, bounds);
   }
 
   static clampPosition(x, y, width, height, workArea) {
     // Clamp so the full 44px button stays visible within the work area.
     // We clamp against the button *edge* (not just center) so the button can't hang off screen.
     // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
-    const btnX = x + BUTTON_OFFSET_X;
-    const btnY = y + BUTTON_OFFSET_Y;
-    const clampedBtnX = Math.max(
-      workArea.x + BUTTON_HALF,
-      Math.min(btnX, workArea.x + workArea.width - BUTTON_HALF)
-    );
-    const clampedBtnY = Math.max(
-      workArea.y + BUTTON_HALF,
-      Math.min(btnY, workArea.y + workArea.height - BUTTON_HALF)
-    );
-    return {
-      x: Math.round(clampedBtnX - BUTTON_OFFSET_X),
-      y: Math.round(clampedBtnY - BUTTON_OFFSET_Y),
-    };
+    return this.clampButtonCenter(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y, workArea);
   }
 
   static setupAlwaysOnTop(window) {
