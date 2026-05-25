@@ -28,8 +28,16 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
   });
 
   test("Windows uses floating level to avoid fullscreen game compositor churn", () => {
-    expect(windowConfig).toContain('setAlwaysOnTop(true, "floating")');
+    expect(windowConfig).toContain('aboveTaskbar ? "pop-up-menu" : "floating"');
     expect(windowConfig).toContain("reported with Minecraft/Tekkit");
+  });
+
+  test("Windows taskbar snap uses pop-up-menu level above the taskbar", () => {
+    expect(windowConfig).toContain("aboveTaskbar = false");
+    expect(windowConfig).toContain('aboveTaskbar ? "pop-up-menu" : "floating"');
+    expect(windowConfig).toContain("window.moveTop()");
+    expect(windowConfig).toContain("above the Windows taskbar");
+    expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
   test("Windows overlay is hidden from taskbar but focusable for clicks and drag", () => {
@@ -92,6 +100,7 @@ describe("windowManager.js — blur repair", () => {
 
   test("enforceMainWindowOnTop delegates to WindowPositionUtil.setupAlwaysOnTop", () => {
     expect(windowManager).toContain("WindowPositionUtil.setupAlwaysOnTop");
+    expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
   test("windows skips topmost re-apply while overlay is explicitly suspended", () => {

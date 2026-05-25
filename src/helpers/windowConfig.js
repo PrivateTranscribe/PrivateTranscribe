@@ -233,7 +233,9 @@ class WindowPositionUtil {
     return this.clampButtonCenter(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y, workArea);
   }
 
-  static setupAlwaysOnTop(window) {
+  static setupAlwaysOnTop(window, options = {}) {
+    const { aboveTaskbar = false } = options;
+
     if (process.platform === "darwin") {
       // macOS: Use panel level for proper floating behavior
       // This ensures the window stays on top across spaces and fullscreen apps
@@ -249,11 +251,15 @@ class WindowPositionUtil {
         window.setAlwaysOnTop(true, "floating", 1);
       }
     } else if (process.platform === "win32") {
-      // Avoid the very high pop-up-menu level for the passive overlay. That level
-      // can fight exclusive/borderless fullscreen games and cause compositor churn
-      // (reported with Minecraft/Tekkit). "floating" keeps the overlay above normal
-      // windows without behaving like an active menu layered over the game.
-      window.setAlwaysOnTop(true, "floating");
+      // Electron documents pop-up-menu and higher as the levels that are shown
+      // above the Windows taskbar. Use that only when the user explicitly opts
+      // into snapping the overlay onto the taskbar band; otherwise keep the
+      // passive overlay at "floating" to avoid compositor churn in fullscreen
+      // games (reported with Minecraft/Tekkit).
+      window.setAlwaysOnTop(true, aboveTaskbar ? "pop-up-menu" : "floating");
+      if (aboveTaskbar && typeof window.moveTop === "function") {
+        window.moveTop();
+      }
     } else {
       // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
       // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should

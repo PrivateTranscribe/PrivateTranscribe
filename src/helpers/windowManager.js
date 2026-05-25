@@ -830,7 +830,7 @@ class WindowManager {
   }
 
   setOverlaySnapToTaskbar(enabled) {
-    const next = enabled !== false;
+    const next = enabled === true;
     const changed = this.overlaySnapToTaskbar !== next;
     this.overlaySnapToTaskbar = next;
     this.dragManager.setTaskbarSnapEnabled(next);
@@ -840,6 +840,7 @@ class WindowManager {
       if (next) {
         this._reclampOverlayPosition("taskbar-snap-enabled");
       }
+      this.enforceMainWindowOnTop();
     }
   }
 
@@ -993,7 +994,9 @@ class WindowManager {
       if (process.platform === "win32" && this.isMainWindowOverlaySuspended) {
         return;
       }
-      WindowPositionUtil.setupAlwaysOnTop(this.mainWindow);
+      WindowPositionUtil.setupAlwaysOnTop(this.mainWindow, {
+        aboveTaskbar: this.overlaySnapToTaskbar,
+      });
     }
   }
 
