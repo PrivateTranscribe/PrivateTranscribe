@@ -1122,6 +1122,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setSuccessConfirmation,
     overlayDisabled,
     setOverlayDisabled,
+    overlaySnapToTaskbar,
+    setOverlaySnapToTaskbar,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
@@ -1157,10 +1159,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       .catch(() => setCorrectionCount(0));
   }, [enableCorrectionLearning]);
 
-  // Sync overlay disabled state to main process on settings mount
+  // Sync overlay visibility/position state to main process on settings mount
   useEffect(() => {
     window.electronAPI?.setOverlayDisabled?.(overlayDisabled).catch(() => {});
-  }, []);
+    window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
+  }, [overlayDisabled, overlaySnapToTaskbar]);
 
   const handleClearCorrections = useCallback(async () => {
     if (!clearConfirmPending) {
@@ -1252,6 +1255,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           audioFeedback,
           errorNotifications,
           successConfirmation,
+          overlaySnapToTaskbar,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1307,6 +1311,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       audioFeedback,
       errorNotifications,
       successConfirmation,
+      overlaySnapToTaskbar,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1471,6 +1476,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.audioFeedback === "boolean") setAudioFeedback(s.audioFeedback);
       if (typeof s.errorNotifications === "boolean") setErrorNotifications(s.errorNotifications);
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
+      if (typeof s.overlaySnapToTaskbar === "boolean") {
+        setOverlaySnapToTaskbar(s.overlaySnapToTaskbar);
+        window.electronAPI?.setOverlaySnapToTaskbar?.(s.overlaySnapToTaskbar).catch(() => {});
+      }
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
       if (s.selectedMicDeviceId !== undefined) {
@@ -2302,6 +2311,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description="Automatically open settings when transcription fails"
                   >
                     <Toggle checked={showPanelOnError} onChange={setShowPanelOnError} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Snap overlay to taskbar"
+                    description="Keep the overlay aligned with the taskbar edge. You can still drag it along the taskbar and onto another monitor."
+                  >
+                    <Toggle
+                      checked={overlaySnapToTaskbar}
+                      onChange={(checked) => {
+                        setOverlaySnapToTaskbar(checked);
+                        window.electronAPI?.setOverlaySnapToTaskbar?.(checked).catch(() => {});
+                      }}
+                    />
                   </SettingsRow>
                 </SettingsPanelRow>
                 <SettingsPanelRow>

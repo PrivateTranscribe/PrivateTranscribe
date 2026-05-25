@@ -11,6 +11,8 @@ const CONTAINER_H = 500;
 // top-left corner and are used to convert between window position and button screen position.
 const BUTTON_OFFSET_X = CONTAINER_W / 2; // 200 — horizontal center of container
 const BUTTON_OFFSET_Y = CONTAINER_H - 58 - 22; // 420 — 58px from bottom + half button height
+const BUTTON_HALF = 22; // half of the 44px overlay button
+const TASKBAR_SNAP_OFFSET = 80; // button-center distance from the taskbar-side workArea edge
 
 // Legacy size constants kept for reference only. The overlay no longer resizes
 // between these states at runtime.
@@ -113,11 +115,72 @@ class WindowPositionUtil {
     return { x, y, width: CONTAINER_W, height: CONTAINER_H };
   }
 
+  static getTaskbarEdge(display) {
+    const bounds = display.bounds || {};
+    const workArea = display.workArea || bounds;
+    const insets = {
+      left: Math.max(0, workArea.x - bounds.x),
+      right: Math.max(0, bounds.x + bounds.width - (workArea.x + workArea.width)),
+      top: Math.max(0, workArea.y - bounds.y),
+      bottom: Math.max(0, bounds.y + bounds.height - (workArea.y + workArea.height)),
+    };
+
+    let edge = "bottom";
+    let maxInset = 0;
+    for (const [candidateEdge, inset] of Object.entries(insets)) {
+      if (inset > maxInset) {
+        maxInset = inset;
+        edge = candidateEdge;
+      }
+    }
+
+    // Auto-hidden taskbars can make workArea equal bounds. Bottom is the least surprising
+    // fallback and matches the current Windows 11 default.
+    return edge;
+  }
+
+  static getTaskbarSnappedPosition(x, y, width, height, display) {
+    const workArea = display.workArea || display.bounds;
+    const edge = this.getTaskbarEdge(display);
+    const proposedBtnX = x + BUTTON_OFFSET_X;
+    const proposedBtnY = y + BUTTON_OFFSET_Y;
+
+    let btnX = proposedBtnX;
+    let btnY = proposedBtnY;
+
+    if (edge === "left" || edge === "right") {
+      btnX =
+        edge === "left"
+          ? workArea.x + TASKBAR_SNAP_OFFSET
+          : workArea.x + workArea.width - TASKBAR_SNAP_OFFSET;
+      btnY = Math.max(
+        workArea.y + BUTTON_HALF,
+        Math.min(proposedBtnY, workArea.y + workArea.height - BUTTON_HALF)
+      );
+    } else {
+      btnX = Math.max(
+        workArea.x + BUTTON_HALF,
+        Math.min(proposedBtnX, workArea.x + workArea.width - BUTTON_HALF)
+      );
+      btnY =
+        edge === "top"
+          ? workArea.y + TASKBAR_SNAP_OFFSET
+          : workArea.y + workArea.height - TASKBAR_SNAP_OFFSET;
+    }
+
+    return this.clampPosition(
+      Math.round(btnX - BUTTON_OFFSET_X),
+      Math.round(btnY - BUTTON_OFFSET_Y),
+      width,
+      height,
+      workArea
+    );
+  }
+
   static clampPosition(x, y, width, height, workArea) {
     // Clamp so the full 44px button stays visible within the work area.
     // We clamp against the button *edge* (not just center) so the button can't hang off screen.
     // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
-    const BUTTON_HALF = 22; // half of 44px button
     const btnX = x + BUTTON_OFFSET_X;
     const btnY = y + BUTTON_OFFSET_Y;
     const clampedBtnX = Math.max(
@@ -195,5 +258,6 @@ module.exports = {
   CONTAINER_H,
   BUTTON_OFFSET_X,
   BUTTON_OFFSET_Y,
+  TASKBAR_SNAP_OFFSET,
   WindowPositionUtil,
 };

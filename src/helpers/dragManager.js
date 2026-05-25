@@ -14,6 +14,7 @@ class DragManager {
     this.mouseTrackingInterval = null;
     this.targetWindow = null;
     this._positionChangeCallback = null;
+    this.snapToTaskbar = true;
   }
 
   setTargetWindow(window) {
@@ -22,6 +23,10 @@ class DragManager {
 
   setPositionChangeCallback(callback) {
     this._positionChangeCallback = typeof callback === "function" ? callback : null;
+  }
+
+  setTaskbarSnapEnabled(enabled) {
+    this.snapToTaskbar = enabled !== false;
   }
 
   async startWindowDrag() {
@@ -103,13 +108,15 @@ class DragManager {
       };
       const display = screen.getDisplayNearestPoint(proposedButtonPoint);
       const workArea = display.workArea || display.bounds;
-      const constrained = WindowPositionUtil.clampPosition(
-        newX,
-        newY,
-        CONTAINER_W,
-        CONTAINER_H,
-        workArea
-      );
+      const constrained = this.snapToTaskbar
+        ? WindowPositionUtil.getTaskbarSnappedPosition(
+            newX,
+            newY,
+            CONTAINER_W,
+            CONTAINER_H,
+            display
+          )
+        : WindowPositionUtil.clampPosition(newX, newY, CONTAINER_W, CONTAINER_H, workArea);
 
       this.targetWindow.setPosition(constrained.x, constrained.y);
 

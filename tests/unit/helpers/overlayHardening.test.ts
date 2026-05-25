@@ -47,13 +47,22 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(windowManager).toContain("getPrimaryDisplay");
   });
 
-  test("re-clamping uses shared clampPosition util against the active workArea", () => {
+  test("re-clamping uses shared overlay constraint logic against the active display", () => {
     const idx = windowManager.indexOf("_reclampOverlayPosition");
     expect(idx).toBeGreaterThan(-1);
     const block = windowManager.slice(idx, idx + 5000);
-    expect(block).toContain("WindowPositionUtil.clampPosition");
+    expect(block).toContain("this._constrainOverlayPosition");
     expect(block).toContain("display.workArea || display.bounds");
     expect(block).toContain("this.mainWindow.setBounds");
+  });
+
+  test("overlay constraint falls back to clampPosition when taskbar snap is disabled", () => {
+    const idx = windowManager.indexOf("_constrainOverlayPosition");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 1000);
+    expect(block).toContain("this.overlaySnapToTaskbar");
+    expect(block).toContain("WindowPositionUtil.getTaskbarSnappedPosition");
+    expect(block).toContain("WindowPositionUtil.clampPosition");
   });
 
   test("saved/restored overlay math still anchors to button offsets", () => {

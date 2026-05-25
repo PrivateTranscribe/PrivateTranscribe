@@ -65,6 +65,7 @@ export interface BehaviorSettings {
   errorNotifications: boolean;
   successConfirmation: boolean;
   overlayDisabled: boolean;
+  overlaySnapToTaskbar: boolean;
 }
 
 let lastSyncedStartupPreferencesKey = "";
@@ -808,6 +809,11 @@ export function useSettings() {
     false,
     boolSerializer
   );
+  const [overlaySnapToTaskbar, setOverlaySnapToTaskbar] = useLocalStorage(
+    "overlaySnapToTaskbar",
+    true,
+    boolSerializer
+  );
 
   const updateBehaviorSettings = useCallback(
     (settings: Partial<BehaviorSettings>) => {
@@ -820,6 +826,8 @@ export function useSettings() {
       if (settings.successConfirmation !== undefined)
         setSuccessConfirmation(settings.successConfirmation);
       if (settings.overlayDisabled !== undefined) setOverlayDisabled(settings.overlayDisabled);
+      if (settings.overlaySnapToTaskbar !== undefined)
+        setOverlaySnapToTaskbar(settings.overlaySnapToTaskbar);
     },
     [
       setAutoPaste,
@@ -829,6 +837,7 @@ export function useSettings() {
       setErrorNotifications,
       setSuccessConfirmation,
       setOverlayDisabled,
+      setOverlaySnapToTaskbar,
     ]
   );
 
@@ -1059,6 +1068,8 @@ export function useSettings() {
     setSuccessConfirmation,
     overlayDisabled,
     setOverlayDisabled,
+    overlaySnapToTaskbar,
+    setOverlaySnapToTaskbar,
     updateBehaviorSettings,
     apiKeySyncError,
     clearApiKeySyncError,

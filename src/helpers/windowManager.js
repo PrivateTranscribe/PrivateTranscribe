@@ -40,6 +40,7 @@ class WindowManager {
     this.mainWindowRendererReady = false;
     this._overlayStateChangeCallback = null;
     this.overlayDisabled = false;
+    this.overlaySnapToTaskbar = true;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the
@@ -200,6 +201,14 @@ class WindowManager {
     }, 500);
   }
 
+  _constrainOverlayPosition(x, y, width, height, display) {
+    const workArea = display.workArea || display.bounds;
+    if (this.overlaySnapToTaskbar) {
+      return WindowPositionUtil.getTaskbarSnappedPosition(x, y, width, height, display);
+    }
+    return WindowPositionUtil.clampPosition(x, y, width, height, workArea);
+  }
+
   _reclampOverlayPosition(reason) {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
     const bounds = this.mainWindow.getBounds();
@@ -209,13 +218,13 @@ class WindowManager {
       x: bounds.x + BUTTON_OFFSET_X,
       y: bounds.y + BUTTON_OFFSET_Y,
     });
-    const workArea = display.workArea || display.bounds;
-    const clamped = WindowPositionUtil.clampPosition(bounds.x, bounds.y, width, height, workArea);
+    const clamped = this._constrainOverlayPosition(bounds.x, bounds.y, width, height, display);
     if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
       debugLogger.info("[Window] Re-clamping overlay after", reason, {
         from: { x: bounds.x, y: bounds.y },
         to: clamped,
-        workArea,
+        workArea: display.workArea || display.bounds,
+        snapToTaskbar: this.overlaySnapToTaskbar,
       });
       this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
       this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
@@ -239,17 +248,24 @@ class WindowManager {
       const winX = btnX - BUTTON_OFFSET_X;
       const winY = btnY - BUTTON_OFFSET_Y;
       const savedDisplay = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
-      const savedWorkArea = savedDisplay.workArea || savedDisplay.bounds;
-      const clamped = WindowPositionUtil.clampPosition(
+      const clamped = this._constrainOverlayPosition(
         winX,
         winY,
         CONTAINER_W,
         CONTAINER_H,
-        savedWorkArea
+        savedDisplay
       );
       position = { ...clamped, width: CONTAINER_W, height: CONTAINER_H };
     } else {
-      position = WindowPositionUtil.getMainWindowPosition(display);
+      const defaultPosition = WindowPositionUtil.getMainWindowPosition(display);
+      const constrained = this._constrainOverlayPosition(
+        defaultPosition.x,
+        defaultPosition.y,
+        CONTAINER_W,
+        CONTAINER_H,
+        display
+      );
+      position = { ...constrained, width: CONTAINER_W, height: CONTAINER_H };
     }
 
     this.mainWindow = new BrowserWindow({
@@ -299,6 +315,7 @@ class WindowManager {
     await this.loadMainWindow();
     await this.waitForMainWindowRendererReady();
     this.dragManager.setTargetWindow(this.mainWindow);
+    this.dragManager.setTaskbarSnapEnabled(this.overlaySnapToTaskbar);
     this.dragManager.setPositionChangeCallback((winX, winY) => {
       this._scheduleSavePosition(winX + BUTTON_OFFSET_X, winY + BUTTON_OFFSET_Y);
     });
@@ -810,6 +827,24 @@ class WindowManager {
 
   isOverlayDisabled() {
     return this.overlayDisabled;
+  }
+
+  setOverlaySnapToTaskbar(enabled) {
+    const next = enabled !== false;
+    const changed = this.overlaySnapToTaskbar !== next;
+    this.overlaySnapToTaskbar = next;
+    this.dragManager.setTaskbarSnapEnabled(next);
+
+    if (changed) {
+      debugLogger.info("[Overlay] Taskbar snap state changed:", next);
+      if (next) {
+        this._reclampOverlayPosition("taskbar-snap-enabled");
+      }
+    }
+  }
+
+  isOverlaySnapToTaskbarEnabled() {
+    return this.overlaySnapToTaskbar;
   }
 
   isDictationPanelVisible() {

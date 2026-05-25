@@ -333,6 +333,12 @@ declare global {
       pasteText: (text: string) => Promise<void>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
+      setOverlayDisabled?: (disabled: boolean) => Promise<{ success: boolean; disabled: boolean }>;
+      getOverlayDisabled?: () => Promise<{ disabled: boolean }>;
+      setOverlaySnapToTaskbar?: (
+        enabled: boolean
+      ) => Promise<{ success: boolean; enabled: boolean }>;
+      getOverlaySnapToTaskbar?: () => Promise<{ enabled: boolean }>;
       notifyDictationOverlayReady?: () => Promise<{ success: boolean }>;
       openControlPanel?: () => Promise<{ success: boolean }>;
       onToggleDictation: (callback: () => void) => (() => void) | void;

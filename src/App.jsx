@@ -213,6 +213,8 @@ export default function App() {
     if (overlayDisabled) {
       window.electronAPI?.setOverlayDisabled?.(true).catch(() => {});
     }
+    const overlaySnapToTaskbar = localStorage.getItem("overlaySnapToTaskbar") !== "false";
+    window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
   }, []);
 
   const setWindowInteractivity = useCallback((shouldCapture) => {

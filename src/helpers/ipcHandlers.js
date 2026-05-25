@@ -191,6 +191,15 @@ class IPCHandlers {
       return { disabled: this.windowManager.isOverlayDisabled() };
     });
 
+    ipcMain.handle("set-overlay-snap-to-taskbar", (_event, enabled) => {
+      this.windowManager.setOverlaySnapToTaskbar(Boolean(enabled));
+      return { success: true, enabled: this.windowManager.isOverlaySnapToTaskbarEnabled() };
+    });
+
+    ipcMain.handle("get-overlay-snap-to-taskbar", () => {
+      return { enabled: this.windowManager.isOverlaySnapToTaskbarEnabled() };
+    });
+
     ipcMain.handle("notify-dictation-completed", () => {
       // When overlay is disabled, destroy the hidden window after dictation
       // to eliminate DWM lag while gaming.
