@@ -12,7 +12,8 @@ const CONTAINER_H = 500;
 const BUTTON_OFFSET_X = CONTAINER_W / 2; // 200 — horizontal center of container
 const BUTTON_OFFSET_Y = CONTAINER_H - 58 - 22; // 420 — 58px from bottom + half button height
 const BUTTON_HALF = 22; // half of the 44px overlay button
-const TASKBAR_SNAP_OFFSET = 80; // button-center distance from the taskbar-side workArea edge
+const TASKBAR_SNAP_GAP = 8; // visible gap between the overlay button and taskbar/work-area edge
+const TASKBAR_SNAP_OFFSET = BUTTON_HALF + TASKBAR_SNAP_GAP; // button-center distance from that edge
 
 // Legacy size constants kept for reference only. The overlay no longer resizes
 // between these states at runtime.
@@ -258,6 +259,8 @@ module.exports = {
   CONTAINER_H,
   BUTTON_OFFSET_X,
   BUTTON_OFFSET_Y,
+  BUTTON_HALF,
+  TASKBAR_SNAP_GAP,
   TASKBAR_SNAP_OFFSET,
   WindowPositionUtil,
 };
