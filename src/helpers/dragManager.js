@@ -14,7 +14,7 @@ class DragManager {
     this.mouseTrackingInterval = null;
     this.targetWindow = null;
     this._positionChangeCallback = null;
-    this.snapToTaskbar = true;
+    this.snapToTaskbar = false;
   }
 
   setTargetWindow(window) {
@@ -26,7 +26,7 @@ class DragManager {
   }
 
   setTaskbarSnapEnabled(enabled) {
-    this.snapToTaskbar = enabled !== false;
+    this.snapToTaskbar = enabled === true;
   }
 
   async startWindowDrag() {

@@ -40,7 +40,7 @@ class WindowManager {
     this.mainWindowRendererReady = false;
     this._overlayStateChangeCallback = null;
     this.overlayDisabled = false;
-    this.overlaySnapToTaskbar = true;
+    this.overlaySnapToTaskbar = false;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
     // Applies on Windows and Linux (incl. Unity desktop); macOS is exempt - the

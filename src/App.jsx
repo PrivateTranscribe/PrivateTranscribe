@@ -213,7 +213,7 @@ export default function App() {
     if (overlayDisabled) {
       window.electronAPI?.setOverlayDisabled?.(true).catch(() => {});
     }
-    const overlaySnapToTaskbar = localStorage.getItem("overlaySnapToTaskbar") !== "false";
+    const overlaySnapToTaskbar = localStorage.getItem("overlaySnapToTaskbar") === "true";
     window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
   }, []);
 

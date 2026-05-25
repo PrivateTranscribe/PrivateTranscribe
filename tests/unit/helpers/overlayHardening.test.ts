@@ -65,6 +65,15 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(block).toContain("WindowPositionUtil.clampPosition");
   });
 
+  test("taskbar snap is opt-in by default", () => {
+    expect(windowManager).toContain("this.overlaySnapToTaskbar = false");
+    expect(dragManager).toContain("this.snapToTaskbar = false");
+    expect(dragManager).toContain("this.snapToTaskbar = enabled === true");
+    expect(appJsx).toContain(
+      'localStorage.getItem("overlaySnapToTaskbar") === "true"'
+    );
+  });
+
   test("saved/restored overlay math still anchors to button offsets", () => {
     // The fixed transparent container keeps the button as the durable anchor.
     expect(windowManager).toContain("BUTTON_OFFSET_X");
