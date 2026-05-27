@@ -147,6 +147,17 @@ class DragManager {
     return { ...this.dragOffset };
   }
 
+  /**
+   * Reset drag state without destroying the target window reference.
+   * Safe to call after sleep/wake to clear any stuck isDragging=true state
+   * that occurred if the system slept during an active drag.
+   */
+  resetDragState() {
+    this.stopMouseTracking();
+    this.isDragging = false;
+    this.dragOffset = { x: 0, y: 0 };
+  }
+
   cleanup() {
     this.stopWindowDrag();
     this.targetWindow = null;

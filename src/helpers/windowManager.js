@@ -231,6 +231,10 @@ class WindowManager {
     } else {
       debugLogger.debug("[Window] Overlay already within bounds after", reason);
     }
+    // Always re-enforce z-order after any reclamping — the window may have lost its
+    // always-on-top level during sleep/wake or display-metrics changes, which causes
+    // it to appear behind the taskbar even if the position is correct.
+    this.enforceMainWindowOnTop();
   }
 
   async createMainWindow() {
@@ -323,12 +327,18 @@ class WindowManager {
 
     // Re-clamp the overlay after sleep/wake so it doesn't drift when the workArea
     // changes (e.g. taskbar reappears at a different height, DPI scaling adjusts).
-    // Delay slightly to let the OS finish restoring display configuration.
+    // Use a longer delay (2500ms) to let Windows fully restore the taskbar work area
+    // and DPI state before we read display metrics. 1000ms was too short in practice.
     this._powerResumeHandler = () => {
+      // Reset any stuck drag state: if sleep interrupted an active drag the
+      // isDragging flag stays true, causing startWindowDrag() to return early and
+      // leaving the overlay unmovable after wake.
+      this.dragManager.resetDragState();
+
       setTimeout(() => {
         this._reclampOverlayPosition("resume");
         this._refreshMainWindowInteractivity("resume");
-      }, 1000);
+      }, 2500);
     };
     powerMonitor.on("resume", this._powerResumeHandler);
 

@@ -179,7 +179,44 @@ describe("App.jsx — Escape key during recording/processing", () => {
   });
 });
 
-// ─── Language submenu overflow prevention ────────────────────────────────────
+// ─── Sleep/wake drag and z-order hardening ─────────────────────────────────
+
+describe("windowManager.js — sleep/wake overlay recovery", () => {
+  test("power resume handler resets stuck drag state before reclamping", () => {
+    // If sleep interrupted an active drag, isDragging stays true and
+    // startWindowDrag() returns early ('drag already active'), leaving the
+    // overlay unmovable. The resume handler must call resetDragState() first.
+    const idx = windowManager.indexOf("_powerResumeHandler = ()");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 600);
+    expect(block).toContain("resetDragState");
+    expect(block).toContain("_reclampOverlayPosition");
+  });
+
+  test("power resume handler uses a longer delay to wait for display metrics to settle", () => {
+    const idx = windowManager.indexOf("_powerResumeHandler = ()");
+    const block = windowManager.slice(idx, idx + 600);
+    // 2500ms is the minimum stable delay for Windows taskbar work area
+    expect(block).toContain(", 2500)");
+  });
+
+  test("_reclampOverlayPosition always calls enforceMainWindowOnTop after repositioning", () => {
+    // Find the method definition (not a call site) — it starts with two spaces indent
+    const idx = windowManager.indexOf("  _reclampOverlayPosition(reason) {");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 1500);
+    // enforceMainWindowOnTop must appear in the method body so z-order is
+    // restored even when the position didn't need clamping.
+    expect(block).toContain("enforceMainWindowOnTop");
+  });
+
+  test("dragManager exposes resetDragState to cleanly clear stuck isDragging flag", () => {
+    expect(dragManager).toContain("resetDragState()");
+    expect(dragManager).toContain("this.isDragging = false");
+    expect(dragManager).toContain("stopMouseTracking()");
+  });
+});
+
 
 describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => {
   test("quickLanguages is sliced to at most 7 entries", () => {
