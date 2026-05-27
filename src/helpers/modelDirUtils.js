@@ -17,7 +17,6 @@ function migrateModelDirIfNeeded() {
     const newBase = path.join(homeDir, ".cache", NEW_CACHE_DIR);
 
     if (!fs.existsSync(oldBase)) return;
-    if (fs.existsSync(newBase)) return; // already migrated
 
     fs.mkdirSync(newBase, { recursive: true });
 
@@ -25,6 +24,7 @@ function migrateModelDirIfNeeded() {
     for (const entry of fs.readdirSync(oldBase)) {
       const src = path.join(oldBase, entry);
       const dest = path.join(newBase, entry);
+      if (fs.existsSync(dest)) continue; // Never overwrite user data in the new cache.
       try {
         fs.renameSync(src, dest);
       } catch {
