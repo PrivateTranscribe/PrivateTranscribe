@@ -1826,7 +1826,7 @@ class IPCHandlers {
     ipcMain.handle("get-machine-id", async () => {
       try {
         const { machineIdSync } = require("node-machine-id");
-        return { id: machineIdSync(true) }; // true = original (not hashed)
+        return { id: machineIdSync(false) };
       } catch {
         // Fallback: use a persisted random ID
         const path = require("path");
