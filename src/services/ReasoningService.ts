@@ -19,6 +19,89 @@ import {
  */
 export const DEFAULT_PROMPTS = LEGACY_PROMPTS;
 
+function getTextLength(value: unknown): number | undefined {
+  return typeof value === "string" ? value.length : undefined;
+}
+
+function summarizeMessageForLog(message: any): Record<string, unknown> {
+  const content = message?.content;
+  return {
+    role: message?.role,
+    contentLength:
+      typeof content === "string"
+        ? content.length
+        : Array.isArray(content)
+          ? content.reduce((sum, part) => sum + (getTextLength(part?.text) || 0), 0)
+          : undefined,
+  };
+}
+
+function summarizeRequestBodyForLog(requestBody: any): Record<string, unknown> {
+  return {
+    keys: requestBody ? Object.keys(requestBody) : [],
+    model: requestBody?.model,
+    temperature: requestBody?.temperature ?? requestBody?.generationConfig?.temperature,
+    maxTokens:
+      requestBody?.max_tokens ??
+      requestBody?.max_completion_tokens ??
+      requestBody?.generationConfig?.maxOutputTokens,
+    store: requestBody?.store,
+    messageCount: Array.isArray(requestBody?.messages) ? requestBody.messages.length : undefined,
+    messages: Array.isArray(requestBody?.messages)
+      ? requestBody.messages.map(summarizeMessageForLog)
+      : undefined,
+    inputCount: Array.isArray(requestBody?.input) ? requestBody.input.length : undefined,
+    contentsCount: Array.isArray(requestBody?.contents) ? requestBody.contents.length : undefined,
+    contentTextLength: Array.isArray(requestBody?.contents)
+      ? requestBody.contents.reduce((sum: number, item: any) => {
+          const parts = Array.isArray(item?.parts) ? item.parts : [];
+          return (
+            sum +
+            parts.reduce(
+              (partSum: number, part: any) => partSum + (getTextLength(part?.text) || 0),
+              0
+            )
+          );
+        }, 0)
+      : undefined,
+  };
+}
+
+function summarizeResponseForLog(response: any): Record<string, unknown> {
+  return {
+    hasResponse: !!response,
+    responseKeys: response ? Object.keys(response) : [],
+    hasChoices: Array.isArray(response?.choices),
+    choicesLength: Array.isArray(response?.choices) ? response.choices.length : 0,
+    hasOutput: Array.isArray(response?.output),
+    outputLength: Array.isArray(response?.output) ? response.output.length : 0,
+    hasCandidates: Array.isArray(response?.candidates),
+    candidatesLength: Array.isArray(response?.candidates) ? response.candidates.length : 0,
+    usage: response?.usage,
+    usageMetadata: response?.usageMetadata,
+  };
+}
+
+function summarizeApiErrorForLog(errorData: any): Record<string, unknown> {
+  const error = errorData?.error;
+  const message =
+    typeof error === "string"
+      ? error
+      : typeof error?.message === "string"
+        ? error.message
+        : typeof errorData?.message === "string"
+          ? errorData.message
+          : undefined;
+
+  return {
+    keys: errorData ? Object.keys(errorData) : [],
+    errorType: typeof error === "object" ? error?.type : undefined,
+    errorCode: typeof error === "object" ? error?.code : undefined,
+    hasMessage: typeof message === "string" && message.length > 0,
+    messageLength: typeof message === "string" ? message.length : undefined,
+  };
+}
+
 class ReasoningService extends BaseReasoningService {
   private apiKeyCache: SecureCache<string>;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
@@ -389,7 +472,7 @@ class ReasoningService extends BaseReasoningService {
       endpoint,
       model,
       hasApiKey: !!apiKey,
-      requestBody: JSON.stringify(requestBody).substring(0, 200),
+      request: summarizeRequestBodyForLog(requestBody),
     });
 
     const response = await withRetry(async () => {
@@ -415,9 +498,9 @@ class ReasoningService extends BaseReasoningService {
         logger.logReasoning(`${providerName.toUpperCase()}_API_ERROR_DETAIL`, {
           status: res.status,
           statusText: res.statusText,
-          error: errorData,
-          errorMessage: errorData.error?.message || errorData.message || errorData.error,
-          fullResponse: errorText.substring(0, 500),
+          error: summarizeApiErrorForLog(errorData),
+          hasErrorMessage: !!(errorData.error?.message || errorData.message || errorData.error),
+          responseBodyLength: errorText.length,
         });
 
         const errorMessage =
@@ -431,11 +514,7 @@ class ReasoningService extends BaseReasoningService {
       const jsonResponse = await res.json();
 
       logger.logReasoning(`${providerName.toUpperCase()}_RAW_RESPONSE`, {
-        hasResponse: !!jsonResponse,
-        responseKeys: jsonResponse ? Object.keys(jsonResponse) : [],
-        hasChoices: !!jsonResponse?.choices,
-        choicesLength: jsonResponse?.choices?.length || 0,
-        fullResponse: JSON.stringify(jsonResponse).substring(0, 500),
+        ...summarizeResponseForLog(jsonResponse),
       });
 
       return jsonResponse;
@@ -444,7 +523,7 @@ class ReasoningService extends BaseReasoningService {
     if (!response.choices || !response.choices[0]) {
       logger.logReasoning(`${providerName.toUpperCase()}_RESPONSE_ERROR`, {
         model,
-        response: JSON.stringify(response).substring(0, 500),
+        response: summarizeResponseForLog(response),
         hasChoices: !!response.choices,
         choicesCount: response.choices?.length || 0,
       });
@@ -459,7 +538,7 @@ class ReasoningService extends BaseReasoningService {
         model,
         finishReason: choice.finish_reason,
         hasMessage: !!choice.message,
-        response: JSON.stringify(choice).substring(0, 500),
+        response: summarizeResponseForLog({ choices: [choice] }),
       });
       throw new Error(`${providerName} returned empty response`);
     }
@@ -960,7 +1039,7 @@ class ReasoningService extends BaseReasoningService {
             endpoint: `${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`,
             model,
             hasApiKey: !!apiKey,
-            requestBody: JSON.stringify(requestBody).substring(0, 200),
+            request: summarizeRequestBodyForLog(requestBody),
           });
 
           const res = await fetch(`${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`, {
@@ -985,9 +1064,9 @@ class ReasoningService extends BaseReasoningService {
             logger.logReasoning("GEMINI_API_ERROR_DETAIL", {
               status: res.status,
               statusText: res.statusText,
-              error: errorData,
-              errorMessage: errorData.error?.message || errorData.message || errorData.error,
-              fullResponse: errorText.substring(0, 500),
+              error: summarizeApiErrorForLog(errorData),
+              hasErrorMessage: !!(errorData.error?.message || errorData.message || errorData.error),
+              responseBodyLength: errorText.length,
             });
 
             const errorMessage =
@@ -1001,11 +1080,7 @@ class ReasoningService extends BaseReasoningService {
           const jsonResponse = await res.json();
 
           logger.logReasoning("GEMINI_RAW_RESPONSE", {
-            hasResponse: !!jsonResponse,
-            responseKeys: jsonResponse ? Object.keys(jsonResponse) : [],
-            hasCandidates: !!jsonResponse?.candidates,
-            candidatesLength: jsonResponse?.candidates?.length || 0,
-            fullResponse: JSON.stringify(jsonResponse).substring(0, 500),
+            ...summarizeResponseForLog(jsonResponse),
           });
 
           return jsonResponse;
@@ -1013,7 +1088,7 @@ class ReasoningService extends BaseReasoningService {
       } catch (fetchError) {
         logger.logReasoning("GEMINI_FETCH_ERROR", {
           error: (fetchError as Error).message,
-          stack: (fetchError as Error).stack,
+          errorType: (fetchError as Error).name,
         });
         throw fetchError;
       }
@@ -1021,7 +1096,7 @@ class ReasoningService extends BaseReasoningService {
       if (!response.candidates || !response.candidates[0]) {
         logger.logReasoning("GEMINI_RESPONSE_ERROR", {
           model,
-          response: JSON.stringify(response).substring(0, 500),
+          response: summarizeResponseForLog(response),
           hasCandidate: !!response.candidates,
           candidateCount: response.candidates?.length || 0,
         });
@@ -1035,7 +1110,7 @@ class ReasoningService extends BaseReasoningService {
           finishReason: candidate.finishReason,
           hasContent: !!candidate.content,
           hasParts: !!candidate.content?.parts,
-          response: JSON.stringify(candidate).substring(0, 500),
+          response: summarizeResponseForLog({ candidates: [candidate] }),
         });
 
         if (candidate.finishReason === "MAX_TOKENS") {
