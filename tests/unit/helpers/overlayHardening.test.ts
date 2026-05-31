@@ -260,7 +260,7 @@ describe("windowManager.js — sleep/wake overlay recovery", () => {
 
 describe("main.js / windowManager.js — startup overlay readiness", () => {
   test("startup delays initial overlay show so renderer IPC is ready", () => {
-    expect(mainJs).toContain("initialShowDelayMs: 1000");
+    expect(mainJs).toContain("initialShowDelayMs: 2000");
     expect(windowManager).toContain("initialShowDelayMs");
     expect(windowManager).toContain("setTimeout(showOverlay, initialShowDelayMs)");
   });
