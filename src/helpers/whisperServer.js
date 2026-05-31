@@ -1164,7 +1164,7 @@ class WhisperServerManager {
       form.append("no_context", "true");
       form.append("suppress_nst", "true");
       form.append("temperature", "0.0");
-      form.append("temperature_inc", "0.0");
+      form.append("temperature_inc", "0.2");
       form.append("no_speech_thold", "0.45");
     }
 

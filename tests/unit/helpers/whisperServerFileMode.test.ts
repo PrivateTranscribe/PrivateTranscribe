@@ -59,6 +59,7 @@ describe("WhisperServer file mode", () => {
     expect(body).toContain('name="suppress_nst"');
     expect(body).toContain('name="temperature"');
     expect(body).toContain('name="temperature_inc"');
+    expect(body).toMatch(/name="temperature_inc"[\s\S]*0\.2/);
     expect(body).toContain('name="no_speech_thold"');
   });
 
