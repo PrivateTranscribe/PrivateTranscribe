@@ -39,6 +39,14 @@ function makeBlob() {
   return new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/webm" });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("AudioManager Smart Context whisper prompt assembly", () => {
   beforeEach(() => {
     (globalThis as any).localStorage = localStorageMock;
@@ -62,7 +70,9 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
         identifiers: ["processWithLocalWhisper", "initialPrompt"],
       },
     } as any);
-    mockedBuildWhisperContextHint.mockReturnValue("App: VS Code, Window: audioManager.js — privoca");
+    mockedBuildWhisperContextHint.mockReturnValue(
+      "App: VS Code, Window: audioManager.js — privoca"
+    );
     mockedBuildFileIdentifierHint.mockReturnValue(
       "Identifiers: processWithLocalWhisper initialPrompt"
     );
@@ -74,6 +84,7 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
         text: "hello world",
       }),
     };
+    (globalThis as any).electronAPI = (globalThis.window as any).electronAPI;
   });
 
   it("includes dictionary, smart context, and file identifier hints in local Whisper initialPrompt", async () => {
@@ -106,5 +117,50 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
     expect(options.translate).toBe(true);
     expect(options.initialPrompt).toBeUndefined();
+  });
+
+  it("starts correction hints, smart context, and audio buffer reads in parallel", async () => {
+    const correctionMemory = deferred<any[]>();
+    const smartContext = deferred<any>();
+    const audioBuffer = deferred<ArrayBuffer>();
+    const getCorrectionMemory = vi.fn(() => correctionMemory.promise);
+    mockedGetContext.mockImplementation(() => smartContext.promise);
+
+    (globalThis as any).electronAPI = { getCorrectionMemory };
+
+    const manager: any = new AudioManager();
+    manager._checkProEntitlement = () => true;
+    vi.spyOn(manager, "processTranscription").mockResolvedValue("hello world");
+
+    const audioBlob = {
+      type: "audio/webm",
+      size: 4,
+      arrayBuffer: vi.fn(() => audioBuffer.promise),
+    };
+
+    const pendingResult = manager.processWithLocalWhisper(audioBlob, "base");
+    await Promise.resolve();
+
+    expect(getCorrectionMemory).toHaveBeenCalledWith(200);
+    expect(mockedGetContext).toHaveBeenCalledWith({
+      timeoutMs: 300,
+      includeFileIdentifiers: true,
+    });
+    expect(audioBlob.arrayBuffer).toHaveBeenCalledTimes(1);
+    expect((window as any).electronAPI.transcribeLocalWhisper).not.toHaveBeenCalled();
+
+    correctionMemory.resolve([{ target: "PrivateTranscribe", count: 2 }]);
+    smartContext.resolve({
+      available: true,
+      fileIdentifiers: { available: true, identifiers: [] },
+    });
+    audioBuffer.resolve(new Uint8Array([1, 2, 3, 4]).buffer);
+
+    await expect(pendingResult).resolves.toMatchObject({
+      success: true,
+      text: "hello world",
+      source: "local",
+    });
+    expect((window as any).electronAPI.transcribeLocalWhisper).toHaveBeenCalledTimes(1);
   });
 });

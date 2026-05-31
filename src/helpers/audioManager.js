@@ -913,25 +913,35 @@ class AudioManager {
       // (Pro feature - only inject hints when Pro entitlement is active)
       const proEnabled =
         typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
-      if (proEnabled) {
-        await this.refreshCorrectionHints();
-      } else {
-        this._cachedCorrectionHints = [];
-      }
+      const correctionHintsPromise = proEnabled
+        ? this.refreshCorrectionHints()
+        : Promise.resolve().then(() => {
+            this._cachedCorrectionHints = [];
+          });
 
-      // Fetch Smart Context hint for Whisper initialPrompt (Pro feature, 300 ms timeout)
-      if (isSmartContextEnabled()) {
-        this._cachedSmartContext = await getContext({
-          timeoutMs: 300,
-          includeFileIdentifiers: isFileIdentifiersEnabled(),
-        });
-      } else {
-        this._cachedSmartContext = null;
-      }
+      const smartContextPromise = isSmartContextEnabled()
+        ? getContext({
+            timeoutMs: 300,
+            includeFileIdentifiers: isFileIdentifiersEnabled(),
+          })
+        : Promise.resolve(null);
 
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
-      const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
+      const audioBufferPromise = audioBlob.arrayBuffer();
+
+      const [, smartContext, rawArrayBuffer] = await Promise.all([
+        correctionHintsPromise,
+        smartContextPromise,
+        audioBufferPromise,
+      ]);
+
+      if (!proEnabled) {
+        this._cachedCorrectionHints = [];
+      }
+      this._cachedSmartContext = smartContext;
+
+      const arrayBuffer = toIpcSafeArrayBuffer(rawArrayBuffer);
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const translateToEnglish = this.getTranscriptionSetting("translateToEnglish", "off");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
