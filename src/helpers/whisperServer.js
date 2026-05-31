@@ -1039,11 +1039,6 @@ class WhisperServerManager {
               chunks: chunks.length,
             }
           );
-          const activeModelPath = this.modelPath;
-          if (activeModelPath) {
-            await this.stop();
-            await this.start(activeModelPath);
-          }
           result = await this._postInference(chunk.buffer, {
             language,
             translate,
