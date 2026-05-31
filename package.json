@@ -1,6 +1,6 @@
 {
   "name": "privatetranscribe",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "PrivateTranscribe",
   "main": "main.js",
   "private": true,
@@ -50,7 +50,8 @@
     "uninstall:full:linux": "bash scripts/complete-uninstall-linux.sh",
     "uninstall:full:windows": "scripts\\complete-uninstall-windows.bat",
     "audit:branding": "node scripts/audit-branding.js",
-    "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js"
+    "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js",
+    "smoke:diarization": "node scripts/diarization-smoke.js"
   },
   "keywords": [
     "dictation",
@@ -115,6 +116,7 @@
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
     "shadcn-ui": "^0.9.5",
+    "sherpa-onnx-node": "^1.13.1",
     "tailwind-merge": "^3.3.1",
     "tar": "^7.5.13",
     "tw-animate-css": "^1.3.4",

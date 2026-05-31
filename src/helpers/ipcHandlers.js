@@ -191,6 +191,15 @@ class IPCHandlers {
       return { disabled: this.windowManager.isOverlayDisabled() };
     });
 
+    ipcMain.handle("set-overlay-snap-to-taskbar", (_event, enabled) => {
+      this.windowManager.setOverlaySnapToTaskbar(Boolean(enabled));
+      return { success: true, enabled: this.windowManager.isOverlaySnapToTaskbarEnabled() };
+    });
+
+    ipcMain.handle("get-overlay-snap-to-taskbar", () => {
+      return { enabled: this.windowManager.isOverlaySnapToTaskbarEnabled() };
+    });
+
     ipcMain.handle("notify-dictation-completed", () => {
       // When overlay is disabled, destroy the hidden window after dictation
       // to eliminate DWM lag while gaming.
@@ -214,6 +223,11 @@ class IPCHandlers {
 
     ipcMain.handle("set-main-window-interactivity", (event, shouldCapture) => {
       this.windowManager.setMainWindowInteractivity(Boolean(shouldCapture));
+      return { success: true };
+    });
+
+    ipcMain.handle("refresh-main-window-interactivity", () => {
+      this.windowManager.refreshMainWindowInteractivity("renderer");
       return { success: true };
     });
 
@@ -584,15 +598,32 @@ class IPCHandlers {
       });
 
       try {
+        const onProgress = (progress) => {
+          try {
+            event.sender.send("file-transcription-progress", progress);
+          } catch {
+            // Window may have been closed
+          }
+        };
+
         const result = await this.whisperManager.transcribeFileV2(audioBlob, {
           ...options,
           fileMode: true,
+          onProgress,
         });
         if (!result.success) return result;
 
-        const formatted = formatTranscript(result.raw || { text: result.text, segments: result.segments }, options.outputFormat || "plain", {
-          includeSpeakers: options.speakerDetection === true,
-        });
+        const speakerDetectionMode =
+          result.speakerDetectionMode ||
+          options.speakerDetectionMode ||
+          (options.speakerDetection === true ? "tiny-diarize-en" : "off");
+        const formatted = formatTranscript(
+          result.raw || { text: result.text, segments: result.segments },
+          options.outputFormat || "plain",
+          {
+            includeSpeakers: options.speakerDetection === true || speakerDetectionMode !== "off",
+          }
+        );
 
         return {
           success: true,
@@ -604,10 +635,36 @@ class IPCHandlers {
           format: options.outputFormat || "plain",
           model: result.model,
           speakerDetectionActive: result.speakerDetectionActive,
+          speakerDetectionMode,
+          diarizationEngine: result.diarizationEngine,
+          diarization: result.diarization,
         };
       } catch (error) {
         debugLogger.error("File transcription v2 error", error);
         return { success: false, error: error.message || "File transcription failed" };
+      }
+    });
+
+    ipcMain.handle("check-diarization-model-status", async () => {
+      try {
+        return { success: true, ...this.whisperManager.getDiarizationModelStatus() };
+      } catch (error) {
+        return { success: false, ready: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("download-diarization-models", async (event) => {
+      try {
+        return await this.whisperManager.downloadDiarizationModels((progress) => {
+          event.sender.send("diarization-download-progress", progress);
+        });
+      } catch (error) {
+        event.sender.send("diarization-download-progress", {
+          type: "error",
+          model: "sherpa-onnx-multilingual-v1",
+          error: error.message,
+        });
+        return { success: false, error: error.message };
       }
     });
 
@@ -913,8 +970,11 @@ class IPCHandlers {
           debugLogger.log(
             `[IPC] Exiting hotkey capture mode, activationMode="${activationMode}", hotkey="${effectiveHotkey}"`
           );
-          if (effectiveHotkey && effectiveHotkey !== "GLOBE" &&
-            hotkeyManager.isNativeListenerHotkey(effectiveHotkey)) {
+          if (
+            effectiveHotkey &&
+            effectiveHotkey !== "GLOBE" &&
+            hotkeyManager.isNativeListenerHotkey(effectiveHotkey)
+          ) {
             debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
             this.windowsKeyManager.start(effectiveHotkey);
           } else if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {

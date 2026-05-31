@@ -89,7 +89,7 @@ function isCompoundHotkey(hotkey: string): boolean {
 
 function getDefaultHotkey(): string {
   const isMac = isMacPlatform();
-  return isMac ? "GLOBE" : "`";
+  return isMac ? "GLOBE" : "CommandOrControl+Space";
 }
 
 function isValidHotkeyFormat(hotkey: string): boolean {
@@ -269,14 +269,14 @@ describe("hotkeys", () => {
       expect(getDefaultHotkey()).toBe("GLOBE");
     });
 
-    it("returns backtick on Windows", () => {
+    it("returns Ctrl+Space on Windows", () => {
       setMockPlatform("Win32");
-      expect(getDefaultHotkey()).toBe("`");
+      expect(getDefaultHotkey()).toBe("CommandOrControl+Space");
     });
 
-    it("returns backtick on Linux", () => {
+    it("returns Ctrl+Space on Linux", () => {
       setMockPlatform("Linux x86_64");
-      expect(getDefaultHotkey()).toBe("`");
+      expect(getDefaultHotkey()).toBe("CommandOrControl+Space");
     });
   });
 

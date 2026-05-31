@@ -28,11 +28,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   showDictationPanel: () => ipcRenderer.invoke("show-dictation-panel"),
   setOverlayDisabled: (disabled) => ipcRenderer.invoke("set-overlay-disabled", disabled),
   getOverlayDisabled: () => ipcRenderer.invoke("get-overlay-disabled"),
+  setOverlaySnapToTaskbar: (enabled) => ipcRenderer.invoke("set-overlay-snap-to-taskbar", enabled),
+  getOverlaySnapToTaskbar: () => ipcRenderer.invoke("get-overlay-snap-to-taskbar"),
   notifyDictationCompleted: () => ipcRenderer.invoke("notify-dictation-completed"),
   openControlPanel: () => ipcRenderer.invoke("open-control-panel"),
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
+  onWindowDragReset: registerListener(
+    "window-drag-reset",
+    (callback) => (_event, data) => callback(data)
+  ),
   onMainWindowShown: registerListener("main-window-shown", (callback) => () => callback()),
   notifyDictationOverlayReady: () => ipcRenderer.invoke("dictation-overlay-ready"),
 
@@ -103,7 +109,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Whisper functions (whisper.cpp)
   transcribeLocalWhisper: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
-  transcribeFileV2: (audioBlob, options) => ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  transcribeFileV2: (audioBlob, options) =>
+    ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  onFileTranscriptionProgress: registerListener("file-transcription-progress"),
+  checkDiarizationModelStatus: () => ipcRenderer.invoke("check-diarization-model-status"),
+  downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
+  onDiarizationDownloadProgress: registerListener("diarization-download-progress"),
   checkWhisperInstallation: () => ipcRenderer.invoke("check-whisper-installation"),
   downloadWhisperModel: (modelName) => ipcRenderer.invoke("download-whisper-model", modelName),
   onWhisperDownloadProgress: registerListener("whisper-download-progress"),
@@ -165,6 +176,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopWindowDrag: () => ipcRenderer.invoke("stop-window-drag"),
   setMainWindowInteractivity: (interactive) =>
     ipcRenderer.invoke("set-main-window-interactivity", interactive),
+  refreshMainWindowInteractivity: () => ipcRenderer.invoke("refresh-main-window-interactivity"),
   resizeMainWindow: (sizeKey) => ipcRenderer.invoke("resize-main-window", sizeKey),
 
   // Update functions

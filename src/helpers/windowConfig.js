@@ -11,6 +11,9 @@ const CONTAINER_H = 500;
 // top-left corner and are used to convert between window position and button screen position.
 const BUTTON_OFFSET_X = CONTAINER_W / 2; // 200 — horizontal center of container
 const BUTTON_OFFSET_Y = CONTAINER_H - 58 - 22; // 420 — 58px from bottom + half button height
+const BUTTON_HALF = 22; // half of the 44px overlay button
+const TASKBAR_SNAP_GAP = 8; // visible gap between the overlay button and taskbar/work-area edge
+const TASKBAR_SNAP_OFFSET = BUTTON_HALF + TASKBAR_SNAP_GAP; // button-center distance from that edge
 
 // Legacy size constants kept for reference only. The overlay no longer resizes
 // between these states at runtime.
@@ -113,20 +116,38 @@ class WindowPositionUtil {
     return { x, y, width: CONTAINER_W, height: CONTAINER_H };
   }
 
-  static clampPosition(x, y, width, height, workArea) {
-    // Clamp so the full 44px button stays visible within the work area.
-    // We clamp against the button *edge* (not just center) so the button can't hang off screen.
-    // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
-    const BUTTON_HALF = 22; // half of 44px button
-    const btnX = x + BUTTON_OFFSET_X;
-    const btnY = y + BUTTON_OFFSET_Y;
+  static getTaskbarEdge(display) {
+    const bounds = display.bounds || {};
+    const workArea = display.workArea || bounds;
+    const insets = {
+      left: Math.max(0, workArea.x - bounds.x),
+      right: Math.max(0, bounds.x + bounds.width - (workArea.x + workArea.width)),
+      top: Math.max(0, workArea.y - bounds.y),
+      bottom: Math.max(0, bounds.y + bounds.height - (workArea.y + workArea.height)),
+    };
+
+    let edge = "bottom";
+    let maxInset = 0;
+    for (const [candidateEdge, inset] of Object.entries(insets)) {
+      if (inset > maxInset) {
+        maxInset = inset;
+        edge = candidateEdge;
+      }
+    }
+
+    // Auto-hidden taskbars can make workArea equal bounds. Bottom is the least surprising
+    // fallback and matches the current Windows 11 default.
+    return edge;
+  }
+
+  static clampButtonCenter(btnX, btnY, area) {
     const clampedBtnX = Math.max(
-      workArea.x + BUTTON_HALF,
-      Math.min(btnX, workArea.x + workArea.width - BUTTON_HALF)
+      area.x + BUTTON_HALF,
+      Math.min(btnX, area.x + area.width - BUTTON_HALF)
     );
     const clampedBtnY = Math.max(
-      workArea.y + BUTTON_HALF,
-      Math.min(btnY, workArea.y + workArea.height - BUTTON_HALF)
+      area.y + BUTTON_HALF,
+      Math.min(btnY, area.y + area.height - BUTTON_HALF)
     );
     return {
       x: Math.round(clampedBtnX - BUTTON_OFFSET_X),
@@ -134,7 +155,51 @@ class WindowPositionUtil {
     };
   }
 
-  static setupAlwaysOnTop(window) {
+  static getTaskbarSnappedPosition(x, y, _width, _height, display) {
+    const workArea = display.workArea || display.bounds;
+    const edge = this.getTaskbarEdge(display);
+    const proposedBtnX = x + BUTTON_OFFSET_X;
+    const proposedBtnY = y + BUTTON_OFFSET_Y;
+
+    let btnX = proposedBtnX;
+    let btnY = proposedBtnY;
+
+    if (edge === "left" || edge === "right") {
+      // Keep the button just inside the usable work area, aligned to the taskbar
+      // edge. Placing it inside the Windows taskbar band depends on shell z-order
+      // and gets hidden permanently after Start/taskbar interactions.
+      btnX =
+        edge === "left"
+          ? workArea.x + TASKBAR_SNAP_OFFSET
+          : workArea.x + workArea.width - TASKBAR_SNAP_OFFSET;
+      btnY = Math.max(
+        workArea.y + BUTTON_HALF,
+        Math.min(proposedBtnY, workArea.y + workArea.height - BUTTON_HALF)
+      );
+    } else {
+      btnX = Math.max(
+        workArea.x + BUTTON_HALF,
+        Math.min(proposedBtnX, workArea.x + workArea.width - BUTTON_HALF)
+      );
+      btnY =
+        edge === "top"
+          ? workArea.y + TASKBAR_SNAP_OFFSET
+          : workArea.y + workArea.height - TASKBAR_SNAP_OFFSET;
+    }
+
+    return this.clampButtonCenter(btnX, btnY, workArea);
+  }
+
+  static clampPosition(x, y, width, height, workArea) {
+    // Clamp so the full 44px button stays visible within the work area.
+    // We clamp against the button *edge* (not just center) so the button can't hang off screen.
+    // width/height are accepted for API compatibility but the window is always CONTAINER_W × CONTAINER_H.
+    return this.clampButtonCenter(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y, workArea);
+  }
+
+  static setupAlwaysOnTop(window, options = {}) {
+    const { aboveTaskbar = false } = options;
+
     if (process.platform === "darwin") {
       // macOS: Use panel level for proper floating behavior
       // This ensures the window stays on top across spaces and fullscreen apps
@@ -150,11 +215,16 @@ class WindowPositionUtil {
         window.setAlwaysOnTop(true, "floating", 1);
       }
     } else if (process.platform === "win32") {
-      // Avoid the very high pop-up-menu level for the passive overlay. That level
-      // can fight exclusive/borderless fullscreen games and cause compositor churn
-      // (reported with Minecraft/Tekkit). "floating" keeps the overlay above normal
-      // windows without behaving like an active menu layered over the game.
-      window.setAlwaysOnTop(true, "floating");
+      // Use the higher screen-saver level only when the user explicitly opts into
+      // snapping the overlay to the taskbar edge. The taskbar can reassert its
+      // own topmost z-order after Start/taskbar interaction, and pop-up-menu is
+      // not always enough to lift the overlay back over it.
+      // Keep the normal passive overlay at "floating" to avoid compositor churn
+      // in fullscreen games (reported with Minecraft/Tekkit).
+      window.setAlwaysOnTop(true, aboveTaskbar ? "screen-saver" : "floating");
+      if (aboveTaskbar && typeof window.moveTop === "function") {
+        window.moveTop();
+      }
     } else {
       // Linux - "screen-saver" is the highest named level Electron exposes for X11/Wayland.
       // On Unity desktop (Compiz/Mutter), this maps to _NET_WM_STATE_ABOVE which should
@@ -195,5 +265,8 @@ module.exports = {
   CONTAINER_H,
   BUTTON_OFFSET_X,
   BUTTON_OFFSET_Y,
+  BUTTON_HALF,
+  TASKBAR_SNAP_GAP,
+  TASKBAR_SNAP_OFFSET,
   WindowPositionUtil,
 };

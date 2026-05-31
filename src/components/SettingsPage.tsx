@@ -1122,6 +1122,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setSuccessConfirmation,
     overlayDisabled,
     setOverlayDisabled,
+    overlaySnapToTaskbar,
+    setOverlaySnapToTaskbar,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
@@ -1157,10 +1159,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       .catch(() => setCorrectionCount(0));
   }, [enableCorrectionLearning]);
 
-  // Sync overlay disabled state to main process on settings mount
+  // Sync overlay visibility/position state to main process on settings mount
   useEffect(() => {
     window.electronAPI?.setOverlayDisabled?.(overlayDisabled).catch(() => {});
-  }, []);
+    window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
+  }, [overlayDisabled, overlaySnapToTaskbar]);
 
   const handleClearCorrections = useCallback(async () => {
     if (!clearConfirmPending) {
@@ -1252,6 +1255,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           audioFeedback,
           errorNotifications,
           successConfirmation,
+          overlaySnapToTaskbar,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1307,6 +1311,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       audioFeedback,
       errorNotifications,
       successConfirmation,
+      overlaySnapToTaskbar,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1471,6 +1476,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.audioFeedback === "boolean") setAudioFeedback(s.audioFeedback);
       if (typeof s.errorNotifications === "boolean") setErrorNotifications(s.errorNotifications);
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
+      if (typeof s.overlaySnapToTaskbar === "boolean") {
+        setOverlaySnapToTaskbar(s.overlaySnapToTaskbar);
+        window.electronAPI?.setOverlaySnapToTaskbar?.(s.overlaySnapToTaskbar).catch(() => {});
+      }
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
       if (s.selectedMicDeviceId !== undefined) {
@@ -2306,6 +2315,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 </SettingsPanelRow>
                 <SettingsPanelRow>
                   <SettingsRow
+                    label="Snap overlay to taskbar"
+                    description="Keep the overlay aligned with the taskbar edge. You can still drag it along the taskbar and onto another monitor."
+                  >
+                    <Toggle
+                      checked={overlaySnapToTaskbar}
+                      onChange={(checked) => {
+                        setOverlaySnapToTaskbar(checked);
+                        window.electronAPI?.setOverlaySnapToTaskbar?.(checked).catch(() => {});
+                      }}
+                    />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
                     label="Disable visual overlay"
                     description="Completely hide the dictation panel. Dictation still works in the background when you press your hotkey. Useful for gaming or fullscreen apps to prevent lag."
                   >
@@ -2455,23 +2478,28 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
             <TranscriptionModelPicker
               selectedCloudProvider={cloudTranscriptionProvider}
-              onCloudProviderSelect={setCloudTranscriptionProvider}
+              onCloudProviderSelect={(provider) =>
+                updateTranscriptionSettings({ cloudTranscriptionProvider: provider })
+              }
               selectedCloudModel={cloudTranscriptionModel}
-              onCloudModelSelect={setCloudTranscriptionModel}
+              onCloudModelSelect={(model) =>
+                updateTranscriptionSettings({ cloudTranscriptionModel: model })
+              }
               selectedLocalModel={whisperModel}
               onLocalModelSelect={(modelId) => {
-                setWhisperModel(modelId);
+                updateTranscriptionSettings({ whisperModel: modelId });
               }}
               selectedLocalProvider={localTranscriptionProvider}
               onLocalProviderSelect={(providerId) => {
-                setLocalTranscriptionProvider(providerId);
+                updateTranscriptionSettings({ localTranscriptionProvider: providerId });
               }}
               whisperForceCpu={whisperForceCpu}
-              onWhisperForceCpuChange={setWhisperForceCpu}
+              onWhisperForceCpuChange={(forceCpu) =>
+                updateTranscriptionSettings({ whisperForceCpu: forceCpu })
+              }
               gpuSupported={gpuSupportedForPicker}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
-                setUseLocalWhisper(isLocal);
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });
               }}
               openaiApiKey={openaiApiKey}

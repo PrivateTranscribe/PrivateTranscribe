@@ -19,15 +19,19 @@ export const useWindowDrag = () => {
     e.preventDefault();
   };
 
+  const resetLocalDragState = useCallback(() => {
+    setIsDragging(false);
+    isDraggingRef.current = false;
+  }, []);
+
   const stopDragging = useCallback(() => {
     if (!isDraggingRef.current) {
       return;
     }
 
-    setIsDragging(false);
-    isDraggingRef.current = false;
+    resetLocalDragState();
     window.electronAPI.stopWindowDrag?.();
-  }, []);
+  }, [resetLocalDragState]);
 
   const handleMouseUp = () => {
     stopDragging();
@@ -68,6 +72,13 @@ export const useWindowDrag = () => {
       };
     }
   }, [isDragging, stopDragging]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWindowDragReset?.(() => {
+      resetLocalDragState();
+    });
+    return () => unsubscribe?.();
+  }, [resetLocalDragState]);
 
   return {
     isDragging,

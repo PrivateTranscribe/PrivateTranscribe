@@ -195,6 +195,7 @@ export default function App() {
   const didMoveRef = useRef(false);
   const dragInitiatedRef = useRef(false);
   const suppressClickAfterDragRef = useRef(false);
+  const interactivityRefreshTimerRef = useRef(null);
 
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
@@ -212,10 +213,16 @@ export default function App() {
     if (overlayDisabled) {
       window.electronAPI?.setOverlayDisabled?.(true).catch(() => {});
     }
+    const overlaySnapToTaskbar = localStorage.getItem("overlaySnapToTaskbar") === "true";
+    window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
   }, []);
 
   const setWindowInteractivity = useCallback((shouldCapture) => {
     window.electronAPI?.setMainWindowInteractivity?.(shouldCapture);
+  }, []);
+
+  const refreshWindowInteractivity = useCallback(() => {
+    window.electronAPI?.refreshMainWindowInteractivity?.().catch(() => {});
   }, []);
 
   const closeContextMenu = useCallback(
@@ -345,6 +352,50 @@ export default function App() {
       setWindowInteractivity(false);
     }
   }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
+
+  useEffect(() => {
+    const handleVisibilityReturn = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      if (interactivityRefreshTimerRef.current) {
+        clearTimeout(interactivityRefreshTimerRef.current);
+      }
+
+      // Display sleep/wake can leave Electron's forwarded mouse events stale for
+      // the transparent overlay. Ask the main process to re-apply the native
+      // ignore/forward state when Chromium becomes active again.
+      interactivityRefreshTimerRef.current = setTimeout(() => {
+        interactivityRefreshTimerRef.current = null;
+        refreshWindowInteractivity();
+      }, 100);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityReturn);
+    window.addEventListener("pageshow", handleVisibilityReturn);
+    window.addEventListener("focus", handleVisibilityReturn);
+
+    return () => {
+      if (interactivityRefreshTimerRef.current) {
+        clearTimeout(interactivityRefreshTimerRef.current);
+        interactivityRefreshTimerRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityReturn);
+      window.removeEventListener("pageshow", handleVisibilityReturn);
+      window.removeEventListener("focus", handleVisibilityReturn);
+    };
+  }, [refreshWindowInteractivity]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWindowDragReset?.(() => {
+      dragStartPosRef.current = null;
+      didMoveRef.current = false;
+      dragInitiatedRef.current = false;
+      suppressClickAfterDragRef.current = false;
+    });
+    return () => unsubscribe?.();
+  }, []);
 
   // No resize effect needed: the overlay uses a fixed 400×500 transparent window.
   // Menu, toast, and recording states expand/collapse inside the container via CSS.

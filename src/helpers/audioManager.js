@@ -14,7 +14,8 @@ import {
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
-const RECORDER_STOP_TIMEOUT_MS = 2500;
+const RECORDER_TIMESLICE_MS = 30000;
+const RECORDER_STOP_TIMEOUT_MS = 30000;
 
 const PLACEHOLDER_KEYS = {
   openai: "your_openai_api_key_here",
@@ -55,6 +56,13 @@ const isValidApiKey = (key, provider = "openai") => {
   if (!key || key.trim() === "") return false;
   const placeholder = PLACEHOLDER_KEYS[provider] || PLACEHOLDER_KEYS.openai;
   return key !== placeholder;
+};
+
+const toIpcSafeArrayBuffer = (arrayBuffer) => {
+  const source = new Uint8Array(arrayBuffer);
+  const copy = new Uint8Array(source.byteLength);
+  copy.set(source);
+  return copy.buffer;
 };
 
 const MIME_EXTENSION_MAP = {
@@ -477,6 +485,7 @@ class AudioManager {
         blobSize: audioBlob.size,
         blobType: audioBlob.type,
         chunksCount,
+        durationSeconds,
       },
       "audio"
     );
@@ -639,6 +648,7 @@ class AudioManager {
             blobSize: audioBlob.size,
             blobType: audioBlob.type,
             chunksCount,
+            durationSeconds,
           },
           "audio"
         );
@@ -646,7 +656,11 @@ class AudioManager {
         await this.processAudio(audioBlob, { durationSeconds });
       };
 
-      this.mediaRecorder.start();
+      // Flush long dictations into periodic chunks. Without a timeslice, Electron
+      // can keep most of a multi-minute recording inside MediaRecorder until the
+      // final stop flush. If that final flush is slow, the watchdog may process
+      // only earlier data and the transcript appears truncated.
+      this.mediaRecorder.start(RECORDER_TIMESLICE_MS);
       this.isRecording = true;
       this.isProcessing = false;
       this.isStartingRecording = false;
@@ -917,7 +931,7 @@ class AudioManager {
 
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
-      const arrayBuffer = await audioBlob.arrayBuffer();
+      const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const translateToEnglish = this.getTranscriptionSetting("translateToEnglish", "off");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
@@ -1031,7 +1045,7 @@ class AudioManager {
     const timings = {};
 
     try {
-      const arrayBuffer = await audioBlob.arrayBuffer();
+      const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "parakeet", model);
       const options = { model };
@@ -1955,7 +1969,7 @@ class AudioManager {
 
       if (allowLocalFallback && isOpenAIMode) {
         try {
-          const arrayBuffer = await audioBlob.arrayBuffer();
+          const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
           const options = {
             model: fallbackModel,
           };
@@ -1989,7 +2003,7 @@ class AudioManager {
   }
 
   async processFileTranscriptionV2(audioBlob, model = "base", metadata = {}) {
-    const arrayBuffer = await audioBlob.arrayBuffer();
+    const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
     const rawLanguage = metadata.language ?? this.getTranscriptionSetting("preferredLanguage", "");
     const translateToEnglish = metadata.translate === true || this.getTranscriptionSetting("translateToEnglish", "off") === "on";
     const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
@@ -1998,6 +2012,9 @@ class AudioManager {
       fileMode: true,
       noiseReduction: metadata.noiseReduction !== false,
       speakerDetection: metadata.speakerDetection === true,
+      speakerDetectionMode: metadata.speakerDetectionMode,
+      expectedSpeakers: metadata.expectedSpeakers,
+      diarizationThreshold: metadata.diarizationThreshold,
       outputFormat: metadata.outputFormat || "plain",
       inputFileName: metadata.originalFileName,
     };

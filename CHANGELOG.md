@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-05-31
+
+### Added
+- **Multilingual diarization beta**: Add beta speaker detection support beyond the original English-only flow.
+- **File transcription progress**: Show clearer progress percentage and processing feedback during file transcription.
+- **Taskbar snap mode**: Add opt-in overlay snapping to the Windows taskbar area.
+
+### Changed
+- **Transcribe page UX**: Simplify speaker label controls and restore the auto-detect speaker option with clearer helper text.
+- **Default hotkey**: Default onboarding to `Ctrl+Space`.
+- **Production CI**: Update GitHub Actions runtimes used by the production release workflow.
+
+### Fixed
+- **Long dictations/files**: Stabilize long recording chunks, long file transcription, IPC audio buffer handling, and switched-model reloads.
+- **Diarization stability**: Improve speaker labeling, cap speaker counts safely, and avoid crash-prone re-clustering/external buffers.
+- **Whisper output quality**: Reduce repetition hallucinations in file transcription output.
+- **Settings propagation**: Ensure local Whisper model changes propagate correctly.
+- **Overlay reliability**: Improve overlay drag, z-order, taskbar snap positioning, and sleep/wake recovery.
+- **Legacy model cache migration**: Fix partial legacy model cache migration.
+
 ## [0.10.1] - 2026-05-12
 
 ### Fixed

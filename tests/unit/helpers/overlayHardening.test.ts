@@ -23,6 +23,8 @@ const dragManager = readHelper("dragManager.js");
 const appJsx = readSrc("App.jsx");
 const useWindowDrag = readSrc("hooks/useWindowDrag.js");
 const toastTsx = readSrc("components/ui/Toast.tsx");
+const preloadJs = fs.readFileSync(path.resolve(__dirname, "../../../preload.js"), "utf8");
+const mainJs = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
 // ─── Multi-monitor position clamping ─────────────────────────────────────────
 
@@ -47,13 +49,38 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(windowManager).toContain("getPrimaryDisplay");
   });
 
-  test("re-clamping uses shared clampPosition util against the active workArea", () => {
+  test("re-clamping uses shared overlay constraint logic against the active display", () => {
     const idx = windowManager.indexOf("_reclampOverlayPosition");
     expect(idx).toBeGreaterThan(-1);
     const block = windowManager.slice(idx, idx + 5000);
-    expect(block).toContain("WindowPositionUtil.clampPosition");
+    expect(block).toContain("this._constrainOverlayPosition");
     expect(block).toContain("display.workArea || display.bounds");
     expect(block).toContain("this.mainWindow.setBounds");
+  });
+
+  test("overlay constraint falls back to clampPosition when taskbar snap is disabled", () => {
+    const idx = windowManager.indexOf("_constrainOverlayPosition");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 1000);
+    expect(block).toContain("this.overlaySnapToTaskbar");
+    expect(block).toContain("WindowPositionUtil.getTaskbarSnappedPosition");
+    expect(block).toContain("WindowPositionUtil.clampPosition");
+  });
+
+  test("taskbar snap stays inside workArea to avoid Windows shell z-order traps", () => {
+    const idx = windowConfig.indexOf("getTaskbarSnappedPosition");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowConfig.slice(idx, idx + 2000);
+    expect(block).toContain("inside the usable work area");
+    expect(block).toContain("hidden permanently after Start/taskbar interactions");
+    expect(block).toContain("clampButtonCenter(btnX, btnY, workArea)");
+  });
+
+  test("taskbar snap is opt-in by default", () => {
+    expect(windowManager).toContain("this.overlaySnapToTaskbar = false");
+    expect(dragManager).toContain("this.snapToTaskbar = false");
+    expect(dragManager).toContain("this.snapToTaskbar = enabled === true");
+    expect(appJsx).toContain('localStorage.getItem("overlaySnapToTaskbar") === "true"');
   });
 
   test("saved/restored overlay math still anchors to button offsets", () => {
@@ -83,6 +110,38 @@ describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => 
     expect(useWindowDrag).toContain('window.addEventListener("pointerup"');
     expect(useWindowDrag).toContain('window.addEventListener("pointercancel"');
     expect(useWindowDrag).toContain('window.addEventListener("blur"');
+  });
+
+  test("main process refreshes overlay mouse forwarding after display wake changes", () => {
+    expect(windowManager).toContain("_refreshMainWindowInteractivity");
+    expect(windowManager).toContain("setIgnoreMouseEvents(false)");
+    expect(windowManager).toContain("this.setMainWindowInteractivity(shouldCapture)");
+    expect(windowManager).toContain("_refreshMainWindowInteractivity(`${reason}:${delay}`)");
+    expect(windowManager).toContain(
+      'this._refreshMainWindowInteractivity("display-metrics-changed")'
+    );
+  });
+
+  test("main process notifies renderer to clear stale drag state after wake", () => {
+    expect(windowManager).toContain("_resetOverlayDragState");
+    expect(windowManager).toContain('webContents.send("window-drag-reset"');
+    expect(preloadJs).toContain("onWindowDragReset");
+    expect(useWindowDrag).toContain("onWindowDragReset");
+  });
+
+  test("Windows polls the mic hit area so glow remains click-through after wake", () => {
+    expect(windowManager).not.toContain("setShape");
+    expect(windowManager).toContain("_startHoverInteractivityProbe");
+    expect(windowManager).toContain("_isCursorOverOverlayButton");
+    expect(windowManager).toContain("transparent/glow area remains click-through");
+    expect(windowManager).toContain("BUTTON_HIT_TEST_PADDING");
+  });
+
+  test("renderer requests interactivity refresh when Chromium becomes active again", () => {
+    expect(appJsx).toContain("refreshMainWindowInteractivity");
+    expect(appJsx).toContain('document.addEventListener("visibilitychange"');
+    expect(appJsx).toContain('window.addEventListener("pageshow"');
+    expect(appJsx).toContain('window.addEventListener("focus"');
   });
 });
 
@@ -144,7 +203,68 @@ describe("App.jsx — Escape key during recording/processing", () => {
   });
 });
 
-// ─── Language submenu overflow prevention ────────────────────────────────────
+// ─── Sleep/wake drag and z-order hardening ─────────────────────────────────
+
+describe("windowManager.js — sleep/wake overlay recovery", () => {
+  test("power resume handler resets stuck drag state before reclamping", () => {
+    // If sleep interrupted an active drag, isDragging stays true and
+    // startWindowDrag() returns early ('drag already active'), leaving the
+    // overlay unmovable. The resume handler must reset main and renderer drag state first.
+    const idx = windowManager.indexOf("_powerResumeHandler = ()");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 600);
+    expect(block).toContain("_resetOverlayDragState");
+    expect(block).toContain("_scheduleOverlayRecovery");
+  });
+
+  test("wake recovery retries after display metrics have time to settle", () => {
+    const idx = windowManager.indexOf("_scheduleOverlayRecovery");
+    const block = windowManager.slice(idx, idx + 1200);
+    expect(block).toContain("[2500, 6000]");
+    expect(block).toContain("preferLastKnownButtonPosition: true");
+    expect(block).toContain("persistPosition: false");
+  });
+
+  test("automatic display recovery does not persist transient monitor clamps", () => {
+    expect(windowManager).toContain("this._lastKnownButtonPosition");
+    expect(windowManager).toContain("_ignoreOverlayMoveSaveUntil");
+    const idx = windowManager.indexOf('this._reclampOverlayPosition("display-metrics-changed"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 500);
+    expect(block).toContain("preferLastKnownButtonPosition: true");
+    expect(block).toContain("persistPosition: false");
+  });
+
+  test("unlock-screen also schedules overlay recovery", () => {
+    expect(windowManager).toContain("_powerUnlockHandler = ()");
+    expect(windowManager).toContain('powerMonitor.on("unlock-screen"');
+    expect(windowManager).toContain('_scheduleOverlayRecovery("unlock-screen", [500, 2500, 6000])');
+  });
+
+  test("_reclampOverlayPosition always calls enforceMainWindowOnTop after repositioning", () => {
+    // Find the method definition (not a call site) — it starts with two spaces indent
+    const idx = windowManager.indexOf("  _reclampOverlayPosition(reason, options = {}) {");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 2500);
+    // enforceMainWindowOnTop must appear in the method body so z-order is
+    // restored even when the position didn't need clamping.
+    expect(block).toContain("enforceMainWindowOnTop");
+  });
+
+  test("dragManager exposes resetDragState to cleanly clear stuck isDragging flag", () => {
+    expect(dragManager).toContain("resetDragState()");
+    expect(dragManager).toContain("this.isDragging = false");
+    expect(dragManager).toContain("stopMouseTracking()");
+  });
+});
+
+describe("main.js / windowManager.js — startup overlay readiness", () => {
+  test("startup delays initial overlay show so renderer IPC is ready", () => {
+    expect(mainJs).toContain("initialShowDelayMs: 2000");
+    expect(windowManager).toContain("initialShowDelayMs");
+    expect(windowManager).toContain("setTimeout(showOverlay, initialShowDelayMs)");
+  });
+});
 
 describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => {
   test("quickLanguages is sliced to at most 7 entries", () => {

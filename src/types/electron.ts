@@ -333,11 +333,18 @@ declare global {
       pasteText: (text: string) => Promise<void>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
+      setOverlayDisabled?: (disabled: boolean) => Promise<{ success: boolean; disabled: boolean }>;
+      getOverlayDisabled?: () => Promise<{ disabled: boolean }>;
+      setOverlaySnapToTaskbar?: (
+        enabled: boolean
+      ) => Promise<{ success: boolean; enabled: boolean }>;
+      getOverlaySnapToTaskbar?: () => Promise<{ enabled: boolean }>;
       notifyDictationOverlayReady?: () => Promise<{ success: boolean }>;
       openControlPanel?: () => Promise<{ success: boolean }>;
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;
+      onWindowDragReset?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;
 
       // Database operations
       saveTranscription: (
@@ -423,6 +430,22 @@ declare global {
       // Whisper operations (whisper.cpp)
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       transcribeFileV2: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
+      onFileTranscriptionProgress: (
+        callback: (
+          event: any,
+          data: {
+            stage: string;
+            percentage: number;
+            chunksTotal?: number;
+            chunksCompleted?: number;
+          }
+        ) => void
+      ) => (() => void) | void;
+      checkDiarizationModelStatus: () => Promise<any>;
+      downloadDiarizationModels: () => Promise<any>;
+      onDiarizationDownloadProgress: (
+        callback: (event: any, data: any) => void
+      ) => (() => void) | void;
       checkWhisperInstallation: () => Promise<WhisperCheckResult>;
       downloadWhisperModel: (modelName: string) => Promise<WhisperModelResult>;
       onWhisperDownloadProgress: (
@@ -523,6 +546,7 @@ declare global {
       startWindowDrag: () => Promise<void>;
       stopWindowDrag: () => Promise<void>;
       setMainWindowInteractivity: (interactive: boolean) => Promise<void>;
+      refreshMainWindowInteractivity: () => Promise<void>;
 
       // App management
       appQuit: () => Promise<void>;

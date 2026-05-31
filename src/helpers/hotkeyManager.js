@@ -253,10 +253,9 @@ function isValidAccelerator(hotkey) {
 
 class HotkeyManager {
   constructor() {
-    // Default: Control+Super (Ctrl+Win) on Windows — matches OpenWhispr default and
-    // works via the native WindowsKeyManager listener (not globalShortcut).
-    // Backtick on other platforms as before.
-    this.currentHotkey = process.platform === "win32" ? "Control+Super" : "`";
+    // Default: Ctrl+Space on Windows/Linux. It is a normal Electron accelerator,
+    // so tap mode stays on globalShortcut instead of the native Windows listener.
+    this.currentHotkey = process.platform === "darwin" ? "GLOBE" : "CommandOrControl+Space";
     this.isInitialized = false;
     this.isListeningMode = false;
     this.gnomeManager = null;
@@ -596,11 +595,7 @@ class HotkeyManager {
       }
 
       const defaultHotkey =
-        process.platform === "darwin"
-          ? "GLOBE"
-          : process.platform === "win32"
-            ? "Control+Super"
-            : "`";
+        process.platform === "darwin" ? "GLOBE" : "CommandOrControl+Space";
 
       if (defaultHotkey === "GLOBE") {
         this.currentHotkey = "GLOBE";

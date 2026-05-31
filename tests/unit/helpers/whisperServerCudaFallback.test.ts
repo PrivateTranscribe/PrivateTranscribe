@@ -51,9 +51,9 @@ describe("WhisperServerManager CUDA startup fallback", () => {
 
     const chunks = manager._splitWavIntoTranscriptionChunks(longWav);
 
-    expect(chunks).toHaveLength(4);
+    expect(chunks).toHaveLength(40);
     expect(
-      chunks.every((chunk: { durationSeconds: number }) => chunk.durationSeconds <= 10 * 60)
+      chunks.every((chunk: { durationSeconds: number }) => chunk.durationSeconds <= 60)
     ).toBe(true);
     expect(
       Math.round(
@@ -73,6 +73,37 @@ describe("WhisperServerManager CUDA startup fallback", () => {
 
     expect(chunks).toHaveLength(1);
     expect(chunks[0].buffer).toBe(shortWav);
+  });
+
+  it("restarts a running server when a different model is requested", async () => {
+    const manager = new WhisperServerManager();
+    const oldModelPath = "/tmp/ggml-large-v3.bin";
+    const newModelPath = "/tmp/ggml-large-v3-turbo.bin";
+
+    manager.ready = true;
+    manager.process = { pid: 1234 };
+    manager.modelPath = oldModelPath;
+    manager.loadedModelPath = oldModelPath;
+    manager.printRealtimeEnabled = false;
+    manager.stop = vi.fn(async () => {
+      manager.ready = false;
+      manager.process = null;
+      manager.loadedModelPath = null;
+      manager.modelPath = null;
+    });
+    manager._doStart = vi.fn(async (modelPath: string) => {
+      manager.ready = true;
+      manager.process = { pid: 5678 };
+      manager.modelPath = modelPath;
+      manager.loadedModelPath = modelPath;
+      manager.printRealtimeEnabled = false;
+    });
+
+    await manager.start(newModelPath);
+
+    expect(manager.stop).toHaveBeenCalledTimes(1);
+    expect(manager._doStart).toHaveBeenCalledWith(newModelPath, {});
+    expect(manager.loadedModelPath).toBe(newModelPath);
   });
 
   it("treats spawn UNKNOWN as a recoverable CUDA startup failure", () => {

@@ -227,7 +227,7 @@ export default function ProSettingsSection() {
               variant="default"
               size="sm"
               onClick={() =>
-                window.electronAPI?.openExternal?.("https://www.privatetranscribe.com/#pricing")
+                window.electronAPI?.openExternal?.("https://privatetranscribe.com/#pricing")
               }
               className="gap-2"
             >
@@ -314,7 +314,7 @@ export default function ProSettingsSection() {
             variant="default"
             size="sm"
             onClick={() =>
-              window.electronAPI?.openExternal?.("https://www.privatetranscribe.com/#pricing")
+              window.electronAPI?.openExternal?.("https://privatetranscribe.com/#pricing")
             }
             className="gap-2"
           >

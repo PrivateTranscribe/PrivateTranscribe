@@ -23,7 +23,7 @@ const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const WAV_HEADER_BYTES = 44;
 const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
-const WHISPER_CHUNK_SECONDS = 10 * 60;
+const WHISPER_CHUNK_SECONDS = 60;
 const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
 const WHISPER_REQUEST_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -179,6 +179,7 @@ class WhisperServerManager {
     this.port = null;
     this.ready = false;
     this.modelPath = null;
+    this.loadedModelPath = null;
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.cachedServerBinaryPath = null;
@@ -460,7 +461,7 @@ class WhisperServerManager {
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
     const wantsPrintRealtime = options.printRealtime === true;
-    if (this.ready && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime && !this.startupPromise) {
+    if (this.ready && this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime && !this.startupPromise) {
       this.lastUsedTime = Date.now();
       this.stoppedDueToIdle = false;
       this._scheduleIdleCheck();
@@ -487,7 +488,7 @@ class WhisperServerManager {
       .then(async () => {
         // Re-check after the previous promise settled: the server may have
         // become ready for this model (e.g. from a concurrent caller).
-        if (this.ready && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
+        if (this.ready && this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
           this.lastUsedTime = Date.now();
           this.stoppedDueToIdle = false;
           this._scheduleIdleCheck();
@@ -690,6 +691,7 @@ class WhisperServerManager {
       this.stdoutCapture = null;
       this.process = null;
       this.activeServerBinaryPath = null;
+      this.loadedModelPath = null;
       this.stopHealthCheck();
       this._clearIdleCheck();
     });
@@ -697,6 +699,8 @@ class WhisperServerManager {
     try {
       await this.waitForReady(() => ({ stderr: stderrBuffer, exitCode, startupError }));
       this.printRealtimeEnabled = options.printRealtime === true;
+      this.loadedModelPath = modelPath;
+      this.modelPath = modelPath;
     } catch (error) {
       debugLogger.error("whisper-server failed readiness check", {
         error: error.message,
@@ -719,6 +723,8 @@ class WhisperServerManager {
     debugLogger.info("whisper-server started successfully", {
       port: this.port,
       model: path.basename(modelPath),
+      modelPath,
+      pid: this.process?.pid || null,
       serverBinary,
     });
   }
@@ -927,13 +933,18 @@ class WhisperServerManager {
     });
 
     try {
-      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false } = options;
+      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false, onProgress } = options;
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
       if (!this.canConvert) {
         throw new Error("FFmpeg not found - required for audio conversion");
       }
+
+      if (typeof onProgress === "function") {
+        onProgress({ stage: "converting", percentage: 0 });
+      }
+
       finalBuffer = await this._convertToWav(audioBuffer, inputFileName, {
         // whisper.cpp stereo diarization needs two channels; tdrz/tinydiarize stays mono.
         channels: fileMode && diarize ? 2 : 1,
@@ -947,6 +958,10 @@ class WhisperServerManager {
           totalDurationSeconds: chunks.reduce((sum, chunk) => sum + chunk.durationSeconds, 0),
           chunkSeconds: WHISPER_CHUNK_SECONDS,
         });
+      }
+
+      if (typeof onProgress === "function") {
+        onProgress({ stage: "transcribing", percentage: 0, chunksTotal: chunks.length, chunksCompleted: 0 });
       }
 
       const results = [];
@@ -1002,6 +1017,11 @@ class WhisperServerManager {
           }
         }
         results.push(fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result);
+
+        if (typeof onProgress === "function") {
+          const percentage = Math.round(((index + 1) / chunks.length) * 100);
+          onProgress({ stage: "transcribing", percentage, chunksTotal: chunks.length, chunksCompleted: index + 1 });
+        }
       }
 
       if (results.length === 1) return results[0];
@@ -1020,6 +1040,16 @@ class WhisperServerManager {
     } finally {
       this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
     }
+  }
+
+  async convertToDiarizationWav(audioBuffer, inputFileName = null, options = {}) {
+    if (!this.canConvert) {
+      throw new Error("FFmpeg not found - required for audio conversion");
+    }
+    return await this._convertToWav(audioBuffer, inputFileName, {
+      channels: 1,
+      noiseReduction: options.noiseReduction === true,
+    });
   }
 
   _beginStdoutCapture() {
@@ -1078,6 +1108,18 @@ class WhisperServerManager {
     }
 
     form.append("response_format", fileMode ? "verbose_json" : "json");
+
+    if (fileMode) {
+      // Long files are especially prone to Whisper repeating stale context after
+      // silence/noise. Keep each request independent and ask whisper.cpp to be
+      // more conservative about non-speech so one bad short window does not poison
+      // the rest of a 45+ minute upload.
+      form.append("no_context", "true");
+      form.append("suppress_nst", "true");
+      form.append("temperature", "0.0");
+      form.append("temperature_inc", "0.0");
+      form.append("no_speech_thold", "0.45");
+    }
 
     for (const [name, enabled] of Object.entries({ diarize, tinydiarize, vad })) {
       if (enabled) form.append(name, "true");
@@ -1263,17 +1305,19 @@ class WhisperServerManager {
     this.ready = false;
     this.port = null;
     this.modelPath = null;
+    this.loadedModelPath = null;
     this.activeServerBinaryPath = null;
     this.lastUsedTime = 0;
   }
 
   getStatus() {
+    const activeModelPath = this.loadedModelPath || this.modelPath;
     return {
       available: this.isAvailable(),
       running: this.ready && this.process !== null,
       port: this.port,
-      modelPath: this.modelPath,
-      modelName: this.modelPath ? path.basename(this.modelPath, ".bin").replace("ggml-", "") : null,
+      modelPath: activeModelPath,
+      modelName: activeModelPath ? path.basename(activeModelPath, ".bin").replace("ggml-", "") : null,
       forceCpu: this.forceCpu,
       activeServerBinaryPath: this.activeServerBinaryPath,
       activeEngine: this.activeServerBinaryPath

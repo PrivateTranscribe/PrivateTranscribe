@@ -28,13 +28,21 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
   });
 
   test("Windows uses floating level to avoid fullscreen game compositor churn", () => {
-    expect(windowConfig).toContain('setAlwaysOnTop(true, "floating")');
+    expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
     expect(windowConfig).toContain("reported with Minecraft/Tekkit");
+  });
+
+  test("Windows taskbar snap uses screen-saver level above the taskbar", () => {
+    expect(windowConfig).toContain("aboveTaskbar = false");
+    expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
+    expect(windowConfig).toContain("window.moveTop()");
+    expect(windowConfig).toContain("taskbar can reassert its");
+    expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
   test("Windows overlay is hidden from taskbar but focusable for clicks and drag", () => {
     expect(windowConfig).toContain('skipTaskbar: process.platform === "win32"');
-    expect(windowConfig).toContain('focusable: true,');
+    expect(windowConfig).toContain("focusable: true,");
   });
 
   test("Linux uses screen-saver level (highest X11 hint available)", () => {
@@ -66,8 +74,11 @@ describe("windowManager.js — blur repair", () => {
     // The guard must be darwin, not a win32 exclusion.
     // Old pattern: if (process.platform !== "win32") return  — would skip Linux.
     // New pattern: if (process.platform === "darwin") return  — includes Linux.
-    expect(windowManager).not.toContain("platform !== \"win32\"");
-    expect(windowManager).toContain('platform === "darwin"');
+    const blurIdx = windowManager.indexOf('"blur"');
+    expect(blurIdx).toBeGreaterThan(-1);
+    const blurBlock = windowManager.slice(blurIdx, blurIdx + 1200);
+    expect(blurBlock).not.toContain('platform !== "win32"');
+    expect(blurBlock).toContain('platform === "darwin"');
   });
 
   test("blur handler re-applies always-on-top after debounce on non-darwin", () => {
@@ -92,6 +103,17 @@ describe("windowManager.js — blur repair", () => {
 
   test("enforceMainWindowOnTop delegates to WindowPositionUtil.setupAlwaysOnTop", () => {
     expect(windowManager).toContain("WindowPositionUtil.setupAlwaysOnTop");
+    expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
+  });
+
+  test("turning taskbar snap off reclamps before downgrading z-order", () => {
+    const idx = windowManager.indexOf("setOverlaySnapToTaskbar");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 900);
+    const disabledClampIdx = block.indexOf('this._reclampOverlayPosition("taskbar-snap-disabled")');
+    const enforceIdx = block.indexOf("this.enforceMainWindowOnTop()");
+    expect(disabledClampIdx).toBeGreaterThan(-1);
+    expect(enforceIdx).toBeGreaterThan(disabledClampIdx);
   });
 
   test("windows skips topmost re-apply while overlay is explicitly suspended", () => {
