@@ -1,5 +1,13 @@
-import { execFileSync } from "child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from "fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +20,106 @@ vi.mock("electron", () => ({
 }));
 
 const GpuBinaryManager = require("../../../src/helpers/gpuBinaryManager");
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[i] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buffer: Buffer): number {
+  let value = 0xffffffff;
+  for (const byte of buffer) {
+    value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function listFilesRecursive(rootDir: string): string[] {
+  const files: string[] = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(entryPath);
+      } else {
+        files.push(entryPath);
+      }
+    }
+  }
+  return files;
+}
+
+function createStoreOnlyZip(sourceDir: string, archivePath: string): void {
+  const chunks: Buffer[] = [];
+  const centralDirectoryChunks: Buffer[] = [];
+
+  for (const filePath of listFilesRecursive(sourceDir)) {
+    const relativeName = path.relative(sourceDir, filePath).split(path.sep).join("/");
+    const nameBuffer = Buffer.from(relativeName);
+    const content = readFileSync(filePath);
+    const checksum = crc32(content);
+    const localHeaderOffset = chunks.reduce((total, chunk) => total + chunk.length, 0);
+
+    const localHeader = Buffer.alloc(30 + nameBuffer.length);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(checksum, 14);
+    localHeader.writeUInt32LE(content.length, 18);
+    localHeader.writeUInt32LE(content.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    nameBuffer.copy(localHeader, 30);
+    chunks.push(localHeader, content);
+
+    const centralHeader = Buffer.alloc(46 + nameBuffer.length);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(checksum, 16);
+    centralHeader.writeUInt32LE(content.length, 20);
+    centralHeader.writeUInt32LE(content.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(localHeaderOffset, 42);
+    nameBuffer.copy(centralHeader, 46);
+    centralDirectoryChunks.push(centralHeader);
+  }
+
+  const centralDirectoryOffset = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const centralDirectory = Buffer.concat(centralDirectoryChunks);
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4);
+  endOfCentralDirectory.writeUInt16LE(0, 6);
+  endOfCentralDirectory.writeUInt16LE(centralDirectoryChunks.length, 8);
+  endOfCentralDirectory.writeUInt16LE(centralDirectoryChunks.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectory.length, 12);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20);
+
+  writeFileSync(archivePath, Buffer.concat([...chunks, centralDirectory, endOfCentralDirectory]));
+}
 
 describe("GpuBinaryManager CUDA package install", () => {
   let tempDir: string | null = null;
@@ -36,7 +144,7 @@ describe("GpuBinaryManager CUDA package install", () => {
     writeFileSync(path.join(packageDir, "cublasLt64_12.dll"), "fake cublasLt");
 
     const archivePath = path.join(tempDir, "whisper-server-win32-x64-cuda.zip");
-    execFileSync("zip", ["-q", "-r", archivePath, "."], { cwd: packageDir });
+    createStoreOnlyZip(packageDir, archivePath);
 
     const manager = new GpuBinaryManager();
     const result = await manager.installCudaPackage(

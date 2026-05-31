@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "path";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock useProStatus so getEffectiveEntitlement is controllable in every test.
@@ -578,30 +579,31 @@ describe("extractFileIdentifiers", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("isSafeFilePath", () => {
-  const homeDir = "/home/alice";
+  const rootDir = path.parse(process.cwd()).root;
+  const homeDir = path.join(rootDir, "Users", "alice");
 
   it("returns true for a file directly in home dir", () => {
-    expect(isSafeFilePath("/home/alice/myfile.txt", homeDir)).toBe(true);
+    expect(isSafeFilePath(path.join(homeDir, "myfile.txt"), homeDir)).toBe(true);
   });
 
   it("returns true for a file in a subdirectory of home", () => {
-    expect(isSafeFilePath("/home/alice/projects/app/src/App.jsx", homeDir)).toBe(true);
+    expect(isSafeFilePath(path.join(homeDir, "projects", "app", "src", "App.jsx"), homeDir)).toBe(true);
   });
 
   it("sensitivity: returns false for a file outside home dir", () => {
-    expect(isSafeFilePath("/etc/passwd", homeDir)).toBe(false);
+    expect(isSafeFilePath(path.join(rootDir, "etc", "passwd"), homeDir)).toBe(false);
   });
 
-  it("sensitivity: returns false for /tmp files", () => {
-    expect(isSafeFilePath("/tmp/secretfile.txt", homeDir)).toBe(false);
+  it("sensitivity: returns false for temp-like files outside home", () => {
+    expect(isSafeFilePath(path.join(rootDir, "tmp", "secretfile.txt"), homeDir)).toBe(false);
   });
 
   it("sensitivity: returns false for path traversal attack", () => {
-    expect(isSafeFilePath("/home/alice/../bob/evil.txt", homeDir)).toBe(false);
+    expect(isSafeFilePath(path.join(homeDir, "..", "bob", "evil.txt"), homeDir)).toBe(false);
   });
 
   it("sensitivity: returns false for a different user home dir", () => {
-    expect(isSafeFilePath("/home/bob/file.txt", homeDir)).toBe(false);
+    expect(isSafeFilePath(path.join(rootDir, "Users", "bob", "file.txt"), homeDir)).toBe(false);
   });
 });
 
