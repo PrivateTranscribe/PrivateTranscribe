@@ -28,21 +28,21 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
   });
 
   test("Windows uses floating level to avoid fullscreen game compositor churn", () => {
-    expect(windowConfig).toContain('aboveTaskbar ? "pop-up-menu" : "floating"');
+    expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
     expect(windowConfig).toContain("reported with Minecraft/Tekkit");
   });
 
-  test("Windows taskbar snap uses pop-up-menu level above the taskbar", () => {
+  test("Windows taskbar snap uses screen-saver level above the taskbar", () => {
     expect(windowConfig).toContain("aboveTaskbar = false");
-    expect(windowConfig).toContain('aboveTaskbar ? "pop-up-menu" : "floating"');
+    expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
     expect(windowConfig).toContain("window.moveTop()");
-    expect(windowConfig).toContain("above the Windows taskbar");
+    expect(windowConfig).toContain("taskbar can reassert its");
     expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
   test("Windows overlay is hidden from taskbar but focusable for clicks and drag", () => {
     expect(windowConfig).toContain('skipTaskbar: process.platform === "win32"');
-    expect(windowConfig).toContain('focusable: true,');
+    expect(windowConfig).toContain("focusable: true,");
   });
 
   test("Linux uses screen-saver level (highest X11 hint available)", () => {
@@ -74,7 +74,7 @@ describe("windowManager.js — blur repair", () => {
     // The guard must be darwin, not a win32 exclusion.
     // Old pattern: if (process.platform !== "win32") return  — would skip Linux.
     // New pattern: if (process.platform === "darwin") return  — includes Linux.
-    expect(windowManager).not.toContain("platform !== \"win32\"");
+    expect(windowManager).not.toContain('platform !== "win32"');
     expect(windowManager).toContain('platform === "darwin"');
   });
 
