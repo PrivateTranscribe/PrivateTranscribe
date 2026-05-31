@@ -278,12 +278,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return;
       }
       setCudaDownloadState("done");
-      setCudaInstalled(true);
       await loadCudaStatus();
     } catch (error) {
       setCudaDownloadState("error");
       setCudaDownloadError(error instanceof Error ? error.message : "CUDA download failed");
-      setCudaInstalled(false);
     }
   }, [loadCudaStatus]);
 
@@ -303,7 +301,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
   const handleSkipCudaAndUseCpu = useCallback(() => {
     setWhisperForceCpu(true);
-    setCudaInstalled(false);
     setCudaDownloadState("idle");
     setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
     setCudaDownloadError(null);
