@@ -551,6 +551,9 @@ class WhisperManager {
         if (text && !this.isBlankAudioMarker(text)) {
           return { success: true, text };
         }
+        if (this.isBlankAudioMarker(output)) {
+          return { success: false, message: "No audio detected" };
+        }
         throw new Error(`Failed to parse Whisper output: ${parseError.message}`);
       }
     } else if (typeof output === "object" && output !== null) {
