@@ -951,6 +951,10 @@ class WindowManager {
       if (focus) {
         this.mainWindow.focus();
       }
+      this.enforceMainWindowOnTop();
+      if (typeof this.mainWindow.moveTop === "function") {
+        this.mainWindow.moveTop();
+      }
       this._notifyOverlayStateChanged();
       return this.mainWindow;
     }

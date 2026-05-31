@@ -216,13 +216,14 @@ class WindowPositionUtil {
         window.setAlwaysOnTop(true, "floating", 1);
       }
     } else if (process.platform === "win32") {
-      // Use the higher screen-saver level only when the user explicitly opts into
-      // snapping the overlay to the taskbar edge. The taskbar can reassert its
-      // own topmost z-order after Start/taskbar interaction, and pop-up-menu is
-      // not always enough to lift the overlay back over it.
+      // Use the documented Windows menu level only when the user explicitly opts
+      // into snapping the overlay near the taskbar edge. The button is now kept
+      // inside the work area instead of inside the taskbar band, so the stronger
+      // "screen-saver" level is unnecessary and can make transparent
+      // skip-taskbar Electron windows disappear on some Windows setups.
       // Keep the normal passive overlay at "floating" to avoid compositor churn
       // in fullscreen games (reported with Minecraft/Tekkit).
-      window.setAlwaysOnTop(true, aboveTaskbar ? "screen-saver" : "floating");
+      window.setAlwaysOnTop(true, aboveTaskbar ? "pop-up-menu" : "floating");
       if (aboveTaskbar && typeof window.moveTop === "function") {
         window.moveTop();
       }
