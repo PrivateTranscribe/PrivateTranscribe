@@ -358,7 +358,7 @@ async function startApp() {
   if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
     debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
   } else {
-    await windowManager.createMainWindow();
+    await windowManager.createMainWindow({ initialShowDelayMs: 1000 });
   }
 
   // Create control panel window

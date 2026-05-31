@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
+  onWindowDragReset: registerListener(
+    "window-drag-reset",
+    (callback) => (_event, data) => callback(data)
+  ),
   onMainWindowShown: registerListener("main-window-shown", (callback) => () => callback()),
   notifyDictationOverlayReady: () => ipcRenderer.invoke("dictation-overlay-ready"),
 

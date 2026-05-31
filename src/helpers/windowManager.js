@@ -20,8 +20,12 @@ const {
   CONTAINER_H,
   BUTTON_OFFSET_X,
   BUTTON_OFFSET_Y,
+  BUTTON_HALF,
   WindowPositionUtil,
 } = require("./windowConfig");
+
+const BUTTON_HIT_TEST_PADDING = 4;
+const BUTTON_HOVER_POLL_MS = 50;
 
 class WindowManager {
   constructor() {
@@ -54,7 +58,15 @@ class WindowManager {
     this._displayMetricsTimer = null;
     this._interactivityRefreshTimer = null;
     this._powerResumeHandler = null;
+    this._powerUnlockHandler = null;
     this._displayMetricsChangedHandler = null;
+    this._displayAddedHandler = null;
+    this._displayRemovedHandler = null;
+    this._overlayRecoveryTimers = new Set();
+    this._lastKnownButtonPosition = null;
+    this._ignoreOverlayMoveSaveUntil = 0;
+    this._hoverInteractivityTimer = null;
+    this._overlayMouseCaptured = null;
 
     this._registerExitHandlers();
 
@@ -178,6 +190,9 @@ class WindowManager {
 
   _scheduleSavePosition(x, y) {
     // x,y is the button's screen center position (v2 format).
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      this._lastKnownButtonPosition = { x, y };
+    }
     this._pendingPosition = { x, y, v: 2 };
 
     if (this._positionSaveTimer) {
@@ -209,25 +224,92 @@ class WindowManager {
     return WindowPositionUtil.clampPosition(x, y, width, height, workArea);
   }
 
-  _reclampOverlayPosition(reason) {
+  _sendOverlayDragReset(reason) {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+
+    try {
+      this.mainWindow.webContents.send("window-drag-reset", { reason });
+    } catch (error) {
+      debugLogger.debug(
+        "[Window] Failed to send overlay drag reset:",
+        error?.message || String(error)
+      );
+    }
+  }
+
+  _resetOverlayDragState(reason) {
+    this.dragManager.resetDragState();
+    this._sendOverlayDragReset(reason);
+  }
+
+  _clearOverlayRecoveryTimers() {
+    for (const timer of this._overlayRecoveryTimers) {
+      clearTimeout(timer);
+    }
+    this._overlayRecoveryTimers.clear();
+  }
+
+  _scheduleOverlayRecovery(reason, delays = [2500, 6000]) {
+    this._clearOverlayRecoveryTimers();
+
+    for (const delay of delays) {
+      const timer = setTimeout(() => {
+        this._overlayRecoveryTimers.delete(timer);
+        this._reclampOverlayPosition(`${reason}:${delay}`, {
+          preferLastKnownButtonPosition: true,
+          persistPosition: false,
+        });
+        this._refreshMainWindowInteractivity(`${reason}:${delay}`);
+      }, delay);
+      this._overlayRecoveryTimers.add(timer);
+    }
+  }
+
+  _reclampOverlayPosition(reason, options = {}) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const { preferLastKnownButtonPosition = false, persistPosition = true } = options;
     const bounds = this.mainWindow.getBounds();
     const { width, height } = bounds;
-    // Use button screen position for display detection (more accurate than window center).
-    const display = screen.getDisplayNearestPoint({
+    const currentButtonPosition = {
       x: bounds.x + BUTTON_OFFSET_X,
       y: bounds.y + BUTTON_OFFSET_Y,
+    };
+    const targetButtonPosition =
+      preferLastKnownButtonPosition && this._lastKnownButtonPosition
+        ? this._lastKnownButtonPosition
+        : currentButtonPosition;
+    const targetBounds = {
+      x: targetButtonPosition.x - BUTTON_OFFSET_X,
+      y: targetButtonPosition.y - BUTTON_OFFSET_Y,
+    };
+    // Use button screen position for display detection (more accurate than window center).
+    const display = screen.getDisplayNearestPoint({
+      x: targetButtonPosition.x,
+      y: targetButtonPosition.y,
     });
-    const clamped = this._constrainOverlayPosition(bounds.x, bounds.y, width, height, display);
+    const clamped = this._constrainOverlayPosition(
+      targetBounds.x,
+      targetBounds.y,
+      width,
+      height,
+      display
+    );
     if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
       debugLogger.info("[Window] Re-clamping overlay after", reason, {
         from: { x: bounds.x, y: bounds.y },
         to: clamped,
+        targetButtonPosition,
         workArea: display.workArea || display.bounds,
         snapToTaskbar: this.overlaySnapToTaskbar,
+        persistPosition,
       });
+      if (!persistPosition) {
+        this._ignoreOverlayMoveSaveUntil = Date.now() + 5000;
+      }
       this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
-      this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
+      if (persistPosition) {
+        this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
+      }
     } else {
       debugLogger.debug("[Window] Overlay already within bounds after", reason);
     }
@@ -237,7 +319,8 @@ class WindowManager {
     this.enforceMainWindowOnTop();
   }
 
-  async createMainWindow() {
+  async createMainWindow(options = {}) {
+    const initialShowDelayMs = Math.max(0, Number(options.initialShowDelayMs) || 0);
     const display = screen.getPrimaryDisplay();
 
     const saved = this._loadSavedPosition();
@@ -249,6 +332,7 @@ class WindowManager {
       // to the primary display bounds on the next launch, causing it to jump across monitors.
       const btnX = saved.x;
       const btnY = saved.y;
+      this._lastKnownButtonPosition = { x: btnX, y: btnY };
       const winX = btnX - BUTTON_OFFSET_X;
       const winY = btnY - BUTTON_OFFSET_Y;
       const savedDisplay = screen.getDisplayNearestPoint({ x: btnX, y: btnY });
@@ -270,6 +354,10 @@ class WindowManager {
         display
       );
       position = { ...constrained, width: CONTAINER_W, height: CONTAINER_H };
+      this._lastKnownButtonPosition = {
+        x: constrained.x + BUTTON_OFFSET_X,
+        y: constrained.y + BUTTON_OFFSET_Y,
+      };
     }
 
     this.mainWindow = new BrowserWindow({
@@ -283,7 +371,7 @@ class WindowManager {
     this.mainWindow.setSkipTaskbar(true);
 
     this.setMainWindowInteractivity(false);
-    this.registerMainWindowEvents();
+    this.registerMainWindowEvents({ initialShowDelayMs });
 
     // Register load event handlers BEFORE loading to catch all events
     this.mainWindow.webContents.on(
@@ -325,22 +413,23 @@ class WindowManager {
     });
     MenuManager.setupMainMenu();
 
-    // Re-clamp the overlay after sleep/wake so it doesn't drift when the workArea
-    // changes (e.g. taskbar reappears at a different height, DPI scaling adjusts).
-    // Use a longer delay (2500ms) to let Windows fully restore the taskbar work area
-    // and DPI state before we read display metrics. 1000ms was too short in practice.
+    // Re-clamp the overlay after sleep/wake against the last user-chosen button
+    // anchor. Windows can briefly report the wrong monitor/workArea on wake; do
+    // not persist those temporary clamps or the overlay drifts after the display settles.
     this._powerResumeHandler = () => {
       // Reset any stuck drag state: if sleep interrupted an active drag the
       // isDragging flag stays true, causing startWindowDrag() to return early and
       // leaving the overlay unmovable after wake.
-      this.dragManager.resetDragState();
-
-      setTimeout(() => {
-        this._reclampOverlayPosition("resume");
-        this._refreshMainWindowInteractivity("resume");
-      }, 2500);
+      this._resetOverlayDragState("resume");
+      this._scheduleOverlayRecovery("resume");
     };
     powerMonitor.on("resume", this._powerResumeHandler);
+
+    this._powerUnlockHandler = () => {
+      this._resetOverlayDragState("unlock-screen");
+      this._scheduleOverlayRecovery("unlock-screen", [500, 2500, 6000]);
+    };
+    powerMonitor.on("unlock-screen", this._powerUnlockHandler);
 
     // Re-clamp whenever the display resolution, scale, or work area changes.
     // Debounce: this event fires many times during sleep/wake and screen on/off while
@@ -351,11 +440,24 @@ class WindowManager {
       if (this._displayMetricsTimer) clearTimeout(this._displayMetricsTimer);
       this._displayMetricsTimer = setTimeout(() => {
         this._displayMetricsTimer = null;
-        this._reclampOverlayPosition("display-metrics-changed");
+        this._resetOverlayDragState("display-metrics-changed");
+        this._reclampOverlayPosition("display-metrics-changed", {
+          preferLastKnownButtonPosition: true,
+          persistPosition: false,
+        });
         this._refreshMainWindowInteractivity("display-metrics-changed");
       }, 2000);
     };
     screen.on("display-metrics-changed", this._displayMetricsChangedHandler);
+
+    this._displayAddedHandler = () => {
+      this._displayMetricsChangedHandler();
+    };
+    this._displayRemovedHandler = () => {
+      this._displayMetricsChangedHandler();
+    };
+    screen.on("display-added", this._displayAddedHandler);
+    screen.on("display-removed", this._displayRemovedHandler);
   }
 
   setMainWindowInteractivity(shouldCapture) {
@@ -363,18 +465,88 @@ class WindowManager {
       return;
     }
 
-    // On Windows, always keep the overlay interactive.
-    // setIgnoreMouseEvents(true, { forward: true }) installs a WH_MOUSE_LL
-    // global hook intercepting every mouse event system-wide — this caused
-    // game input lag on Electron 36. On Electron 41 this is fixed, so we
-    // use the same approach as other platforms: forward:true when idle so
-    // transparent areas pass clicks through, false when hovering interactive UI.
+    this.isMainWindowInteractive = shouldCapture;
+
+    if (process.platform === "win32") {
+      if (shouldCapture) {
+        this._stopHoverInteractivityProbe();
+        this._setMainWindowMouseCapture(true);
+      } else {
+        this._startHoverInteractivityProbe();
+        this._refreshHoverInteractivity("set-interactivity");
+      }
+      return;
+    }
+
+    this._setMainWindowMouseCapture(shouldCapture);
+  }
+
+  _setMainWindowMouseCapture(shouldCapture) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    if (this._overlayMouseCaptured === shouldCapture) {
+      return;
+    }
+
     if (shouldCapture) {
       this.mainWindow.setIgnoreMouseEvents(false);
     } else {
       this.mainWindow.setIgnoreMouseEvents(true, { forward: true });
     }
-    this.isMainWindowInteractive = shouldCapture;
+    this._overlayMouseCaptured = shouldCapture;
+  }
+
+  _isCursorOverOverlayButton() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.mainWindow.isVisible()) {
+      return false;
+    }
+
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = this.mainWindow.getBounds();
+    const dx = cursor.x - (bounds.x + BUTTON_OFFSET_X);
+    const dy = cursor.y - (bounds.y + BUTTON_OFFSET_Y);
+    const radius = BUTTON_HALF + BUTTON_HIT_TEST_PADDING;
+    return dx * dx + dy * dy <= radius * radius;
+  }
+
+  _refreshHoverInteractivity(reason) {
+    if (this.isMainWindowInteractive) {
+      return;
+    }
+
+    try {
+      // Do not depend on Electron's forwarded mouse-enter events after sleep.
+      // Poll the cursor against the real mic circle so only the button captures
+      // input and the transparent/glow area remains click-through.
+      this._setMainWindowMouseCapture(
+        this.dragManager.isDragActive() || this._isCursorOverOverlayButton()
+      );
+    } catch (error) {
+      debugLogger.debug("[Window] Failed to refresh overlay hover interactivity:", {
+        reason,
+        error: error?.message || String(error),
+      });
+      this._setMainWindowMouseCapture(false);
+    }
+  }
+
+  _startHoverInteractivityProbe() {
+    if (process.platform !== "win32" || this._hoverInteractivityTimer) {
+      return;
+    }
+
+    this._hoverInteractivityTimer = setInterval(() => {
+      this._refreshHoverInteractivity("hover-probe");
+    }, BUTTON_HOVER_POLL_MS);
+  }
+
+  _stopHoverInteractivityProbe() {
+    if (this._hoverInteractivityTimer) {
+      clearInterval(this._hoverInteractivityTimer);
+      this._hoverInteractivityTimer = null;
+    }
   }
 
   _refreshMainWindowInteractivity(reason) {
@@ -394,7 +566,7 @@ class WindowManager {
       // stale while the transparent overlay remains visible. Toggling capture
       // re-arms the native ignore/forward state so hover can make the mic button
       // interactive again for dragging.
-      this.mainWindow.setIgnoreMouseEvents(false);
+      this.setMainWindowInteractivity(true);
       this._interactivityRefreshTimer = setTimeout(() => {
         this._interactivityRefreshTimer = null;
         this.setMainWindowInteractivity(shouldCapture);
@@ -872,10 +1044,11 @@ class WindowManager {
     return this.mainWindow.isVisible();
   }
 
-  registerMainWindowEvents() {
+  registerMainWindowEvents(options = {}) {
     if (!this.mainWindow) {
       return;
     }
+    const initialShowDelayMs = Math.max(0, Number(options.initialShowDelayMs) || 0);
 
     // Safety timeout: force show the window if ready-to-show doesn't fire within 10 seconds
     const showTimeout = setTimeout(() => {
@@ -893,12 +1066,24 @@ class WindowManager {
         debugLogger.debug("[Overlay] Window ready but overlayDisabled=true, keeping hidden");
         return;
       }
-      if (!this.mainWindow.isVisible()) {
+      const showOverlay = () => {
+        if (!this.mainWindow || this.mainWindow.isDestroyed() || this.mainWindow.isVisible()) {
+          return;
+        }
+        if (this.overlayDisabled) {
+          return;
+        }
         if (typeof this.mainWindow.showInactive === "function") {
           this.mainWindow.showInactive();
         } else {
           this.mainWindow.show();
         }
+      };
+
+      if (initialShowDelayMs > 0) {
+        setTimeout(showOverlay, initialShowDelayMs);
+      } else {
+        showOverlay();
       }
     });
 
@@ -936,10 +1121,11 @@ class WindowManager {
         clearTimeout(this.mainWindowOnTopRepairTimer);
       }
 
+      const repairDelayMs = this.overlaySnapToTaskbar ? 1000 : 100;
       this.mainWindowOnTopRepairTimer = setTimeout(() => {
         this.mainWindowOnTopRepairTimer = null;
         this.enforceMainWindowOnTop();
-      }, 100);
+      }, repairDelayMs);
     });
 
     this.mainWindow.on("minimize", () => {
@@ -959,6 +1145,9 @@ class WindowManager {
 
     this.mainWindow.on("moved", () => {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        if (Date.now() < this._ignoreOverlayMoveSaveUntil) {
+          return;
+        }
         const [x, y] = this.mainWindow.getPosition();
         this._scheduleSavePosition(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y);
       }
@@ -977,13 +1166,27 @@ class WindowManager {
         clearTimeout(this._interactivityRefreshTimer);
         this._interactivityRefreshTimer = null;
       }
+      this._stopHoverInteractivityProbe();
+      this._clearOverlayRecoveryTimers();
       if (this._powerResumeHandler) {
         powerMonitor.removeListener("resume", this._powerResumeHandler);
         this._powerResumeHandler = null;
       }
+      if (this._powerUnlockHandler) {
+        powerMonitor.removeListener("unlock-screen", this._powerUnlockHandler);
+        this._powerUnlockHandler = null;
+      }
       if (this._displayMetricsChangedHandler) {
         screen.removeListener("display-metrics-changed", this._displayMetricsChangedHandler);
         this._displayMetricsChangedHandler = null;
+      }
+      if (this._displayAddedHandler) {
+        screen.removeListener("display-added", this._displayAddedHandler);
+        this._displayAddedHandler = null;
+      }
+      if (this._displayRemovedHandler) {
+        screen.removeListener("display-removed", this._displayRemovedHandler);
+        this._displayRemovedHandler = null;
       }
       if (this._positionSaveTimer) {
         clearTimeout(this._positionSaveTimer);

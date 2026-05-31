@@ -344,6 +344,7 @@ declare global {
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;
+      onWindowDragReset?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;
 
       // Database operations
       saveTranscription: (
@@ -430,7 +431,15 @@ declare global {
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       transcribeFileV2: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       onFileTranscriptionProgress: (
-        callback: (event: any, data: { stage: string; percentage: number; chunksTotal?: number; chunksCompleted?: number }) => void
+        callback: (
+          event: any,
+          data: {
+            stage: string;
+            percentage: number;
+            chunksTotal?: number;
+            chunksCompleted?: number;
+          }
+        ) => void
       ) => (() => void) | void;
       checkDiarizationModelStatus: () => Promise<any>;
       downloadDiarizationModels: () => Promise<any>;

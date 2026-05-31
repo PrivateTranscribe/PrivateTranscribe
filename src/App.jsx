@@ -387,6 +387,16 @@ export default function App() {
     };
   }, [refreshWindowInteractivity]);
 
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWindowDragReset?.(() => {
+      dragStartPosRef.current = null;
+      didMoveRef.current = false;
+      dragInitiatedRef.current = false;
+      suppressClickAfterDragRef.current = false;
+    });
+    return () => unsubscribe?.();
+  }, []);
+
   // No resize effect needed: the overlay uses a fixed 400×500 transparent window.
   // Menu, toast, and recording states expand/collapse inside the container via CSS.
 

@@ -74,8 +74,11 @@ describe("windowManager.js — blur repair", () => {
     // The guard must be darwin, not a win32 exclusion.
     // Old pattern: if (process.platform !== "win32") return  — would skip Linux.
     // New pattern: if (process.platform === "darwin") return  — includes Linux.
-    expect(windowManager).not.toContain('platform !== "win32"');
-    expect(windowManager).toContain('platform === "darwin"');
+    const blurIdx = windowManager.indexOf('"blur"');
+    expect(blurIdx).toBeGreaterThan(-1);
+    const blurBlock = windowManager.slice(blurIdx, blurIdx + 1200);
+    expect(blurBlock).not.toContain('platform !== "win32"');
+    expect(blurBlock).toContain('platform === "darwin"');
   });
 
   test("blur handler re-applies always-on-top after debounce on non-darwin", () => {
