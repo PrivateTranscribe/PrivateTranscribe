@@ -58,7 +58,7 @@ jobs:
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v7
         with:
-          name: privoca-windows-setup
+          name: privatetranscribe-windows-setup
           path: |
             dist/PrivateTranscribe Setup *.exe
             dist/PrivateTranscribe-Setup-*.exe
@@ -67,7 +67,7 @@ jobs:
       - name: Upload portable
         uses: actions/upload-artifact@v7
         with:
-          name: privoca-windows-portable
+          name: privatetranscribe-windows-portable
           path: |
             dist/PrivateTranscribe-*.exe
             !dist/PrivateTranscribe Setup *.exe
@@ -78,7 +78,7 @@ jobs:
       - name: Upload latest.yml (update manifest)
         uses: actions/upload-artifact@v7
         with:
-          name: privoca-update-manifest
+          name: privatetranscribe-update-manifest
           path: dist/latest.yml
           retention-days: 7
 
@@ -88,7 +88,7 @@ jobs:
       #   if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true'
       #   uses: cloudflare/wrangler-action@v3
       #   with:
-      #     command: r2 object put privoca-assets/updates/win/latest.yml --file dist/latest.yml
+      #     command: r2 object put privatetranscribe-assets/updates/win/latest.yml --file dist/latest.yml
       #   env:
       #     CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
