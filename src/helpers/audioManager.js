@@ -1167,7 +1167,7 @@ class AudioManager {
           provider,
           hasKey: !!apiKey,
           keyLength: apiKey?.length || 0,
-          keyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "(none)",
+          keyPreview: apiKey ? "[configured]" : "(none)",
         },
         "transcription"
       );
@@ -1794,7 +1794,7 @@ class AudioManager {
           source,
           isCustomEndpoint,
           hasApiKey: !!apiKey,
-          apiKeyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "(none)",
+          apiKeyPreview: apiKey ? "[configured]" : "(none)",
         },
         "transcription"
       );
@@ -2005,7 +2005,9 @@ class AudioManager {
   async processFileTranscriptionV2(audioBlob, model = "base", metadata = {}) {
     const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
     const rawLanguage = metadata.language ?? this.getTranscriptionSetting("preferredLanguage", "");
-    const translateToEnglish = metadata.translate === true || this.getTranscriptionSetting("translateToEnglish", "off") === "on";
+    const translateToEnglish =
+      metadata.translate === true ||
+      this.getTranscriptionSetting("translateToEnglish", "off") === "on";
     const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
     const options = {
       model,

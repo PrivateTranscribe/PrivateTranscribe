@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const unzipper = require("unzipper");
+const { pipeline } = require("stream/promises");
 const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal, isRetryable } = require("./downloadUtils");
@@ -184,10 +185,41 @@ class GpuBinaryManager {
 
   async extractArchive(archivePath, extractDir) {
     await fs.promises.mkdir(extractDir, { recursive: true });
-    await fs
-      .createReadStream(archivePath)
-      .pipe(unzipper.Extract({ path: extractDir }))
-      .promise();
+    const extractRoot = path.resolve(extractDir);
+    const directory = await unzipper.Open.file(archivePath);
+
+    for (const entry of directory.files) {
+      const entryPath = String(entry.path || "").replace(/\\/g, "/");
+      const parts = entryPath.split("/").filter(Boolean);
+
+      if (
+        !entryPath ||
+        path.isAbsolute(entryPath) ||
+        parts.length === 0 ||
+        parts.some((part) => part === "..")
+      ) {
+        throw new Error(`Unsafe path in CUDA package: ${entry.path}`);
+      }
+
+      const mode = (entry.externalFileAttributes || 0) >>> 16;
+      const fileType = mode & 0o170000;
+      if (entry.type === "SymbolicLink" || fileType === 0o120000) {
+        throw new Error(`Symlink entries are not allowed in CUDA package: ${entry.path}`);
+      }
+
+      const destPath = path.resolve(extractRoot, ...parts);
+      if (destPath !== extractRoot && !destPath.startsWith(`${extractRoot}${path.sep}`)) {
+        throw new Error(`Unsafe path in CUDA package: ${entry.path}`);
+      }
+
+      if (entry.type === "Directory" || entryPath.endsWith("/")) {
+        await fs.promises.mkdir(destPath, { recursive: true });
+        continue;
+      }
+
+      await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+      await pipeline(entry.stream(), fs.createWriteStream(destPath, { flags: "wx" }));
+    }
   }
 
   findFileRecursive(rootDir, predicate) {

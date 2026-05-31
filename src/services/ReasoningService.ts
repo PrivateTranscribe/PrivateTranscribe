@@ -286,7 +286,7 @@ class ReasoningService extends BaseReasoningService {
         provider,
         hasKey: !!trimmedKey,
         keyLength: trimmedKey.length,
-        keyPreview: trimmedKey ? `${trimmedKey.substring(0, 8)}...` : "none",
+        keyPreview: trimmedKey ? "[configured]" : "none",
       });
 
       return trimmedKey;
@@ -314,7 +314,7 @@ class ReasoningService extends BaseReasoningService {
           provider,
           hasKey: !!apiKey,
           keyLength: apiKey?.length || 0,
-          keyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "none",
+          keyPreview: apiKey ? "[configured]" : "none",
         });
 
         if (apiKey) {
@@ -607,7 +607,7 @@ class ReasoningService extends BaseReasoningService {
           model,
           textLength: text.length,
           hasApiKey: !!apiKey,
-          apiKeyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "(none)",
+          apiKeyPreview: apiKey ? "[configured]" : "(none)",
         });
       }
 
@@ -780,39 +780,50 @@ class ReasoningService extends BaseReasoningService {
       environment: typeof window !== "undefined" ? "browser" : "node",
     });
 
+    if (this.isProcessing) {
+      throw new Error("Already processing a request");
+    }
+
+    this.isProcessing = true;
+
     if (typeof window !== "undefined" && window.electronAPI) {
       const startTime = Date.now();
 
-      logger.logReasoning("ANTHROPIC_IPC_CALL", {
-        model,
-        textLength: text.length,
-      });
-
-      const result = await window.electronAPI.processAnthropicReasoning(
-        text,
-        model,
-        agentName,
-        config
-      );
-
-      const processingTime = Date.now() - startTime;
-
-      if (result.success) {
-        logger.logReasoning("ANTHROPIC_SUCCESS", {
+      try {
+        logger.logReasoning("ANTHROPIC_IPC_CALL", {
           model,
-          processingTimeMs: processingTime,
-          resultLength: result.text.length,
+          textLength: text.length,
         });
-        return result.text;
-      } else {
-        logger.logReasoning("ANTHROPIC_ERROR", {
+
+        const result = await window.electronAPI.processAnthropicReasoning(
+          text,
           model,
-          processingTimeMs: processingTime,
-          error: result.error,
-        });
-        throw new Error(result.error);
+          agentName,
+          config
+        );
+
+        const processingTime = Date.now() - startTime;
+
+        if (result.success) {
+          logger.logReasoning("ANTHROPIC_SUCCESS", {
+            model,
+            processingTimeMs: processingTime,
+            resultLength: result.text.length,
+          });
+          return result.text;
+        } else {
+          logger.logReasoning("ANTHROPIC_ERROR", {
+            model,
+            processingTimeMs: processingTime,
+            error: result.error,
+          });
+          throw new Error(result.error);
+        }
+      } finally {
+        this.isProcessing = false;
       }
     } else {
+      this.isProcessing = false;
       logger.logReasoning("ANTHROPIC_UNAVAILABLE", {
         reason: "Not in Electron environment",
       });
@@ -832,34 +843,50 @@ class ReasoningService extends BaseReasoningService {
       environment: typeof window !== "undefined" ? "browser" : "node",
     });
 
+    if (this.isProcessing) {
+      throw new Error("Already processing a request");
+    }
+
+    this.isProcessing = true;
+
     if (typeof window !== "undefined" && window.electronAPI) {
       const startTime = Date.now();
 
-      logger.logReasoning("LOCAL_IPC_CALL", {
-        model,
-        textLength: text.length,
-      });
-
-      const result = await window.electronAPI.processLocalReasoning(text, model, agentName, config);
-
-      const processingTime = Date.now() - startTime;
-
-      if (result.success) {
-        logger.logReasoning("LOCAL_SUCCESS", {
+      try {
+        logger.logReasoning("LOCAL_IPC_CALL", {
           model,
-          processingTimeMs: processingTime,
-          resultLength: result.text.length,
+          textLength: text.length,
         });
-        return result.text;
-      } else {
-        logger.logReasoning("LOCAL_ERROR", {
+
+        const result = await window.electronAPI.processLocalReasoning(
+          text,
           model,
-          processingTimeMs: processingTime,
-          error: result.error,
-        });
-        throw new Error(result.error);
+          agentName,
+          config
+        );
+
+        const processingTime = Date.now() - startTime;
+
+        if (result.success) {
+          logger.logReasoning("LOCAL_SUCCESS", {
+            model,
+            processingTimeMs: processingTime,
+            resultLength: result.text.length,
+          });
+          return result.text;
+        } else {
+          logger.logReasoning("LOCAL_ERROR", {
+            model,
+            processingTimeMs: processingTime,
+            error: result.error,
+          });
+          throw new Error(result.error);
+        }
+      } finally {
+        this.isProcessing = false;
       }
     } else {
+      this.isProcessing = false;
       logger.logReasoning("LOCAL_UNAVAILABLE", {
         reason: "Not in Electron environment",
       });

@@ -19,12 +19,13 @@ dirsToClean.forEach((dir) => {
 console.log("🗄️ Cleaning development database...");
 try {
   // Use the same logic as the database.js file to determine the user data path
+  const appDataName = "PrivateTranscribe";
   const userDataPath =
     process.platform === "darwin"
-      ? path.join(os.homedir(), "Library", "Application Support", "dictate-voice")
+      ? path.join(os.homedir(), "Library", "Application Support", appDataName)
       : process.platform === "win32"
-      ? path.join(process.env.APPDATA || os.homedir(), "dictate-voice")
-      : path.join(os.homedir(), ".config", "dictate-voice");
+        ? path.join(process.env.APPDATA || os.homedir(), appDataName)
+        : path.join(os.homedir(), ".config", appDataName);
 
   const devDbPath = path.join(userDataPath, "transcriptions-dev.db");
 

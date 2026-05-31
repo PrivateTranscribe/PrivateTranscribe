@@ -31,6 +31,12 @@ export const useAudioRecording = (toast, options = {}) => {
     };
     audioManagerRef.current = manager;
     let disposed = false;
+    const correctionIntervalIds = new Set();
+
+    const clearCorrectionInterval = (intervalId) => {
+      clearInterval(intervalId);
+      correctionIntervalIds.delete(intervalId);
+    };
 
     // ── Audio ducking helpers ────────────────────────────────────────────────
     // Read settings directly from localStorage so this plain-JS hook doesn't
@@ -279,17 +285,17 @@ export const useAudioRecording = (toast, options = {}) => {
 
             const intervalId = setInterval(async () => {
               if (!canCommit()) {
-                clearInterval(intervalId);
+                clearCorrectionInterval(intervalId);
                 return;
               }
               if (Date.now() - startedAt > timeoutMs || prompted) {
-                clearInterval(intervalId);
+                clearCorrectionInterval(intervalId);
                 return;
               }
 
               const current = await window.electronAPI.readClipboard();
               if (!canCommit()) {
-                clearInterval(intervalId);
+                clearCorrectionInterval(intervalId);
                 return;
               }
               if (!current || current === lastClipboard) return;
@@ -298,7 +304,7 @@ export const useAudioRecording = (toast, options = {}) => {
               const pairs = inferCorrectionPairs(insertedText, current);
               if (pairs.length === 0) return;
               prompted = true;
-              clearInterval(intervalId);
+              clearCorrectionInterval(intervalId);
 
               toastRef.current?.({
                 title: "Teach Correction Memory",
@@ -354,6 +360,7 @@ export const useAudioRecording = (toast, options = {}) => {
                 ),
               });
             }, 750);
+            correctionIntervalIds.add(intervalId);
           }
         } catch {
           // ignore
@@ -497,6 +504,10 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeStart?.();
       disposeStop?.();
       disposeNoAudio?.();
+      for (const intervalId of correctionIntervalIds) {
+        clearInterval(intervalId);
+      }
+      correctionIntervalIds.clear();
       manager.cleanup();
       if (audioManagerRef.current === manager) {
         audioManagerRef.current = null;

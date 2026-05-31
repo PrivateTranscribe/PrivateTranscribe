@@ -58,14 +58,16 @@ function listFilesRecursive(rootDir: string): string[] {
   return files;
 }
 
-function createStoreOnlyZip(sourceDir: string, archivePath: string): void {
+function createStoreOnlyZipEntries(
+  entries: Array<{ name: string; content: Buffer | string }>,
+  archivePath: string
+): void {
   const chunks: Buffer[] = [];
   const centralDirectoryChunks: Buffer[] = [];
 
-  for (const filePath of listFilesRecursive(sourceDir)) {
-    const relativeName = path.relative(sourceDir, filePath).split(path.sep).join("/");
-    const nameBuffer = Buffer.from(relativeName);
-    const content = readFileSync(filePath);
+  for (const entry of entries) {
+    const nameBuffer = Buffer.from(entry.name);
+    const content = Buffer.isBuffer(entry.content) ? entry.content : Buffer.from(entry.content);
     const checksum = crc32(content);
     const localHeaderOffset = chunks.reduce((total, chunk) => total + chunk.length, 0);
 
@@ -121,6 +123,16 @@ function createStoreOnlyZip(sourceDir: string, archivePath: string): void {
   writeFileSync(archivePath, Buffer.concat([...chunks, centralDirectory, endOfCentralDirectory]));
 }
 
+function createStoreOnlyZip(sourceDir: string, archivePath: string): void {
+  createStoreOnlyZipEntries(
+    listFilesRecursive(sourceDir).map((filePath) => ({
+      name: path.relative(sourceDir, filePath).split(path.sep).join("/"),
+      content: readFileSync(filePath),
+    })),
+    archivePath
+  );
+}
+
 describe("GpuBinaryManager CUDA package install", () => {
   let tempDir: string | null = null;
 
@@ -167,5 +179,33 @@ describe("GpuBinaryManager CUDA package install", () => {
     expect(existsSync(path.join(binDir, "cudart64_12.dll"))).toBe(true);
     expect(existsSync(path.join(binDir, "cublas64_12.dll"))).toBe(true);
     expect(existsSync(path.join(binDir, "cublasLt64_12.dll"))).toBe(true);
+  });
+
+  it("rejects zip entries that would escape the extraction directory", async () => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "pt-cuda-package-"));
+    const binDir = path.join(tempDir, "bin");
+    mkdirSync(binDir);
+
+    const archivePath = path.join(tempDir, "unsafe-cuda.zip");
+    createStoreOnlyZipEntries(
+      [
+        { name: "whisper-server-win32-x64-cuda.exe", content: "fake exe" },
+        { name: "../evil.dll", content: "not allowed" },
+      ],
+      archivePath
+    );
+
+    const manager = new GpuBinaryManager();
+    await expect(
+      manager.installCudaPackage(
+        archivePath,
+        {
+          outputName: "whisper-server-win32-x64-cuda.exe",
+          companionPattern: /\.dll$/i,
+        },
+        binDir
+      )
+    ).rejects.toThrow(/Unsafe path/);
+    expect(existsSync(path.join(tempDir, "evil.dll"))).toBe(false);
   });
 });

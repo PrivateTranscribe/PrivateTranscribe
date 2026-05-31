@@ -474,8 +474,20 @@ export function useSettings() {
   }, []);
 
   const clearApiKeySyncError = useCallback(() => {
-    if (persistErrorTimerRef.current) clearTimeout(persistErrorTimerRef.current);
+    if (persistErrorTimerRef.current) {
+      clearTimeout(persistErrorTimerRef.current);
+      persistErrorTimerRef.current = null;
+    }
     setApiKeySyncError(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (persistErrorTimerRef.current) {
+        clearTimeout(persistErrorTimerRef.current);
+        persistErrorTimerRef.current = null;
+      }
+    };
   }, []);
 
   // Sync API keys from main process on first mount (if localStorage was cleared)
