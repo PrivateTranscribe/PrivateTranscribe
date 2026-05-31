@@ -649,20 +649,6 @@ class WindowManager {
 
   markMainWindowRendererReady() {
     this.mainWindowRendererReady = true;
-    if (
-      this.mainWindow &&
-      !this.mainWindow.isDestroyed() &&
-      !this.mainWindow.isVisible() &&
-      !this.overlayDisabled
-    ) {
-      this.resumeMainWindowOverlay();
-      this.enforceMainWindowOnTop();
-      if (typeof this.mainWindow.showInactive === "function") {
-        this.mainWindow.showInactive();
-      } else {
-        this.mainWindow.show();
-      }
-    }
   }
 
   async waitForMainWindowRendererReady(timeoutMs = 1500) {

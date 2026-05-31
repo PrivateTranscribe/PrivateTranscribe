@@ -28,15 +28,15 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
   });
 
   test("Windows uses floating level to avoid fullscreen game compositor churn", () => {
-    expect(windowConfig).toContain('aboveTaskbar ? "pop-up-menu" : "floating"');
+    expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
     expect(windowConfig).toContain("reported with Minecraft/Tekkit");
   });
 
-  test("Windows taskbar snap uses pop-up-menu level near the taskbar", () => {
+  test("Windows taskbar snap uses screen-saver level near the taskbar", () => {
     expect(windowConfig).toContain("aboveTaskbar = false");
-    expect(windowConfig).toContain('aboveTaskbar ? "pop-up-menu" : "floating"');
+    expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
     expect(windowConfig).toContain("window.moveTop()");
-    expect(windowConfig).toContain("inside the work area");
+    expect(windowConfig).toContain("taskbar can reassert");
     expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
