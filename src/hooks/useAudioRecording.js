@@ -32,6 +32,10 @@ export const useAudioRecording = (toast, options = {}) => {
     audioManagerRef.current = manager;
     let disposed = false;
     const correctionIntervalIds = new Set();
+    const HYBRID_HOLD_THRESHOLD_MS = 150;
+    let hybridKeyDownAt = 0;
+    let hybridStartedFromIdle = false;
+    let hybridWasRecordingOnKeyDown = false;
 
     const clearCorrectionInterval = (intervalId) => {
       clearInterval(intervalId);
@@ -426,6 +430,45 @@ export const useAudioRecording = (toast, options = {}) => {
       endRecordingFlow({ playSound: true });
     };
 
+    const handleHybridKeyDown = () => {
+      if (hybridKeyDownAt > 0) {
+        return;
+      }
+
+      const currentState = manager.getState();
+      hybridKeyDownAt = Date.now();
+      hybridWasRecordingOnKeyDown = currentState.isRecording || currentState.isStartingRecording;
+      hybridStartedFromIdle = false;
+
+      if (
+        !currentState.isRecording &&
+        !currentState.isProcessing &&
+        !currentState.isStartingRecording
+      ) {
+        hybridStartedFromIdle = true;
+        void beginRecordingFlow({ playSound: true });
+      }
+    };
+
+    const handleHybridKeyUp = () => {
+      if (hybridKeyDownAt <= 0) {
+        return;
+      }
+
+      const heldMs = Date.now() - hybridKeyDownAt;
+      const shouldStop =
+        hybridWasRecordingOnKeyDown ||
+        (hybridStartedFromIdle && heldMs >= HYBRID_HOLD_THRESHOLD_MS);
+
+      hybridKeyDownAt = 0;
+      hybridStartedFromIdle = false;
+      hybridWasRecordingOnKeyDown = false;
+
+      if (shouldStop) {
+        endRecordingFlow({ playSound: true });
+      }
+    };
+
     const disposeToggle = window.electronAPI.onToggleDictation(() => {
       handleToggle();
       onToggleRef.current?.();
@@ -438,6 +481,16 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeStop = window.electronAPI.onStopDictation?.(() => {
       handleStop();
+      onToggleRef.current?.();
+    });
+
+    const disposeHybridKeyDown = window.electronAPI.onHybridDictationKeyDown?.(() => {
+      handleHybridKeyDown();
+      onToggleRef.current?.();
+    });
+
+    const disposeHybridKeyUp = window.electronAPI.onHybridDictationKeyUp?.(() => {
+      handleHybridKeyUp();
       onToggleRef.current?.();
     });
 
@@ -503,6 +556,8 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
+      disposeHybridKeyDown?.();
+      disposeHybridKeyUp?.();
       disposeNoAudio?.();
       for (const intervalId of correctionIntervalIds) {
         clearInterval(intervalId);

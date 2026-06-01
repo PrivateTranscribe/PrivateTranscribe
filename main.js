@@ -75,7 +75,10 @@ const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
-const { shouldUseWindowsNativeListener } = require("./src/helpers/hotkeyManager");
+const {
+  normalizeActivationMode,
+  shouldUseWindowsNativeListener,
+} = require("./src/helpers/hotkeyManager");
 const { ActionEngineManager } = require("./src/helpers/actionEngineManager");
 const { BenchmarkManager } = require("./src/helpers/benchmarkManager");
 const HardwareDetector = require("./src/helpers/hardwareDetector");
@@ -415,7 +418,9 @@ async function startApp() {
         if (isLiveWindow(windowManager.mainWindow)) {
           const activationMode = await windowManager.getActivationMode();
           await windowManager.showDictationPanel();
-          if (activationMode === "push") {
+          if (activationMode === "tapHold") {
+            await windowManager.sendHybridDictationKeyDown();
+          } else if (activationMode === "push") {
             // Track when key was pressed for push-to-talk
             globeKeyDownTime = Date.now();
             globeKeyIsRecording = false;
@@ -446,6 +451,8 @@ async function startApp() {
             windowManager.sendStopDictation();
           }
           // If released too quickly, don't do anything (tap is ignored in push mode)
+        } else if (activationMode === "tapHold") {
+          windowManager.sendHybridDictationKeyUp();
         }
       }
     });
@@ -463,6 +470,10 @@ async function startApp() {
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
     let winKeyIsRecording = false;
     let currentActivationMode = "tap";
+    let winHybridPressActive = false;
+    let winHybridKeyDownDelivered = false;
+    let winHybridPendingRelease = false;
+    let winHybridSequence = 0;
 
     const stopPushToTalkRecording = (reason) => {
       if (!winKeyIsRecording) {
@@ -472,6 +483,19 @@ async function startApp() {
       winKeyIsRecording = false;
       debugLogger.debug("[Push-to-Talk] Stopping recording", { reason });
       windowManager.sendStopDictation();
+    };
+
+    const resetHybridPress = () => {
+      winHybridSequence += 1;
+      winHybridPressActive = false;
+      winHybridKeyDownDelivered = false;
+      winHybridPendingRelease = false;
+    };
+
+    const sendHybridKeyUp = (reason) => {
+      debugLogger.debug("[Tap+Hold] Sending key up", { reason });
+      windowManager.sendHybridDictationKeyUp();
+      resetHybridPress();
     };
 
     // Helper to check if hotkey is valid for Windows key listener
@@ -497,6 +521,38 @@ async function startApp() {
         if (isLiveWindow(windowManager.mainWindow)) {
           windowManager.sendToggleDictation();
         }
+        return;
+      }
+
+      if (currentActivationMode === "tapHold") {
+        if (winHybridPressActive) {
+          sendHybridKeyUp("recovery-duplicate-key-down");
+        }
+
+        debugLogger.debug("[Tap+Hold] Starting key sequence");
+        winHybridPressActive = true;
+        winHybridKeyDownDelivered = false;
+        winHybridPendingRelease = false;
+        const sequence = ++winHybridSequence;
+        windowManager
+          .sendHybridDictationKeyDown()
+          .then(() => {
+            if (!winHybridPressActive || sequence !== winHybridSequence) {
+              return;
+            }
+            winHybridKeyDownDelivered = true;
+            if (winHybridPendingRelease) {
+              sendHybridKeyUp("pending-release");
+            }
+          })
+          .catch((error) => {
+            debugLogger.warn("[Tap+Hold] Failed to send key down", {
+              error: error?.message || String(error),
+            });
+            if (sequence === winHybridSequence) {
+              resetHybridPress();
+            }
+          });
         return;
       }
 
@@ -526,6 +582,19 @@ async function startApp() {
     windowsKeyManager.on("key-up", () => {
       debugLogger.debug("[Push-to-Talk] Key UP received");
 
+      if (currentActivationMode === "tapHold") {
+        if (!winHybridPressActive) {
+          return;
+        }
+
+        if (winHybridKeyDownDelivered) {
+          sendHybridKeyUp("key-up");
+        } else {
+          winHybridPendingRelease = true;
+        }
+        return;
+      }
+
       // Always stop if recording is active, even if activation mode state drifted.
       if (winKeyIsRecording) {
         stopPushToTalkRecording("key-up");
@@ -535,6 +604,7 @@ async function startApp() {
     windowsKeyManager.on("error", (error) => {
       debugLogger.warn("[Push-to-Talk] Windows key listener error", { error: error.message });
       stopPushToTalkRecording("listener-error");
+      resetHybridPress();
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
@@ -549,6 +619,7 @@ async function startApp() {
         "[Push-to-Talk] Windows key listener not available - falling back to toggle mode"
       );
       stopPushToTalkRecording("listener-unavailable");
+      resetHybridPress();
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
@@ -605,11 +676,14 @@ async function startApp() {
     // Listen for activation mode changes from renderer
     ipcMain.on("activation-mode-changed", async (_event, mode) => {
       debugLogger.debug("[Push-to-Talk] IPC: Activation mode changed", { mode });
-      currentActivationMode = mode === "push" ? "push" : "tap";
+      currentActivationMode = normalizeActivationMode(mode);
       windowManager.setActivationMode(currentActivationMode);
       hotkeyManager.setActivationMode(currentActivationMode);
       if (currentActivationMode !== "push") {
         stopPushToTalkRecording("activation-mode-changed");
+      }
+      if (currentActivationMode !== "tapHold") {
+        resetHybridPress();
       }
 
       const currentHotkey = hotkeyManager.getCurrentHotkey();

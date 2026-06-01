@@ -901,7 +901,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
                       {activationMode === "tap"
                         ? "Press once to start, press again to stop"
-                        : "Hold while speaking, release to transcribe"}
+                        : activationMode === "tapHold"
+                          ? "Tap to toggle, or hold while speaking"
+                          : "Hold while speaking, release to transcribe"}
                     </p>
                   </div>
                   <ActivationModeSelector
@@ -922,7 +924,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 <span className="text-xs text-muted-foreground/60">
                   {activationMode === "tap" || isUsingGnomeHotkeys
                     ? `${readableHotkey} to start/stop`
-                    : `Hold ${readableHotkey}`}
+                    : activationMode === "tapHold"
+                      ? `Tap or hold ${readableHotkey}`
+                      : `Hold ${readableHotkey}`}
                 </span>
               </div>
               <Textarea
@@ -960,7 +964,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   </kbd>{" "}
                   {activationMode === "push"
                     ? "while speaking, then release to transcribe."
-                    : "to start dictating into any app."}
+                    : activationMode === "tapHold"
+                      ? "to start dictating, or hold it while speaking."
+                      : "to start dictating into any app."}
                 </p>
                 {useLocalWhisper && skippedModelSetup && (
                   <p className="text-xs text-muted-foreground">

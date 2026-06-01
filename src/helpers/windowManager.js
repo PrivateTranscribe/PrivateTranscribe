@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const { app, screen, powerMonitor, BrowserWindow, dialog } = require("electron");
 const HotkeyManager = require("./hotkeyManager");
+const { normalizeActivationMode } = HotkeyManager;
 const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
@@ -126,7 +127,7 @@ class WindowManager {
   }
 
   setActivationMode(mode) {
-    this.activationModeCache = mode === "push" ? "push" : "tap";
+    this.activationModeCache = normalizeActivationMode(mode);
   }
 
   setOverlayStateChangeCallback(callback) {
@@ -702,7 +703,7 @@ class WindowManager {
       // Also check if windowsKeyManager is actively running - this is a synchronous
       // signal that prevents race conditions during startup before cache is populated.
       if (process.platform === "win32") {
-        if (this.activationModeCache === "push") {
+        if (this.activationModeCache !== "tap") {
           return;
         }
 
@@ -713,7 +714,7 @@ class WindowManager {
         }
 
         const activationMode = await this.getActivationMode();
-        if (activationMode === "push") {
+        if (activationMode !== "tap") {
           return;
         }
       }
@@ -785,6 +786,44 @@ class WindowManager {
 
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("stop-dictation");
+    }
+  }
+
+  async sendHybridDictationKeyDown() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.overlayDisabled) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        await this.createMainWindow();
+      }
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("hybrid-dictation-key-down");
+      }
+      return;
+    }
+
+    const dictationWindow = await this.showDictationPanel();
+    if (dictationWindow && !dictationWindow.isDestroyed()) {
+      dictationWindow.webContents.send("hybrid-dictation-key-down");
+    }
+  }
+
+  sendHybridDictationKeyUp() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.overlayDisabled) {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("hybrid-dictation-key-up");
+      }
+      return;
+    }
+
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send("hybrid-dictation-key-up");
     }
   }
 

@@ -43,6 +43,14 @@ describe("HotkeyManager Windows native routing", () => {
     expect(mod.shouldUseWindowsNativeListener("Control+Space", "tap")).toBe(false);
   });
 
+  it("routes normal accelerators through the Windows native listener for tap+hold", async () => {
+    const mod = await loadHotkeyManager("win32");
+
+    expect(mod.normalizeActivationMode("tapHold")).toBe("tapHold");
+    expect(mod.shouldUseWindowsNativeListener("CommandOrControl+Space", "tapHold")).toBe(true);
+    expect(mod.shouldUseWindowsNativeListener("Control+Space", "tapHold")).toBe(true);
+  });
+
   it("routes Mouse4 through the Windows native listener instead of globalShortcut", async () => {
     const mod = await loadHotkeyManager("win32");
     const HotkeyManager = mod.default ?? mod;

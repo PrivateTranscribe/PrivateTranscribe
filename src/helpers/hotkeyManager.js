@@ -90,13 +90,18 @@ function normalizeForWindowsListener(hotkey) {
   return [...parts, normalizedBase].filter(Boolean).join("+");
 }
 
+function normalizeActivationMode(mode) {
+  if (mode === "push" || mode === "tapHold") return mode;
+  return "tap";
+}
+
 function shouldUseWindowsNativeListener(hotkey, activationMode = "tap") {
   if (!hotkey || hotkey === "GLOBE") return false;
   if (isWindowsNativeOnlyHotkey(hotkey)) return true;
 
-  // Push-to-talk needs key-up detection. Electron globalShortcut can reserve
-  // normal accelerators, but it cannot tell us when the user releases them.
-  return activationMode === "push" && isValidAccelerator(hotkey);
+  // Push-to-talk and tap+hold need key-up detection. Electron globalShortcut can
+  // reserve normal accelerators, but it cannot tell us when the user releases them.
+  return normalizeActivationMode(activationMode) !== "tap" && isValidAccelerator(hotkey);
 }
 
 // Valid accelerator key names per Electron docs (partial list for validation).
@@ -265,7 +270,7 @@ class HotkeyManager {
   }
 
   setActivationMode(mode) {
-    this.activationMode = mode === "push" ? "push" : "tap";
+    this.activationMode = normalizeActivationMode(mode);
     debugLogger.log(`[HotkeyManager] Activation mode set to: ${this.activationMode}`);
   }
 
@@ -449,7 +454,7 @@ class HotkeyManager {
       const effectiveCallback =
         process.platform === "win32"
           ? () => {
-              if (this.activationMode !== "push") callback();
+              if (this.activationMode === "tap") callback();
             }
           : callback;
       const success = globalShortcut.register(hotkey, effectiveCallback);
@@ -594,8 +599,7 @@ class HotkeyManager {
         this.notifyHotkeyFailure(savedHotkey, result);
       }
 
-      const defaultHotkey =
-        process.platform === "darwin" ? "GLOBE" : "CommandOrControl+Space";
+      const defaultHotkey = process.platform === "darwin" ? "GLOBE" : "CommandOrControl+Space";
 
       if (defaultHotkey === "GLOBE") {
         this.currentHotkey = "GLOBE";
@@ -786,4 +790,5 @@ module.exports.isModifierOnlyHotkey = isModifierOnlyHotkey;
 module.exports.isNonAcceleratorHotkey = isNonAcceleratorHotkey;
 module.exports.isWindowsNativeOnlyHotkey = isWindowsNativeOnlyHotkey;
 module.exports.normalizeForWindowsListener = normalizeForWindowsListener;
+module.exports.normalizeActivationMode = normalizeActivationMode;
 module.exports.shouldUseWindowsNativeListener = shouldUseWindowsNativeListener;

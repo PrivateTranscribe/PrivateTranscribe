@@ -977,7 +977,7 @@ class IPCHandlers {
           ) {
             debugLogger.log(`[IPC] Restarting Windows key listener for hotkey: ${effectiveHotkey}`);
             this.windowsKeyManager.start(effectiveHotkey);
-          } else if (activationMode === "push" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
+          } else if (activationMode !== "tap" && effectiveHotkey && effectiveHotkey !== "GLOBE") {
             this.windowsKeyManager.start(effectiveHotkey);
           }
         }

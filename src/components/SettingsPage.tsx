@@ -1415,7 +1415,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
       if (importedHistoryLimit !== undefined) setHistoryLimit(importedHistoryLimit);
       if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
-      if (s.activationMode === "tap" || s.activationMode === "push")
+      if (
+        s.activationMode === "tap" ||
+        s.activationMode === "push" ||
+        s.activationMode === "tapHold"
+      )
         setActivationMode(s.activationMode);
 
       updateTranscriptionSettings({

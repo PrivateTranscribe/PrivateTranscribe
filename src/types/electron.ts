@@ -344,6 +344,8 @@ declare global {
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;
+      onHybridDictationKeyDown?: (callback: () => void) => (() => void) | void;
+      onHybridDictationKeyUp?: (callback: () => void) => (() => void) | void;
       onWindowDragReset?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;
 
       // Database operations
@@ -643,7 +645,7 @@ declare global {
       openUninstallLocation?: () => Promise<{ success: boolean; error?: string }>;
 
       // Windows Push-to-Talk notifications
-      notifyActivationModeChanged?: (mode: "tap" | "push") => void;
+      notifyActivationModeChanged?: (mode: "tap" | "push" | "tapHold") => void;
       notifyHotkeyChanged?: (hotkey: string) => void;
       notifyTranscriptionSettingsChanged?: (settings: TranscriptionSettingsBroadcast) => void;
       onTranscriptionSettingsChanged?: (
