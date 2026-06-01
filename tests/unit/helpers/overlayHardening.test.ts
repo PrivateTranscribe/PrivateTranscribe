@@ -264,6 +264,15 @@ describe("main.js / windowManager.js — startup overlay readiness", () => {
     expect(windowManager).toContain("initialShowDelayMs");
     expect(windowManager).toContain("setTimeout(showOverlay, initialShowDelayMs)");
   });
+
+  test("renderer-ready IPC force-shows the overlay if ready-to-show left it hidden", () => {
+    const idx = windowManager.indexOf("markMainWindowRendererReady()");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 800);
+    expect(block).toContain("!this.mainWindow.isVisible()");
+    expect(block).toContain("!this.overlayDisabled");
+    expect(block).toContain("showInactive");
+  });
 });
 
 describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => {
