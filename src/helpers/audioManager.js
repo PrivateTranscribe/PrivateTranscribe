@@ -12,6 +12,12 @@ import {
   buildFileIdentifierHint,
 } from "./contextPipeline";
 
+const normalizePunctuationSpacing = (text) =>
+  String(text || "")
+    .replace(/\s+([,.;:!?%])/g, "$1")
+    .replace(/([([{])\s+/g, "$1")
+    .replace(/\s+([)\]}])/g, "$1");
+
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
@@ -1430,7 +1436,7 @@ class AudioManager {
     const withDictionary = this.applyDictionaryReplacements(
       typeof text === "string" ? text.trim() : ""
     );
-    const normalizedText = withDictionary;
+    const normalizedText = normalizePunctuationSpacing(withDictionary);
 
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {
       source,
@@ -1506,7 +1512,7 @@ class AudioManager {
           processingTime: new Date().toISOString(),
         });
 
-        return result;
+        return normalizePunctuationSpacing(result);
       } catch (error) {
         logger.logReasoning("REASONING_FAILED", {
           error: error.message,

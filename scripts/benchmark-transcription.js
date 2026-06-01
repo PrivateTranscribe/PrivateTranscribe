@@ -12,6 +12,7 @@ const os = require("os");
 const http = require("http");
 const net = require("net");
 const { spawn } = require("child_process");
+const { normalizeTranscriptText } = require("../src/utils/textNormalization");
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
@@ -281,7 +282,7 @@ async function transcribe(audioBuffer, port, _inputFileName = "audio.wav") {
 // ─── Post-processing (mirrored from src/helpers/whisper.js) ──────────────────
 
 function normalizeWhitespace(text) {
-  return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+  return normalizeTranscriptText(text);
 }
 
 function removeRepetitions(text) {
@@ -292,7 +293,7 @@ function removeRepetitions(text) {
     cleaned = cleaned.replace(re, "$1");
   }
   cleaned = cleaned.replace(/\b(\w+)(?:\s+\1){4,}\b/gi, "$1");
-  return cleaned.replace(/\s+/g, " ").trim();
+  return normalizeTranscriptText(cleaned);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -1,3 +1,5 @@
+const { normalizeTranscriptText } = require("../utils/textNormalization");
+
 function pad2(value) {
   return String(Math.floor(Math.max(0, value))).padStart(2, "0");
 }
@@ -14,10 +16,7 @@ function formatTimestamp(seconds = 0, srt = false) {
 }
 
 function cleanText(text) {
-  return String(text || "")
-    .replace(/\[\s*SPEAKER_TURN\s*\]/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeTranscriptText(String(text || "").replace(/\[\s*SPEAKER_TURN\s*\]/gi, " "));
 }
 
 /**
@@ -42,7 +41,7 @@ function removeRepetitions(text) {
   cleaned = cleaned.replace(/(.)\1{9,}/g, "$1");
 
   // 4) Re-normalize whitespace
-  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  cleaned = normalizeTranscriptText(cleaned);
   return cleaned;
 }
 

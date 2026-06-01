@@ -58,6 +58,10 @@ describe("normalizeWhitespace", () => {
     expect(normalizeWhitespace("clean text")).toBe("clean text");
   });
 
+  it("removes spaces before punctuation", () => {
+    expect(normalizeWhitespace("clean text ?")).toBe("clean text?");
+  });
+
   it("returns empty string for whitespace-only input", () => {
     expect(normalizeWhitespace("   \n  ")).toBe("");
   });

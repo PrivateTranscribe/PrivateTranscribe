@@ -102,6 +102,15 @@ describe("Whisper parsing utilities", () => {
         message: "No audio detected",
       });
     });
+
+    it("normalizes spaces before punctuation in server text", () => {
+      const manager = new WhisperManager();
+
+      expect(manager.parseWhisperResult({ text: "Can we test this ?" })).toEqual({
+        success: true,
+        text: "Can we test this?",
+      });
+    });
   });
 
   describe("normalizeWhitespace", () => {

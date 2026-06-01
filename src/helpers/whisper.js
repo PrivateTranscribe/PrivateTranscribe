@@ -8,6 +8,7 @@ const GpuBinaryManager = require("./gpuBinaryManager");
 const { getModelsDirForService } = require("./modelDirUtils");
 const { DiarizationManager } = require("./diarizationManager");
 const { assignSpeakersToSegments } = require("./diarizationMerge");
+const { normalizeTranscriptText } = require("../utils/textNormalization");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
 
@@ -527,7 +528,7 @@ class WhisperManager {
   // Normalize whitespace: replace newlines with spaces and collapse multiple spaces
   // whisper.cpp returns text with \n between audio segments which causes formatting issues
   normalizeWhitespace(text) {
-    return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+    return normalizeTranscriptText(text);
   }
 
   // Detect and remove repetitive phrases that whisper.cpp sometimes hallucinates.
@@ -552,7 +553,7 @@ class WhisperManager {
     cleaned = cleaned.replace(/\b(\w+)(?:\s+\1){4,}\b/gi, "$1");
 
     // 3) Re-normalize whitespace after replacements
-    cleaned = cleaned.replace(/\s+/g, " ").trim();
+    cleaned = normalizeTranscriptText(cleaned);
 
     if (cleaned !== text) {
       debugLogger.info("Removed whisper repetition artifacts", {
