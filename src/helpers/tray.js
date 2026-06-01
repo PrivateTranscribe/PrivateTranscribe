@@ -248,9 +248,7 @@ class TrayManager {
         // Tray "Hide Overlay" intentionally disables/destroys the visual overlay
         // to eliminate DWM lag. This is different from hideDictationPanel's normal
         // hide path when overlayDisabled is false, which keeps the window alive.
-        label: overlayDisabled || !dictationVisible
-          ? "Show Overlay"
-          : "Hide Overlay",
+        label: overlayDisabled || !dictationVisible ? "Show Overlay" : "Hide Overlay",
         click: () => {
           if (!this.windowManager) return;
           if (overlayDisabled) {

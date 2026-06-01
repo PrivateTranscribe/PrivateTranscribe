@@ -13,9 +13,12 @@ const DEFAULT_SEGMENTATION_RELATIVE_PATH = path.join(
   "sherpa-onnx-pyannote-segmentation-3-0",
   "model.int8.onnx"
 );
-const DEFAULT_EMBEDDING_RELATIVE_PATH = "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
-const SEGMENTATION_ARCHIVE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
-const EMBEDDING_MODEL_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+const DEFAULT_EMBEDDING_RELATIVE_PATH =
+  "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+const SEGMENTATION_ARCHIVE_URL =
+  "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
+const EMBEDDING_MODEL_URL =
+  "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
 
 function copyFloat32Samples(samples) {
   if (samples instanceof Float32Array) {
@@ -43,18 +46,22 @@ function normalizeSpeakerId(value) {
 }
 
 function normalizeDiarizationResult(segments, meta = {}) {
-  const normalizedSegments = (Array.isArray(segments) ? segments : []).map((segment, index) => {
-    const start = Math.max(0, toFiniteNumber(segment.start, 0));
-    const end = Math.max(start, toFiniteNumber(segment.end, start));
-    const speaker = normalizeSpeakerId(segment.speaker ?? segment.label ?? segment.speakerLabel ?? 0);
-    return {
-      id: index,
-      speaker,
-      label: String(segment.speaker ?? segment.label ?? segment.speakerLabel ?? 0),
-      start: Number(start.toFixed(3)),
-      end: Number(end.toFixed(3)),
-    };
-  }).filter((segment) => segment.end > segment.start);
+  const normalizedSegments = (Array.isArray(segments) ? segments : [])
+    .map((segment, index) => {
+      const start = Math.max(0, toFiniteNumber(segment.start, 0));
+      const end = Math.max(start, toFiniteNumber(segment.end, start));
+      const speaker = normalizeSpeakerId(
+        segment.speaker ?? segment.label ?? segment.speakerLabel ?? 0
+      );
+      return {
+        id: index,
+        speaker,
+        label: String(segment.speaker ?? segment.label ?? segment.speakerLabel ?? 0),
+        start: Number(start.toFixed(3)),
+        end: Number(end.toFixed(3)),
+      };
+    })
+    .filter((segment) => segment.end > segment.start);
 
   const speakers = Array.from(new Set(normalizedSegments.map((segment) => segment.speaker)));
   return {
@@ -77,9 +84,13 @@ function normalizeDiarizationResult(segments, meta = {}) {
 
 class DiarizationManager {
   constructor(options = {}) {
-    this.modelsDir = options.modelsDir || process.env.PRIVATETRANSCRIBE_DIARIZATION_MODELS_DIR || getModelsDirForService("diarization");
+    this.modelsDir =
+      options.modelsDir ||
+      process.env.PRIVATETRANSCRIBE_DIARIZATION_MODELS_DIR ||
+      getModelsDirForService("diarization");
     this.bundleId = options.bundleId || DEFAULT_BUNDLE_ID;
-    this.segmentationRelativePath = options.segmentationRelativePath || DEFAULT_SEGMENTATION_RELATIVE_PATH;
+    this.segmentationRelativePath =
+      options.segmentationRelativePath || DEFAULT_SEGMENTATION_RELATIVE_PATH;
     this.embeddingRelativePath = options.embeddingRelativePath || DEFAULT_EMBEDDING_RELATIVE_PATH;
     this.loadSherpa = options.loadSherpa || (() => require("sherpa-onnx-node"));
   }
@@ -94,7 +105,9 @@ class DiarizationManager {
 
   getModelStatus() {
     const paths = this.getModelPaths();
-    const missing = [paths.segmentationModel, paths.embeddingModel].filter((file) => !fs.existsSync(file));
+    const missing = [paths.segmentationModel, paths.embeddingModel].filter(
+      (file) => !fs.existsSync(file)
+    );
     return {
       bundleId: this.bundleId,
       ready: missing.length === 0,
@@ -169,9 +182,10 @@ class DiarizationManager {
       throw new Error(`Diarization models are not downloaded yet (${missingList}).`);
     }
 
-    const expectedSpeakers = Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
-      ? options.expectedSpeakers
-      : -1;
+    const expectedSpeakers =
+      Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
+        ? options.expectedSpeakers
+        : -1;
     // In sherpa-onnx agglomerative clustering, higher threshold = fewer speakers.
     // Valid range appears to be 0.0–1.0; values above 1.0 crash the native library.
     // 0.9 produces fewer clusters than 0.5, but still over-segments for long files.
@@ -195,7 +209,10 @@ class DiarizationManager {
       throw new Error("diarizeWavBuffer expects a WAV Buffer.");
     }
 
-    const tempPath = path.join(os.tmpdir(), `privatetranscribe-diarization-${crypto.randomUUID()}.wav`);
+    const tempPath = path.join(
+      os.tmpdir(),
+      `privatetranscribe-diarization-${crypto.randomUUID()}.wav`
+    );
     fs.writeFileSync(tempPath, wavBuffer);
     try {
       return await this.diarizeWavFile(tempPath, options);
@@ -213,7 +230,10 @@ class DiarizationManager {
       throw new Error("diarizeWavBufferInWorker expects a WAV Buffer.");
     }
 
-    const tempPath = path.join(os.tmpdir(), `privatetranscribe-diarization-${crypto.randomUUID()}.wav`);
+    const tempPath = path.join(
+      os.tmpdir(),
+      `privatetranscribe-diarization-${crypto.randomUUID()}.wav`
+    );
     fs.writeFileSync(tempPath, wavBuffer);
     try {
       return await this.diarizeWavFileInWorker(tempPath, options);
@@ -227,7 +247,10 @@ class DiarizationManager {
   }
 
   async diarizeWavFileInWorker(wavPath, options = {}) {
-    const payloadPath = path.join(os.tmpdir(), `privatetranscribe-diarization-${crypto.randomUUID()}.json`);
+    const payloadPath = path.join(
+      os.tmpdir(),
+      `privatetranscribe-diarization-${crypto.randomUUID()}.json`
+    );
     const workerPath = path.join(__dirname, "diarizationWorker.js");
     const payload = {
       wavPath,
@@ -261,20 +284,28 @@ class DiarizationManager {
           // Windows when running Electron with ELECTRON_RUN_AS_NODE.
           const filteredStderr = stderr
             .split(/\r?\n/)
-            .filter(line => !line.includes("crashpad") && !line.includes("not connected"))
+            .filter((line) => !line.includes("crashpad") && !line.includes("not connected"))
             .join("\n")
             .trim();
           let parsed;
           try {
             parsed = JSON.parse(stdout.trim() || "{}");
           } catch (parseError) {
-            reject(new Error(`Diarization worker returned invalid JSON (code ${code}): ${filteredStderr || stdout}`));
+            reject(
+              new Error(
+                `Diarization worker returned invalid JSON (code ${code}): ${filteredStderr || stdout}`
+              )
+            );
             return;
           }
           if (code === 0 && parsed.success) {
             resolve(parsed.result);
           } else {
-            reject(new Error(parsed.error || filteredStderr || `Diarization worker exited with code ${code}`));
+            reject(
+              new Error(
+                parsed.error || filteredStderr || `Diarization worker exited with code ${code}`
+              )
+            );
           }
         });
       });
@@ -302,7 +333,9 @@ class DiarizationManager {
       // See sherpa-onnx FAQ: readWave(filename, false).
       const wave = sherpa.readWave(wavPath, false);
       if (diarizer.sampleRate !== wave.sampleRate) {
-        throw new Error(`Diarization expects ${diarizer.sampleRate} Hz audio, got ${wave.sampleRate} Hz.`);
+        throw new Error(
+          `Diarization expects ${diarizer.sampleRate} Hz audio, got ${wave.sampleRate} Hz.`
+        );
       }
 
       // Keep a defensive copy as well. It is cheap compared with diarization and
@@ -330,9 +363,11 @@ class DiarizationManager {
           // Keep the top N speakers by total speech duration; reassign the rest
           const sorted = Object.entries(speakerDurations).sort((a, b) => b[1] - a[1]);
           const keepSet = new Set(sorted.slice(0, maxAutoSpeakers).map(([id]) => id));
-          const keptSegments = rawSegments.filter(s => keepSet.has(String(s.speaker ?? s.label ?? s.speakerLabel ?? 0)));
+          const keptSegments = rawSegments.filter((s) =>
+            keepSet.has(String(s.speaker ?? s.label ?? s.speakerLabel ?? 0))
+          );
 
-          rawSegments = rawSegments.map(seg => {
+          rawSegments = rawSegments.map((seg) => {
             const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
             if (keepSet.has(id)) return seg;
             // Find nearest kept segment by time midpoint
@@ -363,7 +398,7 @@ class DiarizationManager {
         }
         if (seenIds.length > 1) {
           const idMap = new Map(seenIds.map((id, idx) => [id, idx]));
-          rawSegments = rawSegments.map(seg => {
+          rawSegments = rawSegments.map((seg) => {
             const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
             return { ...seg, speaker: idMap.get(id) ?? 0 };
           });

@@ -117,8 +117,14 @@ function deduplicateConsecutiveTurns(turns) {
   for (let i = 1; i < turns.length; i++) {
     const prev = result[result.length - 1];
     const curr = turns[i];
-    const prevNorm = prev.text.toLowerCase().replace(/[.!?,;:\s]+/g, " ").trim();
-    const currNorm = curr.text.toLowerCase().replace(/[.!?,;:\s]+/g, " ").trim();
+    const prevNorm = prev.text
+      .toLowerCase()
+      .replace(/[.!?,;:\s]+/g, " ")
+      .trim();
+    const currNorm = curr.text
+      .toLowerCase()
+      .replace(/[.!?,;:\s]+/g, " ")
+      .trim();
     // Skip if identical or if one is a substring of the other (catches partial repeats)
     if (currNorm === prevNorm) continue;
     if (prevNorm.length > 10 && currNorm.length > 10) {
@@ -143,8 +149,8 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
     segment.text = removeRepetitions(segment.text);
   }
   // Remove turns/segments that became empty after cleaning
-  const cleanTurns = deduplicateConsecutiveTurns(turns.filter(t => t.text));
-  const cleanSegments = deduplicateConsecutiveTurns(analysis.segments.filter(s => s.text));
+  const cleanTurns = deduplicateConsecutiveTurns(turns.filter((t) => t.text));
+  const cleanSegments = deduplicateConsecutiveTurns(analysis.segments.filter((s) => s.text));
 
   let text = "";
   if (format === "srt") {
@@ -156,15 +162,27 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
       .join("\n\n");
   } else if (format === "timestamped") {
     text = cleanTurns
-      .map((segment) => `[${formatTimestamp(segment.start)}] ${withSpeakers ? `${segment.speaker}: ` : ""}${segment.text}`)
+      .map(
+        (segment) =>
+          `[${formatTimestamp(segment.start)}] ${withSpeakers ? `${segment.speaker}: ` : ""}${segment.text}`
+      )
       .join("\n");
   } else {
     text = cleanTurns
-      .map((segment) => (withSpeakers && analysis.speakerCount > 1 ? `${segment.speaker}: ${segment.text}` : segment.text))
+      .map((segment) =>
+        withSpeakers && analysis.speakerCount > 1
+          ? `${segment.speaker}: ${segment.text}`
+          : segment.text
+      )
       .join("\n");
   }
 
-  return { ...analysis, text, srt: format === "srt" ? text : formatTranscript(verboseJson, "srt", options).text, format };
+  return {
+    ...analysis,
+    text,
+    srt: format === "srt" ? text : formatTranscript(verboseJson, "srt", options).text,
+    format,
+  };
 }
 
 module.exports = { formatTranscript, cleanText, formatTimestamp };

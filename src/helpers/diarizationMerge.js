@@ -22,7 +22,8 @@ function normalizeDiarizationSegments(segments = []) {
     .map((segment, index) => {
       const start = Math.max(0, toNumber(segment.start));
       const end = Math.max(start, toNumber(segment.end, start));
-      const rawSpeaker = segment.speaker ?? segment.speaker_label ?? segment.speakerLabel ?? segment.label;
+      const rawSpeaker =
+        segment.speaker ?? segment.speaker_label ?? segment.speakerLabel ?? segment.label;
       const speaker = normalizeSpeakerLabel(rawSpeaker) || `Speaker ${index + 1}`;
       return { start, end, speaker };
     })

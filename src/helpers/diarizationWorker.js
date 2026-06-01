@@ -25,10 +25,12 @@ async function main() {
 }
 
 main().catch((error) => {
-  resultStdout(JSON.stringify({
-    success: false,
-    error: error?.message || String(error),
-    stack: error?.stack || null,
-  }));
+  resultStdout(
+    JSON.stringify({
+      success: false,
+      error: error?.message || String(error),
+      stack: error?.stack || null,
+    })
+  );
   process.exitCode = 1;
 });
