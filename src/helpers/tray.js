@@ -245,8 +245,9 @@ class TrayManager {
 
     return [
       {
-        // Unified hide/show: hiding destroys the overlay (eliminates DWM lag);
-        // showing re-creates it. Dictation works in the background regardless.
+        // Tray "Hide Overlay" intentionally disables/destroys the visual overlay
+        // to eliminate DWM lag. This is different from hideDictationPanel's normal
+        // hide path when overlayDisabled is false, which keeps the window alive.
         label: overlayDisabled || !dictationVisible
           ? "Show Overlay"
           : "Hide Overlay",

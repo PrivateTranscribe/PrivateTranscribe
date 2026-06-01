@@ -649,6 +649,10 @@ class WindowManager {
 
   markMainWindowRendererReady() {
     this.mainWindowRendererReady = true;
+    // Startup recovery path: this must stay immediate. Electron's ready-to-show
+    // event can leave the transparent overlay hidden on some Windows setups, so
+    // renderer-ready is the last reliable signal that the window can be shown.
+    // Do not route this through the cosmetic startup delay.
     if (
       this.mainWindow &&
       !this.mainWindow.isDestroyed() &&
@@ -994,9 +998,10 @@ class WindowManager {
       return;
     }
 
-    // When overlay is disabled, destroy the window completely to eliminate
-    // DWM composition lag in windowed games (Windows issue with transparent
-    // always-on-top BrowserWindow).
+    // `overlayDisabled` means "no visual overlay window exists", not just
+    // "temporarily hidden". Destroying is intentional here to eliminate DWM
+    // composition lag in windowed games (Windows issue with transparent
+    // always-on-top BrowserWindow). Normal visual hiding keeps the window alive.
     if (this.overlayDisabled) {
       this.mainWindow.close();
       // mainWindow will be nulled in the 'closed' event handler
@@ -1014,7 +1019,7 @@ class WindowManager {
     if (changed) {
       debugLogger.info("[Overlay] Overlay disabled state changed:", disabled);
       if (disabled) {
-        // Destroy overlay immediately when disabling
+        // Destroy overlay immediately when disabling the visual overlay mode.
         this.hideDictationPanel();
       } else {
         // Show overlay when re-enabling

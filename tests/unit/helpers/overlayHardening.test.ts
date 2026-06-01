@@ -269,9 +269,13 @@ describe("main.js / windowManager.js — startup overlay readiness", () => {
     const idx = windowManager.indexOf("markMainWindowRendererReady()");
     expect(idx).toBeGreaterThan(-1);
     const block = windowManager.slice(idx, idx + 800);
+    expect(block).toContain("must stay immediate");
+    expect(block).toContain("Do not route this through the cosmetic startup delay");
     expect(block).toContain("!this.mainWindow.isVisible()");
     expect(block).toContain("!this.overlayDisabled");
     expect(block).toContain("showInactive");
+    expect(block).not.toContain("setTimeout");
+    expect(block).not.toContain("initialShowDelayMs");
   });
 });
 
