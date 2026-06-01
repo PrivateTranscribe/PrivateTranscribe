@@ -67,6 +67,8 @@ class WindowManager {
     this._ignoreOverlayMoveSaveUntil = 0;
     this._hoverInteractivityTimer = null;
     this._overlayMouseCaptured = null;
+    this._mainWindowInitialShowDelayMs = 0;
+    this._mainWindowInitialShowTimer = null;
 
     this._registerExitHandlers();
 
@@ -649,20 +651,44 @@ class WindowManager {
 
   markMainWindowRendererReady() {
     this.mainWindowRendererReady = true;
+    this._scheduleMainWindowInitialShow(this._mainWindowInitialShowDelayMs);
+  }
+
+  _showMainWindowInactiveIfAllowed() {
     if (
-      this.mainWindow &&
-      !this.mainWindow.isDestroyed() &&
-      !this.mainWindow.isVisible() &&
-      !this.overlayDisabled
+      !this.mainWindow ||
+      this.mainWindow.isDestroyed() ||
+      this.mainWindow.isVisible() ||
+      this.overlayDisabled
     ) {
-      this.resumeMainWindowOverlay();
-      this.enforceMainWindowOnTop();
-      if (typeof this.mainWindow.showInactive === "function") {
-        this.mainWindow.showInactive();
-      } else {
-        this.mainWindow.show();
-      }
+      return false;
     }
+
+    this.resumeMainWindowOverlay();
+    this.enforceMainWindowOnTop();
+    if (typeof this.mainWindow.showInactive === "function") {
+      this.mainWindow.showInactive();
+    } else {
+      this.mainWindow.show();
+    }
+    return true;
+  }
+
+  _scheduleMainWindowInitialShow(delayMs = 0) {
+    if (this._mainWindowInitialShowTimer) {
+      return;
+    }
+
+    const normalizedDelayMs = Math.max(0, Number(delayMs) || 0);
+    if (normalizedDelayMs > 0) {
+      this._mainWindowInitialShowTimer = setTimeout(() => {
+        this._mainWindowInitialShowTimer = null;
+        this._showMainWindowInactiveIfAllowed();
+      }, normalizedDelayMs);
+      return;
+    }
+
+    this._showMainWindowInactiveIfAllowed();
   }
 
   async waitForMainWindowRendererReady(timeoutMs = 1500) {
@@ -1067,6 +1093,7 @@ class WindowManager {
       return;
     }
     const initialShowDelayMs = Math.max(0, Number(options.initialShowDelayMs) || 0);
+    this._mainWindowInitialShowDelayMs = initialShowDelayMs;
 
     // Safety timeout: force show the window if ready-to-show doesn't fire within 10 seconds
     const showTimeout = setTimeout(() => {
@@ -1084,25 +1111,7 @@ class WindowManager {
         debugLogger.debug("[Overlay] Window ready but overlayDisabled=true, keeping hidden");
         return;
       }
-      const showOverlay = () => {
-        if (!this.mainWindow || this.mainWindow.isDestroyed() || this.mainWindow.isVisible()) {
-          return;
-        }
-        if (this.overlayDisabled) {
-          return;
-        }
-        if (typeof this.mainWindow.showInactive === "function") {
-          this.mainWindow.showInactive();
-        } else {
-          this.mainWindow.show();
-        }
-      };
-
-      if (initialShowDelayMs > 0) {
-        setTimeout(showOverlay, initialShowDelayMs);
-      } else {
-        showOverlay();
-      }
+      this._scheduleMainWindowInitialShow(initialShowDelayMs);
     });
 
     this.mainWindow.on("show", () => {
@@ -1183,6 +1192,10 @@ class WindowManager {
       if (this._interactivityRefreshTimer) {
         clearTimeout(this._interactivityRefreshTimer);
         this._interactivityRefreshTimer = null;
+      }
+      if (this._mainWindowInitialShowTimer) {
+        clearTimeout(this._mainWindowInitialShowTimer);
+        this._mainWindowInitialShowTimer = null;
       }
       this._stopHoverInteractivityProbe();
       this._clearOverlayRecoveryTimers();
