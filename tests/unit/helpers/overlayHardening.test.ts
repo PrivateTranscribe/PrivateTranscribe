@@ -102,7 +102,19 @@ describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => 
 
   test("drag clamping uses proposed button position for display selection", () => {
     expect(dragManager).toContain("proposedButtonPoint");
-    expect(dragManager).toContain("getDisplayNearestPoint(proposedButtonPoint)");
+    expect(dragManager).toContain("screen.getDisplayNearestPoint(proposedButtonPoint)");
+  });
+
+  test("drag loop ignores duplicate cursor samples to avoid stationary touchpad drift", () => {
+    expect(dragManager).toContain("lastCursorPosition");
+    expect(dragManager).toContain("cursorPos.x === this.lastCursorPosition.x");
+    expect(dragManager).toContain("return;");
+  });
+
+  test("taskbar-snapped dragging locks to the display where the drag started", () => {
+    expect(dragManager).toContain("this.dragDisplay = screen.getDisplayNearestPoint");
+    expect(dragManager).toContain("? this.dragDisplay || screen.getDisplayNearestPoint(proposedButtonPoint)");
+    expect(dragManager).toContain("this.dragDisplay = null");
   });
 
   test("drag stop listens beyond document mouseup for touchpad/outside-window releases", () => {
