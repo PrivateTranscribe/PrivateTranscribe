@@ -1012,11 +1012,11 @@ class IPCHandlers {
       return await this.windowManager.stopWindowDrag();
     });
 
-    // External link handler - only http/https URLs are permitted.
+    // External link handler - only safe external URL protocols are permitted.
     ipcMain.handle("open-external", async (event, url) => {
       if (!isAllowedExternalUrl(url)) {
-        debugLogger.warn("open-external blocked non-http(s) URL", { url });
-        return { success: false, error: "Only http and https URLs may be opened externally." };
+        debugLogger.warn("open-external blocked unsafe URL", { url });
+        return { success: false, error: "Only http, https, and mailto URLs may be opened externally." };
       }
       try {
         await shell.openExternal(url);

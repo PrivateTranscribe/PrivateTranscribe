@@ -121,13 +121,15 @@ export default function DeveloperSection() {
     const version = (await window.electronAPI?.getAppVersion?.()) || "unknown";
     const platform = navigator.platform || "unknown";
     const userAgent = navigator.userAgent || "unknown";
-    const electronVersion = process?.versions?.electron || "unknown";
+    const runtimeVersions = window.electronAPI?.getRuntimeVersions?.();
+    const electronVersion = runtimeVersions?.electron || "unknown";
     const debugState = (await window.electronAPI?.getDebugState?.()) || {};
 
     return [
       `PrivateTranscribe v${version}`,
       `Platform: ${platform}`,
       `Electron: ${electronVersion}`,
+      `Chrome: ${runtimeVersions?.chrome || "unknown"}`,
       `Debug logging: ${debugState.enabled ? "ON" : "OFF"}`,
       `Log path: ${debugState.logPath || "N/A"}`,
       `User agent: ${userAgent}`,

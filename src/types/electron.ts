@@ -620,6 +620,11 @@ declare global {
         scope?: string;
         source?: string;
       }) => Promise<void>;
+      getRuntimeVersions?: () => {
+        electron?: string;
+        chrome?: string;
+        node?: string;
+      };
       getDebugState: () => Promise<{
         enabled: boolean;
         logPath: string | null;

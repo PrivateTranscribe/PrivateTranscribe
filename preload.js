@@ -269,6 +269,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   getLogLevel: () => ipcRenderer.invoke("get-log-level"),
   log: (entry) => ipcRenderer.invoke("app-log", entry),
+  getRuntimeVersions: () => ({
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+  }),
 
   // Debug logging management
   getDebugState: () => ipcRenderer.invoke("get-debug-state"),

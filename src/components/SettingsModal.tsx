@@ -97,9 +97,9 @@ export default function SettingsModal({ open, onOpenChange, initialSection }: Se
     },
     {
       id: "developer",
-      label: "Developer",
+      label: "Diagnostics & Data",
       icon: Wrench,
-      description: "Advanced tools",
+      description: "Logs, backup & storage",
       group: "System",
     },
   ];

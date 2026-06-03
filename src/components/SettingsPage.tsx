@@ -1629,6 +1629,24 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
 
+  const handleOpenFeedbackEmail = useCallback(() => {
+    const subject = "PrivateTranscribe feedback";
+    const body = [
+      "What did you try?",
+      "",
+      "What worked well?",
+      "",
+      "What was confusing or broken?",
+      "",
+      `App version: ${currentVersion || "unknown"}`,
+      `Mode: ${updateStatus.isDevelopment ? "development" : "installed"}`,
+    ].join("\n");
+
+    openExternalLink(
+      `mailto:support@privatetranscribe.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    );
+  }, [currentVersion, updateStatus.isDevelopment]);
+
   useEffect(() => {
     if (platform === "linux") {
       setAutoStartLoading(false);
@@ -3016,20 +3034,25 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <SettingsPanel>
               <SettingsPanelRow>
                 <SettingsRow
-                  label="Contact & Bug Reports"
-                  description="support@privatetranscribe.com"
+                  label="Contact & Feedback"
+                  description="Send tester feedback, bug reports, or support questions to support@privatetranscribe.com"
                 >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard?.writeText("support@privatetranscribe.com");
-                      setEmailCopied(true);
-                      setTimeout(() => setEmailCopied(false), 2000);
-                    }}
-                  >
-                    {emailCopied ? "✓ Copied!" : "Copy Email"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleOpenFeedbackEmail}>
+                      Send Feedback
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard?.writeText("support@privatetranscribe.com");
+                        setEmailCopied(true);
+                        setTimeout(() => setEmailCopied(false), 2000);
+                      }}
+                    >
+                      {emailCopied ? "✓ Copied!" : "Copy Email"}
+                    </Button>
+                  </div>
                 </SettingsRow>
               </SettingsPanelRow>
             </SettingsPanel>
@@ -3078,8 +3101,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="Developer Tools"
-              description="Advanced diagnostics, logging, and debugging capabilities"
+              title="Diagnostics & Data"
+              description="Support tools, logging, settings backup, and local data management"
             />
 
             {updateStatus.isDevelopment && <DeveloperSection />}
