@@ -9,12 +9,11 @@ const {
   CONTAINER_H,
   CONTAINER_W,
   TASKBAR_SNAP_GAP,
-  TASKBAR_SNAP_OFFSET,
   WindowPositionUtil,
 } = require("../../../src/helpers/windowConfig.js");
 
 describe("WindowPositionUtil taskbar snap positioning", () => {
-  test("bottom taskbar snap keeps the overlay button inside the work area", () => {
+  test("bottom taskbar snap keeps the overlay button just inside the usable work area", () => {
     const display = {
       bounds: { x: 0, y: 0, width: 800, height: 600 },
       workArea: { x: 0, y: 0, width: 800, height: 552 },
@@ -28,11 +27,12 @@ describe("WindowPositionUtil taskbar snap positioning", () => {
       display
     );
 
-    const buttonCenterY = pos.y + BUTTON_OFFSET_Y;
-    expect(buttonCenterY).toBe(display.workArea.y + display.workArea.height - TASKBAR_SNAP_OFFSET);
+    const workAreaBottom = display.workArea.y + display.workArea.height;
+    const buttonBottom = pos.y + BUTTON_OFFSET_Y + BUTTON_HALF;
+    expect(buttonBottom).toBe(workAreaBottom - TASKBAR_SNAP_GAP);
   });
 
-  test("left taskbar snap keeps the overlay button inside the work area", () => {
+  test("left taskbar snap keeps the overlay button just inside the usable work area", () => {
     const display = {
       bounds: { x: 0, y: 0, width: 800, height: 600 },
       workArea: { x: 48, y: 0, width: 752, height: 600 },
@@ -46,8 +46,8 @@ describe("WindowPositionUtil taskbar snap positioning", () => {
       display
     );
 
-    const buttonCenterX = pos.x + BUTTON_OFFSET_X;
-    expect(buttonCenterX).toBe(display.workArea.x + TASKBAR_SNAP_OFFSET);
+    const buttonLeft = pos.x + BUTTON_OFFSET_X - BUTTON_HALF;
+    expect(buttonLeft).toBe(display.workArea.x + TASKBAR_SNAP_GAP);
   });
 
   test("auto-hidden taskbar fallback keeps the overlay button above the screen edge", () => {

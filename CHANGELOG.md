@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-06-03
+
+### Changed
+- **Windows installer UX**: Default the NSIS installer to current-user installs while still allowing all-users installs when selected.
+- **Release metadata**: Bump the app/package version for the next tester build.
+
+### Fixed
+- **Dictation cleanup**: Repair split transcription spacing such as `I 'll` and split dictionary-style terms such as `OpenC ode`.
+- **Overlay regression coverage**: Align taskbar-snap positioning tests with the safer behavior that keeps the overlay button just inside the usable work area.
+
 ## [0.10.2] - 2026-05-31
 
 ### Added
