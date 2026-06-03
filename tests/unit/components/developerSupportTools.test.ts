@@ -27,8 +27,19 @@ describe("Settings support and diagnostics tools", () => {
     );
 
     expect(settingsPage).toContain("Contact & Feedback");
-    expect(settingsPage).toContain("Send Feedback");
+    expect(settingsPage).toContain("Draft Feedback Email");
     expect(settingsPage).toContain("PrivateTranscribe feedback");
+    expect(settingsPage).toContain("Nothing is sent automatically");
+  });
+
+  it("formats the app version object instead of rendering [object Object]", () => {
+    const developerSection = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "DeveloperSection.tsx"),
+      "utf8"
+    );
+
+    expect(developerSection).toContain("versionResult?.version || \"unknown\"");
+    expect(developerSection).toContain("PrivateTranscribe v${version}");
   });
 
   it("the diagnostics section is labeled for users, not only developers", () => {

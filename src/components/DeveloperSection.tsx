@@ -118,7 +118,11 @@ export default function DeveloperSection() {
   const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
 
   const buildDebugInfo = async () => {
-    const version = (await window.electronAPI?.getAppVersion?.()) || "unknown";
+    const versionResult = await window.electronAPI?.getAppVersion?.();
+    const version =
+      typeof versionResult === "string"
+        ? versionResult
+        : versionResult?.version || "unknown";
     const platform = navigator.platform || "unknown";
     const userAgent = navigator.userAgent || "unknown";
     const runtimeVersions = window.electronAPI?.getRuntimeVersions?.();
@@ -177,7 +181,7 @@ export default function DeveloperSection() {
 
       toast({
         title: "Email draft opened",
-        description: "Support email drafted with system info and log path",
+        description: "Your default email app opened. Nothing is sent automatically.",
         variant: "success",
       });
     } catch (error) {
@@ -259,9 +263,13 @@ export default function DeveloperSection() {
         </Button>
         <Button variant="outline" size="sm" onClick={handleSendLogs} className="text-xs">
           <Mail className="mr-1.5 h-3.5 w-3.5" />
-          Send logs
+          Draft support email
         </Button>
       </div>
+      <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+        Opens your default email app with system info prefilled. Nothing is sent automatically,
+        and logs still need to be attached manually.
+      </p>
 
       <div className="mb-5">
         <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Debug Logging</h3>

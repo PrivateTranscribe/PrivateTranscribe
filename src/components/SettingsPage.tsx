@@ -3035,11 +3035,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanelRow>
                 <SettingsRow
                   label="Contact & Feedback"
-                  description="Send tester feedback, bug reports, or support questions to support@privatetranscribe.com"
+                  description="Opens your default email app with a feedback template. Nothing is sent automatically."
                 >
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={handleOpenFeedbackEmail}>
-                      Send Feedback
+                      Draft Feedback Email
                     </Button>
                     <Button
                       variant="outline"
