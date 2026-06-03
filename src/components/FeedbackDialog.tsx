@@ -11,7 +11,6 @@ import {
   DialogTrigger,
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
-import { Input } from "./ui/input";
 
 export type FeedbackCategory = "bug" | "confusing" | "feature" | "general";
 
@@ -32,7 +31,6 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FeedbackCategory>("general");
-  const [contact, setContact] = useState("");
   const [includeSystemInfo, setIncludeSystemInfo] = useState(true);
   const [submitState, setSubmitState] = useState<"idle" | "submitting" | "sent" | "error">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -66,7 +64,6 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
       const result = await window.electronAPI?.submitFeedback?.({
         message: trimmedMessage,
         category,
-        contact: contact.trim() || undefined,
         includeSystemInfo,
         appVersion: currentVersion || "unknown",
         source,
@@ -78,7 +75,6 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
 
       setSubmitState("sent");
       setMessage("");
-      setContact("");
     } catch (error) {
       setSubmitState("error");
       setSubmitError(error instanceof Error ? error.message : "Feedback could not be sent right now.");
@@ -125,15 +121,6 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
               placeholder="Example: I tried dictating into Notion, but the first word was missing..."
               rows={5}
               autoFocus
-            />
-          </label>
-
-          <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-muted-foreground">Contact email/name (optional)</span>
-            <Input
-              value={contact}
-              onChange={(event) => setContact(event.target.value)}
-              placeholder="Only if you want a follow-up"
             />
           </label>
 

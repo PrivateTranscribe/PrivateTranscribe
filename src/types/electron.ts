@@ -310,7 +310,6 @@ export interface SaveTranscriptionOptions {
 export interface FeedbackSubmitPayload {
   message: string;
   category?: "bug" | "confusing" | "feature" | "general";
-  contact?: string;
   includeSystemInfo?: boolean;
   appVersion?: string;
   source?: string;

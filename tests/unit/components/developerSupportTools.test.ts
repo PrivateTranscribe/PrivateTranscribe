@@ -56,7 +56,9 @@ describe("Settings support and diagnostics tools", () => {
 
     expect(preload).toContain("submitFeedback: (payload) => ipcRenderer.invoke(\"submit-feedback\", payload)");
     expect(ipcHandlers).toContain('ipcMain.handle("submit-feedback"');
-    expect(ipcHandlers).toContain("PRIVATE_TRANSCRIBE_FEEDBACK_ENDPOINT");
+    expect(ipcHandlers).toContain("getDeviceIdForExplicitFeedback");
+    expect(ipcHandlers).toContain("/functions/v1/feedback");
+    expect(ipcHandlers).not.toContain("PRIVATE_TRANSCRIBE_FEEDBACK_TOKEN");
     expect(electronTypes).toContain("submitFeedback");
   });
 
@@ -68,6 +70,28 @@ describe("Settings support and diagnostics tools", () => {
 
     expect(developerSection).toContain("versionResult?.version || \"unknown\"");
     expect(developerSection).toContain("PrivateTranscribe v${version}");
+  });
+
+  it("feedback backend hashes device identity and rate-limits per device", () => {
+    const feedbackFunction = fs.readFileSync(
+      path.join(process.cwd(), "supabase", "functions", "feedback", "index.ts"),
+      "utf8"
+    );
+    const rateLimitMigration = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "supabase",
+        "migrations",
+        "202606030002_add_feedback_device_rate_limit_key.sql"
+      ),
+      "utf8"
+    );
+
+    expect(feedbackFunction).toContain("FEEDBACK_PER_DEVICE_PER_HOUR = 100");
+    expect(feedbackFunction).toContain("sha256Hex(deviceId)");
+    expect(feedbackFunction).toContain("status: 429");
+    expect(rateLimitMigration).toContain("device_id_hash");
+    expect(rateLimitMigration).toContain("feedback_device_id_hash_created_at_idx");
   });
 
   it("the diagnostics section is labeled for users, not only developers", () => {

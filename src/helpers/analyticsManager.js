@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 
 const SUPABASE_URL = "https://wsfrykhacxjfsgvqnlbq.supabase.co";
-// Publishable key — safe to embed, RLS restricts to insert-only for anon
+// Publishable key — safe to embed. Supabase RLS / Edge Function auth decides what it can do.
 const SUPABASE_ANON_KEY = "sb_publishable_QN2jW34xQsNcVBT9Q76HNw_Yyo8gnao";
 const DEVICE_ID_FILE = "device-id.txt";
 const CONSENT_FILE = "analytics-consent.txt";
@@ -66,6 +66,20 @@ class AnalyticsManager {
     } catch (err) {
       debugLogger.warn("Analytics track failed (non-fatal)", { event, err: err.message });
     }
+  }
+
+  getDeviceIdForExplicitFeedback() {
+    // Feedback is user-initiated, so this does not require analytics consent.
+    // The server hashes/rate-limits this random per-install ID; it is not an email or hardware ID.
+    this._deviceId = this._deviceId || this._getOrCreateDeviceId();
+    return this._deviceId;
+  }
+
+  getSupabaseConfig() {
+    return {
+      url: SUPABASE_URL,
+      anonKey: this._supabaseAnonKey || SUPABASE_ANON_KEY,
+    };
   }
 
   _getOrCreateDeviceId() {

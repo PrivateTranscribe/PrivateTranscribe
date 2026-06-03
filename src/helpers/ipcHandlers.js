@@ -117,6 +117,7 @@ function buildFeedbackPayload(rawPayload) {
     throw new Error("Feedback is too long. Please keep it under 5000 characters.");
   }
 
+  const analyticsManager = require("./analyticsManager");
   const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
   const category = allowedCategories.has(payload.category) ? payload.category : "general";
   const includeSystemInfo = payload.includeSystemInfo !== false;
@@ -127,6 +128,7 @@ function buildFeedbackPayload(rawPayload) {
     contact: typeof payload.contact === "string" ? payload.contact.trim().slice(0, 300) : null,
     source: typeof payload.source === "string" ? payload.source.slice(0, 80) : "unknown",
     appVersion: typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
+    deviceId: analyticsManager.getDeviceIdForExplicitFeedback(),
     submittedAt: new Date().toISOString(),
     systemInfo: includeSystemInfo
       ? {
@@ -1118,21 +1120,27 @@ class IPCHandlers {
     });
 
     ipcMain.handle("submit-feedback", async (_event, payload) => {
-      const endpoint = process.env.PRIVATE_TRANSCRIBE_FEEDBACK_ENDPOINT;
-      if (!endpoint) {
-        return {
-          success: false,
-          error:
-            "Feedback endpoint is not configured yet. Please copy support@privatetranscribe.com instead.",
-          code: "FEEDBACK_ENDPOINT_MISSING",
-        };
-      }
-
       try {
+        const analyticsManager = require("./analyticsManager");
+        const { url: supabaseUrl, anonKey } = analyticsManager.getSupabaseConfig();
+        const endpoint =
+          process.env.PRIVATE_TRANSCRIBE_FEEDBACK_ENDPOINT ||
+          `${supabaseUrl}/functions/v1/feedback`;
+
+        if (!anonKey) {
+          return {
+            success: false,
+            error:
+              "Feedback service is missing the Supabase publishable key. Please copy support@privatetranscribe.com instead.",
+            code: "FEEDBACK_SUPABASE_KEY_MISSING",
+          };
+        }
+
         const feedbackPayload = buildFeedbackPayload(payload);
-        const headers = {};
-        const token = process.env.PRIVATE_TRANSCRIBE_FEEDBACK_TOKEN;
-        if (token) headers.authorization = `Bearer ${token}`;
+        const headers = {
+          apikey: anonKey,
+          authorization: `Bearer ${anonKey}`,
+        };
 
         await postJson(endpoint, feedbackPayload, headers);
         debugLogger.info("Feedback submitted", {
