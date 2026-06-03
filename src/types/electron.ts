@@ -307,6 +307,21 @@ export interface SaveTranscriptionOptions {
   includeInStats?: boolean;
 }
 
+export interface FeedbackSubmitPayload {
+  message: string;
+  category?: "bug" | "confusing" | "feature" | "general";
+  contact?: string;
+  includeSystemInfo?: boolean;
+  appVersion?: string;
+  source?: string;
+}
+
+export interface FeedbackSubmitResult {
+  success: boolean;
+  error?: string;
+  code?: string;
+}
+
 export interface TranscriptionSettingsBroadcast {
   useLocalWhisper?: string;
   whisperModel?: string;
@@ -387,6 +402,7 @@ declare global {
       ) => (() => void) | void;
 
       // API key management
+      submitFeedback?: (payload: FeedbackSubmitPayload) => Promise<FeedbackSubmitResult>;
       getOpenAIKey: () => Promise<string>;
       saveOpenAIKey: (key: string) => Promise<{ success: boolean }>;
       createProductionEnvFile: (key: string) => Promise<void>;

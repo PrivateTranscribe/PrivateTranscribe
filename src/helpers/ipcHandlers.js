@@ -1,5 +1,7 @@
 const { ipcMain, app, shell, dialog, BrowserWindow } = require("electron");
 const path = require("path");
+const http = require("http");
+const https = require("https");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 
@@ -48,6 +50,95 @@ function isSafeModelFilename(filename) {
 function safeSend(sender, channel, payload) {
   if (!sender || sender.isDestroyed()) return;
   sender.send(channel, payload);
+}
+
+function postJson(urlString, payload, headers = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(urlString);
+    } catch {
+      reject(new Error("Feedback endpoint is not a valid URL."));
+      return;
+    }
+
+    if (!["https:", "http:"].includes(parsed.protocol)) {
+      reject(new Error("Feedback endpoint must use HTTPS or HTTP."));
+      return;
+    }
+
+    const body = JSON.stringify(payload);
+    const client = parsed.protocol === "https:" ? https : http;
+    const request = client.request(
+      parsed,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+          ...headers,
+        },
+        timeout: 15000,
+      },
+      (response) => {
+        let responseBody = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+        response.on("end", () => {
+          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+            resolve({ statusCode: response.statusCode, body: responseBody });
+            return;
+          }
+          reject(new Error(`Feedback endpoint returned ${response.statusCode || "unknown"}.`));
+        });
+      }
+    );
+
+    request.on("timeout", () => {
+      request.destroy(new Error("Feedback request timed out."));
+    });
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
+}
+
+function buildFeedbackPayload(rawPayload) {
+  const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
+  const message = typeof payload.message === "string" ? payload.message.trim() : "";
+
+  if (message.length < 5) {
+    throw new Error("Please write a little more feedback before sending.");
+  }
+
+  if (message.length > 5000) {
+    throw new Error("Feedback is too long. Please keep it under 5000 characters.");
+  }
+
+  const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
+  const category = allowedCategories.has(payload.category) ? payload.category : "general";
+  const includeSystemInfo = payload.includeSystemInfo !== false;
+
+  return {
+    message,
+    category,
+    contact: typeof payload.contact === "string" ? payload.contact.trim().slice(0, 300) : null,
+    source: typeof payload.source === "string" ? payload.source.slice(0, 80) : "unknown",
+    appVersion: typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
+    submittedAt: new Date().toISOString(),
+    systemInfo: includeSystemInfo
+      ? {
+          platform: process.platform,
+          arch: process.arch,
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          node: process.versions.node,
+          isPackaged: app.isPackaged,
+        }
+      : null,
+  };
 }
 
 /**
@@ -1023,6 +1114,36 @@ class IPCHandlers {
         return { success: true };
       } catch (error) {
         return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("submit-feedback", async (_event, payload) => {
+      const endpoint = process.env.PRIVATE_TRANSCRIBE_FEEDBACK_ENDPOINT;
+      if (!endpoint) {
+        return {
+          success: false,
+          error:
+            "Feedback endpoint is not configured yet. Please copy support@privatetranscribe.com instead.",
+          code: "FEEDBACK_ENDPOINT_MISSING",
+        };
+      }
+
+      try {
+        const feedbackPayload = buildFeedbackPayload(payload);
+        const headers = {};
+        const token = process.env.PRIVATE_TRANSCRIBE_FEEDBACK_TOKEN;
+        if (token) headers.authorization = `Bearer ${token}`;
+
+        await postJson(endpoint, feedbackPayload, headers);
+        debugLogger.info("Feedback submitted", {
+          category: feedbackPayload.category,
+          source: feedbackPayload.source,
+          includeSystemInfo: Boolean(feedbackPayload.systemInfo),
+        });
+        return { success: true };
+      } catch (error) {
+        debugLogger.warn("Feedback submission failed", { error: error.message });
+        return { success: false, error: error.message || "Feedback could not be sent." };
       }
     });
 

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Early access feedback**: Add a prominent in-app Send Feedback button in the main sidebar, an early-access marker near the version, and a feedback modal that submits through a configurable backend endpoint.
+
 ## [0.10.3] - 2026-06-03
 
 ### Changed

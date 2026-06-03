@@ -27,9 +27,37 @@ describe("Settings support and diagnostics tools", () => {
     );
 
     expect(settingsPage).toContain("Contact & Feedback");
-    expect(settingsPage).toContain("Draft Feedback Email");
-    expect(settingsPage).toContain("PrivateTranscribe feedback");
-    expect(settingsPage).toContain("Nothing is sent automatically");
+    expect(settingsPage).toContain("Send Feedback");
+    expect(settingsPage).toContain("In-app feedback");
+    expect(settingsPage).toContain("No email app required");
+  });
+
+  it("shows early access feedback prominently in the main sidebar footer", () => {
+    const appSidebar = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "AppSidebar.tsx"),
+      "utf8"
+    );
+
+    expect(appSidebar).toContain("Early access");
+    expect(appSidebar).toContain("Send Feedback");
+    expect(appSidebar).toContain("FeedbackDialog");
+  });
+
+  it("submits in-app feedback through a safe preload IPC bridge", () => {
+    const preload = fs.readFileSync(path.join(process.cwd(), "preload.js"), "utf8");
+    const ipcHandlers = fs.readFileSync(
+      path.join(process.cwd(), "src", "helpers", "ipcHandlers.js"),
+      "utf8"
+    );
+    const electronTypes = fs.readFileSync(
+      path.join(process.cwd(), "src", "types", "electron.ts"),
+      "utf8"
+    );
+
+    expect(preload).toContain("submitFeedback: (payload) => ipcRenderer.invoke(\"submit-feedback\", payload)");
+    expect(ipcHandlers).toContain('ipcMain.handle("submit-feedback"');
+    expect(ipcHandlers).toContain("PRIVATE_TRANSCRIBE_FEEDBACK_ENDPOINT");
+    expect(electronTypes).toContain("submitFeedback");
   });
 
   it("formats the app version object instead of rendering [object Object]", () => {

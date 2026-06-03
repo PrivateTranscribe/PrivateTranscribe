@@ -56,6 +56,7 @@ import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
+import FeedbackDialog from "./FeedbackDialog";
 import { SettingsRow } from "./ui/SettingsSection";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
@@ -1629,24 +1630,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
 
-  const handleOpenFeedbackEmail = useCallback(() => {
-    const subject = "PrivateTranscribe feedback";
-    const body = [
-      "What did you try?",
-      "",
-      "What worked well?",
-      "",
-      "What was confusing or broken?",
-      "",
-      `App version: ${currentVersion || "unknown"}`,
-      `Mode: ${updateStatus.isDevelopment ? "development" : "installed"}`,
-    ].join("\n");
-
-    openExternalLink(
-      `mailto:support@privatetranscribe.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-    );
-  }, [currentVersion, updateStatus.isDevelopment]);
-
   useEffect(() => {
     if (platform === "linux") {
       setAutoStartLoading(false);
@@ -3035,12 +3018,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanelRow>
                 <SettingsRow
                   label="Contact & Feedback"
-                  description="Opens your default email app with a feedback template. Nothing is sent automatically."
+                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent."
                 >
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleOpenFeedbackEmail}>
-                      Draft Feedback Email
-                    </Button>
+                    <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
                     <Button
                       variant="outline"
                       size="sm"

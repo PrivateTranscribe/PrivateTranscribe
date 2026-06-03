@@ -208,6 +208,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // External link opener
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
 
+  // Early access feedback
+  submitFeedback: (payload) => ipcRenderer.invoke("submit-feedback", payload),
+
   // Model management functions
   modelGetAll: () => ipcRenderer.invoke("model-get-all"),
   modelCheck: (modelId) => ipcRenderer.invoke("model-check", modelId),
