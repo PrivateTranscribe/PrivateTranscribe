@@ -4,6 +4,7 @@ import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
+import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import {
   getContext,
   isSmartContextEnabled,
@@ -15,6 +16,7 @@ import {
 const normalizePunctuationSpacing = (text) =>
   String(text || "")
     .replace(/\s+([,.;:!?%])/g, "$1")
+    .replace(/\b([A-Za-z]+)\s+(['’])\s*(m|re|ve|ll|d|s|t)\b/gi, "$1$2$3")
     .replace(/([([{])\s+/g, "$1")
     .replace(/\s+([)\]}])/g, "$1");
 
@@ -1418,7 +1420,7 @@ class AudioManager {
       const words = JSON.parse(raw);
       if (!Array.isArray(words) || words.length === 0) return text;
 
-      let result = text;
+      let result = repairSplitDictionaryTerms(text, words);
       for (const word of words) {
         if (!word || typeof word !== "string") continue;
         // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
@@ -1433,15 +1435,15 @@ class AudioManager {
   }
 
   async processTranscription(text, source) {
-    const withDictionary = this.applyDictionaryReplacements(
-      typeof text === "string" ? text.trim() : ""
-    );
+    const rawInputText = typeof text === "string" ? text.trim() : "";
+    const withDictionary = this.applyDictionaryReplacements(rawInputText);
     const normalizedText = normalizePunctuationSpacing(withDictionary);
 
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {
       source,
       textLength: normalizedText.length,
-      rawSttText: normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
+      rawInputPreview: rawInputText.substring(0, 200) + (rawInputText.length > 200 ? "..." : ""),
+      normalizedPreview: normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
       timestamp: new Date().toISOString(),
     });
 
