@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-06-04
+
 ### Added
-- **Early access feedback**: Add a prominent in-app Send Feedback button in the main sidebar, an early-access marker near the version, and a feedback modal that submits through a configurable backend endpoint.
+- **Early access feedback**: Add a prominent in-app Send Feedback button in the main sidebar, an early-access marker near the version, and a feedback modal that submits through a configurable Supabase backend endpoint.
 - **Feedback deployment**: Add Supabase migration/function deployment workflows for `main`, plus hashed device-based feedback rate limiting.
+
+### Fixed
+- **Feedback Edge Function deploys**: Use an npm-hosted Supabase client import, add the feedback health-check route, and disable JWT verification for the public feedback endpoint so packaged tester builds can submit feedback.
 
 ## [0.10.3] - 2026-06-03
 
