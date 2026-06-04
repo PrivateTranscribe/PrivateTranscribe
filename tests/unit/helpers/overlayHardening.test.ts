@@ -102,7 +102,19 @@ describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => 
 
   test("drag clamping uses proposed button position for display selection", () => {
     expect(dragManager).toContain("proposedButtonPoint");
-    expect(dragManager).toContain("getDisplayNearestPoint(proposedButtonPoint)");
+    expect(dragManager).toContain("screen.getDisplayNearestPoint(proposedButtonPoint)");
+  });
+
+  test("drag loop ignores duplicate cursor samples to avoid stationary touchpad drift", () => {
+    expect(dragManager).toContain("lastCursorPosition");
+    expect(dragManager).toContain("cursorPos.x === this.lastCursorPosition.x");
+    expect(dragManager).toContain("return;");
+  });
+
+  test("taskbar-snapped dragging locks to the display where the drag started", () => {
+    expect(dragManager).toContain("this.dragDisplay = screen.getDisplayNearestPoint");
+    expect(dragManager).toContain("? this.dragDisplay || screen.getDisplayNearestPoint(proposedButtonPoint)");
+    expect(dragManager).toContain("this.dragDisplay = null");
   });
 
   test("drag stop listens beyond document mouseup for touchpad/outside-window releases", () => {
@@ -263,6 +275,19 @@ describe("main.js / windowManager.js — startup overlay readiness", () => {
     expect(mainJs).toContain("initialShowDelayMs: 2000");
     expect(windowManager).toContain("initialShowDelayMs");
     expect(windowManager).toContain("setTimeout(showOverlay, initialShowDelayMs)");
+  });
+
+  test("renderer-ready IPC force-shows the overlay if ready-to-show left it hidden", () => {
+    const idx = windowManager.indexOf("markMainWindowRendererReady()");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 800);
+    expect(block).toContain("must stay immediate");
+    expect(block).toContain("Do not route this through the cosmetic startup delay");
+    expect(block).toContain("!this.mainWindow.isVisible()");
+    expect(block).toContain("!this.overlayDisabled");
+    expect(block).toContain("showInactive");
+    expect(block).not.toContain("setTimeout");
+    expect(block).not.toContain("initialShowDelayMs");
   });
 });
 

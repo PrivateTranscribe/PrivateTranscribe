@@ -32,11 +32,11 @@ describe("windowConfig.js — setupAlwaysOnTop", () => {
     expect(windowConfig).toContain("reported with Minecraft/Tekkit");
   });
 
-  test("Windows taskbar snap uses screen-saver level above the taskbar", () => {
+  test("Windows taskbar snap uses screen-saver level near the taskbar", () => {
     expect(windowConfig).toContain("aboveTaskbar = false");
     expect(windowConfig).toContain('aboveTaskbar ? "screen-saver" : "floating"');
     expect(windowConfig).toContain("window.moveTop()");
-    expect(windowConfig).toContain("taskbar can reassert its");
+    expect(windowConfig).toContain("taskbar can reassert");
     expect(windowManager).toContain("aboveTaskbar: this.overlaySnapToTaskbar");
   });
 
@@ -144,6 +144,7 @@ describe("windowManager.js — overlay show/hide lifecycle", () => {
   test("showDictationPanel resumes and shows the overlay", () => {
     expect(windowManager).toContain("resumeMainWindowOverlay()");
     expect(windowManager).toContain("showInactive");
+    expect(windowManager).toContain("this.mainWindow.moveTop()");
   });
 });
 

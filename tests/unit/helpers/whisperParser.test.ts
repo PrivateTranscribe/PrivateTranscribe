@@ -3,7 +3,17 @@
  * @module tests/unit/helpers/whisperParser
  */
 
-import { describe, it, expect } from "vitest";
+import { tmpdir } from "os";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("electron", () => ({
+  app: {
+    getPath: () => tmpdir(),
+    isReady: () => false,
+  },
+}));
+
+const WhisperManager = require("../../../src/helpers/whisper");
 
 // Inline implementations matching src/helpers/whisper.js
 
@@ -83,6 +93,26 @@ function parseWhisperResult(output: WhisperOutput): ParsedResult {
 }
 
 describe("Whisper parsing utilities", () => {
+  describe("actual WhisperManager parser", () => {
+    it("returns no-audio for string blank audio markers", () => {
+      const manager = new WhisperManager();
+
+      expect(manager.parseWhisperResult("[BLANK_AUDIO]")).toEqual({
+        success: false,
+        message: "No audio detected",
+      });
+    });
+
+    it("normalizes spaces before punctuation in server text", () => {
+      const manager = new WhisperManager();
+
+      expect(manager.parseWhisperResult({ text: "Can we test this ?" })).toEqual({
+        success: true,
+        text: "Can we test this?",
+      });
+    });
+  });
+
   describe("normalizeWhitespace", () => {
     it("converts newlines to spaces", () => {
       expect(normalizeWhitespace("hello\nworld")).toBe("hello world");

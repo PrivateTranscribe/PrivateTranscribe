@@ -36,7 +36,7 @@ export interface ReasoningSettings {
 
 export interface HotkeySettings {
   dictationKey: string;
-  activationMode: "tap" | "push";
+  activationMode: "tap" | "push" | "tapHold";
 }
 
 export interface MicrophoneSettings {
@@ -474,8 +474,20 @@ export function useSettings() {
   }, []);
 
   const clearApiKeySyncError = useCallback(() => {
-    if (persistErrorTimerRef.current) clearTimeout(persistErrorTimerRef.current);
+    if (persistErrorTimerRef.current) {
+      clearTimeout(persistErrorTimerRef.current);
+      persistErrorTimerRef.current = null;
+    }
     setApiKeySyncError(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (persistErrorTimerRef.current) {
+        clearTimeout(persistErrorTimerRef.current);
+        persistErrorTimerRef.current = null;
+      }
+    };
   }, []);
 
   // Sync API keys from main process on first mount (if localStorage was cleared)
@@ -695,18 +707,18 @@ export function useSettings() {
     [setDictationKeyLocal]
   );
 
-  const [activationMode, setActivationModeLocal] = useLocalStorage<"tap" | "push">(
+  const [activationMode, setActivationModeLocal] = useLocalStorage<"tap" | "push" | "tapHold">(
     "activationMode",
     "tap",
     {
       serialize: String,
-      deserialize: (value) => (value === "push" ? "push" : "tap"),
+      deserialize: (value) => (value === "push" || value === "tapHold" ? value : "tap"),
     }
   );
 
   // Wrap setActivationMode to notify main process (for Windows Push-to-Talk)
   const setActivationMode = useCallback(
-    (mode: "tap" | "push") => {
+    (mode: "tap" | "push" | "tapHold") => {
       setActivationModeLocal(mode);
       // Notify main process so Windows key listener can start/stop
       if (typeof window !== "undefined" && window.electronAPI?.notifyActivationModeChanged) {

@@ -19,6 +19,7 @@ const { shell } = require("electron");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const crypto = require("crypto");
+const path = require("path");
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +29,8 @@ const execFileAsync = promisify(execFile);
 
 /** Maximum wall-clock time (ms) allowed for a shell action subprocess. */
 const SHELL_TIMEOUT_MS = 10_000;
+/** Maximum combined stdout/stderr buffer allowed for a shell action subprocess. */
+const SHELL_MAX_BUFFER_BYTES = 1024 * 1024;
 
 /**
  * Maximum number of characters fed to a regex trigger match.
@@ -294,7 +297,7 @@ function validateActionConfig(actionType, config) {
 
     case "app": {
       const appPath = typeof config.appPath === "string" ? config.appPath.trim() : "";
-      if (!appPath) throw new Error("App action requires a non-empty appPath.");
+      validateLocalAppPath(appPath);
       break;
     }
 
@@ -351,6 +354,42 @@ function isSafeShellExecutable(executable) {
   return true;
 }
 
+function isWindowsNetworkPath(appPath) {
+  if (typeof appPath !== "string") return false;
+  const normalized = appPath.replace(/\//g, "\\").toLowerCase();
+  return (
+    normalized.startsWith("\\\\") ||
+    normalized.startsWith("\\\\?\\") ||
+    normalized.startsWith("\\\\.\\")
+  );
+}
+
+function validateLocalAppPath(appPath) {
+  if (typeof appPath !== "string" || appPath.trim() === "") {
+    throw new Error("App action requires a non-empty appPath.");
+  }
+
+  const trimmed = appPath.trim();
+  if (/[\r\n\0]/.test(trimmed)) {
+    throw new Error("App path contains unsupported control characters.");
+  }
+
+  const isWindowsDrivePath = process.platform === "win32" && /^[a-zA-Z]:[\\/]/.test(trimmed);
+  if (!isWindowsDrivePath && /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) {
+    throw new Error("App action requires a local filesystem path, not a URL.");
+  }
+
+  if (process.platform === "win32" && isWindowsNetworkPath(trimmed)) {
+    throw new Error("Network paths are not supported for app actions.");
+  }
+
+  if (!path.isAbsolute(trimmed)) {
+    throw new Error("App action requires an absolute local filesystem path.");
+  }
+
+  return trimmed;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Action execution (side-effecting - runs in main process only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -398,6 +437,7 @@ async function _executeShell(config) {
   }
   const { stdout, stderr } = await execFileAsync(executable, args, {
     timeout: SHELL_TIMEOUT_MS,
+    maxBuffer: SHELL_MAX_BUFFER_BYTES,
     windowsHide: true,
   });
 
@@ -422,8 +462,8 @@ async function _executeUrl(config) {
  */
 async function _executeApp(config) {
   const appPath = typeof config.appPath === "string" ? config.appPath.trim() : "";
-  if (!appPath) return { success: false, error: "No app path specified." };
-  const errorMessage = await shell.openPath(appPath);
+  const validatedPath = validateLocalAppPath(appPath);
+  const errorMessage = await shell.openPath(validatedPath);
   if (errorMessage) return { success: false, error: errorMessage };
   return { success: true };
 }
@@ -872,6 +912,7 @@ module.exports = {
   findMatches,
   validateActionPayload,
   tokenizeCommand,
+  validateLocalAppPath,
   buildRunRecord,
   pruneRunsToLimit,
 };

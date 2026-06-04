@@ -19,6 +19,20 @@ describe("transcriptFormatter", () => {
     expect(result.text).not.toContain("SPEAKER_TURN");
   });
 
+  it("does not leave spaces before punctuation when punctuation is split into a segment", () => {
+    const result = formatTranscript(
+      {
+        segments: [
+          { start: 0, end: 1, text: "Can we test this" },
+          { start: 1, end: 1.2, text: "?" },
+        ],
+      },
+      "plain"
+    );
+
+    expect(result.text).toBe("Can we test this?");
+  });
+
   it("formats timestamped output", () => {
     const result = formatTranscript(sample, "timestamped");
     expect(result.text).toContain("[00:00:00] Speaker 1: Hello there");

@@ -13,6 +13,7 @@ import {
 import { shouldShowProBadge } from "../hooks/useProStatus";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
+import FeedbackDialog from "./FeedbackDialog";
 
 export type PageId =
   | "home"
@@ -319,17 +320,63 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
           to dictate
         </p>
 
-        {/* Version */}
+        <FeedbackDialog
+          currentVersion={currentVersion}
+          source="main-sidebar"
+          trigger={
+            <button
+              type="button"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "1px solid rgba(112,255,186,0.25)",
+                backgroundColor: "rgba(112,255,186,0.08)",
+                color: "#70FFBA",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: 600,
+                fontFamily: "inherit",
+              }}
+            >
+              <MessageSquare size={14} />
+              Send Feedback
+            </button>
+          }
+        />
+
+        {/* Version / early access marker */}
         {currentVersion && (
-          <p
-            style={{
-              fontSize: "10px",
-              color: "#2E332F",
-              margin: 0,
-            }}
-          >
-            v{currentVersion}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p
+              style={{
+                fontSize: "10px",
+                color: "#2E332F",
+                margin: 0,
+              }}
+            >
+              v{currentVersion}
+            </p>
+            <span
+              style={{
+                fontSize: "9px",
+                color: "#70FFBA",
+                backgroundColor: "rgba(112,255,186,0.08)",
+                border: "1px solid rgba(112,255,186,0.16)",
+                borderRadius: "999px",
+                padding: "2px 6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                fontWeight: 700,
+              }}
+            >
+              Early access
+            </span>
+          </div>
         )}
       </div>
     </div>

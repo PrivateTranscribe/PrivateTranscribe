@@ -35,6 +35,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
+  onHybridDictationKeyDown: registerListener(
+    "hybrid-dictation-key-down",
+    (callback) => () => callback()
+  ),
+  onHybridDictationKeyUp: registerListener(
+    "hybrid-dictation-key-up",
+    (callback) => () => callback()
+  ),
   onWindowDragReset: registerListener(
     "window-drag-reset",
     (callback) => (_event, data) => callback(data)
@@ -200,6 +208,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // External link opener
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
 
+  // Early access feedback
+  submitFeedback: (payload) => ipcRenderer.invoke("submit-feedback", payload),
+
   // Model management functions
   modelGetAll: () => ipcRenderer.invoke("model-get-all"),
   modelCheck: (modelId) => ipcRenderer.invoke("model-check", modelId),
@@ -261,6 +272,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   getLogLevel: () => ipcRenderer.invoke("get-log-level"),
   log: (entry) => ipcRenderer.invoke("app-log", entry),
+  getRuntimeVersions: () => ({
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+  }),
 
   // Debug logging management
   getDebugState: () => ipcRenderer.invoke("get-debug-state"),

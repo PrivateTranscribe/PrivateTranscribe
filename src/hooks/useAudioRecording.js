@@ -31,6 +31,16 @@ export const useAudioRecording = (toast, options = {}) => {
     };
     audioManagerRef.current = manager;
     let disposed = false;
+    const correctionIntervalIds = new Set();
+    const HYBRID_HOLD_THRESHOLD_MS = 150;
+    let hybridKeyDownAt = 0;
+    let hybridStartedFromIdle = false;
+    let hybridWasRecordingOnKeyDown = false;
+
+    const clearCorrectionInterval = (intervalId) => {
+      clearInterval(intervalId);
+      correctionIntervalIds.delete(intervalId);
+    };
 
     // ── Audio ducking helpers ────────────────────────────────────────────────
     // Read settings directly from localStorage so this plain-JS hook doesn't
@@ -279,17 +289,17 @@ export const useAudioRecording = (toast, options = {}) => {
 
             const intervalId = setInterval(async () => {
               if (!canCommit()) {
-                clearInterval(intervalId);
+                clearCorrectionInterval(intervalId);
                 return;
               }
               if (Date.now() - startedAt > timeoutMs || prompted) {
-                clearInterval(intervalId);
+                clearCorrectionInterval(intervalId);
                 return;
               }
 
               const current = await window.electronAPI.readClipboard();
               if (!canCommit()) {
-                clearInterval(intervalId);
+                clearCorrectionInterval(intervalId);
                 return;
               }
               if (!current || current === lastClipboard) return;
@@ -298,7 +308,7 @@ export const useAudioRecording = (toast, options = {}) => {
               const pairs = inferCorrectionPairs(insertedText, current);
               if (pairs.length === 0) return;
               prompted = true;
-              clearInterval(intervalId);
+              clearCorrectionInterval(intervalId);
 
               toastRef.current?.({
                 title: "Teach Correction Memory",
@@ -354,6 +364,7 @@ export const useAudioRecording = (toast, options = {}) => {
                 ),
               });
             }, 750);
+            correctionIntervalIds.add(intervalId);
           }
         } catch {
           // ignore
@@ -419,6 +430,45 @@ export const useAudioRecording = (toast, options = {}) => {
       endRecordingFlow({ playSound: true });
     };
 
+    const handleHybridKeyDown = () => {
+      if (hybridKeyDownAt > 0) {
+        return;
+      }
+
+      const currentState = manager.getState();
+      hybridKeyDownAt = Date.now();
+      hybridWasRecordingOnKeyDown = currentState.isRecording || currentState.isStartingRecording;
+      hybridStartedFromIdle = false;
+
+      if (
+        !currentState.isRecording &&
+        !currentState.isProcessing &&
+        !currentState.isStartingRecording
+      ) {
+        hybridStartedFromIdle = true;
+        void beginRecordingFlow({ playSound: true });
+      }
+    };
+
+    const handleHybridKeyUp = () => {
+      if (hybridKeyDownAt <= 0) {
+        return;
+      }
+
+      const heldMs = Date.now() - hybridKeyDownAt;
+      const shouldStop =
+        hybridWasRecordingOnKeyDown ||
+        (hybridStartedFromIdle && heldMs >= HYBRID_HOLD_THRESHOLD_MS);
+
+      hybridKeyDownAt = 0;
+      hybridStartedFromIdle = false;
+      hybridWasRecordingOnKeyDown = false;
+
+      if (shouldStop) {
+        endRecordingFlow({ playSound: true });
+      }
+    };
+
     const disposeToggle = window.electronAPI.onToggleDictation(() => {
       handleToggle();
       onToggleRef.current?.();
@@ -431,6 +481,16 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeStop = window.electronAPI.onStopDictation?.(() => {
       handleStop();
+      onToggleRef.current?.();
+    });
+
+    const disposeHybridKeyDown = window.electronAPI.onHybridDictationKeyDown?.(() => {
+      handleHybridKeyDown();
+      onToggleRef.current?.();
+    });
+
+    const disposeHybridKeyUp = window.electronAPI.onHybridDictationKeyUp?.(() => {
+      handleHybridKeyUp();
       onToggleRef.current?.();
     });
 
@@ -496,7 +556,13 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
+      disposeHybridKeyDown?.();
+      disposeHybridKeyUp?.();
       disposeNoAudio?.();
+      for (const intervalId of correctionIntervalIds) {
+        clearInterval(intervalId);
+      }
+      correctionIntervalIds.clear();
       manager.cleanup();
       if (audioManagerRef.current === manager) {
         audioManagerRef.current = null;

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import path from "path";
 
 const {
   sanitizeFileContent,
@@ -21,13 +22,15 @@ describe("sanitizeFileContent", () => {
 });
 
 describe("extractFileContext", () => {
+  const rootDir = path.parse(process.cwd()).root;
+  const homeDir = path.join(rootDir, "Users", "alice");
   const fsMod = {
     statSync: () => ({ size: 100 }),
     readFileSync: () => "function doThing() {\n  return 42;\n}\n",
   };
 
   it("returns a safe excerpt for files inside home", () => {
-    const result = extractFileContext("/home/alice/project/App.ts", "/home/alice", fsMod, {
+    const result = extractFileContext(path.join(homeDir, "project", "App.ts"), homeDir, fsMod, {
       maxChars: 10,
     });
 
@@ -38,7 +41,7 @@ describe("extractFileContext", () => {
   });
 
   it("blocks files outside home", () => {
-    const result = extractFileContext("/etc/passwd", "/home/alice", fsMod);
+    const result = extractFileContext(path.join(rootDir, "etc", "passwd"), homeDir, fsMod);
     expect(result.blocked).toBe(true);
     expect(result.reason).toBe("outside home dir");
   });

@@ -56,6 +56,7 @@ import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
+import FeedbackDialog from "./FeedbackDialog";
 import { SettingsRow } from "./ui/SettingsSection";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
@@ -1415,7 +1416,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
       if (importedHistoryLimit !== undefined) setHistoryLimit(importedHistoryLimit);
       if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
-      if (s.activationMode === "tap" || s.activationMode === "push")
+      if (
+        s.activationMode === "tap" ||
+        s.activationMode === "push" ||
+        s.activationMode === "tapHold"
+      )
         setActivationMode(s.activationMode);
 
       updateTranscriptionSettings({
@@ -3012,20 +3017,23 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <SettingsPanel>
               <SettingsPanelRow>
                 <SettingsRow
-                  label="Contact & Bug Reports"
-                  description="support@privatetranscribe.com"
+                  label="Contact & Feedback"
+                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent."
                 >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard?.writeText("support@privatetranscribe.com");
-                      setEmailCopied(true);
-                      setTimeout(() => setEmailCopied(false), 2000);
-                    }}
-                  >
-                    {emailCopied ? "✓ Copied!" : "Copy Email"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard?.writeText("support@privatetranscribe.com");
+                        setEmailCopied(true);
+                        setTimeout(() => setEmailCopied(false), 2000);
+                      }}
+                    >
+                      {emailCopied ? "✓ Copied!" : "Copy Email"}
+                    </Button>
+                  </div>
                 </SettingsRow>
               </SettingsPanelRow>
             </SettingsPanel>
@@ -3074,8 +3082,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="Developer Tools"
-              description="Advanced diagnostics, logging, and debugging capabilities"
+              title="Diagnostics & Data"
+              description="Support tools, logging, settings backup, and local data management"
             />
 
             {updateStatus.isDevelopment && <DeveloperSection />}

@@ -171,4 +171,12 @@ describe("Onboarding flow – hardware step regression checks", () => {
     );
     expect(hasTurboDefault).toBe(true);
   });
+
+  it("OnboardingFlow does not call an undefined CUDA installed setter", () => {
+    const onboardingPath = path.join(process.cwd(), "src", "components", "OnboardingFlow.tsx");
+    const contents = fs.readFileSync(onboardingPath, "utf8");
+
+    expect(contents).not.toContain("setCudaInstalled");
+    expect(contents).toContain("setCudaStatus");
+  });
 });

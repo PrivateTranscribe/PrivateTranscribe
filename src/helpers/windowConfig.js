@@ -38,6 +38,9 @@ function getWindowIcon() {
     return path.join(__dirname, "..", "assets", "icon.ico");
   } else {
     // In production, resources are accessed via process.resourcesPath
+    if (!process.resourcesPath) {
+      return undefined;
+    }
     return path.join(process.resourcesPath, "src", "assets", "icon.ico");
   }
 }

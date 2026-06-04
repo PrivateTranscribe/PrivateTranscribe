@@ -1,6 +1,6 @@
 import { MousePointerClick, MicVocal } from "lucide-react";
 
-type ActivationMode = "tap" | "push";
+type ActivationMode = "tap" | "push" | "tapHold";
 
 interface ActivationModeSelectorProps {
   value: ActivationMode;
@@ -17,6 +17,7 @@ export function ActivationModeSelector({
   variant = "default",
 }: ActivationModeSelectorProps) {
   const isCompact = variant === "compact";
+  const selectedIndex = value === "push" ? 1 : value === "tapHold" ? 2 : 0;
 
   return (
     <div
@@ -30,10 +31,16 @@ export function ActivationModeSelector({
       {/* Sliding indicator */}
       <div
         className={`
-          absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded
+          absolute top-0.5 bottom-0.5 left-0.5 w-[calc((100%-4px)/3)] rounded
           bg-surface-raised border border-border-subtle
           transition-transform duration-200 ease-out
-          ${value === "push" ? "translate-x-[calc(100%+4px)]" : "translate-x-0"}
+          ${
+            selectedIndex === 2
+              ? "translate-x-[200%]"
+              : selectedIndex === 1
+                ? "translate-x-full"
+                : "translate-x-0"
+          }
         `}
       />
 
@@ -67,6 +74,25 @@ export function ActivationModeSelector({
       >
         <MicVocal className={isCompact ? "w-3.5 h-3.5" : "w-4 h-4"} />
         <span className={`font-medium ${isCompact ? "text-xs" : "text-sm"}`}>Hold</span>
+      </button>
+
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange("tapHold")}
+        className={`
+          relative z-10 flex-1 flex items-center justify-center gap-1.5 rounded
+          transition-colors duration-150
+          ${isCompact ? "px-2.5 py-1.5" : "px-3 py-2"}
+          ${disabled ? "cursor-not-allowed" : "cursor-pointer"}
+          ${value === "tapHold" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
+        `}
+      >
+        <span className="flex items-center -space-x-1">
+          <MousePointerClick className={isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+          <MicVocal className={isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+        </span>
+        <span className={`font-medium ${isCompact ? "text-xs" : "text-sm"}`}>Both</span>
       </button>
     </div>
   );

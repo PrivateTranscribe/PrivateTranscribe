@@ -1,7 +1,6 @@
 const Database = require("better-sqlite3");
 const path = require("path");
 const fs = require("fs");
-const os = require("os");
 const { app } = require("electron");
 
 class DatabaseManager {
@@ -520,6 +519,10 @@ class DatabaseManager {
         app.getPath("userData"),
         process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db"
       );
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
       if (fs.existsSync(dbPath)) {
         fs.unlinkSync(dbPath);
         console.log("✅ Database file deleted:", dbPath);

@@ -181,7 +181,10 @@
   },
   "nsis": {
     "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "selectPerMachineByDefault": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": false,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "PrivateTranscribe",

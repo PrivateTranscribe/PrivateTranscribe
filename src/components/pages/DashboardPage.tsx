@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, Settings, Upload, Activity, Command } from "lucide-react";
 import { PageId } from "../AppSidebar";
 import {
@@ -121,6 +121,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   } = useSettings();
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [stats, setStats] = useState<AggregateStats>({
     total_words: 0,
     total_transcriptions: 0,
@@ -229,12 +230,27 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       const item = transcriptions.find((t) => t.text === text);
       if (item) {
         setCopiedId(item.id);
-        setTimeout(() => setCopiedId(null), 2000);
+        if (copiedResetTimerRef.current) {
+          clearTimeout(copiedResetTimerRef.current);
+        }
+        copiedResetTimerRef.current = setTimeout(() => {
+          copiedResetTimerRef.current = null;
+          setCopiedId(null);
+        }, 2000);
       }
     } catch {
       // Silently fail
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current) {
+        clearTimeout(copiedResetTimerRef.current);
+        copiedResetTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleDelete = async (id: number) => {
     try {

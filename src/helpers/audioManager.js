@@ -4,6 +4,7 @@ import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
+import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import {
   getContext,
   isSmartContextEnabled,
@@ -11,6 +12,13 @@ import {
   buildWhisperContextHint,
   buildFileIdentifierHint,
 } from "./contextPipeline";
+
+const normalizePunctuationSpacing = (text) =>
+  String(text || "")
+    .replace(/\s+([,.;:!?%])/g, "$1")
+    .replace(/\b([A-Za-z]+)\s+(['’])\s*(m|re|ve|ll|d|s|t)\b/gi, "$1$2$3")
+    .replace(/([([{])\s+/g, "$1")
+    .replace(/\s+([)\]}])/g, "$1");
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
@@ -913,25 +921,35 @@ class AudioManager {
       // (Pro feature - only inject hints when Pro entitlement is active)
       const proEnabled =
         typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
-      if (proEnabled) {
-        await this.refreshCorrectionHints();
-      } else {
-        this._cachedCorrectionHints = [];
-      }
+      const correctionHintsPromise = proEnabled
+        ? this.refreshCorrectionHints()
+        : Promise.resolve().then(() => {
+            this._cachedCorrectionHints = [];
+          });
 
-      // Fetch Smart Context hint for Whisper initialPrompt (Pro feature, 300 ms timeout)
-      if (isSmartContextEnabled()) {
-        this._cachedSmartContext = await getContext({
-          timeoutMs: 300,
-          includeFileIdentifiers: isFileIdentifiersEnabled(),
-        });
-      } else {
-        this._cachedSmartContext = null;
-      }
+      const smartContextPromise = isSmartContextEnabled()
+        ? getContext({
+            timeoutMs: 300,
+            includeFileIdentifiers: isFileIdentifiersEnabled(),
+          })
+        : Promise.resolve(null);
 
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
-      const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
+      const audioBufferPromise = audioBlob.arrayBuffer();
+
+      const [, smartContext, rawArrayBuffer] = await Promise.all([
+        correctionHintsPromise,
+        smartContextPromise,
+        audioBufferPromise,
+      ]);
+
+      if (!proEnabled) {
+        this._cachedCorrectionHints = [];
+      }
+      this._cachedSmartContext = smartContext;
+
+      const arrayBuffer = toIpcSafeArrayBuffer(rawArrayBuffer);
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
       const translateToEnglish = this.getTranscriptionSetting("translateToEnglish", "off");
       const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
@@ -1167,7 +1185,7 @@ class AudioManager {
           provider,
           hasKey: !!apiKey,
           keyLength: apiKey?.length || 0,
-          keyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "(none)",
+          keyPreview: apiKey ? "[configured]" : "(none)",
         },
         "transcription"
       );
@@ -1402,7 +1420,7 @@ class AudioManager {
       const words = JSON.parse(raw);
       if (!Array.isArray(words) || words.length === 0) return text;
 
-      let result = text;
+      let result = repairSplitDictionaryTerms(text, words);
       for (const word of words) {
         if (!word || typeof word !== "string") continue;
         // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
@@ -1417,15 +1435,15 @@ class AudioManager {
   }
 
   async processTranscription(text, source) {
-    const withDictionary = this.applyDictionaryReplacements(
-      typeof text === "string" ? text.trim() : ""
-    );
-    const normalizedText = withDictionary;
+    const rawInputText = typeof text === "string" ? text.trim() : "";
+    const withDictionary = this.applyDictionaryReplacements(rawInputText);
+    const normalizedText = normalizePunctuationSpacing(withDictionary);
 
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {
       source,
       textLength: normalizedText.length,
-      rawSttText: normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
+      rawInputPreview: rawInputText.substring(0, 200) + (rawInputText.length > 200 ? "..." : ""),
+      normalizedPreview: normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
       timestamp: new Date().toISOString(),
     });
 
@@ -1496,7 +1514,7 @@ class AudioManager {
           processingTime: new Date().toISOString(),
         });
 
-        return result;
+        return normalizePunctuationSpacing(result);
       } catch (error) {
         logger.logReasoning("REASONING_FAILED", {
           error: error.message,
@@ -1794,7 +1812,7 @@ class AudioManager {
           source,
           isCustomEndpoint,
           hasApiKey: !!apiKey,
-          apiKeyPreview: apiKey ? `${apiKey.substring(0, 8)}...` : "(none)",
+          apiKeyPreview: apiKey ? "[configured]" : "(none)",
         },
         "transcription"
       );
@@ -2005,7 +2023,9 @@ class AudioManager {
   async processFileTranscriptionV2(audioBlob, model = "base", metadata = {}) {
     const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
     const rawLanguage = metadata.language ?? this.getTranscriptionSetting("preferredLanguage", "");
-    const translateToEnglish = metadata.translate === true || this.getTranscriptionSetting("translateToEnglish", "off") === "on";
+    const translateToEnglish =
+      metadata.translate === true ||
+      this.getTranscriptionSetting("translateToEnglish", "off") === "on";
     const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
     const options = {
       model,

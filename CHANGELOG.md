@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-06-04
+
+### Added
+- **Early access feedback**: Add a prominent in-app Send Feedback button in the main sidebar, an early-access marker near the version, and a feedback modal that submits through a configurable Supabase backend endpoint.
+- **Feedback deployment**: Add Supabase migration/function deployment workflows for `main`, plus hashed device-based feedback rate limiting.
+
+### Fixed
+- **Feedback Edge Function deploys**: Use an npm-hosted Supabase client import, add the feedback health-check route, and disable JWT verification for the public feedback endpoint so packaged tester builds can submit feedback.
+
+## [0.10.3] - 2026-06-03
+
+### Changed
+- **Windows installer UX**: Default the NSIS installer to current-user installs while still allowing all-users installs when selected.
+- **Settings support UX**: Rename the developer-only settings area to Diagnostics & Data and add explicit tester/support email draft actions that clarify nothing is sent automatically.
+- **Release metadata**: Bump the app/package version for the next tester build.
+
+### Fixed
+- **Support buttons**: Fix Copy system info and support email drafts in development builds by formatting the app version correctly and reading Electron runtime details through the safe preload bridge.
+- **Dictation cleanup**: Repair split transcription spacing such as `I 'll` and split dictionary-style terms such as `OpenC ode`.
+- **Overlay regression coverage**: Align taskbar-snap positioning tests with the safer behavior that keeps the overlay button just inside the usable work area.
+
 ## [0.10.2] - 2026-05-31
 
 ### Added

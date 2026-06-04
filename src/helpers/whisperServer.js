@@ -27,6 +27,7 @@ const WHISPER_CHUNK_SECONDS = 60;
 const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
 const WHISPER_REQUEST_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const PROCESS_STARTUP_BUFFER_MAX_CHARS = 64 * 1024;
 const ALLOWED_INPUT_EXTENSIONS = new Set([
   ".wav",
   ".mp3",
@@ -56,6 +57,11 @@ function resolveTempInputExtension(inputFileName) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function appendBoundedText(buffer, text, maxChars = PROCESS_STARTUP_BUFFER_MAX_CHARS) {
+  const next = `${buffer}${text}`;
+  return next.length > maxChars ? next.slice(-maxChars) : next;
 }
 
 function parseWavPcmInfo(buffer) {
@@ -137,7 +143,12 @@ function getWhisperRequestTimeoutMs(durationSeconds) {
 }
 
 function stripSpeakerTurnTokens(text) {
-  return typeof text === "string" ? text.replace(/\[\s*SPEAKER_TURN\s*\]/gi, " ").replace(/\s+/g, " ").trim() : "";
+  return typeof text === "string"
+    ? text
+        .replace(/\[\s*SPEAKER_TURN\s*\]/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
 }
 
 function offsetVerboseJsonSegments(result, offsetSeconds) {
@@ -162,7 +173,9 @@ function offsetVerboseJsonSegments(result, offsetSeconds) {
 }
 
 function mergeVerboseJsonResults(results) {
-  const segments = results.flatMap((result) => (Array.isArray(result?.segments) ? result.segments : []));
+  const segments = results.flatMap((result) =>
+    Array.isArray(result?.segments) ? result.segments : []
+  );
   const text = results
     .map((result) => stripSpeakerTurnTokens(result?.text || ""))
     .filter(Boolean)
@@ -461,7 +474,12 @@ class WhisperServerManager {
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
     const wantsPrintRealtime = options.printRealtime === true;
-    if (this.ready && this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime && !this.startupPromise) {
+    if (
+      this.ready &&
+      this.loadedModelPath === modelPath &&
+      this.printRealtimeEnabled === wantsPrintRealtime &&
+      !this.startupPromise
+    ) {
       this.lastUsedTime = Date.now();
       this.stoppedDueToIdle = false;
       this._scheduleIdleCheck();
@@ -470,7 +488,11 @@ class WhisperServerManager {
 
     // If a startup is already in-flight for this exact model, share the promise
     // so the second caller waits for the same result instead of spawning again.
-    if (this.startupPromise && this.modelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
+    if (
+      this.startupPromise &&
+      this.modelPath === modelPath &&
+      this.printRealtimeEnabled === wantsPrintRealtime
+    ) {
       return this.startupPromise;
     }
 
@@ -488,7 +510,11 @@ class WhisperServerManager {
       .then(async () => {
         // Re-check after the previous promise settled: the server may have
         // become ready for this model (e.g. from a concurrent caller).
-        if (this.ready && this.loadedModelPath === modelPath && this.printRealtimeEnabled === wantsPrintRealtime) {
+        if (
+          this.ready &&
+          this.loadedModelPath === modelPath &&
+          this.printRealtimeEnabled === wantsPrintRealtime
+        ) {
           this.lastUsedTime = Date.now();
           this.stoppedDueToIdle = false;
           this._scheduleIdleCheck();
@@ -666,7 +692,7 @@ class WhisperServerManager {
 
     this.process.stderr.on("data", (data) => {
       const text = data.toString();
-      stderrBuffer += text;
+      stderrBuffer = appendBoundedText(stderrBuffer, text);
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
       debugLogger.debug("whisper-server stderr", { data: text.trim() });
     });
@@ -933,7 +959,18 @@ class WhisperServerManager {
     });
 
     try {
-      const { language, translate, initialPrompt, inputFileName, fileMode = false, noiseReduction = false, speakerDetection = false, diarize = false, vad = false, onProgress } = options;
+      const {
+        language,
+        translate,
+        initialPrompt,
+        inputFileName,
+        fileMode = false,
+        noiseReduction = false,
+        speakerDetection = false,
+        diarize = false,
+        vad = false,
+        onProgress,
+      } = options;
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
@@ -961,7 +998,12 @@ class WhisperServerManager {
       }
 
       if (typeof onProgress === "function") {
-        onProgress({ stage: "transcribing", percentage: 0, chunksTotal: chunks.length, chunksCompleted: 0 });
+        onProgress({
+          stage: "transcribing",
+          percentage: 0,
+          chunksTotal: chunks.length,
+          chunksCompleted: 0,
+        });
       }
 
       const results = [];
@@ -989,16 +1031,14 @@ class WhisperServerManager {
           });
         } catch (error) {
           if (!fileMode) throw error;
-          debugLogger.warn("verbose_json file transcription failed; retrying with json compatibility fallback", {
-            error: error.message,
-            chunk: index + 1,
-            chunks: chunks.length,
-          });
-          const activeModelPath = this.modelPath;
-          if (activeModelPath) {
-            await this.stop();
-            await this.start(activeModelPath);
-          }
+          debugLogger.warn(
+            "verbose_json file transcription failed; retrying with json compatibility fallback",
+            {
+              error: error.message,
+              chunk: index + 1,
+              chunks: chunks.length,
+            }
+          );
           result = await this._postInference(chunk.buffer, {
             language,
             translate,
@@ -1016,11 +1056,18 @@ class WhisperServerManager {
             };
           }
         }
-        results.push(fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result);
+        results.push(
+          fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result
+        );
 
         if (typeof onProgress === "function") {
           const percentage = Math.round(((index + 1) / chunks.length) * 100);
-          onProgress({ stage: "transcribing", percentage, chunksTotal: chunks.length, chunksCompleted: index + 1 });
+          onProgress({
+            stage: "transcribing",
+            percentage,
+            chunksTotal: chunks.length,
+            chunksCompleted: index + 1,
+          });
         }
       }
 
@@ -1117,7 +1164,7 @@ class WhisperServerManager {
       form.append("no_context", "true");
       form.append("suppress_nst", "true");
       form.append("temperature", "0.0");
-      form.append("temperature_inc", "0.0");
+      form.append("temperature_inc", "0.2");
       form.append("no_speech_thold", "0.45");
     }
 
@@ -1317,7 +1364,9 @@ class WhisperServerManager {
       running: this.ready && this.process !== null,
       port: this.port,
       modelPath: activeModelPath,
-      modelName: activeModelPath ? path.basename(activeModelPath, ".bin").replace("ggml-", "") : null,
+      modelName: activeModelPath
+        ? path.basename(activeModelPath, ".bin").replace("ggml-", "")
+        : null,
       forceCpu: this.forceCpu,
       activeServerBinaryPath: this.activeServerBinaryPath,
       activeEngine: this.activeServerBinaryPath

@@ -59,6 +59,54 @@ describe("WhisperServer file mode", () => {
     expect(body).toContain('name="suppress_nst"');
     expect(body).toContain('name="temperature"');
     expect(body).toContain('name="temperature_inc"');
+    expect(body).toMatch(/name="temperature_inc"[\s\S]*0\.2/);
     expect(body).toContain('name="no_speech_thold"');
+  });
+
+  it("retries file-mode verbose_json failures without restarting the server", async () => {
+    const manager: any = new WhisperServerManager();
+    manager.ready = true;
+    manager.process = {};
+    manager.canConvert = true;
+    manager._scheduleIdleCheck = vi.fn();
+    manager._convertToWav = vi.fn().mockResolvedValue(Buffer.from("wav"));
+    manager._splitWavIntoTranscriptionChunks = vi.fn().mockReturnValue([
+      {
+        buffer: Buffer.from("chunk"),
+        durationSeconds: 12,
+        offsetSeconds: 0,
+      },
+    ]);
+    manager._postInference = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("verbose_json failed"))
+      .mockResolvedValueOnce({ text: "fallback transcript" });
+    manager.stop = vi.fn();
+    manager.start = vi.fn();
+
+    const result = await manager.transcribe(Buffer.from("audio"), {
+      fileMode: true,
+      language: "en",
+      initialPrompt: "terms",
+    });
+
+    expect(manager._postInference).toHaveBeenCalledTimes(2);
+    expect(manager._postInference.mock.calls[0][1]).toMatchObject({
+      fileMode: true,
+      language: "en",
+      initialPrompt: "terms",
+    });
+    expect(manager._postInference.mock.calls[1][1]).toMatchObject({
+      fileMode: false,
+      language: "en",
+      initialPrompt: "terms",
+    });
+    expect(manager.stop).not.toHaveBeenCalled();
+    expect(manager.start).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      text: "fallback transcript",
+      verboseJsonFallback: true,
+      segments: [{ start: 0, end: 12, text: "fallback transcript" }],
+    });
   });
 });

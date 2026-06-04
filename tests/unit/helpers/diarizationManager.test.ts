@@ -84,4 +84,29 @@ describe("DiarizationManager", () => {
 
     expect(config.clustering.numClusters).toBe(3);
   });
+
+  it("caps label-only auto-detected speaker segments without throwing", async () => {
+    const manager = new DiarizationManager({
+      modelsDir: makeTempModelsDir(),
+      loadSherpa: () => ({
+        OfflineSpeakerDiarization: class {
+          sampleRate = 16000;
+
+          process() {
+            return Array.from({ length: 7 }, (_, index) => ({
+              label: index,
+              start: index,
+              end: index + 1,
+            }));
+          }
+        },
+        readWave: () => ({ sampleRate: 16000, samples: new Float32Array(16000 * 7) }),
+      }),
+    });
+
+    const result = await manager.diarizeWavFile("unused.wav", { maxSpeakers: 6 });
+
+    expect(result.success).toBe(true);
+    expect(result.speakerCount).toBeLessThanOrEqual(6);
+  });
 });

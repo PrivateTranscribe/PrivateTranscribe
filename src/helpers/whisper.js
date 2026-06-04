@@ -8,6 +8,7 @@ const GpuBinaryManager = require("./gpuBinaryManager");
 const { getModelsDirForService } = require("./modelDirUtils");
 const { DiarizationManager } = require("./diarizationManager");
 const { assignSpeakersToSegments } = require("./diarizationMerge");
+const { normalizeTranscriptText } = require("../utils/textNormalization");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
 
@@ -27,6 +28,13 @@ function getWhisperModelConfig(modelName) {
 
 function getValidModelNames() {
   return Object.keys(modelRegistryData.whisperModels);
+}
+
+function isPathInsideDirectory(childPath, parentDir) {
+  const relative = path.relative(path.resolve(parentDir), path.resolve(childPath));
+  return (
+    relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 class WhisperManager {
@@ -60,7 +68,14 @@ class WhisperManager {
   getModelPath(modelName) {
     this.validateModelName(modelName);
     const config = getWhisperModelConfig(modelName);
-    return path.join(this.getModelsDir(), config.fileName);
+    const modelsDir = this.getModelsDir();
+    const modelPath = path.resolve(modelsDir, config.fileName);
+
+    if (!isPathInsideDirectory(modelPath, modelsDir)) {
+      throw new Error(`Invalid model path for ${modelName}`);
+    }
+
+    return modelPath;
   }
 
   async initializeAtStartup(settings = {}) {
@@ -359,7 +374,9 @@ class WhisperManager {
             ? "stopped due to idle"
             : "model changed",
       });
-      await this.serverManager.start(modelPath, { printRealtime: requestOptions.fileMode === true && requestOptions.speakerDetection === true });
+      await this.serverManager.start(modelPath, {
+        printRealtime: requestOptions.fileMode === true && requestOptions.speakerDetection === true,
+      });
       this.currentServerModel = model;
     }
 
@@ -445,10 +462,15 @@ class WhisperManager {
   }
 
   async transcribeFileV2(audioBlob, options = {}) {
-    const speakerDetectionMode = options.speakerDetectionMode || (options.speakerDetection === true ? "tiny-diarize-en" : "off");
+    const speakerDetectionMode =
+      options.speakerDetectionMode ||
+      (options.speakerDetection === true ? "tiny-diarize-en" : "off");
     const requestedTinyDiarize = speakerDetectionMode === "tiny-diarize-en";
     const requestedLocalDiarization = speakerDetectionMode === "local-diarization";
-    const model = requestedTinyDiarize && this.isModelDownloaded("small-en-tdrz") ? "small-en-tdrz" : options.model || "turbo";
+    const model =
+      requestedTinyDiarize && this.isModelDownloaded("small-en-tdrz")
+        ? "small-en-tdrz"
+        : options.model || "turbo";
     const onProgress = options.onProgress;
     const result = await this.transcribeLocalWhisper(audioBlob, {
       ...options,
@@ -466,9 +488,13 @@ class WhisperManager {
         onProgress({ stage: "diarizing", percentage: 0 });
       }
       const inputBuffer = this.audioBlobToBuffer(audioBlob);
-      const wavBuffer = await this.serverManager.convertToDiarizationWav(inputBuffer, options.inputFileName, {
-        noiseReduction: options.noiseReduction === true,
-      });
+      const wavBuffer = await this.serverManager.convertToDiarizationWav(
+        inputBuffer,
+        options.inputFileName,
+        {
+          noiseReduction: options.noiseReduction === true,
+        }
+      );
       const diarization = await this.diarizationManager.diarizeWavBufferInWorker(wavBuffer, {
         expectedSpeakers: options.expectedSpeakers,
         threshold: options.diarizationThreshold,
@@ -494,14 +520,15 @@ class WhisperManager {
       ...result,
       model,
       speakerDetectionActive: requestedTinyDiarize && model === "small-en-tdrz",
-      speakerDetectionMode: requestedTinyDiarize && model === "small-en-tdrz" ? "tiny-diarize-en" : "off",
+      speakerDetectionMode:
+        requestedTinyDiarize && model === "small-en-tdrz" ? "tiny-diarize-en" : "off",
     };
   }
 
   // Normalize whitespace: replace newlines with spaces and collapse multiple spaces
   // whisper.cpp returns text with \n between audio segments which causes formatting issues
   normalizeWhitespace(text) {
-    return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+    return normalizeTranscriptText(text);
   }
 
   // Detect and remove repetitive phrases that whisper.cpp sometimes hallucinates.
@@ -526,7 +553,7 @@ class WhisperManager {
     cleaned = cleaned.replace(/\b(\w+)(?:\s+\1){4,}\b/gi, "$1");
 
     // 3) Re-normalize whitespace after replacements
-    cleaned = cleaned.replace(/\s+/g, " ").trim();
+    cleaned = normalizeTranscriptText(cleaned);
 
     if (cleaned !== text) {
       debugLogger.info("Removed whisper repetition artifacts", {
@@ -550,6 +577,9 @@ class WhisperManager {
         const text = this.normalizeWhitespace(output);
         if (text && !this.isBlankAudioMarker(text)) {
           return { success: true, text };
+        }
+        if (this.isBlankAudioMarker(output)) {
+          return { success: false, message: "No audio detected" };
         }
         throw new Error(`Failed to parse Whisper output: ${parseError.message}`);
       }

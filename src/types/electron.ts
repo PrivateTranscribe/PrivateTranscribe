@@ -307,6 +307,20 @@ export interface SaveTranscriptionOptions {
   includeInStats?: boolean;
 }
 
+export interface FeedbackSubmitPayload {
+  message: string;
+  category?: "bug" | "confusing" | "feature" | "general";
+  includeSystemInfo?: boolean;
+  appVersion?: string;
+  source?: string;
+}
+
+export interface FeedbackSubmitResult {
+  success: boolean;
+  error?: string;
+  code?: string;
+}
+
 export interface TranscriptionSettingsBroadcast {
   useLocalWhisper?: string;
   whisperModel?: string;
@@ -344,6 +358,8 @@ declare global {
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;
+      onHybridDictationKeyDown?: (callback: () => void) => (() => void) | void;
+      onHybridDictationKeyUp?: (callback: () => void) => (() => void) | void;
       onWindowDragReset?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;
 
       // Database operations
@@ -385,6 +401,7 @@ declare global {
       ) => (() => void) | void;
 
       // API key management
+      submitFeedback?: (payload: FeedbackSubmitPayload) => Promise<FeedbackSubmitResult>;
       getOpenAIKey: () => Promise<string>;
       saveOpenAIKey: (key: string) => Promise<{ success: boolean }>;
       createProductionEnvFile: (key: string) => Promise<void>;
@@ -618,6 +635,11 @@ declare global {
         scope?: string;
         source?: string;
       }) => Promise<void>;
+      getRuntimeVersions?: () => {
+        electron?: string;
+        chrome?: string;
+        node?: string;
+      };
       getDebugState: () => Promise<{
         enabled: boolean;
         logPath: string | null;
@@ -643,7 +665,7 @@ declare global {
       openUninstallLocation?: () => Promise<{ success: boolean; error?: string }>;
 
       // Windows Push-to-Talk notifications
-      notifyActivationModeChanged?: (mode: "tap" | "push") => void;
+      notifyActivationModeChanged?: (mode: "tap" | "push" | "tapHold") => void;
       notifyHotkeyChanged?: (hotkey: string) => void;
       notifyTranscriptionSettingsChanged?: (settings: TranscriptionSettingsBroadcast) => void;
       onTranscriptionSettingsChanged?: (
