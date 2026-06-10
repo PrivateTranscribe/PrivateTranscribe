@@ -538,3 +538,35 @@ describe("VRAM display in NVIDIA CUDA reasoning", () => {
     expect(combined).toContain("4.0 GB");
   });
 });
+
+describe("HardwareDetector.detectHardware", () => {
+  it("shares one in-flight hardware scan between concurrent callers", async () => {
+    const detector = new HardwareDetector();
+    let calls = 0;
+    detector.buildDetection = async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return makeDetection({ timestamp: Date.now(), platform: "test", arch: "x64" });
+    };
+
+    const [first, second] = await Promise.all([
+      detector.detectHardware(),
+      detector.detectHardware(),
+    ]);
+
+    expect(calls).toBe(1);
+    expect(first).toBe(second);
+    expect(await detector.detectHardware()).toBe(first);
+    expect(calls).toBe(1);
+  });
+
+  it("clears both cached and in-flight detections when re-detecting", async () => {
+    const detector = new HardwareDetector();
+    detector.detectionPromise = Promise.resolve(makeDetection());
+
+    detector.clearCache();
+
+    expect(detector.cachedDetection).toBeNull();
+    expect(detector.detectionPromise).toBeNull();
+  });
+});

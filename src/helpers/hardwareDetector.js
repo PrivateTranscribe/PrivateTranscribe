@@ -11,6 +11,7 @@ const debugLogger = require("./debugLogger");
 class HardwareDetector {
   constructor() {
     this.cachedDetection = null;
+    this.detectionPromise = null;
   }
 
   /**
@@ -22,6 +23,24 @@ class HardwareDetector {
       return this.cachedDetection;
     }
 
+    if (this.detectionPromise) {
+      return this.detectionPromise;
+    }
+
+    this.detectionPromise = this.buildDetection()
+      .then((detection) => {
+        this.cachedDetection = detection;
+        debugLogger.info("Hardware detection completed", detection);
+        return detection;
+      })
+      .finally(() => {
+        this.detectionPromise = null;
+      });
+
+    return this.detectionPromise;
+  }
+
+  async buildDetection() {
     const detection = {
       timestamp: Date.now(),
       platform: process.platform,
@@ -34,8 +53,6 @@ class HardwareDetector {
     // Generate recommendations based on detection
     detection.recommendations = this.generateRecommendations(detection);
 
-    this.cachedDetection = detection;
-    debugLogger.info("Hardware detection completed", detection);
     return detection;
   }
 
@@ -657,6 +674,7 @@ class HardwareDetector {
    */
   clearCache() {
     this.cachedDetection = null;
+    this.detectionPromise = null;
   }
 }
 

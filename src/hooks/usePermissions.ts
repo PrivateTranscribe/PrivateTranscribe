@@ -97,8 +97,10 @@ const describeMicError = (error: unknown): string => {
 };
 
 export const usePermissions = (
-  showAlertDialog?: UsePermissionsProps["showAlertDialog"]
+  showAlertDialog?: UsePermissionsProps["showAlertDialog"],
+  options: { checkPasteToolsOnMount?: boolean } = {}
 ): UsePermissionsReturn => {
+  const { checkPasteToolsOnMount = true } = options;
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
   const [accessibilityPermissionGranted, setAccessibilityPermissionGranted] = useState(false);
@@ -208,10 +210,11 @@ export const usePermissions = (
     }
   }, []);
 
-  // Check paste tools on mount
+  // Check paste tools on mount when the caller needs permission diagnostics immediately.
   useEffect(() => {
+    if (!checkPasteToolsOnMount) return;
     checkPasteToolsAvailability();
-  }, [checkPasteToolsAvailability]);
+  }, [checkPasteToolsAvailability, checkPasteToolsOnMount]);
 
   const testAccessibilityPermission = useCallback(async () => {
     const platform = getPlatform();

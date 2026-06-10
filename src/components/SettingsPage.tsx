@@ -43,7 +43,6 @@ import { useDialogs } from "../hooks/useDialogs";
 import { isFeatureUnlocked } from "../hooks/useProStatus";
 import { useAgentName } from "../utils/agentName";
 import ProSettingsSection from "./ProSettingsSection";
-import { useWhisper } from "../hooks/useWhisper";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
@@ -1137,16 +1136,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
 
-  // GPU support status — fetched once to drive the engine selector in TranscriptionModelPicker
+  // GPU support status — fetched only when the transcription picker is visible.
   const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
   useEffect(() => {
+    if (activeSection !== "transcription") return;
     window.electronAPI
       ?.detectHardware?.()
       .then((result) =>
         setGpuSupportedForPicker(result?.detection?.recommendations?.gpuCategory === "nvidia_cuda")
       )
       .catch(() => {});
-  }, []);
+  }, [activeSection]);
 
   const [correctionCount, setCorrectionCount] = useState<number | null>(null);
   const [clearConfirmPending, setClearConfirmPending] = useState(false);
@@ -1568,8 +1568,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const isUpdateAvailable =
     !updateStatus.isDevelopment && (updateStatus.updateAvailable || updateStatus.updateDownloaded);
 
-  const whisperHook = useWhisper();
-  const permissionsHook = usePermissions(showAlertDialog);
+  const permissionsHook = usePermissions(showAlertDialog, { checkPasteToolsOnMount: false });
+  const { checkPasteToolsAvailability } = permissionsHook;
   useClipboard(showAlertDialog);
   const { agentName, setAgentName } = useAgentName();
   const installTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1673,17 +1673,18 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
       const version = await getAppVersion();
       if (version && mounted) setCurrentVersion(version);
-
-      if (mounted) {
-        whisperHook.checkWhisperInstallation();
-      }
     }, 100);
 
     return () => {
       mounted = false;
       clearTimeout(timer);
     };
-  }, [whisperHook, getAppVersion]);
+  }, [getAppVersion]);
+
+  useEffect(() => {
+    if (activeSection !== "permissions") return;
+    checkPasteToolsAvailability();
+  }, [activeSection, checkPasteToolsAvailability]);
 
   useEffect(() => {
     const checkHotkeyMode = async () => {
