@@ -14,6 +14,10 @@ const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const { formatTranscript } = require("./transcriptFormatter");
+const {
+  buildAutoStartLaunchOptions,
+  buildAutoStartSetOptions,
+} = require("./autoStartLoginItemSettings");
 
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
@@ -118,7 +122,17 @@ function buildFeedbackPayload(rawPayload) {
   }
 
   const analyticsManager = require("./analyticsManager");
-  const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
+  const allowedCategories = new Set([
+    "install",
+    "onboarding",
+    "transcription",
+    "hotkey",
+    "performance",
+    "bug",
+    "confusing",
+    "feature",
+    "general",
+  ]);
   const category = allowedCategories.has(payload.category) ? payload.category : "general";
   const includeSystemInfo = payload.includeSystemInfo !== false;
 
@@ -127,7 +141,8 @@ function buildFeedbackPayload(rawPayload) {
     category,
     contact: typeof payload.contact === "string" ? payload.contact.trim().slice(0, 300) : null,
     source: typeof payload.source === "string" ? payload.source.slice(0, 80) : "unknown",
-    appVersion: typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
+    appVersion:
+      typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
     deviceId: analyticsManager.getDeviceIdForExplicitFeedback(),
     submittedAt: new Date().toISOString(),
     systemInfo: includeSystemInfo
@@ -1109,7 +1124,10 @@ class IPCHandlers {
     ipcMain.handle("open-external", async (event, url) => {
       if (!isAllowedExternalUrl(url)) {
         debugLogger.warn("open-external blocked unsafe URL", { url });
-        return { success: false, error: "Only http, https, and mailto URLs may be opened externally." };
+        return {
+          success: false,
+          error: "Only http, https, and mailto URLs may be opened externally.",
+        };
       }
       try {
         await shell.openExternal(url);
@@ -1158,7 +1176,14 @@ class IPCHandlers {
     // Auto-start handlers
     ipcMain.handle("get-auto-start-enabled", async () => {
       try {
-        const loginSettings = app.getLoginItemSettings();
+        const loginSettings = app.getLoginItemSettings(
+          buildAutoStartLaunchOptions({
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+          })
+        );
         return loginSettings.openAtLogin;
       } catch (error) {
         debugLogger.error("Error getting auto-start status:", error);
@@ -1168,10 +1193,15 @@ class IPCHandlers {
 
     ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
       try {
-        app.setLoginItemSettings({
-          openAtLogin: enabled,
-          openAsHidden: true, // Start minimized to tray
-        });
+        app.setLoginItemSettings(
+          buildAutoStartSetOptions({
+            enabled,
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+          })
+        );
         debugLogger.debug("Auto-start setting updated", { enabled });
         return { success: true };
       } catch (error) {

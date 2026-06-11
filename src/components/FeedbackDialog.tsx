@@ -12,7 +12,16 @@ import {
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
 
-export type FeedbackCategory = "bug" | "confusing" | "feature" | "general";
+export type FeedbackCategory =
+  | "install"
+  | "onboarding"
+  | "transcription"
+  | "hotkey"
+  | "performance"
+  | "bug"
+  | "confusing"
+  | "feature"
+  | "general";
 
 interface FeedbackDialogProps {
   currentVersion?: string;
@@ -21,13 +30,49 @@ interface FeedbackDialogProps {
 }
 
 const CATEGORY_OPTIONS: Array<{ value: FeedbackCategory; label: string }> = [
-  { value: "bug", label: "Bug / broken behavior" },
+  { value: "install", label: "Install / first launch" },
+  { value: "onboarding", label: "Onboarding / setup" },
+  { value: "transcription", label: "Dictation / transcription" },
+  { value: "hotkey", label: "Hotkey / paste" },
+  { value: "performance", label: "Speed / model download" },
+  { value: "bug", label: "Other bug" },
   { value: "confusing", label: "Confusing UX" },
   { value: "feature", label: "Feature request" },
   { value: "general", label: "General feedback" },
 ];
 
-export default function FeedbackDialog({ currentVersion, source = "unknown", trigger }: FeedbackDialogProps) {
+const TESTER_PROMPTS: Array<{ label: string; category: FeedbackCategory; template: string }> = [
+  {
+    label: "Install failed",
+    category: "install",
+    template:
+      "Install / launch feedback\nWindows version:\nDid SmartScreen appear? yes/no\nWhat happened when installing or opening the app?\n",
+  },
+  {
+    label: "First dictation failed",
+    category: "transcription",
+    template:
+      "First dictation feedback\nSpoken language:\nSelected model:\nDid recording start? yes/no\nDid text paste anywhere? yes/no\nWhat happened?\n",
+  },
+  {
+    label: "Hotkey confusing",
+    category: "hotkey",
+    template:
+      "Hotkey / paste feedback\nConfigured hotkey:\nApp you tried dictating into:\nDid the hotkey trigger recording? yes/no\nDid paste work? yes/no\nWhat felt confusing?\n",
+  },
+  {
+    label: "It worked",
+    category: "general",
+    template:
+      "Positive tester feedback\nWhat worked well?\nWhat app did you dictate into?\nWould you use this again tomorrow? yes/no\nWhat should be improved first?\n",
+  },
+];
+
+export default function FeedbackDialog({
+  currentVersion,
+  source = "unknown",
+  trigger,
+}: FeedbackDialogProps) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FeedbackCategory>("general");
@@ -54,6 +99,15 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
     []
   );
 
+  const applyTesterPrompt = (prompt: (typeof TESTER_PROMPTS)[number]) => {
+    setCategory(prompt.category);
+    setMessage((current) => {
+      const trimmed = current.trim();
+      if (!trimmed) return prompt.template;
+      return `${trimmed}\n\n---\n${prompt.template}`;
+    });
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
@@ -77,7 +131,9 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
       setMessage("");
     } catch (error) {
       setSubmitState("error");
-      setSubmitError(error instanceof Error ? error.message : "Feedback could not be sent right now.");
+      setSubmitError(
+        error instanceof Error ? error.message : "Feedback could not be sent right now."
+      );
     }
   };
 
@@ -94,8 +150,25 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
 
         <div className="space-y-4">
           <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-            <strong className="text-foreground">Early access:</strong> short, honest notes are useful — bugs,
-            confusing moments, missing features, or anything that felt surprisingly good.
+            <strong className="text-foreground">Early access:</strong> short, honest notes are
+            useful — bugs, confusing moments, missing features, or anything that felt surprisingly
+            good.
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">Quick tester templates</div>
+            <div className="grid grid-cols-2 gap-2">
+              {TESTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt.label}
+                  type="button"
+                  onClick={() => applyTesterPrompt(prompt)}
+                  className="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  {prompt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <label className="space-y-1.5 block">
@@ -132,8 +205,8 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
               className="mt-0.5 rounded"
             />
             <span>
-              Include basic system info: app version, platform, and Electron runtime versions. No audio,
-              transcripts, or logs are sent.
+              Include basic system info: app version, platform, and Electron runtime versions. No
+              audio, transcripts, or logs are sent.
             </span>
           </label>
 

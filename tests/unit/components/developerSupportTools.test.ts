@@ -62,6 +62,33 @@ describe("Settings support and diagnostics tools", () => {
     expect(electronTypes).toContain("submitFeedback");
   });
 
+  it("feedback dialog collects structured launch tester evidence", () => {
+    const feedbackDialog = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "FeedbackDialog.tsx"),
+      "utf8"
+    );
+    const ipcHandlers = fs.readFileSync(
+      path.join(process.cwd(), "src", "helpers", "ipcHandlers.js"),
+      "utf8"
+    );
+    const electronTypes = fs.readFileSync(
+      path.join(process.cwd(), "src", "types", "electron.ts"),
+      "utf8"
+    );
+
+    for (const value of ["install", "onboarding", "transcription", "hotkey", "performance"]) {
+      expect(feedbackDialog).toContain(`value: "${value}"`);
+      expect(ipcHandlers).toContain(`"${value}"`);
+      expect(electronTypes).toContain(`| "${value}"`);
+    }
+
+    expect(feedbackDialog).toContain("Quick tester templates");
+    expect(feedbackDialog).toContain("Install failed");
+    expect(feedbackDialog).toContain("First dictation failed");
+    expect(feedbackDialog).toContain("Did SmartScreen appear? yes/no");
+    expect(feedbackDialog).toContain("Would you use this again tomorrow? yes/no");
+  });
+
   it("formats the app version object instead of rendering [object Object]", () => {
     const developerSection = fs.readFileSync(
       path.join(process.cwd(), "src", "components", "DeveloperSection.tsx"),

@@ -120,9 +120,7 @@ export default function DeveloperSection() {
   const buildDebugInfo = async () => {
     const versionResult = await window.electronAPI?.getAppVersion?.();
     const version =
-      typeof versionResult === "string"
-        ? versionResult
-        : versionResult?.version || "unknown";
+      typeof versionResult === "string" ? versionResult : versionResult?.version || "unknown";
     const platform = navigator.platform || "unknown";
     const userAgent = navigator.userAgent || "unknown";
     const runtimeVersions = window.electronAPI?.getRuntimeVersions?.();
@@ -267,8 +265,8 @@ export default function DeveloperSection() {
         </Button>
       </div>
       <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
-        Opens your default email app with system info prefilled. Nothing is sent automatically,
-        and logs still need to be attached manually.
+        Opens your default email app with system info prefilled. Nothing is sent automatically, and
+        logs still need to be attached manually.
       </p>
 
       <div className="mb-5">
