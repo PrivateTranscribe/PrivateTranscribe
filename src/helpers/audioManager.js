@@ -1443,7 +1443,8 @@ class AudioManager {
       source,
       textLength: normalizedText.length,
       rawInputPreview: rawInputText.substring(0, 200) + (rawInputText.length > 200 ? "..." : ""),
-      normalizedPreview: normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
+      normalizedPreview:
+        normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
       timestamp: new Date().toISOString(),
     });
 

@@ -127,7 +127,8 @@ function buildFeedbackPayload(rawPayload) {
     category,
     contact: typeof payload.contact === "string" ? payload.contact.trim().slice(0, 300) : null,
     source: typeof payload.source === "string" ? payload.source.slice(0, 80) : "unknown",
-    appVersion: typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
+    appVersion:
+      typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
     deviceId: analyticsManager.getDeviceIdForExplicitFeedback(),
     submittedAt: new Date().toISOString(),
     systemInfo: includeSystemInfo
@@ -1109,7 +1110,10 @@ class IPCHandlers {
     ipcMain.handle("open-external", async (event, url) => {
       if (!isAllowedExternalUrl(url)) {
         debugLogger.warn("open-external blocked unsafe URL", { url });
-        return { success: false, error: "Only http, https, and mailto URLs may be opened externally." };
+        return {
+          success: false,
+          error: "Only http, https, and mailto URLs may be opened externally.",
+        };
       }
       try {
         await shell.openExternal(url);

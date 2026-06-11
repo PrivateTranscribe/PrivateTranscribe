@@ -27,7 +27,11 @@ const CATEGORY_OPTIONS: Array<{ value: FeedbackCategory; label: string }> = [
   { value: "general", label: "General feedback" },
 ];
 
-export default function FeedbackDialog({ currentVersion, source = "unknown", trigger }: FeedbackDialogProps) {
+export default function FeedbackDialog({
+  currentVersion,
+  source = "unknown",
+  trigger,
+}: FeedbackDialogProps) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FeedbackCategory>("general");
@@ -77,7 +81,9 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
       setMessage("");
     } catch (error) {
       setSubmitState("error");
-      setSubmitError(error instanceof Error ? error.message : "Feedback could not be sent right now.");
+      setSubmitError(
+        error instanceof Error ? error.message : "Feedback could not be sent right now."
+      );
     }
   };
 
@@ -94,8 +100,9 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
 
         <div className="space-y-4">
           <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-            <strong className="text-foreground">Early access:</strong> short, honest notes are useful — bugs,
-            confusing moments, missing features, or anything that felt surprisingly good.
+            <strong className="text-foreground">Early access:</strong> short, honest notes are
+            useful — bugs, confusing moments, missing features, or anything that felt surprisingly
+            good.
           </div>
 
           <label className="space-y-1.5 block">
@@ -132,8 +139,8 @@ export default function FeedbackDialog({ currentVersion, source = "unknown", tri
               className="mt-0.5 rounded"
             />
             <span>
-              Include basic system info: app version, platform, and Electron runtime versions. No audio,
-              transcripts, or logs are sent.
+              Include basic system info: app version, platform, and Electron runtime versions. No
+              audio, transcripts, or logs are sent.
             </span>
           </label>
 
