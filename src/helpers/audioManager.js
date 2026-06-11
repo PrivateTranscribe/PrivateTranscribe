@@ -25,6 +25,37 @@ const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
 
+const isTranscriptionTextDebugEnabled = () => {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    const value = window.localStorage.getItem("debugTranscriptionText");
+    return value === "on" || value === "true" || value === "1";
+  } catch {
+    return false;
+  }
+};
+
+const previewText = (value, limit = 500) => {
+  const text = String(value || "");
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+};
+
+const emitTranscriptionTextTrace = (stage, meta = {}) => {
+  if (!isTranscriptionTextDebugEnabled()) return;
+
+  const safeMeta = {
+    ...meta,
+    raw: meta.raw !== undefined ? previewText(meta.raw) : undefined,
+    normalized: meta.normalized !== undefined ? previewText(meta.normalized) : undefined,
+    final: meta.final !== undefined ? previewText(meta.final) : undefined,
+  };
+
+  // This intentionally logs transcript text only when explicitly enabled by the user.
+  // It appears in Electron DevTools and is also routed through the app logger.
+  console.info(`[transcription-text] ${stage}`, safeMeta);
+  logger.info(`TRANSCRIPTION_TEXT_${stage}`, safeMeta, "transcription");
+};
+
 const PLACEHOLDER_KEYS = {
   openai: "your_openai_api_key_here",
   groq: "your_groq_api_key_here",
@@ -1463,6 +1494,13 @@ class AudioManager {
         normalizedText.substring(0, 200) + (normalizedText.length > 200 ? "..." : ""),
       timestamp: new Date().toISOString(),
     });
+    emitTranscriptionTextTrace("PIPELINE", {
+      source,
+      raw: rawInputText,
+      normalized: normalizedText,
+      dictionaryChanged: withDictionary !== rawInputText,
+      punctuationChanged: normalizedText !== withDictionary,
+    });
 
     const reasoningModel =
       typeof window !== "undefined" && window.localStorage
@@ -1492,6 +1530,12 @@ class AudioManager {
         : null;
     if (!reasoningModel) {
       logger.logReasoning("REASONING_SKIPPED", {
+        reason: "No reasoning model selected",
+      });
+      emitTranscriptionTextTrace("FINAL", {
+        source,
+        final: normalizedText,
+        reasoningUsed: false,
         reason: "No reasoning model selected",
       });
       return normalizedText;
@@ -1531,7 +1575,14 @@ class AudioManager {
           processingTime: new Date().toISOString(),
         });
 
-        return normalizePunctuationSpacing(result);
+        const finalText = normalizePunctuationSpacing(result);
+        emitTranscriptionTextTrace("FINAL", {
+          source,
+          final: finalText,
+          reasoningUsed: true,
+          reasoningChanged: finalText !== normalizedText,
+        });
+        return finalText;
       } catch (error) {
         logger.logReasoning("REASONING_FAILED", {
           error: error.message,
@@ -1546,6 +1597,12 @@ class AudioManager {
       reason: useReasoning ? "Reasoning failed" : "Reasoning not enabled",
     });
 
+    emitTranscriptionTextTrace("FINAL", {
+      source,
+      final: normalizedText,
+      reasoningUsed: false,
+      reason: useReasoning ? "Reasoning failed" : "Reasoning not enabled",
+    });
     return normalizedText;
   }
 
