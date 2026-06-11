@@ -62,12 +62,12 @@ describe("HardwareDetector.generateRecommendations", () => {
   // ── NVIDIA + CUDA ────────────────────────────────────────────────────────
 
   describe("NVIDIA GPU with CUDA", () => {
-    function nvidiaDetection(vram: number | null = 4096) {
+    function nvidiaDetection(vram: number | null = 4096, model = "RTX 3080") {
       return makeDetection({
         gpu: {
           available: true,
           vendor: "nvidia",
-          model: "RTX 3080",
+          model,
           vram,
           cuda: { available: true, version: "12.0" },
           metal: { available: false, version: null },
@@ -106,6 +106,20 @@ describe("HardwareDetector.generateRecommendations", () => {
       });
       const rec = detector.generateRecommendations(detection);
       expect(rec.localTranscriptionProvider).toBe("whisper");
+    });
+
+    it("recommends Whisper Large for high-VRAM CUDA GPUs like RTX 3090", () => {
+      const rec = detector.generateRecommendations(
+        nvidiaDetection(24576, "NVIDIA GeForce RTX 3090")
+      );
+
+      expect(rec.whisperModel).toBe("large");
+      expect(rec.reasoning as string[]).toEqual(
+        expect.arrayContaining([expect.stringContaining("Large")])
+      );
+      expect(rec.reasoning as string[]).toEqual(
+        expect.arrayContaining([expect.stringContaining("24.0 GB")])
+      );
     });
   });
 

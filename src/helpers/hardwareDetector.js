@@ -584,17 +584,26 @@ class HardwareDetector {
 
     // ── NVIDIA + CUDA - recommend Whisper with CUDA acceleration ────────────
     if (gpu.vendor === "nvidia" && gpu.cuda.available) {
+      const vramMb = typeof gpu.vram === "number" ? gpu.vram : 0;
+      const vramDisplay =
+        vramMb >= 1024 ? `${(vramMb / 1024).toFixed(1)} GB` : vramMb ? `${vramMb} MB` : null;
+
       rec.gpuCategory = "nvidia_cuda";
       rec.localTranscriptionProvider = "whisper";
-      rec.whisperModel = "turbo";
+      rec.whisperModel = vramMb >= 16384 ? "large" : "turbo";
       rec.transcriptionProvider = "local";
-      rec.reasoning.push(
-        "NVIDIA GPU with CUDA detected - Whisper Turbo recommended for faster local inference"
-      );
 
-      if (gpu.vram && gpu.vram >= 4096) {
-        const vramDisplay =
-          gpu.vram >= 1024 ? `${(gpu.vram / 1024).toFixed(1)} GB` : `${gpu.vram} MB`;
+      if (rec.whisperModel === "large") {
+        rec.reasoning.push(
+          `High-VRAM NVIDIA GPU with CUDA detected${vramDisplay ? ` (${vramDisplay} VRAM)` : ""} - Whisper Large recommended for best local accuracy`
+        );
+      } else {
+        rec.reasoning.push(
+          "NVIDIA GPU with CUDA detected - Whisper Turbo recommended for fast local inference"
+        );
+      }
+
+      if (vramMb >= 4096) {
         rec.reasoning.push(`GPU has ${vramDisplay} VRAM - excellent for local transcription`);
       }
 
