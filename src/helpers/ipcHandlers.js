@@ -14,6 +14,10 @@ const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const { formatTranscript } = require("./transcriptFormatter");
+const {
+  buildAutoStartLaunchOptions,
+  buildAutoStartSetOptions,
+} = require("./autoStartLoginItemSettings");
 
 /**
  * Allowlist of URL protocols that may be passed to shell.openExternal().
@@ -1162,7 +1166,14 @@ class IPCHandlers {
     // Auto-start handlers
     ipcMain.handle("get-auto-start-enabled", async () => {
       try {
-        const loginSettings = app.getLoginItemSettings();
+        const loginSettings = app.getLoginItemSettings(
+          buildAutoStartLaunchOptions({
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+          })
+        );
         return loginSettings.openAtLogin;
       } catch (error) {
         debugLogger.error("Error getting auto-start status:", error);
@@ -1172,10 +1183,15 @@ class IPCHandlers {
 
     ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
       try {
-        app.setLoginItemSettings({
-          openAtLogin: enabled,
-          openAsHidden: true, // Start minimized to tray
-        });
+        app.setLoginItemSettings(
+          buildAutoStartSetOptions({
+            enabled,
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+          })
+        );
         debugLogger.debug("Auto-start setting updated", { enabled });
         return { success: true };
       } catch (error) {
