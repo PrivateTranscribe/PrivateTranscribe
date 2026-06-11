@@ -33,6 +33,17 @@ const PLACEHOLDER_KEYS = {
 const LONG_LOCAL_WHISPER_HINT =
   "For long recordings, try Whisper Turbo/Medium or CPU only if Large exhausts GPU memory.";
 
+const localWhisperSupportsTranslation = (model) => model !== "turbo";
+
+const shouldTranslateLocalWhisperToEnglish = ({ translateToEnglish, resolvedLanguage, model }) => {
+  if (translateToEnglish !== "on") return false;
+  if (!localWhisperSupportsTranslation(model)) return false;
+  // Only translate when the user explicitly selected a non-English speech language.
+  // If the language picker is Auto/empty, a stale hidden translate toggle can otherwise
+  // turn Danish speech into English and look like random model behavior.
+  return !!resolvedLanguage && resolvedLanguage !== "en";
+};
+
 const formatLocalWhisperFailure = (message) => {
   const rawMessage = (message || "Unknown error").replace(/^Local Whisper failed:\s*/i, "");
   const normalized = rawMessage.toLowerCase();
@@ -959,7 +970,12 @@ class AudioManager {
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
       }
-      if (translateToEnglish === "on") {
+      const shouldTranslate = shouldTranslateLocalWhisperToEnglish({
+        translateToEnglish,
+        resolvedLanguage,
+        model,
+      });
+      if (shouldTranslate) {
         options.translate = true;
       }
       if (metadata?.originalFileName) {
@@ -2024,9 +2040,11 @@ class AudioManager {
   async processFileTranscriptionV2(audioBlob, model = "base", metadata = {}) {
     const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
     const rawLanguage = metadata.language ?? this.getTranscriptionSetting("preferredLanguage", "");
-    const translateToEnglish =
+    const translateToEnglishSetting =
       metadata.translate === true ||
-      this.getTranscriptionSetting("translateToEnglish", "off") === "on";
+      this.getTranscriptionSetting("translateToEnglish", "off") === "on"
+        ? "on"
+        : "off";
     const resolvedLanguage = resolveTranscriptionLanguage(rawLanguage, "whisper", model);
     const options = {
       model,
@@ -2040,7 +2058,15 @@ class AudioManager {
       inputFileName: metadata.originalFileName,
     };
     if (resolvedLanguage) options.language = resolvedLanguage;
-    if (translateToEnglish) options.translate = true;
+    if (
+      shouldTranslateLocalWhisperToEnglish({
+        translateToEnglish: translateToEnglishSetting,
+        resolvedLanguage,
+        model,
+      })
+    ) {
+      options.translate = true;
+    }
     const result = await window.electronAPI.transcribeFileV2(arrayBuffer, options);
     if (result?.success && result.text) {
       return { success: true, ...result, source: "local-file-v2" };
