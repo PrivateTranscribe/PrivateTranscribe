@@ -122,7 +122,17 @@ function buildFeedbackPayload(rawPayload) {
   }
 
   const analyticsManager = require("./analyticsManager");
-  const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
+  const allowedCategories = new Set([
+    "install",
+    "onboarding",
+    "transcription",
+    "hotkey",
+    "performance",
+    "bug",
+    "confusing",
+    "feature",
+    "general",
+  ]);
   const category = allowedCategories.has(payload.category) ? payload.category : "general";
   const includeSystemInfo = payload.includeSystemInfo !== false;
 
