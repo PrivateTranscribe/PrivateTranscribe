@@ -1602,12 +1602,26 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     return whisperModel !== "turbo";
   }, [useLocalWhisper, localTranscriptionProvider, whisperModel]);
 
-  // Auto-disable translation when switching to a model that doesn't support it
+  const hasExplicitNonEnglishSpeechLanguage = Boolean(
+    preferredLanguage && preferredLanguage !== "auto" && preferredLanguage !== "en"
+  );
+  const canTranslateToEnglish = translationSupported && hasExplicitNonEnglishSpeechLanguage;
+  const outputLanguageHelp = !hasExplicitNonEnglishSpeechLanguage
+    ? preferredLanguage === "auto"
+      ? "Choose a spoken language, like Danish, before enabling English output. Auto-detect keeps the transcript in the detected speech language."
+      : "English output is only needed when your spoken language is not English."
+    : !translationSupported
+      ? localTranscriptionProvider === "nvidia"
+        ? "Parakeet does not translate. Use Same as speech, or switch to Whisper Large/Medium for English output."
+        : "Whisper Turbo does not reliably support translation. Use Same as speech, or switch to Large/Medium for English output."
+      : "Same as speech keeps Danish as Danish. English uses Whisper translation when supported.";
+
+  // Auto-disable translation when switching to a model/language where the English output option is invalid.
   useEffect(() => {
-    if (!translationSupported && translateToEnglish === "on") {
+    if (!canTranslateToEnglish && translateToEnglish === "on") {
       setTranslateToEnglish("off");
     }
-  }, [translationSupported, translateToEnglish, setTranslateToEnglish]);
+  }, [canTranslateToEnglish, translateToEnglish, setTranslateToEnglish]);
 
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
 
@@ -2048,14 +2062,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="I speak"
-                    description="The language you speak. Whisper transcribes in this language - set it to match what you actually speak for best accuracy."
+                    label="Spoken language"
+                    description="Set this to the language you actually speak. For Danish dictation, choose Danish instead of Auto for the most stable results."
                   >
                     <Select
                       value={preferredLanguage || "auto"}
                       onValueChange={(val) => {
                         setPreferredLanguage(val);
-                        // Auto-disable translation if switching to English or auto
+                        // English output is only valid for an explicit non-English speech language.
                         if (val === "en" || val === "auto") {
                           setTranslateToEnglish("off");
                         }
@@ -2074,53 +2088,37 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </Select>
                   </SettingsRow>
 
-                  {/* Show translate toggle only when speaking a non-English language */}
-                  {preferredLanguage &&
-                    preferredLanguage !== "auto" &&
-                    preferredLanguage !== "en" && (
-                      <>
-                        <SettingsRow
-                          label="Translate to English"
-                          description={
-                            translationSupported
-                              ? "Automatically translate your speech into English text"
-                              : "Not available with the current model"
-                          }
-                        >
-                          <button
-                            type="button"
-                            disabled={!translationSupported}
-                            onClick={() =>
-                              translationSupported &&
-                              setTranslateToEnglish(translateToEnglish === "on" ? "off" : "on")
-                            }
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                              !translationSupported
-                                ? "opacity-40 cursor-not-allowed bg-surface-raised border border-border-subtle"
-                                : translateToEnglish === "on"
-                                  ? "bg-primary"
-                                  : "bg-surface-raised border border-border-subtle"
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                translateToEnglish === "on" && translationSupported
-                                  ? "translate-x-6"
-                                  : "translate-x-1"
-                              }`}
-                            />
-                          </button>
-                        </SettingsRow>
-                        {!translationSupported && (
-                          <p className="mt-1.5 text-xs text-muted-foreground">
-                            Your current model doesn't support translation. Switch to{" "}
-                            <strong className="text-foreground">Large</strong> or{" "}
-                            <strong className="text-foreground">Medium</strong> from the model
-                            picker on the home screen to enable this.
-                          </p>
-                        )}
-                      </>
-                    )}
+                  <SettingsRow label="Output language" description={outputLanguageHelp}>
+                    <div className="flex flex-wrap gap-1.5 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setTranslateToEnglish("off")}
+                        className={[
+                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                          translateToEnglish !== "on"
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-surface-raised border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
+                        ].join(" ")}
+                      >
+                        Same as speech
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canTranslateToEnglish}
+                        onClick={() => canTranslateToEnglish && setTranslateToEnglish("on")}
+                        className={[
+                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                          !canTranslateToEnglish
+                            ? "opacity-40 cursor-not-allowed bg-surface-raised border-border-subtle text-muted-foreground"
+                            : translateToEnglish === "on"
+                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                              : "bg-surface-raised border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
+                        ].join(" ")}
+                      >
+                        English
+                      </button>
+                    </div>
+                  </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
