@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  repairKnownLanguageSplits,
-  repairSplitDictionaryTerms,
-} from "../../../src/utils/transcriptionTextRepair";
+import { repairSplitDictionaryTerms } from "../../../src/utils/transcriptionTextRepair";
 
 describe("transcription text repair", () => {
   it("repairs a known dictionary term that STT split with an internal space", () => {
@@ -29,22 +26,5 @@ describe("transcription text repair", () => {
     expect(repairSplitDictionaryTerms("OpenC ode is in the transcript", [])).toBe(
       "OpenC ode is in the transcript"
     );
-  });
-
-  it("repairs Danish STT splitting the common word ude as u de", () => {
-    expect(
-      repairKnownLanguageSplits(
-        "Jo, jeg har det da ret godt i dag, min ven. Hvorfor er du u de på en gåtur?",
-        "da"
-      )
-    ).toBe("Jo, jeg har det da ret godt i dag, min ven. Hvorfor er du ude på en gåtur?");
-  });
-
-  it("does not apply Danish-specific repairs for other languages or auto-detect", () => {
-    const text = "Hvorfor er du u de på en gåtur?";
-
-    expect(repairKnownLanguageSplits(text, "en")).toBe(text);
-    expect(repairKnownLanguageSplits(text, "auto")).toBe(text);
-    expect(repairKnownLanguageSplits(text, null)).toBe(text);
   });
 });

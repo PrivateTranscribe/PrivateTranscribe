@@ -4,10 +4,7 @@ import logger from "../utils/logger";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
-import {
-  repairKnownLanguageSplits,
-  repairSplitDictionaryTerms,
-} from "../utils/transcriptionTextRepair";
+import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import {
   getContext,
   isSmartContextEnabled,
@@ -1455,14 +1452,7 @@ class AudioManager {
 
   async processTranscription(text, source) {
     const rawInputText = typeof text === "string" ? text.trim() : "";
-    // User's preferred speech/output language (BCP-47, e.g. "da", "en").
-    // Also used for tiny language-gated STT repairs before optional reasoning.
-    const preferredLanguage =
-      typeof window !== "undefined" && window.localStorage
-        ? localStorage.getItem("preferredLanguage") || null
-        : null;
-    const withLanguageRepair = repairKnownLanguageSplits(rawInputText, preferredLanguage);
-    const withDictionary = this.applyDictionaryReplacements(withLanguageRepair);
+    const withDictionary = this.applyDictionaryReplacements(rawInputText);
     const normalizedText = normalizePunctuationSpacing(withDictionary);
 
     logger.logReasoning("TRANSCRIPTION_RECEIVED", {
@@ -1493,9 +1483,13 @@ class AudioManager {
       typeof window !== "undefined" && window.localStorage
         ? localStorage.getItem("activeDictationMode") || undefined
         : undefined;
-    // Preferred language is passed to the reasoning service so it can instruct the
-    // LLM to output in the correct language even when the transcription engine
-    // auto-detected the wrong one.
+    // User's preferred output language (BCP-47, e.g. "en"). Passed to the
+    // reasoning service so it can instruct the LLM to output in the correct
+    // language even when the transcription engine auto-detected the wrong one.
+    const preferredLanguage =
+      typeof window !== "undefined" && window.localStorage
+        ? localStorage.getItem("preferredLanguage") || null
+        : null;
     if (!reasoningModel) {
       logger.logReasoning("REASONING_SKIPPED", {
         reason: "No reasoning model selected",
