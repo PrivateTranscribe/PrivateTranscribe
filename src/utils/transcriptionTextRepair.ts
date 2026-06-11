@@ -1,6 +1,13 @@
 const MIN_TERM_LENGTH = 4;
 const MAX_TERM_LENGTH = 80;
 
+const LANGUAGE_SPLIT_REPAIRS: Record<string, Array<{ pattern: RegExp; replacement: string }>> = {
+  // Whisper can occasionally split very short Danish words into letter-like chunks.
+  // Keep this list intentionally tiny and language-gated to avoid unsafe global
+  // whitespace removal. "u de" is not a normal Danish phrase, while "ude" is.
+  da: [{ pattern: /(?<![\p{L}\p{N}])u\s+de(?![\p{L}\p{N}])/giu, replacement: "ude" }],
+};
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -30,6 +37,22 @@ function looksLikeAccidentalInternalSplit(value: string): boolean {
   // odd STT fragments such as "OpenC ode" where the model appears to have split
   // a single known term internally.
   return /[A-ZÆØÅ]/.test(value);
+}
+
+export function repairKnownLanguageSplits(
+  text: string,
+  language: string | null | undefined
+): string {
+  if (!text || !language || language === "auto") return text;
+
+  const languageRoot = language.toLowerCase().split("-")[0];
+  const repairs = LANGUAGE_SPLIT_REPAIRS[languageRoot];
+  if (!repairs || repairs.length === 0) return text;
+
+  return repairs.reduce(
+    (result, repair) => result.replace(repair.pattern, repair.replacement),
+    text
+  );
 }
 
 export function repairSplitDictionaryTerms(text: string, terms: string[] = []): string {
