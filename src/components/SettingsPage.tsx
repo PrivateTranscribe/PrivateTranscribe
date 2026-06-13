@@ -2009,12 +2009,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {/* Startup */}
             {platform !== "linux" && (
               <div>
-                <SectionHeader title="Startup" />
+                <SectionHeader
+                  title="Startup"
+                  description="Control whether PrivateTranscribe is ready after you sign in"
+                />
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Start on boot"
-                      description="PrivateTranscribe starts automatically when your computer turns on"
+                      label="Start PrivateTranscribe when I log in"
+                      description={
+                        updateStatus.isDevelopment
+                          ? "Developer builds register the local Electron app path, so behavior can differ from the installed app."
+                          : "Runs in the background after sign-in so your dictation hotkey is ready."
+                      }
                     >
                       <Toggle
                         checked={autoStartEnabled}

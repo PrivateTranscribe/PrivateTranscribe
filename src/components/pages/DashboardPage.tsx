@@ -346,7 +346,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
                 <Settings size={14} className="text-primary" />
               </div>
-              <span className="text-sm font-semibold text-foreground">Active Config</span>
+              <span className="text-sm font-semibold text-foreground">Current dictation setup</span>
             </div>
 
             {/* Config Rows */}
@@ -377,7 +377,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-border-subtle">
             <div className="flex items-center gap-3">
-              <h2 className="text-base font-semibold text-foreground">Recent History</h2>
+              <h2 className="text-base font-semibold text-foreground">Recent dictations</h2>
               <span className="inline-flex items-center justify-center min-w-[28px] h-5 px-2 rounded-full bg-primary/10 text-primary text-[11px] font-semibold tabular-nums">
                 {transcriptions.length}
               </span>
@@ -417,14 +417,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
                   {readableHotkey}
                 </kbd>{" "}
-                anywhere to start dictating. Your transcription history will appear here.
+                anywhere to start dictating. Your dictated text will appear here.
               </p>
               <button
                 onClick={() => onNavigate("transcribe")}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background text-xs font-semibold hover:bg-primary/90 transition-colors duration-200"
               >
                 <Upload size={14} />
-                Or Upload a File
+                Transcribe a file
               </button>
             </div>
           )}
@@ -437,14 +437,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border-subtle bg-surface-raised text-sm font-medium text-foreground hover:bg-surface-raised/80 hover:border-primary/30 transition-all duration-200"
           >
             <Upload size={15} className="text-primary" />
-            Upload File
+            Transcribe file
           </button>
           <button
             onClick={() => onNavigate("settings")}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border-subtle bg-surface-raised text-sm font-medium text-foreground hover:bg-surface-raised/80 hover:border-primary/30 transition-all duration-200"
           >
             <Settings size={15} className="text-primary" />
-            Open Settings
+            Review setup
           </button>
         </div>
       </div>
