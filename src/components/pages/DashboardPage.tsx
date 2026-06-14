@@ -496,9 +496,12 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                       {row.label}
                     </span>
                     <span
-                      className="inline-block max-w-[28ch] truncate text-sm text-foreground"
+                      className="inline-block truncate text-sm text-foreground"
                       title={row.value}
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                      style={{
+                        fontFamily: "'JetBrains Mono', monospace",
+                        maxWidth: "min(56ch, 100%)",
+                      }}
                     >
                       {row.value}
                     </span>
