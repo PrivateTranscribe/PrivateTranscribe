@@ -4,6 +4,7 @@ import AudioManager from "../helpers/audioManager";
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [longSession, setLongSession] = useState({ active: false });
   const [transcript, setTranscript] = useState("");
   const audioManagerRef = useRef(null);
   const toastRef = useRef(toast);
@@ -91,12 +92,13 @@ export const useAudioRecording = (toast, options = {}) => {
     };
 
     manager.setCallbacks({
-      onStateChange: ({ isRecording, isProcessing }) => {
+      onStateChange: ({ isRecording, isProcessing, longSession }) => {
         if (disposed) {
           return;
         }
         setIsRecording(isRecording);
         setIsProcessing(isProcessing);
+        setLongSession(longSession || { active: false });
       },
       onError: (error) => {
         if (disposed) {
@@ -682,6 +684,7 @@ export const useAudioRecording = (toast, options = {}) => {
   return {
     isRecording,
     isProcessing,
+    longSession,
     transcript,
     startRecording,
     stopRecording,

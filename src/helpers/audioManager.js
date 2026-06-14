@@ -25,6 +25,9 @@ const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
 const RECORDER_FINAL_DATA_GRACE_MS = 250;
+const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
+const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
+const LONG_SESSION_SEGMENT_MS = 60 * 1000;
 
 const isTranscriptionTextDebugEnabled = () => {
   try {
@@ -211,6 +214,13 @@ class AudioManager {
     this.recordingSessionCounter = 0;
     this.activeRecordingSessionId = null;
     this.recordingStopTimeoutId = null;
+    this.recordingChunkDurationsMs = [];
+    this.lastRecorderDataAt = null;
+    this.longSessionPromotionMs = LONG_SESSION_PROMOTION_MS;
+    this.longSessionChunkTargetMs = LONG_SESSION_CHUNK_TARGET_MS;
+    this.longSession = this.createLongSessionState();
+    this.longSessionSegment = null;
+    this.longSessionPromotionUnavailable = false;
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
@@ -363,7 +373,65 @@ class AudioManager {
     this.onStateChange?.({
       isRecording: this.isRecording,
       isProcessing: this.isProcessing,
+      longSession: this.getLongSessionSnapshot(),
     });
+  }
+
+  createLongSessionState() {
+    return {
+      active: false,
+      cancelled: false,
+      queue: [],
+      results: new Map(),
+      errors: [],
+      processing: false,
+      processingPromise: null,
+      sessionId: 0,
+      nextChunkIndex: 0,
+      queuedChunks: 0,
+      completedChunks: 0,
+      recordedSeconds: 0,
+      transcribedSeconds: 0,
+      promotedAt: null,
+    };
+  }
+
+  getLongSessionSnapshot() {
+    const state = this.longSession;
+    if (!state?.active) {
+      return { active: false };
+    }
+
+    return {
+      active: true,
+      processing: state.processing,
+      queuedChunks: state.queuedChunks,
+      completedChunks: state.completedChunks,
+      pendingChunks: state.queue.length,
+      errorCount: state.errors.length,
+      recordedSeconds: Math.round(state.recordedSeconds),
+      transcribedSeconds: Math.round(state.transcribedSeconds),
+    };
+  }
+
+  resetLongSessionState() {
+    if (this.longSessionSegment) {
+      void this.stopLongSessionSegmentCapture({ discard: true });
+    }
+    this.longSession = this.createLongSessionState();
+    this.recordingChunkDurationsMs = [];
+    this.lastRecorderDataAt = null;
+    this.longSessionPromotionUnavailable = false;
+  }
+
+  cancelLongSessionWork() {
+    if (!this.longSession?.active) {
+      return;
+    }
+
+    this.longSession.cancelled = true;
+    this.longSession.queue = [];
+    void this.stopLongSessionSegmentCapture({ discard: true });
   }
 
   getTranscriptionSetting(key, fallback = "") {
@@ -446,6 +514,377 @@ class AudioManager {
     return new Promise((resolve) => setTimeout(resolve, RECORDER_FINAL_DATA_GRACE_MS));
   }
 
+  estimateRecorderChunkDurationMs() {
+    const now = Date.now();
+    const elapsedMs = this.lastRecorderDataAt
+      ? now - this.lastRecorderDataAt
+      : RECORDER_TIMESLICE_MS;
+    this.lastRecorderDataAt = now;
+
+    if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+      return RECORDER_TIMESLICE_MS;
+    }
+
+    return Math.min(Math.max(elapsedMs, 1000), this.longSessionChunkTargetMs * 2);
+  }
+
+  getBufferedRecordingDurationMs() {
+    return this.recordingChunkDurationsMs.reduce((total, value) => total + value, 0);
+  }
+
+  handleRecorderData(data) {
+    if (!data || data.size <= 0) {
+      return;
+    }
+
+    const durationMs = this.estimateRecorderChunkDurationMs();
+
+    if (this.longSession.active) {
+      if (this.longSessionSegment) {
+        return;
+      }
+
+      this.enqueueLongSessionChunk(data, durationMs);
+      return;
+    }
+
+    this.audioChunks.push(data);
+    this.recordingChunkDurationsMs.push(durationMs);
+
+    const elapsedMs = this.recordingStartTime ? Date.now() - this.recordingStartTime : 0;
+    const bufferedMs = this.getBufferedRecordingDurationMs();
+    if (
+      !this.longSessionPromotionUnavailable &&
+      Math.max(elapsedMs, bufferedMs) >= this.longSessionPromotionMs
+    ) {
+      this.promoteLongSession();
+    }
+  }
+
+  promoteLongSession() {
+    if (this.longSession.active) {
+      return;
+    }
+
+    const state = this.createLongSessionState();
+    state.active = true;
+    state.sessionId = this.activeRecordingSessionId;
+    state.promotedAt = Date.now();
+    this.longSession = state;
+
+    if (!this.startLongSessionSegmentCapture()) {
+      this.longSession = this.createLongSessionState();
+      this.longSessionPromotionUnavailable = true;
+      logger.warn(
+        "Long-session promotion skipped because segment capture is unavailable",
+        { sessionId: this.activeRecordingSessionId },
+        "audio"
+      );
+      this.emitStateChange();
+      return;
+    }
+
+    const chunks = this.audioChunks;
+    const promotedDurationMs =
+      this.recordingStartTime && state.promotedAt
+        ? state.promotedAt - this.recordingStartTime
+        : this.getBufferedRecordingDurationMs();
+    this.audioChunks = [];
+    this.recordingChunkDurationsMs = [];
+
+    if (chunks.length > 0) {
+      this.enqueueLongSessionChunk(
+        new Blob(chunks, { type: this.recordingMimeType || "audio/webm" }),
+        Math.max(promotedDurationMs, RECORDER_TIMESLICE_MS)
+      );
+    }
+
+    logger.info(
+      "Recording promoted to long-session transcription",
+      {
+        sessionId: state.sessionId,
+        queuedChunks: state.queuedChunks,
+        recordedSeconds: Math.round(state.recordedSeconds),
+        segmentCaptureActive: !!this.longSessionSegment,
+      },
+      "audio"
+    );
+
+    this.emitStateChange();
+  }
+
+  enqueueLongSessionChunk(blob, durationMs = RECORDER_TIMESLICE_MS) {
+    const state = this.longSession;
+    if (!state.active || state.cancelled) {
+      return;
+    }
+
+    const item = {
+      index: state.nextChunkIndex++,
+      blob,
+      durationMs,
+      sessionId: state.sessionId,
+    };
+
+    state.queue.push(item);
+    state.queuedChunks += 1;
+    state.recordedSeconds += durationMs / 1000;
+    this.emitStateChange();
+    void this.drainLongSessionQueue();
+  }
+
+  startLongSessionSegmentCapture() {
+    if (this.longSessionSegment || !this.recordingStream) {
+      return false;
+    }
+
+    try {
+      const recorder = new MediaRecorder(this.recordingStream);
+      const segment = {
+        recorder,
+        chunks: [],
+        startedAt: Date.now(),
+        rotateTimer: null,
+        stopping: false,
+        discard: false,
+        restartAfterStop: false,
+        stopResolvers: [],
+        finished: false,
+      };
+
+      recorder.ondataavailable = (event) => {
+        if (event?.data && event.data.size > 0) {
+          segment.chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        this.finishLongSessionSegment(segment);
+      };
+
+      recorder.onerror = (event) => {
+        logger.warn(
+          "Long-session segment recorder reported an error",
+          {
+            message: event?.error?.message || "Unknown recorder error",
+          },
+          "audio"
+        );
+      };
+
+      this.longSessionSegment = segment;
+      recorder.start();
+      segment.rotateTimer = setTimeout(() => {
+        void this.rotateLongSessionSegment();
+      }, LONG_SESSION_SEGMENT_MS);
+      return true;
+    } catch (error) {
+      this.longSessionSegment = null;
+      logger.warn(
+        "Failed to start long-session segment recorder; falling back to recorder chunks",
+        { error: error?.message },
+        "audio"
+      );
+      return false;
+    }
+  }
+
+  finishLongSessionSegment(segment) {
+    if (segment.finished) {
+      return;
+    }
+    segment.finished = true;
+
+    if (segment.rotateTimer) {
+      clearTimeout(segment.rotateTimer);
+      segment.rotateTimer = null;
+    }
+
+    const durationMs = Math.max(Date.now() - segment.startedAt, 1000);
+    const shouldRestart =
+      segment.restartAfterStop && this.longSession.active && !this.longSession.cancelled;
+
+    if (!segment.discard && segment.chunks.length > 0 && this.longSession.active) {
+      this.enqueueLongSessionChunk(
+        new Blob(segment.chunks, { type: segment.recorder.mimeType || this.recordingMimeType }),
+        durationMs
+      );
+    }
+
+    if (this.longSessionSegment === segment) {
+      this.longSessionSegment = null;
+    }
+
+    const resolvers = segment.stopResolvers.splice(0);
+    resolvers.forEach((resolve) => resolve());
+
+    if (shouldRestart) {
+      this.startLongSessionSegmentCapture();
+    }
+  }
+
+  rotateLongSessionSegment() {
+    return this.stopLongSessionSegmentCapture({ restart: true });
+  }
+
+  stopLongSessionSegmentCapture({ discard = false, restart = false } = {}) {
+    const segment = this.longSessionSegment;
+    if (!segment) {
+      return Promise.resolve();
+    }
+
+    segment.discard = discard;
+    segment.restartAfterStop = restart && !discard;
+
+    if (segment.rotateTimer) {
+      clearTimeout(segment.rotateTimer);
+      segment.rotateTimer = null;
+    }
+
+    return new Promise((resolve) => {
+      segment.stopResolvers.push(resolve);
+
+      if (segment.stopping) {
+        return;
+      }
+
+      if (segment.recorder.state === "inactive") {
+        this.finishLongSessionSegment(segment);
+        return;
+      }
+
+      segment.stopping = true;
+      try {
+        segment.recorder.requestData?.();
+      } catch {
+        // Ignore requestData errors from some browsers/recorders.
+      }
+
+      try {
+        segment.recorder.stop();
+      } catch {
+        this.finishLongSessionSegment(segment);
+      }
+    });
+  }
+
+  async drainLongSessionQueue() {
+    const state = this.longSession;
+    if (!state.active || state.cancelled) {
+      return;
+    }
+
+    if (state.processingPromise) {
+      return state.processingPromise;
+    }
+
+    state.processing = true;
+    this.emitStateChange();
+
+    state.processingPromise = (async () => {
+      while (state.queue.length > 0 && !state.cancelled) {
+        const item = state.queue.shift();
+        if (!item || item.sessionId !== state.sessionId) {
+          continue;
+        }
+
+        try {
+          const result = await this.runTranscription(item.blob, {
+            durationSeconds: item.durationMs / 1000,
+            source: "long-session",
+            skipPostProcessing: true,
+            skipOptimization: true,
+            chunkIndex: item.index,
+          });
+
+          const text = String(result?.result?.text || "").trim();
+          if (text) {
+            state.results.set(item.index, text);
+          }
+          state.completedChunks += 1;
+          state.transcribedSeconds += item.durationMs / 1000;
+        } catch (error) {
+          if (state.cancelled || error?.name === "AbortError") {
+            return;
+          }
+          state.errors.push({
+            index: item.index,
+            message: error?.message || "Chunk transcription failed",
+          });
+          logger.warn(
+            "Long-session chunk transcription failed",
+            {
+              chunkIndex: item.index,
+              error: error?.message,
+            },
+            "transcription"
+          );
+        } finally {
+          this.emitStateChange();
+        }
+      }
+    })();
+
+    try {
+      await state.processingPromise;
+    } finally {
+      if (this.longSession === state) {
+        state.processing = false;
+        state.processingPromise = null;
+        this.emitStateChange();
+
+        if (state.queue.length > 0 && !state.cancelled) {
+          void this.drainLongSessionQueue();
+        }
+      }
+    }
+  }
+
+  async waitForLongSessionQueue() {
+    while (this.longSession?.processingPromise) {
+      await this.longSession.processingPromise;
+    }
+  }
+
+  async finalizeLongSessionResult(durationSeconds) {
+    await this.waitForLongSessionQueue();
+
+    const state = this.longSession;
+    const rawText = [...state.results.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, text]) => text)
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    if (!rawText) {
+      if (state.errors.length > 0) {
+        throw new Error(
+          `Long recording transcription failed before producing text: ${state.errors[0].message}`
+        );
+      }
+      throw new Error("No text transcribed - audio may be silent or unavailable");
+    }
+
+    const reasoningStart = performance.now();
+    const text = await this.processTranscription(rawText, "long-session");
+    const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
+
+    return {
+      success: true,
+      text: text || rawText,
+      source,
+      durationSeconds,
+      timings: {
+        reasoningProcessingDurationMs: Math.round(performance.now() - reasoningStart),
+      },
+      longSession: {
+        chunks: state.completedChunks,
+        failedChunks: state.errors.length,
+      },
+    };
+  }
+
   stopRecordingStream() {
     const stream = this.recordingStream || this.mediaRecorder?.stream || null;
     if (!stream) {
@@ -510,10 +949,14 @@ class AudioManager {
     }
 
     const durationSeconds = this.getRecordingDurationSeconds();
-    const audioBlob = new Blob(this.audioChunks, { type: this.recordingMimeType || "audio/webm" });
+    const wasLongSession = this.longSession.active;
+    const audioBlob = wasLongSession
+      ? null
+      : new Blob(this.audioChunks, { type: this.recordingMimeType || "audio/webm" });
     const chunksCount = this.audioChunks.length;
 
     this.audioChunks = [];
+    this.recordingChunkDurationsMs = [];
     this.recordingStartTime = null;
     this.isRecording = false;
     this.isStartingRecording = false;
@@ -523,13 +966,26 @@ class AudioManager {
     this.discardCurrentRecording = false;
     this.releaseMediaRecorder();
 
-    if (discard || audioBlob.size === 0) {
+    if (discard) {
+      this.cancelLongSessionWork();
+      this.resetLongSessionState();
+      this.isProcessing = false;
+      this.emitStateChange();
+      return true;
+    }
+
+    if (wasLongSession) {
+      this.isProcessing = true;
+      this.emitStateChange();
+      await this.processLongSessionAudio({ durationSeconds });
+      return true;
+    }
+
+    if (audioBlob.size === 0) {
       this.isProcessing = false;
       this.emitStateChange();
 
-      if (!discard && audioBlob.size === 0) {
-        logger.warn("Forced finalize produced empty audio blob", { chunksCount }, "audio");
-      }
+      logger.warn("Forced finalize produced empty audio blob", { chunksCount }, "audio");
       return true;
     }
 
@@ -640,6 +1096,9 @@ class AudioManager {
       const sessionId = ++this.recordingSessionCounter;
       this.activeRecordingSessionId = sessionId;
       this.audioChunks = [];
+      this.recordingChunkDurationsMs = [];
+      this.lastRecorderDataAt = null;
+      this.resetLongSessionState();
       this.recordingStartTime = Date.now();
       this.recordingMimeType = this.mediaRecorder.mimeType || "audio/webm";
 
@@ -647,9 +1106,7 @@ class AudioManager {
         if (sessionId !== this.activeRecordingSessionId) {
           return;
         }
-        if (event?.data && event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
+        this.handleRecorderData(event?.data);
       };
 
       this.mediaRecorder.onerror = (event) => {
@@ -680,12 +1137,16 @@ class AudioManager {
 
         const shouldDiscard = this.discardCurrentRecording;
         const durationSeconds = this.getRecordingDurationSeconds();
-        const audioBlob = new Blob(this.audioChunks, {
-          type: this.recordingMimeType || "audio/webm",
-        });
+        const wasLongSession = this.longSession.active;
+        const audioBlob = wasLongSession
+          ? null
+          : new Blob(this.audioChunks, {
+              type: this.recordingMimeType || "audio/webm",
+            });
         const chunksCount = this.audioChunks.length;
 
         this.audioChunks = [];
+        this.recordingChunkDurationsMs = [];
         this.recordingStartTime = null;
         this.isRecording = false;
         this.isStartingRecording = false;
@@ -696,6 +1157,8 @@ class AudioManager {
         this.releaseMediaRecorder();
 
         if (shouldDiscard) {
+          this.cancelLongSessionWork();
+          this.resetLongSessionState();
           this.isProcessing = false;
           this.emitStateChange();
           return;
@@ -703,6 +1166,22 @@ class AudioManager {
 
         this.isProcessing = true;
         this.emitStateChange();
+
+        if (wasLongSession) {
+          logger.info(
+            "Long recording stopped",
+            {
+              queuedChunks: this.longSession.queuedChunks,
+              completedChunks: this.longSession.completedChunks,
+              pendingChunks: this.longSession.queue.length,
+              durationSeconds,
+            },
+            "audio"
+          );
+
+          await this.processLongSessionAudio({ durationSeconds });
+          return;
+        }
 
         // Debug: Log audio blob info
         logger.info(
@@ -743,6 +1222,10 @@ class AudioManager {
       this._clearPooledStream();
 
       this.audioChunks = [];
+      this.recordingChunkDurationsMs = [];
+      this.lastRecorderDataAt = null;
+      this.cancelLongSessionWork();
+      this.resetLongSessionState();
       this.recordingStartTime = null;
       this.isRecording = false;
       this.isProcessing = false;
@@ -858,6 +1341,7 @@ class AudioManager {
     if (this.isProcessing) {
       this.processingGeneration += 1;
       this.abortActiveTranscriptionRequest();
+      this.cancelLongSessionWork();
       this.isProcessing = false;
       this.emitStateChange();
       return true;
@@ -874,29 +1358,10 @@ class AudioManager {
     };
 
     try {
-      const useLocalWhisper = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
-      const localProvider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
-      const whisperModel = this.getTranscriptionSetting("whisperModel", "base");
-      const parakeetModel = this.getTranscriptionSetting("parakeetModel", "parakeet-tdt-0.6b-v3");
-
-      let result;
-      let activeModel;
-      if (useLocalWhisper) {
-        if (localProvider === "nvidia") {
-          activeModel = parakeetModel;
-          result = await this.processWithLocalParakeet(
-            audioBlob,
-            parakeetModel,
-            processingMetadata
-          );
-        } else {
-          activeModel = whisperModel;
-          result = await this.processWithLocalWhisper(audioBlob, whisperModel, processingMetadata);
-        }
-      } else {
-        activeModel = this.getTranscriptionModel();
-        result = await this.processWithOpenAIAPI(audioBlob, processingMetadata);
-      }
+      const { result, useLocalWhisper, localProvider, activeModel } = await this.runTranscription(
+        audioBlob,
+        processingMetadata
+      );
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
         return;
@@ -979,6 +1444,106 @@ class AudioManager {
         this.emitStateChange();
       }
     }
+  }
+
+  async processLongSessionAudio({ durationSeconds } = {}) {
+    const pipelineStart = performance.now();
+    const processingGeneration = ++this.processingGeneration;
+
+    try {
+      await this.stopLongSessionSegmentCapture();
+      const result = await this.finalizeLongSessionResult(durationSeconds);
+
+      if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        return;
+      }
+
+      result.processingGeneration = processingGeneration;
+
+      await this.onTranscriptionComplete?.(result, {
+        processingGeneration,
+        isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
+      });
+
+      if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        return;
+      }
+
+      logger.info(
+        "Long-session pipeline timing",
+        {
+          audioDurationMs: durationSeconds ? Math.round(durationSeconds * 1000) : null,
+          reasoningProcessingDurationMs: result?.timings?.reasoningProcessingDurationMs ?? null,
+          roundTripDurationMs: Math.round(performance.now() - pipelineStart),
+          outputTextLength: result?.text?.length,
+          chunks: result?.longSession?.chunks,
+          failedChunks: result?.longSession?.failedChunks,
+        },
+        "performance"
+      );
+    } catch (error) {
+      if (
+        error?.name === "AbortError" ||
+        !this.isCurrentProcessingGeneration(processingGeneration)
+      ) {
+        logger.debug(
+          "Long-session transcription canceled",
+          {
+            processingGeneration,
+          },
+          "transcription"
+        );
+        return;
+      }
+
+      logger.error(
+        "Long-session pipeline failed",
+        {
+          errorAtMs: Math.round(performance.now() - pipelineStart),
+          error: error.message,
+        },
+        "performance"
+      );
+
+      if (error.message !== "No audio detected") {
+        this.onError?.({
+          title: "Transcription Error",
+          description: `Transcription failed: ${error.message}`,
+        });
+      }
+    } finally {
+      this.clearActiveTranscriptionAbortController(processingGeneration);
+      this.resetLongSessionState();
+
+      if (this.processingGeneration === processingGeneration && this.isProcessing) {
+        this.isProcessing = false;
+      }
+      this.emitStateChange();
+    }
+  }
+
+  async runTranscription(audioBlob, metadata = {}) {
+    const useLocalWhisper = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
+    const localProvider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
+    const whisperModel = this.getTranscriptionSetting("whisperModel", "base");
+    const parakeetModel = this.getTranscriptionSetting("parakeetModel", "parakeet-tdt-0.6b-v3");
+
+    let result;
+    let activeModel;
+    if (useLocalWhisper) {
+      if (localProvider === "nvidia") {
+        activeModel = parakeetModel;
+        result = await this.processWithLocalParakeet(audioBlob, parakeetModel, metadata);
+      } else {
+        activeModel = whisperModel;
+        result = await this.processWithLocalWhisper(audioBlob, whisperModel, metadata);
+      }
+    } else {
+      activeModel = this.getTranscriptionModel();
+      result = await this.processWithOpenAIAPI(audioBlob, metadata);
+    }
+
+    return { result, useLocalWhisper, localProvider, activeModel };
   }
 
   async processWithLocalWhisper(audioBlob, model = "base", metadata = {}) {
@@ -1094,6 +1659,10 @@ class AudioManager {
       );
 
       if (result.success && result.text) {
+        if (metadata?.skipPostProcessing) {
+          return { success: true, text: result.text, source: "local", timings };
+        }
+
         const reasoningStart = performance.now();
         const text = await this.processTranscription(result.text, "local");
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
@@ -1184,6 +1753,10 @@ class AudioManager {
       );
 
       if (result.success && result.text) {
+        if (metadata?.skipPostProcessing) {
+          return { success: true, text: result.text, source: "local-parakeet", timings };
+        }
+
         const reasoningStart = performance.now();
         const text = await this.processTranscription(result.text, "local-parakeet");
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
@@ -2049,6 +2622,10 @@ class AudioManager {
       if (result.text && result.text.trim().length > 0) {
         timings.transcriptionProcessingDurationMs = Math.round(performance.now() - apiCallStart);
 
+        if (metadata?.skipPostProcessing) {
+          return { success: true, text: result.text, source: "openai", timings };
+        }
+
         const reasoningStart = performance.now();
         const text = await this.processTranscription(result.text, "openai");
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
@@ -2118,6 +2695,10 @@ class AudioManager {
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
 
           if (result.success && result.text) {
+            if (metadata?.skipPostProcessing) {
+              return { success: true, text: result.text, source: "local-fallback" };
+            }
+
             const text = await this.processTranscription(result.text, "local-fallback");
             if (text) {
               return { success: true, text, source: "local-fallback" };
@@ -2356,12 +2937,15 @@ class AudioManager {
       isRecording: this.isRecording,
       isProcessing: this.isProcessing,
       isStartingRecording: this.isStartingRecording,
+      isStoppingRecording: this.isStoppingRecording,
+      longSession: this.getLongSessionSnapshot(),
     };
   }
 
   cleanup() {
     this.abortActiveTranscriptionRequest();
     this.processingGeneration += 1;
+    this.cancelLongSessionWork();
     this.transcriptionSettingsChangedCleanup?.();
     this.transcriptionSettingsChangedCleanup = null;
     this.transcriptionSettingsSnapshot = null;
@@ -2378,6 +2962,8 @@ class AudioManager {
 
     this.releaseMediaRecorder();
     this.audioChunks = [];
+    this.recordingChunkDurationsMs = [];
+    this.lastRecorderDataAt = null;
     this.recordingStartTime = null;
     this.isRecording = false;
     this.isProcessing = false;
@@ -2386,6 +2972,7 @@ class AudioManager {
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
+    this.resetLongSessionState();
     this.onStateChange = null;
     this.onError = null;
     this.onTranscriptionComplete = null;
