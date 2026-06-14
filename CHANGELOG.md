@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0 - 2026-06-14
+
+### Added
+
+- Support for long-running dictation sessions, including stronger recorder handling for longer speech input.
+- A PrivateTranscribe design taste guide to keep future UI changes calm, private, and product-specific.
+
+### Changed
+
+- Improved dashboard layout, setup summary, responsive stat pills, and microphone configuration presentation.
+- Simplified the tester feedback submission flow and aligned feedback categories with the backend.
+- Clarified startup and dictation setup copy so first-time setup is easier to understand.
+
+### Fixed
+
+- Hardened dictation finalization to reduce race conditions and prevent losing the tail end of longer dictations.
+- Restored the overlay microphone visualizer after system wake/resume scenarios.
+- Prevented dashboard WPM values from overflowing in narrow layouts.
+
 ## 0.10.5 - 2026-06-11
 
 ### Added
