@@ -2017,11 +2017,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Start PrivateTranscribe when I log in"
-                      description={
-                        updateStatus.isDevelopment
-                          ? "Developer builds register the local Electron app path, so behavior can differ from the installed app."
-                          : "Runs in the background after sign-in so your dictation hotkey is ready."
-                      }
+                      description="Runs in the background after sign-in so your dictation hotkey is ready."
                     >
                       <Toggle
                         checked={autoStartEnabled}
