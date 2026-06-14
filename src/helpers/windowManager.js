@@ -146,6 +146,21 @@ class WindowManager {
     }
   }
 
+  _notifyOverlayRendererResumed(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    try {
+      this.mainWindow.webContents.send("main-window-shown");
+    } catch (error) {
+      debugLogger.debug("[Window] Failed to notify overlay renderer resume:", {
+        reason,
+        error: error?.message || String(error),
+      });
+    }
+  }
+
   _getPositionFile() {
     if (!this._positionFile) {
       this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
@@ -422,12 +437,14 @@ class WindowManager {
       // isDragging flag stays true, causing startWindowDrag() to return early and
       // leaving the overlay unmovable after wake.
       this._resetOverlayDragState("resume");
+      this._notifyOverlayRendererResumed("resume");
       this._scheduleOverlayRecovery("resume");
     };
     powerMonitor.on("resume", this._powerResumeHandler);
 
     this._powerUnlockHandler = () => {
       this._resetOverlayDragState("unlock-screen");
+      this._notifyOverlayRendererResumed("unlock-screen");
       this._scheduleOverlayRecovery("unlock-screen", [500, 2500, 6000]);
     };
     powerMonitor.on("unlock-screen", this._powerUnlockHandler);
@@ -1154,9 +1171,7 @@ class WindowManager {
       this._notifyOverlayStateChanged();
       // Notify renderer so it can restart the mic-level AudioContext if it was
       // suspended while the window was hidden (voice bars stuck bug).
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send("main-window-shown");
-      }
+      this._notifyOverlayRendererResumed("show");
     });
 
     this.mainWindow.on("focus", () => {

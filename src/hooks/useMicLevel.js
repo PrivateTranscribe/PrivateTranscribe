@@ -21,9 +21,41 @@ import { useState, useEffect, useRef } from "react";
  */
 
 // ---------------------------------------------------------------------------
-// Module-level singleton — one AudioContext for the lifetime of the renderer
+// Module-level singleton — reused across recordings, but replaceable if Windows
+// leaves it suspended after sleep/wake or Electron window hide/show.
 // ---------------------------------------------------------------------------
 let sharedCtx = null;
+let removeSharedVisibilityListener = null;
+let unsubscribeSharedWindowShown = null;
+
+function disposeSharedAudioContext({ close = false } = {}) {
+  const ctx = sharedCtx;
+
+  if (removeSharedVisibilityListener) {
+    removeSharedVisibilityListener();
+    removeSharedVisibilityListener = null;
+  }
+
+  if (unsubscribeSharedWindowShown) {
+    unsubscribeSharedWindowShown();
+    unsubscribeSharedWindowShown = null;
+  }
+
+  sharedCtx = null;
+
+  if (close && ctx && ctx.state !== "closed") {
+    try {
+      ctx.close?.();
+    } catch {
+      // Ignore browser teardown errors; a new context will be created on demand.
+    }
+  }
+}
+
+function resetSharedAudioContext() {
+  disposeSharedAudioContext({ close: true });
+  return getSharedAudioContext();
+}
 
 /**
  * Returns the shared AudioContext, creating it on first call.
@@ -40,15 +72,19 @@ function getSharedAudioContext() {
     // Proactively resume whenever the page becomes visible again (e.g. after
     // the display wakes from sleep). This covers the case where the context
     // was suspended by the OS while the screen was off.
-    document.addEventListener("visibilitychange", () => {
+    const handleSharedVisibility = () => {
       if (document.visibilityState === "visible" && sharedCtx?.state === "suspended") {
         sharedCtx.resume().catch(() => {});
       }
-    });
+    };
+    document.addEventListener("visibilitychange", handleSharedVisibility);
+    removeSharedVisibilityListener = () => {
+      document.removeEventListener("visibilitychange", handleSharedVisibility);
+    };
 
     // Also resume when the Electron window is shown after being hidden
     // (visibilitychange does not always fire for Electron window show/hide)
-    window.electronAPI?.onMainWindowShown?.(() => {
+    unsubscribeSharedWindowShown = window.electronAPI?.onMainWindowShown?.(() => {
       if (sharedCtx?.state === "suspended") {
         sharedCtx.resume().catch(() => {});
       }
@@ -56,6 +92,35 @@ function getSharedAudioContext() {
   }
 
   return sharedCtx;
+}
+
+export async function waitForAudioContextRunning(ctx, { attempts = 10, delayMs = 50 } = {}) {
+  if (!ctx || ctx.state === "closed") {
+    return false;
+  }
+
+  if (ctx.state === "running") {
+    return true;
+  }
+
+  try {
+    await ctx.resume?.();
+  } catch {
+    return false;
+  }
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (ctx.state === "running") {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  return ctx.state === "running";
+}
+
+export function __resetMicLevelAudioContextForTests() {
+  disposeSharedAudioContext({ close: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -83,20 +148,40 @@ export function useMicLevel(audioManagerRef, isRecording) {
       if (cancelled) return;
 
       try {
-        const ctx = getSharedAudioContext();
+        let ctx = getSharedAudioContext();
         if (!ctx) return;
 
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
+        let source = null;
+        let analyser = null;
+        let dataArray = null;
 
-        // 256 FFT size gives ~6ms resolution - enough for voice, not too fine
-        analyser.fftSize = 256;
-        // No smoothing from analyser; we do manual exponential smoothing below
-        analyser.smoothingTimeConstant = 0;
+        const disconnectSource = () => {
+          if (!source) return;
+          try {
+            source.disconnect();
+          } catch {
+            // Ignore teardown errors
+          }
+          source = null;
+        };
 
-        source.connect(analyser);
+        const buildAnalyserGraph = (nextCtx) => {
+          disconnectSource();
 
-        const dataArray = new Float32Array(analyser.fftSize);
+          ctx = nextCtx;
+          source = ctx.createMediaStreamSource(stream);
+          analyser = ctx.createAnalyser();
+
+          // 256 FFT size gives ~6ms resolution - enough for voice, not too fine
+          analyser.fftSize = 256;
+          // No smoothing from analyser; we do manual exponential smoothing below
+          analyser.smoothingTimeConstant = 0;
+
+          source.connect(analyser);
+          dataArray = new Float32Array(analyser.fftSize);
+        };
+
+        buildAnalyserGraph(ctx);
 
         const ATTACK = 0.35; // fast rise so peaks feel responsive
         const DECAY = 0.1; // slow fall so it feels elegant not jittery
@@ -105,6 +190,9 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
         const tick = () => {
           if (cancelled) return;
+          rafRef.current = null;
+
+          if (!analyser || !dataArray) return;
 
           analyser.getFloatTimeDomainData(dataArray);
 
@@ -127,21 +215,23 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // Register per-recording cleanup. Note: we do NOT close sharedCtx here
         // because it is reused across recordings. Only the source node is torn down.
         cleanupRef.current = () => {
-          try {
-            source.disconnect();
-          } catch {
-            // Ignore teardown errors
-          }
+          disconnectSource();
         };
 
         // If the context wakes mid-recording (e.g. display sleep ends while
         // recording is already in progress), restart the tick loop.
+        let stateChangeCtx = null;
         const handleStateChange = () => {
           if (ctx.state === "running" && !cancelled && rafRef.current === null) {
             rafRef.current = requestAnimationFrame(tick);
           }
         };
-        ctx.addEventListener("statechange", handleStateChange);
+        const attachStateChangeListener = (nextCtx) => {
+          stateChangeCtx?.removeEventListener("statechange", handleStateChange);
+          stateChangeCtx = nextCtx;
+          stateChangeCtx.addEventListener("statechange", handleStateChange);
+        };
+        attachStateChangeListener(ctx);
 
         // When the display sleeps, requestAnimationFrame stops firing and the
         // last scheduled frame ID becomes stale. On wake, forcibly cancel the
@@ -176,7 +266,8 @@ export function useMicLevel(audioManagerRef, isRecording) {
         const prevCleanup = cleanupRef.current;
         cleanupRef.current = () => {
           prevCleanup?.();
-          ctx.removeEventListener("statechange", handleStateChange);
+          stateChangeCtx?.removeEventListener("statechange", handleStateChange);
+          stateChangeCtx = null;
           document.removeEventListener("visibilitychange", handleVisibility);
           unsubWindowShown?.();
         };
@@ -188,33 +279,38 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // then poll until ctx.state === "running" before starting the tick loop.
         // This also re-wakes a context that was suspended by a display sleep event.
         const startLoop = () => {
-          if (!cancelled) rafRef.current = requestAnimationFrame(tick);
+          if (cancelled) return;
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = requestAnimationFrame(tick);
         };
 
-        if (ctx.state === "running") {
+        const startWhenAudioContextRuns = async () => {
+          if (await waitForAudioContextRunning(ctx)) {
+            startLoop();
+            return;
+          }
+
+          if (cancelled) return;
+
+          const recoveredCtx = resetSharedAudioContext();
+          if (!recoveredCtx) {
+            startLoop();
+            return;
+          }
+
+          try {
+            buildAnalyserGraph(recoveredCtx);
+            attachStateChangeListener(recoveredCtx);
+          } catch {
+            startLoop();
+            return;
+          }
+
+          await waitForAudioContextRunning(recoveredCtx);
           startLoop();
-        } else {
-          ctx
-            .resume()
-            .then(() => {
-              // Double-check: if still not running after resume(), keep retrying.
-              // Electron IPC-triggered recording can leave AudioContext stuck in
-              // "suspended" even after resume() resolves on some Windows builds.
-              const pollRunning = (attempts = 0) => {
-                if (cancelled) return;
-                if (ctx.state === "running") {
-                  startLoop();
-                } else if (attempts < 10) {
-                  setTimeout(() => pollRunning(attempts + 1), 50);
-                } else {
-                  // Give up gracefully — visualization stays flat, recording unaffected.
-                  startLoop();
-                }
-              };
-              pollRunning();
-            })
-            .catch(startLoop);
-        }
+        };
+
+        void startWhenAudioContextRuns();
       } catch {
         // Web Audio API unavailable or stream already closed - fail silently.
         // Visualization degrades to static state, recording is unaffected.
