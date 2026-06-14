@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Mic, Settings, Upload, Activity, Command } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, Command, Flame, Gauge, Settings, Timer, Upload } from "lucide-react";
 import { PageId } from "../AppSidebar";
 import {
   useTranscriptions,
@@ -10,12 +10,36 @@ import { useSettings } from "../../hooks/useSettings";
 import TranscriptionItem from "../ui/TranscriptionItem";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
 import { formatHotkeyLabel } from "../../utils/hotkeys";
+import { isBuiltInMicrophone } from "../../utils/audioDeviceUtils";
 import type { AggregateStats } from "../../types/electron";
 import logger from "../../utils/logger";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
 }
+
+type EngineStatus = {
+  desiredMode?: "cpu" | "gpu";
+  effectiveEngine?: "cuda" | "cpu" | "unknown" | "stopped";
+  fallback?: {
+    active?: boolean;
+    reason?: string | null;
+  };
+  transition?: "starting" | "transcribing" | "idle" | "stopped";
+};
+
+type CudaBinaryStatus = {
+  installed: boolean;
+  supported: boolean;
+  upToDate: boolean;
+  forceCpu: boolean;
+  engineStatus?: EngineStatus | null;
+};
+
+type AudioInputDevice = {
+  deviceId: string;
+  label: string;
+};
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function toLocalDateKey(date: Date): string {
@@ -116,6 +140,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     useLocalWhisper,
     localTranscriptionProvider,
     cloudTranscriptionProvider,
+    whisperForceCpu,
+    preferBuiltInMic,
+    selectedMicDeviceId,
     historyLimit,
     dictationKey,
   } = useSettings();
@@ -129,6 +156,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     average_wpm: 0,
   });
   const [streakDates, setStreakDates] = useState<Set<string>>(new Set());
+  const [cudaStatus, setCudaStatus] = useState<CudaBinaryStatus | null>(null);
+  const [audioInputs, setAudioInputs] = useState<AudioInputDevice[]>([]);
 
   useEffect(() => {
     // Fetch transcriptions based on history limit setting
@@ -195,6 +224,69 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     fetchStreakDates();
   }, [transcriptionsVersion]);
 
+  useEffect(() => {
+    if (!useLocalWhisper || localTranscriptionProvider !== "whisper") {
+      setCudaStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchCudaStatus = async () => {
+      try {
+        const status = await window.electronAPI?.getCudaBinaryStatus?.();
+        if (!cancelled && status) {
+          setCudaStatus(status as CudaBinaryStatus);
+        }
+      } catch {
+        if (!cancelled) {
+          setCudaStatus(null);
+        }
+      }
+    };
+
+    fetchCudaStatus();
+    const refreshTimer = window.setInterval(fetchCudaStatus, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+    };
+  }, [useLocalWhisper, localTranscriptionProvider, whisperForceCpu]);
+
+  const loadAudioInputs = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) {
+      setAudioInputs([]);
+      return;
+    }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setAudioInputs(
+        devices
+          .filter((device) => device.kind === "audioinput")
+          .map((device) => ({
+            deviceId: device.deviceId,
+            label: device.label || "",
+          }))
+      );
+    } catch {
+      setAudioInputs([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAudioInputs();
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.addEventListener) {
+      return;
+    }
+
+    navigator.mediaDevices.addEventListener("devicechange", loadAudioInputs);
+    return () => {
+      navigator.mediaDevices.removeEventListener("devicechange", loadAudioInputs);
+    };
+  }, [loadAudioInputs]);
+
   const streak = useMemo(() => {
     const value = computeStreak(streakDates);
     void logger.debug(
@@ -223,6 +315,40 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       ? `Whisper ${whisperModel.charAt(0).toUpperCase() + whisperModel.slice(1)}`
       : "Whisper";
   }, [useLocalWhisper, cloudTranscriptionProvider, localTranscriptionProvider, whisperModel]);
+
+  const engineLabel = useMemo(() => {
+    if (!useLocalWhisper) return "Cloud API";
+    if (localTranscriptionProvider === "nvidia") return "GPU - Parakeet";
+    if (whisperForceCpu || cudaStatus?.forceCpu) return "CPU";
+
+    const engineStatus = cudaStatus?.engineStatus;
+    if (engineStatus?.fallback?.active) return "CPU fallback";
+    if (engineStatus?.effectiveEngine === "cuda") return "GPU - CUDA";
+    if (engineStatus?.effectiveEngine === "cpu") return "CPU";
+    if (engineStatus?.transition === "starting" && engineStatus.desiredMode === "gpu") {
+      return "GPU - CUDA starting";
+    }
+    if (cudaStatus?.installed && cudaStatus.upToDate) return "GPU - CUDA ready";
+    if (cudaStatus?.supported === false) return "CPU";
+    return "CPU";
+  }, [useLocalWhisper, localTranscriptionProvider, whisperForceCpu, cudaStatus]);
+
+  const microphoneLabel = useMemo(() => {
+    const withLabels = audioInputs.filter((device) => device.label);
+
+    if (preferBuiltInMic) {
+      const builtIn = withLabels.find((device) => isBuiltInMicrophone(device.label));
+      return builtIn?.label || "Built-in preferred";
+    }
+
+    if (selectedMicDeviceId) {
+      const selected = withLabels.find((device) => device.deviceId === selectedMicDeviceId);
+      return selected?.label || "Selected microphone";
+    }
+
+    const defaultDevice = withLabels.find((device) => device.deviceId === "default");
+    return defaultDevice?.label || "System default";
+  }, [audioInputs, preferBuiltInMic, selectedMicDeviceId]);
 
   const handleCopy = async (text: string) => {
     try {
@@ -262,7 +388,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const configRows = [
     { label: "MODEL", value: modelLabel },
+    { label: "ENGINE", value: engineLabel },
     { label: "LANGUAGE", value: languageLabel },
+    { label: "MIC", value: microphoneLabel },
   ];
 
   return (
@@ -276,29 +404,38 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         {/* Stats + Config Row */}
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Stats Card */}
-          <div className="flex-[3] min-w-0 rounded-2xl border border-border-subtle bg-surface-1 p-8">
+          <div className="flex-[3] min-w-0 min-h-[306px] rounded-2xl border border-border-subtle bg-surface-1 p-8 flex flex-col">
             {/* Badge */}
-            <div className="mb-5">
+            <div className="mb-7 flex items-start justify-between gap-4">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-semibold uppercase tracking-widest">
                 <Activity size={12} />
-                Total Words Dictated
+                Total words dictated
               </span>
+              <div className="text-right">
+                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                  Dictations
+                </span>
+                <span className="block text-sm font-semibold text-foreground tabular-nums">
+                  {formatNumber(stats.total_transcriptions)}
+                </span>
+              </div>
             </div>
 
             {/* Big Number */}
-            <div className="mb-8">
-              <span className="text-5xl font-bold tracking-tight text-foreground tabular-nums">
+            <div className="mb-auto">
+              <span className="text-6xl font-bold tracking-tight text-foreground tabular-nums">
                 {formatNumber(stats.total_words)}
               </span>
               <span className="ml-2 text-lg text-muted-foreground italic font-light">words</span>
+              <div className="mt-3 h-px w-28 bg-primary/40 shadow-[0_0_18px_rgba(112,255,186,0.2)]" />
             </div>
 
             {/* Sub-stat Pills */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-surface-raised border border-border-subtle">
-                <span className="text-base flex-shrink-0" role="img" aria-label="fire">
-                  🔥
-                </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Flame size={15} />
+                </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
                     Streak
@@ -309,10 +446,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-surface-raised border border-border-subtle">
-                <span className="text-base flex-shrink-0" role="img" aria-label="clock">
-                  ⏱️
-                </span>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Timer size={15} />
+                </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
                     Time
@@ -323,10 +460,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-surface-raised border border-border-subtle">
-                <span className="text-base flex-shrink-0" role="img" aria-label="speed">
-                  ⚡
-                </span>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Gauge size={15} />
+                </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
                     Speed

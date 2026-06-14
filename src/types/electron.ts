@@ -788,6 +788,19 @@ declare global {
         upToDate: boolean;
         expectedVersion: string;
         forceCpu: boolean;
+        engineStatus?: {
+          desiredMode?: "cpu" | "gpu";
+          effectiveEngine?: "cuda" | "cpu" | "unknown" | "stopped";
+          fallback?: {
+            active?: boolean;
+            reason?: string | null;
+            since?: number | null;
+            diagnostic?: unknown;
+          };
+          transition?: "starting" | "transcribing" | "idle" | "stopped";
+          activeTranscriptions?: number;
+          stoppedDueToIdle?: boolean;
+        } | null;
         cudaAutoUpdateFailed?: boolean;
       }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
