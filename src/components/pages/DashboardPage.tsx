@@ -431,7 +431,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
             {/* Sub-stat Pills */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
-              <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+              <div className="flex min-w-0 items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
                 <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Flame size={15} />
                 </div>
@@ -467,7 +467,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     Speed
                   </span>
-                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
+                  <span
+                    className="block max-w-full truncate text-sm font-semibold text-foreground tabular-nums"
+                    title={`${Math.round(stats.average_wpm)} WPM`}
+                  >
                     {Math.round(stats.average_wpm)} WPM
                   </span>
                 </div>
