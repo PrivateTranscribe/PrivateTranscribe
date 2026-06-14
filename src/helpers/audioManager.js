@@ -24,6 +24,7 @@ const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
+const RECORDER_FINAL_DATA_GRACE_MS = 250;
 
 const isTranscriptionTextDebugEnabled = () => {
   try {
@@ -440,6 +441,10 @@ class AudioManager {
     }
   }
 
+  waitForRecorderFinalData() {
+    return new Promise((resolve) => setTimeout(resolve, RECORDER_FINAL_DATA_GRACE_MS));
+  }
+
   stopRecordingStream() {
     const stream = this.recordingStream || this.mediaRecorder?.stream || null;
     if (!stream) {
@@ -666,6 +671,11 @@ class AudioManager {
         }
 
         this.clearRecorderStopWatchdog();
+        await this.waitForRecorderFinalData();
+        if (sessionId !== this.activeRecordingSessionId) {
+          return;
+        }
+
         const shouldDiscard = this.discardCurrentRecording;
         const durationSeconds = this.getRecordingDurationSeconds();
         const audioBlob = new Blob(this.audioChunks, {
@@ -1704,10 +1714,11 @@ class AudioManager {
         );
       }
 
-      // Process complete lines from the buffer
-      // Each SSE event is "data: <json>\n" followed by empty line
-      const lines = buffer.split("\n");
-      buffer = "";
+      // Process complete lines from the buffer. Keep the trailing partial line
+      // for the next read; stream chunks can split anywhere, including inside
+      // the "data:" prefix or JSON payload.
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
 
       for (const line of lines) {
         const trimmedLine = line.trim();
@@ -1741,7 +1752,7 @@ class AudioManager {
           handleEvent(parsed);
         } catch (error) {
           // Incomplete JSON - put back in buffer for next iteration
-          buffer += line + "\n";
+          buffer = `${line}\n${buffer}`;
         }
       }
     }

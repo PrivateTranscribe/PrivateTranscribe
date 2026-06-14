@@ -116,4 +116,50 @@ describe("AudioManager recorder lifecycle", () => {
     expect(processAudio).toHaveBeenCalledTimes(1);
     expect(processAudio.mock.calls[0][0].size).toBeGreaterThan(0);
   });
+
+  it("includes final recorder data that arrives just after stop", async () => {
+    const manager = new AudioManager();
+    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+    recorder.ondataavailable?.({ data: new Blob(["first chunk "], { type: "audio/webm" }) });
+
+    manager.stopRecording();
+    const stopPromise = recorder.onstop?.();
+    recorder.ondataavailable?.({ data: new Blob(["final tail"], { type: "audio/webm" }) });
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(processAudio).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await stopPromise;
+
+    expect(processAudio).toHaveBeenCalledTimes(1);
+    await expect(processAudio.mock.calls[0][0].text()).resolves.toBe("first chunk final tail");
+  });
+
+  it("preserves transcription stream events split inside the data prefix", async () => {
+    const manager = new AudioManager();
+    const encoder = new TextEncoder();
+    const chunks = [
+      "da",
+      'ta: {"type":"transcript.text.delta","delta":"hello "}\n\n',
+      'data: {"type":"transcript.text.delta","delta":"world"}\n\n',
+      "data: [DONE]\n\n",
+    ];
+
+    const response = {
+      body: new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          controller.close();
+        },
+      }),
+    };
+
+    await expect(manager.readTranscriptionStream(response)).resolves.toBe("hello world");
+  });
 });
