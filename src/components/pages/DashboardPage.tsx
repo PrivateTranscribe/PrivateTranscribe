@@ -402,7 +402,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         </div>
 
         {/* Stats + Config Row */}
-        <div className="flex flex-col xl:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-6">
           {/* Stats Card */}
           <div className="flex-[3] min-w-0 min-h-[306px] rounded-2xl border border-border-subtle bg-surface-1 p-8 flex flex-col">
             {/* Badge */}
@@ -430,9 +430,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             </div>
 
             {/* Sub-stat Pills */}
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 mt-8">
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
+              <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Flame size={15} />
                 </div>
                 <div className="flex flex-col min-w-0">
@@ -445,8 +445,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Timer size={15} />
                 </div>
                 <div className="flex flex-col min-w-0">
@@ -459,8 +459,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Gauge size={15} />
                 </div>
                 <div className="flex flex-col min-w-0">
