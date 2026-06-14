@@ -402,7 +402,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         </div>
 
         {/* Stats + Config Row */}
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col xl:flex-row gap-6">
           {/* Stats Card */}
           <div className="flex-[3] min-w-0 min-h-[306px] rounded-2xl border border-border-subtle bg-surface-1 p-8 flex flex-col">
             {/* Badge */}
@@ -427,20 +427,19 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 {formatNumber(stats.total_words)}
               </span>
               <span className="ml-2 text-lg text-muted-foreground italic font-light">words</span>
-              <div className="mt-3 h-px w-28 bg-primary/40 shadow-[0_0_18px_rgba(112,255,186,0.2)]" />
             </div>
 
             {/* Sub-stat Pills */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 mt-8">
               <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
                 <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Flame size={15} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     Streak
                   </span>
-                  <span className="text-sm font-semibold text-foreground tabular-nums truncate">
+                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
                     {streak} {streak === 1 ? "day" : "days"}
                   </span>
                 </div>
@@ -451,10 +450,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                   <Timer size={15} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     Time
                   </span>
-                  <span className="text-sm font-semibold text-foreground tabular-nums truncate">
+                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
                     {formatSpeakingTime(stats.total_seconds)}
                   </span>
                 </div>
@@ -465,10 +464,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                   <Gauge size={15} />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium truncate">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     Speed
                   </span>
-                  <span className="text-sm font-semibold text-foreground tabular-nums truncate">
+                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
                     {Math.round(stats.average_wpm)} WPM
                   </span>
                 </div>
@@ -497,7 +496,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                       {row.label}
                     </span>
                     <span
-                      className="text-sm text-foreground truncate"
+                      className="inline-block max-w-[28ch] truncate text-sm text-foreground"
+                      title={row.value}
                       style={{ fontFamily: "'JetBrains Mono', monospace" }}
                     >
                       {row.value}
