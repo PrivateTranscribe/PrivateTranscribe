@@ -195,6 +195,7 @@ class AudioManager {
     this.isRecording = false;
     this.isProcessing = false;
     this.isStartingRecording = false;
+    this.isStoppingRecording = false;
     this.onStateChange = null;
     this.onError = null;
     this.onTranscriptionComplete = null;
@@ -516,6 +517,7 @@ class AudioManager {
     this.recordingStartTime = null;
     this.isRecording = false;
     this.isStartingRecording = false;
+    this.isStoppingRecording = false;
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
@@ -687,6 +689,7 @@ class AudioManager {
         this.recordingStartTime = null;
         this.isRecording = false;
         this.isStartingRecording = false;
+        this.isStoppingRecording = false;
         this.pendingStopAfterStart = false;
         this.pendingCancelAfterStart = false;
         this.discardCurrentRecording = false;
@@ -724,6 +727,7 @@ class AudioManager {
       this.isRecording = true;
       this.isProcessing = false;
       this.isStartingRecording = false;
+      this.isStoppingRecording = false;
       this.emitStateChange();
 
       if (this.pendingCancelAfterStart) {
@@ -743,6 +747,7 @@ class AudioManager {
       this.isRecording = false;
       this.isProcessing = false;
       this.isStartingRecording = false;
+      this.isStoppingRecording = false;
       this.pendingStopAfterStart = false;
       this.pendingCancelAfterStart = false;
       this.discardCurrentRecording = false;
@@ -780,8 +785,13 @@ class AudioManager {
       return true;
     }
 
+    if (this.isStoppingRecording) {
+      return true;
+    }
+
     if (this.mediaRecorder?.state === "recording") {
       this.discardCurrentRecording = false;
+      this.isStoppingRecording = true;
       try {
         this.mediaRecorder.requestData?.();
       } catch {
@@ -813,8 +823,14 @@ class AudioManager {
       return true;
     }
 
+    if (this.isStoppingRecording) {
+      this.discardCurrentRecording = true;
+      return true;
+    }
+
     if (this.mediaRecorder?.state === "recording") {
       this.discardCurrentRecording = true;
+      this.isStoppingRecording = true;
       try {
         this.mediaRecorder.requestData?.();
       } catch {
@@ -1682,11 +1698,59 @@ class AudioManager {
       }
     };
 
+    const processStreamLine = (line) => {
+      const trimmedLine = line.trim();
+
+      // Skip empty lines
+      if (!trimmedLine) {
+        return;
+      }
+
+      // Extract data from "data: " prefix
+      let data = "";
+      if (trimmedLine.startsWith("data: ")) {
+        data = trimmedLine.slice(6);
+      } else if (trimmedLine.startsWith("data:")) {
+        data = trimmedLine.slice(5).trim();
+      } else {
+        // Not a data line, could be leftover - keep in buffer
+        buffer += line + "\n";
+        return;
+      }
+
+      // Handle [DONE] marker
+      if (data === "[DONE]") {
+        finalText = finalText ?? collectedText;
+        return;
+      }
+
+      // Try to parse JSON
+      try {
+        const parsed = JSON.parse(data);
+        handleEvent(parsed);
+      } catch (error) {
+        // Incomplete JSON - put back in buffer for next iteration
+        buffer = `${line}\n${buffer}`;
+      }
+    };
+
     logger.debug("Starting to read transcription stream", {}, "transcription");
 
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
+        const finalDecoderChunk = decoder.decode();
+        if (finalDecoderChunk) {
+          buffer += finalDecoderChunk;
+        }
+        if (buffer.trim()) {
+          const finalLines = buffer.split(/\r?\n/);
+          buffer = "";
+          for (const line of finalLines) {
+            processStreamLine(line);
+          }
+        }
+
         logger.debug(
           "Stream reading complete",
           {
@@ -1721,39 +1785,7 @@ class AudioManager {
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
-        const trimmedLine = line.trim();
-
-        // Skip empty lines
-        if (!trimmedLine) {
-          continue;
-        }
-
-        // Extract data from "data: " prefix
-        let data = "";
-        if (trimmedLine.startsWith("data: ")) {
-          data = trimmedLine.slice(6);
-        } else if (trimmedLine.startsWith("data:")) {
-          data = trimmedLine.slice(5).trim();
-        } else {
-          // Not a data line, could be leftover - keep in buffer
-          buffer += line + "\n";
-          continue;
-        }
-
-        // Handle [DONE] marker
-        if (data === "[DONE]") {
-          finalText = finalText ?? collectedText;
-          continue;
-        }
-
-        // Try to parse JSON
-        try {
-          const parsed = JSON.parse(data);
-          handleEvent(parsed);
-        } catch (error) {
-          // Incomplete JSON - put back in buffer for next iteration
-          buffer = `${line}\n${buffer}`;
-        }
+        processStreamLine(line);
       }
     }
 
@@ -2350,6 +2382,7 @@ class AudioManager {
     this.isRecording = false;
     this.isProcessing = false;
     this.isStartingRecording = false;
+    this.isStoppingRecording = false;
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;

@@ -139,6 +139,30 @@ describe("AudioManager recorder lifecycle", () => {
     await expect(processAudio.mock.calls[0][0].text()).resolves.toBe("first chunk final tail");
   });
 
+  it("ignores duplicate stop while waiting for final recorder data", async () => {
+    const manager = new AudioManager();
+    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+    recorder.ondataavailable?.({ data: new Blob(["first chunk "], { type: "audio/webm" }) });
+
+    expect(manager.stopRecording()).toBe(true);
+    const stopPromise = recorder.onstop?.();
+    expect(manager.stopRecording()).toBe(true);
+    recorder.ondataavailable?.({ data: new Blob(["final tail"], { type: "audio/webm" }) });
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(processAudio).not.toHaveBeenCalled();
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await stopPromise;
+
+    expect(processAudio).toHaveBeenCalledTimes(1);
+    await expect(processAudio.mock.calls[0][0].text()).resolves.toBe("first chunk final tail");
+  });
+
   it("preserves transcription stream events split inside the data prefix", async () => {
     const manager = new AudioManager();
     const encoder = new TextEncoder();
@@ -161,5 +185,22 @@ describe("AudioManager recorder lifecycle", () => {
     };
 
     await expect(manager.readTranscriptionStream(response)).resolves.toBe("hello world");
+  });
+
+  it("flushes a final transcription stream event without a trailing newline", async () => {
+    const manager = new AudioManager();
+    const encoder = new TextEncoder();
+    const response = {
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode('data: {"type":"transcript.text.delta","delta":"final text"}')
+          );
+          controller.close();
+        },
+      }),
+    };
+
+    await expect(manager.readTranscriptionStream(response)).resolves.toBe("final text");
   });
 });
