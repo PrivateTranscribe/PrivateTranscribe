@@ -54,7 +54,9 @@ describe("Settings support and diagnostics tools", () => {
       "utf8"
     );
 
-    expect(preload).toContain("submitFeedback: (payload) => ipcRenderer.invoke(\"submit-feedback\", payload)");
+    expect(preload).toContain(
+      'submitFeedback: (payload) => ipcRenderer.invoke("submit-feedback", payload)'
+    );
     expect(ipcHandlers).toContain('ipcMain.handle("submit-feedback"');
     expect(ipcHandlers).toContain("getDeviceIdForExplicitFeedback");
     expect(ipcHandlers).toContain("/functions/v1/feedback");
@@ -62,7 +64,7 @@ describe("Settings support and diagnostics tools", () => {
     expect(electronTypes).toContain("submitFeedback");
   });
 
-  it("feedback dialog collects structured launch tester evidence", () => {
+  it("feedback dialog keeps early-user feedback simple and backend-aligned", () => {
     const feedbackDialog = fs.readFileSync(
       path.join(process.cwd(), "src", "components", "FeedbackDialog.tsx"),
       "utf8"
@@ -76,17 +78,22 @@ describe("Settings support and diagnostics tools", () => {
       "utf8"
     );
 
-    for (const value of ["install", "onboarding", "transcription", "hotkey", "performance"]) {
+    for (const value of ["bug", "confusing", "feature", "general"]) {
       expect(feedbackDialog).toContain(`value: "${value}"`);
       expect(ipcHandlers).toContain(`"${value}"`);
-      expect(electronTypes).toContain(`| "${value}"`);
+      expect(electronTypes).toContain(`"${value}"`);
     }
 
-    expect(feedbackDialog).toContain("Quick tester templates");
-    expect(feedbackDialog).toContain("Install failed");
-    expect(feedbackDialog).toContain("First dictation failed");
-    expect(feedbackDialog).toContain("Did SmartScreen appear? yes/no");
-    expect(feedbackDialog).toContain("Would you use this again tomorrow? yes/no");
+    for (const oldValue of ["install", "onboarding", "transcription", "hotkey", "performance"]) {
+      expect(feedbackDialog).not.toContain(`value: "${oldValue}"`);
+      expect(ipcHandlers).not.toContain(`"${oldValue}"`);
+      expect(electronTypes).not.toContain(`| "${oldValue}"`);
+    }
+
+    expect(feedbackDialog).toContain("Your note");
+    expect(feedbackDialog).toContain("Type");
+    expect(feedbackDialog).toContain("No email app required");
+    expect(feedbackDialog).not.toContain("Quick tester templates");
   });
 
   it("formats the app version object instead of rendering [object Object]", () => {
@@ -95,7 +102,7 @@ describe("Settings support and diagnostics tools", () => {
       "utf8"
     );
 
-    expect(developerSection).toContain("versionResult?.version || \"unknown\"");
+    expect(developerSection).toContain('versionResult?.version || "unknown"');
     expect(developerSection).toContain("PrivateTranscribe v${version}");
   });
 

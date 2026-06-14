@@ -309,16 +309,7 @@ export interface SaveTranscriptionOptions {
 
 export interface FeedbackSubmitPayload {
   message: string;
-  category?:
-    | "install"
-    | "onboarding"
-    | "transcription"
-    | "hotkey"
-    | "performance"
-    | "bug"
-    | "confusing"
-    | "feature"
-    | "general";
+  category?: "bug" | "confusing" | "feature" | "general";
   includeSystemInfo?: boolean;
   appVersion?: string;
   source?: string;

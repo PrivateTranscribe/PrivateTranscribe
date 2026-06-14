@@ -12,16 +12,7 @@ import {
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
 
-export type FeedbackCategory =
-  | "install"
-  | "onboarding"
-  | "transcription"
-  | "hotkey"
-  | "performance"
-  | "bug"
-  | "confusing"
-  | "feature"
-  | "general";
+export type FeedbackCategory = "bug" | "confusing" | "feature" | "general";
 
 interface FeedbackDialogProps {
   currentVersion?: string;
@@ -29,43 +20,19 @@ interface FeedbackDialogProps {
   trigger?: ReactNode;
 }
 
-const CATEGORY_OPTIONS: Array<{ value: FeedbackCategory; label: string }> = [
-  { value: "install", label: "Install / first launch" },
-  { value: "onboarding", label: "Onboarding / setup" },
-  { value: "transcription", label: "Dictation / transcription" },
-  { value: "hotkey", label: "Hotkey / paste" },
-  { value: "performance", label: "Speed / model download" },
-  { value: "bug", label: "Other bug" },
-  { value: "confusing", label: "Confusing UX" },
-  { value: "feature", label: "Feature request" },
-  { value: "general", label: "General feedback" },
-];
-
-const TESTER_PROMPTS: Array<{ label: string; category: FeedbackCategory; template: string }> = [
+const CATEGORY_OPTIONS: Array<{
+  value: FeedbackCategory;
+  label: string;
+  description: string;
+}> = [
+  { value: "bug", label: "Bug", description: "Something broke or failed" },
   {
-    label: "Install failed",
-    category: "install",
-    template:
-      "Install / launch feedback\nWindows version:\nDid SmartScreen appear? yes/no\nWhat happened when installing or opening the app?\n",
+    value: "confusing",
+    label: "Confusing",
+    description: "Setup, hotkey, paste, or copy was unclear",
   },
-  {
-    label: "First dictation failed",
-    category: "transcription",
-    template:
-      "First dictation feedback\nSpoken language:\nSelected model:\nDid recording start? yes/no\nDid text paste anywhere? yes/no\nWhat happened?\n",
-  },
-  {
-    label: "Hotkey confusing",
-    category: "hotkey",
-    template:
-      "Hotkey / paste feedback\nConfigured hotkey:\nApp you tried dictating into:\nDid the hotkey trigger recording? yes/no\nDid paste work? yes/no\nWhat felt confusing?\n",
-  },
-  {
-    label: "It worked",
-    category: "general",
-    template:
-      "Positive tester feedback\nWhat worked well?\nWhat app did you dictate into?\nWould you use this again tomorrow? yes/no\nWhat should be improved first?\n",
-  },
+  { value: "feature", label: "Feature idea", description: "Something you wish it could do" },
+  { value: "general", label: "General", description: "Anything else, including what worked" },
 ];
 
 export default function FeedbackDialog({
@@ -99,15 +66,6 @@ export default function FeedbackDialog({
     []
   );
 
-  const applyTesterPrompt = (prompt: (typeof TESTER_PROMPTS)[number]) => {
-    setCategory(prompt.category);
-    setMessage((current) => {
-      const trimmed = current.trim();
-      if (!trimmed) return prompt.template;
-      return `${trimmed}\n\n---\n${prompt.template}`;
-    });
-  };
-
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
@@ -140,62 +98,50 @@ export default function FeedbackDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger || defaultTrigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Send Feedback</DialogTitle>
-          <DialogDescription>
-            In-app feedback for early access testers. No email app required.
-          </DialogDescription>
+          <DialogDescription>Tell us what happened. No email app required.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground leading-relaxed">
-            <strong className="text-foreground">Early access:</strong> short, honest notes are
-            useful — bugs, confusing moments, missing features, or anything that felt surprisingly
-            good.
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Quick tester templates</div>
-            <div className="grid grid-cols-2 gap-2">
-              {TESTER_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt.label}
-                  type="button"
-                  onClick={() => applyTesterPrompt(prompt)}
-                  className="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
-                >
-                  {prompt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-muted-foreground">Category</span>
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value as FeedbackCategory)}
-              className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/40"
-            >
-              {CATEGORY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-muted-foreground">What happened?</span>
+            <span className="text-xs font-medium text-muted-foreground">Your note</span>
             <Textarea
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Example: I tried dictating into Notion, but the first word was missing..."
-              rows={5}
+              placeholder="Example: Install worked, but I did not know which hotkey to press."
+              rows={6}
               autoFocus
             />
           </label>
+
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">Type</div>
+            <div className="grid grid-cols-2 gap-2">
+              {CATEGORY_OPTIONS.map((option) => {
+                const selected = category === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setCategory(option.value)}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 ${
+                      selected
+                        ? "border-primary/60 bg-primary/10 text-foreground"
+                        : "border-border-subtle bg-surface-raised text-foreground hover:border-primary/30"
+                    }`}
+                  >
+                    <span className="block text-sm font-medium">{option.label}</span>
+                    <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <label className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed cursor-pointer select-none">
             <input
@@ -205,8 +151,7 @@ export default function FeedbackDialog({
               className="mt-0.5 rounded"
             />
             <span>
-              Include basic system info: app version, platform, and Electron runtime versions. No
-              audio, transcripts, or logs are sent.
+              Include app version and basic system info. No audio, transcripts, or logs are sent.
             </span>
           </label>
 
