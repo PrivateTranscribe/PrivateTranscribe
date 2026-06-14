@@ -390,7 +390,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     { label: "MODEL", value: modelLabel },
     { label: "ENGINE", value: engineLabel },
     { label: "LANGUAGE", value: languageLabel },
-    { label: "MIC", value: microphoneLabel },
+    { label: "MIC", value: microphoneLabel, wide: true },
   ];
 
   return (
@@ -486,9 +486,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             </div>
 
             {/* Config Rows */}
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-x-8 gap-y-4">
               {configRows.map((row) => (
-                <div key={row.label} className="flex items-center gap-3">
+                <div
+                  key={row.label}
+                  className={`flex items-center gap-3 ${
+                    row.wide ? "sm:col-span-2 lg:col-span-1" : ""
+                  }`}
+                >
                   {/* Mint dot indicator */}
                   <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 shadow-[0_0_6px_rgba(112,255,186,0.4)]" />
                   <div className="flex flex-col min-w-0">
