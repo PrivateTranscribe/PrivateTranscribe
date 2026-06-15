@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.1 - 2026-06-15
+
+### Added
+
+- Added the startup-at-login choice to onboarding so new users can decide during first setup.
+
+### Fixed
+
+- Restored Windows executable resource editing so packaged installer builds embed the PrivateTranscribe icon while still skipping code signing.
+
 ## 0.11.0 - 2026-06-14
 
 ### Added
