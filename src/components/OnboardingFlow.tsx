@@ -35,6 +35,7 @@ import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { DownloadProgressBar } from "./ui/DownloadProgressBar";
+import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
 
 interface OnboardingFlowProps {
@@ -115,6 +116,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [onboardingGpuSupported, setOnboardingGpuSupported] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [autoStartError, setAutoStartError] = useState<string | null>(null);
+  const platform = window.electronAPI?.getPlatform?.() ?? "unknown";
+  const canConfigureAutoStart = platform !== "linux";
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [micTestState, setMicTestState] = useState<"idle" | "recording" | "success" | "error">(
@@ -193,6 +199,65 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     };
     checkHotkeyMode();
   }, [setActivationMode]);
+
+  useEffect(() => {
+    if (!canConfigureAutoStart) {
+      setAutoStartLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadAutoStartStatus = async () => {
+      setAutoStartLoading(true);
+      setAutoStartError(null);
+
+      try {
+        const enabled = await window.electronAPI?.getAutoStartEnabled?.();
+        if (!cancelled) {
+          setAutoStartEnabled(Boolean(enabled));
+        }
+      } catch (error) {
+        console.error("Failed to get auto-start status:", error);
+        if (!cancelled) {
+          setAutoStartError(
+            "Couldn't read the startup setting. You can change it later in Settings."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setAutoStartLoading(false);
+        }
+      }
+    };
+
+    void loadAutoStartStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canConfigureAutoStart]);
+
+  const handleAutoStartChange = useCallback(async (enabled: boolean) => {
+    setAutoStartLoading(true);
+    setAutoStartError(null);
+
+    try {
+      const result = await window.electronAPI?.setAutoStartEnabled?.(enabled);
+      if (result?.success) {
+        setAutoStartEnabled(enabled);
+        return;
+      }
+
+      setAutoStartError(
+        result?.error || "Couldn't update startup. You can change it later in Settings."
+      );
+    } catch (error) {
+      console.error("Failed to set auto-start:", error);
+      setAutoStartError("Couldn't update startup. You can change it later in Settings.");
+    } finally {
+      setAutoStartLoading(false);
+    }
+  }, []);
 
   const checkModelStatus = useCallback(async () => {
     if (!useLocalWhisper || !whisperModel) {
@@ -910,6 +975,28 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     value={activationMode}
                     onChange={setActivationMode}
                     variant="compact"
+                  />
+                </div>
+              )}
+
+              {canConfigureAutoStart && (
+                <div className="p-4 border-t border-border-subtle flex items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Startup
+                    </span>
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">
+                      Start PrivateTranscribe when I log in so the dictation hotkey is ready after
+                      restart.
+                    </p>
+                    {autoStartError && (
+                      <p className="text-xs text-destructive mt-1">{autoStartError}</p>
+                    )}
+                  </div>
+                  <Toggle
+                    checked={autoStartEnabled}
+                    onChange={(checked: boolean) => void handleAutoStartChange(checked)}
+                    disabled={autoStartLoading}
                   />
                 </div>
               )}
