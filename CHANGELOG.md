@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.3 - 2026-06-16
+
+### Fixed
+
+- Fixed local Windows installer builds without code-signing privileges by disabling electron-builder's signing/editing step while keeping the existing after-pack metadata update for the app executable.
+
 ## 0.11.2 - 2026-06-16
 
 ### Fixed
