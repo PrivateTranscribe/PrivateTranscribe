@@ -135,7 +135,6 @@
   },
   "win": {
     "target": ["nsis"],
-    "signExecutable": false,
     "icon": "src/assets/icon.ico",
     "executableName": "PrivateTranscribe",
     "extraResources": [
