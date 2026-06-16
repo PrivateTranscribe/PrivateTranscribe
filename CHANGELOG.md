@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4 - 2026-06-17
+
+### Fixed
+
+- Prepared a new Windows build version after the unsigned local installer build fix.
+
 ## 0.11.3 - 2026-06-16
 
 ### Fixed
