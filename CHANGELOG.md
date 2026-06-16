@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2 - 2026-06-16
+
+### Fixed
+
+- Fixed Windows installer builds with electron-builder 26.8.1 by removing the unsupported signing option that stopped configuration validation.
+
 ## 0.11.1 - 2026-06-15
 
 ### Added
