@@ -1,6 +1,11 @@
 const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const {
+  DEFAULT_AUTO_START_LAUNCH_MODE,
+  normalizeAutoStartLaunchMode,
+  buildAutoStartSetOptions,
+} = require("./src/helpers/autoStartLoginItemSettings");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privatetranscribe.app";
 
@@ -271,16 +276,53 @@ async function autoUpdateCudaBinaryIfNeeded() {
   }
 }
 
+function getAutoStartPreferencesPath() {
+  return path.join(app.getPath("userData"), "auto-start-preferences.json");
+}
+
+function readAutoStartLaunchMode() {
+  try {
+    const raw = fs.readFileSync(getAutoStartPreferencesPath(), "utf8");
+    const parsed = JSON.parse(raw);
+    return normalizeAutoStartLaunchMode(parsed?.launchMode);
+  } catch {
+    return DEFAULT_AUTO_START_LAUNCH_MODE;
+  }
+}
+
+function getLoginLaunchMode() {
+  const loginArg = process.argv.find((arg) => arg === "--launch-at-login");
+  if (!loginArg) {
+    return null;
+  }
+
+  const modeArg = process.argv.find((arg) => arg.startsWith("--startup-mode="));
+  const mode = modeArg ? modeArg.split("=").slice(1).join("=") : readAutoStartLaunchMode();
+  return normalizeAutoStartLaunchMode(mode);
+}
+
 // Main application startup
 async function startApp() {
   // Initialize all managers now that app is ready
   initializeManagers();
 
-  // Set auto-start on first run (default: enabled)
+  const autoStartLaunchMode = readAutoStartLaunchMode();
+  const loginLaunchMode = getLoginLaunchMode();
+
+  // Set auto-start on first run (default: enabled, tray-only at login)
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
     if (!fs.existsSync(flagPath)) {
-      app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
+      app.setLoginItemSettings(
+        buildAutoStartSetOptions({
+          enabled: true,
+          platform: process.platform,
+          isPackaged: app.isPackaged,
+          execPath: process.execPath,
+          appPath: app.getAppPath(),
+          launchMode: autoStartLaunchMode,
+        })
+      );
       fs.writeFileSync(flagPath, "1");
     }
   } catch {
@@ -357,18 +399,35 @@ async function startApp() {
     debugLogger.debug("Windows paste tool status", nircmdStatus);
   }
 
-  // Create main window
+  // Create windows according to the login launch mode. Normal launches keep the
+  // familiar visible overlay + control panel behavior; Windows auto-start can stay
+  // quiet in the tray while still loading a hidden renderer for hotkeys.
+  const isTrayLoginLaunch = loginLaunchMode === "tray";
+  const isMinimizedLoginLaunch = loginLaunchMode === "minimized";
+  const shouldShowOverlayAtStartup = !loginLaunchMode || loginLaunchMode === "window";
+
   if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
     debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
-  } else {
+  } else if (shouldShowOverlayAtStartup) {
     await windowManager.createMainWindow({ initialShowDelayMs: 2000 });
+  } else {
+    debugLogger.info("Startup launch mode keeps dictation overlay hidden", {
+      launchMode: loginLaunchMode,
+    });
   }
 
   // Create control panel window
   if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_CONTROL_PANEL_WINDOW")) {
     debugLogger.warn("[Diagnostics] Skipping control panel window creation");
   } else {
-    await windowManager.createControlPanelWindow();
+    await windowManager.createControlPanelWindow({
+      startHidden: isTrayLoginLaunch,
+      startMinimized: isMinimizedLoginLaunch
+        ? true
+        : loginLaunchMode === "window"
+          ? false
+          : undefined,
+    });
   }
 
   // If a user previously installed CUDA, keep it in sync silently after app updates.

@@ -909,7 +909,9 @@ class WindowManager {
     // entry even when the user hasn't opened the control panel yet.
     // (The overlay is skipTaskbar:true to avoid game compositor issues, so
     // this is the only taskbar presence on Windows.)
-    this._controlPanelStartMinimized = options.startMinimized ?? process.platform === "win32";
+    this._controlPanelStartHidden = options.startHidden === true;
+    this._controlPanelStartMinimized =
+      !this._controlPanelStartHidden && (options.startMinimized ?? process.platform === "win32");
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
@@ -923,19 +925,23 @@ class WindowManager {
 
     this.controlPanelWindow = new BrowserWindow(CONTROL_PANEL_CONFIG);
 
-    const visibilityTimer = setTimeout(() => {
-      if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
-        return;
-      }
-      if (!this.controlPanelWindow.isVisible()) {
-        console.warn("Control panel did not become visible in time; forcing show");
-        this.controlPanelWindow.show();
-        this.controlPanelWindow.focus();
-      }
-    }, 10000);
+    const visibilityTimer = this._controlPanelStartHidden
+      ? null
+      : setTimeout(() => {
+          if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
+            return;
+          }
+          if (!this.controlPanelWindow.isVisible()) {
+            console.warn("Control panel did not become visible in time; forcing show");
+            this.controlPanelWindow.show();
+            this.controlPanelWindow.focus();
+          }
+        }, 10000);
 
     const clearVisibilityTimer = () => {
-      clearTimeout(visibilityTimer);
+      if (visibilityTimer) {
+        clearTimeout(visibilityTimer);
+      }
     };
 
     this.controlPanelWindow.once("ready-to-show", () => {
@@ -944,7 +950,11 @@ class WindowManager {
       if (process.platform === "darwin" && app.dock) {
         app.dock.show();
       }
-      if (this._controlPanelStartMinimized) {
+      if (this._controlPanelStartHidden) {
+        debugLogger.debug(
+          "[Window] Control panel ready but startup mode is tray-only, keeping hidden"
+        );
+      } else if (this._controlPanelStartMinimized) {
         // Show minimized to taskbar — gives Windows a taskbar entry without
         // stealing focus on startup (the overlay is now skipTaskbar:true so
         // this is the only persistent taskbar presence).

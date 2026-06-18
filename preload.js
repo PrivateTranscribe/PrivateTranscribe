@@ -323,6 +323,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Auto-start management
   getAutoStartEnabled: () => ipcRenderer.invoke("get-auto-start-enabled"),
   setAutoStartEnabled: (enabled) => ipcRenderer.invoke("set-auto-start-enabled", enabled),
+  getAutoStartLaunchMode: () => ipcRenderer.invoke("get-auto-start-launch-mode"),
+  setAutoStartLaunchMode: (mode) => ipcRenderer.invoke("set-auto-start-launch-mode", mode),
 
   // Hardware detection
   detectHardware: () => ipcRenderer.invoke("detect-hardware"),

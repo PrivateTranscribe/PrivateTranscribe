@@ -675,6 +675,12 @@ declare global {
       // Auto-start at login
       getAutoStartEnabled?: () => Promise<boolean>;
       setAutoStartEnabled?: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+      getAutoStartLaunchMode?: () => Promise<"tray" | "minimized" | "window">;
+      setAutoStartLaunchMode?: (mode: "tray" | "minimized" | "window") => Promise<{
+        success: boolean;
+        launchMode?: "tray" | "minimized" | "window";
+        error?: string;
+      }>;
 
       // Hardware detection
       detectHardware?: () => Promise<{

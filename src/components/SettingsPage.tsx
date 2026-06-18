@@ -77,6 +77,7 @@ const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
 const WHISPER_IDLE_TIMEOUT_MIN = 1;
 const WHISPER_IDLE_TIMEOUT_MAX = 1440;
+type AutoStartLaunchMode = "tray" | "minimized" | "window";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -1641,6 +1642,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   );
 
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [autoStartLaunchMode, setAutoStartLaunchMode] = useState<AutoStartLaunchMode>("tray");
   const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
 
@@ -1652,8 +1654,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     const loadAutoStart = async () => {
       if (window.electronAPI?.getAutoStartEnabled) {
         try {
-          const enabled = await window.electronAPI.getAutoStartEnabled();
+          const [enabled, launchMode] = await Promise.all([
+            window.electronAPI.getAutoStartEnabled(),
+            window.electronAPI.getAutoStartLaunchMode?.() ?? Promise.resolve("tray"),
+          ]);
           setAutoStartEnabled(enabled);
+          setAutoStartLaunchMode(launchMode);
         } catch (error) {
           console.error("Failed to get auto-start status:", error);
         }
@@ -1675,6 +1681,24 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         console.error("Failed to set auto-start:", error);
       } finally {
         setAutoStartLoading(false);
+      }
+    }
+  };
+
+  const handleAutoStartLaunchModeChange = async (mode: AutoStartLaunchMode) => {
+    if (window.electronAPI?.setAutoStartLaunchMode) {
+      const previousMode = autoStartLaunchMode;
+      try {
+        setAutoStartLaunchMode(mode);
+        const result = await window.electronAPI.setAutoStartLaunchMode(mode);
+        if (!result.success) {
+          setAutoStartLaunchMode(previousMode);
+        } else if (result.launchMode) {
+          setAutoStartLaunchMode(result.launchMode);
+        }
+      } catch (error) {
+        setAutoStartLaunchMode(previousMode);
+        console.error("Failed to set auto-start launch mode:", error);
       }
     }
   };
@@ -2017,7 +2041,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Start PrivateTranscribe when I log in"
-                      description="Runs in the background after sign-in so your dictation hotkey is ready."
+                      description="Keeps the dictation hotkey ready after restart."
                     >
                       <Toggle
                         checked={autoStartEnabled}
@@ -2026,6 +2050,37 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       />
                     </SettingsRow>
                   </SettingsPanelRow>
+
+                  {autoStartEnabled && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="At login, open as"
+                        description={
+                          autoStartLaunchMode === "tray"
+                            ? "Recommended: starts quietly in the tray without opening a window."
+                            : autoStartLaunchMode === "minimized"
+                              ? "Shows a taskbar entry, but does not steal focus."
+                              : "Opens the control panel so the app is visible immediately."
+                        }
+                      >
+                        <Select
+                          value={autoStartLaunchMode}
+                          onValueChange={(value) =>
+                            handleAutoStartLaunchModeChange(value as AutoStartLaunchMode)
+                          }
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="tray">Tray only</SelectItem>
+                            <SelectItem value="minimized">Minimized</SelectItem>
+                            <SelectItem value="window">Open window</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
                 </SettingsPanel>
               </div>
             )}
