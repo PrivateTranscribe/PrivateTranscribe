@@ -114,6 +114,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [skippedModelSetup, setSkippedModelSetup] = useState(false);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
   const [onboardingGpuSupported, setOnboardingGpuSupported] = useState(false);
+  const [onboardingRecommendedWhisperModel, setOnboardingRecommendedWhisperModel] = useState<
+    string | undefined
+  >(undefined);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
@@ -713,6 +716,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 whisperForceCpu: recommendations.whisperForceCpu,
               });
               setOnboardingGpuSupported(recommendations.whisperForceCpu === false);
+              setOnboardingRecommendedWhisperModel(recommendations.whisperModel);
               setHardwareRecommendationsApplied(true);
             }}
             onAppliedChange={setHardwareRecommendationsApplied}
@@ -763,6 +767,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               whisperForceCpu={whisperForceCpu}
               onWhisperForceCpuChange={setWhisperForceCpu}
               gpuSupported={onboardingGpuSupported}
+              recommendedLocalModel={onboardingRecommendedWhisperModel}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => updateTranscriptionSettings({ useLocalWhisper: isLocal })}
               openaiApiKey={openaiApiKey}

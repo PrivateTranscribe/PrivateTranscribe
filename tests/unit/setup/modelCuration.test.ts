@@ -116,7 +116,9 @@ describe("Model curation invariants", () => {
       );
       const contents = fs.readFileSync(pickerPath, "utf8");
 
-      expect(contents).toMatch(/isOnboarding && perf \? `\$\{perf\.speed\} · \$\{perf\.quality\}` : undefined/);
+      expect(contents).toMatch(
+        /isOnboarding && perf \? `\$\{perf\.speed\} · \$\{perf\.quality\}` : undefined/
+      );
     });
 
     it("Whisper performance labels still cover turbo, base, and tiny", () => {
@@ -131,6 +133,20 @@ describe("Model curation invariants", () => {
       expect(contents).toMatch(/tiny:\s*\{\s*speed: "Fastest",\s*quality: "Basic"\s*\}/);
       expect(contents).toMatch(/base:\s*\{\s*speed: "Fast",\s*quality: "Good"\s*\}/);
       expect(contents).toMatch(/turbo:\s*\{\s*speed: "Fast",\s*quality: "Great"\s*\}/);
+    });
+
+    it("model recommendation badges can use hardware recommendations instead of static registry defaults", () => {
+      const pickerPath = path.join(
+        process.cwd(),
+        "src",
+        "components",
+        "TranscriptionModelPicker.tsx"
+      );
+      const contents = fs.readFileSync(pickerPath, "utf8");
+
+      expect(contents).toContain("recommendedLocalModel?: string");
+      expect(contents).toContain("modelId === recommendedLocalModel");
+      expect(contents).toContain("recommended={isRecommended}");
     });
   });
 
@@ -148,7 +164,9 @@ describe("Model curation invariants", () => {
       const contents = fs.readFileSync(scriptPath, "utf8");
 
       // Fallback must be a real version string, not empty
-      expect(contents).toMatch(/SHERPA_ONNX_VERSION\s*=\s*process\.env\.SHERPA_ONNX_VERSION\s*\|\|\s*"\d+\.\d+\.\d+"/);
+      expect(contents).toMatch(
+        /SHERPA_ONNX_VERSION\s*=\s*process\.env\.SHERPA_ONNX_VERSION\s*\|\|\s*"\d+\.\d+\.\d+"/
+      );
     });
 
     it("download-whisper-cpp.js also uses env override (parity check)", () => {

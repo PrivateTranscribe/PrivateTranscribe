@@ -1137,15 +1137,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
 
-  // GPU support status — fetched only when the transcription picker is visible.
+  // GPU support status and model recommendation — fetched only when the picker is visible.
   const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
+  const [recommendedWhisperModelForPicker, setRecommendedWhisperModelForPicker] = useState<
+    string | undefined
+  >(undefined);
   useEffect(() => {
     if (activeSection !== "transcription") return;
     window.electronAPI
       ?.detectHardware?.()
-      .then((result) =>
-        setGpuSupportedForPicker(result?.detection?.recommendations?.gpuCategory === "nvidia_cuda")
-      )
+      .then((result) => {
+        const recommendations = result?.detection?.recommendations;
+        setGpuSupportedForPicker(recommendations?.gpuCategory === "nvidia_cuda");
+        setRecommendedWhisperModelForPicker(recommendations?.whisperModel);
+      })
       .catch(() => {});
   }, [activeSection]);
 
@@ -2560,6 +2565,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 updateTranscriptionSettings({ whisperForceCpu: forceCpu })
               }
               gpuSupported={gpuSupportedForPicker}
+              recommendedLocalModel={recommendedWhisperModelForPicker}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });
