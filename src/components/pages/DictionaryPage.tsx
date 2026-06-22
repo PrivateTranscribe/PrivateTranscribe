@@ -21,9 +21,16 @@ const MODE_LABELS: Record<DictionaryEntryMode, string> = {
 };
 
 const MODE_DESCRIPTIONS: Record<DictionaryEntryMode, string> = {
-  hint: "Prompt hint only.",
-  exact: "Prompt hint plus exact spelling repair.",
-  priority: "Extra prompt emphasis plus exact spelling repair.",
+  hint: "Soft hint. The model sees the word and is more likely to use that spelling.",
+  exact: "Hint plus local spelling and casing repair.",
+  priority: "Strong hint plus repair. Use for words Whisper keeps getting wrong.",
+};
+
+const MODE_EXPLANATIONS: Record<DictionaryEntryMode, string> = {
+  hint: "Use for normal terms you want recognized correctly.",
+  exact:
+    "Use for names and proper nouns. Also fixes casing like privatetranscribe -> PrivateTranscribe.",
+  priority: "Use when a word is consistently misrecognized. Adds the strongest emphasis.",
 };
 
 function SettingsPanel({ children }: { children: React.ReactNode }) {
@@ -256,21 +263,40 @@ export default function DictionaryPage() {
         <CorrectionMemoryPage embedded />
       </div>
 
-      {/* How it works */}
+      {/* Modes explained */}
       <div>
+        <p className="text-[13px] font-medium text-foreground mb-3">Modes</p>
+        <SettingsPanel>
+          {(Object.keys(MODE_EXPLANATIONS) as DictionaryEntryMode[]).map((mode) => (
+            <SettingsPanelRow key={mode}>
+              <div className="flex items-start gap-3">
+                <span className="inline-flex items-center rounded-md border border-border-subtle bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-foreground min-w-[52px] justify-center">
+                  {MODE_LABELS[mode]}
+                </span>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">
+                  {MODE_EXPLANATIONS[mode]}
+                </p>
+              </div>
+            </SettingsPanelRow>
+          ))}
+        </SettingsPanel>
+      </div>
+
+      {/* How it works */}
+      <div className="mt-8">
         <p className="text-[13px] font-medium text-foreground mb-3">How it works</p>
         <SettingsPanel>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              Hint entries are sent only as transcription context. Exact entries also allow local
-              casing and split-word repair. Priority entries add stronger prompt emphasis for terms
-              Whisper keeps ignoring.
+              Words in your dictionary are sent as hints to the transcription model. The mode
+              controls how hard each word is pushed. Priority helps most, but it is still a hint -
+              not a guaranteed match.
             </p>
           </SettingsPanelRow>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              <span className="font-medium text-foreground">Tip</span> - Use Priority only for terms
-              that are often wrong. It is still a model hint, not a hard speech-recognition rule.
+              <span className="font-medium text-foreground">Tip</span> - Start with Hint. Move to
+              Exact for proper nouns. Use Priority only for words that keep coming out wrong.
             </p>
           </SettingsPanelRow>
         </SettingsPanel>
