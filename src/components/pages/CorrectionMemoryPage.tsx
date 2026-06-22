@@ -150,7 +150,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
         <div>
           <div className="flex items-center gap-3">
             {embedded ? (
-              <h2 className="text-base font-semibold text-foreground">Always correct</h2>
+              <h2 className="text-base font-semibold text-foreground">Correction Memory</h2>
             ) : (
               <h1 className="text-3xl font-semibold text-foreground tracking-tight">
                 Correction Memory

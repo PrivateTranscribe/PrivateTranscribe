@@ -2197,13 +2197,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div className="border-t border-border/30 pt-8">
               <SectionHeader
                 title="Correction Memory"
-                description="Snap dictation to your preferred spellings and learn from edits"
+                description="Apply your saved corrections and learn new ones from edits"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Variable snapping"
-                    description="Snap spoken phrases to exact identifiers from your dictionary + learned corrections"
+                    label="Apply dictionary and correction memory"
+                    description="Use dictionary entries and learned corrections while transcribing."
                   >
                     <Toggle
                       checked={enableVariableSnapping}
@@ -2213,11 +2213,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 </SettingsPanelRow>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Correction learning"
+                    label="Auto-learn corrections"
                     description={
                       correctionMemoryUnlocked
-                        ? "Learn from manual edits (currently detected via clipboard changes after dictation)"
-                        : "Pro feature - unlock in Settings → Pro to enable correction learning"
+                        ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
+                        : "Pro feature - unlock in Settings > Pro to enable correction learning."
                     }
                   >
                     <Toggle
@@ -2276,6 +2276,18 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       )}
                     </div>
                   )}
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Learn phrase and sentence rewrites"
+                    description="Off learns word fixes like cloud -> Claude. On can also learn changed spans or full repeated sentence rewrites."
+                  >
+                    <Toggle
+                      checked={enablePhraseCorrectionLearning}
+                      onChange={(checked: boolean) => setEnablePhraseCorrectionLearning(checked)}
+                      disabled={!correctionMemoryUnlocked || !enableCorrectionLearning}
+                    />
+                  </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
