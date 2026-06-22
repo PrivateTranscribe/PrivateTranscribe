@@ -1099,6 +1099,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    enablePhraseCorrectionLearning,
+    setEnablePhraseCorrectionLearning,
     smartContextEnabled,
     setSmartContextEnabled,
     enableFileIdentifiers,
@@ -1250,6 +1252,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           musicDuckLevel,
           enableVariableSnapping,
           enableCorrectionLearning,
+          enablePhraseCorrectionLearning,
           smartContextEnabled,
           enableFileIdentifiers,
           llmContextEnhancement,
@@ -1307,6 +1310,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       musicDuckLevel,
       enableVariableSnapping,
       enableCorrectionLearning,
+      enablePhraseCorrectionLearning,
       smartContextEnabled,
       enableFileIdentifiers,
       llmContextEnhancement,
@@ -1473,6 +1477,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         setEnableVariableSnapping(s.enableVariableSnapping);
       if (typeof s.enableCorrectionLearning === "boolean")
         setEnableCorrectionLearning(s.enableCorrectionLearning);
+      if (typeof s.enablePhraseCorrectionLearning === "boolean")
+        setEnablePhraseCorrectionLearning(s.enablePhraseCorrectionLearning);
       if (typeof s.smartContextEnabled === "boolean") setSmartContextEnabled(s.smartContextEnabled);
       if (typeof s.enableFileIdentifiers === "boolean")
         setEnableFileIdentifiers(s.enableFileIdentifiers);
@@ -1531,6 +1537,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setMusicDuckLevel,
       setEnableVariableSnapping,
       setEnableCorrectionLearning,
+      setEnablePhraseCorrectionLearning,
       setPauseMediaOnRecord,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,

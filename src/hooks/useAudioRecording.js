@@ -282,6 +282,8 @@ export const useAudioRecording = (toast, options = {}) => {
         try {
           const enableLearning =
             (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
+          const allowPhraseLearning =
+            (localStorage.getItem("enablePhraseCorrectionLearning") || "false") === "true";
           if (
             enableLearning &&
             window.electronAPI?.readClipboard &&
@@ -312,14 +314,18 @@ export const useAudioRecording = (toast, options = {}) => {
               if (!current || current === lastClipboard) return;
               lastClipboard = current;
 
-              const pairs = inferCorrectionPairs(insertedText, current);
+              const pairs = inferCorrectionPairs(insertedText, current, {
+                allowPhraseLearning,
+              });
               if (pairs.length === 0) return;
               prompted = true;
               clearCorrectionInterval(intervalId);
 
               toastRef.current?.({
                 title: "Teach Correction Memory",
-                description: "Copied word correction detected. Click Learn to save it.",
+                description: allowPhraseLearning
+                  ? "Copied correction detected. Click Learn to save it."
+                  : "Copied word correction detected. Click Learn to save it.",
                 duration: 12000,
                 action: React.createElement(
                   "button",
@@ -337,8 +343,14 @@ export const useAudioRecording = (toast, options = {}) => {
                           const set = new Set(Array.isArray(dict) ? dict : []);
                           let changed = false;
                           for (const p of pairs) {
-                            if (p.target && p.target.length <= 200 && !set.has(p.target)) {
-                              set.add(p.target);
+                            const target = typeof p.target === "string" ? p.target.trim() : "";
+                            if (
+                              target &&
+                              target.length <= 200 &&
+                              !/\s/.test(target) &&
+                              !set.has(target)
+                            ) {
+                              set.add(target);
                               changed = true;
                             }
                           }

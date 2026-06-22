@@ -45,7 +45,12 @@ function isSingleWord(value: string) {
 
 export default function CorrectionMemoryPage({ embedded = false }: { embedded?: boolean }) {
   const isUnlocked = isFeatureUnlocked("correction-memory");
-  const { enableCorrectionLearning, setEnableCorrectionLearning } = useSettings();
+  const {
+    enableCorrectionLearning,
+    setEnableCorrectionLearning,
+    enablePhraseCorrectionLearning,
+    setEnablePhraseCorrectionLearning,
+  } = useSettings();
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,8 +109,10 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
     const s = source.trim();
     const t = target.trim();
     if (!s || !t || s === t) return;
-    if (!isSingleWord(s) || !isSingleWord(t)) {
-      setError("Corrections are word-level only. Add one source word and one replacement word.");
+    if (!enablePhraseCorrectionLearning && (!isSingleWord(s) || !isSingleWord(t))) {
+      setError(
+        "Corrections are word-level only unless phrase and sentence rewrites are enabled above."
+      );
       return;
     }
     try {
@@ -188,22 +195,35 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
 
       {isUnlocked && (
         <>
-          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
+          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Auto-learn word corrections
-                </h2>
+                <h2 className="text-base font-semibold text-foreground">Auto-learn corrections</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   After dictation, copy the corrected text once. PrivateTranscribe will offer to
-                  learn word replacements like cloud {"->"} Claude. It will not learn full sentence
-                  rewrites.
+                  learn replacements from the difference.
                 </p>
               </div>
               <Toggle
                 checked={enableCorrectionLearning}
                 onChange={setEnableCorrectionLearning}
                 disabled={!isUnlocked}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 border-t border-border-subtle/40 pt-4">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">
+                  Learn phrase and sentence rewrites
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Off learns word fixes like cloud {"->"} Claude. On can also learn changed spans or
+                  full repeated sentence rewrites.
+                </p>
+              </div>
+              <Toggle
+                checked={enablePhraseCorrectionLearning}
+                onChange={setEnablePhraseCorrectionLearning}
+                disabled={!isUnlocked || !enableCorrectionLearning}
               />
             </div>
           </div>
@@ -213,19 +233,27 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
             <div>
               <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Manually teach PrivateTranscribe a phrase mapping.
+                Manually teach PrivateTranscribe an exact replacement.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
-                placeholder="Source word - e.g. cloud"
+                placeholder={
+                  enablePhraseCorrectionLearning
+                    ? "Source word or phrase - e.g. please write an email"
+                    : "Source word - e.g. cloud"
+                }
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               />
               <Input
-                placeholder="Replacement word - e.g. Claude"
+                placeholder={
+                  enablePhraseCorrectionLearning
+                    ? "Replacement word or phrase - e.g. Hey team, quick update."
+                    : "Replacement word - e.g. Claude"
+                }
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
@@ -244,8 +272,8 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                   saving ||
                   !source.trim() ||
                   !target.trim() ||
-                  !isSingleWord(source) ||
-                  !isSingleWord(target)
+                  (!enablePhraseCorrectionLearning &&
+                    (!isSingleWord(source) || !isSingleWord(target)))
                 }
               >
                 {saving ? "Saving…" : existingForSource ? "Update correction" : "Add correction"}

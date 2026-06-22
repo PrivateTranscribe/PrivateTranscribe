@@ -379,6 +379,12 @@ export function useSettings() {
     }
   );
 
+  const [enablePhraseCorrectionLearning, setEnablePhraseCorrectionLearning] =
+    useLocalStorage<boolean>("enablePhraseCorrectionLearning", false, {
+      serialize: String,
+      deserialize: (value) => value === "true",
+    });
+
   // Smart Context master toggle (default true — Pro entitlement gate enforces access for free users).
   // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
   const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
@@ -1085,6 +1091,8 @@ export function useSettings() {
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    enablePhraseCorrectionLearning,
+    setEnablePhraseCorrectionLearning,
     smartContextEnabled,
     setSmartContextEnabled,
     fileTranscriptionNoiseReduction,
