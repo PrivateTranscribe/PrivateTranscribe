@@ -113,6 +113,25 @@ export default function DictionaryPage() {
           Tell the transcription pipeline which terms should be hinted, repaired, or emphasized.
         </p>
       </div>
+      {/* Add word input */}
+      {/* Modes explained */}
+      <div className="mb-8">
+        <p className="text-[13px] font-medium text-foreground mb-3">Modes</p>
+        <SettingsPanel>
+          {(Object.keys(MODE_EXPLANATIONS) as DictionaryEntryMode[]).map((mode) => (
+            <SettingsPanelRow key={mode}>
+              <div className="flex items-start gap-3">
+                <span className="inline-flex items-center rounded-md border border-border-subtle bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-foreground min-w-[52px] justify-center">
+                  {MODE_LABELS[mode]}
+                </span>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">
+                  {MODE_EXPLANATIONS[mode]}
+                </p>
+              </div>
+            </SettingsPanelRow>
+          ))}
+        </SettingsPanel>
+      </div>
 
       {/* Add word input */}
       <div className="mb-8">
@@ -261,25 +280,6 @@ export default function DictionaryPage() {
 
       <div className="mb-8">
         <CorrectionMemoryPage embedded />
-      </div>
-
-      {/* Modes explained */}
-      <div>
-        <p className="text-[13px] font-medium text-foreground mb-3">Modes</p>
-        <SettingsPanel>
-          {(Object.keys(MODE_EXPLANATIONS) as DictionaryEntryMode[]).map((mode) => (
-            <SettingsPanelRow key={mode}>
-              <div className="flex items-start gap-3">
-                <span className="inline-flex items-center rounded-md border border-border-subtle bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-foreground min-w-[52px] justify-center">
-                  {MODE_LABELS[mode]}
-                </span>
-                <p className="text-[12px] text-muted-foreground leading-relaxed">
-                  {MODE_EXPLANATIONS[mode]}
-                </p>
-              </div>
-            </SettingsPanelRow>
-          ))}
-        </SettingsPanel>
       </div>
 
       {/* How it works */}
