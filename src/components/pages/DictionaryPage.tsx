@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { BookOpen } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
@@ -122,18 +123,21 @@ export default function DictionaryPage() {
                   }}
                   className="flex-1 h-9 text-[13px]"
                 />
-                <select
+                <Select
                   value={newMode}
-                  onChange={(e) => setNewMode(e.target.value as DictionaryEntryMode)}
-                  className="h-9 rounded-md border border-border bg-background px-2 text-[12px] text-foreground"
-                  title="Dictionary behavior"
+                  onValueChange={(value) => setNewMode(value as DictionaryEntryMode)}
                 >
-                  {DICTIONARY_ENTRY_MODES.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {MODE_LABELS[mode]}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-9 w-[92px] px-2.5 text-[12px] border-border bg-background">
+                    <SelectValue placeholder="Mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DICTIONARY_ENTRY_MODES.map((mode) => (
+                      <SelectItem key={mode} value={mode} className="text-xs">
+                        {MODE_LABELS[mode]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button onClick={handleAdd} disabled={!newWord.trim()} size="sm" className="h-9">
                   Add
                 </Button>
@@ -189,20 +193,28 @@ export default function DictionaryPage() {
                     className="group inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-primary/10 text-foreground rounded-md text-[12px] border border-border-subtle transition-all hover:border-destructive/40 hover:bg-destructive/5"
                   >
                     {word}
-                    <select
+                    <Select
                       value={getDictionaryEntryMode(dictionaryEntryModes, word)}
-                      onChange={(e) =>
-                        handleModeChange(word, e.target.value as DictionaryEntryMode)
+                      onValueChange={(value) =>
+                        handleModeChange(word, value as DictionaryEntryMode)
                       }
-                      className="ml-1 rounded border border-border-subtle bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground"
-                      title={MODE_DESCRIPTIONS[getDictionaryEntryMode(dictionaryEntryModes, word)]}
                     >
-                      {DICTIONARY_ENTRY_MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {MODE_LABELS[mode]}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        className="ml-1 h-5 w-auto min-w-[56px] px-1.5 border-border-subtle bg-background/80 text-[10px] text-muted-foreground"
+                        aria-label={
+                          MODE_DESCRIPTIONS[getDictionaryEntryMode(dictionaryEntryModes, word)]
+                        }
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DICTIONARY_ENTRY_MODES.map((mode) => (
+                          <SelectItem key={mode} value={mode} className="text-xs">
+                            {MODE_LABELS[mode]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <button
                       onClick={() => handleRemove(word)}
                       className="ml-0.5 p-0.5 rounded-sm text-muted-foreground/40 hover:text-destructive transition-colors"
