@@ -156,7 +156,8 @@ button:hover,
 
 /* Inputs — flat, minimal */
 input,
-textarea {
+textarea,
+select {
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
   font-family: var(--font-family-sans);
@@ -167,7 +168,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--color-border-active);
   box-shadow: 0 0 0 2px rgba(112, 255, 186, 0.1);
 }
@@ -176,6 +178,22 @@ input::placeholder,
 textarea::placeholder {
   color: var(--color-muted-foreground);
   opacity: 0.5;
+}
+
+select {
+  color-scheme: dark;
+  background-color: var(--color-input);
+  cursor: pointer;
+}
+
+select option {
+  background-color: var(--color-popover);
+  color: var(--color-foreground);
+}
+
+select option:checked {
+  background-color: var(--color-surface-3);
+  color: var(--color-primary);
 }
 
 /* Cards — flat, border-only differentiation */
