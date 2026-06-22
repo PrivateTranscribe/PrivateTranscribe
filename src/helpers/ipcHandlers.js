@@ -1598,38 +1598,6 @@ class IPCHandlers {
       }
     });
 
-    // llama.cpp installation handlers
-    ipcMain.handle("llama-cpp-check", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const isInstalled = await llamaCppInstaller.isInstalled();
-        const version = isInstalled ? await llamaCppInstaller.getVersion() : null;
-        return { isInstalled, version };
-      } catch (error) {
-        return { isInstalled: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-cpp-install", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const result = await llamaCppInstaller.install();
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-cpp-uninstall", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const result = await llamaCppInstaller.uninstall();
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
     // llama-server management handlers
     ipcMain.handle("llama-server-start", async (event, modelId) => {
       try {
