@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.0 - 2026-06-22
+
+### Added
+
+- Added dictionary modes so words can be saved as hints, exact spelling repairs, or higher-priority terms.
+- Added correction-memory improvements that keep learned repairs focused on useful word-level corrections.
+- Added reusable PrivateTranscribe email templates for early access and license emails.
+
+### Changed
+
+- Merged correction memory into the dictionary page so vocabulary and learned fixes live together.
+- Improved dictionary mode explanations, dropdown styling, chip hover states, and selected-item colors to match the app theme.
+- Aligned app, website, and email copy with the current writing style.
+
+### Fixed
+
+- Enforced Pro licensing in production builds so development preview overrides cannot unlock paid features.
+- Validated Whisper model files before use so broken or partial model downloads are not treated as ready.
+- Uploaded Windows updater blockmaps before release metadata so updater artifacts are complete.
+- Hardened email backgrounds and logo rendering for desktop and Android mail clients.
+
 ## 0.11.4 - 2026-06-17
 
 ### Fixed
