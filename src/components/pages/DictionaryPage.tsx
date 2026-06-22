@@ -200,7 +200,7 @@ export default function DictionaryPage() {
                       }
                     >
                       <SelectTrigger
-                        className="ml-1 h-5 w-auto min-w-[56px] px-1.5 border-border-subtle bg-background/80 text-[10px] text-muted-foreground"
+                        className="ml-1 h-5 w-auto min-w-[56px] px-1.5 border-border-subtle bg-background/80 text-[10px] text-foreground hover:border-primary/40 hover:text-primary"
                         aria-label={
                           MODE_DESCRIPTIONS[getDictionaryEntryMode(dictionaryEntryModes, word)]
                         }
