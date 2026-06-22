@@ -51,7 +51,7 @@ export function toLocalDateKey(date: Date): string {
  *
  * SQLite's CURRENT_TIMESTAMP returns strings like "2026-03-23 14:00:00" (UTC,
  * space-separated, no timezone suffix).  V8/Chromium treats a space-separated
- * date-time string with no timezone as *local* time, not UTC — so passing it
+ * date-time string with no timezone as *local* time, not UTC - so passing it
  * directly to `new Date()` shifts every date key by the local UTC offset.
  *
  * For a UTC-5 user who dictates after 7 PM, the UTC timestamp crosses midnight

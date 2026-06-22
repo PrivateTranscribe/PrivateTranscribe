@@ -195,7 +195,7 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error("PromptStudio test failed", { error: errorMessage }, "prompt-studio");
-      setTestResult(`Test failed: ${errorMessage}`);
+      setTestResult(`Test failed - ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }

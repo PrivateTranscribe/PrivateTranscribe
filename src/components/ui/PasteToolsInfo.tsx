@@ -95,14 +95,14 @@ export default function PasteToolsInfo({
           <Info className="w-6 h-6 text-warning flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <h3 className="font-semibold text-warning">
-              {showInstall ? "Optional: Enable Automatic Pasting" : "Clipboard Mode on Wayland"}
+              {showInstall ? "Optional automatic pasting" : "Clipboard Mode on Wayland"}
             </h3>
 
             {showInstall ? (
               <>
                 <p className="text-sm text-warning mt-1">
                   For automatic text pasting, install{" "}
-                  <code className="bg-warning/20 px-1 rounded font-mono">{recommendedTool}</code>:
+                  <code className="bg-warning/20 px-1 rounded font-mono">{recommendedTool}</code>.
                 </p>
 
                 <div className="mt-3 bg-card border border-border p-3 rounded-md font-mono text-xs overflow-x-auto">
@@ -129,13 +129,13 @@ export default function PasteToolsInfo({
 
                 {isWayland && recommendedTool === "wtype" && xwaylandAvailable && (
                   <p className="text-sm text-warning mt-3">
-                    Note: For XWayland apps, xdotool also works.
+                    For XWayland apps, xdotool also works.
                   </p>
                 )}
 
                 {isWayland && recommendedTool !== "wtype" && (
                   <p className="text-sm text-warning mt-3">
-                    Note: automatic pasting works for XWayland apps only.
+                    Automatic pasting works for XWayland apps only.
                   </p>
                 )}
               </>

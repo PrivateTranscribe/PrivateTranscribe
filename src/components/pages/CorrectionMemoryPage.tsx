@@ -223,7 +223,7 @@ export default function CorrectionMemoryPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Sort:</span>
+                <span className="text-xs text-muted-foreground">Sort</span>
                 <Select value={sortKey} onValueChange={(val) => setSortKey(val as SortKey)}>
                   <SelectTrigger className="w-[160px]">
                     <SelectValue />

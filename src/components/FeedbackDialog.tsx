@@ -110,7 +110,7 @@ export default function FeedbackDialog({
             <Textarea
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Example: Install worked, but I did not know which hotkey to press."
+              placeholder="For example, install worked, but I did not know which hotkey to press."
               rows={6}
               autoFocus
             />

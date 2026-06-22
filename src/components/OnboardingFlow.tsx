@@ -826,7 +826,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     onClick={handleSkipCudaAndUseCpu}
                     className="h-8 px-4 text-xs w-full"
                   >
-                    Skip — use your CPU
+                    Skip - use your CPU
                   </Button>
                 </div>
               </div>
@@ -858,7 +858,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   }}
                   className="h-8 px-4 text-xs w-full"
                 >
-                  Skip for now — set up later
+                  Skip for now - set up later
                 </Button>
               </div>
             )}

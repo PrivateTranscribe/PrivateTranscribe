@@ -538,7 +538,7 @@ export function useSettings() {
       window.electronAPI.saveAllKeysToEnv().catch((err: unknown) => {
         console.error("[useSettings] Failed to persist API keys to .env:", err);
         reportPersistError(
-          "API keys could not be saved to disk. They are stored for this session only — you may need to re-enter them after restarting the app."
+          "API keys could not be saved to disk. They are stored for this session only - you may need to re-enter them after restarting the app."
         );
       });
     }
