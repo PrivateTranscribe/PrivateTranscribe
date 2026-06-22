@@ -94,12 +94,40 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackDialog).toContain("Type");
     expect(feedbackDialog).toContain("No email app required");
     expect(feedbackDialog).toContain("Feedback includes app version and basic system info");
+    expect(feedbackDialog).toContain("Attach screenshots");
+    expect(feedbackDialog).toContain("MAX_ATTACHMENTS");
+    expect(feedbackDialog).toContain("FileReader");
     expect(feedbackDialog).not.toContain("includeSystemInfo");
     expect(ipcHandlers).toContain("systemInfo: {");
     expect(ipcHandlers).toContain("app.getVersion()");
+    expect(ipcHandlers).toContain("sanitizeFeedbackAttachments");
     expect(ipcHandlers).not.toContain("payload.includeSystemInfo");
+    expect(electronTypes).toContain("FeedbackAttachmentPayload");
     expect(electronTypes).not.toContain("includeSystemInfo");
     expect(feedbackDialog).not.toContain("Quick tester templates");
+  });
+
+  it("feedback backend stores screenshot attachments and forwards links to Discord", () => {
+    const feedbackFunction = fs.readFileSync(
+      path.join(process.cwd(), "supabase", "functions", "feedback", "index.ts"),
+      "utf8"
+    );
+    const attachmentMigration = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "supabase",
+        "migrations",
+        "202606230001_add_feedback_attachments.sql"
+      ),
+      "utf8"
+    );
+
+    expect(feedbackFunction).toContain("FEEDBACK_ATTACHMENT_BUCKET");
+    expect(feedbackFunction).toContain("uploadFeedbackAttachments");
+    expect(feedbackFunction).toContain("createSignedUrl");
+    expect(feedbackFunction).toContain("Attachment");
+    expect(attachmentMigration).toContain("feedback-attachments");
+    expect(attachmentMigration).toContain("attachments jsonb");
   });
 
   it("formats the app version object instead of rendering [object Object]", () => {

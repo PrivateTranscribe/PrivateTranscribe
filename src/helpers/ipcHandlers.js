@@ -112,6 +112,30 @@ function postJson(urlString, payload, headers = {}) {
   });
 }
 
+function sanitizeFeedbackAttachments(rawAttachments) {
+  if (!Array.isArray(rawAttachments)) return [];
+
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  return rawAttachments
+    .slice(0, 3)
+    .map((attachment) => {
+      const value = attachment && typeof attachment === "object" ? attachment : {};
+      const name = typeof value.name === "string" ? value.name.trim().slice(0, 120) : "screenshot";
+      const type = typeof value.type === "string" ? value.type.trim() : "";
+      const dataUrl = typeof value.dataUrl === "string" ? value.dataUrl : "";
+      const size = Number.isFinite(value.size) ? Number(value.size) : 0;
+
+      if (!allowedTypes.has(type) || !dataUrl.startsWith(`data:${type};base64,`)) {
+        return null;
+      }
+      if (size <= 0 || size > 5 * 1024 * 1024) {
+        return null;
+      }
+      return { name: name || "screenshot", type, size, dataUrl };
+    })
+    .filter(Boolean);
+}
+
 function buildFeedbackPayload(rawPayload) {
   const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
   const message = typeof payload.message === "string" ? payload.message.trim() : "";
@@ -139,6 +163,7 @@ function buildFeedbackPayload(rawPayload) {
         : app.getVersion(),
     deviceId: analyticsManager.getDeviceIdForExplicitFeedback(),
     submittedAt: new Date().toISOString(),
+    attachments: sanitizeFeedbackAttachments(payload.attachments),
     systemInfo: {
       platform: process.platform,
       arch: process.arch,

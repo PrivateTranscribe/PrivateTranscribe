@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { MessageSquare, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { MessageSquare, Loader2, CheckCircle2, AlertCircle, ImagePlus, X } from "lucide-react";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -35,6 +35,25 @@ const CATEGORY_OPTIONS: Array<{
   { value: "general", label: "General", description: "Anything else, including what worked" },
 ];
 
+const MAX_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+type FeedbackAttachment = {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+};
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read screenshot."));
+    reader.readAsDataURL(file);
+  });
+
 export default function FeedbackDialog({
   currentVersion,
   source = "unknown",
@@ -43,6 +62,8 @@ export default function FeedbackDialog({
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FeedbackCategory>("general");
+  const [attachments, setAttachments] = useState<FeedbackAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<"idle" | "submitting" | "sent" | "error">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -54,6 +75,54 @@ export default function FeedbackDialog({
 
   const trimmedMessage = message.trim();
   const canSubmit = trimmedMessage.length >= 5 && submitState !== "submitting";
+
+  const handleAttachmentChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    setAttachmentError(null);
+    const remainingSlots = MAX_ATTACHMENTS - attachments.length;
+    if (remainingSlots <= 0) {
+      setAttachmentError(`You can attach up to ${MAX_ATTACHMENTS} screenshots.`);
+      return;
+    }
+
+    const acceptedFiles = files.slice(0, remainingSlots);
+    if (files.length > remainingSlots) {
+      setAttachmentError(
+        `Only ${remainingSlots} more screenshot${remainingSlots === 1 ? "" : "s"} can be added.`
+      );
+    }
+
+    const nextAttachments: FeedbackAttachment[] = [];
+    for (const file of acceptedFiles) {
+      if (!IMAGE_TYPES.has(file.type)) {
+        setAttachmentError("Only PNG, JPG, WebP, or GIF images can be attached.");
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        setAttachmentError("Each screenshot must be 5 MB or smaller.");
+        continue;
+      }
+      const dataUrl = await readFileAsDataUrl(file);
+      nextAttachments.push({
+        name: file.name || "screenshot",
+        type: file.type,
+        size: file.size,
+        dataUrl,
+      });
+    }
+
+    if (nextAttachments.length > 0) {
+      setAttachments((current) => [...current, ...nextAttachments].slice(0, MAX_ATTACHMENTS));
+    }
+  };
+
+  const removeAttachment = (indexToRemove: number) => {
+    setAttachments((current) => current.filter((_, index) => index !== indexToRemove));
+    setAttachmentError(null);
+  };
 
   const defaultTrigger = useMemo(
     () => (
@@ -75,6 +144,7 @@ export default function FeedbackDialog({
       const result = await window.electronAPI?.submitFeedback?.({
         message: trimmedMessage,
         category,
+        attachments,
         appVersion: currentVersion || "unknown",
         source,
       });
@@ -85,6 +155,7 @@ export default function FeedbackDialog({
 
       setSubmitState("sent");
       setMessage("");
+      setAttachments([]);
     } catch (error) {
       setSubmitState("error");
       setSubmitError(
@@ -141,9 +212,58 @@ export default function FeedbackDialog({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Attach screenshots</div>
+                <div className="text-[11px] leading-snug text-muted-foreground/80">
+                  Optional. Up to {MAX_ATTACHMENTS} images, 5 MB each.
+                </div>
+              </div>
+              <Button type="button" variant="outline" size="sm" asChild>
+                <label className="cursor-pointer gap-1.5">
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Add image
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    multiple
+                    className="sr-only"
+                    onChange={handleAttachmentChange}
+                  />
+                </label>
+              </Button>
+            </div>
+
+            {attachments.length > 0 && (
+              <div className="space-y-1.5">
+                {attachments.map((attachment, index) => (
+                  <div
+                    key={`${attachment.name}-${attachment.size}-${index}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-xs"
+                  >
+                    <span className="min-w-0 truncate text-foreground">{attachment.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => removeAttachment(index)}
+                      aria-label={`Remove ${attachment.name}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {attachmentError && <div className="text-xs text-destructive">{attachmentError}</div>}
+          </div>
+
           <p className="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-xs leading-relaxed text-muted-foreground">
             Feedback includes app version and basic system info so we can reproduce issues. No
-            audio, transcripts, or logs are sent.
+            audio, transcripts, or logs are sent. Screenshots are sent only if you attach them.
           </p>
 
           {submitState === "sent" && (

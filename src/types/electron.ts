@@ -307,9 +307,17 @@ export interface SaveTranscriptionOptions {
   includeInStats?: boolean;
 }
 
+export interface FeedbackAttachmentPayload {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+}
+
 export interface FeedbackSubmitPayload {
   message: string;
   category?: "bug" | "confusing" | "feature" | "general";
+  attachments?: FeedbackAttachmentPayload[];
   appVersion?: string;
   source?: string;
 }

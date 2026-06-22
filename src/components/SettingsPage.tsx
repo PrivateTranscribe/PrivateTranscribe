@@ -3100,7 +3100,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanelRow>
                 <SettingsRow
                   label="Contact & Feedback"
-                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent."
+                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
                 >
                   <div className="flex items-center gap-2">
                     <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
