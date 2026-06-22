@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type ReactNode,
+} from "react";
 import { MessageSquare, Loader2, CheckCircle2, AlertCircle, ImagePlus, X } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -76,9 +83,7 @@ export default function FeedbackDialog({
   const trimmedMessage = message.trim();
   const canSubmit = trimmedMessage.length >= 5 && submitState !== "submitting";
 
-  const handleAttachmentChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
+  const addAttachmentFiles = async (files: File[]) => {
     if (files.length === 0) return;
 
     setAttachmentError(null);
@@ -105,18 +110,39 @@ export default function FeedbackDialog({
         setAttachmentError("Each screenshot must be 5 MB or smaller.");
         continue;
       }
-      const dataUrl = await readFileAsDataUrl(file);
-      nextAttachments.push({
-        name: file.name || "screenshot",
-        type: file.type,
-        size: file.size,
-        dataUrl,
-      });
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        nextAttachments.push({
+          name: file.name || `pasted-screenshot-${Date.now()}.png`,
+          type: file.type,
+          size: file.size,
+          dataUrl,
+        });
+      } catch {
+        setAttachmentError("Could not read that screenshot. Try saving it and adding it again.");
+      }
     }
 
     if (nextAttachments.length > 0) {
       setAttachments((current) => [...current, ...nextAttachments].slice(0, MAX_ATTACHMENTS));
     }
+  };
+
+  const handleAttachmentChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    await addAttachmentFiles(files);
+  };
+
+  const handlePastedImages = async (event: ClipboardEvent<HTMLDivElement>) => {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+
+    if (files.length === 0) return;
+    event.preventDefault();
+    await addAttachmentFiles(files);
   };
 
   const removeAttachment = (indexToRemove: number) => {
@@ -173,7 +199,7 @@ export default function FeedbackDialog({
           <DialogDescription>Tell us what happened. No email app required.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4" onPaste={handlePastedImages}>
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-muted-foreground">Your note</span>
             <Textarea
@@ -217,7 +243,8 @@ export default function FeedbackDialog({
               <div>
                 <div className="text-xs font-medium text-muted-foreground">Attach screenshots</div>
                 <div className="text-[11px] leading-snug text-muted-foreground/80">
-                  Optional. Up to {MAX_ATTACHMENTS} images, 5 MB each.
+                  Paste screenshots here or use Add image. Up to {MAX_ATTACHMENTS} images, 5 MB
+                  each.
                 </div>
               </div>
               <Button type="button" variant="outline" size="sm" asChild>

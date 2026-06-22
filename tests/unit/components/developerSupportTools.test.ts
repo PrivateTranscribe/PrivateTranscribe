@@ -97,6 +97,10 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackDialog).toContain("Attach screenshots");
     expect(feedbackDialog).toContain("MAX_ATTACHMENTS");
     expect(feedbackDialog).toContain("FileReader");
+    expect(feedbackDialog).toContain("handlePastedImages");
+    expect(feedbackDialog).toContain("onPaste={handlePastedImages}");
+    expect(feedbackDialog).toContain("Paste screenshots here or use Add image");
+    expect(feedbackDialog).toContain("setAttachmentError");
     expect(feedbackDialog).not.toContain("includeSystemInfo");
     expect(ipcHandlers).toContain("systemInfo: {");
     expect(ipcHandlers).toContain("app.getVersion()");
@@ -126,6 +130,8 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackFunction).toContain("uploadFeedbackAttachments");
     expect(feedbackFunction).toContain("createSignedUrl");
     expect(feedbackFunction).toContain("Attachment");
+    expect(feedbackFunction).toContain("feature: 0x38bdf8");
+    expect(feedbackFunction).toContain("general: 0x8b5cf6");
     expect(attachmentMigration).toContain("feedback-attachments");
     expect(attachmentMigration).toContain("attachments jsonb");
   });
