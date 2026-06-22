@@ -6,6 +6,11 @@ import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import {
+  buildDictionaryPrompt,
+  getDictionaryRepairTerms,
+  parseDictionaryEntryModes,
+} from "../utils/dictionaryEntryModes";
+import {
   getContext,
   isSmartContextEnabled,
   isFileIdentifiersEnabled,
@@ -326,6 +331,7 @@ class AudioManager {
   getCustomDictionaryPrompt() {
     try {
       const raw = localStorage.getItem("customDictionary");
+      const modes = parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"));
       const words = [];
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -338,7 +344,7 @@ class AudioManager {
         words.push(...this._cachedCorrectionHints);
       }
       const unique = [...new Set(words.filter(Boolean))];
-      return unique.length > 0 ? unique.join(", ") : null;
+      return buildDictionaryPrompt(unique, modes);
     } catch {
       // ignore parse errors
     }
@@ -2065,9 +2071,14 @@ class AudioManager {
       if (!raw) return text;
       const words = JSON.parse(raw);
       if (!Array.isArray(words) || words.length === 0) return text;
+      const repairWords = getDictionaryRepairTerms(
+        words,
+        parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"))
+      );
+      if (repairWords.length === 0) return text;
 
-      let result = repairSplitDictionaryTerms(text, words);
-      for (const word of words) {
+      let result = repairSplitDictionaryTerms(text, repairWords);
+      for (const word of repairWords) {
         if (!word || typeof word !== "string") continue;
         // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

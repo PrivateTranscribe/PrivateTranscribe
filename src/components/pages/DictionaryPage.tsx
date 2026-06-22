@@ -5,6 +5,24 @@ import { Input } from "../ui/input";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
+import {
+  DEFAULT_DICTIONARY_ENTRY_MODE,
+  DICTIONARY_ENTRY_MODES,
+  getDictionaryEntryMode,
+  type DictionaryEntryMode,
+} from "../../utils/dictionaryEntryModes";
+
+const MODE_LABELS: Record<DictionaryEntryMode, string> = {
+  hint: "Hint",
+  exact: "Exact",
+  priority: "Priority",
+};
+
+const MODE_DESCRIPTIONS: Record<DictionaryEntryMode, string> = {
+  hint: "Prompt hint only.",
+  exact: "Prompt hint plus exact spelling repair.",
+  priority: "Extra prompt emphasis plus exact spelling repair.",
+};
 
 function SettingsPanel({ children }: { children: React.ReactNode }) {
   return (
@@ -19,24 +37,41 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
 }
 
 export default function DictionaryPage() {
-  const { customDictionary, setCustomDictionary } = useSettings();
+  const { customDictionary, dictionaryEntryModes, setCustomDictionary, setDictionaryEntryModes } =
+    useSettings();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const [newWord, setNewWord] = useState("");
+  const [newMode, setNewMode] = useState<DictionaryEntryMode>(DEFAULT_DICTIONARY_ENTRY_MODE);
   const [searchFilter, setSearchFilter] = useState("");
 
   const handleAdd = useCallback(() => {
     const word = newWord.trim();
     if (word && !customDictionary.includes(word)) {
       setCustomDictionary([...customDictionary, word]);
+      setDictionaryEntryModes({ ...dictionaryEntryModes, [word]: newMode });
       setNewWord("");
     }
-  }, [newWord, customDictionary, setCustomDictionary]);
+  }, [
+    newWord,
+    newMode,
+    customDictionary,
+    dictionaryEntryModes,
+    setCustomDictionary,
+    setDictionaryEntryModes,
+  ]);
 
   const handleRemove = useCallback(
     (wordToRemove: string) => {
       setCustomDictionary(customDictionary.filter((w) => w !== wordToRemove));
     },
     [customDictionary, setCustomDictionary]
+  );
+
+  const handleModeChange = useCallback(
+    (word: string, mode: DictionaryEntryMode) => {
+      setDictionaryEntryModes({ ...dictionaryEntryModes, [word]: mode });
+    },
+    [dictionaryEntryModes, setDictionaryEntryModes]
   );
 
   const filteredWords = searchFilter
@@ -66,7 +101,7 @@ export default function DictionaryPage() {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Train the speech engine to recognize your unique vocabulary
+          Tell the transcription pipeline which terms should be hinted, repaired, or emphasized.
         </p>
       </div>
 
@@ -86,11 +121,25 @@ export default function DictionaryPage() {
                   }}
                   className="flex-1 h-9 text-[13px]"
                 />
+                <select
+                  value={newMode}
+                  onChange={(e) => setNewMode(e.target.value as DictionaryEntryMode)}
+                  className="h-9 rounded-md border border-border bg-background px-2 text-[12px] text-foreground"
+                  title="Dictionary behavior"
+                >
+                  {DICTIONARY_ENTRY_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {MODE_LABELS[mode]}
+                    </option>
+                  ))}
+                </select>
                 <Button onClick={handleAdd} disabled={!newWord.trim()} size="sm" className="h-9">
                   Add
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground/50">Press Enter to add</p>
+              <p className="text-[10px] text-muted-foreground/50">
+                {MODE_DESCRIPTIONS[newMode]} Press Enter to add.
+              </p>
             </div>
           </SettingsPanelRow>
         </SettingsPanel>
@@ -139,6 +188,20 @@ export default function DictionaryPage() {
                     className="group inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-primary/10 text-foreground rounded-md text-[12px] border border-border-subtle transition-all hover:border-destructive/40 hover:bg-destructive/5"
                   >
                     {word}
+                    <select
+                      value={getDictionaryEntryMode(dictionaryEntryModes, word)}
+                      onChange={(e) =>
+                        handleModeChange(word, e.target.value as DictionaryEntryMode)
+                      }
+                      className="ml-1 rounded border border-border-subtle bg-background/80 px-1 py-0.5 text-[10px] text-muted-foreground"
+                      title={MODE_DESCRIPTIONS[getDictionaryEntryMode(dictionaryEntryModes, word)]}
+                    >
+                      {DICTIONARY_ENTRY_MODES.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {MODE_LABELS[mode]}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       onClick={() => handleRemove(word)}
                       className="ml-0.5 p-0.5 rounded-sm text-muted-foreground/40 hover:text-destructive transition-colors"
@@ -182,17 +245,15 @@ export default function DictionaryPage() {
         <SettingsPanel>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              Words in your dictionary are provided as context hints to the speech recognition
-              model. This helps it correctly identify uncommon names, technical jargon, brand names,
-              or anything that's frequently misrecognized.
+              Hint entries are sent only as transcription context. Exact entries also allow local
+              casing and split-word repair. Priority entries add stronger prompt emphasis for terms
+              Whisper keeps ignoring.
             </p>
           </SettingsPanelRow>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              <span className="font-medium text-foreground">Tip</span> - For difficult words, add
-              context phrases like "The word is Synty" alongside the word itself. Adding related
-              terms (e.g. "Synty" and "SyntyStudios") also helps the model understand the intended
-              spelling.
+              <span className="font-medium text-foreground">Tip</span> - Use Priority only for terms
+              that are often wrong. It is still a model hint, not a hard speech-recognition rule.
             </p>
           </SettingsPanelRow>
         </SettingsPanel>
