@@ -190,7 +190,7 @@ export default function DictionaryPage() {
                 {filteredWords.map((word) => (
                   <span
                     key={word}
-                    className="group inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-primary/10 text-foreground rounded-md text-[12px] border border-border-subtle transition-all hover:border-destructive/40 hover:bg-destructive/5"
+                    className="group inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-primary/10 text-foreground rounded-md text-[12px] border border-border-subtle transition-all hover:border-primary/40 hover:bg-primary/5"
                   >
                     {word}
                     <Select
