@@ -21,6 +21,7 @@
 - Uploaded Windows updater blockmaps before release metadata so updater artifacts are complete.
 - Hardened email backgrounds and logo rendering for desktop and Android mail clients.
 - Improved Windows uninstall cleanup so manual uninstall can remove app data and model caches without affecting updater installs.
+- Prevented uninstall cleanup prompts from appearing during app updates or silent uninstalls.
 
 ## 0.11.4 - 2026-06-17
 
