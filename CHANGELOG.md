@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.2 - 2026-06-23
+
+### Added
+
+- Added screenshot attachments to in-app feedback so testers can paste or add images.
+- Added Discord forwarding with screenshot links and image previews so feedback arrives in one place.
+- Added paste-to-attach (Ctrl+V) in the feedback dialog for faster screenshot sharing.
+
+### Changed
+
+- Differentiated Discord feedback category colors so feature ideas and general feedback no longer look the same.
+- Reduced GitHub Actions artifact retention to avoid hitting storage limits.
+- Feedback now always includes app version and system info with a clear privacy notice instead of an opt-in checkbox.
+
 ## 0.12.1 - 2026-06-22
 
 ### Fixed
