@@ -5,6 +5,7 @@ import { Input } from "../ui/input";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
+import CorrectionMemoryPage from "./CorrectionMemoryPage";
 import {
   DEFAULT_DICTIONARY_ENTRY_MODE,
   DICTIONARY_ENTRY_MODES,
@@ -237,6 +238,10 @@ export default function DictionaryPage() {
             <p className="text-[12px] text-muted-foreground/50">No matches for "{searchFilter}"</p>
           </div>
         )}
+      </div>
+
+      <div className="mb-8">
+        <CorrectionMemoryPage embedded />
       </div>
 
       {/* How it works */}

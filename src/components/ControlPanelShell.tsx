@@ -14,7 +14,6 @@ import TranscribePage from "./pages/TranscribePage";
 import DictionaryPage from "./pages/DictionaryPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
 import VoiceAssistantPage from "./pages/VoiceAssistantPage";
-import CorrectionMemoryPage from "./pages/CorrectionMemoryPage";
 import ActionEnginePage from "./pages/ActionEnginePage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 
@@ -55,7 +54,9 @@ export default function ControlPanelShell() {
     ];
 
     if (validPages.includes(requestedPage as PageId)) {
-      setActivePage(requestedPage as PageId);
+      setActivePage(
+        requestedPage === "correction-memory" ? "dictionary" : (requestedPage as PageId)
+      );
     }
 
     localStorage.removeItem("controlPanelInitialPage");
@@ -169,7 +170,7 @@ export default function ControlPanelShell() {
       case "voice-assistant":
         return <VoiceAssistantPage />;
       case "correction-memory":
-        return <CorrectionMemoryPage />;
+        return <DictionaryPage />;
       case "action-engine":
         return <ActionEnginePage />;
       case "settings":

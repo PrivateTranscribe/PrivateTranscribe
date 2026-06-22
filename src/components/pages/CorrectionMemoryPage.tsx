@@ -37,7 +37,7 @@ function formatDate(v?: string) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export default function CorrectionMemoryPage() {
+export default function CorrectionMemoryPage({ embedded = false }: { embedded?: boolean }) {
   const isUnlocked = isFeatureUnlocked("correction-memory");
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,15 +125,19 @@ export default function CorrectionMemoryPage() {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
+    <div className={embedded ? "space-y-6" : "p-8 max-w-5xl mx-auto space-y-6"}>
       {/* Header */}
       <div className="flex items-start gap-3 mb-2">
         <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-semibold text-foreground tracking-tight">
-              Correction Memory
-            </h1>
+            {embedded ? (
+              <h2 className="text-base font-semibold text-foreground">Always correct</h2>
+            ) : (
+              <h1 className="text-3xl font-semibold text-foreground tracking-tight">
+                Correction Memory
+              </h1>
+            )}
             {!isUnlocked && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
                 <Lock size={10} /> Pro
@@ -141,12 +145,11 @@ export default function CorrectionMemoryPage() {
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Correction Memory stores explicit phrase fixes like{" "}
-            <span className="font-mono text-foreground">use login error</span>
+            Add explicit fixes for common mishears, like{" "}
+            <span className="font-mono text-foreground">cloud</span>
             {" → "}
-            <span className="font-mono text-primary">useLoginError</span> and applies them
-            automatically to future dictations. Your Dictionary is still for names, terms, and
-            preferred words.
+            <span className="font-mono text-primary">Claude</span>. Use this only when you want the
+            source phrase replaced automatically.
           </p>
         </div>
       </div>

@@ -6,7 +6,6 @@ import {
   BookOpen,
   Brain,
   MessageSquare,
-  BookMarked,
   Zap,
   Settings,
 } from "lucide-react";
@@ -49,16 +48,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "SPEECH",
-    items: [
-      { id: "dictionary", label: "Dictionary", icon: BookOpen },
-      {
-        id: "correction-memory",
-        label: "Corrections",
-        icon: BookMarked,
-        badge: "Pro",
-        badgeVariant: "pro",
-      },
-    ],
+    items: [{ id: "dictionary", label: "Dictionary", icon: BookOpen }],
   },
   {
     label: "INTELLIGENCE",
