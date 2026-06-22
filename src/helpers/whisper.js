@@ -30,6 +30,20 @@ function getValidModelNames() {
   return Object.keys(modelRegistryData.whisperModels);
 }
 
+function getMinimumValidModelBytes(modelName) {
+  const modelConfig = getWhisperModelConfig(modelName);
+  return modelConfig?.size
+    ? Math.floor(modelConfig.size * MIN_EXPECTED_MODEL_RATIO)
+    : MIN_VALID_MODEL_BYTES;
+}
+
+function getInvalidModelMessage(modelName, actualBytes) {
+  const minBytes = getMinimumValidModelBytes(modelName);
+  return `Whisper model "${modelName}" is incomplete or corrupt (${Math.round(
+    actualBytes / (1024 * 1024)
+  )}MB, expected at least ${Math.round(minBytes / (1024 * 1024))}MB). Please re-download it from Settings.`;
+}
+
 function isPathInsideDirectory(childPath, parentDir) {
   const relative = path.relative(path.resolve(parentDir), path.resolve(childPath));
   return (
@@ -314,9 +328,13 @@ class WhisperManager {
     const inputFileName = options.inputFileName || null;
     const modelPath = this.getModelPath(model);
 
-    // Check if model exists
-    if (!fs.existsSync(modelPath)) {
+    // Check if model exists and looks complete
+    const modelStatus = this.getModelFileStatus(model);
+    if (!modelStatus.exists) {
       throw new Error(`Whisper model "${model}" not downloaded. Please download it from Settings.`);
+    }
+    if (!modelStatus.valid) {
+      throw new Error(getInvalidModelMessage(model, modelStatus.size));
     }
 
     return await this.transcribeViaServer(
@@ -445,9 +463,27 @@ class WhisperManager {
     throw new Error(`Unsupported audio data type for diarization: ${typeof audioBlob}`);
   }
 
+  getModelFileStatus(modelName) {
+    const modelPath = this.getModelPath(modelName);
+
+    if (!fs.existsSync(modelPath)) {
+      return { modelPath, exists: false, valid: false, size: 0 };
+    }
+
+    const stats = fs.statSync(modelPath);
+    const minSize = getMinimumValidModelBytes(modelName);
+    return {
+      modelPath,
+      exists: true,
+      valid: stats.size >= minSize,
+      size: stats.size,
+      minSize,
+    };
+  }
+
   isModelDownloaded(modelName) {
     try {
-      return fs.existsSync(this.getModelPath(modelName));
+      return this.getModelFileStatus(modelName).valid;
     } catch {
       return false;
     }
@@ -633,14 +669,23 @@ class WhisperManager {
 
     if (fs.existsSync(modelPath)) {
       const stats = await fsPromises.stat(modelPath);
-      return {
+      if (stats.size >= getMinimumValidModelBytes(modelName)) {
+        return {
+          model: modelName,
+          downloaded: true,
+          path: modelPath,
+          size_bytes: stats.size,
+          size_mb: Math.round(stats.size / (1024 * 1024)),
+          success: true,
+        };
+      }
+
+      debugLogger.warn("Removing incomplete Whisper model before re-download", {
         model: modelName,
-        downloaded: true,
         path: modelPath,
-        size_bytes: stats.size,
-        size_mb: Math.round(stats.size / (1024 * 1024)),
-        success: true,
-      };
+        sizeBytes: stats.size,
+      });
+      await fsPromises.unlink(modelPath).catch(() => {});
     }
 
     if (this.currentDownloadProcess) {
@@ -675,22 +720,12 @@ class WhisperManager {
       });
 
       const stats = await fsPromises.stat(modelPath);
-      const expectedSize = modelConfig.size;
-      const minSize = expectedSize
-        ? Math.floor(expectedSize * MIN_EXPECTED_MODEL_RATIO)
-        : MIN_VALID_MODEL_BYTES;
+      const minSize = getMinimumValidModelBytes(modelName);
 
       // TODO: Verify downloaded Whisper models against a SHA256 manifest.
       if (stats.size < minSize) {
         await fsPromises.unlink(modelPath).catch(() => {});
-        const expectedDescription = expectedSize
-          ? `expected at least ${Math.round(minSize / (1024 * 1024))}MB`
-          : "expected at least 1MB";
-        throw new Error(
-          `Downloaded Whisper model is too small (${Math.round(
-            stats.size / (1024 * 1024)
-          )}MB, ${expectedDescription})`
-        );
+        throw new Error(getInvalidModelMessage(modelName, stats.size));
       }
 
       if (progressCallback) {
@@ -733,12 +768,15 @@ class WhisperManager {
 
     if (fs.existsSync(modelPath)) {
       const stats = await fsPromises.stat(modelPath);
+      const downloaded = stats.size >= getMinimumValidModelBytes(modelName);
       return {
         model: modelName,
-        downloaded: true,
+        downloaded,
+        valid: downloaded,
         path: modelPath,
         size_bytes: stats.size,
         size_mb: Math.round(stats.size / (1024 * 1024)),
+        error: downloaded ? undefined : getInvalidModelMessage(modelName, stats.size),
         success: true,
       };
     }
