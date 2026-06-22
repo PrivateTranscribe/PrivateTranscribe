@@ -2,11 +2,7 @@ import { getModelProvider, getCloudModel } from "../models/ModelRegistry";
 import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
-import {
-  getSystemPrompt as buildSystemPrompt,
-  UNIFIED_SYSTEM_PROMPT,
-  LEGACY_PROMPTS,
-} from "../config/prompts";
+import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import {
@@ -15,12 +11,6 @@ import {
   isLlmContextEnhancementEnabled,
   isLlmFileContentEnabled,
 } from "../helpers/contextPipeline";
-
-/**
- * @deprecated Use UNIFIED_SYSTEM_PROMPT from ../config/prompts instead
- * Kept for backwards compatibility with PromptStudio UI
- */
-export const DEFAULT_PROMPTS = LEGACY_PROMPTS;
 
 export interface ReasoningConfig {
   maxTokens?: number;

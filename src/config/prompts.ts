@@ -1,7 +1,6 @@
 import promptData from "./promptData.json";
 
 export const UNIFIED_SYSTEM_PROMPT = promptData.UNIFIED_SYSTEM_PROMPT;
-export const LEGACY_PROMPTS = promptData.LEGACY_PROMPTS;
 const DICTIONARY_SUFFIX = promptData.DICTIONARY_SUFFIX;
 
 export function buildPrompt(text: string, agentName: string | null): string {
@@ -55,5 +54,4 @@ export default {
   buildPrompt,
   getSystemPrompt,
   getUserPrompt,
-  LEGACY_PROMPTS,
 };
