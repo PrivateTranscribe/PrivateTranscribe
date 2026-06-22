@@ -78,7 +78,16 @@ jobs:
 
           # Upload installer + portable exe
           for f in dist/*.exe; do
-            aws s3 cp "$f" "s3://$R2_BUCKET/win/$(basename $f)" \
+            aws s3 cp "$f" "s3://$R2_BUCKET/win/$(basename "$f")" \
+              --endpoint-url "$R2_ENDPOINT" \
+              --no-progress
+            echo "Uploaded: $f"
+          done
+
+          # Upload differential update blockmaps alongside installers.
+          for f in dist/*.exe.blockmap; do
+            [ -e "$f" ] || continue
+            aws s3 cp "$f" "s3://$R2_BUCKET/win/$(basename "$f")" \
               --endpoint-url "$R2_ENDPOINT" \
               --no-progress
             echo "Uploaded: $f"
