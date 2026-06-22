@@ -62,9 +62,7 @@
     "!**/node_modules/class-variance-authority/**",
     "!**/node_modules/clsx/**",
     "!**/node_modules/tailwind-merge/**",
-    "!**/node_modules/tw-animate-css/**",
     "!**/node_modules/react-markdown/**",
-    "!**/node_modules/shadcn-ui/**",
 
     "!**/node_modules/@types/**",
     "!**/node_modules/concurrently/**",
