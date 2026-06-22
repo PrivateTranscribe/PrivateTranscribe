@@ -3,11 +3,6 @@ import promptData from "./promptData.json";
 export const UNIFIED_SYSTEM_PROMPT = promptData.UNIFIED_SYSTEM_PROMPT;
 const DICTIONARY_SUFFIX = promptData.DICTIONARY_SUFFIX;
 
-export function buildPrompt(text: string, agentName: string | null): string {
-  const name = agentName?.trim() || "Assistant";
-  return UNIFIED_SYSTEM_PROMPT.replace(/\{\{agentName\}\}/g, name).replace(/\{\{text\}\}/g, text);
-}
-
 export function getSystemPrompt(
   agentName: string | null,
   customDictionary?: string[],
@@ -44,14 +39,3 @@ export function getSystemPrompt(
 
   return prompt;
 }
-
-export function getUserPrompt(text: string): string {
-  return text;
-}
-
-export default {
-  UNIFIED_SYSTEM_PROMPT,
-  buildPrompt,
-  getSystemPrompt,
-  getUserPrompt,
-};
