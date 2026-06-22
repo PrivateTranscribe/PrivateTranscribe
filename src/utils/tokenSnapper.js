@@ -30,6 +30,14 @@ const normalizeSpoken = (text) => {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const extractLearningTokens = (text) => {
+  const rawTokens = String(text || "").match(/[\p{L}\p{N}][\p{L}\p{N}._-]*/gu) || [];
+  return rawTokens.map((raw) => ({
+    raw,
+    normalized: normalizeSpoken(raw),
+  }));
+};
+
 /**
  * Snap phrases in a transcript to known identifiers (dictionary + correction memory).
  *
@@ -105,7 +113,7 @@ export function inferCorrectionPairs(insertedText, correctedText) {
 
   const a = normalizeSpoken(insertedText);
   const b = normalizeSpoken(correctedText);
-  if (!a || !b || a === b) return [];
+  if (!a || !b) return [];
 
   // Guardrail: only learn when the "corrected" text is clearly derived from the inserted text.
   // This avoids poisoning Correction Memory when the user simply undoes/reverts the paste,
@@ -131,15 +139,22 @@ export function inferCorrectionPairs(insertedText, correctedText) {
   // Require at least 50% token overlap (fairly lenient for small edits, but blocks full reverts).
   if (overlap < 0.5) return [];
 
-  // Heuristic v1: if both are single "identifier-like" tokens, learn that mapping.
-  const aTokens = a.split(" ").filter(Boolean);
-  const bTokens = b.split(" ").filter(Boolean);
+  // Auto-learning is word-level: source and corrected text must have the same token count.
+  const sourceTokens = extractLearningTokens(insertedText);
+  const targetTokens = extractLearningTokens(correctedText);
+  if (sourceTokens.length !== targetTokens.length || sourceTokens.length > 30) return [];
+
+  const aTokens = sourceTokens.map((token) => token.normalized);
+  const bTokens = targetTokens.map((token) => token.normalized);
 
   if (aTokens.length === 1 && bTokens.length === 1) {
-    return [{ source: aTokens[0], target: bTokens[0] }];
+    return sourceTokens[0].raw !== targetTokens[0].raw || aTokens[0] !== bTokens[0]
+      ? [{ source: aTokens[0], target: targetTokens[0].raw }]
+      : [];
   }
 
-  // Heuristic v1.5: if the user corrected a multi-word phrase into a single identifier,
+  // Same-token guard above intentionally blocks multi-word phrase learning here.
+  // If the user corrected a multi-word phrase into a single identifier,
   // learn the *phrase → identifier* mapping (e.g. "is login error" → "isLoginError").
   //
   // Notes:
@@ -161,7 +176,9 @@ export function inferCorrectionPairs(insertedText, correctedText) {
     const pairs = [];
     for (let i = 0; i < aTokens.length; i++) {
       if (aTokens[i] !== bTokens[i]) {
-        pairs.push({ source: aTokens[i], target: bTokens[i] });
+        pairs.push({ source: aTokens[i], target: targetTokens[i].raw });
+      } else if (sourceTokens[i].raw !== targetTokens[i].raw) {
+        pairs.push({ source: aTokens[i], target: targetTokens[i].raw });
       }
     }
     // Cap to avoid learning nonsense.

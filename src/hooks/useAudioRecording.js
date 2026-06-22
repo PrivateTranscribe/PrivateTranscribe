@@ -277,8 +277,8 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
-        // Correction memory: only surface the learn action after the user has actually
-        // copied a changed version, not after every transcription.
+        // Correction memory: only surface the learn action after the user copies
+        // a changed version, not after every transcription.
         try {
           const enableLearning =
             (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
@@ -319,7 +319,7 @@ export const useAudioRecording = (toast, options = {}) => {
 
               toastRef.current?.({
                 title: "Teach Correction Memory",
-                description: "Copied correction detected. Click Learn to save it.",
+                description: "Copied word correction detected. Click Learn to save it.",
                 duration: 12000,
                 action: React.createElement(
                   "button",

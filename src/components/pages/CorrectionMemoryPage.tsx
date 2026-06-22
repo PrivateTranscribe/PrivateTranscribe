@@ -4,7 +4,9 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Toggle } from "../ui/toggle";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { useSettings } from "../../hooks/useSettings";
 
 type CorrectionRow = {
   source: string;
@@ -37,8 +39,13 @@ function formatDate(v?: string) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function isSingleWord(value: string) {
+  return /^\S+$/.test(value.trim());
+}
+
 export default function CorrectionMemoryPage({ embedded = false }: { embedded?: boolean }) {
   const isUnlocked = isFeatureUnlocked("correction-memory");
+  const { enableCorrectionLearning, setEnableCorrectionLearning } = useSettings();
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +104,10 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
     const s = source.trim();
     const t = target.trim();
     if (!s || !t || s === t) return;
+    if (!isSingleWord(s) || !isSingleWord(t)) {
+      setError("Corrections are word-level only. Add one source word and one replacement word.");
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
@@ -177,6 +188,26 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
 
       {isUnlocked && (
         <>
+          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  Auto-learn word corrections
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  After dictation, copy the corrected text once. PrivateTranscribe will offer to
+                  learn word replacements like cloud {"->"} Claude. It will not learn full sentence
+                  rewrites.
+                </p>
+              </div>
+              <Toggle
+                checked={enableCorrectionLearning}
+                onChange={setEnableCorrectionLearning}
+                disabled={!isUnlocked}
+              />
+            </div>
+          </div>
+
           {/* Add correction */}
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
             <div>
@@ -188,13 +219,13 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
-                placeholder="Source - what you say / what STT outputs"
+                placeholder="Source word - e.g. cloud"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               />
               <Input
-                placeholder="Target - what should be inserted"
+                placeholder="Replacement word - e.g. Claude"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
@@ -207,7 +238,16 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                   ? `Updating “${existingForSource.source}” will overwrite the current target.`
                   : null}
               </div>
-              <Button onClick={handleAdd} disabled={saving || !source.trim() || !target.trim()}>
+              <Button
+                onClick={handleAdd}
+                disabled={
+                  saving ||
+                  !source.trim() ||
+                  !target.trim() ||
+                  !isSingleWord(source) ||
+                  !isSingleWord(target)
+                }
+              >
                 {saving ? "Saving…" : existingForSource ? "Update correction" : "Add correction"}
               </Button>
             </div>
