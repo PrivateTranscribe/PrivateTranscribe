@@ -5,6 +5,8 @@ export const normalizeBaseUrl = (value?: string | null): string => {
   let normalized = value.trim();
   if (!normalized) return "";
 
+  normalized = normalized.replace(/\/+$/, "");
+
   // Remove common API endpoint suffixes to get the base URL
   const suffixReplacements: Array<[RegExp, string]> = [
     [/\/v1\/chat\/completions$/i, "/v1"],
