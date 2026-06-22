@@ -51,16 +51,3 @@ export function createApiRetryStrategy() {
     },
   };
 }
-
-// Specific retry strategy for file operations
-export function createFileRetryStrategy() {
-  return {
-    shouldRetry: (error: any) => {
-      // Retry on temporary file system errors
-      const retriableErrors = ["EBUSY", "ENOENT", "EPERM", "EAGAIN"];
-      return retriableErrors.includes(error.code);
-    },
-    maxRetries: 2,
-    initialDelay: 500,
-  };
-}
