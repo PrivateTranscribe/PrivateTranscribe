@@ -355,7 +355,7 @@ export default function HardwareSetupStep({
                 <Wrench className="w-3.5 h-3.5 text-warning" />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-medium text-foreground">To enable GPU acceleration:</h4>
+                <h4 className="text-xs font-medium text-foreground">To enable GPU acceleration</h4>
                 <ol className="mt-1.5 space-y-1 list-none">
                   {recoverySteps.map((step, idx) => (
                     <li

@@ -1,5 +1,6 @@
 const { ipcMain, app, shell, dialog, BrowserWindow } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const { execFile } = require("child_process");
@@ -15,6 +16,8 @@ const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const { formatTranscript } = require("./transcriptFormatter");
 const {
+  DEFAULT_AUTO_START_LAUNCH_MODE,
+  normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
 } = require("./autoStartLoginItemSettings");
@@ -109,6 +112,30 @@ function postJson(urlString, payload, headers = {}) {
   });
 }
 
+function sanitizeFeedbackAttachments(rawAttachments) {
+  if (!Array.isArray(rawAttachments)) return [];
+
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  return rawAttachments
+    .slice(0, 3)
+    .map((attachment) => {
+      const value = attachment && typeof attachment === "object" ? attachment : {};
+      const name = typeof value.name === "string" ? value.name.trim().slice(0, 120) : "screenshot";
+      const type = typeof value.type === "string" ? value.type.trim() : "";
+      const dataUrl = typeof value.dataUrl === "string" ? value.dataUrl : "";
+      const size = Number.isFinite(value.size) ? Number(value.size) : 0;
+
+      if (!allowedTypes.has(type) || !dataUrl.startsWith(`data:${type};base64,`)) {
+        return null;
+      }
+      if (size <= 0 || size > 5 * 1024 * 1024) {
+        return null;
+      }
+      return { name: name || "screenshot", type, size, dataUrl };
+    })
+    .filter(Boolean);
+}
+
 function buildFeedbackPayload(rawPayload) {
   const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
   const message = typeof payload.message === "string" ? payload.message.trim() : "";
@@ -122,19 +149,8 @@ function buildFeedbackPayload(rawPayload) {
   }
 
   const analyticsManager = require("./analyticsManager");
-  const allowedCategories = new Set([
-    "install",
-    "onboarding",
-    "transcription",
-    "hotkey",
-    "performance",
-    "bug",
-    "confusing",
-    "feature",
-    "general",
-  ]);
+  const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
   const category = allowedCategories.has(payload.category) ? payload.category : "general";
-  const includeSystemInfo = payload.includeSystemInfo !== false;
 
   return {
     message,
@@ -142,19 +158,20 @@ function buildFeedbackPayload(rawPayload) {
     contact: typeof payload.contact === "string" ? payload.contact.trim().slice(0, 300) : null,
     source: typeof payload.source === "string" ? payload.source.slice(0, 80) : "unknown",
     appVersion:
-      typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
+      typeof payload.appVersion === "string" && payload.appVersion.trim()
+        ? payload.appVersion.trim().slice(0, 80)
+        : app.getVersion(),
     deviceId: analyticsManager.getDeviceIdForExplicitFeedback(),
     submittedAt: new Date().toISOString(),
-    systemInfo: includeSystemInfo
-      ? {
-          platform: process.platform,
-          arch: process.arch,
-          electron: process.versions.electron,
-          chrome: process.versions.chrome,
-          node: process.versions.node,
-          isPackaged: app.isPackaged,
-        }
-      : null,
+    attachments: sanitizeFeedbackAttachments(payload.attachments),
+    systemInfo: {
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+      isPackaged: app.isPackaged,
+    },
   };
 }
 
@@ -240,6 +257,62 @@ class IPCHandlers {
       });
       this.environmentManager.saveAllKeysToEnvFile();
     }
+  }
+
+  _getAutoStartPreferencesPath() {
+    return path.join(app.getPath("userData"), "auto-start-preferences.json");
+  }
+
+  _readAutoStartLaunchMode() {
+    try {
+      const raw = fs.readFileSync(this._getAutoStartPreferencesPath(), "utf8");
+      const parsed = JSON.parse(raw);
+      return normalizeAutoStartLaunchMode(parsed?.launchMode);
+    } catch {
+      return DEFAULT_AUTO_START_LAUNCH_MODE;
+    }
+  }
+
+  _writeAutoStartLaunchMode(launchMode) {
+    const normalized = normalizeAutoStartLaunchMode(launchMode);
+    fs.writeFileSync(
+      this._getAutoStartPreferencesPath(),
+      JSON.stringify({ launchMode: normalized }, null, 2),
+      "utf8"
+    );
+    return normalized;
+  }
+
+  _buildAutoStartSetOptions(enabled, launchMode = this._readAutoStartLaunchMode()) {
+    return buildAutoStartSetOptions({
+      enabled,
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath(),
+      launchMode,
+    });
+  }
+
+  _buildAutoStartLaunchOptions(launchMode = this._readAutoStartLaunchMode()) {
+    return buildAutoStartLaunchOptions({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath(),
+      launchMode,
+    });
+  }
+
+  _getAutoStartEnabled(launchMode = this._readAutoStartLaunchMode()) {
+    const loginSettings = app.getLoginItemSettings(this._buildAutoStartLaunchOptions(launchMode));
+    if (loginSettings.openAtLogin || process.platform !== "win32") {
+      return loginSettings.openAtLogin;
+    }
+
+    // Older installs registered the app without the explicit startup-mode args.
+    // Preserve their enabled state when the user changes launch mode.
+    return app.getLoginItemSettings().openAtLogin;
   }
 
   setupHandlers() {
@@ -1176,15 +1249,7 @@ class IPCHandlers {
     // Auto-start handlers
     ipcMain.handle("get-auto-start-enabled", async () => {
       try {
-        const loginSettings = app.getLoginItemSettings(
-          buildAutoStartLaunchOptions({
-            platform: process.platform,
-            isPackaged: app.isPackaged,
-            execPath: process.execPath,
-            appPath: app.getAppPath(),
-          })
-        );
-        return loginSettings.openAtLogin;
+        return this._getAutoStartEnabled();
       } catch (error) {
         debugLogger.error("Error getting auto-start status:", error);
         return false;
@@ -1193,19 +1258,33 @@ class IPCHandlers {
 
     ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
       try {
-        app.setLoginItemSettings(
-          buildAutoStartSetOptions({
-            enabled,
-            platform: process.platform,
-            isPackaged: app.isPackaged,
-            execPath: process.execPath,
-            appPath: app.getAppPath(),
-          })
-        );
-        debugLogger.debug("Auto-start setting updated", { enabled });
+        const launchMode = this._readAutoStartLaunchMode();
+        app.setLoginItemSettings(this._buildAutoStartSetOptions(enabled, launchMode));
+        debugLogger.debug("Auto-start setting updated", { enabled, launchMode });
         return { success: true };
       } catch (error) {
         debugLogger.error("Error setting auto-start:", error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("get-auto-start-launch-mode", async () => {
+      return this._readAutoStartLaunchMode();
+    });
+
+    ipcMain.handle("set-auto-start-launch-mode", async (event, mode) => {
+      try {
+        const previousLaunchMode = this._readAutoStartLaunchMode();
+        const wasEnabled = this._getAutoStartEnabled(previousLaunchMode);
+        const launchMode = this._writeAutoStartLaunchMode(mode);
+        app.setLoginItemSettings(this._buildAutoStartSetOptions(wasEnabled, launchMode));
+        debugLogger.debug("Auto-start launch mode updated", {
+          launchMode,
+          enabled: wasEnabled,
+        });
+        return { success: true, launchMode };
+      } catch (error) {
+        debugLogger.error("Error setting auto-start launch mode:", error);
         return { success: false, error: error.message };
       }
     });
@@ -1540,38 +1619,6 @@ class IPCHandlers {
         return await LocalReasoningService.isAvailable();
       } catch (error) {
         return false;
-      }
-    });
-
-    // llama.cpp installation handlers
-    ipcMain.handle("llama-cpp-check", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const isInstalled = await llamaCppInstaller.isInstalled();
-        const version = isInstalled ? await llamaCppInstaller.getVersion() : null;
-        return { isInstalled, version };
-      } catch (error) {
-        return { isInstalled: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-cpp-install", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const result = await llamaCppInstaller.install();
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("llama-cpp-uninstall", async () => {
-      try {
-        const llamaCppInstaller = require("./llamaCppInstaller").default;
-        const result = await llamaCppInstaller.uninstall();
-        return result;
-      } catch (error) {
-        return { success: false, error: error.message };
       }
     });
 

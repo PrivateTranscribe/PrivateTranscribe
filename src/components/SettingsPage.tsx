@@ -77,6 +77,7 @@ const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
 const WHISPER_IDLE_TIMEOUT_MIN = 1;
 const WHISPER_IDLE_TIMEOUT_MAX = 1440;
+type AutoStartLaunchMode = "tray" | "minimized" | "window";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -426,7 +427,7 @@ function GpuStatusCard({
   activeProvider,
   activeWhisperForceCpu,
 }: {
-  /** localTranscriptionProvider from parent — avoids stale useSettings() copy */
+  /** localTranscriptionProvider from parent - avoids stale useSettings() copy */
   activeProvider: string;
   activeWhisperForceCpu: boolean;
 }) {
@@ -556,7 +557,7 @@ function GpuStatusCard({
     setBenchState("running");
     setBenchError(null);
     try {
-      // Use props (not settings) — GpuStatusCard's own useSettings() copy can be stale
+      // Use props (not settings) - GpuStatusCard's own useSettings() copy can be stale
       // if localTranscriptionProvider was changed by the model picker above.
       const provider = activeProvider === "nvidia" ? "nvidia" : "whisper";
       const model =
@@ -684,10 +685,10 @@ function GpuStatusCard({
                     )}
                     <span>
                       {cudaEffectiveEngine === "cuda"
-                        ? "CUDA engine active — Whisper is using GPU acceleration."
+                        ? "CUDA engine active - Whisper is using GPU acceleration."
                         : cudaFallbackActive
                           ? "CUDA engine installed, but Whisper fell back to CPU."
-                          : "CUDA engine installed — run a transcription or speed test to verify GPU use."}
+                          : "CUDA engine installed - run a transcription or speed test to verify GPU use."}
                     </span>
                   </div>
                 ) : downloadState === "error" ? (
@@ -771,13 +772,13 @@ function GpuStatusCard({
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      No discrete GPU detected — CPU transcription only
+                      No discrete GPU detected - CPU transcription only
                     </p>
                   )}
                   {isNvidiaNoCuda && rec?.recoverySteps && rec.recoverySteps.length > 0 && (
                     <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5">
                       <p className="text-[11px] font-medium text-foreground">
-                        To enable GPU acceleration:
+                        To enable GPU acceleration
                       </p>
                       <ol className="space-y-1 list-none">
                         {rec.recoverySteps.map((step, i) => (
@@ -865,8 +866,8 @@ function GpuStatusCard({
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     {compState === "running"
-                      ? "Running Whisper vs Parakeet comparison — testing both engines on a 10-second sample…"
-                      : "Running speed test — transcribing a 10-second sample…"}
+                      ? "Running Whisper vs Parakeet comparison - testing both engines on a 10-second sample…"
+                      : "Running speed test - transcribing a 10-second sample…"}
                   </div>
                 </div>
               )}
@@ -874,13 +875,13 @@ function GpuStatusCard({
               {benchState === "error" && (
                 <div className="mb-3 flex items-center gap-2 text-xs text-destructive">
                   <AlertCircle className="w-3 h-3" />
-                  Speed test failed: {benchError}
+                  Speed test failed - {benchError}
                 </div>
               )}
               {compState === "error" && (
                 <div className="mb-3 flex items-center gap-2 text-xs text-destructive">
                   <AlertCircle className="w-3 h-3" />
-                  Comparison failed: {compError}
+                  Comparison failed - {compError}
                 </div>
               )}
 
@@ -891,7 +892,7 @@ function GpuStatusCard({
                   size="sm"
                   className="h-7 gap-1.5 text-[11px]"
                   disabled={benchState === "running" || compState === "running"}
-                  title={`Benchmarks the active engine: ${activeProvider === "nvidia" ? "Parakeet" : activeWhisperForceCpu ? "Whisper (CPU)" : "Whisper (GPU)"}`}
+                  title={`Benchmarks the active engine - ${activeProvider === "nvidia" ? "Parakeet" : activeWhisperForceCpu ? "Whisper (CPU)" : "Whisper (GPU)"}`}
                 >
                   <Timer className="w-3 h-3" />
                   {benchResult ? "Re-run Speed Test" : "Run Speed Test"}
@@ -1098,6 +1099,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setEnableVariableSnapping,
     enableCorrectionLearning,
     setEnableCorrectionLearning,
+    enablePhraseCorrectionLearning,
+    setEnablePhraseCorrectionLearning,
     smartContextEnabled,
     setSmartContextEnabled,
     enableFileIdentifiers,
@@ -1136,15 +1139,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
 
-  // GPU support status — fetched only when the transcription picker is visible.
+  // GPU support status and model recommendation - fetched only when the picker is visible.
   const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
+  const [recommendedWhisperModelForPicker, setRecommendedWhisperModelForPicker] = useState<
+    string | undefined
+  >(undefined);
   useEffect(() => {
     if (activeSection !== "transcription") return;
     window.electronAPI
       ?.detectHardware?.()
-      .then((result) =>
-        setGpuSupportedForPicker(result?.detection?.recommendations?.gpuCategory === "nvidia_cuda")
-      )
+      .then((result) => {
+        const recommendations = result?.detection?.recommendations;
+        setGpuSupportedForPicker(recommendations?.gpuCategory === "nvidia_cuda");
+        setRecommendedWhisperModelForPicker(recommendations?.whisperModel);
+      })
       .catch(() => {});
   }, [activeSection]);
 
@@ -1244,6 +1252,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           musicDuckLevel,
           enableVariableSnapping,
           enableCorrectionLearning,
+          enablePhraseCorrectionLearning,
           smartContextEnabled,
           enableFileIdentifiers,
           llmContextEnhancement,
@@ -1301,6 +1310,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       musicDuckLevel,
       enableVariableSnapping,
       enableCorrectionLearning,
+      enablePhraseCorrectionLearning,
       smartContextEnabled,
       enableFileIdentifiers,
       llmContextEnhancement,
@@ -1467,6 +1477,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         setEnableVariableSnapping(s.enableVariableSnapping);
       if (typeof s.enableCorrectionLearning === "boolean")
         setEnableCorrectionLearning(s.enableCorrectionLearning);
+      if (typeof s.enablePhraseCorrectionLearning === "boolean")
+        setEnablePhraseCorrectionLearning(s.enablePhraseCorrectionLearning);
       if (typeof s.smartContextEnabled === "boolean") setSmartContextEnabled(s.smartContextEnabled);
       if (typeof s.enableFileIdentifiers === "boolean")
         setEnableFileIdentifiers(s.enableFileIdentifiers);
@@ -1525,6 +1537,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setMusicDuckLevel,
       setEnableVariableSnapping,
       setEnableCorrectionLearning,
+      setEnablePhraseCorrectionLearning,
       setPauseMediaOnRecord,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,
@@ -1641,6 +1654,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   );
 
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [autoStartLaunchMode, setAutoStartLaunchMode] = useState<AutoStartLaunchMode>("tray");
   const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
 
@@ -1652,8 +1666,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     const loadAutoStart = async () => {
       if (window.electronAPI?.getAutoStartEnabled) {
         try {
-          const enabled = await window.electronAPI.getAutoStartEnabled();
+          const [enabled, launchMode] = await Promise.all([
+            window.electronAPI.getAutoStartEnabled(),
+            window.electronAPI.getAutoStartLaunchMode?.() ?? Promise.resolve("tray"),
+          ]);
           setAutoStartEnabled(enabled);
+          setAutoStartLaunchMode(launchMode);
         } catch (error) {
           console.error("Failed to get auto-start status:", error);
         }
@@ -1675,6 +1693,24 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         console.error("Failed to set auto-start:", error);
       } finally {
         setAutoStartLoading(false);
+      }
+    }
+  };
+
+  const handleAutoStartLaunchModeChange = async (mode: AutoStartLaunchMode) => {
+    if (window.electronAPI?.setAutoStartLaunchMode) {
+      const previousMode = autoStartLaunchMode;
+      try {
+        setAutoStartLaunchMode(mode);
+        const result = await window.electronAPI.setAutoStartLaunchMode(mode);
+        if (!result.success) {
+          setAutoStartLaunchMode(previousMode);
+        } else if (result.launchMode) {
+          setAutoStartLaunchMode(result.launchMode);
+        }
+      } catch (error) {
+        setAutoStartLaunchMode(previousMode);
+        console.error("Failed to set auto-start launch mode:", error);
       }
     }
   };
@@ -1856,7 +1892,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                           if (result?.updateAvailable) {
                             showAlertDialog({
                               title: "Update Available",
-                              description: `Update available: v${result.version || "new version"}`,
+                              description: `Update available - v${result.version || "new version"}`,
                             });
                           } else {
                             showAlertDialog({
@@ -2009,12 +2045,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {/* Startup */}
             {platform !== "linux" && (
               <div>
-                <SectionHeader title="Startup" />
+                <SectionHeader
+                  title="Startup"
+                  description="Control whether PrivateTranscribe is ready after you sign in"
+                />
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Start on boot"
-                      description="PrivateTranscribe starts automatically when your computer turns on"
+                      label="Start PrivateTranscribe when I log in"
+                      description="Keeps the dictation hotkey ready after restart."
                     >
                       <Toggle
                         checked={autoStartEnabled}
@@ -2023,6 +2062,37 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       />
                     </SettingsRow>
                   </SettingsPanelRow>
+
+                  {autoStartEnabled && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="At login, open as"
+                        description={
+                          autoStartLaunchMode === "tray"
+                            ? "Recommended - starts quietly in the tray without opening a window."
+                            : autoStartLaunchMode === "minimized"
+                              ? "Shows a taskbar entry, but does not steal focus."
+                              : "Opens the control panel so the app is visible immediately."
+                        }
+                      >
+                        <Select
+                          value={autoStartLaunchMode}
+                          onValueChange={(value) =>
+                            handleAutoStartLaunchModeChange(value as AutoStartLaunchMode)
+                          }
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="tray">Tray only</SelectItem>
+                            <SelectItem value="minimized">Minimized</SelectItem>
+                            <SelectItem value="window">Open window</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
                 </SettingsPanel>
               </div>
             )}
@@ -2127,13 +2197,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div className="border-t border-border/30 pt-8">
               <SectionHeader
                 title="Correction Memory"
-                description="Snap dictation to your preferred spellings and learn from edits"
+                description="Apply your saved corrections and learn new ones from edits"
               />
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Variable snapping"
-                    description="Snap spoken phrases to exact identifiers from your dictionary + learned corrections"
+                    label="Apply dictionary and correction memory"
+                    description="Use dictionary entries and learned corrections while transcribing."
                   >
                     <Toggle
                       checked={enableVariableSnapping}
@@ -2143,11 +2213,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 </SettingsPanelRow>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Correction learning"
+                    label="Auto-learn corrections"
                     description={
                       correctionMemoryUnlocked
-                        ? "Learn from manual edits (currently detected via clipboard changes after dictation)"
-                        : "Pro feature - unlock in Settings → Pro to enable correction learning"
+                        ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
+                        : "Pro feature - unlock in Settings > Pro to enable correction learning."
                     }
                   >
                     <Toggle
@@ -2168,7 +2238,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         {correctionCount === null
                           ? ""
                           : correctionCount > 0
-                            ? `✓ Learning — ${correctionCount} correction${correctionCount === 1 ? "" : "s"} stored`
+                            ? `✓ Learning - ${correctionCount} correction${correctionCount === 1 ? "" : "s"} stored`
                             : "Listening for corrections..."}
                       </p>
                       {correctionCount !== null && correctionCount > 0 && (
@@ -2206,6 +2276,18 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       )}
                     </div>
                   )}
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Learn phrase and sentence rewrites"
+                    description="Off learns word fixes like cloud -> Claude. On can also learn changed spans or full repeated sentence rewrites."
+                  >
+                    <Toggle
+                      checked={enablePhraseCorrectionLearning}
+                      onChange={(checked: boolean) => setEnablePhraseCorrectionLearning(checked)}
+                      disabled={!correctionMemoryUnlocked || !enableCorrectionLearning}
+                    />
+                  </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
             </div>
@@ -2270,7 +2352,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Pause media while recording"
                     description={
                       platform === "win32"
-                        ? "Coming soon on Windows — media session control is being reworked for reliability"
+                        ? "Coming soon on Windows - media session control is being reworked for reliability"
                         : "Automatically pause playing media when you start recording"
                     }
                   >
@@ -2403,8 +2485,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Smart Context"
                     description={
                       smartContextUnlocked
-                        ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local — never sent to cloud."
-                        : "Pro feature — unlock in Settings → Pro to enable Smart Context"
+                        ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
+                        : "Pro feature - unlock in Settings → Pro to enable Smart Context"
                     }
                   >
                     <Toggle
@@ -2419,7 +2501,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Active file context"
-                      description="Reads variable and function names from your active file to improve code dictation accuracy. Local only — file content stays on your device."
+                      description="Reads variable and function names from your active file to improve code dictation accuracy. Local only - file content stays on your device."
                     >
                       <Toggle checked={enableFileIdentifiers} onChange={setEnableFileIdentifiers} />
                     </SettingsRow>
@@ -2502,6 +2584,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 updateTranscriptionSettings({ whisperForceCpu: forceCpu })
               }
               gpuSupported={gpuSupportedForPicker}
+              recommendedLocalModel={recommendedWhisperModelForPicker}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });
@@ -3017,7 +3100,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanelRow>
                 <SettingsRow
                   label="Contact & Feedback"
-                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent."
+                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
                 >
                   <div className="flex items-center gap-2">
                     <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
@@ -3310,7 +3393,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       label="Uninstall PrivateTranscribe"
                       description={
                         platform === "win32"
-                          ? "Remove PrivateTranscribe via Windows Settings → Apps & features. To also remove downloaded models and app data, use Reset app data first."
+                          ? "Remove PrivateTranscribe via Windows Settings → Apps & features. The uninstaller will ask whether to also remove settings, transcriptions, logs, and downloaded models."
                           : platform === "darwin"
                             ? "Quit PrivateTranscribe, then drag it from your Applications folder to the Trash. To also remove downloaded models and app data, use Reset app data first."
                             : "Use your system package manager (apt, dnf, pacman) or software center to remove PrivateTranscribe. To also remove downloaded models and app data, use Reset app data first."

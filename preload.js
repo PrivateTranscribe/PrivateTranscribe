@@ -260,11 +260,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   processAnthropicReasoning: (text, modelId, agentName, config) =>
     ipcRenderer.invoke("process-anthropic-reasoning", text, modelId, agentName, config),
 
-  // llama.cpp
-  llamaCppCheck: () => ipcRenderer.invoke("llama-cpp-check"),
-  llamaCppInstall: () => ipcRenderer.invoke("llama-cpp-install"),
-  llamaCppUninstall: () => ipcRenderer.invoke("llama-cpp-uninstall"),
-
   // llama-server
   llamaServerStart: (modelId) => ipcRenderer.invoke("llama-server-start", modelId),
   llamaServerStop: () => ipcRenderer.invoke("llama-server-stop"),
@@ -323,6 +318,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Auto-start management
   getAutoStartEnabled: () => ipcRenderer.invoke("get-auto-start-enabled"),
   setAutoStartEnabled: (enabled) => ipcRenderer.invoke("set-auto-start-enabled", enabled),
+  getAutoStartLaunchMode: () => ipcRenderer.invoke("get-auto-start-launch-mode"),
+  setAutoStartLaunchMode: (mode) => ipcRenderer.invoke("set-auto-start-launch-mode", mode),
 
   // Hardware detection
   detectHardware: () => ipcRenderer.invoke("detect-hardware"),

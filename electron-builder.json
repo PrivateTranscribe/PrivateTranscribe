@@ -49,8 +49,6 @@
     "!**/node_modules/rollup/**",
     "!**/node_modules/@rollup/**",
 
-    "!**/node_modules/postcss/**",
-    "!**/node_modules/autoprefixer/**",
     "!**/node_modules/tailwindcss/**",
     "!**/node_modules/@tailwindcss/**",
     "!**/node_modules/lightningcss*/**",
@@ -62,9 +60,7 @@
     "!**/node_modules/class-variance-authority/**",
     "!**/node_modules/clsx/**",
     "!**/node_modules/tailwind-merge/**",
-    "!**/node_modules/tw-animate-css/**",
     "!**/node_modules/react-markdown/**",
-    "!**/node_modules/shadcn-ui/**",
 
     "!**/node_modules/@types/**",
     "!**/node_modules/concurrently/**",

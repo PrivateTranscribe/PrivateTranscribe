@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       upload_to_r2:
-        description: 'Upload binary to R2 CDN'
+        description: "Upload binary to R2 CDN"
         type: boolean
         default: false
       whisper_tag:
-        description: 'whisper.cpp git tag/branch to build (empty = latest)'
+        description: "whisper.cpp git tag/branch to build (empty = latest)"
         required: false
-        default: ''
+        default: ""
 
 permissions:
   contents: write
@@ -130,7 +130,7 @@ jobs:
         with:
           name: whisper-server-win32-x64-cuda-package
           path: whisper-server-win32-x64-cuda.zip
-          retention-days: 30
+          retention-days: 3
 
       - name: Upload to R2
         if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
@@ -246,7 +246,7 @@ jobs:
         with:
           name: whisper-server-linux-x64-cuda-package
           path: whisper-server-linux-x64-cuda.zip
-          retention-days: 30
+          retention-days: 3
 
       - name: Upload to R2
         if: ${{ github.event.inputs.upload_to_r2 == 'true' }}

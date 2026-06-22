@@ -590,16 +590,27 @@ class HardwareDetector {
 
       rec.gpuCategory = "nvidia_cuda";
       rec.localTranscriptionProvider = "whisper";
-      rec.whisperModel = vramMb >= 16384 ? "large" : "turbo";
+      rec.whisperModel =
+        vramMb >= 12288
+          ? "large"
+          : vramMb >= 6144 || vramMb === 0
+            ? "turbo"
+            : vramMb >= 4096
+              ? "small"
+              : "base";
       rec.transcriptionProvider = "local";
 
       if (rec.whisperModel === "large") {
         rec.reasoning.push(
           `High-VRAM NVIDIA GPU with CUDA detected${vramDisplay ? ` (${vramDisplay} VRAM)` : ""} - Whisper Large recommended for best local accuracy`
         );
-      } else {
+      } else if (rec.whisperModel === "turbo") {
         rec.reasoning.push(
           "NVIDIA GPU with CUDA detected - Whisper Turbo recommended for fast local inference"
+        );
+      } else {
+        rec.reasoning.push(
+          `Lower-VRAM NVIDIA GPU with CUDA detected${vramDisplay ? ` (${vramDisplay} VRAM)` : ""} - Whisper ${rec.whisperModel === "small" ? "Small" : "Base"} recommended for reliability`
         );
       }
 

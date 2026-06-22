@@ -2,9 +2,36 @@ import { useState, useCallback } from "react";
 import { BookOpen } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
+import CorrectionMemoryPage from "./CorrectionMemoryPage";
+import {
+  DEFAULT_DICTIONARY_ENTRY_MODE,
+  DICTIONARY_ENTRY_MODES,
+  getDictionaryEntryMode,
+  type DictionaryEntryMode,
+} from "../../utils/dictionaryEntryModes";
+
+const MODE_LABELS: Record<DictionaryEntryMode, string> = {
+  hint: "Hint",
+  exact: "Exact",
+  priority: "Priority",
+};
+
+const MODE_DESCRIPTIONS: Record<DictionaryEntryMode, string> = {
+  hint: "Soft hint. The model sees the word and is more likely to use that spelling.",
+  exact: "Hint plus local spelling and casing repair.",
+  priority: "Strong hint plus repair. Use for words Whisper keeps getting wrong.",
+};
+
+const MODE_EXPLANATIONS: Record<DictionaryEntryMode, string> = {
+  hint: "Use for normal terms you want recognized correctly.",
+  exact:
+    "Use for names and proper nouns. Also fixes casing like privatetranscribe -> PrivateTranscribe.",
+  priority: "Use when a word is consistently misrecognized. Adds the strongest emphasis.",
+};
 
 function SettingsPanel({ children }: { children: React.ReactNode }) {
   return (
@@ -19,24 +46,41 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
 }
 
 export default function DictionaryPage() {
-  const { customDictionary, setCustomDictionary } = useSettings();
+  const { customDictionary, dictionaryEntryModes, setCustomDictionary, setDictionaryEntryModes } =
+    useSettings();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const [newWord, setNewWord] = useState("");
+  const [newMode, setNewMode] = useState<DictionaryEntryMode>(DEFAULT_DICTIONARY_ENTRY_MODE);
   const [searchFilter, setSearchFilter] = useState("");
 
   const handleAdd = useCallback(() => {
     const word = newWord.trim();
     if (word && !customDictionary.includes(word)) {
       setCustomDictionary([...customDictionary, word]);
+      setDictionaryEntryModes({ ...dictionaryEntryModes, [word]: newMode });
       setNewWord("");
     }
-  }, [newWord, customDictionary, setCustomDictionary]);
+  }, [
+    newWord,
+    newMode,
+    customDictionary,
+    dictionaryEntryModes,
+    setCustomDictionary,
+    setDictionaryEntryModes,
+  ]);
 
   const handleRemove = useCallback(
     (wordToRemove: string) => {
       setCustomDictionary(customDictionary.filter((w) => w !== wordToRemove));
     },
     [customDictionary, setCustomDictionary]
+  );
+
+  const handleModeChange = useCallback(
+    (word: string, mode: DictionaryEntryMode) => {
+      setDictionaryEntryModes({ ...dictionaryEntryModes, [word]: mode });
+    },
+    [dictionaryEntryModes, setDictionaryEntryModes]
   );
 
   const filteredWords = searchFilter
@@ -66,8 +110,27 @@ export default function DictionaryPage() {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Train the speech engine to recognize your unique vocabulary
+          Tell the transcription pipeline which terms should be hinted, repaired, or emphasized.
         </p>
+      </div>
+      {/* Add word input */}
+      {/* Modes explained */}
+      <div className="mb-8">
+        <p className="text-[13px] font-medium text-foreground mb-3">Modes</p>
+        <SettingsPanel>
+          {(Object.keys(MODE_EXPLANATIONS) as DictionaryEntryMode[]).map((mode) => (
+            <SettingsPanelRow key={mode}>
+              <div className="flex items-start gap-3">
+                <span className="inline-flex items-center rounded-md border border-border-subtle bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-foreground min-w-[52px] justify-center">
+                  {MODE_LABELS[mode]}
+                </span>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">
+                  {MODE_EXPLANATIONS[mode]}
+                </p>
+              </div>
+            </SettingsPanelRow>
+          ))}
+        </SettingsPanel>
       </div>
 
       {/* Add word input */}
@@ -86,11 +149,28 @@ export default function DictionaryPage() {
                   }}
                   className="flex-1 h-9 text-[13px]"
                 />
+                <Select
+                  value={newMode}
+                  onValueChange={(value) => setNewMode(value as DictionaryEntryMode)}
+                >
+                  <SelectTrigger className="h-9 w-[92px] px-2.5 text-[12px] border-border bg-background">
+                    <SelectValue placeholder="Mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DICTIONARY_ENTRY_MODES.map((mode) => (
+                      <SelectItem key={mode} value={mode} className="text-xs">
+                        {MODE_LABELS[mode]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button onClick={handleAdd} disabled={!newWord.trim()} size="sm" className="h-9">
                   Add
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground/50">Press Enter to add</p>
+              <p className="text-[10px] text-muted-foreground/50">
+                {MODE_DESCRIPTIONS[newMode]} Press Enter to add.
+              </p>
             </div>
           </SettingsPanelRow>
         </SettingsPanel>
@@ -136,9 +216,31 @@ export default function DictionaryPage() {
                 {filteredWords.map((word) => (
                   <span
                     key={word}
-                    className="group inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-primary/10 text-foreground rounded-md text-[12px] border border-border-subtle transition-all hover:border-destructive/40 hover:bg-destructive/5"
+                    className="group inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-primary/10 text-foreground rounded-md text-[12px] border border-border-subtle transition-all hover:border-primary/40 hover:bg-primary/5"
                   >
                     {word}
+                    <Select
+                      value={getDictionaryEntryMode(dictionaryEntryModes, word)}
+                      onValueChange={(value) =>
+                        handleModeChange(word, value as DictionaryEntryMode)
+                      }
+                    >
+                      <SelectTrigger
+                        className="ml-1 h-5 w-auto min-w-[56px] px-1.5 border-border-subtle bg-background/80 text-[10px] text-foreground hover:border-primary/40 hover:text-primary"
+                        aria-label={
+                          MODE_DESCRIPTIONS[getDictionaryEntryMode(dictionaryEntryModes, word)]
+                        }
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DICTIONARY_ENTRY_MODES.map((mode) => (
+                          <SelectItem key={mode} value={mode} className="text-xs">
+                            {MODE_LABELS[mode]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <button
                       onClick={() => handleRemove(word)}
                       className="ml-0.5 p-0.5 rounded-sm text-muted-foreground/40 hover:text-destructive transition-colors"
@@ -176,23 +278,25 @@ export default function DictionaryPage() {
         )}
       </div>
 
+      <div className="mb-8">
+        <CorrectionMemoryPage embedded />
+      </div>
+
       {/* How it works */}
-      <div>
+      <div className="mt-8">
         <p className="text-[13px] font-medium text-foreground mb-3">How it works</p>
         <SettingsPanel>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              Words in your dictionary are provided as context hints to the speech recognition
-              model. This helps it correctly identify uncommon names, technical jargon, brand names,
-              or anything that's frequently misrecognized.
+              Words in your dictionary are sent as hints to the transcription model. The mode
+              controls how hard each word is pushed. Priority helps most, but it is still a hint -
+              not a guaranteed match.
             </p>
           </SettingsPanelRow>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
-              <span className="font-medium text-foreground">Tip</span> - For difficult words, add
-              context phrases like "The word is Synty" alongside the word itself. Adding related
-              terms (e.g. "Synty" and "SyntyStudios") also helps the model understand the intended
-              spelling.
+              <span className="font-medium text-foreground">Tip</span> - Start with Hint. Move to
+              Exact for proper nouns. Use Priority only for words that keep coming out wrong.
             </p>
           </SettingsPanelRow>
         </SettingsPanel>

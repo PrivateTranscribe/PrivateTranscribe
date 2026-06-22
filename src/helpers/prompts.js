@@ -22,13 +22,7 @@ function getSystemPrompt(agentName, customDictionary, dictationMode, preferredLa
   return prompt;
 }
 
-function buildPrompt(text, agentName) {
-  const systemPrompt = getSystemPrompt(agentName);
-  return `${systemPrompt}\n\n${text}`;
-}
-
 module.exports = {
   UNIFIED_SYSTEM_PROMPT,
   getSystemPrompt,
-  buildPrompt,
 };

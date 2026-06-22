@@ -146,6 +146,21 @@ class WindowManager {
     }
   }
 
+  _notifyOverlayRendererResumed(reason) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return;
+    }
+
+    try {
+      this.mainWindow.webContents.send("main-window-shown");
+    } catch (error) {
+      debugLogger.debug("[Window] Failed to notify overlay renderer resume:", {
+        reason,
+        error: error?.message || String(error),
+      });
+    }
+  }
+
   _getPositionFile() {
     if (!this._positionFile) {
       this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
@@ -422,12 +437,14 @@ class WindowManager {
       // isDragging flag stays true, causing startWindowDrag() to return early and
       // leaving the overlay unmovable after wake.
       this._resetOverlayDragState("resume");
+      this._notifyOverlayRendererResumed("resume");
       this._scheduleOverlayRecovery("resume");
     };
     powerMonitor.on("resume", this._powerResumeHandler);
 
     this._powerUnlockHandler = () => {
       this._resetOverlayDragState("unlock-screen");
+      this._notifyOverlayRendererResumed("unlock-screen");
       this._scheduleOverlayRecovery("unlock-screen", [500, 2500, 6000]);
     };
     powerMonitor.on("unlock-screen", this._powerUnlockHandler);
@@ -892,7 +909,9 @@ class WindowManager {
     // entry even when the user hasn't opened the control panel yet.
     // (The overlay is skipTaskbar:true to avoid game compositor issues, so
     // this is the only taskbar presence on Windows.)
-    this._controlPanelStartMinimized = options.startMinimized ?? process.platform === "win32";
+    this._controlPanelStartHidden = options.startHidden === true;
+    this._controlPanelStartMinimized =
+      !this._controlPanelStartHidden && (options.startMinimized ?? process.platform === "win32");
     if (this.controlPanelWindow && !this.controlPanelWindow.isDestroyed()) {
       if (this.controlPanelWindow.isMinimized()) {
         this.controlPanelWindow.restore();
@@ -906,19 +925,23 @@ class WindowManager {
 
     this.controlPanelWindow = new BrowserWindow(CONTROL_PANEL_CONFIG);
 
-    const visibilityTimer = setTimeout(() => {
-      if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
-        return;
-      }
-      if (!this.controlPanelWindow.isVisible()) {
-        console.warn("Control panel did not become visible in time; forcing show");
-        this.controlPanelWindow.show();
-        this.controlPanelWindow.focus();
-      }
-    }, 10000);
+    const visibilityTimer = this._controlPanelStartHidden
+      ? null
+      : setTimeout(() => {
+          if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
+            return;
+          }
+          if (!this.controlPanelWindow.isVisible()) {
+            console.warn("Control panel did not become visible in time; forcing show");
+            this.controlPanelWindow.show();
+            this.controlPanelWindow.focus();
+          }
+        }, 10000);
 
     const clearVisibilityTimer = () => {
-      clearTimeout(visibilityTimer);
+      if (visibilityTimer) {
+        clearTimeout(visibilityTimer);
+      }
     };
 
     this.controlPanelWindow.once("ready-to-show", () => {
@@ -927,7 +950,11 @@ class WindowManager {
       if (process.platform === "darwin" && app.dock) {
         app.dock.show();
       }
-      if (this._controlPanelStartMinimized) {
+      if (this._controlPanelStartHidden) {
+        debugLogger.debug(
+          "[Window] Control panel ready but startup mode is tray-only, keeping hidden"
+        );
+      } else if (this._controlPanelStartMinimized) {
         // Show minimized to taskbar — gives Windows a taskbar entry without
         // stealing focus on startup (the overlay is now skipTaskbar:true so
         // this is the only persistent taskbar presence).
@@ -1154,9 +1181,7 @@ class WindowManager {
       this._notifyOverlayStateChanged();
       // Notify renderer so it can restart the mic-level AudioContext if it was
       // suspended while the window was hidden (voice bars stuck bug).
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send("main-window-shown");
-      }
+      this._notifyOverlayRendererResumed("show");
     });
 
     this.mainWindow.on("focus", () => {

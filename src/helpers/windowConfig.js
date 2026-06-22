@@ -15,15 +15,6 @@ const BUTTON_HALF = 22; // half of the 44px overlay button
 const TASKBAR_SNAP_GAP = 8; // visible gap between the overlay button and taskbar/work-area edge
 const TASKBAR_SNAP_OFFSET = BUTTON_HALF + TASKBAR_SNAP_GAP; // button-center distance from that edge
 
-// Legacy size constants kept for reference only. The overlay no longer resizes
-// between these states at runtime.
-const WINDOW_SIZES = {
-  BASE: { width: 160, height: 160 },
-  WITH_MENU: { width: 300, height: 360 },
-  WITH_TOAST: { width: 380, height: 180 },
-  EXPANDED: { width: CONTAINER_W, height: CONTAINER_H },
-};
-
 // Helper to get icon path for Windows
 function getWindowIcon() {
   if (process.platform !== "win32") {
@@ -263,7 +254,6 @@ class WindowPositionUtil {
 module.exports = {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
-  WINDOW_SIZES,
   CONTAINER_W,
   CONTAINER_H,
   BUTTON_OFFSET_X,

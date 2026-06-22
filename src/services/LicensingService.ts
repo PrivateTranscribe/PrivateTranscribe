@@ -286,15 +286,6 @@ export async function refreshProStatus(): Promise<ProStatus> {
 }
 
 /**
- * Check if a specific Pro feature is unlocked.
- * Uses both status flag and token verification for tamper resistance.
- */
-export function isProFeature(featureId: string): boolean {
-  const status = getProStatus();
-  return status.isPro && _verifyToken(status._t);
-}
-
-/**
  * Whether the licensing backend is configured and ready to accept activations.
  * Returns false when LICENSING_BASE_URL is not yet set (pre-launch / dev builds).
  */

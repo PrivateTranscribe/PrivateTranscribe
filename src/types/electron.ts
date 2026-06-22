@@ -307,19 +307,17 @@ export interface SaveTranscriptionOptions {
   includeInStats?: boolean;
 }
 
+export interface FeedbackAttachmentPayload {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+}
+
 export interface FeedbackSubmitPayload {
   message: string;
-  category?:
-    | "install"
-    | "onboarding"
-    | "transcription"
-    | "hotkey"
-    | "performance"
-    | "bug"
-    | "confusing"
-    | "feature"
-    | "general";
-  includeSystemInfo?: boolean;
+  category?: "bug" | "confusing" | "feature" | "general";
+  attachments?: FeedbackAttachmentPayload[];
   appVersion?: string;
   source?: string;
 }
@@ -558,11 +556,6 @@ declare global {
         config: any
       ) => Promise<{ success: boolean; text?: string; error?: string }>;
 
-      // llama.cpp management
-      llamaCppCheck: () => Promise<{ isInstalled: boolean; version?: string }>;
-      llamaCppInstall: () => Promise<{ success: boolean; error?: string }>;
-      llamaCppUninstall: () => Promise<{ success: boolean; error?: string }>;
-
       // Window control operations
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;
@@ -684,6 +677,12 @@ declare global {
       // Auto-start at login
       getAutoStartEnabled?: () => Promise<boolean>;
       setAutoStartEnabled?: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+      getAutoStartLaunchMode?: () => Promise<"tray" | "minimized" | "window">;
+      setAutoStartLaunchMode?: (mode: "tray" | "minimized" | "window") => Promise<{
+        success: boolean;
+        launchMode?: "tray" | "minimized" | "window";
+        error?: string;
+      }>;
 
       // Hardware detection
       detectHardware?: () => Promise<{
@@ -788,6 +787,19 @@ declare global {
         upToDate: boolean;
         expectedVersion: string;
         forceCpu: boolean;
+        engineStatus?: {
+          desiredMode?: "cpu" | "gpu";
+          effectiveEngine?: "cuda" | "cpu" | "unknown" | "stopped";
+          fallback?: {
+            active?: boolean;
+            reason?: string | null;
+            since?: number | null;
+            diagnostic?: unknown;
+          };
+          transition?: "starting" | "transcribing" | "idle" | "stopped";
+          activeTranscriptions?: number;
+          stoppedDueToIdle?: boolean;
+        } | null;
         cudaAutoUpdateFailed?: boolean;
       }>;
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;

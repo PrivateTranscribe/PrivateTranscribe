@@ -25,6 +25,22 @@ const OVERLAY_HIDDEN_UNTIL_KEY = "overlayHiddenUntil";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
 
+const formatCompactDuration = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(
+      2,
+      "0"
+    )}`;
+  }
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+};
+
 const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
   return (
     <div className="flex items-center justify-center gap-[3px]">
@@ -45,9 +61,9 @@ const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
 };
 
 /**
- * VoiceBars — voice-reactive bar visualiser rendered inside the recording button.
+ * VoiceBars - voice-reactive bar visualiser rendered inside the recording button.
  *
- * Five bars, heights matching logo proportions, driven by micLevel (0–1). Each bar
+ * Five bars, heights matching logo proportions, driven by micLevel (0-1). Each bar
  * has a subtle phase offset for a natural "breathing" feel when level is low.
  * Colors are dark (primary-foreground) since the button background is mint.
  */
@@ -87,7 +103,7 @@ const VoiceBars = ({ micLevel }) => {
 };
 
 /**
- * MicHalo — the outer ambient glow rendered *around* (not inside) the button.
+ * MicHalo - the outer ambient glow rendered *around* (not inside) the button.
  *
  * A radial gradient disc that scales and brightens with micLevel, creating a
  * soft "breathing" halo effect. Positioned absolutely; pointer-events: none so
@@ -283,6 +299,7 @@ export default function App() {
   const {
     isRecording,
     isProcessing,
+    longSession,
     transcript,
     toggleListening,
     cancelRecording,
@@ -438,7 +455,7 @@ export default function App() {
             cancelProcessing();
           }
         } else if (!isDragging) {
-          // Don't hide while dragging — releasing Escape mid-drag should just
+          // Don't hide while dragging - releasing Escape mid-drag should just
           // cancel the escape key, not hide the overlay.
           window.electronAPI?.hideWindow?.();
         }
@@ -465,7 +482,7 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    // "Hide for 1 hour" is a session-only feature — it should not persist across app restarts.
+    // "Hide for 1 hour" is a session-only feature - it should not persist across app restarts.
     // Clear the timer on every startup so the overlay always shows fresh after a restart.
     localStorage.removeItem(OVERLAY_HIDDEN_UNTIL_KEY);
   }, []);
@@ -562,6 +579,22 @@ export default function App() {
 
   const micState = getMicState();
 
+  const longSessionStatus = useMemo(() => {
+    if (!longSession?.active) {
+      return null;
+    }
+
+    const recorded = formatCompactDuration(longSession.recordedSeconds);
+    const transcribed = formatCompactDuration(longSession.transcribedSeconds);
+    const pendingChunks = longSession.pendingChunks || 0;
+
+    if (pendingChunks > 0) {
+      return `Long recording · ${transcribed}/${recorded} · ${pendingChunks} pending`;
+    }
+
+    return `Long recording · ${transcribed}/${recorded}`;
+  }, [longSession]);
+
   const getMicButtonStyles = () => {
     const base = {
       borderRadius: 999,
@@ -654,7 +687,7 @@ export default function App() {
         pointerEvents: "auto",
       };
     } else {
-      // Flip: open downward — clamp so menu doesn't exceed bottom of window
+      // Flip: open downward - clamp so menu doesn't exceed bottom of window
       const menuTop = rect.bottom + GAP;
       const clampedTop = Math.max(edge, Math.min(iH - MENU_EST_HEIGHT - edge, menuTop));
       return {
@@ -691,7 +724,7 @@ export default function App() {
           Button anchor: positioned at bottom:58px, horizontally centered in the fixed
           400×500 container. The 16px padding provides a hover buffer without affecting
           the button's visual position. Menu expands upward; toast appears above via
-          ToastViewport. The container never resizes — all state changes use CSS only.
+          ToastViewport. The container never resizes - all state changes use CSS only.
         */}
         <div
           style={{
@@ -821,7 +854,17 @@ export default function App() {
             </button>
           </div>
 
-          {/* Active dictation mode badge — shown when an Action Engine mode override is in effect */}
+          {isRecording && longSessionStatus && (
+            <div
+              className="px-2 py-1 rounded-md text-[10px] font-medium bg-[#101310]/92 text-white/70 border border-[#70FFBA]/16 whitespace-nowrap shadow-[0_6px_18px_rgba(0,0,0,0.26)]"
+              style={{ pointerEvents: "none", flexShrink: 0 }}
+              title="PrivateTranscribe is transcribing long-recording chunks while recording continues."
+            >
+              {longSessionStatus}
+            </div>
+          )}
+
+          {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (
             <div
               className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/10 text-white/55 border border-white/8 whitespace-nowrap"

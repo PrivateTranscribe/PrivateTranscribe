@@ -208,7 +208,7 @@ export default function ReasoningModelSelector({
               value,
               label: (item?.id || item?.name || value) as string,
               description:
-                (item?.description as string) || (ownedBy ? `Owner: ${ownedBy}` : undefined),
+                (item?.description as string) || (ownedBy ? `Owner - ${ownedBy}` : undefined),
               icon,
               ownedBy,
               invertInDark,
@@ -554,9 +554,9 @@ export default function ReasoningModelSelector({
                           className="text-sm"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Examples: <code className="text-primary">http://localhost:11434/v1</code>{" "}
-                          (Ollama), <code className="text-primary">http://localhost:8080/v1</code>{" "}
-                          (LocalAI).
+                          Examples include{" "}
+                          <code className="text-primary">http://localhost:11434/v1</code> (Ollama),{" "}
+                          <code className="text-primary">http://localhost:8080/v1</code> (LocalAI).
                         </p>
                       </div>
 

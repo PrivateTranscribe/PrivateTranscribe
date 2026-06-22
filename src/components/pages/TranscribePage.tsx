@@ -121,7 +121,7 @@ export default function TranscribePage() {
     if (diarizationReady) return "local-diarization" as const;
     if (tdrzDownloaded && (fileLanguage === "en" || fileLanguage === "auto"))
       return "tiny-diarize-en" as const;
-    // Models not ready — will prompt download
+    // Models not ready - will prompt download
     return "local-diarization" as const;
   }, [speakerLabelsEnabled, diarizationReady, tdrzDownloaded, fileLanguage]);
 
@@ -309,7 +309,7 @@ export default function TranscribePage() {
       } else if (tdrzDownloaded && (fileLanguage === "en" || fileLanguage === "auto")) {
         setSpeakerDetectionMode("tiny-diarize-en");
       } else {
-        // Needs download — show dialog
+        // Needs download - show dialog
         setSpeakerDetectionMode("local-diarization");
         setModelDownloadDialogOpen(true);
       }
@@ -727,7 +727,7 @@ export default function TranscribePage() {
               </div>
             </div>
 
-            {/* Speaker count selector — only shown when speaker labels enabled */}
+            {/* Speaker count selector - only shown when speaker labels enabled */}
             {speakerLabelsEnabled && (
               <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -831,7 +831,7 @@ export default function TranscribePage() {
                   {transcriptionProgress.stage === "transcribing" &&
                   transcriptionProgress.chunksTotal &&
                   transcriptionProgress.chunksTotal > 1
-                    ? `${transcriptionProgress.percentage}% — chunk ${transcriptionProgress.chunksCompleted} of ${transcriptionProgress.chunksTotal}`
+                    ? `${transcriptionProgress.percentage}% - chunk ${transcriptionProgress.chunksCompleted} of ${transcriptionProgress.chunksTotal}`
                     : `${transcriptionProgress.percentage}%`}
                 </p>
               </div>

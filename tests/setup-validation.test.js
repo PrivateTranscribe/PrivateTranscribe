@@ -200,12 +200,12 @@ suite("generateRecommendations – Windows NVIDIA + CUDA (provider: nvidia)", ()
     assert.strictEqual(rec.transcriptionProvider, "local");
   });
 
-  test("selects nvidia as localTranscriptionProvider", () => {
-    assert.strictEqual(rec.localTranscriptionProvider, "nvidia");
+  test("selects Whisper CUDA as localTranscriptionProvider", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
-  test("sets default Parakeet model", () => {
-    assert.strictEqual(rec.parakeetModel, "parakeet-tdt-0.6b-v3");
+  test("10 GB VRAM recommends Turbo", () => {
+    assert.strictEqual(rec.whisperModel, "turbo");
   });
 
   test("includes CUDA detection reasoning", () => {
@@ -220,6 +220,52 @@ suite("generateRecommendations – Windows NVIDIA + CUDA (provider: nvidia)", ()
 
   test("reasoning array is non-empty", () => {
     assert.ok(rec.reasoning.length > 0);
+  });
+});
+
+suite("generateRecommendations – Windows NVIDIA + CUDA 12 GB VRAM", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "win32",
+    cpuCount: 8,
+    gpu: {
+      available: true,
+      vendor: "nvidia",
+      model: "NVIDIA GeForce RTX 4070",
+      vram: 12288,
+      cuda: { available: true, version: "12.1" },
+      directml: { available: true },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("12 GB VRAM recommends Large", () => {
+    assert.strictEqual(rec.whisperModel, "large");
+  });
+});
+
+suite("generateRecommendations – Windows NVIDIA + CUDA 4 GB VRAM", () => {
+  const detector = new HardwareDetector();
+
+  const detection = makeDetection({
+    platform: "win32",
+    cpuCount: 4,
+    gpu: {
+      available: true,
+      vendor: "nvidia",
+      model: "NVIDIA GeForce GTX 1650",
+      vram: 4096,
+      cuda: { available: true, version: "11.8" },
+      directml: { available: true },
+    },
+  });
+
+  const rec = detector.generateRecommendations(detection);
+
+  test("4 GB VRAM recommends Small", () => {
+    assert.strictEqual(rec.whisperModel, "small");
   });
 });
 
@@ -241,23 +287,29 @@ suite("generateRecommendations – Windows NVIDIA + CUDA low VRAM (< 4 GB)", () 
 
   const rec = detector.generateRecommendations(detection);
 
-  test("still recommends nvidia provider for low-VRAM CUDA GPU", () => {
-    assert.strictEqual(rec.localTranscriptionProvider, "nvidia");
+  test("still uses Whisper provider for low-VRAM CUDA GPU", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
-  test("no VRAM note when VRAM < 4 GB", () => {
-    const hasVramReason = rec.reasoning.some((r) => r.toLowerCase().includes("vram"));
-    assert.ok(!hasVramReason, "Did not expect a VRAM reasoning entry for low-VRAM GPU");
+  test("2 GB VRAM recommends Base instead of Turbo", () => {
+    assert.strictEqual(rec.whisperModel, "base");
+  });
+
+  test("low VRAM reasoning explains safer model choice", () => {
+    const hasReliabilityReason = rec.reasoning.some((r) =>
+      r.toLowerCase().includes("recommended for reliability"),
+    );
+    assert.ok(hasReliabilityReason, "Expected lower-VRAM recommendation reasoning");
   });
 });
 
 suite("generateRecommendations – Windows CPU-only (no GPU)", () => {
   const detector = new HardwareDetector();
 
-  test("8+ core CPU recommends small whisper model", () => {
+  test("8+ core CPU recommends turbo whisper model", () => {
     const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 8 }));
     assert.strictEqual(rec.localTranscriptionProvider, "whisper");
-    assert.strictEqual(rec.whisperModel, "small");
+    assert.strictEqual(rec.whisperModel, "turbo");
   });
 
   test("4-core CPU recommends base whisper model", () => {
@@ -326,12 +378,12 @@ suite("generateRecommendations – Linux NVIDIA + CUDA", () => {
 
   const rec = detector.generateRecommendations(detection);
 
-  test("recommends nvidia provider on Linux with CUDA", () => {
-    assert.strictEqual(rec.localTranscriptionProvider, "nvidia");
+  test("recommends Whisper CUDA provider on Linux with CUDA", () => {
+    assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
-  test("sets parakeet model on Linux NVIDIA", () => {
-    assert.strictEqual(rec.parakeetModel, "parakeet-tdt-0.6b-v3");
+  test("24 GB VRAM recommends Large", () => {
+    assert.strictEqual(rec.whisperModel, "large");
   });
 
   test("transcriptionProvider is local", () => {
@@ -366,17 +418,17 @@ suite("generateRecommendations – Linux AMD (ROCm detected, no CUDA)", () => {
     assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
-  test("model is based on CPU core count (8 cores → small)", () => {
-    assert.strictEqual(rec.whisperModel, "small");
+  test("model is based on CPU core count (8 cores → turbo)", () => {
+    assert.strictEqual(rec.whisperModel, "turbo");
   });
 });
 
 suite("generateRecommendations – Linux CPU-only (no GPU)", () => {
   const detector = new HardwareDetector();
 
-  test("8-core Linux CPU recommends small model", () => {
+  test("8-core Linux CPU recommends turbo model", () => {
     const rec = detector.generateRecommendations(makeDetection({ platform: "linux", cpuCount: 8 }));
-    assert.strictEqual(rec.whisperModel, "small");
+    assert.strictEqual(rec.whisperModel, "turbo");
     assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
@@ -527,15 +579,16 @@ suite("Onboarding flow – hardware step regression checks", () => {
    */
   const fs = require("fs");
 
-  test("OnboardingFlow passes onNext to HardwareSetupStep", () => {
+  test("OnboardingFlow observes HardwareSetupStep applied state", () => {
     const onboardingPath = path.join(__dirname, "../src/components/OnboardingFlow.tsx");
     const contents = fs.readFileSync(onboardingPath, "utf8");
 
-    // Very small invariant: the HardwareSetupStep instance should include an onNext prop.
+    // Very small invariant: the HardwareSetupStep instance should report when recommendations applied.
     const hardwareStepBlock = contents.split("case 1")[1] || "";
     assert.ok(
-      hardwareStepBlock.includes("<HardwareSetupStep") && hardwareStepBlock.includes("onNext="),
-      "Expected HardwareSetupStep to receive an onNext prop in step 1",
+      hardwareStepBlock.includes("<HardwareSetupStep") &&
+        hardwareStepBlock.includes("onAppliedChange="),
+      "Expected HardwareSetupStep to report applied state in step 1",
     );
   });
 

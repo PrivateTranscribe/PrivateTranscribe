@@ -113,7 +113,9 @@ describe("dragManager.js / useWindowDrag.js — robust overlay dragging", () => 
 
   test("taskbar-snapped dragging locks to the display where the drag started", () => {
     expect(dragManager).toContain("this.dragDisplay = screen.getDisplayNearestPoint");
-    expect(dragManager).toContain("? this.dragDisplay || screen.getDisplayNearestPoint(proposedButtonPoint)");
+    expect(dragManager).toContain(
+      "? this.dragDisplay || screen.getDisplayNearestPoint(proposedButtonPoint)"
+    );
     expect(dragManager).toContain("this.dragDisplay = null");
   });
 
@@ -226,7 +228,23 @@ describe("windowManager.js — sleep/wake overlay recovery", () => {
     expect(idx).toBeGreaterThan(-1);
     const block = windowManager.slice(idx, idx + 600);
     expect(block).toContain("_resetOverlayDragState");
+    expect(block).toContain("_notifyOverlayRendererResumed");
     expect(block).toContain("_scheduleOverlayRecovery");
+  });
+
+  test("power resume and unlock notify renderer to restart mic visualization", () => {
+    const resumeIdx = windowManager.indexOf("_powerResumeHandler = ()");
+    const unlockIdx = windowManager.indexOf("_powerUnlockHandler = ()");
+    expect(resumeIdx).toBeGreaterThan(-1);
+    expect(unlockIdx).toBeGreaterThan(-1);
+
+    const resumeBlock = windowManager.slice(resumeIdx, resumeIdx + 500);
+    const unlockBlock = windowManager.slice(unlockIdx, unlockIdx + 500);
+
+    expect(windowManager).toContain("_notifyOverlayRendererResumed(reason)");
+    expect(windowManager).toContain('webContents.send("main-window-shown"');
+    expect(resumeBlock).toContain('_notifyOverlayRendererResumed("resume")');
+    expect(unlockBlock).toContain('_notifyOverlayRendererResumed("unlock-screen")');
   });
 
   test("wake recovery retries after display metrics have time to settle", () => {

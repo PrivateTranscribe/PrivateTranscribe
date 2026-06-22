@@ -20,7 +20,7 @@ describe("auto-start login item settings", () => {
     ).toEqual({
       openAtLogin: true,
       path: "C:/Users/dev/AppData/Local/electron/electron.exe",
-      args: ["C:/Projects/PrivateTranscribe"],
+      args: ["C:/Projects/PrivateTranscribe", "--launch-at-login", "--startup-mode=tray"],
     });
   });
 
@@ -36,7 +36,7 @@ describe("auto-start login item settings", () => {
     ).toEqual({
       openAtLogin: true,
       path: "C:/Users/me/AppData/Local/Programs/PrivateTranscribe/PrivateTranscribe.exe",
-      args: [],
+      args: ["--launch-at-login", "--startup-mode=tray"],
     });
   });
 
@@ -50,7 +50,7 @@ describe("auto-start login item settings", () => {
       })
     ).toEqual({
       path: "C:/electron/electron.exe",
-      args: ["C:/Projects/PrivateTranscribe"],
+      args: ["C:/Projects/PrivateTranscribe", "--launch-at-login", "--startup-mode=tray"],
     });
   });
 
@@ -61,6 +61,22 @@ describe("auto-start login item settings", () => {
     });
     expect(buildAutoStartSetOptions({ enabled: true, platform: "linux" })).toEqual({
       openAtLogin: true,
+    });
+  });
+
+  it("stores the selected Windows login launch mode in startup args", () => {
+    expect(
+      buildAutoStartSetOptions({
+        enabled: true,
+        platform: "win32",
+        isPackaged: true,
+        execPath: "C:/PrivateTranscribe.exe",
+        launchMode: "minimized",
+      })
+    ).toEqual({
+      openAtLogin: true,
+      path: "C:/PrivateTranscribe.exe",
+      args: ["--launch-at-login", "--startup-mode=minimized"],
     });
   });
 });

@@ -41,7 +41,7 @@
   "whisperModels": {
     "turbo": {
       "name": "Turbo",
-      "description": "Best quality for most users — fast and accurate",
+      "description": "Best quality for most users - fast and accurate",
       "size": "1.6GB",
       "sizeMb": 1600,
       "fileName": "ggml-large-v3-turbo.bin",
@@ -74,7 +74,7 @@
     },
     "small": {
       "name": "Small",
-      "description": "Higher accuracy than Base — 466MB download",
+      "description": "Higher accuracy than Base - 466MB download",
       "size": "466MB",
       "sizeMb": 466,
       "fileName": "ggml-small.bin",
@@ -82,7 +82,7 @@
     },
     "medium": {
       "name": "Medium",
-      "description": "Near-flagship accuracy — 1.5GB download",
+      "description": "Near-flagship accuracy - 1.5GB download",
       "size": "1.5GB",
       "sizeMb": 1500,
       "fileName": "ggml-medium.bin",

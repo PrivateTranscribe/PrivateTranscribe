@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import AudioManager from "../helpers/audioManager";
+import { getDictionaryRepairTerms, parseDictionaryEntryModes } from "../utils/dictionaryEntryModes";
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [longSession, setLongSession] = useState({ active: false });
   const [transcript, setTranscript] = useState("");
   const audioManagerRef = useRef(null);
   const toastRef = useRef(toast);
@@ -91,12 +93,13 @@ export const useAudioRecording = (toast, options = {}) => {
     };
 
     manager.setCallbacks({
-      onStateChange: ({ isRecording, isProcessing }) => {
+      onStateChange: ({ isRecording, isProcessing, longSession }) => {
         if (disposed) {
           return;
         }
         setIsRecording(isRecording);
         setIsProcessing(isProcessing);
+        setLongSession(longSession || { active: false });
       },
       onError: (error) => {
         if (disposed) {
@@ -162,8 +165,12 @@ export const useAudioRecording = (toast, options = {}) => {
                 return [];
               }
             })();
+            const snapWords = getDictionaryRepairTerms(
+              dictionaryWords,
+              parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"))
+            );
             const corrections = await window.electronAPI?.getCorrectionMemory?.(200);
-            text = snapTranscript({ transcript: rawText, dictionaryWords, corrections });
+            text = snapTranscript({ transcript: rawText, dictionaryWords: snapWords, corrections });
           }
         } catch {
           // Non-fatal: snapping is best-effort.
@@ -270,11 +277,13 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
-        // Correction memory: only surface the learn action after the user has actually
-        // copied a changed version, not after every transcription.
+        // Correction memory: only surface the learn action after the user copies
+        // a changed version, not after every transcription.
         try {
           const enableLearning =
             (localStorage.getItem("enableCorrectionLearning") || "false") === "true";
+          const allowPhraseLearning =
+            (localStorage.getItem("enablePhraseCorrectionLearning") || "false") === "true";
           if (
             enableLearning &&
             window.electronAPI?.readClipboard &&
@@ -305,14 +314,18 @@ export const useAudioRecording = (toast, options = {}) => {
               if (!current || current === lastClipboard) return;
               lastClipboard = current;
 
-              const pairs = inferCorrectionPairs(insertedText, current);
+              const pairs = inferCorrectionPairs(insertedText, current, {
+                allowPhraseLearning,
+              });
               if (pairs.length === 0) return;
               prompted = true;
               clearCorrectionInterval(intervalId);
 
               toastRef.current?.({
                 title: "Teach Correction Memory",
-                description: "Copied correction detected. Click Learn to save it.",
+                description: allowPhraseLearning
+                  ? "Copied correction detected. Click Learn to save it."
+                  : "Copied word correction detected. Click Learn to save it.",
                 duration: 12000,
                 action: React.createElement(
                   "button",
@@ -330,8 +343,14 @@ export const useAudioRecording = (toast, options = {}) => {
                           const set = new Set(Array.isArray(dict) ? dict : []);
                           let changed = false;
                           for (const p of pairs) {
-                            if (p.target && p.target.length <= 200 && !set.has(p.target)) {
-                              set.add(p.target);
+                            const target = typeof p.target === "string" ? p.target.trim() : "";
+                            if (
+                              target &&
+                              target.length <= 200 &&
+                              !/\s/.test(target) &&
+                              !set.has(target)
+                            ) {
+                              set.add(target);
                               changed = true;
                             }
                           }
@@ -682,6 +701,7 @@ export const useAudioRecording = (toast, options = {}) => {
   return {
     isRecording,
     isProcessing,
+    longSession,
     transcript,
     startRecording,
     stopRecording,

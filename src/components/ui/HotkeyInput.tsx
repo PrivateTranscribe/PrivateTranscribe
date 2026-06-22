@@ -254,7 +254,7 @@ export function HotkeyInput({
       if (hotkey) {
         finalizeCapture(hotkey);
       }
-      // If no base key yet, modifiers are being held — don't finalize until keyup
+      // If no base key yet, modifiers are being held - don't finalize until keyup
     },
     [disabled, isMac, isWindows, finalizeCapture]
   );

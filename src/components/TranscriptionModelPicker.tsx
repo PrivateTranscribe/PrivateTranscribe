@@ -215,6 +215,8 @@ interface TranscriptionModelPickerProps {
   onWhisperForceCpuChange?: (forceCpu: boolean) => void;
   /** Whether this platform supports GPU acceleration (NVIDIA CUDA detected). */
   gpuSupported?: boolean;
+  /** Hardware-detected Whisper recommendation. Overrides the static registry badge. */
+  recommendedLocalModel?: string;
   onDownloadComplete?: () => void;
 }
 
@@ -285,6 +287,7 @@ export default function TranscriptionModelPicker({
   whisperForceCpu = false,
   onWhisperForceCpuChange,
   gpuSupported = false,
+  recommendedLocalModel,
   onDownloadComplete,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
@@ -705,6 +708,9 @@ export default function TranscriptionModelPicker({
           };
 
           const perf = WHISPER_PERF_LABELS[modelId];
+          const isRecommended = recommendedLocalModel
+            ? modelId === recommendedLocalModel
+            : info.recommended;
           const performanceLabel =
             isOnboarding && perf ? `${perf.speed} · ${perf.quality}` : undefined;
 
@@ -720,7 +726,7 @@ export default function TranscriptionModelPicker({
               isDownloaded={model.downloaded ?? false}
               isDownloading={isDownloadingModel(modelId)}
               isCancelling={isCancelling}
-              recommended={info.recommended}
+              recommended={isRecommended}
               provider="whisper"
               performanceLabel={performanceLabel}
               onSelect={() => handleWhisperModelSelect(modelId)}
@@ -876,7 +882,7 @@ export default function TranscriptionModelPicker({
             ).map((engine) => {
               const isActive = selectedEngine === engine.id;
               const Icon = engine.icon;
-              // Show "Recommended" badge when: GPU is available and this is recommended,
+              // Show "Recommended" badge when GPU is available and this is recommended,
               // and this engine is NOT already selected (don't show badge on active card)
               const showRecommended = engine.recommended && !isActive && !engine.disabled;
               return (

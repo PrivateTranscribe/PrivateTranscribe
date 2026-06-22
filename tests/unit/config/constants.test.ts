@@ -4,47 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-
-// Inline implementations for testing
-const normalizeBaseUrl = (value?: string | null): string => {
-  if (!value) return "";
-
-  let normalized = value.trim();
-  if (!normalized) return "";
-
-  // Remove trailing slashes first to simplify pattern matching
-  normalized = normalized.replace(/\/+$/, "");
-
-  const suffixReplacements: Array<[RegExp, string]> = [
-    [/\/v1\/chat\/completions$/i, "/v1"],
-    [/\/chat\/completions$/i, ""],
-    [/\/v1\/responses$/i, "/v1"],
-    [/\/responses$/i, ""],
-    [/\/v1\/models$/i, "/v1"],
-    [/\/models$/i, ""],
-    [/\/v1\/audio\/transcriptions$/i, "/v1"],
-    [/\/audio\/transcriptions$/i, ""],
-    [/\/v1\/audio\/translations$/i, "/v1"],
-    [/\/audio\/translations$/i, ""],
-  ];
-
-  for (const [pattern, replacement] of suffixReplacements) {
-    if (pattern.test(normalized)) {
-      normalized = normalized.replace(pattern, replacement).replace(/\/+$/, "");
-    }
-  }
-
-  return normalized.replace(/\/+$/, "");
-};
-
-const buildApiUrl = (base: string, path: string): string => {
-  const normalizedBase = normalizeBaseUrl(base) || "https://api.openai.com/v1";
-  if (!path) {
-    return normalizedBase;
-  }
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${normalizedBase}${normalizedPath}`;
-};
+import { buildApiUrl, normalizeBaseUrl } from "../../../src/config/constants";
 
 describe("API Configuration", () => {
   describe("normalizeBaseUrl", () => {
@@ -197,9 +157,9 @@ describe("API Configuration", () => {
       });
 
       it("normalizes base URL before combining", () => {
-        expect(
-          buildApiUrl("https://api.openai.com/v1/chat/completions", "/models")
-        ).toBe("https://api.openai.com/v1/models");
+        expect(buildApiUrl("https://api.openai.com/v1/chat/completions", "/models")).toBe(
+          "https://api.openai.com/v1/models"
+        );
       });
     });
 

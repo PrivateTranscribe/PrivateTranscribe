@@ -1,4 +1,8 @@
 const DEFAULT_MAX_CANDIDATES = 400;
+const MAX_LEARNED_CORRECTION_PAIRS = 8;
+const MAX_LEARNING_TOKEN_COUNT = 160;
+const MAX_LEARNED_SPAN_TOKENS = 80;
+const MAX_LEARNED_TARGET_LENGTH = 500;
 
 const looksLikeIdentifier = (word) => {
   if (!word || typeof word !== "string") return false;
@@ -30,6 +34,136 @@ const normalizeSpoken = (text) => {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const extractLearningTokens = (text) => {
+  const tokens = [];
+  const source = String(text || "");
+  const re = /[\p{L}\p{N}][\p{L}\p{N}._-]*/gu;
+  let match;
+  while ((match = re.exec(source)) !== null) {
+    const raw = match[0];
+    tokens.push({
+      raw,
+      normalized: normalizeSpoken(raw),
+      index: match.index,
+      end: match.index + raw.length,
+    });
+  }
+  return tokens;
+};
+
+const spanTextForTokens = (text, tokens) => {
+  if (tokens.length === 0) return "";
+  const value = String(text || "");
+  let end = tokens[tokens.length - 1].end;
+  while (end < value.length && /[^\p{L}\p{N}\s]/u.test(value[end])) {
+    end++;
+  }
+  return value.slice(tokens[0].index, end).trim();
+};
+
+const buildCorrectionRegex = (source, target) => {
+  const tokens = extractLearningTokens(source)
+    .map((token) => token.normalized)
+    .filter(Boolean);
+
+  if (tokens.length === 0) return null;
+
+  const pattern = tokens.map(escapeRegExp).join("[^\\p{L}\\p{N}]+");
+  const targetText = String(target || "").trim();
+  const trailingSentencePunctuation =
+    tokens.length > 1 && targetText.length > 0 && /[.!?]$/.test(targetText);
+  const suffix = trailingSentencePunctuation ? "[.!?]*" : "";
+  return new RegExp(`(?<![\\p{L}\\p{N}])${pattern}${suffix}(?![\\p{L}\\p{N}])`, "giu");
+};
+
+const pushCorrectionPair = (pairs, sourceTokens, targetTokens, correctedText) => {
+  if (sourceTokens.length === 0 || targetTokens.length === 0) return;
+  if (
+    sourceTokens.length > MAX_LEARNED_SPAN_TOKENS ||
+    targetTokens.length > MAX_LEARNED_SPAN_TOKENS
+  ) {
+    return;
+  }
+
+  const source = sourceTokens
+    .map((token) => token.normalized)
+    .filter(Boolean)
+    .join(" ");
+  const target = spanTextForTokens(correctedText, targetTokens);
+  if (!source || !target || target.length > MAX_LEARNED_TARGET_LENGTH) return;
+  if (source === normalizeSpoken(target) && targetTokens.every((token) => token.raw === source)) {
+    return;
+  }
+
+  pairs.push({ source, target });
+};
+
+const getCommonTokenAnchors = (sourceTokens, targetTokens) => {
+  const a = sourceTokens.map((token) => token.normalized);
+  const b = targetTokens.map((token) => token.normalized);
+  const rows = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      rows[i][j] =
+        a[i] === b[j] ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+    }
+  }
+
+  const anchors = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      anchors.push([i, j]);
+      i++;
+      j++;
+    } else if (rows[i + 1][j] >= rows[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+
+  return anchors;
+};
+
+const inferSpanCorrectionPairs = (insertedText, correctedText) => {
+  const sourceTokens = extractLearningTokens(insertedText);
+  const targetTokens = extractLearningTokens(correctedText);
+  if (sourceTokens.length === 0 || targetTokens.length === 0) return [];
+  if (
+    sourceTokens.length > MAX_LEARNING_TOKEN_COUNT ||
+    targetTokens.length > MAX_LEARNING_TOKEN_COUNT
+  ) {
+    return [];
+  }
+
+  const anchors = getCommonTokenAnchors(sourceTokens, targetTokens);
+  const pairs = [];
+  let sourceStart = 0;
+  let targetStart = 0;
+
+  for (const [sourceAnchor, targetAnchor] of anchors) {
+    pushCorrectionPair(
+      pairs,
+      sourceTokens.slice(sourceStart, sourceAnchor),
+      targetTokens.slice(targetStart, targetAnchor),
+      correctedText
+    );
+    sourceStart = sourceAnchor + 1;
+    targetStart = targetAnchor + 1;
+  }
+
+  pushCorrectionPair(
+    pairs,
+    sourceTokens.slice(sourceStart),
+    targetTokens.slice(targetStart),
+    correctedText
+  );
+  return pairs.slice(0, MAX_LEARNED_CORRECTION_PAIRS);
+};
+
 /**
  * Snap phrases in a transcript to known identifiers (dictionary + correction memory).
  *
@@ -49,14 +183,21 @@ export function snapTranscript({
   //   - count >= 2  (seen at least twice via auto-learning → high confidence)
   //   - confirmed   (user explicitly added/confirmed it via UI → apply immediately)
   let output = original;
-  for (const row of corrections || []) {
+  const sortedCorrections = [...(corrections || [])].sort((a, b) => {
+    const aLength = extractLearningTokens(a?.source).length;
+    const bLength = extractLearningTokens(b?.source).length;
+    return bLength - aLength;
+  });
+
+  for (const row of sortedCorrections) {
     const source = row?.source;
     const target = row?.target;
     const count = row?.count || 0;
     const confirmed = row?.confirmed ? true : false;
     if (!source || !target || source === target) continue;
     if (count < 2 && !confirmed) continue;
-    const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "gi");
+    const re = buildCorrectionRegex(source, target);
+    if (!re) continue;
     output = output.replace(re, target);
   }
 
@@ -97,7 +238,7 @@ export function snapTranscript({
   return output;
 }
 
-export function inferCorrectionPairs(insertedText, correctedText) {
+export function inferCorrectionPairs(insertedText, correctedText, options = {}) {
   // Raw/trim checks first: normalizeSpoken would turn empty into "" anyway, but we
   // want to explicitly treat "cleared" clipboard/text as a non-learning event.
   const correctedRaw = typeof correctedText === "string" ? correctedText.trim() : "";
@@ -105,15 +246,18 @@ export function inferCorrectionPairs(insertedText, correctedText) {
 
   const a = normalizeSpoken(insertedText);
   const b = normalizeSpoken(correctedText);
-  if (!a || !b || a === b) return [];
+  if (!a || !b) return [];
 
-  // Guardrail: only learn when the "corrected" text is clearly derived from the inserted text.
-  // This avoids poisoning Correction Memory when the user simply undoes/reverts the paste,
-  // selects-all + deletes, or copies unrelated clipboard content during the learning window.
+  // Phrase/sentence learning is explicitly opt-in and still requires user confirmation before save.
   const aTok0 = a.split(" ").filter(Boolean);
   const bTok0 = b.split(" ").filter(Boolean);
 
-  // Guardrail: mass-deletion heuristic.
+  if (options?.allowPhraseLearning === true) {
+    return inferSpanCorrectionPairs(insertedText, correctedText);
+  }
+
+  // Word-only guardrail: only learn when the correction is clearly derived from the inserted text.
+  // Mass-deletion usually means the user cleared the field, not that they intended a correction.
   // If the "corrected" text removes most of the original, it's probably a user clearing the field,
   // not an intended correction.
   // Exception: very short inserts (<= 3 tokens) can legitimately be corrected into a shorter form.
@@ -131,29 +275,18 @@ export function inferCorrectionPairs(insertedText, correctedText) {
   // Require at least 50% token overlap (fairly lenient for small edits, but blocks full reverts).
   if (overlap < 0.5) return [];
 
-  // Heuristic v1: if both are single "identifier-like" tokens, learn that mapping.
-  const aTokens = a.split(" ").filter(Boolean);
-  const bTokens = b.split(" ").filter(Boolean);
+  // Auto-learning is word-level: source and corrected text must have the same token count.
+  const sourceTokens = extractLearningTokens(insertedText);
+  const targetTokens = extractLearningTokens(correctedText);
+  if (sourceTokens.length !== targetTokens.length || sourceTokens.length > 30) return [];
+
+  const aTokens = sourceTokens.map((token) => token.normalized);
+  const bTokens = targetTokens.map((token) => token.normalized);
 
   if (aTokens.length === 1 && bTokens.length === 1) {
-    return [{ source: aTokens[0], target: bTokens[0] }];
-  }
-
-  // Heuristic v1.5: if the user corrected a multi-word phrase into a single identifier,
-  // learn the *phrase → identifier* mapping (e.g. "is login error" → "isLoginError").
-  //
-  // Notes:
-  // - We persist the normalized phrase (lowercase, spaces) as the source.
-  // - We keep the original corrected identifier (case-sensitive) as the target.
-  if (
-    aTokens.length >= 2 &&
-    aTokens.length <= 8 &&
-    bTokens.length === 1 &&
-    correctedRaw &&
-    !/\s/.test(correctedRaw) &&
-    looksLikeIdentifier(correctedRaw)
-  ) {
-    return [{ source: a, target: correctedRaw }];
+    return sourceTokens[0].raw !== targetTokens[0].raw || aTokens[0] !== bTokens[0]
+      ? [{ source: aTokens[0], target: targetTokens[0].raw }]
+      : [];
   }
 
   // Heuristic v2: if same token count, learn token-level replacements.
@@ -161,7 +294,9 @@ export function inferCorrectionPairs(insertedText, correctedText) {
     const pairs = [];
     for (let i = 0; i < aTokens.length; i++) {
       if (aTokens[i] !== bTokens[i]) {
-        pairs.push({ source: aTokens[i], target: bTokens[i] });
+        pairs.push({ source: aTokens[i], target: targetTokens[i].raw });
+      } else if (sourceTokens[i].raw !== targetTokens[i].raw) {
+        pairs.push({ source: aTokens[i], target: targetTokens[i].raw });
       }
     }
     // Cap to avoid learning nonsense.

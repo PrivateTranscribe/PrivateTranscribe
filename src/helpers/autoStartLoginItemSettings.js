@@ -1,8 +1,16 @@
+const AUTO_START_LAUNCH_MODES = ["tray", "minimized", "window"];
+const DEFAULT_AUTO_START_LAUNCH_MODE = "tray";
+
+function normalizeAutoStartLaunchMode(mode) {
+  return AUTO_START_LAUNCH_MODES.includes(mode) ? mode : DEFAULT_AUTO_START_LAUNCH_MODE;
+}
+
 function buildAutoStartLaunchOptions({
   platform = process.platform,
   isPackaged = true,
   execPath = process.execPath,
   appPath = "",
+  launchMode = DEFAULT_AUTO_START_LAUNCH_MODE,
 } = {}) {
   if (platform !== "win32") {
     return {};
@@ -19,6 +27,11 @@ function buildAutoStartLaunchOptions({
   if (!isPackaged && appPath) {
     options.args = [appPath];
   }
+
+  options.args.push(
+    "--launch-at-login",
+    `--startup-mode=${normalizeAutoStartLaunchMode(launchMode)}`
+  );
 
   return options;
 }
@@ -40,6 +53,9 @@ function buildAutoStartSetOptions({ enabled, platform = process.platform, ...lau
 }
 
 module.exports = {
+  AUTO_START_LAUNCH_MODES,
+  DEFAULT_AUTO_START_LAUNCH_MODE,
+  normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
 };

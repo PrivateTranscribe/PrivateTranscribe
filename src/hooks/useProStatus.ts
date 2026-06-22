@@ -1,39 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  getProStatus,
-  refreshProStatus,
-  _verifyToken,
-  type ProStatus,
-} from "../services/LicensingService";
-
-/**
- * React hook for checking Pro license status.
- * Refreshes on mount and provides helper methods.
- */
-export function useProStatus() {
-  const [status, setStatus] = useState<ProStatus>(getProStatus());
-
-  useEffect(() => {
-    // Refresh from server on mount (if online)
-    refreshProStatus()
-      .then(setStatus)
-      .catch(() => {
-        // If refresh fails, use cached
-        setStatus(getProStatus());
-      });
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const newStatus = await refreshProStatus();
-    setStatus(newStatus);
-    return newStatus;
-  }, []);
-
-  return {
-    ...status,
-    refresh,
-  };
-}
+import { useState, useEffect } from "react";
+import { getProStatus, _verifyToken } from "../services/LicensingService";
 
 // Features that require a Pro entitlement (controls lock gating)
 const PRO_FEATURES = new Set([
@@ -56,12 +22,21 @@ const SIDEBAR_PRO_ITEMS = new Set([
 const PREVIEW_KEY = "privatetranscribe_pro_preview";
 const PREVIEW_EVENT = "privatetranscribe-pro-preview-changed";
 
+function isProductionBuild(): boolean {
+  try {
+    const meta = import.meta as unknown as { env?: { PROD?: boolean } };
+    return !!meta.env?.PROD;
+  } catch {
+    return false;
+  }
+}
+
 function isProEnforcementEnabled(): boolean {
-  // Default behavior:
-  // - DEV: unlocked (so contributors can test without licenses)
-  // - PROD: enforced
-  //
-  // Override (for QA / staging):
+  // Production builds always enforce licensing. localStorage is user-controlled
+  // in the renderer, so QA/dev overrides must never unlock shipped builds.
+  if (isProductionBuild()) return true;
+
+  // Development/staging override:
   // - localStorage.PRO_ENFORCEMENT = "true" | "false"
   try {
     const override = localStorage.getItem("PRO_ENFORCEMENT");
@@ -71,12 +46,8 @@ function isProEnforcementEnabled(): boolean {
     // ignore
   }
 
-  // Vite injects these flags.
-  try {
-    return !!import.meta.env.PROD;
-  } catch {
-    return false;
-  }
+  // DEV remains unlocked by default so contributors can test without licenses.
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,6 +59,8 @@ export type ProPreviewMode = "free" | "pro" | null;
 
 /** Read the current preview override from localStorage. */
 export function getProPreview(): ProPreviewMode {
+  if (isProductionBuild()) return null;
+
   try {
     const val = localStorage.getItem(PREVIEW_KEY);
     if (val === "free" || val === "pro") return val;
