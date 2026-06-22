@@ -43,7 +43,6 @@ export default function FeedbackDialog({
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FeedbackCategory>("general");
-  const [includeSystemInfo, setIncludeSystemInfo] = useState(true);
   const [submitState, setSubmitState] = useState<"idle" | "submitting" | "sent" | "error">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -76,7 +75,6 @@ export default function FeedbackDialog({
       const result = await window.electronAPI?.submitFeedback?.({
         message: trimmedMessage,
         category,
-        includeSystemInfo,
         appVersion: currentVersion || "unknown",
         source,
       });
@@ -143,17 +141,10 @@ export default function FeedbackDialog({
             </div>
           </div>
 
-          <label className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={includeSystemInfo}
-              onChange={(event) => setIncludeSystemInfo(event.target.checked)}
-              className="mt-0.5 rounded"
-            />
-            <span>
-              Include app version and basic system info. No audio, transcripts, or logs are sent.
-            </span>
-          </label>
+          <p className="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            Feedback includes app version and basic system info so we can reproduce issues. No
+            audio, transcripts, or logs are sent.
+          </p>
 
           {submitState === "sent" && (
             <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">

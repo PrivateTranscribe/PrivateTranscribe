@@ -93,6 +93,12 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackDialog).toContain("Your note");
     expect(feedbackDialog).toContain("Type");
     expect(feedbackDialog).toContain("No email app required");
+    expect(feedbackDialog).toContain("Feedback includes app version and basic system info");
+    expect(feedbackDialog).not.toContain("includeSystemInfo");
+    expect(ipcHandlers).toContain("systemInfo: {");
+    expect(ipcHandlers).toContain("app.getVersion()");
+    expect(ipcHandlers).not.toContain("payload.includeSystemInfo");
+    expect(electronTypes).not.toContain("includeSystemInfo");
     expect(feedbackDialog).not.toContain("Quick tester templates");
   });
 

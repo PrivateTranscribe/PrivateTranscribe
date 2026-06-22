@@ -127,7 +127,6 @@ function buildFeedbackPayload(rawPayload) {
   const analyticsManager = require("./analyticsManager");
   const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
   const category = allowedCategories.has(payload.category) ? payload.category : "general";
-  const includeSystemInfo = payload.includeSystemInfo !== false;
 
   return {
     message,
@@ -135,19 +134,19 @@ function buildFeedbackPayload(rawPayload) {
     contact: typeof payload.contact === "string" ? payload.contact.trim().slice(0, 300) : null,
     source: typeof payload.source === "string" ? payload.source.slice(0, 80) : "unknown",
     appVersion:
-      typeof payload.appVersion === "string" ? payload.appVersion.slice(0, 80) : "unknown",
+      typeof payload.appVersion === "string" && payload.appVersion.trim()
+        ? payload.appVersion.trim().slice(0, 80)
+        : app.getVersion(),
     deviceId: analyticsManager.getDeviceIdForExplicitFeedback(),
     submittedAt: new Date().toISOString(),
-    systemInfo: includeSystemInfo
-      ? {
-          platform: process.platform,
-          arch: process.arch,
-          electron: process.versions.electron,
-          chrome: process.versions.chrome,
-          node: process.versions.node,
-          isPackaged: app.isPackaged,
-        }
-      : null,
+    systemInfo: {
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+      isPackaged: app.isPackaged,
+    },
   };
 }
 
