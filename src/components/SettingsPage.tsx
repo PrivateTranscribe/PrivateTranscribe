@@ -3393,7 +3393,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       label="Uninstall PrivateTranscribe"
                       description={
                         platform === "win32"
-                          ? "Remove PrivateTranscribe via Windows Settings → Apps & features. To also remove downloaded models and app data, use Reset app data first."
+                          ? "Remove PrivateTranscribe via Windows Settings → Apps & features. The uninstaller will ask whether to also remove settings, transcriptions, logs, and downloaded models."
                           : platform === "darwin"
                             ? "Quit PrivateTranscribe, then drag it from your Applications folder to the Trash. To also remove downloaded models and app data, use Reset app data first."
                             : "Use your system package manager (apt, dnf, pacman) or software center to remove PrivateTranscribe. To also remove downloaded models and app data, use Reset app data first."

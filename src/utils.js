@@ -7,19 +7,21 @@ class AppUtils {
   static cleanup(mainWindow) {
     console.log("Starting cleanup process...");
 
-    // Database file deletion
-    try {
-      const dbPath = path.join(
-        app.getPath("userData"),
-        process.env.NODE_ENV === "development" ? "transcriptions-dev.db" : "transcriptions.db"
-      );
-      if (fs.existsSync(dbPath)) {
-        fs.unlinkSync(dbPath);
-        console.log("✅ Database file deleted:", dbPath);
+    const removeTarget = (target, label) => {
+      try {
+        if (fs.existsSync(target)) {
+          fs.rmSync(target, { recursive: true, force: true });
+          console.log(`✅ ${label} deleted:`, target);
+        }
+      } catch (error) {
+        console.error(`❌ Error deleting ${label}:`, error);
       }
-    } catch (error) {
-      console.error("❌ Error deleting database file:", error);
-    }
+    };
+
+    const userDataPath = app.getPath("userData");
+
+    // User data deletion: database, logs, settings files, API key env file, device id, etc.
+    removeTarget(userDataPath, "App data");
 
     // Local storage clearing
     if (mainWindow && mainWindow.webContents) {
@@ -33,37 +35,19 @@ class AppUtils {
         });
     }
 
-    // Local Whisper model deletion
-    try {
-      const modelCacheDir = path.join(
-        os.homedir(),
-        ".cache",
-        "PrivateTranscribe",
-        "whisper-models"
-      );
-      if (fs.existsSync(modelCacheDir)) {
-        fs.rmSync(modelCacheDir, { recursive: true, force: true });
-        console.log("✅ Local Whisper models deleted:", modelCacheDir);
-      }
-    } catch (error) {
-      console.error("❌ Error deleting Whisper models:", error);
-    }
+    // Model cache deletion: Whisper, Parakeet, local GGUF/llama, diarization, and future model dirs.
+    removeTarget(path.join(os.homedir(), ".cache", "PrivateTranscribe"), "Model caches");
+    removeTarget(path.join(os.homedir(), ".cache", "Privoca"), "Legacy Privoca model caches");
+    removeTarget(
+      path.join(os.homedir(), ".cache", "dictatevoice"),
+      "Legacy DictateVoice model caches"
+    );
+    removeTarget(path.join(os.homedir(), ".cache", "whisper"), "Legacy Whisper cache");
 
     // Permissions instruction
     console.log(
       "ℹ️ Please manually remove accessibility and microphone permissions via System Preferences if needed."
     );
-
-    // Env file deletion
-    try {
-      const envPath = path.join(app.getPath("userData"), ".env");
-      if (fs.existsSync(envPath)) {
-        fs.unlinkSync(envPath);
-        console.log("✅ .env file deleted:", envPath);
-      }
-    } catch (error) {
-      console.error("❌ Error deleting .env file:", error);
-    }
 
     console.log("Cleanup process completed.");
   }
