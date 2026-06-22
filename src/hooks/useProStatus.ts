@@ -1,39 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  getProStatus,
-  refreshProStatus,
-  _verifyToken,
-  type ProStatus,
-} from "../services/LicensingService";
-
-/**
- * React hook for checking Pro license status.
- * Refreshes on mount and provides helper methods.
- */
-export function useProStatus() {
-  const [status, setStatus] = useState<ProStatus>(getProStatus());
-
-  useEffect(() => {
-    // Refresh from server on mount (if online)
-    refreshProStatus()
-      .then(setStatus)
-      .catch(() => {
-        // If refresh fails, use cached
-        setStatus(getProStatus());
-      });
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const newStatus = await refreshProStatus();
-    setStatus(newStatus);
-    return newStatus;
-  }, []);
-
-  return {
-    ...status,
-    refresh,
-  };
-}
+import { useState, useEffect } from "react";
+import { getProStatus, _verifyToken } from "../services/LicensingService";
 
 // Features that require a Pro entitlement (controls lock gating)
 const PRO_FEATURES = new Set([

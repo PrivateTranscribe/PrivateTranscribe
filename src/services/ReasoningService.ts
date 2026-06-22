@@ -1,9 +1,12 @@
 import { getModelProvider, getCloudModel } from "../models/ModelRegistry";
-import { BaseReasoningService, ReasoningConfig } from "./BaseReasoningService";
 import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
-import { UNIFIED_SYSTEM_PROMPT, LEGACY_PROMPTS } from "../config/prompts";
+import {
+  getSystemPrompt as buildSystemPrompt,
+  UNIFIED_SYSTEM_PROMPT,
+  LEGACY_PROMPTS,
+} from "../config/prompts";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import {
@@ -18,6 +21,15 @@ import {
  * Kept for backwards compatibility with PromptStudio UI
  */
 export const DEFAULT_PROMPTS = LEGACY_PROMPTS;
+
+export interface ReasoningConfig {
+  maxTokens?: number;
+  temperature?: number;
+  contextSize?: number;
+  dictationMode?: string;
+  preferredLanguage?: string | null;
+  smartContext?: Record<string, unknown> | null;
+}
 
 function getTextLength(value: unknown): number | undefined {
   return typeof value === "string" ? value.length : undefined;
@@ -102,16 +114,50 @@ function summarizeApiErrorForLog(errorData: any): Record<string, unknown> {
   };
 }
 
-class ReasoningService extends BaseReasoningService {
+class ReasoningService {
+  private isProcessing = false;
   private apiKeyCache: SecureCache<string>;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
   private static readonly OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
   private cacheCleanupStop: (() => void) | undefined;
 
   constructor() {
-    super();
     this.apiKeyCache = new SecureCache();
     this.cacheCleanupStop = this.apiKeyCache.startAutoCleanup();
+  }
+
+  private getCustomDictionary(): string[] {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    try {
+      const raw = window.localStorage.getItem("customDictionary");
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private getSystemPrompt(
+    agentName: string | null,
+    dictationMode?: string,
+    preferredLanguage?: string | null
+  ): string {
+    return buildSystemPrompt(
+      agentName,
+      this.getCustomDictionary(),
+      dictationMode,
+      preferredLanguage
+    );
+  }
+
+  private calculateMaxTokens(
+    textLength: number,
+    minTokens = 100,
+    maxTokens = 2048,
+    multiplier = 2
+  ): number {
+    return Math.max(minTokens, Math.min(textLength * multiplier, maxTokens));
   }
 
   /**
