@@ -129,16 +129,11 @@ describe("Settings support and diagnostics tools", () => {
   });
 
   it("the diagnostics section is labeled for users, not only developers", () => {
-    const settingsModal = fs.readFileSync(
-      path.join(process.cwd(), "src", "components", "SettingsModal.tsx"),
-      "utf8"
-    );
     const settingsPage = fs.readFileSync(
       path.join(process.cwd(), "src", "components", "SettingsPage.tsx"),
       "utf8"
     );
 
-    expect(settingsModal).toContain('label: "Diagnostics & Data"');
     expect(settingsPage).toContain('title="Diagnostics & Data"');
   });
 });

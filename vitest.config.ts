@@ -24,7 +24,6 @@ export default defineConfig({
         "src/eslint.config.js",
         "src/main.css",
         "src/App.jsx",
-        "src/ControlPanel.tsx",
       ],
       thresholds: {
         statements: 60,
