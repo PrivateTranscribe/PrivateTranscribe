@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Button } from "./button";
 import { RefreshCw, Mic } from "lucide-react";
 import { isBuiltInMicrophone } from "../../utils/audioDeviceUtils";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { DEFAULT_MIC_WARM_WINDOW_SECONDS } from "../../utils/micWarmWindow";
 
 interface AudioDevice {
   deviceId: string;
@@ -28,6 +30,18 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [micWarmWindowSeconds, setMicWarmWindowSeconds] = useLocalStorage<number>(
+    "micWarmWindowSeconds",
+    DEFAULT_MIC_WARM_WINDOW_SECONDS,
+    {
+      serialize: String,
+      deserialize: (value) => {
+        const num = parseInt(value, 10);
+        if (!Number.isFinite(num) || num < 0) return DEFAULT_MIC_WARM_WINDOW_SECONDS;
+        return num;
+      },
+    }
+  );
 
   // Use refs to access current values without triggering re-renders
   const preferBuiltInRef = useRef(preferBuiltInMic);
@@ -162,6 +176,27 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
           </p>
         </div>
       )}
+
+      <SettingsRow
+        label="Keep microphone ready"
+        description="Hold the mic open briefly after dictation so the next hotkey press starts instantly instead of waiting for the mic to wake up. Longer avoids the cold-start lag but keeps the system mic-in-use indicator on longer. Audio is never recorded or sent while idle."
+      >
+        <Select
+          value={String(micWarmWindowSeconds)}
+          onValueChange={(value) => setMicWarmWindowSeconds(parseInt(value, 10))}
+        >
+          <SelectTrigger className="w-[160px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="15">15 seconds</SelectItem>
+            <SelectItem value="30">30 seconds</SelectItem>
+            <SelectItem value="60">1 minute</SelectItem>
+            <SelectItem value="120">2 minutes</SelectItem>
+            <SelectItem value="0">Always ready</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingsRow>
     </div>
   );
 };
