@@ -1,6 +1,7 @@
 import { MessageSquare, Lock } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Badge } from "../ui/badge";
 import PromptStudio from "../ui/PromptStudio";
 import { useAgentName } from "../../utils/agentName";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
@@ -39,6 +40,9 @@ export default function VoiceAssistantPage() {
         <div className="flex items-center gap-3 mb-2">
           <MessageSquare size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Voice Assistant</h1>
+          <Badge variant="warning" className="text-[10px]">
+            Beta
+          </Badge>
           {!isUnlocked && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
               <Lock size={10} /> Pro

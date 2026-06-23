@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Check, X, RefreshCw } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/Toast";
 import {
@@ -256,9 +257,14 @@ export default function ProSettingsSection() {
       {/* Pro features overview */}
       <div className="space-y-3">
         <div>
-          <h3 className="text-base font-semibold text-foreground">What's included</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-foreground">What's included</h3>
+            <Badge variant="warning" className="text-[10px]">
+              Beta
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Everything unlocked with PrivateTranscribe Pro
+            Pro features are available for founding testers and still being refined.
           </p>
         </div>
 
