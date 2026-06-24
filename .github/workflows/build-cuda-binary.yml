@@ -18,7 +18,9 @@ permissions:
 jobs:
   build-cuda-windows:
     name: Build Windows CUDA binary
-    runs-on: windows-latest
+    # windows-latest moved to VS 2025 (MSVC 19.5x), which CUDA 12.8's cudafe++
+    # crashes on. Pin to the VS 2022 image that CUDA 12.8 officially supports.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout PrivateTranscribe
@@ -72,7 +74,6 @@ jobs:
           cmake -B build ^
             -DGGML_CUDA=ON ^
             -DCMAKE_CUDA_ARCHITECTURES="61;70;75;86;89;120" ^
-            -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" ^
             -DWHISPER_BUILD_SERVER=ON ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe" ^
