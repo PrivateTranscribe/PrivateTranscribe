@@ -2047,13 +2047,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div>
                 <SectionHeader
                   title="Startup"
-                  description="Control whether PrivateTranscribe is ready after you sign in"
+                  description="Control whether PrivateTranscribe launches when you start your computer"
                 />
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Start PrivateTranscribe when I log in"
-                      description="Keeps the dictation hotkey ready after restart."
+                      label="Launch PrivateTranscribe when you start your computer"
+                      description="Your dictation hotkey is ready to go the moment you log in."
                     >
                       <Toggle
                         checked={autoStartEnabled}

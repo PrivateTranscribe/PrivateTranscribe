@@ -991,8 +991,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       Startup
                     </span>
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
-                      Start PrivateTranscribe when I log in so the dictation hotkey is ready after
-                      restart.
+                      Launch PrivateTranscribe automatically when you start your computer, so your
+                      dictation hotkey works right away.
                     </p>
                     {autoStartError && (
                       <p className="text-xs text-destructive mt-1">{autoStartError}</p>
