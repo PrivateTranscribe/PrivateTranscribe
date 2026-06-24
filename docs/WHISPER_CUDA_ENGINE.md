@@ -13,11 +13,11 @@ Do **not** assume the CUDA executable is self-contained. Modern `whisper.cpp` bu
 ## Production state
 
 - Latest confirmed working release: `0.8.4`
-- CUDA binary package version: `v0.0.8`
+- CUDA binary package version: `v0.0.9`
 - Windows CUDA package:
-  - `https://updates.privatetranscribe.com/binaries/v0.0.8/whisper-server-win32-x64-cuda.zip`
+  - `https://updates.privatetranscribe.com/binaries/v0.0.9/whisper-server-win32-x64-cuda.zip`
 - Linux CUDA package:
-  - `https://updates.privatetranscribe.com/binaries/v0.0.8/whisper-server-linux-x64-cuda.zip`
+  - `https://updates.privatetranscribe.com/binaries/v0.0.9/whisper-server-linux-x64-cuda.zip`
 - Confirmed real hardware success:
   - Kristian's RTX 5070 laptop now runs CUDA after the fixes.
 
