@@ -12,8 +12,11 @@ const APP_ID = "com.privatetranscribe.app";
 // Set App User Model ID immediately on Windows — must happen before app is ready
 // and before any window creation so that the taskbar groups the running process
 // with the pinned shortcut (which reads AppUserModelID from the EXE resource).
+// Dev runs use a separate AUMID: `npm run dev` launches bare electron.exe, and if it
+// shared the production AUMID it would teach Windows to cache the Electron logo as that
+// AUMID's taskbar icon — which the installed app then inherits. Keep them separate.
 if (process.platform === "win32") {
-  app.setAppUserModelId(APP_ID);
+  app.setAppUserModelId(app.isPackaged ? APP_ID : `${APP_ID}.dev`);
 }
 
 // Enable native Wayland global shortcuts: https://github.com/electron/electron/pull/45171
