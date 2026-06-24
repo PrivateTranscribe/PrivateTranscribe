@@ -93,7 +93,7 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackDialog).toContain("Your note");
     expect(feedbackDialog).toContain("Type");
     expect(feedbackDialog).toContain("No email app required");
-    expect(feedbackDialog).toContain("Feedback includes app version and basic system info");
+    expect(feedbackDialog).toContain("hardware specs (CPU, GPU, RAM)");
     expect(feedbackDialog).toContain("Attach screenshots");
     expect(feedbackDialog).toContain("MAX_ATTACHMENTS");
     expect(feedbackDialog).toContain("FileReader");

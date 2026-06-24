@@ -301,8 +301,9 @@ export default function FeedbackDialog({
           </div>
 
           <p className="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-            Feedback includes app version and basic system info so we can reproduce issues. No
-            audio, transcripts, or logs are sent. Screenshots are sent only if you attach them.
+            Feedback includes your app version, OS, and hardware specs (CPU, GPU, RAM) so we can
+            reproduce issues. No audio, transcripts, or logs are sent. Screenshots are sent only if
+            you attach them.
           </p>
 
           {submitState === "sent" && (

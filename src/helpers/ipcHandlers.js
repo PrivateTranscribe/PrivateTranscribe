@@ -152,6 +152,25 @@ function buildFeedbackPayload(rawPayload) {
   const allowedCategories = new Set(["bug", "confusing", "feature", "general"]);
   const category = allowedCategories.has(payload.category) ? payload.category : "general";
 
+  // Hardware specs make "it doesn't work" reports reproducible (e.g. an old CPU
+  // being handed a model that is too heavy). Only non-identifying machine specs
+  // are included - no hostname, username, or serials. GPU is added by the caller
+  // from the cached hardware detection when available.
+  const os = require("os");
+  let cpu = null;
+  let memoryGb = null;
+  try {
+    const cpus = os.cpus();
+    cpu = {
+      model: cpus[0]?.model || "Unknown",
+      threads: cpus.length,
+      speedMhz: cpus[0]?.speed || 0,
+    };
+    memoryGb = Math.round((os.totalmem() / 1024 ** 3) * 10) / 10;
+  } catch {
+    // Hardware probing is best-effort; never block feedback on it.
+  }
+
   return {
     message,
     category,
@@ -167,6 +186,9 @@ function buildFeedbackPayload(rawPayload) {
     systemInfo: {
       platform: process.platform,
       arch: process.arch,
+      osRelease: os.release(),
+      cpu,
+      memoryGb,
       electron: process.versions.electron,
       chrome: process.versions.chrome,
       node: process.versions.node,
@@ -1228,6 +1250,24 @@ class IPCHandlers {
         }
 
         const feedbackPayload = buildFeedbackPayload(payload);
+
+        // Attach GPU info from the cached hardware detection so we can tell GPU
+        // vs CPU transcription issues apart. Best-effort: never block or fail
+        // feedback on hardware probing.
+        try {
+          const detection = await this.hardwareDetector.detectHardware();
+          if (detection?.gpu) {
+            feedbackPayload.systemInfo.gpu = {
+              vendor: detection.gpu.vendor,
+              model: detection.gpu.model,
+              vramMb: detection.gpu.vram,
+              cudaAvailable: detection.gpu.cuda?.available ?? false,
+            };
+          }
+        } catch (error) {
+          debugLogger.debug("Feedback GPU enrichment skipped", { error: error.message });
+        }
+
         const headers = {
           apikey: anonKey,
           authorization: `Bearer ${anonKey}`,
