@@ -70,8 +70,8 @@ const MAIN_WINDOW_CONFIG = {
 const CONTROL_PANEL_CONFIG = {
   width: 1200,
   height: 800,
-  minWidth: 1024,
-  minHeight: 700,
+  minWidth: 960,
+  minHeight: 640, // fits 1080p at 150% scaling (~672px usable height after taskbar)
   icon: getWindowIcon(),
   webPreferences: {
     preload: path.join(__dirname, "..", "..", "preload.js"),
