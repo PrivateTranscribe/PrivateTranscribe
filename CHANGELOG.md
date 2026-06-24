@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.13.0 - 2026-06-24
+
+### Added
+
+- Added manual tester approval flow with Discord Approve and Deny buttons so signup requests can be reviewed before access is granted.
+- Added name and use-case fields to the tester signup form so applicants can introduce themselves and their intended use.
+- Added license key delivery by email on approval so approved testers receive their Pro key automatically.
+
+### Changed
+
+- Reworked tester signup to send Discord approval requests immediately on form submission instead of requiring email confirmation first.
+- Enriched Discord signup notifications with name, use case, OS, and source for better context.
+- Aligned all email templates with the brand writing style and removed personal names from user-facing copy.
+
+### Fixed
+
+- Fixed Discord webhook buttons not appearing by enabling component support on the webhook payload.
+- Fixed email send failures being silently swallowed instead of reported in the approval flow.
+- Fixed taskbar snap defaulting to off on fresh installs.
+
 ## 0.12.2 - 2026-06-23
 
 ### Added

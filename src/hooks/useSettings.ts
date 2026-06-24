@@ -866,7 +866,7 @@ export function useSettings() {
   );
   const [overlaySnapToTaskbar, setOverlaySnapToTaskbar] = useLocalStorage(
     "overlaySnapToTaskbar",
-    false,
+    true,
     boolSerializer
   );
 

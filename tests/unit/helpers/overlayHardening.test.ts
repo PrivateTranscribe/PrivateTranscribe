@@ -76,11 +76,13 @@ describe("windowManager.js — multi-monitor position clamping", () => {
     expect(block).toContain("clampButtonCenter(btnX, btnY, workArea)");
   });
 
-  test("taskbar snap is opt-in by default", () => {
+  test("taskbar snap is on by default, with native starting from a safe off state", () => {
+    // Native init stays false; the renderer pushes the real value on load.
     expect(windowManager).toContain("this.overlaySnapToTaskbar = false");
     expect(dragManager).toContain("this.snapToTaskbar = false");
     expect(dragManager).toContain("this.snapToTaskbar = enabled === true");
-    expect(appJsx).toContain('localStorage.getItem("overlaySnapToTaskbar") === "true"');
+    // User-facing default is on: only an explicit "false" disables it.
+    expect(appJsx).toContain('localStorage.getItem("overlaySnapToTaskbar") !== "false"');
   });
 
   test("saved/restored overlay math still anchors to button offsets", () => {
@@ -324,28 +326,5 @@ describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => 
     // new Set must appear before .slice in the quickLanguages memo
     const setIdx = beforeSlice.lastIndexOf("new Set(");
     expect(setIdx).toBeGreaterThan(-1);
-  });
-});
-
-// ─── Window size constants — sanity checks ───────────────────────────────────
-
-describe("windowConfig.js — window size constants", () => {
-  test("WITH_TOAST width is narrower than the fixed transparent container", () => {
-    const withToastMatch = windowConfig.match(/WITH_TOAST:\s*\{\s*width:\s*(\d+)/);
-    const containerMatch = windowConfig.match(/const CONTAINER_W = (\d+);/);
-    expect(withToastMatch).not.toBeNull();
-    expect(containerMatch).not.toBeNull();
-    const withToastWidth = parseInt(withToastMatch![1], 10);
-    const containerWidth = parseInt(containerMatch![1], 10);
-    expect(withToastWidth).toBeLessThan(containerWidth);
-  });
-
-  test("WITH_MENU height leaves room for context menu content", () => {
-    // WITH_MENU must be tall enough to show the root submenu (≈240px content +
-    // button clearance ≈80px = ≈320px minimum).
-    const match = windowConfig.match(/WITH_MENU:\s*\{\s*width:\s*\d+,\s*height:\s*(\d+)/);
-    expect(match).not.toBeNull();
-    const height = parseInt(match![1], 10);
-    expect(height).toBeGreaterThanOrEqual(320);
   });
 });

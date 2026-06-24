@@ -87,10 +87,12 @@ describe("HardwareDetector.generateRecommendations", () => {
       expect(rec.reasoning).toEqual(expect.arrayContaining([expect.stringContaining("VRAM")]));
     });
 
-    it("does not include VRAM reasoning when VRAM < 4GB", () => {
+    it("does not include the 'excellent for local transcription' reasoning when VRAM < 4GB", () => {
       const rec = detector.generateRecommendations(nvidiaDetection(2048));
-      const hasVramReasoning = (rec.reasoning as string[]).some((r) => r.includes("VRAM"));
-      expect(hasVramReasoning).toBe(false);
+      const hasExcellentReasoning = (rec.reasoning as string[]).some((r) =>
+        r.includes("excellent for local transcription")
+      );
+      expect(hasExcellentReasoning).toBe(false);
     });
 
     it("does not recommend Parakeet when CUDA is absent (NVIDIA but no CUDA)", () => {

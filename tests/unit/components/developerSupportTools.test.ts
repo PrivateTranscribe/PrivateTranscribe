@@ -100,6 +100,9 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackDialog).toContain("handlePastedImages");
     expect(feedbackDialog).toContain("onPaste={handlePastedImages}");
     expect(feedbackDialog).toContain("Paste screenshots here or use Add image");
+    expect(feedbackDialog).toContain("src={attachment.dataUrl}");
+    expect(feedbackDialog).toContain("Preview of ${attachment.name}");
+    expect(feedbackDialog).toContain("object-cover");
     expect(feedbackDialog).toContain("setAttachmentError");
     expect(feedbackDialog).not.toContain("includeSystemInfo");
     expect(ipcHandlers).toContain("systemInfo: {");

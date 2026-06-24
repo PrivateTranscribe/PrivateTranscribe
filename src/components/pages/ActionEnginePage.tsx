@@ -980,6 +980,9 @@ export default function ActionEnginePage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-semibold text-foreground tracking-tight">Action Engine</h1>
+            <Badge variant="warning" className="text-[10px]">
+              Beta
+            </Badge>
             {!isUnlocked && (
               <Badge variant="outline" className="text-[10px] gap-1">
                 <Lock size={10} />

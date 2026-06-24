@@ -29,6 +29,14 @@ describe("WhisperManager engine mode", () => {
 
     const manager = new WhisperManager();
     manager.getModelPath = vi.fn(() => modelPath);
+    // The real model-validity guard rejects our tiny fake .bin; this test only
+    // cares about the engine-mode path, so report the model as valid.
+    manager.getModelFileStatus = vi.fn(() => ({
+      modelPath,
+      exists: true,
+      valid: true,
+      size: 2_000_000_000,
+    }));
     manager.serverManager = {
       forceCpu: false,
       activeServerBinaryPath: path.join(tempDir, "whisper-server-win32-x64-cuda.exe"),

@@ -188,6 +188,18 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // Speech RMS typically 0.01–0.25; 0.25 normalizes loud speech to ~1.0
         const SCALE = 0.25;
 
+        // Stall self-heal watchdog. A live mic always has a small noise floor,
+        // so a sustained EXACT-zero RMS while the context still claims to be
+        // "running" means the audio graph has silently gone stale (a zombie
+        // context after display sleep/wake, or a fast re-record). When that
+        // happens we rebuild the context + analyser once; this never touches
+        // the recording stream, so transcription is unaffected.
+        const STALL_EPS = 1e-6;
+        const STALL_MS = 3000;
+        const MAX_SELF_HEAL = 3;
+        let lastSignalAt = performance.now();
+        let selfHealCount = 0;
+
         const tick = () => {
           if (cancelled) return;
           rafRef.current = null;
@@ -202,6 +214,22 @@ export function useMicLevel(audioManagerRef, isRecording) {
             sum += dataArray[i] * dataArray[i];
           }
           const rms = Math.sqrt(sum / dataArray.length);
+
+          const nowTs = performance.now();
+          if (rms > STALL_EPS) {
+            lastSignalAt = nowTs;
+            selfHealCount = 0;
+          } else if (
+            ctx.state === "running" &&
+            selfHealCount < MAX_SELF_HEAL &&
+            nowTs - lastSignalAt > STALL_MS
+          ) {
+            // Pipe looks healthy but has produced pure silence for too long —
+            // rebuild the audio graph instead of polling zeros forever.
+            selfHealStalledGraph();
+            return;
+          }
+
           const normalized = Math.min(1, rms / SCALE);
 
           // Asymmetric exponential smoothing: attack fast, decay slow
@@ -282,6 +310,38 @@ export function useMicLevel(audioManagerRef, isRecording) {
           if (cancelled) return;
           cancelAnimationFrame(rafRef.current);
           rafRef.current = requestAnimationFrame(tick);
+        };
+
+        // Rebuild the shared context + analyser graph when the meter detects a
+        // stalled (silent-but-"running") pipe. Only the audio graph is rebuilt;
+        // the recording stream is left untouched so transcription is unaffected.
+        const selfHealStalledGraph = () => {
+          if (cancelled) return;
+          selfHealCount += 1;
+          console.debug("[mic-meter] self-healing stalled audio graph", { selfHealCount });
+
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+          lastSignalAt = performance.now();
+
+          const recoveredCtx = resetSharedAudioContext();
+          if (!recoveredCtx) {
+            startLoop();
+            return;
+          }
+
+          try {
+            buildAnalyserGraph(recoveredCtx);
+            attachStateChangeListener(recoveredCtx);
+          } catch {
+            startLoop();
+            return;
+          }
+
+          void (async () => {
+            await waitForAudioContextRunning(recoveredCtx);
+            startLoop();
+          })();
         };
 
         const startWhenAudioContextRuns = async () => {

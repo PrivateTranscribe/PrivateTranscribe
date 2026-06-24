@@ -1,6 +1,7 @@
 import ReasoningService from "../services/ReasoningService";
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import logger from "../utils/logger";
+import { resolveMicWarmWindowMs } from "../utils/micWarmWindow";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
@@ -306,10 +307,20 @@ class AudioManager {
   _scheduleStreamRelease() {
     if (this._pooledStreamReleaseTimer) {
       clearTimeout(this._pooledStreamReleaseTimer);
+      this._pooledStreamReleaseTimer = null;
+    }
+    // Keep the mic device open between dictations so a repeat hotkey press reuses the warm
+    // stream instead of paying the getUserMedia cold-start cost (the "slow after idle" lag).
+    // User-configurable via the "Keep microphone ready" setting; 0 = keep warm indefinitely.
+    const windowMs = resolveMicWarmWindowMs(
+      typeof localStorage !== "undefined" ? localStorage.getItem("micWarmWindowSeconds") : null
+    );
+    if (windowMs <= 0) {
+      return;
     }
     this._pooledStreamReleaseTimer = setTimeout(() => {
       this._clearPooledStream();
-    }, 30000);
+    }, windowMs);
   }
 
   _clearPooledStream() {
@@ -2987,6 +2998,9 @@ class AudioManager {
     this.onStateChange = null;
     this.onError = null;
     this.onTranscriptionComplete = null;
+    // Force-release the warm mic stream on teardown. Otherwise the "always ready" setting
+    // (no release timer) would leave the device open after the window/manager is gone.
+    this._clearPooledStream();
     if (navigator.mediaDevices && this._deviceChangeHandler) {
       navigator.mediaDevices.removeEventListener("devicechange", this._deviceChangeHandler);
       this._deviceChangeHandler = null;

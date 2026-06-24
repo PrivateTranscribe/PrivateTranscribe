@@ -267,9 +267,21 @@ export default function FeedbackDialog({
                 {attachments.map((attachment, index) => (
                   <div
                     key={`${attachment.name}-${attachment.size}-${index}`}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-xs"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-xs"
                   >
-                    <span className="min-w-0 truncate text-foreground">{attachment.name}</span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <img
+                        src={attachment.dataUrl}
+                        alt={`Preview of ${attachment.name}`}
+                        className="h-12 w-16 shrink-0 rounded-md border border-border-subtle object-cover"
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate text-foreground">{attachment.name}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {Math.max(1, Math.round(attachment.size / 1024))} KB
+                        </div>
+                      </div>
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
