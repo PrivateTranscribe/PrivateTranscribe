@@ -58,7 +58,7 @@ jobs:
           echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
 
       - name: Set up MSVC + Ninja (Windows)
-        uses: step-security/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Ninja (Windows)
         shell: pwsh
