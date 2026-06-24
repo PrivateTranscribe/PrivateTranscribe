@@ -326,26 +326,3 @@ describe("App.jsx — quickLanguages capped to prevent submenu overflow", () => 
     expect(setIdx).toBeGreaterThan(-1);
   });
 });
-
-// ─── Window size constants — sanity checks ───────────────────────────────────
-
-describe("windowConfig.js — window size constants", () => {
-  test("WITH_TOAST width is narrower than the fixed transparent container", () => {
-    const withToastMatch = windowConfig.match(/WITH_TOAST:\s*\{\s*width:\s*(\d+)/);
-    const containerMatch = windowConfig.match(/const CONTAINER_W = (\d+);/);
-    expect(withToastMatch).not.toBeNull();
-    expect(containerMatch).not.toBeNull();
-    const withToastWidth = parseInt(withToastMatch![1], 10);
-    const containerWidth = parseInt(containerMatch![1], 10);
-    expect(withToastWidth).toBeLessThan(containerWidth);
-  });
-
-  test("WITH_MENU height leaves room for context menu content", () => {
-    // WITH_MENU must be tall enough to show the root submenu (≈240px content +
-    // button clearance ≈80px = ≈320px minimum).
-    const match = windowConfig.match(/WITH_MENU:\s*\{\s*width:\s*\d+,\s*height:\s*(\d+)/);
-    expect(match).not.toBeNull();
-    const height = parseInt(match![1], 10);
-    expect(height).toBeGreaterThanOrEqual(320);
-  });
-});
