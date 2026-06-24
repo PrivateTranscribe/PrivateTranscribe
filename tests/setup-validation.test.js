@@ -306,10 +306,10 @@ suite("generateRecommendations – Windows NVIDIA + CUDA low VRAM (< 4 GB)", () 
 suite("generateRecommendations – Windows CPU-only (no GPU)", () => {
   const detector = new HardwareDetector();
 
-  test("8+ core CPU recommends turbo whisper model", () => {
+  test("8-thread CPU recommends base whisper model (not turbo on CPU path)", () => {
     const rec = detector.generateRecommendations(makeDetection({ platform: "win32", cpuCount: 8 }));
     assert.strictEqual(rec.localTranscriptionProvider, "whisper");
-    assert.strictEqual(rec.whisperModel, "turbo");
+    assert.strictEqual(rec.whisperModel, "base");
   });
 
   test("4-core CPU recommends base whisper model", () => {
@@ -418,17 +418,17 @@ suite("generateRecommendations – Linux AMD (ROCm detected, no CUDA)", () => {
     assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
-  test("model is based on CPU core count (8 cores → turbo)", () => {
-    assert.strictEqual(rec.whisperModel, "turbo");
+  test("model is based on CPU thread count (8 threads → base, not turbo)", () => {
+    assert.strictEqual(rec.whisperModel, "base");
   });
 });
 
 suite("generateRecommendations – Linux CPU-only (no GPU)", () => {
   const detector = new HardwareDetector();
 
-  test("8-core Linux CPU recommends turbo model", () => {
+  test("8-thread Linux CPU recommends base model (not turbo on CPU path)", () => {
     const rec = detector.generateRecommendations(makeDetection({ platform: "linux", cpuCount: 8 }));
-    assert.strictEqual(rec.whisperModel, "turbo");
+    assert.strictEqual(rec.whisperModel, "base");
     assert.strictEqual(rec.localTranscriptionProvider, "whisper");
   });
 
