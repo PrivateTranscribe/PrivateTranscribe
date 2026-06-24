@@ -81,7 +81,7 @@ describe("WhisperManager engine mode", () => {
       getCudaBinaryFilePath: vi.fn(() => "C:\\PrivateTranscribe\\whisper-server-win32-x64-cuda.exe"),
       getCudaBinaryVersion: vi.fn(() => "v0.0.7"),
       isCudaBinaryUpToDate: vi.fn(() => false),
-      getExpectedCudaBinaryVersion: vi.fn(() => "v0.0.8"),
+      getExpectedCudaBinaryVersion: vi.fn(() => "v0.0.9"),
     };
     manager.serverManager = {
       forceCpu: false,
@@ -93,7 +93,7 @@ describe("WhisperManager engine mode", () => {
     expect(status.installed).toBe(true);
     expect(status.upToDate).toBe(false);
     expect(status.version).toBe("v0.0.7");
-    expect(status.expectedVersion).toBe("v0.0.8");
+    expect(status.expectedVersion).toBe("v0.0.9");
   });
 
   it("does not pre-warm whisper-server during startup initialization", async () => {

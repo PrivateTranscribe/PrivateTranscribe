@@ -1,4 +1,4 @@
-name: Build CUDA Binary (Blackwell sm_120)
+name: Build CUDA Binary (all consumer GPU archs)
 
 on:
   workflow_dispatch:
@@ -71,7 +71,7 @@ jobs:
           cd whisper-src
           cmake -B build ^
             -DGGML_CUDA=ON ^
-            -DCMAKE_CUDA_ARCHITECTURES="86;89;120" ^
+            -DCMAKE_CUDA_ARCHITECTURES="61;70;75;86;89;120" ^
             -DWHISPER_BUILD_SERVER=ON ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe" ^
@@ -148,10 +148,10 @@ jobs:
             exit 1
           fi
           aws s3 cp whisper-server-win32-x64-cuda.zip \
-            s3://privatetranscribe-assets/binaries/v0.0.8/whisper-server-win32-x64-cuda.zip \
+            s3://privatetranscribe-assets/binaries/v0.0.9/whisper-server-win32-x64-cuda.zip \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.8/whisper-server-win32-x64-cuda.zip ($SIZE bytes)"
+          echo "Uploaded to R2: binaries/v0.0.9/whisper-server-win32-x64-cuda.zip ($SIZE bytes)"
 
   build-cuda-linux:
     name: Build Linux CUDA binary
@@ -194,7 +194,7 @@ jobs:
           cd whisper-src
           cmake -B build \
             -DGGML_CUDA=ON \
-            -DCMAKE_CUDA_ARCHITECTURES="86;89;120" \
+            -DCMAKE_CUDA_ARCHITECTURES="61;70;75;86;89;120" \
             -DWHISPER_BUILD_SERVER=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc
@@ -263,7 +263,7 @@ jobs:
             exit 1
           fi
           aws s3 cp whisper-server-linux-x64-cuda.zip \
-            s3://privatetranscribe-assets/binaries/v0.0.8/whisper-server-linux-x64-cuda.zip \
+            s3://privatetranscribe-assets/binaries/v0.0.9/whisper-server-linux-x64-cuda.zip \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.8/whisper-server-linux-x64-cuda.zip ($SIZE bytes)"
+          echo "Uploaded to R2: binaries/v0.0.9/whisper-server-linux-x64-cuda.zip ($SIZE bytes)"

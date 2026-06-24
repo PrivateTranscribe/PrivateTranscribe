@@ -11,7 +11,7 @@ const { downloadFile, createDownloadSignal, isRetryable } = require("./downloadU
 
 // R2 public CDN — binaries served directly (no zip extraction needed)
 const R2_BASE_URL = "https://updates.privatetranscribe.com";
-const BINARY_VERSION = "v0.0.8";
+const BINARY_VERSION = "v0.0.9";
 const USER_AGENT = "PrivateTranscribe/1.0";
 const CUDA_VERSION_FILE = "whisper-server-cuda-version.txt";
 const MIN_CUDA_LAUNCHER_BYTES = 100_000;
