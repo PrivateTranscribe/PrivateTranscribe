@@ -72,6 +72,7 @@ jobs:
           cmake -B build ^
             -DGGML_CUDA=ON ^
             -DCMAKE_CUDA_ARCHITECTURES="61;70;75;86;89;120" ^
+            -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" ^
             -DWHISPER_BUILD_SERVER=ON ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_CUDA_COMPILER="%CUDA_PATH%\bin\nvcc.exe" ^
@@ -195,6 +196,7 @@ jobs:
           cmake -B build \
             -DGGML_CUDA=ON \
             -DCMAKE_CUDA_ARCHITECTURES="61;70;75;86;89;120" \
+            -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" \
             -DWHISPER_BUILD_SERVER=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc
