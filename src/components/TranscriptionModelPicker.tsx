@@ -40,7 +40,7 @@ interface LocalModelCardProps {
   recommended?: boolean;
   provider: string;
   languageLabel?: string;
-  performanceLabel?: string;
+  perf?: { speed: number; quality: number };
   onSelect: () => void;
   onDelete: () => void;
   onDownload: () => void;
@@ -48,15 +48,37 @@ interface LocalModelCardProps {
   styles: ReturnType<(typeof MODEL_PICKER_COLORS)[keyof typeof MODEL_PICKER_COLORS]>;
 }
 
-// Speed and quality ratings for Whisper models shown during onboarding
-const WHISPER_PERF_LABELS: Record<string, { speed: string; quality: string }> = {
-  tiny: { speed: "Fastest", quality: "Basic" },
-  base: { speed: "Fast", quality: "Good" },
-  small: { speed: "Medium", quality: "Better" },
-  medium: { speed: "Slow", quality: "Great" },
-  large: { speed: "Slowest", quality: "Best" },
-  turbo: { speed: "Fast", quality: "Great" },
+// Speed vs. accuracy ratings (1-5) for Whisper models, rendered as segmented meters.
+// Speed = how fast it transcribes; quality = transcription accuracy.
+const WHISPER_PERF_RATINGS: Record<string, { speed: number; quality: number }> = {
+  tiny: { speed: 5, quality: 1 },
+  base: { speed: 4, quality: 2 },
+  small: { speed: 3, quality: 3 },
+  medium: { speed: 2, quality: 4 },
+  large: { speed: 1, quality: 5 },
+  turbo: { speed: 4, quality: 4 },
 };
+
+// Compact 5-segment meter matching the calm operator look.
+function PerfMeter({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center gap-1" title={`${label}: ${value}/5`}>
+      <span className="w-9 text-right text-[8px] font-medium uppercase tracking-wide text-muted-foreground/50">
+        {label}
+      </span>
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <span
+            key={i}
+            className={`h-1 w-2 rounded-[1px] ${
+              i <= value ? "bg-primary/70" : "bg-muted-foreground/15"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function LocalModelCard({
   modelId,
@@ -71,7 +93,7 @@ function LocalModelCard({
   recommended,
   provider,
   languageLabel,
-  performanceLabel,
+  perf,
   onSelect,
   onDelete,
   onDownload,
@@ -127,12 +149,15 @@ function LocalModelCard({
               {languageLabel}
             </span>
           )}
-          {performanceLabel && (
-            <span className="text-[10px] text-muted-foreground/40 shrink-0 hidden sm:inline">
-              {performanceLabel}
-            </span>
-          )}
         </div>
+
+        {/* Speed vs. accuracy meters */}
+        {perf && (
+          <div className="hidden sm:flex flex-col gap-0.5 shrink-0 mr-1">
+            <PerfMeter label="Speed" value={perf.speed} />
+            <PerfMeter label="Accuracy" value={perf.quality} />
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
@@ -707,12 +732,10 @@ export default function TranscriptionModelPicker({
             size: "Unknown",
           };
 
-          const perf = WHISPER_PERF_LABELS[modelId];
+          const perf = WHISPER_PERF_RATINGS[modelId];
           const isRecommended = recommendedLocalModel
             ? modelId === recommendedLocalModel
             : info.recommended;
-          const performanceLabel =
-            isOnboarding && perf ? `${perf.speed} · ${perf.quality}` : undefined;
 
           return (
             <LocalModelCard
@@ -728,7 +751,7 @@ export default function TranscriptionModelPicker({
               isCancelling={isCancelling}
               recommended={isRecommended}
               provider="whisper"
-              performanceLabel={performanceLabel}
+              perf={perf}
               onSelect={() => handleWhisperModelSelect(modelId)}
               onDelete={() => handleDelete(modelId)}
               onDownload={() => downloadModel(modelId, handleWhisperModelSelect)}

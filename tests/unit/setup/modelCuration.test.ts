@@ -107,7 +107,7 @@ describe("Model curation invariants", () => {
       expect(contents).toMatch(/const isOnboarding = variant === "onboarding"/);
     });
 
-    it("performance labels are gated on the onboarding variant only", () => {
+    it("performance is shown as segmented speed/accuracy meters", () => {
       const pickerPath = path.join(
         process.cwd(),
         "src",
@@ -116,12 +116,12 @@ describe("Model curation invariants", () => {
       );
       const contents = fs.readFileSync(pickerPath, "utf8");
 
-      expect(contents).toMatch(
-        /isOnboarding && perf \? `\$\{perf\.speed\} · \$\{perf\.quality\}` : undefined/
-      );
+      expect(contents).toContain("function PerfMeter");
+      expect(contents).toMatch(/<PerfMeter label="Speed" value=\{perf\.speed\} \/>/);
+      expect(contents).toMatch(/<PerfMeter label="Accuracy" value=\{perf\.quality\} \/>/);
     });
 
-    it("Whisper performance labels still cover turbo, base, and tiny", () => {
+    it("Whisper speed/accuracy ratings invert (fast tiny, accurate large) and cover turbo", () => {
       const pickerPath = path.join(
         process.cwd(),
         "src",
@@ -130,9 +130,9 @@ describe("Model curation invariants", () => {
       );
       const contents = fs.readFileSync(pickerPath, "utf8");
 
-      expect(contents).toMatch(/tiny:\s*\{\s*speed: "Fastest",\s*quality: "Basic"\s*\}/);
-      expect(contents).toMatch(/base:\s*\{\s*speed: "Fast",\s*quality: "Good"\s*\}/);
-      expect(contents).toMatch(/turbo:\s*\{\s*speed: "Fast",\s*quality: "Great"\s*\}/);
+      expect(contents).toMatch(/tiny:\s*\{\s*speed:\s*5,\s*quality:\s*1\s*\}/);
+      expect(contents).toMatch(/large:\s*\{\s*speed:\s*1,\s*quality:\s*5\s*\}/);
+      expect(contents).toMatch(/turbo:\s*\{\s*speed:\s*4,\s*quality:\s*4\s*\}/);
     });
 
     it("model recommendation badges can use hardware recommendations instead of static registry defaults", () => {
