@@ -697,14 +697,20 @@ export default function TranscriptionModelPicker({
   }, [useLocalWhisper, failedWhisperModel, retryWhisperDownload]);
 
   const renderLocalModels = () => {
-    const allModelEntries =
+    const allModelEntries = (
       localModels.length === 0
         ? Object.entries(WHISPER_MODEL_INFO).map(([modelId, info]) => ({
             model: modelId,
             downloaded: false,
             size_mb: info.sizeMb,
           }))
-        : localModels;
+        : localModels
+    ).filter(
+      // small-en-tdrz is a special-purpose speaker-diarization model, downloaded on
+      // demand from the Transcribe page's speaker-detection flow — not a general
+      // dictation model, so keep it out of this picker.
+      (model) => model.model !== "small-en-tdrz"
+    );
 
     const isOnboarding = variant === "onboarding";
     const displayedModelEntries = isOnboarding
