@@ -12,7 +12,7 @@ const CONTAINER_H = 500;
 const BUTTON_OFFSET_X = CONTAINER_W / 2; // 200 — horizontal center of container
 const BUTTON_OFFSET_Y = CONTAINER_H - 58 - 22; // 420 — 58px from bottom + half button height
 const BUTTON_HALF = 22; // half of the 44px overlay button
-const TASKBAR_SNAP_GAP = 8; // visible gap between the overlay button and taskbar/work-area edge
+const TASKBAR_SNAP_GAP = 4; // visible gap between the overlay button and taskbar/work-area edge
 const TASKBAR_SNAP_OFFSET = BUTTON_HALF + TASKBAR_SNAP_GAP; // button-center distance from that edge
 
 // Helper to get icon path for Windows
