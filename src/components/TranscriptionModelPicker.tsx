@@ -882,9 +882,9 @@ export default function TranscriptionModelPicker({
             ).map((engine) => {
               const isActive = selectedEngine === engine.id;
               const Icon = engine.icon;
-              // Show "Recommended" badge when GPU is available and this is recommended,
-              // and this engine is NOT already selected (don't show badge on active card)
-              const showRecommended = engine.recommended && !isActive && !engine.disabled;
+              // Show "Recommended" badge on the recommended engine, even when it's the
+              // active/selected card — the badge marks the right choice, not a suggestion to switch.
+              const showRecommended = engine.recommended && !engine.disabled;
               return (
                 <button
                   key={engine.id}
