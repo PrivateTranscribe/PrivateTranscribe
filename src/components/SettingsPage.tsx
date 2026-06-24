@@ -133,7 +133,7 @@ function SectionHeader({ title, description }: { title: string; description?: st
     <div className="mb-5">
       <h3 className="text-lg font-semibold text-foreground tracking-tight">{title}</h3>
       {description && (
-        <p className="text-sm text-muted-foreground/80 mt-1.5 leading-relaxed">{description}</p>
+        <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
       )}
     </div>
   );
@@ -412,7 +412,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
           </div>
 
           {!compact && (
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
               This updates the separate Whisper CUDA runtime, not the main app. Use this before GPU
               benchmark tests after installing a new PrivateTranscribe version.
             </p>
