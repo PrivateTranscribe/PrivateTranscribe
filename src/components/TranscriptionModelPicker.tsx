@@ -927,6 +927,11 @@ export default function TranscriptionModelPicker({
             })}
           </div>
 
+          <p className="px-2.5 pb-2 text-[10px] leading-snug text-muted-foreground/60">
+            CPU runs on any computer. GPU (CUDA) is several times faster but needs an NVIDIA
+            graphics card — pick it only if you have one.
+          </p>
+
           {engineStatus && (
             <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
               <div
