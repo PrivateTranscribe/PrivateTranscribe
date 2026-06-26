@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import AudioManager from "../helpers/audioManager";
 import { getDictionaryRepairTerms, parseDictionaryEntryModes } from "../utils/dictionaryEntryModes";
+import {
+  buildStarterLimitMessage,
+  isStarterLimitReached,
+  readStarterUsage,
+  recordStarterWords,
+} from "../utils/starterUsage";
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -42,6 +48,60 @@ export const useAudioRecording = (toast, options = {}) => {
     const clearCorrectionInterval = (intervalId) => {
       clearInterval(intervalId);
       correctionIntervalIds.delete(intervalId);
+    };
+
+    const isProEntitled = () => {
+      try {
+        const { getEffectiveEntitlement } = require("../hooks/useProStatus");
+        return getEffectiveEntitlement() === "pro";
+      } catch {
+        return false;
+      }
+    };
+
+    const trackUsageEvent = (event, extra = {}) => {
+      window.electronAPI?.analyticsTrack?.(event, extra)?.catch?.(() => {});
+    };
+
+    const showStarterLimitReached = () => {
+      const usage = readStarterUsage();
+      toastRef.current?.({
+        title: "Starter word limit reached",
+        description: buildStarterLimitMessage(usage),
+        variant: "default",
+        duration: 8000,
+      });
+      trackUsageEvent("starter_limit_hit", {
+        words_used: usage.wordsUsed,
+        daily_limit: usage.limit,
+      });
+    };
+
+    const starterCanBegin = () => {
+      if (isProEntitled()) return true;
+      if (!isStarterLimitReached()) return true;
+      showStarterLimitReached();
+      window.electronAPI?.openControlPanel?.();
+      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
+      return false;
+    };
+
+    const recordStarterUsageIfNeeded = (text) => {
+      if (isProEntitled()) return null;
+      const usage = recordStarterWords(text);
+      trackUsageEvent("starter_words_used", {
+        words_added: usage.wordsAdded,
+        words_used: usage.wordsUsed,
+        daily_limit: usage.limit,
+        limit_reached: usage.limitReached,
+      });
+      if (usage.limitReached) {
+        trackUsageEvent("starter_limit_reached", {
+          words_used: usage.wordsUsed,
+          daily_limit: usage.limit,
+        });
+      }
+      return usage;
     };
 
     // ── Audio ducking helpers ────────────────────────────────────────────────
@@ -178,6 +238,17 @@ export const useAudioRecording = (toast, options = {}) => {
 
         if (!canCommit()) {
           return;
+        }
+
+        const usage = recordStarterUsageIfNeeded(text);
+        if (usage?.limitReached) {
+          toastRef.current?.({
+            title: "Starter limit reached",
+            description:
+              "This transcription went through. Starter resets tomorrow, or join Pro Early Access for unlimited words.",
+            variant: "default",
+            duration: 7000,
+          });
         }
 
         setTranscript(text);
@@ -533,6 +604,10 @@ export const useAudioRecording = (toast, options = {}) => {
         return false;
       }
 
+      if (!starterCanBegin()) {
+        return false;
+      }
+
       if (playSound) {
         playFeedback("playStartSound");
       }
@@ -597,6 +672,28 @@ export const useAudioRecording = (toast, options = {}) => {
     const currentState = audioManagerRef.current.getState();
     if (currentState.isRecording || currentState.isProcessing || currentState.isStartingRecording) {
       return false;
+    }
+
+    try {
+      const { getEffectiveEntitlement } = require("../hooks/useProStatus");
+      if (getEffectiveEntitlement() !== "pro" && isStarterLimitReached()) {
+        const usage = readStarterUsage();
+        toastRef.current?.({
+          title: "Starter word limit reached",
+          description: buildStarterLimitMessage(usage),
+          variant: "default",
+          duration: 8000,
+        });
+        window.electronAPI?.analyticsTrack?.("starter_limit_hit", {
+          words_used: usage.wordsUsed,
+          daily_limit: usage.limit,
+        });
+        window.electronAPI?.openControlPanel?.();
+        window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
+        return false;
+      }
+    } catch {
+      // If entitlement/usage checks fail, keep dictation available.
     }
 
     const audioFeedbackEnabled = localStorage.getItem("audioFeedback") === "true";
