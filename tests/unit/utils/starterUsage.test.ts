@@ -18,6 +18,33 @@ function createStorage(initial: Record<string, string> = {}) {
 }
 
 describe("starterUsage", () => {
+  it("defaults Starter to a 5,000 word daily cap", () => {
+    const storage = createStorage();
+
+    expect(STARTER_DAILY_WORD_LIMIT).toBe(5000);
+    expect(readStarterUsage(storage, new Date("2026-06-26T08:00:00"))).toMatchObject({
+      limit: 5000,
+      wordsUsed: 0,
+    });
+  });
+
+  it("migrates existing same-day Starter usage to a raised cap", () => {
+    const storage = createStorage({
+      privatetranscribe_starter_usage_v1: JSON.stringify({
+        date: "2026-06-26",
+        wordsUsed: 2100,
+        limit: 2000,
+      }),
+    });
+
+    expect(readStarterUsage(storage, new Date("2026-06-26T10:00:00"))).toEqual({
+      date: "2026-06-26",
+      wordsUsed: 2100,
+      limit: 5000,
+    });
+    expect(isStarterLimitReached(storage, new Date("2026-06-26T10:00:00"))).toBe(false);
+  });
+
   it("counts words without storing transcript content", () => {
     expect(countWords(" Talk to Claude Code, then fix tests. ")).toBe(7);
     expect(countWords("")).toBe(0);
