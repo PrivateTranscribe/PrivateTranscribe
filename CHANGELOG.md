@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.1 - 2026-07-05
+
+### Added
+
+- Published CUDA engine update path for v0.0.9 so newer GPU packages can be surfaced to installed apps.
+- Added Starter daily word cap behavior with 5,000 private words per day.
+
+### Changed
+
+- Merged latest main changes into production for the next Windows release.
+
+### Fixed
+
+- Fixed overlay drag/taskbar snapping hardening and wake-from-sleep audio cleanup included from main.
+
 ## 0.13.0 - 2026-06-24
 
 ### Added
