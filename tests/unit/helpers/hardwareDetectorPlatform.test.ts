@@ -306,10 +306,10 @@ describe("generateRecommendations — Windows: NVIDIA GPU, CUDA absent", () => {
     expect(combined).not.toMatch(/\bpacman\b/);
   });
 
-  it("recommends turbo for an 8-core CPU (no GPU acceleration path)", () => {
+  it("recommends base (not turbo) for an 8-thread CPU on the no-GPU path", () => {
     expect(
       new HardwareDetector().generateRecommendations(windowsNvidiaNoCuda(8)).whisperModel
-    ).toBe("turbo");
+    ).toBe("base");
   });
 
   it("recommends base for a 4-core CPU", () => {
@@ -393,9 +393,9 @@ describe("generateRecommendations — Linux: all GPU tools missing (cpu_only fal
     );
   });
 
-  it("recommends turbo model for an 8-core CPU", () => {
+  it("recommends base (not turbo) model for an 8-thread CPU", () => {
     expect(new HardwareDetector().generateRecommendations(linuxCpuOnly(8)).whisperModel).toBe(
-      "turbo"
+      "base"
     );
   });
 
@@ -477,10 +477,10 @@ describe("generateRecommendations — Linux: NVIDIA detected via lspci only (nvi
     expect(combined).toContain("GeForce RTX 3060");
   });
 
-  it("recommends turbo for an 8-core CPU when CUDA is absent", () => {
+  it("recommends base (not turbo) for an 8-thread CPU when CUDA is absent", () => {
     expect(
       new HardwareDetector().generateRecommendations(linuxNvidiaLspciOnly(8)).whisperModel
-    ).toBe("turbo");
+    ).toBe("base");
   });
 });
 

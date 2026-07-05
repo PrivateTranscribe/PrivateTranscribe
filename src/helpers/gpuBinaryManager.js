@@ -17,6 +17,16 @@ const CUDA_VERSION_FILE = "whisper-server-cuda-version.txt";
 const MIN_CUDA_LAUNCHER_BYTES = 100_000;
 const MIN_CUDA_PACKAGE_BYTES = 10_000_000;
 
+// Published by the build-cuda-binary CI workflow after every engine upload.
+// The engine an app build installs stays pinned to BINARY_VERSION (engines are
+// validated per app release), but the manifest lets older builds *see* that a
+// newer engine exists so Settings can say "ships with the next app update".
+const LATEST_MANIFEST_URL = `${R2_BASE_URL}/binaries/latest-cuda.json`;
+const LATEST_MANIFEST_TIMEOUT_MS = 5000;
+const LATEST_MANIFEST_CACHE_MS = 60 * 60 * 1000; // successful lookups
+const LATEST_MANIFEST_RETRY_MS = 5 * 60 * 1000; // failed lookups (offline, 404)
+const ENGINE_VERSION_PATTERN = /^v\d+\.\d+\.\d+$/;
+
 const CUDA_BINARIES = {
   "linux-x64": {
     outputName: "whisper-server-linux-x64-cuda",
@@ -37,6 +47,56 @@ const CUDA_BINARIES = {
 class GpuBinaryManager {
   constructor() {
     this._abortController = null;
+    this._latestVersionCache = null;
+  }
+
+  /**
+   * Returns the newest CUDA engine version published on the update CDN, or
+   * null when unknown (offline, manifest missing, malformed). Results are
+   * cached in memory; this never affects which version gets installed —
+   * downloads stay pinned to BINARY_VERSION.
+   */
+  async fetchLatestAvailableVersion() {
+    const now = Date.now();
+    if (this._latestVersionCache && now < this._latestVersionCache.expiresAt) {
+      return this._latestVersionCache.value;
+    }
+
+    let value = null;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), LATEST_MANIFEST_TIMEOUT_MS);
+      try {
+        const response = await fetch(LATEST_MANIFEST_URL, {
+          signal: controller.signal,
+          headers: { "user-agent": USER_AGENT },
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const manifest = await response.json();
+          const version = typeof manifest?.version === "string" ? manifest.version.trim() : "";
+          if (ENGINE_VERSION_PATTERN.test(version)) {
+            value = version;
+          } else {
+            debugLogger.warn("GpuBinaryManager: latest-cuda manifest has invalid version", {
+              version,
+            });
+          }
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (error) {
+      debugLogger.debug("GpuBinaryManager: latest-cuda manifest lookup failed", {
+        error: error?.message || String(error),
+      });
+    }
+
+    this._latestVersionCache = {
+      value,
+      expiresAt: now + (value ? LATEST_MANIFEST_CACHE_MS : LATEST_MANIFEST_RETRY_MS),
+    };
+    return value;
   }
 
   getBundledBinDir() {

@@ -984,10 +984,9 @@ export default function ActionEnginePage() {
               Beta
             </Badge>
             {!isUnlocked && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <Lock size={10} />
-                Pro
-              </Badge>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
+                <Lock size={10} /> Pro
+              </span>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">

@@ -161,6 +161,26 @@ class WindowManager {
     }
   }
 
+  // Distinct from "main-window-shown": fired only for real power resume /
+  // screen unlock, so renderers can invalidate audio resources (warm mic
+  // stream, audio graph) that Windows silently kills during sleep, without
+  // also invalidating them on every ordinary window show.
+  _notifySystemResumed(reason) {
+    for (const win of [this.mainWindow, this.controlPanelWindow]) {
+      if (!win || win.isDestroyed()) {
+        continue;
+      }
+      try {
+        win.webContents.send("system-resumed", { reason });
+      } catch (error) {
+        debugLogger.debug("[Window] Failed to notify renderer of system resume:", {
+          reason,
+          error: error?.message || String(error),
+        });
+      }
+    }
+  }
+
   _getPositionFile() {
     if (!this._positionFile) {
       this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
@@ -306,23 +326,33 @@ class WindowManager {
     const clamped = this._constrainOverlayPosition(
       targetBounds.x,
       targetBounds.y,
-      width,
-      height,
+      CONTAINER_W,
+      CONTAINER_H,
       display
     );
-    if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+    // Also correct the size: repeated repositioning on fractional-DPI displays
+    // can leave the fixed container a few pixels off, which shifts the
+    // bottom-anchored mic button on screen.
+    const sizeDrifted = width !== CONTAINER_W || height !== CONTAINER_H;
+    if (clamped.x !== bounds.x || clamped.y !== bounds.y || sizeDrifted) {
       debugLogger.info("[Window] Re-clamping overlay after", reason, {
-        from: { x: bounds.x, y: bounds.y },
+        from: { x: bounds.x, y: bounds.y, width, height },
         to: clamped,
         targetButtonPosition,
         workArea: display.workArea || display.bounds,
         snapToTaskbar: this.overlaySnapToTaskbar,
         persistPosition,
+        sizeDrifted,
       });
       if (!persistPosition) {
         this._ignoreOverlayMoveSaveUntil = Date.now() + 5000;
       }
-      this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
+      this.mainWindow.setBounds({
+        x: clamped.x,
+        y: clamped.y,
+        width: CONTAINER_W,
+        height: CONTAINER_H,
+      });
       if (persistPosition) {
         this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
       }
@@ -438,6 +468,7 @@ class WindowManager {
       // leaving the overlay unmovable after wake.
       this._resetOverlayDragState("resume");
       this._notifyOverlayRendererResumed("resume");
+      this._notifySystemResumed("resume");
       this._scheduleOverlayRecovery("resume");
     };
     powerMonitor.on("resume", this._powerResumeHandler);
@@ -445,6 +476,7 @@ class WindowManager {
     this._powerUnlockHandler = () => {
       this._resetOverlayDragState("unlock-screen");
       this._notifyOverlayRendererResumed("unlock-screen");
+      this._notifySystemResumed("unlock-screen");
       this._scheduleOverlayRecovery("unlock-screen", [500, 2500, 6000]);
     };
     powerMonitor.on("unlock-screen", this._powerUnlockHandler);

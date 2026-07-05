@@ -36,15 +36,19 @@ describe("HardwareDetector.generateRecommendations", () => {
   // ── Default / CPU-only paths ─────────────────────────────────────────────
 
   describe("CPU-only (no GPU)", () => {
-    it("recommends turbo for 8+ core CPUs", () => {
+    // os.cpus().length is logical threads, so 8 "cores" is often a 4-core/8-thread
+    // CPU. Turbo/Large are GPU-class models; the CPU path must never pick them.
+    it("never recommends turbo or large on the CPU path (8 threads)", () => {
       const rec = detector.generateRecommendations(makeDetection({ cpu: { count: 8 } }));
-      expect(rec.whisperModel).toBe("turbo");
+      expect(rec.whisperModel).not.toBe("turbo");
+      expect(rec.whisperModel).not.toBe("large");
+      expect(rec.whisperModel).toBe("base");
       expect(rec.localTranscriptionProvider).toBe("whisper");
     });
 
-    it("recommends turbo for 16-core CPUs", () => {
+    it("recommends small (not turbo) for very high thread counts", () => {
       const rec = detector.generateRecommendations(makeDetection({ cpu: { count: 16 } }));
-      expect(rec.whisperModel).toBe("turbo");
+      expect(rec.whisperModel).toBe("small");
     });
 
     it("recommends base for quad-core CPUs", () => {
@@ -53,7 +57,7 @@ describe("HardwareDetector.generateRecommendations", () => {
       expect(rec.localTranscriptionProvider).toBe("whisper");
     });
 
-    it("recommends tiny for low-core CPUs (< 4 cores)", () => {
+    it("recommends tiny for low-core CPUs (< 4 threads)", () => {
       const rec = detector.generateRecommendations(makeDetection({ cpu: { count: 2 } }));
       expect(rec.whisperModel).toBe("tiny");
     });

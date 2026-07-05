@@ -32,6 +32,7 @@ import { useToast } from "../ui/Toast";
 import { useSettings } from "../../hooks/useSettings";
 import { formatBytes } from "../../utils/formatBytes";
 import { getLanguageLabel } from "../../utils/languages";
+import { buildStarterLimitMessage, recordStarterWords } from "../../utils/starterUsage";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
 const VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "mkv", "avi", "webm"] as const;
@@ -433,6 +434,29 @@ export default function TranscribePage() {
       const text = result?.text?.trim();
       if (!text) {
         throw new Error("No text was transcribed from this file.");
+      }
+
+      if (getEffectiveEntitlement() !== "pro") {
+        const usage = recordStarterWords(text);
+        window.electronAPI?.analyticsTrack?.("starter_file_words_used", {
+          words_added: usage.wordsAdded,
+          words_used: usage.wordsUsed,
+          daily_limit: usage.limit,
+          limit_reached: usage.limitReached,
+        });
+        if (usage.limitReached) {
+          window.electronAPI?.analyticsTrack?.("starter_limit_reached", {
+            source: "file_transcription",
+            words_used: usage.wordsUsed,
+            daily_limit: usage.limit,
+          });
+          toast({
+            title: "Starter limit reached",
+            description: buildStarterLimitMessage(usage),
+            variant: "default",
+            duration: 8000,
+          });
+        }
       }
 
       if (historyLimit !== 0) {

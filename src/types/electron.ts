@@ -368,6 +368,8 @@ declare global {
       onHybridDictationKeyDown?: (callback: () => void) => (() => void) | void;
       onHybridDictationKeyUp?: (callback: () => void) => (() => void) | void;
       onWindowDragReset?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;
+      /** Fires on OS power resume / screen unlock only (not ordinary window show). */
+      onSystemResumed?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;
 
       // Database operations
       saveTranscription: (
@@ -786,6 +788,8 @@ declare global {
         version: string | null;
         upToDate: boolean;
         expectedVersion: string;
+        /** Newest engine on the update CDN; null when offline/unknown. Installs stay pinned to expectedVersion. */
+        latestAvailableVersion?: string | null;
         forceCpu: boolean;
         engineStatus?: {
           desiredMode?: "cpu" | "gpu";

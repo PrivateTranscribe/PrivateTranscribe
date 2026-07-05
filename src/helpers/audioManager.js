@@ -252,6 +252,16 @@ class AudioManager {
       navigator.mediaDevices.addEventListener("devicechange", this._deviceChangeHandler);
     }
 
+    // After system sleep/wake or screen unlock, Windows often invalidates the
+    // audio capture device while the pooled MediaStream's tracks still report
+    // readyState "live". Reusing that zombie stream records pure silence and
+    // freezes the level bars. Drop the warm stream so the next dictation
+    // re-acquires a fresh one via getUserMedia.
+    this._systemResumedCleanup =
+      window.electronAPI?.onSystemResumed?.(() => {
+        this.handleSystemResumed();
+      }) || null;
+
     if (window.electronAPI?.onTranscriptionSettingsChanged) {
       this.transcriptionSettingsChangedCleanup =
         window.electronAPI.onTranscriptionSettingsChanged((settings = {}) => {
@@ -266,6 +276,18 @@ class AudioManager {
           this.invalidateTranscriptionRuntimeCaches();
         }) || null;
     }
+  }
+
+  handleSystemResumed() {
+    this._warmDeviceCache();
+
+    // Never stop tracks under an active recorder — a recording that spanned
+    // sleep is finalized through its own stop/watchdog path.
+    if (this.isRecording || this.isStartingRecording || this.isStoppingRecording) {
+      return;
+    }
+
+    this._clearPooledStream();
   }
 
   async _warmDeviceCache() {
@@ -285,10 +307,13 @@ class AudioManager {
 
   async _acquireStream(constraints) {
     const key = this._constraintsKey(constraints);
+    // A muted track means the OS stopped delivering frames (dead device after
+    // sleep/wake, exclusive-mode grab, ...). readyState alone stays "live" in
+    // those cases, so treat muted as stale too.
     if (
       this._pooledStream &&
       this._pooledStreamConstraintsKey === key &&
-      this._pooledStream.getTracks().every((t) => t.readyState === "live")
+      this._pooledStream.getTracks().every((t) => t.readyState === "live" && !t.muted)
     ) {
       if (this._pooledStreamReleaseTimer) {
         clearTimeout(this._pooledStreamReleaseTimer);
@@ -3005,6 +3030,8 @@ class AudioManager {
       navigator.mediaDevices.removeEventListener("devicechange", this._deviceChangeHandler);
       this._deviceChangeHandler = null;
     }
+    this._systemResumedCleanup?.();
+    this._systemResumedCleanup = null;
   }
 }
 

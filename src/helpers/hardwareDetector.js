@@ -672,18 +672,26 @@ class HardwareDetector {
       }
     }
 
-    // CPU-core-based model sizing for all non-GPU-accelerated paths
-    if (cpu.count >= 8) {
-      rec.whisperModel = "turbo";
+    // CPU-core-based model sizing for all non-GPU-accelerated paths.
+    //
+    // os.cpus().length counts logical threads, not physical cores, so a 2014
+    // quad-core (e.g. i7-4790, 4 cores / 8 threads) reports 8. Turbo and Large
+    // are big models built for GPU acceleration - on CPU they are painfully slow
+    // and on older machines feel like a hang. Never recommend them on the CPU
+    // path; favor small/fast models that actually finish quickly.
+    if (cpu.count >= 16) {
+      rec.whisperModel = "small";
       rec.reasoning.push(
-        `Multi-core CPU (${cpu.count} cores) - Turbo model recommended for best quality`
+        `High-core-count CPU (${cpu.count} threads) - Small model balances speed and accuracy on CPU`
       );
     } else if (cpu.count >= 4) {
       rec.whisperModel = "base";
-      rec.reasoning.push(`Quad-core CPU (${cpu.count} cores) - Base model recommended for speed`);
+      rec.reasoning.push(
+        `${cpu.count}-thread CPU - Base model recommended for responsive CPU transcription`
+      );
     } else {
       rec.whisperModel = "tiny";
-      rec.reasoning.push(`Limited CPU cores (${cpu.count}) - Tiny model recommended for speed`);
+      rec.reasoning.push(`Limited CPU (${cpu.count} threads) - Tiny model recommended for speed`);
     }
 
     return rec;

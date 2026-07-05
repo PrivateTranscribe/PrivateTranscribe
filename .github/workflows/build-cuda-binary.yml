@@ -7,6 +7,10 @@ on:
         description: "Upload binary to R2 CDN"
         type: boolean
         default: false
+      engine_version:
+        description: "CUDA engine version to publish (must match BINARY_VERSION in gpuBinaryManager.js for the app release that will require it)"
+        required: true
+        default: "v0.0.9"
       whisper_tag:
         description: "whisper.cpp git tag/branch to build (empty = latest)"
         required: false
@@ -18,7 +22,9 @@ permissions:
 jobs:
   build-cuda-windows:
     name: Build Windows CUDA binary
-    runs-on: windows-latest
+    # windows-latest moved to VS 2025 (MSVC 19.5x), which CUDA 12.8's cudafe++
+    # crashes on. Pin to the VS 2022 image that CUDA 12.8 officially supports.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout PrivateTranscribe
@@ -58,7 +64,7 @@ jobs:
           echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
 
       - name: Set up MSVC + Ninja (Windows)
-        uses: step-security/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Ninja (Windows)
         shell: pwsh
@@ -147,11 +153,12 @@ jobs:
             echo "ERROR: Refusing to upload CUDA package — size is only $SIZE bytes"
             exit 1
           fi
+          VERSION="${{ github.event.inputs.engine_version }}"
           aws s3 cp whisper-server-win32-x64-cuda.zip \
-            s3://privatetranscribe-assets/binaries/v0.0.9/whisper-server-win32-x64-cuda.zip \
+            "s3://privatetranscribe-assets/binaries/${VERSION}/whisper-server-win32-x64-cuda.zip" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.9/whisper-server-win32-x64-cuda.zip ($SIZE bytes)"
+          echo "Uploaded to R2: binaries/${VERSION}/whisper-server-win32-x64-cuda.zip ($SIZE bytes)"
 
   build-cuda-linux:
     name: Build Linux CUDA binary
@@ -195,6 +202,7 @@ jobs:
           cmake -B build \
             -DGGML_CUDA=ON \
             -DCMAKE_CUDA_ARCHITECTURES="61;70;75;86;89;120" \
+            -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" \
             -DWHISPER_BUILD_SERVER=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc
@@ -262,8 +270,42 @@ jobs:
             echo "ERROR: Refusing to upload CUDA package — size is only $SIZE bytes"
             exit 1
           fi
+          VERSION="${{ github.event.inputs.engine_version }}"
           aws s3 cp whisper-server-linux-x64-cuda.zip \
-            s3://privatetranscribe-assets/binaries/v0.0.9/whisper-server-linux-x64-cuda.zip \
+            "s3://privatetranscribe-assets/binaries/${VERSION}/whisper-server-linux-x64-cuda.zip" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress
-          echo "Uploaded to R2: binaries/v0.0.9/whisper-server-linux-x64-cuda.zip ($SIZE bytes)"
+          echo "Uploaded to R2: binaries/${VERSION}/whisper-server-linux-x64-cuda.zip ($SIZE bytes)"
+
+  publish-cuda-manifest:
+    name: Publish latest-cuda.json manifest
+    # The manifest is what lets released app builds see that a newer engine
+    # exists (Settings → CUDA Engine card). Publish only after BOTH platform
+    # packages are uploaded so the advertised version is actually downloadable.
+    needs: [build-cuda-windows, build-cuda-linux]
+    if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Write and upload manifest
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          VERSION="${{ github.event.inputs.engine_version }}"
+          if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: engine_version '$VERSION' must look like v0.0.9"
+            exit 1
+          fi
+          printf '{"version":"%s","updatedAt":"%s"}\n' "$VERSION" "$(date -u +%FT%TZ)" > latest-cuda.json
+          cat latest-cuda.json
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws s3 cp latest-cuda.json \
+            s3://privatetranscribe-assets/binaries/latest-cuda.json \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --content-type application/json \
+            --cache-control "max-age=300" \
+            --no-progress
+          echo "Published binaries/latest-cuda.json → $VERSION"
