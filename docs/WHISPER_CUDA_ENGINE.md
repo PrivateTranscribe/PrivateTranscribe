@@ -78,6 +78,18 @@ Important rules:
 7. Readiness/update state is `installed && upToDate`.
 8. If CUDA startup fails (`spawn UNKNOWN`, missing DLL, startup crash), fallback to CPU and expose diagnostics rather than crashing.
 
+### Engine version pinning and the latest-cuda manifest
+
+Each app build pins the engine it installs via `BINARY_VERSION` in `gpuBinaryManager.js`; downloads always come from `binaries/<BINARY_VERSION>/`. A released app therefore shows "Current" even when a newer engine has been uploaded to R2 — the newer engine only becomes *required* when an app release with the bumped `BINARY_VERSION` ships.
+
+To make that state visible, the `build-cuda-binary.yml` workflow also publishes `binaries/latest-cuda.json` (`{"version":"v0.0.9", ...}`) after both platform packages upload. `GpuBinaryManager.fetchLatestAvailableVersion()` reads it (cached, fail-soft), `get-cuda-binary-status` returns it as `latestAvailableVersion`, and the Settings CUDA card tells the user a newer engine is published and installs with the next app update. The manifest never changes which version gets downloaded.
+
+Release checklist for a new engine version:
+
+1. Run the workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
+2. Bump `BINARY_VERSION` in `gpuBinaryManager.js` to the same value.
+3. Ship the app release; its CUDA auto-update installs the new engine.
+
 ## UI/UX lessons
 
 CUDA engine updates are separate from the main app update. Users may update PrivateTranscribe and still need to download/update the CUDA engine package.

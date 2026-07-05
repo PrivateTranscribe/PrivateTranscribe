@@ -917,8 +917,20 @@ class IPCHandlers {
     ipcMain.handle("get-cuda-binary-status", async () => {
       const cudaStatus = this.whisperManager.getCudaBinaryStatus();
       const autoUpdateState = this.getCudaAutoUpdateState ? this.getCudaAutoUpdateState() : null;
+
+      // Newest engine published on the CDN (cached in GpuBinaryManager). Lets
+      // the UI say a newer engine exists even though this app build stays
+      // pinned to its expectedVersion. Null when offline/unknown.
+      let latestAvailableVersion = null;
+      if (cudaStatus.supported) {
+        latestAvailableVersion = await this.whisperManager
+          .getLatestAvailableCudaVersion()
+          .catch(() => null);
+      }
+
       return {
         ...cudaStatus,
+        latestAvailableVersion,
         cudaAutoUpdateFailed: !!autoUpdateState?.failed,
       };
     });

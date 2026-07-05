@@ -242,6 +242,10 @@ class WhisperManager {
     return this.gpuBinaryManager.isCudaBinaryUpToDate();
   }
 
+  async getLatestAvailableCudaVersion() {
+    return this.gpuBinaryManager.fetchLatestAvailableVersion();
+  }
+
   async downloadGpuBinary(onProgress) {
     return this.gpuBinaryManager.downloadCudaBinary(onProgress);
   }

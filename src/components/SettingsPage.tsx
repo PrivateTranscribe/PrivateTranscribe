@@ -30,6 +30,7 @@ import type {
   ComparisonBenchmarkResult,
 } from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
+import { isNewerVersion } from "../utils/versionCompare";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
@@ -195,6 +196,7 @@ type CudaBinaryStatus = {
   version?: string | null;
   upToDate?: boolean;
   expectedVersion?: string;
+  latestAvailableVersion?: string | null;
   engineStatus?: {
     effectiveEngine?: "cuda" | "cpu" | "stopped" | "unknown";
     transition?: string;
@@ -285,6 +287,11 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const autoUpdateFailed = !!cudaStatus?.cudaAutoUpdateFailed && !isUpToDate;
   const currentVersion = cudaStatus?.version || (isInstalled ? "legacy/unknown" : "not installed");
   const expectedVersion = cudaStatus?.expectedVersion || "latest";
+  // A newer engine can exist on the update server than this app build is
+  // pinned to; it only installs together with the next app update.
+  const latestPublished = cudaStatus?.latestAvailableVersion || null;
+  const newerEnginePublished =
+    isUpToDate && isNewerVersion(latestPublished, cudaStatus?.expectedVersion);
   const engine = cudaStatus?.engineStatus?.effectiveEngine;
   const fallbackActive = cudaStatus?.engineStatus?.fallback?.active === true;
   const byteLabel = downloadBytes.total
@@ -314,9 +321,11 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
           : isUpToDate
             ? fallbackActive
               ? "CUDA engine is current, but Whisper recently fell back to CPU. Run a benchmark and check diagnostics if it stays slow."
-              : engine === "cuda"
-                ? "CUDA engine is current and currently active."
-                : "CUDA engine is current. Run a transcription or benchmark to verify active GPU use."
+              : newerEnginePublished
+                ? `CUDA engine is current for this app version. Engine ${latestPublished} is published and installs with the next PrivateTranscribe update.`
+                : engine === "cuda"
+                  ? "CUDA engine is current and currently active."
+                  : "CUDA engine is current. Run a transcription or benchmark to verify active GPU use."
             : "CUDA engine is not installed. Download it to enable GPU Whisper acceleration.";
 
   return (
@@ -349,6 +358,16 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
               </p>
             </div>
           </div>
+
+          {newerEnginePublished && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Engine {latestPublished} is published. This app version pins {expectedVersion}; the
+                newer engine installs automatically after the next app update.
+              </span>
+            </div>
+          )}
 
           {downloadState === "downloading" && (
             <div className="space-y-1.5">
