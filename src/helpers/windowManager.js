@@ -306,23 +306,33 @@ class WindowManager {
     const clamped = this._constrainOverlayPosition(
       targetBounds.x,
       targetBounds.y,
-      width,
-      height,
+      CONTAINER_W,
+      CONTAINER_H,
       display
     );
-    if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+    // Also correct the size: repeated repositioning on fractional-DPI displays
+    // can leave the fixed container a few pixels off, which shifts the
+    // bottom-anchored mic button on screen.
+    const sizeDrifted = width !== CONTAINER_W || height !== CONTAINER_H;
+    if (clamped.x !== bounds.x || clamped.y !== bounds.y || sizeDrifted) {
       debugLogger.info("[Window] Re-clamping overlay after", reason, {
-        from: { x: bounds.x, y: bounds.y },
+        from: { x: bounds.x, y: bounds.y, width, height },
         to: clamped,
         targetButtonPosition,
         workArea: display.workArea || display.bounds,
         snapToTaskbar: this.overlaySnapToTaskbar,
         persistPosition,
+        sizeDrifted,
       });
       if (!persistPosition) {
         this._ignoreOverlayMoveSaveUntil = Date.now() + 5000;
       }
-      this.mainWindow.setBounds({ x: clamped.x, y: clamped.y, width, height });
+      this.mainWindow.setBounds({
+        x: clamped.x,
+        y: clamped.y,
+        width: CONTAINER_W,
+        height: CONTAINER_H,
+      });
       if (persistPosition) {
         this._scheduleSavePosition(clamped.x + BUTTON_OFFSET_X, clamped.y + BUTTON_OFFSET_Y);
       }

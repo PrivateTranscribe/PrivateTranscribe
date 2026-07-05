@@ -277,7 +277,7 @@ describe("windowManager.js — sleep/wake overlay recovery", () => {
     // Find the method definition (not a call site) — it starts with two spaces indent
     const idx = windowManager.indexOf("  _reclampOverlayPosition(reason, options = {}) {");
     expect(idx).toBeGreaterThan(-1);
-    const block = windowManager.slice(idx, idx + 2500);
+    const block = windowManager.slice(idx, idx + 3500);
     // enforceMainWindowOnTop must appear in the method body so z-order is
     // restored even when the position didn't need clamping.
     expect(block).toContain("enforceMainWindowOnTop");

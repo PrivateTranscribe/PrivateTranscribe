@@ -16,6 +16,7 @@ class DragManager {
     this._positionChangeCallback = null;
     this.snapToTaskbar = false;
     this.lastCursorPosition = null;
+    this.lastAppliedPosition = null;
     this.dragDisplay = null;
   }
 
@@ -47,6 +48,7 @@ class DragManager {
       const cursorPos = screen.getCursorScreenPoint();
       const windowPos = this.targetWindow.getPosition();
       this.lastCursorPosition = null;
+      this.lastAppliedPosition = null;
       this.dragDisplay = screen.getDisplayNearestPoint({
         x: windowPos[0] + BUTTON_OFFSET_X,
         y: windowPos[1] + BUTTON_OFFSET_Y,
@@ -74,6 +76,7 @@ class DragManager {
     try {
       if (!this.isDragging) {
         this.lastCursorPosition = null;
+        this.lastAppliedPosition = null;
         this.dragDisplay = null;
         this.stopMouseTracking();
         return { success: true, message: "Drag already stopped" };
@@ -81,6 +84,7 @@ class DragManager {
 
       this.isDragging = false;
       this.lastCursorPosition = null;
+      this.lastAppliedPosition = null;
       this.dragDisplay = null;
       this.stopMouseTracking();
       console.log("🖱️ Window drag stopped");
@@ -147,7 +151,30 @@ class DragManager {
           )
         : WindowPositionUtil.clampPosition(newX, newY, CONTAINER_W, CONTAINER_H, workArea);
 
-      this.targetWindow.setPosition(constrained.x, constrained.y);
+      // Nothing to do if the clamped target is where we already put the window.
+      if (
+        this.lastAppliedPosition &&
+        constrained.x === this.lastAppliedPosition.x &&
+        constrained.y === this.lastAppliedPosition.y
+      ) {
+        return;
+      }
+      this.lastAppliedPosition = { x: constrained.x, y: constrained.y };
+
+      // Use setBounds with the fixed container size instead of setPosition.
+      // On Windows displays with fractional DPI scaling (most laptops run
+      // 125/150%), setPosition round-trips the current size through the
+      // DIP↔physical conversion and can grow/shrink the window a pixel per
+      // call. The mic button is anchored to the container's bottom edge, so a
+      // creeping height reads as the button slowly drifting downward while
+      // (or after) dragging. Pinning width/height on every move makes the
+      // call idempotent.
+      this.targetWindow.setBounds({
+        x: constrained.x,
+        y: constrained.y,
+        width: CONTAINER_W,
+        height: CONTAINER_H,
+      });
 
       // Note: BrowserWindow's `moved` event is not guaranteed to fire for programmatic
       // setPosition() on all platforms. Notify our consumer (WindowManager) so it can
@@ -186,6 +213,7 @@ class DragManager {
     this.isDragging = false;
     this.dragOffset = { x: 0, y: 0 };
     this.lastCursorPosition = null;
+    this.lastAppliedPosition = null;
     this.dragDisplay = null;
   }
 
