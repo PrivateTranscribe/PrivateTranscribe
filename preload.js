@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     (callback) => (_event, data) => callback(data)
   ),
   onMainWindowShown: registerListener("main-window-shown", (callback) => () => callback()),
+  onSystemResumed: registerListener(
+    "system-resumed",
+    (callback) => (_event, data) => callback(data)
+  ),
   notifyDictationOverlayReady: () => ipcRenderer.invoke("dictation-overlay-ready"),
 
   // Database functions

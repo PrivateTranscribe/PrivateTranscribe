@@ -161,6 +161,26 @@ class WindowManager {
     }
   }
 
+  // Distinct from "main-window-shown": fired only for real power resume /
+  // screen unlock, so renderers can invalidate audio resources (warm mic
+  // stream, audio graph) that Windows silently kills during sleep, without
+  // also invalidating them on every ordinary window show.
+  _notifySystemResumed(reason) {
+    for (const win of [this.mainWindow, this.controlPanelWindow]) {
+      if (!win || win.isDestroyed()) {
+        continue;
+      }
+      try {
+        win.webContents.send("system-resumed", { reason });
+      } catch (error) {
+        debugLogger.debug("[Window] Failed to notify renderer of system resume:", {
+          reason,
+          error: error?.message || String(error),
+        });
+      }
+    }
+  }
+
   _getPositionFile() {
     if (!this._positionFile) {
       this._positionFile = path.join(app.getPath("userData"), "overlay-position.json");
@@ -448,6 +468,7 @@ class WindowManager {
       // leaving the overlay unmovable after wake.
       this._resetOverlayDragState("resume");
       this._notifyOverlayRendererResumed("resume");
+      this._notifySystemResumed("resume");
       this._scheduleOverlayRecovery("resume");
     };
     powerMonitor.on("resume", this._powerResumeHandler);
@@ -455,6 +476,7 @@ class WindowManager {
     this._powerUnlockHandler = () => {
       this._resetOverlayDragState("unlock-screen");
       this._notifyOverlayRendererResumed("unlock-screen");
+      this._notifySystemResumed("unlock-screen");
       this._scheduleOverlayRecovery("unlock-screen", [500, 2500, 6000]);
     };
     powerMonitor.on("unlock-screen", this._powerUnlockHandler);
