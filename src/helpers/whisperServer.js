@@ -16,6 +16,10 @@ const gpuBinaryManager = new GpuBinaryManager();
 const PORT_RANGE_START = 8178;
 const PORT_RANGE_END = 8199;
 const STARTUP_TIMEOUT_MS = 30000;
+// Backoff before automatically retrying the CUDA binary after a startup
+// failure. Transient failures (e.g. an NVIDIA driver update in progress)
+// resolve within minutes, so retry quickly at first, then back off.
+const CUDA_RETRY_BACKOFF_MS = [60 * 1000, 5 * 60 * 1000, 30 * 60 * 1000];
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const DEFAULT_INPUT_EXTENSION = ".webm";
@@ -204,6 +208,7 @@ class WhisperServerManager {
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
     this.cudaDisabledForSession = false;
     this._cudaDisabledAt = null;
+    this._cudaFailureCount = 0;
     this._lastCudaStartupFailure = null;
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
@@ -332,6 +337,7 @@ class WhisperServerManager {
     if (!value) {
       this.cudaDisabledForSession = false;
       this._cudaDisabledAt = null;
+      this._cudaFailureCount = 0;
       this._lastCudaStartupFailure = null;
     }
     this.cachedServerBinaryPath = null;
@@ -350,19 +356,46 @@ class WhisperServerManager {
     }
   }
 
+  getCudaRetryDelayMs() {
+    const index = Math.min(Math.max(this._cudaFailureCount, 1), CUDA_RETRY_BACKOFF_MS.length) - 1;
+    return CUDA_RETRY_BACKOFF_MS[index];
+  }
+
+  getNextCudaRetryAt() {
+    if (!this.cudaDisabledForSession || this._cudaDisabledAt === null) return null;
+    return this._cudaDisabledAt + this.getCudaRetryDelayMs();
+  }
+
+  isCudaRetryDue() {
+    const retryAt = this.getNextCudaRetryAt();
+    return retryAt !== null && Date.now() >= retryAt;
+  }
+
   getServerBinaryPath() {
+    // A CUDA startup failure disables the CUDA binary temporarily, not for the
+    // whole session: failures during NVIDIA driver updates clear up on their
+    // own, so retry after a backoff instead of staying on CPU until restart.
+    const cudaRetryDue = !this.forceCpu && this.cudaDisabledForSession && this.isCudaRetryDue();
+    if (cudaRetryDue) {
+      this.cachedServerBinaryPath = null;
+    }
+
     if (this.cachedServerBinaryPath) return this.cachedServerBinaryPath;
 
-    if (!this.forceCpu && !this.cudaDisabledForSession) {
+    if (!this.forceCpu && (!this.cudaDisabledForSession || cudaRetryDue)) {
       const cudaPath = gpuBinaryManager.getCudaBinaryPath();
       if (cudaPath) {
-        debugLogger.info("WhisperServer: using CUDA binary", { cudaPath });
+        debugLogger.info("WhisperServer: using CUDA binary", {
+          cudaPath,
+          retryAfterFailure: cudaRetryDue,
+        });
         this.cachedServerBinaryPath = cudaPath;
         return cudaPath;
       }
     } else {
       debugLogger.info("WhisperServer: CUDA binary skipped", {
         reason: this.forceCpu ? "CPU mode forced" : "disabled after startup failure",
+        nextRetryAt: this.getNextCudaRetryAt(),
       });
     }
 
@@ -471,10 +504,23 @@ class WhisperServerManager {
   }
 
   async start(modelPath, options = {}) {
+    // A warm CPU-fallback server must not keep serving past the CUDA retry
+    // window, otherwise the automatic retry never runs. Force a restart so the
+    // next startup attempts the CUDA binary again.
+    const cudaRetryWanted =
+      !this.forceCpu &&
+      this.cudaDisabledForSession &&
+      this.isCudaRetryDue() &&
+      this.ready &&
+      this.activeServerBinaryPath &&
+      !this.isCudaServerBinaryPath(this.activeServerBinaryPath) &&
+      !!gpuBinaryManager.getCudaBinaryPath();
+
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
     const wantsPrintRealtime = options.printRealtime === true;
     if (
+      !cudaRetryWanted &&
       this.ready &&
       this.loadedModelPath === modelPath &&
       this.printRealtimeEnabled === wantsPrintRealtime &&
@@ -511,6 +557,7 @@ class WhisperServerManager {
         // Re-check after the previous promise settled: the server may have
         // become ready for this model (e.g. from a concurrent caller).
         if (
+          !cudaRetryWanted &&
           this.ready &&
           this.loadedModelPath === modelPath &&
           this.printRealtimeEnabled === wantsPrintRealtime
@@ -542,6 +589,9 @@ class WhisperServerManager {
     try {
       await this._startWithBinary(serverBinary, modelPath, options);
       if (this.isCudaServerBinaryPath(serverBinary)) {
+        this.cudaDisabledForSession = false;
+        this._cudaDisabledAt = null;
+        this._cudaFailureCount = 0;
         this._lastCudaStartupFailure = null;
       }
     } catch (error) {
@@ -568,6 +618,7 @@ class WhisperServerManager {
 
       this.cudaDisabledForSession = true;
       this._cudaDisabledAt = Date.now();
+      this._cudaFailureCount += 1;
       this._lastCudaStartupFailure = {
         kind: this.isMissingDllStartupFailure(error) ? "missing_dll_or_runtime" : "startup_failure",
         message: error.message || String(error),
@@ -1400,6 +1451,8 @@ class WhisperServerManager {
         active: !this.forceCpu && effectiveEngine !== "cuda" && this.cudaDisabledForSession,
         reason: this.cudaDisabledForSession ? "cuda_startup_failure" : null,
         since: this._cudaDisabledAt || null,
+        failureCount: this._cudaFailureCount,
+        nextRetryAt: this.getNextCudaRetryAt(),
         diagnostic: this._lastCudaStartupFailure,
       },
       transition: this.startupPromise
