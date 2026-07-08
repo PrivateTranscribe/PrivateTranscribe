@@ -334,6 +334,24 @@ describe("WhisperServerManager CUDA startup fallback", () => {
       expect(doStart).toHaveBeenCalledTimes(1);
     });
 
+    it("clears the fallback state when the CUDA engine is reinstalled or updated", async () => {
+      const manager = new WhisperServerManager();
+
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = Date.now();
+      manager._cudaFailureCount = 3;
+      manager._lastCudaStartupFailure = { kind: "missing_dll_or_runtime" };
+      manager.cachedServerBinaryPath = cpuPath;
+
+      await manager.invalidateServerCache();
+
+      expect(manager.cachedServerBinaryPath).toBeNull();
+      expect(manager.cudaDisabledForSession).toBe(false);
+      expect(manager._cudaDisabledAt).toBeNull();
+      expect(manager._cudaFailureCount).toBe(0);
+      expect(manager._lastCudaStartupFailure).toBeNull();
+    });
+
     it("does not restart a warm CPU-fallback server before the retry window", async () => {
       const manager = new WhisperServerManager();
       vi.spyOn(GpuBinaryManager.prototype, "getCudaBinaryPath").mockReturnValue(cudaPath);

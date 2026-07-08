@@ -354,6 +354,14 @@ class WhisperServerManager {
 
   async invalidateServerCache({ stopRunningServer = false } = {}) {
     this.cachedServerBinaryPath = null;
+    // Every caller invalidates because a CUDA engine was just installed,
+    // updated, or migrated. Prior startup-failure evidence no longer applies
+    // to the new binary, so let the next start try CUDA immediately instead
+    // of waiting out the retry backoff.
+    this.cudaDisabledForSession = false;
+    this._cudaDisabledAt = null;
+    this._cudaFailureCount = 0;
+    this._lastCudaStartupFailure = null;
     if (stopRunningServer && this.process) {
       await this.stop();
     }
