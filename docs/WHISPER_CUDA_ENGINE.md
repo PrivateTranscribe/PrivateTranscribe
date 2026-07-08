@@ -77,6 +77,8 @@ Important rules:
 6. `getCudaBinaryStatus().installed` means a CUDA engine exists. It must **not** require `upToDate === true`.
 7. Readiness/update state is `installed && upToDate`.
 8. If CUDA startup fails (`spawn UNKNOWN`, missing DLL, startup crash), fallback to CPU and expose diagnostics rather than crashing.
+9. The CPU fallback is **temporary, not session-sticky**. A CUDA startup failure arms a retry backoff (1 min → 5 min → 30 min per consecutive failure); the next server start after the window retries the CUDA binary, and a warm CPU-fallback server is restarted once the retry is due. A successful CUDA start resets the failure state. Rationale: transient failures (NVIDIA driver update in progress, GPU reset) resolve on their own — before this, the app silently stayed on CPU until an app restart or a manual CPU→GPU toggle.
+10. Fallback transitions must be user-visible: `whisperServer.js` fires `onEngineFallbackChanged`, broadcast to all windows as `whisper-engine-fallback-changed`, and both the overlay and control panel show a toast when the fallback engages and when CUDA recovers. Do not remove this in favor of passive status text only.
 
 ### Engine version pinning and the latest-cuda manifest
 
@@ -144,7 +146,7 @@ Most likely failure classes:
 - Outdated CUDA package version.
 - Missing companion DLL/`.so` files.
 - Spawn environment not including the binary directory.
-- CUDA startup failure causing CPU fallback.
+- CUDA startup failure causing CPU fallback (auto-retries with backoff; check `getEngineStatus().fallback.nextRetryAt` and `failureCount`).
 - User selected CPU-only mode.
 - GPU VRAM/model-size issue, especially with Large models.
 

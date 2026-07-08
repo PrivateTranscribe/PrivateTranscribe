@@ -321,7 +321,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
           ? "A newer CUDA engine is available. Update before testing GPU transcription."
           : isUpToDate
             ? fallbackActive
-              ? "CUDA engine is current, but Whisper recently fell back to CPU. Run a benchmark and check diagnostics if it stays slow."
+              ? "CUDA engine is current, but Whisper fell back to CPU after a GPU startup failure. It retries the GPU automatically; check diagnostics if it stays on CPU."
               : newerEnginePublished
                 ? `CUDA engine is current for this app version. Engine ${latestPublished} is published and installs with the next PrivateTranscribe update.`
                 : engine === "cuda"
@@ -707,7 +707,7 @@ function GpuStatusCard({
                       {cudaEffectiveEngine === "cuda"
                         ? "CUDA engine active - Whisper is using GPU acceleration."
                         : cudaFallbackActive
-                          ? "CUDA engine installed, but Whisper fell back to CPU."
+                          ? "CUDA engine installed, but Whisper fell back to CPU. It retries the GPU automatically."
                           : "CUDA engine installed - run a transcription or speed test to verify GPU use."}
                     </span>
                   </div>
