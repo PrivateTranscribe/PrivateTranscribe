@@ -210,6 +210,9 @@ class WhisperServerManager {
     this._cudaDisabledAt = null;
     this._cudaFailureCount = 0;
     this._lastCudaStartupFailure = null;
+    // Optional listener invoked when the GPU→CPU fallback engages or recovers,
+    // so the UI can tell the user instead of degrading silently.
+    this.onEngineFallbackChanged = null;
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -369,6 +372,15 @@ class WhisperServerManager {
   isCudaRetryDue() {
     const retryAt = this.getNextCudaRetryAt();
     return retryAt !== null && Date.now() >= retryAt;
+  }
+
+  _notifyEngineFallbackChanged(payload) {
+    if (typeof this.onEngineFallbackChanged !== "function") return;
+    try {
+      this.onEngineFallbackChanged(payload);
+    } catch (err) {
+      debugLogger.warn("Engine fallback listener threw", { error: err.message });
+    }
   }
 
   getServerBinaryPath() {
@@ -589,10 +601,14 @@ class WhisperServerManager {
     try {
       await this._startWithBinary(serverBinary, modelPath, options);
       if (this.isCudaServerBinaryPath(serverBinary)) {
+        const recovered = this.cudaDisabledForSession;
         this.cudaDisabledForSession = false;
         this._cudaDisabledAt = null;
         this._cudaFailureCount = 0;
         this._lastCudaStartupFailure = null;
+        if (recovered) {
+          this._notifyEngineFallbackChanged({ active: false, recovered: true });
+        }
       }
     } catch (error) {
       if (
@@ -627,6 +643,14 @@ class WhisperServerManager {
         syscall: error.syscall || null,
       };
       this.cachedServerBinaryPath = null;
+      this._notifyEngineFallbackChanged({
+        active: true,
+        reason: "cuda_startup_failure",
+        kind: this._lastCudaStartupFailure.kind,
+        message: this._lastCudaStartupFailure.message,
+        failureCount: this._cudaFailureCount,
+        nextRetryAt: this.getNextCudaRetryAt(),
+      });
 
       const cpuBinary = this.getCpuServerBinaryPath();
       if (!cpuBinary) {

@@ -226,6 +226,10 @@ class WhisperManager {
     return this.serverManager.getEngineStatus();
   }
 
+  setEngineFallbackListener(listener) {
+    this.serverManager.onEngineFallbackChanged = listener;
+  }
+
   hasCudaBinary() {
     return this.gpuBinaryManager.hasCudaBinary();
   }

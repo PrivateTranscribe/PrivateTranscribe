@@ -798,6 +798,8 @@ declare global {
             active?: boolean;
             reason?: string | null;
             since?: number | null;
+            failureCount?: number;
+            nextRetryAt?: number | null;
             diagnostic?: unknown;
           };
           transition?: "starting" | "transcribing" | "idle" | "stopped";
@@ -809,6 +811,21 @@ declare global {
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
       cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;
       setWhisperForceCpu?: (value: boolean) => Promise<{ success: boolean; error?: string }>;
+      /** Fired when the GPU→CPU transcription fallback engages (active: true) or recovers. */
+      onWhisperEngineFallbackChanged?: (
+        callback: (
+          event: unknown,
+          data: {
+            active?: boolean;
+            recovered?: boolean;
+            reason?: string;
+            kind?: string;
+            message?: string;
+            failureCount?: number;
+            nextRetryAt?: number | null;
+          }
+        ) => void
+      ) => () => void;
       onCudaBinaryDownloadProgress?: (
         callback: (
           event: unknown,

@@ -248,6 +248,14 @@ class IPCHandlers {
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
     this.setupHandlers();
+
+    // Surface GPU→CPU fallback transitions to every window so the user gets
+    // immediate feedback instead of a silent engine downgrade.
+    if (this.whisperManager?.setEngineFallbackListener) {
+      this.whisperManager.setEngineFallbackListener((payload) => {
+        this.broadcastToWindows("whisper-engine-fallback-changed", payload);
+      });
+    }
   }
 
   _getDictionarySafe() {

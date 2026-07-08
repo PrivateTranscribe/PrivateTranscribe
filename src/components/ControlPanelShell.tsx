@@ -88,6 +88,32 @@ export default function ControlPanelShell() {
     }
   }, [updateError, toast]);
 
+  // GPU→CPU transcription fallback: mirror the overlay notification so the
+  // state change is visible from the control panel too.
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWhisperEngineFallbackChanged?.(
+      (_event: unknown, data: { active?: boolean; recovered?: boolean }) => {
+        if (data?.active) {
+          toast({
+            title: "Transcribing on CPU",
+            description:
+              "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
+            variant: "destructive",
+            duration: 10000,
+          });
+        } else if (data?.recovered) {
+          toast({
+            title: "GPU transcription restored",
+            description: "The CUDA engine started successfully and is back in use.",
+            variant: "success",
+            duration: 5000,
+          });
+        }
+      }
+    );
+    return () => unsubscribe?.();
+  }, [toast]);
+
   const handleUpdateClick = async () => {
     if (updateStatus.updateDownloaded) {
       showConfirmDialog({

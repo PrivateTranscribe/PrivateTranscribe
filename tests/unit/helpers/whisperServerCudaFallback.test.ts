@@ -359,6 +359,72 @@ describe("WhisperServerManager CUDA startup fallback", () => {
     });
   });
 
+  describe("engine fallback notifications", () => {
+    const cudaPath = "C:\\bin\\whisper-server-win32-x64-cuda.exe";
+    const cpuPath = "C:\\bin\\whisper-server-win32-x64.exe";
+
+    it("notifies when the CPU fallback engages and when CUDA recovers", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      const events: Array<{ active?: boolean; recovered?: boolean }> = [];
+      manager.onEngineFallbackChanged = (payload: { active?: boolean; recovered?: boolean }) =>
+        events.push(payload);
+
+      let cudaFails = true;
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath && cudaFails) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await manager._doStart(modelPath);
+      expect(events).toHaveLength(1);
+      expect(events[0].active).toBe(true);
+      expect(events[0]).toMatchObject({
+        reason: "cuda_startup_failure",
+        failureCount: 1,
+      });
+
+      cudaFails = false;
+      await manager._doStart(modelPath);
+      expect(events).toHaveLength(2);
+      expect(events[1]).toMatchObject({ active: false, recovered: true });
+    });
+
+    it("does not throw when the listener itself throws", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      manager.onEngineFallbackChanged = () => {
+        throw new Error("listener boom");
+      };
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await expect(manager._doStart(modelPath)).resolves.toBeUndefined();
+    });
+  });
+
   describe("getEngineStatus", () => {
     it("reports CPU fallback when CUDA failed and user wants GPU", () => {
       const manager = new WhisperServerManager();
