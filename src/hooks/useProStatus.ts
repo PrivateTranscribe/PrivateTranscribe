@@ -23,12 +23,11 @@ const PREVIEW_KEY = "privatetranscribe_pro_preview";
 const PREVIEW_EVENT = "privatetranscribe-pro-preview-changed";
 
 function isProductionBuild(): boolean {
-  try {
-    const meta = import.meta as unknown as { env?: { PROD?: boolean } };
-    return !!meta.env?.PROD;
-  } catch {
-    return false;
-  }
+  // Keep this as a direct Vite constant access. The previous dynamic
+  // import-meta object lookup survived into the bundled Electron app,
+  // where `import.meta.env` is undefined at runtime; that made packaged builds
+  // look like development and unlocked Pro by default.
+  return import.meta.env.PROD === true;
 }
 
 function isProEnforcementEnabled(): boolean {

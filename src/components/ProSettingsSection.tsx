@@ -137,8 +137,8 @@ export default function ProSettingsSection() {
     <div className="space-y-8">
       {/* Status banner */}
       {status.isPro ? (
-        <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-5 flex items-start gap-3">
-          <Check size={20} className="text-green-500 mt-0.5 shrink-0" />
+        <div className="rounded-xl border border-[#A885FF]/30 bg-[#2D1B69]/20 p-5 flex items-start gap-3">
+          <Check size={20} className="text-[#A885FF] mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-foreground">PrivateTranscribe Pro - Active</p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -216,7 +216,7 @@ export default function ProSettingsSection() {
       ) : (
         <>
           {/* Licensing not yet live - purchase CTA */}
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 space-y-4">
+          <div className="rounded-xl border border-[#A885FF]/25 bg-[#2D1B69]/15 p-6 space-y-4">
             <div>
               <h3 className="text-base font-semibold text-foreground">Get PrivateTranscribe Pro</h3>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
@@ -238,7 +238,7 @@ export default function ProSettingsSection() {
               Already have a key?{" "}
               <a
                 href="mailto:support@privatetranscribe.com"
-                className="text-primary hover:underline"
+                className="text-[#A885FF] hover:underline"
                 onClick={(e) => {
                   e.preventDefault();
                   window.electronAPI?.openExternal?.(
@@ -273,7 +273,7 @@ export default function ProSettingsSection() {
             key={feature.name}
             className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
           >
-            <Check size={14} className="shrink-0 text-green-500" />
+            <Check size={14} className="shrink-0 text-[#A885FF]" />
             <div className="min-w-0 flex-1">
               <span className="text-sm font-medium text-foreground">{feature.name}</span>
               <p className="text-xs text-muted-foreground">{feature.desc}</p>
@@ -306,7 +306,7 @@ export default function ProSettingsSection() {
 
       {/* Pricing info */}
       {!status.isPro && licensingReady && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-3">
+        <div className="rounded-xl border border-[#A885FF]/25 bg-[#2D1B69]/15 p-5 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">
               One-time purchase - no subscription

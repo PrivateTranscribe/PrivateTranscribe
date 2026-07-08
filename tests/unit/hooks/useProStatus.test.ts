@@ -71,6 +71,18 @@ describe("useProStatus entitlement overrides", () => {
     expect(getEffectiveEntitlement()).toBe("free");
   });
 
+  it("uses a direct Vite production constant so packaged builds do not fall back to dev-unlocked mode", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "src", "hooks", "useProStatus.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("return import.meta.env.PROD === true");
+    expect(source).not.toContain("const meta = import.meta");
+  });
+
   it("still allows preview override in development", () => {
     vi.stubEnv("PROD", false);
     vi.stubEnv("DEV", true);
