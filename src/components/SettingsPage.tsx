@@ -58,6 +58,7 @@ import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
 import FeedbackDialog from "./FeedbackDialog";
 import { SettingsRow } from "./ui/SettingsSection";
+import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
 
@@ -2515,6 +2516,34 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     />
                   </SettingsRow>
                 </SettingsPanelRow>
+
+                {smartContextUnlocked && smartContextEnabled && (
+                  <SettingsPanelRow>
+                    <InfoBox variant="muted" className="text-xs leading-relaxed">
+                      <p className="font-medium text-foreground mb-1.5">
+                        What Smart Context reads, and what it protects
+                      </p>
+                      <ul className="space-y-1 text-muted-foreground list-disc pl-4">
+                        <li>
+                          Captures only the <span className="text-foreground">app name</span> and{" "}
+                          <span className="text-foreground">window title</span> of whatever you're
+                          typing into — never your keystrokes or screen contents.
+                        </li>
+                        <li>
+                          Stays <span className="text-foreground">on your device</span>. Nothing
+                          leaves your computer unless you turn on “LLM Context Enhancement” below.
+                        </li>
+                        <li>
+                          Automatically skips{" "}
+                          <span className="text-foreground">
+                            password managers, banking apps, and system login / UAC prompts
+                          </span>{" "}
+                          so sensitive windows are never read.
+                        </li>
+                      </ul>
+                    </InfoBox>
+                  </SettingsPanelRow>
+                )}
 
                 {smartContextUnlocked && smartContextEnabled && (
                   <SettingsPanelRow>
