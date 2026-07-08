@@ -347,6 +347,17 @@ export default function HardwareSetupStep({
           </div>
         )}
 
+        {/* Speed expectation - shown when this machine has no CUDA acceleration path */}
+        {(gpuCategory === "non_nvidia_gpu" || gpuCategory === "cpu_only") && (
+          <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              CPU transcription is accurate but slower than GPU. The recommended model is sized
+              for your CPU, so short dictations stay responsive. If you want the fastest
+              transcription, you can pick a cloud provider in the next step instead.
+            </p>
+          </div>
+        )}
+
         {/* Recovery steps - shown when NVIDIA GPU is detected but CUDA is not usable */}
         {isNvidiaNocuda && recoverySteps.length > 0 && (
           <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
