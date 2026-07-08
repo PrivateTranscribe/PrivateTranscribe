@@ -671,10 +671,12 @@ class IPCHandlers {
       return this.clipboardManager.checkPasteTools();
     });
 
-    // Active app/window context (privacy-first, best-effort)
+    // Active app/window context (privacy-first, best-effort).
+    // Runs on a worker thread so its spawnSync capture (PowerShell/UIA on
+    // Windows, osascript, xdotool) never blocks the main process event loop.
     ipcMain.handle("get-active-window-context", async () => {
-      const { getActiveWindowContext } = require("./activeWindowContext");
-      return getActiveWindowContext();
+      const { captureActiveWindowContext } = require("./activeWindowContextRunner");
+      return captureActiveWindowContext();
     });
 
     // File identifier extraction for Smart Context (opt-in, local only)
