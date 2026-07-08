@@ -643,14 +643,20 @@ class WhisperServerManager {
         syscall: error.syscall || null,
       };
       this.cachedServerBinaryPath = null;
-      this._notifyEngineFallbackChanged({
-        active: true,
-        reason: "cuda_startup_failure",
-        kind: this._lastCudaStartupFailure.kind,
-        message: this._lastCudaStartupFailure.message,
-        failureCount: this._cudaFailureCount,
-        nextRetryAt: this.getNextCudaRetryAt(),
-      });
+      // Only notify on the transition *into* fallback, not on every re-failed
+      // retry. _cudaFailureCount was just bumped and resets to 0 on recovery,
+      // so a count of 1 means we just entered the fallback state (either the
+      // first failure or a new failure after a prior recovery).
+      if (this._cudaFailureCount === 1) {
+        this._notifyEngineFallbackChanged({
+          active: true,
+          reason: "cuda_startup_failure",
+          kind: this._lastCudaStartupFailure.kind,
+          message: this._lastCudaStartupFailure.message,
+          failureCount: this._cudaFailureCount,
+          nextRetryAt: this.getNextCudaRetryAt(),
+        });
+      }
 
       const cpuBinary = this.getCpuServerBinaryPath();
       if (!cpuBinary) {

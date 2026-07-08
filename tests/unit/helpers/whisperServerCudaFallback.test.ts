@@ -400,6 +400,75 @@ describe("WhisperServerManager CUDA startup fallback", () => {
       expect(events[1]).toMatchObject({ active: false, recovered: true });
     });
 
+    it("only notifies once when the CPU fallback stays engaged across retries", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      const events: Array<{ active?: boolean; recovered?: boolean }> = [];
+      manager.onEngineFallbackChanged = (payload: { active?: boolean; recovered?: boolean }) =>
+        events.push(payload);
+
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      // Three consecutive failed CUDA startups should surface exactly one
+      // "engaged" notification, not one per re-failure.
+      await manager._doStart(modelPath);
+      await manager._doStart(modelPath);
+      await manager._doStart(modelPath);
+
+      const engagedEvents = events.filter((e) => e.active === true);
+      expect(engagedEvents).toHaveLength(1);
+      expect(manager._cudaFailureCount).toBe(3);
+    });
+
+    it("re-notifies when the fallback engages again after a recovery", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      const events: Array<{ active?: boolean; recovered?: boolean }> = [];
+      manager.onEngineFallbackChanged = (payload: { active?: boolean; recovered?: boolean }) =>
+        events.push(payload);
+
+      let cudaFails = true;
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath && cudaFails) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await manager._doStart(modelPath); // fail → engaged
+      cudaFails = false;
+      await manager._doStart(modelPath); // succeed → recovered
+      cudaFails = true;
+      await manager._doStart(modelPath); // fail again → engaged again
+
+      expect(events.map((e) => (e.active ? "engaged" : "recovered"))).toEqual([
+        "engaged",
+        "recovered",
+        "engaged",
+      ]);
+    });
+
     it("does not throw when the listener itself throws", async () => {
       tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
       const modelPath = path.join(tempDir, "ggml-test.bin");
