@@ -238,7 +238,7 @@ class WhisperManager {
     return this.gpuBinaryManager.wasCudaPreviouslyInstalled();
   }
 
-  migrateLegacyCudaBinary() {
+  async migrateLegacyCudaBinary() {
     return this.gpuBinaryManager.migrateLegacyCudaBinary();
   }
 

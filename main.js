@@ -243,7 +243,7 @@ async function autoUpdateCudaBinaryIfNeeded() {
       return;
     }
 
-    const migrationResult = whisperManager.migrateLegacyCudaBinary();
+    const migrationResult = await whisperManager.migrateLegacyCudaBinary();
     if (migrationResult?.migrated) {
       await whisperManager.invalidateServerCache({ stopRunningServer: true });
     }
