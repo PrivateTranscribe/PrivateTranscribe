@@ -351,9 +351,9 @@ export default function HardwareSetupStep({
         {(gpuCategory === "non_nvidia_gpu" || gpuCategory === "cpu_only") && (
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              CPU transcription is accurate but slower than GPU. The recommended model is sized
-              for your CPU, so short dictations stay responsive. If you want the fastest
-              transcription, you can pick a cloud provider in the next step instead.
+              CPU transcription is accurate but slower than GPU. The recommended model is sized for
+              your CPU, so short dictations stay responsive. If you want the fastest transcription,
+              you can pick a cloud provider in the next step instead.
             </p>
           </div>
         )}
