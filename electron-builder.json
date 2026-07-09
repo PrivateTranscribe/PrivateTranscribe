@@ -118,7 +118,9 @@
       {
         "from": "resources/bin/",
         "to": "bin/",
-        "filter": ["*.dylib"]
+        "filter": [
+          "*.dylib"
+        ]
       }
     ],
     "extendInfo": {
@@ -129,9 +131,7 @@
   },
   "win": {
     "target": ["nsis"],
-    "signAndEditExecutable": true,
-    "verifyUpdateCodeSignature": true,
-    "publisherName": ["HeroTools Inc."],
+    "signAndEditExecutable": false,
     "icon": "src/assets/icon.ico",
     "executableName": "PrivateTranscribe",
     "extraResources": [

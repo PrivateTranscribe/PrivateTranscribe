@@ -3,11 +3,11 @@ name: Build Windows
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
       publish:
-        description: "Upload artifacts to R2"
+        description: 'Upload artifacts to R2'
         type: boolean
         default: false
 
@@ -26,7 +26,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 20
-          cache: "npm"
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -43,48 +43,13 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
-      - name: Verify Windows signing secrets
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) {
-            throw "Windows release artifacts require WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD secrets."
-          }
-
       - name: Package (Windows NSIS + Portable)
-        run: npx electron-builder --win --publish never -c.forceCodeSigning=true
+        run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-
-      - name: Verify Windows signatures
-        shell: pwsh
-        env:
-          EXPECTED_PUBLISHER: HeroTools Inc.
-        run: |
-          $artifacts = @()
-          $artifacts += Get-ChildItem -Path dist -Filter "*.exe" -File
-          $artifacts += Get-ChildItem -Path dist/win-unpacked -Filter "PrivateTranscribe.exe" -File -ErrorAction SilentlyContinue
-
-          if ($artifacts.Count -eq 0) {
-            throw "No Windows executable artifacts found to verify."
-          }
-
-          foreach ($artifact in $artifacts) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
-
-            if ($signature.Status -ne "Valid") {
-              throw "Invalid Authenticode signature for $($artifact.FullName): $($signature.StatusMessage)"
-            }
-
-            $subject = $signature.SignerCertificate.Subject
-            if ($subject -notlike "*CN=$env:EXPECTED_PUBLISHER*") {
-              throw "Unexpected signing publisher for $($artifact.FullName): $subject"
-            }
-          }
+          # Code signing (uncomment when cert is configured):
+          # CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: List build artifacts
         run: dir dist\

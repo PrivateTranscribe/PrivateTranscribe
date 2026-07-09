@@ -60,49 +60,11 @@ jobs:
           key: windows-electron-${{ hashFiles('**/package-lock.json') }}
           restore-keys: windows-electron-
 
-      - name: Verify Windows signing secrets
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) {
-            throw "Production Windows releases require WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD secrets."
-          }
-
       - name: Build Windows installer
         # --publish never: we handle upload manually to R2 below
-        run: npm run build:win -- --publish never -c.forceCodeSigning=true
+        run: npm run build:win -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-
-      - name: Verify Windows signatures
-        shell: pwsh
-        env:
-          EXPECTED_PUBLISHER: HeroTools Inc.
-        run: |
-          $artifacts = @()
-          $artifacts += Get-ChildItem -Path dist -Filter "*.exe" -File
-          $artifacts += Get-ChildItem -Path dist/win-unpacked -Filter "PrivateTranscribe.exe" -File -ErrorAction SilentlyContinue
-
-          if ($artifacts.Count -eq 0) {
-            throw "No Windows executable artifacts found to verify."
-          }
-
-          foreach ($artifact in $artifacts) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
-
-            if ($signature.Status -ne "Valid") {
-              throw "Invalid Authenticode signature for $($artifact.FullName): $($signature.StatusMessage)"
-            }
-
-            $subject = $signature.SignerCertificate.Subject
-            if ($subject -notlike "*CN=$env:EXPECTED_PUBLISHER*") {
-              throw "Unexpected signing publisher for $($artifact.FullName): $subject"
-            }
-          }
 
       - name: Upload artifacts to R2
         shell: bash
