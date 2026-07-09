@@ -55,8 +55,7 @@ function makeGpu() {
 }
 
 const WMIC_NVIDIA_ONLY =
-  "Node,AdapterRAM,DriverVersion,Name\n" +
-  "MYPC,4294967296,30.0.15.1179,NVIDIA GeForce GTX 1050";
+  "Node,AdapterRAM,DriverVersion,Name\n" + "MYPC,4294967296,30.0.15.1179,NVIDIA GeForce GTX 1050";
 
 const WMIC_MULTI_GPU =
   "Node,AdapterRAM,DriverVersion,Name\n" +
@@ -64,8 +63,7 @@ const WMIC_MULTI_GPU =
   "MYPC,8589934592,31.0.15.4672,NVIDIA GeForce RTX 3080";
 
 const WMIC_AMD_ONLY =
-  "Node,AdapterRAM,DriverVersion,Name\n" +
-  "MYPC,8589934592,27.20.14501.18003,AMD Radeon RX 6800";
+  "Node,AdapterRAM,DriverVersion,Name\n" + "MYPC,8589934592,27.20.14501.18003,AMD Radeon RX 6800";
 
 const NVIDIA_SMI_RTX = "NVIDIA GeForce RTX 3080, 10240 MiB, 525.89.02";
 
@@ -94,9 +92,7 @@ function mockPlatform(platform: NodeJS.Platform) {
 
 describe("detectWindowsGPU — WMIC detects NVIDIA, nvidia-smi absent", () => {
   it("sets vendor=nvidia and available=true from WMIC output", async () => {
-    execSpy
-      .mockResolvedValueOnce(WMIC_NVIDIA_ONLY)
-      .mockImplementationOnce(notFound);
+    execSpy.mockResolvedValueOnce(WMIC_NVIDIA_ONLY).mockImplementationOnce(notFound);
 
     const gpu = makeGpu();
     await new HardwareDetector().detectWindowsGPU(gpu);
@@ -106,9 +102,7 @@ describe("detectWindowsGPU — WMIC detects NVIDIA, nvidia-smi absent", () => {
   });
 
   it("leaves cuda.available=false when nvidia-smi is absent", async () => {
-    execSpy
-      .mockResolvedValueOnce(WMIC_NVIDIA_ONLY)
-      .mockImplementationOnce(notFound);
+    execSpy.mockResolvedValueOnce(WMIC_NVIDIA_ONLY).mockImplementationOnce(notFound);
 
     const gpu = makeGpu();
     await new HardwareDetector().detectWindowsGPU(gpu);
@@ -117,9 +111,7 @@ describe("detectWindowsGPU — WMIC detects NVIDIA, nvidia-smi absent", () => {
   });
 
   it("selects the NVIDIA dGPU over the Intel iGPU in multi-GPU WMIC output", async () => {
-    execSpy
-      .mockResolvedValueOnce(WMIC_MULTI_GPU)
-      .mockImplementationOnce(notFound);
+    execSpy.mockResolvedValueOnce(WMIC_MULTI_GPU).mockImplementationOnce(notFound);
 
     const gpu = makeGpu();
     await new HardwareDetector().detectWindowsGPU(gpu);
@@ -129,9 +121,7 @@ describe("detectWindowsGPU — WMIC detects NVIDIA, nvidia-smi absent", () => {
   });
 
   it("correctly identifies AMD GPU from WMIC when no NVIDIA present", async () => {
-    execSpy
-      .mockResolvedValueOnce(WMIC_AMD_ONLY)
-      .mockImplementationOnce(notFound);
+    execSpy.mockResolvedValueOnce(WMIC_AMD_ONLY).mockImplementationOnce(notFound);
 
     const gpu = makeGpu();
     await new HardwareDetector().detectWindowsGPU(gpu);
@@ -143,9 +133,7 @@ describe("detectWindowsGPU — WMIC detects NVIDIA, nvidia-smi absent", () => {
 
 describe("detectWindowsGPU — nvidia-smi present (CUDA confirmed)", () => {
   it("marks cuda.available=true when nvidia-smi succeeds", async () => {
-    execSpy
-      .mockResolvedValueOnce(WMIC_NVIDIA_ONLY)
-      .mockResolvedValueOnce(NVIDIA_SMI_RTX);
+    execSpy.mockResolvedValueOnce(WMIC_NVIDIA_ONLY).mockResolvedValueOnce(NVIDIA_SMI_RTX);
 
     const gpu = makeGpu();
     await new HardwareDetector().detectWindowsGPU(gpu);
@@ -155,9 +143,7 @@ describe("detectWindowsGPU — nvidia-smi present (CUDA confirmed)", () => {
   });
 
   it("captures VRAM from nvidia-smi output", async () => {
-    execSpy
-      .mockResolvedValueOnce(WMIC_NVIDIA_ONLY)
-      .mockResolvedValueOnce(NVIDIA_SMI_RTX); // "10240 MiB"
+    execSpy.mockResolvedValueOnce(WMIC_NVIDIA_ONLY).mockResolvedValueOnce(NVIDIA_SMI_RTX); // "10240 MiB"
 
     const gpu = makeGpu();
     await new HardwareDetector().detectWindowsGPU(gpu);
@@ -226,9 +212,7 @@ describe("detectLinuxGPU — lspci fallback when nvidia-smi and rocm-smi are abs
 
 describe("detectLinuxGPU — nvidia-smi present", () => {
   it("marks cuda.available=true when nvidia-smi succeeds", async () => {
-    execSpy
-      .mockResolvedValueOnce(NVIDIA_SMI_RTX)
-      .mockImplementationOnce(notFound); // nvcc optional
+    execSpy.mockResolvedValueOnce(NVIDIA_SMI_RTX).mockImplementationOnce(notFound); // nvcc optional
 
     const gpu = makeGpu();
     await new HardwareDetector().detectLinuxGPU(gpu);
@@ -422,9 +406,9 @@ describe("generateRecommendations — Linux: NVIDIA detected via lspci only (nvi
   beforeEach(() => mockPlatform("linux"));
 
   it("produces nvidia_no_cuda gpuCategory", () => {
-    expect(
-      new HardwareDetector().generateRecommendations(linuxNvidiaLspciOnly()).gpuCategory
-    ).toBe("nvidia_no_cuda");
+    expect(new HardwareDetector().generateRecommendations(linuxNvidiaLspciOnly()).gpuCategory).toBe(
+      "nvidia_no_cuda"
+    );
   });
 
   it("falls back to whisper — does NOT enable Parakeet GPU acceleration", () => {
@@ -542,7 +526,14 @@ describe("Platform-specific recovery step content invariants", () => {
     mockPlatform("win32");
     const combined = (
       new HardwareDetector().generateRecommendations({
-        gpu: { available: false, vendor: null, model: null, vram: null, cuda: { available: false }, metal: { available: false } },
+        gpu: {
+          available: false,
+          vendor: null,
+          model: null,
+          vram: null,
+          cuda: { available: false },
+          metal: { available: false },
+        },
         cpu,
       }).reasoning as string[]
     )
@@ -555,7 +546,14 @@ describe("Platform-specific recovery step content invariants", () => {
     mockPlatform("linux");
     const combined = (
       new HardwareDetector().generateRecommendations({
-        gpu: { available: false, vendor: null, model: null, vram: null, cuda: { available: false }, metal: { available: false } },
+        gpu: {
+          available: false,
+          vendor: null,
+          model: null,
+          vram: null,
+          cuda: { available: false },
+          metal: { available: false },
+        },
         cpu,
       }).reasoning as string[]
     )
