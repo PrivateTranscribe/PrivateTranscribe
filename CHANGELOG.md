@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.3 - 2026-07-09
+
+### Fixed
+
+- Renamed the production Settings `Developer` tab to `Data & Storage`.
+- Removed the empty production-only `Diagnostics & Data` header when developer diagnostics are hidden.
+
 ## 0.13.2 - 2026-07-08
 
 ### Fixed

@@ -982,7 +982,7 @@ export default function TranscriptionModelPicker({
               />
               <span className="text-[9px] text-muted-foreground/60">
                 {engineStatus.fallback?.active
-                  ? "CPU fallback (CUDA unavailable)"
+                  ? "CPU fallback (retrying CUDA automatically)"
                   : engineStatus.effectiveEngine === "cuda"
                     ? "CUDA active"
                     : engineStatus.effectiveEngine === "cpu"

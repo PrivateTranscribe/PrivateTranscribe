@@ -11,11 +11,14 @@ vi.mock("electron", () => ({
 }));
 
 const WhisperServerManager = require("../../../src/helpers/whisperServer");
+const GpuBinaryManager = require("../../../src/helpers/gpuBinaryManager");
 
 describe("WhisperServerManager CUDA startup fallback", () => {
   let tempDir: string | null = null;
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true });
       tempDir = null;
@@ -211,6 +214,302 @@ describe("WhisperServerManager CUDA startup fallback", () => {
 
     expect(stop).not.toHaveBeenCalled();
     expect(manager.stoppedDueToIdle).toBe(false);
+  });
+
+  describe("automatic CUDA retry after startup failure", () => {
+    const cudaPath = "C:\\bin\\whisper-server-win32-x64-cuda.exe";
+    const cpuPath = "C:\\bin\\whisper-server-win32-x64.exe";
+
+    it("escalates the retry backoff with the failure count", () => {
+      const manager = new WhisperServerManager();
+
+      manager._cudaFailureCount = 1;
+      expect(manager.getCudaRetryDelayMs()).toBe(60 * 1000);
+      manager._cudaFailureCount = 2;
+      expect(manager.getCudaRetryDelayMs()).toBe(5 * 60 * 1000);
+      manager._cudaFailureCount = 3;
+      expect(manager.getCudaRetryDelayMs()).toBe(30 * 60 * 1000);
+      manager._cudaFailureCount = 10;
+      expect(manager.getCudaRetryDelayMs()).toBe(30 * 60 * 1000);
+    });
+
+    it("keeps the CPU binary inside the backoff window and retries CUDA after it", () => {
+      vi.useFakeTimers();
+      const manager = new WhisperServerManager();
+      vi.spyOn(GpuBinaryManager.prototype, "getCudaBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = Date.now();
+      manager._cudaFailureCount = 1;
+      manager.cachedServerBinaryPath = cpuPath;
+
+      expect(manager.getServerBinaryPath()).toBe(cpuPath);
+
+      vi.advanceTimersByTime(59 * 1000);
+      expect(manager.getServerBinaryPath()).toBe(cpuPath);
+
+      vi.advanceTimersByTime(2 * 1000);
+      expect(manager.getServerBinaryPath()).toBe(cudaPath);
+    });
+
+    it("counts repeated CUDA startup failures and re-arms the backoff", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await manager._doStart(modelPath);
+      expect(manager._cudaFailureCount).toBe(1);
+      expect(manager.getNextCudaRetryAt()).toBe(manager._cudaDisabledAt + 60 * 1000);
+
+      await manager._doStart(modelPath);
+      expect(manager._cudaFailureCount).toBe(2);
+      expect(manager.getNextCudaRetryAt()).toBe(manager._cudaDisabledAt + 5 * 60 * 1000);
+    });
+
+    it("clears the fallback state when a CUDA start succeeds again", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      vi.spyOn(manager, "_startWithBinary").mockResolvedValue(undefined);
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = Date.now() - 60 * 60 * 1000;
+      manager._cudaFailureCount = 2;
+      manager._lastCudaStartupFailure = { kind: "startup_failure" };
+
+      await manager._doStart(modelPath);
+
+      expect(manager.cudaDisabledForSession).toBe(false);
+      expect(manager._cudaDisabledAt).toBeNull();
+      expect(manager._cudaFailureCount).toBe(0);
+      expect(manager._lastCudaStartupFailure).toBeNull();
+    });
+
+    it("restarts a warm CPU-fallback server when the CUDA retry window has elapsed", async () => {
+      const manager = new WhisperServerManager();
+      vi.spyOn(GpuBinaryManager.prototype, "getCudaBinaryPath").mockReturnValue(cudaPath);
+
+      manager.forceCpu = false;
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = Date.now() - 60 * 60 * 1000;
+      manager._cudaFailureCount = 1;
+      manager.ready = true;
+      manager.process = { pid: 1234 };
+      manager.modelPath = "/tmp/ggml-base.bin";
+      manager.loadedModelPath = "/tmp/ggml-base.bin";
+      manager.printRealtimeEnabled = false;
+
+      const stop = vi.spyOn(manager, "stop").mockImplementation(async () => {
+        manager.ready = false;
+        manager.process = null;
+        manager.loadedModelPath = null;
+      });
+      const doStart = vi.spyOn(manager, "_doStart").mockImplementation(async () => {
+        manager.ready = true;
+        manager.process = { pid: 5678 };
+        manager.loadedModelPath = "/tmp/ggml-base.bin";
+      });
+
+      manager.activeServerBinaryPath = cpuPath;
+      await manager.start("/tmp/ggml-base.bin");
+
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(doStart).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears the fallback state when the CUDA engine is reinstalled or updated", async () => {
+      const manager = new WhisperServerManager();
+
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = Date.now();
+      manager._cudaFailureCount = 3;
+      manager._lastCudaStartupFailure = { kind: "missing_dll_or_runtime" };
+      manager.cachedServerBinaryPath = cpuPath;
+
+      await manager.invalidateServerCache();
+
+      expect(manager.cachedServerBinaryPath).toBeNull();
+      expect(manager.cudaDisabledForSession).toBe(false);
+      expect(manager._cudaDisabledAt).toBeNull();
+      expect(manager._cudaFailureCount).toBe(0);
+      expect(manager._lastCudaStartupFailure).toBeNull();
+    });
+
+    it("does not restart a warm CPU-fallback server before the retry window", async () => {
+      const manager = new WhisperServerManager();
+      vi.spyOn(GpuBinaryManager.prototype, "getCudaBinaryPath").mockReturnValue(cudaPath);
+
+      manager.forceCpu = false;
+      manager.cudaDisabledForSession = true;
+      manager._cudaDisabledAt = Date.now();
+      manager._cudaFailureCount = 1;
+      manager.ready = true;
+      manager.process = { pid: 1234 };
+      manager.modelPath = "/tmp/ggml-base.bin";
+      manager.loadedModelPath = "/tmp/ggml-base.bin";
+      manager.printRealtimeEnabled = false;
+      manager.activeServerBinaryPath = cpuPath;
+
+      const stop = vi.spyOn(manager, "stop").mockResolvedValue(undefined);
+      const doStart = vi.spyOn(manager, "_doStart").mockResolvedValue(undefined);
+
+      await manager.start("/tmp/ggml-base.bin");
+
+      expect(stop).not.toHaveBeenCalled();
+      expect(doStart).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("engine fallback notifications", () => {
+    const cudaPath = "C:\\bin\\whisper-server-win32-x64-cuda.exe";
+    const cpuPath = "C:\\bin\\whisper-server-win32-x64.exe";
+
+    it("notifies when the CPU fallback engages and when CUDA recovers", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      const events: Array<{ active?: boolean; recovered?: boolean }> = [];
+      manager.onEngineFallbackChanged = (payload: { active?: boolean; recovered?: boolean }) =>
+        events.push(payload);
+
+      let cudaFails = true;
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath && cudaFails) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await manager._doStart(modelPath);
+      expect(events).toHaveLength(1);
+      expect(events[0].active).toBe(true);
+      expect(events[0]).toMatchObject({
+        reason: "cuda_startup_failure",
+        failureCount: 1,
+      });
+
+      cudaFails = false;
+      await manager._doStart(modelPath);
+      expect(events).toHaveLength(2);
+      expect(events[1]).toMatchObject({ active: false, recovered: true });
+    });
+
+    it("only notifies once when the CPU fallback stays engaged across retries", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      const events: Array<{ active?: boolean; recovered?: boolean }> = [];
+      manager.onEngineFallbackChanged = (payload: { active?: boolean; recovered?: boolean }) =>
+        events.push(payload);
+
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      // Three consecutive failed CUDA startups should surface exactly one
+      // "engaged" notification, not one per re-failure.
+      await manager._doStart(modelPath);
+      await manager._doStart(modelPath);
+      await manager._doStart(modelPath);
+
+      const engagedEvents = events.filter((e) => e.active === true);
+      expect(engagedEvents).toHaveLength(1);
+      expect(manager._cudaFailureCount).toBe(3);
+    });
+
+    it("re-notifies when the fallback engages again after a recovery", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      const events: Array<{ active?: boolean; recovered?: boolean }> = [];
+      manager.onEngineFallbackChanged = (payload: { active?: boolean; recovered?: boolean }) =>
+        events.push(payload);
+
+      let cudaFails = true;
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath && cudaFails) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await manager._doStart(modelPath); // fail → engaged
+      cudaFails = false;
+      await manager._doStart(modelPath); // succeed → recovered
+      cudaFails = true;
+      await manager._doStart(modelPath); // fail again → engaged again
+
+      expect(events.map((e) => (e.active ? "engaged" : "recovered"))).toEqual([
+        "engaged",
+        "recovered",
+        "engaged",
+      ]);
+    });
+
+    it("does not throw when the listener itself throws", async () => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+      const modelPath = path.join(tempDir, "ggml-test.bin");
+      writeFileSync(modelPath, "model");
+
+      const manager = new WhisperServerManager();
+      manager.onEngineFallbackChanged = () => {
+        throw new Error("listener boom");
+      };
+      vi.spyOn(manager, "_startWithBinary").mockImplementation(
+        async (serverBinary: string) => {
+          if (serverBinary === cudaPath) {
+            throw Object.assign(new Error("whisper-server process died during startup"), {
+              exitCode: 1,
+            });
+          }
+        }
+      );
+      vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+      vi.spyOn(manager, "getCpuServerBinaryPath").mockReturnValue(cpuPath);
+
+      await expect(manager._doStart(modelPath)).resolves.toBeUndefined();
+    });
   });
 
   describe("getEngineStatus", () => {

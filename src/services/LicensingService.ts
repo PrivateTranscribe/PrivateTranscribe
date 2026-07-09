@@ -9,9 +9,6 @@ const LICENSING_BASE_URL =
   import.meta.env.VITE_LICENSING_BASE_URL ||
   "https://wsfrykhacxjfsgvqnlbq.supabase.co/functions/v1";
 
-// Offline grace: how long to trust a cached entitlement without re-validating
-const OFFLINE_GRACE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
 // Storage keys
 const STORAGE_LICENSE_KEY = "privatetranscribe_license_key";
 const STORAGE_ENTITLEMENT = "privatetranscribe_entitlement";
@@ -46,6 +43,15 @@ function _verifySeal(): boolean {
   if (!key || !ent || !seal) return false;
   const raw = key + "|" + ent + "|" + navigator.userAgent.slice(0, 20);
   return _computeSeal(raw) === seal;
+}
+
+/** Remove all locally cached license/entitlement data. */
+function _clearLicenseData(): void {
+  localStorage.removeItem(STORAGE_LICENSE_KEY);
+  localStorage.removeItem(STORAGE_ENTITLEMENT);
+  localStorage.removeItem(STORAGE_PRO_STATUS);
+  localStorage.removeItem(_SEAL_KEY);
+  localStorage.removeItem(_EPOCH_KEY);
 }
 
 /**
@@ -142,20 +148,14 @@ export function getProStatus(): ProStatus {
 
   try {
     const entitlement = JSON.parse(entitlementRaw);
-    const expiresAt = entitlement.expiresAt;
-    const isExpired = new Date(expiresAt) < new Date();
+    const expiresAt = entitlement.expiresAt ?? null;
 
-    if (isExpired) {
-      return {
-        isPro: false,
-        licenseKey: key,
-        expiresAt,
-        offlineGrace: false,
-        error: "License expired - please connect to the internet to re-validate",
-        _t: 0,
-      };
-    }
-
+    // A one-time license never expires from the user's side. `expiresAt` is only
+    // a hint for when the app should next try to re-validate online (to pick up
+    // refunds / revocations). An old or past `expiresAt` — e.g. because the user
+    // has been offline — must NOT downgrade a paying customer. Revocation happens
+    // exclusively via an explicit server response during online re-validation
+    // (see refreshProStatus), never from local time.
     return {
       isPro: true,
       licenseKey: key,
@@ -182,6 +182,10 @@ export function getProStatus(): ProStatus {
 export async function activateLicense(key: string): Promise<{
   success: boolean;
   error?: string;
+  /** True when the server was reached (vs. a network/connection failure). */
+  reachedServer?: boolean;
+  /** True when the server explicitly reports the license is no longer valid. */
+  revoked?: boolean;
   devices?: Array<{ deviceId: string; deviceName: string; activatedAt: string }>;
 }> {
   const deviceId = await getDeviceId();
@@ -194,10 +198,25 @@ export async function activateLicense(key: string): Promise<{
       body: JSON.stringify({ key: key.trim().toUpperCase(), deviceId, deviceName }),
     });
 
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      // Non-JSON response (e.g. gateway error). Treat as reachable-but-failed,
+      // NOT as a revoke — we have no explicit revoke signal.
+      data = {};
+    }
 
     if (!data.success) {
-      return { success: false, error: data.error, devices: data.devices };
+      return {
+        success: false,
+        error: data.error,
+        devices: data.devices,
+        reachedServer: true,
+        // Only the server may declare a license dead. It sets `revoked: true`
+        // for refunded / disabled / non-existent keys.
+        revoked: data.revoked === true,
+      };
     }
 
     // Cache locally
@@ -208,10 +227,12 @@ export async function activateLicense(key: string): Promise<{
     localStorage.setItem(STORAGE_PRO_STATUS, "active");
     _writeSeal(normalizedKey, entitlementStr);
 
-    return { success: true };
+    return { success: true, reachedServer: true };
   } catch (err: any) {
+    // Network/connection failure — server was never reached.
     return {
       success: false,
+      reachedServer: false,
       error: "Could not connect to licensing server. Check your internet connection.",
     };
   }
@@ -238,12 +259,7 @@ export async function deactivateDevice(): Promise<{ success: boolean; error?: st
     const data = await res.json();
 
     if (data.success) {
-      // Clear all license data
-      localStorage.removeItem(STORAGE_LICENSE_KEY);
-      localStorage.removeItem(STORAGE_ENTITLEMENT);
-      localStorage.removeItem(STORAGE_PRO_STATUS);
-      localStorage.removeItem(_SEAL_KEY);
-      localStorage.removeItem(_EPOCH_KEY);
+      _clearLicenseData();
     }
 
     return data;
@@ -254,7 +270,13 @@ export async function deactivateDevice(): Promise<{ success: boolean; error?: st
 
 /**
  * Re-validate the cached entitlement with the server.
- * Call this periodically (e.g. on app start) to refresh the offline grace window.
+ *
+ * Called on app start (and manually via the Pro settings "Validate" button).
+ * This is the ONLY place a previously-activated license can be downgraded, and
+ * only when the server is reachable AND explicitly reports the license as no
+ * longer valid (refund / chargeback / disabled key). Being offline, a network
+ * error, or any other transient failure never removes Pro — a paying customer
+ * who stays offline keeps Pro indefinitely (they simply stop receiving updates).
  */
 export async function refreshProStatus(): Promise<ProStatus> {
   const key = localStorage.getItem(STORAGE_LICENSE_KEY);
@@ -269,7 +291,22 @@ export async function refreshProStatus(): Promise<ProStatus> {
     return getProStatus();
   }
 
-  // If server is unreachable, fall back to cached entitlement
+  // The server was reached and explicitly revoked this license. Downgrade now.
+  if (result.reachedServer && result.revoked) {
+    _clearLicenseData();
+    return {
+      isPro: false,
+      licenseKey: key,
+      expiresAt: null,
+      offlineGrace: false,
+      error: result.error || "This license is no longer active.",
+      _t: 0,
+    };
+  }
+
+  // Any other outcome — offline, network error, or a non-revoke server response
+  // (e.g. a transient 5xx or a device-limit reply during refresh) — must keep
+  // the paying customer on Pro using the cached entitlement.
   const cached = getProStatus();
   if (cached.isPro) {
     return { ...cached, offlineGrace: true };

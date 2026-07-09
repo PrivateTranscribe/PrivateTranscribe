@@ -145,11 +145,9 @@ export default function ProSettingsSection() {
               License: <span className="font-mono">{status.licenseKey}</span>
               {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
             </p>
-            {status.expiresAt && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Next validation: {new Date(status.expiresAt).toLocaleDateString()}
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              One-time license — validated automatically when you're online.
+            </p>
             <div className="flex items-center gap-2 mt-3">
               <Button
                 variant="outline"

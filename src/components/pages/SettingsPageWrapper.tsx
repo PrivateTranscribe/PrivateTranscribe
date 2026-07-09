@@ -7,18 +7,19 @@ type SettingsTab = {
   label: string;
 };
 
-const tabs: SettingsTab[] = [
+const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
   { id: "preferences", label: "Preferences" },
   { id: "transcription", label: "Transcription" },
   { id: "permissions", label: "Permissions" },
   { id: "pro", label: "PrivateTranscribe Pro" },
   { id: "help", label: "Help & Support" },
-  { id: "developer", label: "Developer" },
+  { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },
 ];
 
 export default function SettingsPageWrapper() {
   const [activeTab, setActiveTab] = useState<SettingsSectionType>("general");
+  const tabs = getSettingsTabs();
 
   useEffect(() => {
     const requestedSection = localStorage.getItem("controlPanelInitialSettingsTab");

@@ -248,6 +248,14 @@ class IPCHandlers {
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
     this.setupHandlers();
+
+    // Surface GPU→CPU fallback transitions to every window so the user gets
+    // immediate feedback instead of a silent engine downgrade.
+    if (this.whisperManager?.setEngineFallbackListener) {
+      this.whisperManager.setEngineFallbackListener((payload) => {
+        this.broadcastToWindows("whisper-engine-fallback-changed", payload);
+      });
+    }
   }
 
   _getDictionarySafe() {
@@ -671,10 +679,12 @@ class IPCHandlers {
       return this.clipboardManager.checkPasteTools();
     });
 
-    // Active app/window context (privacy-first, best-effort)
+    // Active app/window context (privacy-first, best-effort).
+    // Runs on a worker thread so its spawnSync capture (PowerShell/UIA on
+    // Windows, osascript, xdotool) never blocks the main process event loop.
     ipcMain.handle("get-active-window-context", async () => {
-      const { getActiveWindowContext } = require("./activeWindowContext");
-      return getActiveWindowContext();
+      const { captureActiveWindowContext } = require("./activeWindowContextRunner");
+      return captureActiveWindowContext();
     });
 
     // File identifier extraction for Smart Context (opt-in, local only)

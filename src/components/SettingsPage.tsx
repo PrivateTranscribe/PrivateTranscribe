@@ -58,6 +58,7 @@ import { Toggle } from "./ui/toggle";
 import DeveloperSection from "./DeveloperSection";
 import FeedbackDialog from "./FeedbackDialog";
 import { SettingsRow } from "./ui/SettingsSection";
+import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
 
@@ -320,7 +321,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
           ? "A newer CUDA engine is available. Update before testing GPU transcription."
           : isUpToDate
             ? fallbackActive
-              ? "CUDA engine is current, but Whisper recently fell back to CPU. Run a benchmark and check diagnostics if it stays slow."
+              ? "CUDA engine is current, but Whisper fell back to CPU after a GPU startup failure. It retries the GPU automatically; check diagnostics if it stays on CPU."
               : newerEnginePublished
                 ? `CUDA engine is current for this app version. Engine ${latestPublished} is published and installs with the next PrivateTranscribe update.`
                 : engine === "cuda"
@@ -706,7 +707,7 @@ function GpuStatusCard({
                       {cudaEffectiveEngine === "cuda"
                         ? "CUDA engine active - Whisper is using GPU acceleration."
                         : cudaFallbackActive
-                          ? "CUDA engine installed, but Whisper fell back to CPU."
+                          ? "CUDA engine installed, but Whisper fell back to CPU. It retries the GPU automatically."
                           : "CUDA engine installed - run a transcription or speed test to verify GPU use."}
                     </span>
                   </div>
@@ -2518,6 +2519,34 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
                 {smartContextUnlocked && smartContextEnabled && (
                   <SettingsPanelRow>
+                    <InfoBox variant="muted" className="text-xs leading-relaxed">
+                      <p className="font-medium text-foreground mb-1.5">
+                        What Smart Context reads, and what it protects
+                      </p>
+                      <ul className="space-y-1 text-muted-foreground list-disc pl-4">
+                        <li>
+                          Captures only the <span className="text-foreground">app name</span> and{" "}
+                          <span className="text-foreground">window title</span> of whatever you're
+                          typing into — never your keystrokes or screen contents.
+                        </li>
+                        <li>
+                          Stays <span className="text-foreground">on your device</span>. Nothing
+                          leaves your computer unless you turn on “LLM Context Enhancement” below.
+                        </li>
+                        <li>
+                          Automatically skips{" "}
+                          <span className="text-foreground">
+                            password managers, banking apps, and system login / UAC prompts
+                          </span>{" "}
+                          so sensitive windows are never read.
+                        </li>
+                      </ul>
+                    </InfoBox>
+                  </SettingsPanelRow>
+                )}
+
+                {smartContextUnlocked && smartContextEnabled && (
+                  <SettingsPanelRow>
                     <SettingsRow
                       label="Active file context"
                       description="Reads variable and function names from your active file to improve code dictation accuracy. Local only - file content stays on your device."
@@ -3179,22 +3208,30 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       // ───────────────────────────────────────────────────
       // DEVELOPER (+ data management moved here)
       // ───────────────────────────────────────────────────
-      case "developer":
+      case "developer": {
+        const showDeveloperDiagnostics = updateStatus.isDevelopment;
+
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="Diagnostics & Data"
-              description="Support tools, logging, settings backup, and local data management"
+              title={showDeveloperDiagnostics ? "Diagnostics & Data" : "Data & Storage"}
+              description={
+                showDeveloperDiagnostics
+                  ? "Support tools, logging, settings backup, and local data management"
+                  : "Manage settings, statistics, model cache, and application data"
+              }
             />
 
-            {updateStatus.isDevelopment && <DeveloperSection />}
+            {showDeveloperDiagnostics && <DeveloperSection />}
 
             {/* Data Management - moved from General */}
-            <div className="border-t border-border/30 pt-8">
-              <SectionHeader
-                title="Data & Storage"
-                description="Manage settings, statistics, model cache, and application data"
-              />
+            <div className={showDeveloperDiagnostics ? "border-t border-border/30 pt-8" : ""}>
+              {showDeveloperDiagnostics && (
+                <SectionHeader
+                  title="Data & Storage"
+                  description="Manage settings, statistics, model cache, and application data"
+                />
+              )}
 
               <div className="space-y-4">
                 {/* Settings export/import */}
@@ -3445,6 +3482,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             </div>
           </div>
         );
+      }
 
       default:
         return null;

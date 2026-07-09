@@ -340,6 +340,29 @@ export default function App() {
     };
   }, [toast]);
 
+  // GPU→CPU transcription fallback: tell the user instead of degrading
+  // silently. Fires when the CUDA engine fails to start and again when it
+  // recovers (automatic retry or manual engine toggle).
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onWhisperEngineFallbackChanged?.((_event, data) => {
+      if (data?.active) {
+        toast({
+          title: "Transcribing on CPU",
+          description:
+            "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
+          duration: 10000,
+        });
+      } else if (data?.recovered) {
+        toast({
+          title: "GPU transcription restored",
+          description: "The CUDA engine started successfully and is back in use.",
+          duration: 5000,
+        });
+      }
+    });
+    return () => unsubscribe?.();
+  }, [toast]);
+
   // ── Action Engine: dictation-mode events ─────────────────────────────────────
   // A "dictation-mode" action broadcasts this event to switch the active mode
   // profile for subsequent transcriptions.  We surface it as a toast so the

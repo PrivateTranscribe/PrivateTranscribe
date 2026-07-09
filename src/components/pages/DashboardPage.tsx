@@ -318,7 +318,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const engineLabel = useMemo(() => {
     if (!useLocalWhisper) return "Cloud API";
-    if (localTranscriptionProvider === "nvidia") return "GPU - Parakeet";
+    // Parakeet runs via sherpa-onnx on CPU threads ("NVIDIA" is the model's
+    // maker, not the execution device) — don't claim GPU on machines without one.
+    if (localTranscriptionProvider === "nvidia") return "CPU - Parakeet";
     if (whisperForceCpu || cudaStatus?.forceCpu) return "CPU";
 
     const engineStatus = cudaStatus?.engineStatus;
