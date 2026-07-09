@@ -9,8 +9,11 @@ const NEW_CACHE_DIR = "PrivateTranscribe";
 /**
  * Migrate models from old .cache/Privoca dir to .cache/PrivateTranscribe if needed.
  * Safe to call multiple times — no-ops if already migrated.
+ *
+ * Async: the cross-filesystem fallback copies model files that can be several
+ * GB, which must never run synchronously on the Electron main process.
  */
-function migrateModelDirIfNeeded() {
+async function migrateModelDirIfNeeded() {
   try {
     const homeDir = app?.getPath?.("home") || os.homedir();
     const oldBase = path.join(homeDir, ".cache", OLD_CACHE_DIR);
@@ -18,25 +21,25 @@ function migrateModelDirIfNeeded() {
 
     if (!fs.existsSync(oldBase)) return;
 
-    fs.mkdirSync(newBase, { recursive: true });
+    await fs.promises.mkdir(newBase, { recursive: true });
 
     // Move each service subfolder (e.g. whisper-models, llama-models)
-    for (const entry of fs.readdirSync(oldBase)) {
+    for (const entry of await fs.promises.readdir(oldBase)) {
       const src = path.join(oldBase, entry);
       const dest = path.join(newBase, entry);
       if (fs.existsSync(dest)) continue; // Never overwrite user data in the new cache.
       try {
-        fs.renameSync(src, dest);
+        await fs.promises.rename(src, dest);
       } catch {
-        // renameSync fails across filesystems — fall back to copy+delete
-        fs.cpSync(src, dest, { recursive: true });
-        fs.rmSync(src, { recursive: true, force: true });
+        // rename fails across filesystems — fall back to copy+delete
+        await fs.promises.cp(src, dest, { recursive: true });
+        await fs.promises.rm(src, { recursive: true, force: true });
       }
     }
 
     // Remove old dir if now empty
     try {
-      fs.rmdirSync(oldBase);
+      await fs.promises.rmdir(oldBase);
     } catch {
       // Not empty or already gone — fine
     }
