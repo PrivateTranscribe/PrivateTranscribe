@@ -453,7 +453,8 @@ class ParakeetManager {
           freedBytes = stats.size;
         }
 
-        fs.rmSync(modelPath, { recursive: true, force: true });
+        // Async rm — model dirs are ~680MB and must not block the main process.
+        await fs.promises.rm(modelPath, { recursive: true, force: true });
 
         return {
           model: modelName,
@@ -492,7 +493,7 @@ class ParakeetManager {
               totalFreed += stats.size;
             }
 
-            fs.rmSync(dirPath, { recursive: true, force: true });
+            await fs.promises.rm(dirPath, { recursive: true, force: true });
             deletedCount++;
           } catch {
             // Continue with other models if one fails
