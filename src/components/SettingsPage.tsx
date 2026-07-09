@@ -3208,22 +3208,30 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       // ───────────────────────────────────────────────────
       // DEVELOPER (+ data management moved here)
       // ───────────────────────────────────────────────────
-      case "developer":
+      case "developer": {
+        const showDeveloperDiagnostics = updateStatus.isDevelopment;
+
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="Diagnostics & Data"
-              description="Support tools, logging, settings backup, and local data management"
+              title={showDeveloperDiagnostics ? "Diagnostics & Data" : "Data & Storage"}
+              description={
+                showDeveloperDiagnostics
+                  ? "Support tools, logging, settings backup, and local data management"
+                  : "Manage settings, statistics, model cache, and application data"
+              }
             />
 
-            {updateStatus.isDevelopment && <DeveloperSection />}
+            {showDeveloperDiagnostics && <DeveloperSection />}
 
             {/* Data Management - moved from General */}
-            <div className="border-t border-border/30 pt-8">
-              <SectionHeader
-                title="Data & Storage"
-                description="Manage settings, statistics, model cache, and application data"
-              />
+            <div className={showDeveloperDiagnostics ? "border-t border-border/30 pt-8" : ""}>
+              {showDeveloperDiagnostics && (
+                <SectionHeader
+                  title="Data & Storage"
+                  description="Manage settings, statistics, model cache, and application data"
+                />
+              )}
 
               <div className="space-y-4">
                 {/* Settings export/import */}
@@ -3474,6 +3482,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             </div>
           </div>
         );
+      }
 
       default:
         return null;

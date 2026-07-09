@@ -171,12 +171,14 @@ describe("Settings support and diagnostics tools", () => {
     expect(rateLimitMigration).toContain("feedback_device_id_hash_created_at_idx");
   });
 
-  it("the diagnostics section is labeled for users, not only developers", () => {
+  it("keeps diagnostics labeled for dev while production shows data storage", () => {
     const settingsPage = fs.readFileSync(
       path.join(process.cwd(), "src", "components", "SettingsPage.tsx"),
       "utf8"
     );
 
-    expect(settingsPage).toContain('title="Diagnostics & Data"');
+    expect(settingsPage).toContain('"Diagnostics & Data"');
+    expect(settingsPage).toContain('"Data & Storage"');
+    expect(settingsPage).toContain("showDeveloperDiagnostics");
   });
 });
