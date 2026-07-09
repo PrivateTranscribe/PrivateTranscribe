@@ -455,7 +455,7 @@ class WhisperManager {
     return parsed;
   }
 
-  audioBlobToBuffer(audioBlob) {
+  async audioBlobToBuffer(audioBlob) {
     if (Buffer.isBuffer(audioBlob)) {
       return audioBlob;
     }
@@ -466,7 +466,8 @@ class WhisperManager {
       return Buffer.from(audioBlob);
     }
     if (typeof audioBlob === "string") {
-      return fs.readFileSync(audioBlob);
+      // Async read — file-mode inputs can be large audio recordings.
+      return fs.promises.readFile(audioBlob);
     }
     throw new Error(`Unsupported audio data type for diarization: ${typeof audioBlob}`);
   }
@@ -531,7 +532,7 @@ class WhisperManager {
       if (typeof onProgress === "function") {
         onProgress({ stage: "diarizing", percentage: 0 });
       }
-      const inputBuffer = this.audioBlobToBuffer(audioBlob);
+      const inputBuffer = await this.audioBlobToBuffer(audioBlob);
       const wavBuffer = await this.serverManager.convertToDiarizationWav(
         inputBuffer,
         options.inputFileName,

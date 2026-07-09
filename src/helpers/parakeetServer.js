@@ -87,17 +87,15 @@ class ParakeetServerManager {
     const tempInputPath = path.join(tempDir, `parakeet-input-${timestamp}${inputExtension}`);
     const tempWavPath = path.join(tempDir, `parakeet-${timestamp}.wav`);
 
-    fs.writeFileSync(tempInputPath, audioBuffer);
+    await fs.promises.writeFile(tempInputPath, audioBuffer);
 
-    const inputStats = fs.statSync(tempInputPath);
-    debugLogger.debug("Converting audio to WAV", { inputSize: inputStats.size });
+    debugLogger.debug("Converting audio to WAV", { inputSize: audioBuffer.length });
 
     await convertToWav(tempInputPath, tempWavPath, { sampleRate: 16000, channels: 1 });
 
-    const outputStats = fs.statSync(tempWavPath);
-    debugLogger.debug("FFmpeg conversion complete", { outputSize: outputStats.size });
+    const wavBuffer = await fs.promises.readFile(tempWavPath);
+    debugLogger.debug("FFmpeg conversion complete", { outputSize: wavBuffer.length });
 
-    const wavBuffer = fs.readFileSync(tempWavPath);
     return { wavBuffer, filesToCleanup: [tempInputPath, tempWavPath] };
   }
 

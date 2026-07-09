@@ -42,11 +42,11 @@ function findBundledBenchmarkWav() {
  * Load benchmark audio: prefers a bundled speech WAV file; falls back to
  * synthetic white noise. Returns { buffer, durationSeconds, source }.
  */
-function loadBenchmarkAudio() {
+async function loadBenchmarkAudio() {
   const wavPath = findBundledBenchmarkWav();
   if (wavPath) {
     try {
-      const buffer = fs.readFileSync(wavPath);
+      const buffer = await fs.promises.readFile(wavPath);
       // Scan WAV chunks to find the 'data' chunk (not hardcoded offset — ffmpeg
       // may insert extra chunks like LIST/INFO between fmt and data).
       const byteRate = buffer.readUInt32LE(28);
@@ -333,7 +333,7 @@ class BenchmarkManager {
         buffer: audioBuffer,
         durationSeconds: audioDurationSec,
         source: audioSource,
-      } = loadBenchmarkAudio();
+      } = await loadBenchmarkAudio();
       debugLogger.info("Benchmark audio loaded", { source: audioSource, audioDurationSec });
 
       // 2. Detect hardware context
@@ -517,7 +517,7 @@ class BenchmarkManager {
         buffer: audioBuffer,
         durationSeconds: audioDurationSec,
         source: audioSource,
-      } = loadBenchmarkAudio();
+      } = await loadBenchmarkAudio();
       debugLogger.info("Comparison benchmark audio loaded", {
         source: audioSource,
         audioDurationSec,

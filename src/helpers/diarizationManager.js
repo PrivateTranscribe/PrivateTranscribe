@@ -213,15 +213,11 @@ class DiarizationManager {
       os.tmpdir(),
       `privatetranscribe-diarization-${crypto.randomUUID()}.wav`
     );
-    fs.writeFileSync(tempPath, wavBuffer);
+    await fs.promises.writeFile(tempPath, wavBuffer);
     try {
       return await this.diarizeWavFile(tempPath, options);
     } finally {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // ignore cleanup failures
-      }
+      await fs.promises.rm(tempPath, { force: true }).catch(() => {});
     }
   }
 
@@ -234,15 +230,11 @@ class DiarizationManager {
       os.tmpdir(),
       `privatetranscribe-diarization-${crypto.randomUUID()}.wav`
     );
-    fs.writeFileSync(tempPath, wavBuffer);
+    await fs.promises.writeFile(tempPath, wavBuffer);
     try {
       return await this.diarizeWavFileInWorker(tempPath, options);
     } finally {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // ignore cleanup failures
-      }
+      await fs.promises.rm(tempPath, { force: true }).catch(() => {});
     }
   }
 
@@ -262,7 +254,7 @@ class DiarizationManager {
         embeddingRelativePath: this.embeddingRelativePath,
       },
     };
-    fs.writeFileSync(payloadPath, JSON.stringify(payload));
+    await fs.promises.writeFile(payloadPath, JSON.stringify(payload));
 
     try {
       return await new Promise((resolve, reject) => {
@@ -310,11 +302,7 @@ class DiarizationManager {
         });
       });
     } finally {
-      try {
-        fs.unlinkSync(payloadPath);
-      } catch {
-        // ignore cleanup failures
-      }
+      await fs.promises.rm(payloadPath, { force: true }).catch(() => {});
     }
   }
 
