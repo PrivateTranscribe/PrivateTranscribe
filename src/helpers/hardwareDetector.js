@@ -1,4 +1,4 @@
-const { execSync } = require("child_process");
+const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const debugLogger = require("./debugLogger");
@@ -38,6 +38,23 @@ class HardwareDetector {
       });
 
     return this.detectionPromise;
+  }
+
+  /**
+   * Run a shell command asynchronously and resolve with its stdout.
+   *
+   * Detection probes (wmic, nvidia-smi, system_profiler, ...) can take seconds
+   * — e.g. nvidia-smi has to wake a sleeping dGPU on hybrid-graphics laptops —
+   * so they must never run synchronously on the Electron main process.
+   * Rejects on non-zero exit, missing command, or timeout.
+   */
+  execCommand(command, { timeout = 5000 } = {}) {
+    return new Promise((resolve, reject) => {
+      exec(command, { encoding: "utf8", timeout, windowsHide: true }, (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      });
+    });
   }
 
   async buildDetection() {
@@ -189,9 +206,8 @@ class HardwareDetector {
     try {
       // Try WMIC first for GPU info. WMIC typically returns CSV with a header like:
       // Node,AdapterRAM,DriverVersion,Name
-      const wmicOutput = execSync(
-        "wmic path win32_VideoController get Name, AdapterRAM, DriverVersion /format:csv",
-        { encoding: "utf8", timeout: 5000 }
+      const wmicOutput = await this.execCommand(
+        "wmic path win32_VideoController get Name, AdapterRAM, DriverVersion /format:csv"
       );
 
       const best = this.pickBestWindowsGpuFromWmicOutput(wmicOutput);
@@ -207,12 +223,8 @@ class HardwareDetector {
 
     // Check for CUDA
     try {
-      const cudaOutput = execSync(
-        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader",
-        {
-          encoding: "utf8",
-          timeout: 5000,
-        }
+      const cudaOutput = await this.execCommand(
+        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader"
       );
 
       if (cudaOutput) {
@@ -267,10 +279,7 @@ class HardwareDetector {
 
       // Now try system_profiler to refine the GPU info (best effort)
       try {
-        const systemProfiler = execSync("system_profiler SPDisplaysDataType -json", {
-          encoding: "utf8",
-          timeout: 5000,
-        });
+        const systemProfiler = await this.execCommand("system_profiler SPDisplaysDataType -json");
 
         const data = JSON.parse(systemProfiler);
         const displays = data?.SPDisplaysDataType || [];
@@ -334,12 +343,8 @@ class HardwareDetector {
   async detectLinuxGPU(gpu) {
     // Try nvidia-smi first for NVIDIA GPUs
     try {
-      const nvidiaOutput = execSync(
-        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader",
-        {
-          encoding: "utf8",
-          timeout: 5000,
-        }
+      const nvidiaOutput = await this.execCommand(
+        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader"
       );
 
       if (nvidiaOutput) {
@@ -356,12 +361,9 @@ class HardwareDetector {
 
           // Try to get CUDA version
           try {
-            const cudaVersion = execSync(
+            const cudaVersion = await this.execCommand(
               "nvcc --version 2>/dev/null | grep release | sed 's/.*release //' | sed 's/,.*//'",
-              {
-                encoding: "utf8",
-                timeout: 3000,
-              }
+              { timeout: 3000 }
             );
             if (cudaVersion) {
               gpu.cuda.version = cudaVersion.trim();
@@ -378,12 +380,8 @@ class HardwareDetector {
     // Try ROCm for AMD GPUs if no NVIDIA GPU found
     if (!gpu.available) {
       try {
-        const rocmOutput = execSync(
-          "rocm-smi --showproductname --showmeminfo vram --csv 2>/dev/null",
-          {
-            encoding: "utf8",
-            timeout: 5000,
-          }
+        const rocmOutput = await this.execCommand(
+          "rocm-smi --showproductname --showmeminfo vram --csv 2>/dev/null"
         );
 
         if (rocmOutput && rocmOutput.includes("AMD")) {
@@ -399,10 +397,7 @@ class HardwareDetector {
     // Try lspci as fallback
     if (!gpu.available) {
       try {
-        const lspciOutput = execSync("lspci | grep -i vga", {
-          encoding: "utf8",
-          timeout: 5000,
-        });
+        const lspciOutput = await this.execCommand("lspci | grep -i vga");
 
         if (lspciOutput) {
           const line = lspciOutput.split("\n")[0];
