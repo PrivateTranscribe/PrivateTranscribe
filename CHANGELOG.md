@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.2 - 2026-07-08
+
+### Fixed
+
+- Fixed packaged builds accidentally treating themselves like development builds, which unlocked Pro features without a valid license.
+- Restored Pro surfaces in Settings to the website's purple Pro accent instead of green/mint status styling.
+
 ## 0.13.1 - 2026-07-05
 
 ### Added

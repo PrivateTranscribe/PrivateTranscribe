@@ -148,6 +148,20 @@ describe("Model curation invariants", () => {
       expect(contents).toContain("modelId === recommendedLocalModel");
       expect(contents).toContain("recommended={isRecommended}");
     });
+
+    it("onboarding collapsed model list includes the hardware recommended model", () => {
+      const pickerPath = path.join(
+        process.cwd(),
+        "src",
+        "components",
+        "TranscriptionModelPicker.tsx"
+      );
+      const contents = fs.readFileSync(pickerPath, "utf8");
+
+      expect(contents).toContain("getOnboardingCollapsedModelEntries");
+      expect(contents).toContain('recommendedLocalModel ?? selectedLocalModel ?? "turbo"');
+      expect(contents).not.toContain('allModelEntries.filter((model) => model.model === "turbo")');
+    });
   });
 
   describe("Build script version pinning", () => {

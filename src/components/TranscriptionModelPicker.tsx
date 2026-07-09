@@ -713,19 +713,27 @@ export default function TranscriptionModelPicker({
     );
 
     const isOnboarding = variant === "onboarding";
+    const getOnboardingCollapsedModelEntries = () => {
+      const preferredModel = recommendedLocalModel ?? selectedLocalModel ?? "turbo";
+      const preferredEntry = allModelEntries.find((model) => model.model === preferredModel);
+      if (preferredEntry) return [preferredEntry];
+
+      const turboEntry = allModelEntries.find((model) => model.model === "turbo");
+      return turboEntry ? [turboEntry] : allModelEntries.slice(0, 1);
+    };
     const displayedModelEntries = isOnboarding
-      ? (showAllLocalModels
-          ? allModelEntries
-          : allModelEntries.filter((model) => model.model === "turbo")
-        ).sort((a, b) => {
-          const rank = (model: LocalModel): number => {
-            if (model.model === "turbo") return 0;
-            if (model.model === selectedLocalModel) return 1;
-            if (model.downloaded) return 2;
-            return 9;
-          };
-          return rank(a) - rank(b);
-        })
+      ? (showAllLocalModels ? allModelEntries : getOnboardingCollapsedModelEntries()).sort(
+          (a, b) => {
+            const rank = (model: LocalModel): number => {
+              if (model.model === recommendedLocalModel) return 0;
+              if (model.model === selectedLocalModel) return 1;
+              if (model.model === "turbo") return 2;
+              if (model.downloaded) return 3;
+              return 9;
+            };
+            return rank(a) - rank(b);
+          }
+        )
       : allModelEntries;
 
     return (
