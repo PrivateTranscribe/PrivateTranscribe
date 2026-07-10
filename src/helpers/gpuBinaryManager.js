@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const fsp = fs.promises;
 const path = require("path");
 const crypto = require("crypto");
 const unzipper = require("unzipper");
@@ -189,7 +190,7 @@ class GpuBinaryManager {
     return this.getCudaBinaryFilePath() !== null || this.getLegacyCudaBinaryPath() !== null;
   }
 
-  migrateLegacyCudaBinary() {
+  async migrateLegacyCudaBinary() {
     const existingPath = this.getCudaBinaryFilePath();
     const legacyPath = this.getLegacyCudaBinaryPath();
     if (existingPath || !legacyPath) {
@@ -203,27 +204,21 @@ class GpuBinaryManager {
     }
 
     const binDir = this.getBinDir();
-    fs.mkdirSync(binDir, { recursive: true });
+    await fsp.mkdir(binDir, { recursive: true });
 
     const binaryPath = path.join(binDir, spec.outputName);
     const tempPath = `${binaryPath}.tmp`;
     try {
-      fs.copyFileSync(legacyPath, tempPath);
-      if (process.platform !== "win32") {
-        fs.chmodSync(tempPath, 0o755);
-      }
-      fs.renameSync(tempPath, binaryPath);
+      // Copy (never move) — the legacy binary lives in the app's resources
+      // directory, which must stay intact.
+      await this.placeFileAtomic(legacyPath, binaryPath, { executable: true });
       debugLogger.info("GpuBinaryManager: migrated legacy binary, will be updated on next check", {
         legacyPath,
         binaryPath,
       });
       return { migrated: true, binaryPath };
     } catch (error) {
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        /* ignore */
-      }
+      await fsp.unlink(tempPath).catch(() => {});
       debugLogger.warn("GpuBinaryManager: failed to migrate legacy CUDA binary", {
         legacyPath,
         binaryPath,
@@ -282,11 +277,11 @@ class GpuBinaryManager {
     }
   }
 
-  findFileRecursive(rootDir, predicate) {
+  async findFileRecursive(rootDir, predicate) {
     const stack = [rootDir];
     while (stack.length > 0) {
       const current = stack.pop();
-      const entries = fs.readdirSync(current, { withFileTypes: true });
+      const entries = await fsp.readdir(current, { withFileTypes: true });
       for (const entry of entries) {
         const entryPath = path.join(current, entry.name);
         if (entry.isDirectory()) {
@@ -299,12 +294,12 @@ class GpuBinaryManager {
     return null;
   }
 
-  findFilesRecursive(rootDir, predicate) {
+  async findFilesRecursive(rootDir, predicate) {
     const matches = [];
     const stack = [rootDir];
     while (stack.length > 0) {
       const current = stack.pop();
-      const entries = fs.readdirSync(current, { withFileTypes: true });
+      const entries = await fsp.readdir(current, { withFileTypes: true });
       for (const entry of entries) {
         const entryPath = path.join(current, entry.name);
         if (entry.isDirectory()) {
@@ -317,13 +312,32 @@ class GpuBinaryManager {
     return matches;
   }
 
-  copyFileAtomic(sourcePath, destPath, { executable = false } = {}) {
+  /**
+   * Atomically place a file at destPath (write to `.tmp`, then rename).
+   *
+   * With `move: true` the source is renamed instead of copied — instant on the
+   * same volume, which matters for the multi-hundred-MB CUDA runtime libraries.
+   * Only use `move` for sources we own (e.g. the temp extraction dir); it falls
+   * back to a copy across volumes (EXDEV).
+   *
+   * All I/O is async so large files never block the Electron main process.
+   */
+  async placeFileAtomic(sourcePath, destPath, { executable = false, move = false } = {}) {
     const tempPath = `${destPath}.tmp`;
-    fs.copyFileSync(sourcePath, tempPath);
-    if (executable && process.platform !== "win32") {
-      fs.chmodSync(tempPath, 0o755);
+    if (move) {
+      try {
+        await fsp.rename(sourcePath, tempPath);
+      } catch (error) {
+        if (error.code !== "EXDEV") throw error;
+        await fsp.copyFile(sourcePath, tempPath);
+      }
+    } else {
+      await fsp.copyFile(sourcePath, tempPath);
     }
-    fs.renameSync(tempPath, destPath);
+    if (executable && process.platform !== "win32") {
+      await fsp.chmod(tempPath, 0o755);
+    }
+    await fsp.rename(tempPath, destPath);
   }
 
   async installCudaPackage(archivePath, spec, binDir) {
@@ -331,7 +345,7 @@ class GpuBinaryManager {
     try {
       await this.extractArchive(archivePath, extractDir);
 
-      const extractedBinary = this.findFileRecursive(
+      const extractedBinary = await this.findFileRecursive(
         extractDir,
         (name) => name === spec.outputName || name === path.basename(spec.outputName)
       );
@@ -340,25 +354,28 @@ class GpuBinaryManager {
       }
 
       const binaryPath = path.join(binDir, spec.outputName);
-      this.copyFileAtomic(extractedBinary, binaryPath, { executable: true });
+      await this.placeFileAtomic(extractedBinary, binaryPath, { executable: true, move: true });
 
-      const companionFiles = this.findFilesRecursive(extractDir, (name) =>
+      const companionFiles = await this.findFilesRecursive(extractDir, (name) =>
         spec.companionPattern?.test(name)
       );
       const companionPaths = [];
       let companionBytes = 0;
       for (const companion of companionFiles) {
         const dest = path.join(binDir, path.basename(companion));
-        this.copyFileAtomic(companion, dest, { executable: process.platform !== "win32" });
+        await this.placeFileAtomic(companion, dest, {
+          executable: process.platform !== "win32",
+          move: true,
+        });
         companionPaths.push(dest);
         try {
-          companionBytes += fs.statSync(dest).size;
+          companionBytes += (await fsp.stat(dest)).size;
         } catch {
           /* ignore */
         }
       }
 
-      const binaryBytes = fs.statSync(binaryPath).size;
+      const binaryBytes = (await fsp.stat(binaryPath)).size;
       return {
         binaryPath,
         binaryBytes,
@@ -372,11 +389,11 @@ class GpuBinaryManager {
     }
   }
 
-  writeCudaBinaryVersionFile() {
+  async writeCudaBinaryVersionFile() {
     const versionPath = this.getCudaVersionFilePath();
     const tempVersionPath = `${versionPath}.tmp`;
-    fs.writeFileSync(tempVersionPath, BINARY_VERSION, "utf8");
-    fs.renameSync(tempVersionPath, versionPath);
+    await fsp.writeFile(tempVersionPath, BINARY_VERSION, "utf8");
+    await fsp.rename(tempVersionPath, versionPath);
     return versionPath;
   }
 
@@ -439,7 +456,7 @@ class GpuBinaryManager {
       const installed = await this.installCudaPackage(archivePath, spec, binDir);
       binaryPath = installed.binaryPath;
 
-      const binarySize = installed.binaryBytes ?? fs.statSync(binaryPath).size;
+      const binarySize = installed.binaryBytes ?? (await fsp.stat(binaryPath)).size;
       const totalInstalledBytes = installed.totalBytes ?? binarySize;
       if (binarySize < MIN_CUDA_LAUNCHER_BYTES || totalInstalledBytes < MIN_CUDA_PACKAGE_BYTES) {
         for (const installedPath of [binaryPath, ...(installed.companionPaths || [])]) {
@@ -469,7 +486,7 @@ class GpuBinaryManager {
         });
       }
 
-      const versionPath = this.writeCudaBinaryVersionFile();
+      const versionPath = await this.writeCudaBinaryVersionFile();
 
       if (onProgress) {
         onProgress({ phase: "done", percent: 100, bytesDownloaded: totalBytes, totalBytes });

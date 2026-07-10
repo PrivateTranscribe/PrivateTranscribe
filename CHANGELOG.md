@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.4 - 2026-07-10
+
+### Changed
+
+- Made CUDA engine installation, model cache migration, hardware detection, Parakeet model deletion, and audio file I/O non-blocking so startup and transcription flows stay responsive.
+
 ## 0.13.3 - 2026-07-09
 
 ### Fixed

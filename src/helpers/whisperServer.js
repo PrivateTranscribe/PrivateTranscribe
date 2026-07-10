@@ -1383,20 +1383,16 @@ class WhisperServerManager {
     const tempWavPath = path.join(tempDir, `whisper-output-${tempId}.wav`);
 
     try {
-      fs.writeFileSync(tempInputPath, audioBuffer);
+      await fs.promises.writeFile(tempInputPath, audioBuffer);
       await convertToWav(tempInputPath, tempWavPath, {
         sampleRate: 16000,
         channels: options.channels || 1,
         audioFilters: options.noiseReduction ? ["afftdn=nf=-25"] : [],
       });
-      return fs.readFileSync(tempWavPath);
+      return await fs.promises.readFile(tempWavPath);
     } finally {
       for (const f of [tempInputPath, tempWavPath]) {
-        try {
-          if (fs.existsSync(f)) fs.unlinkSync(f);
-        } catch {
-          // ignore cleanup errors
-        }
+        await fs.promises.rm(f, { force: true }).catch(() => {});
       }
     }
   }

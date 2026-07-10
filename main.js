@@ -131,13 +131,14 @@ function setupProductionPath() {
 }
 
 // Initialize all managers - called after app.whenReady()
-function initializeManagers() {
+async function initializeManagers() {
   // Set up PATH before initializing managers
   setupProductionPath();
 
-  // Migrate model cache from .cache/Privoca → .cache/PrivateTranscribe (one-time, safe)
+  // Migrate model cache from .cache/Privoca → .cache/PrivateTranscribe (one-time, safe).
+  // Awaited so managers never read a half-migrated model cache.
   const { migrateModelDirIfNeeded } = require("./src/helpers/modelDirUtils");
-  migrateModelDirIfNeeded();
+  await migrateModelDirIfNeeded();
 
   // Now it's safe to call app.getPath() and initialize managers
   debugLogger = require("./src/helpers/debugLogger");
@@ -243,7 +244,7 @@ async function autoUpdateCudaBinaryIfNeeded() {
       return;
     }
 
-    const migrationResult = whisperManager.migrateLegacyCudaBinary();
+    const migrationResult = await whisperManager.migrateLegacyCudaBinary();
     if (migrationResult?.migrated) {
       await whisperManager.invalidateServerCache({ stopRunningServer: true });
     }
@@ -307,7 +308,7 @@ function getLoginLaunchMode() {
 // Main application startup
 async function startApp() {
   // Initialize all managers now that app is ready
-  initializeManagers();
+  await initializeManagers();
 
   const autoStartLaunchMode = readAutoStartLaunchMode();
   const loginLaunchMode = getLoginLaunchMode();
