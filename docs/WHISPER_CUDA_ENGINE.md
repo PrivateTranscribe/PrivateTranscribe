@@ -88,9 +88,11 @@ To make that state visible, the `build-cuda-binary.yml` workflow also publishes 
 
 Release checklist for a new engine version:
 
-1. Run the workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
+1. Run the `Build CUDA Binary` workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
 2. Bump `BINARY_VERSION` in `gpuBinaryManager.js` to the same value.
 3. Ship the app release; its CUDA auto-update installs the new engine.
+
+If both versioned packages already exist but the manifest is missing or stale, run the separate `Publish CUDA Manifest` workflow with the existing engine version. It verifies that both Windows and Linux packages exist in R2 before publishing, then verifies the manifest through the public CDN. Do not rebuild 800 MB packages solely to recover this small metadata file.
 
 ## UI/UX lessons
 
