@@ -44,7 +44,17 @@ class WindowManager {
     this.isMainWindowOverlaySuspended = false;
     this.mainWindowRendererReady = false;
     this._overlayStateChangeCallback = null;
-    this.overlayDisabled = false;
+    // Overlay visibility mode — the single source of truth for whether the
+    // dictation overlay should be on screen. Owned by the main process.
+    //   "shown"   — normal, overlay visible
+    //   "snoozed" — temporarily hidden (window kept alive), auto-restores at
+    //               overlaySnoozeUntil; never persisted across restarts
+    //   "off"     — persistently disabled; the window is destroyed to avoid
+    //               DWM composition lag, dictation still works via hotkey
+    this.overlayMode = "shown";
+    this.overlaySnoozeUntil = null;
+    this._overlaySnoozeTimer = null;
+    this._overlayModeFile = null;
     this.overlaySnapToTaskbar = false;
 
     // Overlay stability: debounced re-apply always-on-top after blur/focus races.
@@ -70,6 +80,7 @@ class WindowManager {
     this._overlayMouseCaptured = null;
 
     this._registerExitHandlers();
+    this._loadPersistedOverlayMode();
 
     app.on("before-quit", () => {
       this.isQuitting = true;
@@ -135,6 +146,20 @@ class WindowManager {
   }
 
   _notifyOverlayStateChanged() {
+    // Broadcast the current overlay state to every renderer so UI that
+    // reflects it (Settings toggle, overlay menu) never drifts out of sync
+    // with the main-process source of truth.
+    const state = this.getOverlayState();
+    for (const win of [this.mainWindow, this.controlPanelWindow]) {
+      if (win && !win.isDestroyed()) {
+        try {
+          win.webContents.send("overlay-state-changed", state);
+        } catch {
+          // Window may be mid-teardown; the next state change re-broadcasts.
+        }
+      }
+    }
+
     if (!this._overlayStateChangeCallback) {
       return;
     }
@@ -707,7 +732,7 @@ class WindowManager {
       this.mainWindow &&
       !this.mainWindow.isDestroyed() &&
       !this.mainWindow.isVisible() &&
-      !this.overlayDisabled
+      !this.isOverlaySuppressed()
     ) {
       this.resumeMainWindowOverlay();
       this.enforceMainWindowOnTop();
@@ -774,10 +799,11 @@ class WindowManager {
       }
       lastToggleTime = now;
 
-      // When overlay is disabled, create the window hidden (not shown) and send
-      // dictation IPC to it. The hidden renderer handles audio recording without
-      // any visible overlay, eliminating DWM lag in windowed games.
-      if (this.overlayDisabled) {
+      // While the overlay is snoozed or off, keep it invisible and send the
+      // dictation IPC to the hidden renderer. It handles audio recording
+      // without any visible overlay, eliminating DWM lag in windowed games —
+      // and a snoozed overlay must not pop back up just because the user dictated.
+      if (this.isOverlaySuppressed()) {
         if (!this.mainWindow || this.mainWindow.isDestroyed()) {
           await this.createMainWindow();
         }
@@ -801,10 +827,10 @@ class WindowManager {
       return;
     }
 
-    // When overlay is disabled, create the window hidden (not shown) and send
-    // dictation IPC to it. The hidden renderer handles audio recording without
-    // any visible overlay, eliminating DWM lag in windowed games.
-    if (this.overlayDisabled) {
+    // While the overlay is snoozed or off, create the window hidden (not shown)
+    // and send dictation IPC to it. The hidden renderer handles audio recording
+    // without any visible overlay, eliminating DWM lag in windowed games.
+    if (this.isOverlaySuppressed()) {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
         await this.createMainWindow();
       }
@@ -825,8 +851,8 @@ class WindowManager {
       return;
     }
 
-    // When overlay is disabled, send stop to the hidden main window
-    if (this.overlayDisabled) {
+    // While the overlay is snoozed or off, send stop to the hidden main window
+    if (this.isOverlaySuppressed()) {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send("stop-dictation");
       }
@@ -843,7 +869,7 @@ class WindowManager {
       return;
     }
 
-    if (this.overlayDisabled) {
+    if (this.isOverlaySuppressed()) {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {
         await this.createMainWindow();
       }
@@ -864,7 +890,7 @@ class WindowManager {
       return;
     }
 
-    if (this.overlayDisabled) {
+    if (this.isOverlaySuppressed()) {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send("hybrid-dictation-key-up");
       }
@@ -1051,6 +1077,14 @@ class WindowManager {
       return null;
     }
 
+    // Never show the overlay while it is snoozed or off — callers that want
+    // to bring it back must go through setOverlayMode("shown"). This is the
+    // guard that prevents stray show paths from resurrecting a hidden overlay.
+    if (this.isOverlaySuppressed()) {
+      debugLogger.debug("[Overlay] showDictationPanel suppressed, mode:", this.overlayMode);
+      return null;
+    }
+
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
       await this.createMainWindow();
     }
@@ -1096,11 +1130,11 @@ class WindowManager {
       return;
     }
 
-    // `overlayDisabled` means "no visual overlay window exists", not just
+    // Overlay mode "off" means "no visual overlay window exists", not just
     // "temporarily hidden". Destroying is intentional here to eliminate DWM
     // composition lag in windowed games (Windows issue with transparent
-    // always-on-top BrowserWindow). Normal visual hiding keeps the window alive.
-    if (this.overlayDisabled) {
+    // always-on-top BrowserWindow). Snooze and normal hiding keep the window alive.
+    if (this.overlayMode === "off") {
       this.mainWindow.close();
       // mainWindow will be nulled in the 'closed' event handler
       return;
@@ -1110,26 +1144,138 @@ class WindowManager {
     this.mainWindow.hide();
   }
 
-  setOverlayDisabled(disabled) {
-    const changed = this.overlayDisabled !== disabled;
-    this.overlayDisabled = disabled;
+  _getOverlayModeFile() {
+    if (!this._overlayModeFile) {
+      this._overlayModeFile = path.join(app.getPath("userData"), "overlay-state.json");
+    }
+    return this._overlayModeFile;
+  }
 
-    if (changed) {
-      debugLogger.info("[Overlay] Overlay disabled state changed:", disabled);
-      if (disabled) {
-        // Destroy overlay immediately when disabling the visual overlay mode.
-        this.hideDictationPanel();
-      } else {
-        // Show overlay when re-enabling
-        this.showDictationPanel();
+  _loadPersistedOverlayMode() {
+    // Only "shown" and "off" are persisted; a snooze never survives a restart.
+    try {
+      const raw = fs.readFileSync(this._getOverlayModeFile(), "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.mode === "shown" || parsed.mode === "off")) {
+        this.overlayMode = parsed.mode;
+        debugLogger.info("[Overlay] Loaded persisted overlay mode:", parsed.mode);
       }
-      // Notify tray so menu labels update
-      this._notifyOverlayStateChanged();
+    } catch {
+      // No persisted state yet — default "shown".
     }
   }
 
+  _persistOverlayMode(mode) {
+    try {
+      fs.writeFileSync(this._getOverlayModeFile(), JSON.stringify({ mode, v: 1 }), "utf8");
+    } catch (err) {
+      debugLogger.warn("[Overlay] Failed to persist overlay mode:", err?.message || String(err));
+    }
+  }
+
+  hasPersistedOverlayMode() {
+    try {
+      return fs.existsSync(this._getOverlayModeFile());
+    } catch {
+      return false;
+    }
+  }
+
+  getOverlayState() {
+    return {
+      mode: this.overlayMode,
+      snoozeUntil: this.overlayMode === "snoozed" ? this.overlaySnoozeUntil : null,
+    };
+  }
+
+  _clearOverlaySnoozeTimer() {
+    if (this._overlaySnoozeTimer) {
+      clearTimeout(this._overlaySnoozeTimer);
+      this._overlaySnoozeTimer = null;
+    }
+  }
+
+  /**
+   * Transition the overlay to a new mode. This is the ONLY place overlay
+   * visibility policy changes — tray, Settings toggle, and the overlay's own
+   * menu all route here so state can never fork.
+   */
+  setOverlayMode(mode, options = {}) {
+    if (mode !== "shown" && mode !== "snoozed" && mode !== "off") {
+      debugLogger.warn("[Overlay] Ignoring invalid overlay mode:", mode);
+      return this.getOverlayState();
+    }
+
+    const prevMode = this.overlayMode;
+    this._clearOverlaySnoozeTimer();
+    this.overlayMode = mode;
+
+    if (mode === "snoozed") {
+      const requestedUntil = Number(options.snoozeUntil);
+      const untilMs = Number.isFinite(requestedUntil)
+        ? requestedUntil
+        : Date.now() + 60 * 60 * 1000;
+      const delay = Math.max(1000, untilMs - Date.now());
+      this.overlaySnoozeUntil = untilMs;
+      this._overlaySnoozeTimer = setTimeout(() => {
+        this._overlaySnoozeTimer = null;
+        if (this.overlayMode === "snoozed") {
+          debugLogger.info("[Overlay] Snooze elapsed — restoring overlay");
+          this.setOverlayMode("shown");
+        }
+      }, delay);
+    } else {
+      this.overlaySnoozeUntil = null;
+      this._persistOverlayMode(mode);
+    }
+
+    if (prevMode !== mode) {
+      debugLogger.info("[Overlay] Overlay mode changed:", { from: prevMode, to: mode });
+      if (mode === "off") {
+        // Destroy the window to eliminate DWM composition lag.
+        this.hideDictationPanel();
+      } else if (mode === "snoozed") {
+        // Keep the window alive so the snooze can restore instantly.
+        this.hideDictationPanel();
+      } else {
+        this.showDictationPanel();
+      }
+    }
+
+    this._notifyOverlayStateChanged();
+    return this.getOverlayState();
+  }
+
+  snoozeOverlay(durationMs) {
+    const duration = Number(durationMs);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      debugLogger.warn("[Overlay] Ignoring invalid snooze duration:", durationMs);
+      return this.getOverlayState();
+    }
+    return this.setOverlayMode("snoozed", { snoozeUntil: Date.now() + duration });
+  }
+
+  /**
+   * One-time migration from the legacy renderer-owned localStorage flag.
+   * Applies only when the main process has never persisted a mode itself,
+   * so it can never override a choice made through the new controls.
+   */
+  migrateLegacyOverlayDisabled(disabled) {
+    if (this.hasPersistedOverlayMode()) {
+      return false;
+    }
+    debugLogger.info("[Overlay] Migrating legacy overlayDisabled flag:", disabled);
+    this.setOverlayMode(disabled ? "off" : "shown");
+    return true;
+  }
+
   isOverlayDisabled() {
-    return this.overlayDisabled;
+    return this.overlayMode === "off";
+  }
+
+  /** True when the overlay must not be shown automatically (snoozed or off). */
+  isOverlaySuppressed() {
+    return this.overlayMode !== "shown";
   }
 
   setOverlaySnapToTaskbar(enabled) {
@@ -1181,17 +1327,17 @@ class WindowManager {
     this.mainWindow.once("ready-to-show", () => {
       clearTimeout(showTimeout);
       this.enforceMainWindowOnTop();
-      // When overlay is disabled, keep the window hidden to avoid DWM lag.
-      // Dictation still works in the background via the hidden renderer.
-      if (this.overlayDisabled) {
-        debugLogger.debug("[Overlay] Window ready but overlayDisabled=true, keeping hidden");
+      // While the overlay is snoozed or off, keep the window hidden to avoid
+      // DWM lag. Dictation still works in the background via the hidden renderer.
+      if (this.isOverlaySuppressed()) {
+        debugLogger.debug("[Overlay] Window ready but overlay suppressed, keeping hidden");
         return;
       }
       const showOverlay = () => {
         if (!this.mainWindow || this.mainWindow.isDestroyed() || this.mainWindow.isVisible()) {
           return;
         }
-        if (this.overlayDisabled) {
+        if (this.isOverlaySuppressed()) {
           return;
         }
         if (typeof this.mainWindow.showInactive === "function") {

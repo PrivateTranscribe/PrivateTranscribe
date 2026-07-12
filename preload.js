@@ -26,8 +26,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   pasteText: (text) => ipcRenderer.invoke("paste-text", text),
   hideWindow: () => ipcRenderer.invoke("hide-window"),
   showDictationPanel: () => ipcRenderer.invoke("show-dictation-panel"),
-  setOverlayDisabled: (disabled) => ipcRenderer.invoke("set-overlay-disabled", disabled),
-  getOverlayDisabled: () => ipcRenderer.invoke("get-overlay-disabled"),
+  getOverlayState: () => ipcRenderer.invoke("get-overlay-state"),
+  setOverlayMode: (mode) => ipcRenderer.invoke("set-overlay-mode", mode),
+  snoozeOverlay: (durationMs) => ipcRenderer.invoke("snooze-overlay", durationMs),
+  migrateLegacyOverlayDisabled: (disabled) =>
+    ipcRenderer.invoke("migrate-legacy-overlay-disabled", disabled),
+  onOverlayStateChanged: registerListener(
+    "overlay-state-changed",
+    (callback) => (_event, state) => callback(state)
+  ),
   setOverlaySnapToTaskbar: (enabled) => ipcRenderer.invoke("set-overlay-snap-to-taskbar", enabled),
   getOverlaySnapToTaskbar: () => ipcRenderer.invoke("get-overlay-snap-to-taskbar"),
   notifyDictationCompleted: () => ipcRenderer.invoke("notify-dictation-completed"),

@@ -1143,13 +1143,32 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
-    overlayDisabled,
-    setOverlayDisabled,
     overlaySnapToTaskbar,
     setOverlaySnapToTaskbar,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
+
+  // Overlay visibility is owned by the main process; mirror it here and stay
+  // in sync via the overlay-state-changed broadcast so this toggle can never
+  // fight the tray or the overlay's own menu.
+  const [overlayMode, setOverlayMode] = useState<"shown" | "snoozed" | "off">("shown");
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI
+      ?.getOverlayState?.()
+      .then((state) => {
+        if (!cancelled && state?.mode) setOverlayMode(state.mode);
+      })
+      .catch(() => {});
+    const unsubscribe = window.electronAPI?.onOverlayStateChanged?.((state) => {
+      if (state?.mode) setOverlayMode(state.mode);
+    });
+    return () => {
+      cancelled = true;
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
 
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
@@ -1188,11 +1207,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       .catch(() => setCorrectionCount(0));
   }, [enableCorrectionLearning]);
 
-  // Sync overlay visibility/position state to main process on settings mount
+  // Sync overlay taskbar-snap preference to main process on settings mount.
+  // (Overlay visibility is main-process-owned and needs no push-sync.)
   useEffect(() => {
-    window.electronAPI?.setOverlayDisabled?.(overlayDisabled).catch(() => {});
     window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
-  }, [overlayDisabled, overlaySnapToTaskbar]);
+  }, [overlaySnapToTaskbar]);
 
   const handleClearCorrections = useCallback(async () => {
     if (!clearConfirmPending) {
@@ -2435,14 +2454,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 </SettingsPanelRow>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Disable visual overlay"
-                    description="Completely hide the dictation panel. Dictation still works in the background when you press your hotkey. Useful for gaming or fullscreen apps to prevent lag."
+                    label="Hide overlay"
+                    description={
+                      overlayMode === "snoozed"
+                        ? "The overlay is temporarily hidden from its right-click menu and will come back on its own. Turning this on hides it permanently instead."
+                        : "Completely hide the dictation panel. Dictation still works in the background when you press your hotkey. Useful for gaming or fullscreen apps to prevent lag."
+                    }
                   >
                     <Toggle
-                      checked={overlayDisabled}
+                      checked={overlayMode === "off"}
                       onChange={(checked) => {
-                        setOverlayDisabled(checked);
-                        window.electronAPI?.setOverlayDisabled?.(checked).catch(() => {});
+                        const mode = checked ? "off" : "shown";
+                        setOverlayMode(mode);
+                        window.electronAPI?.setOverlayMode?.(mode).catch(() => {});
                       }}
                     />
                   </SettingsRow>

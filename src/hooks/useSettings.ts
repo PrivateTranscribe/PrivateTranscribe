@@ -71,7 +71,6 @@ export interface BehaviorSettings {
   audioFeedback: boolean;
   errorNotifications: boolean;
   successConfirmation: boolean;
-  overlayDisabled: boolean;
   overlaySnapToTaskbar: boolean;
 }
 
@@ -859,11 +858,8 @@ export function useSettings() {
     boolSerializer
   );
 
-  const [overlayDisabled, setOverlayDisabled] = useLocalStorage(
-    "overlayDisabled",
-    false,
-    boolSerializer
-  );
+  // Overlay visibility ("shown"/"snoozed"/"off") is owned by the main process
+  // and read via window.electronAPI.getOverlayState — it has no localStorage copy.
   const [overlaySnapToTaskbar, setOverlaySnapToTaskbar] = useLocalStorage(
     "overlaySnapToTaskbar",
     true,
@@ -880,7 +876,6 @@ export function useSettings() {
         setErrorNotifications(settings.errorNotifications);
       if (settings.successConfirmation !== undefined)
         setSuccessConfirmation(settings.successConfirmation);
-      if (settings.overlayDisabled !== undefined) setOverlayDisabled(settings.overlayDisabled);
       if (settings.overlaySnapToTaskbar !== undefined)
         setOverlaySnapToTaskbar(settings.overlaySnapToTaskbar);
     },
@@ -891,7 +886,6 @@ export function useSettings() {
       setAudioFeedback,
       setErrorNotifications,
       setSuccessConfirmation,
-      setOverlayDisabled,
       setOverlaySnapToTaskbar,
     ]
   );
@@ -1125,8 +1119,6 @@ export function useSettings() {
     setErrorNotifications,
     successConfirmation,
     setSuccessConfirmation,
-    overlayDisabled,
-    setOverlayDisabled,
     overlaySnapToTaskbar,
     setOverlaySnapToTaskbar,
     updateBehaviorSettings,
