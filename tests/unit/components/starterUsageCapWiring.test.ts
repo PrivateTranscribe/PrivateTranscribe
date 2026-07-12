@@ -25,4 +25,25 @@ describe("Starter usage cap wiring", () => {
     expect(page).toContain('analyticsTrack?.("starter_file_words_used"');
     expect(page).toContain("processFileTranscriptionV2(file, whisperModel");
   });
+
+  it("shows remaining daily words on the dashboard for Starter users only", () => {
+    const card = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "ui", "StarterUsageCard.tsx"),
+      "utf8"
+    );
+
+    // Reads live usage and hides itself for Pro entitlements
+    expect(card).toContain("readStarterUsage()");
+    expect(card).toContain('getEffectiveEntitlement() === "pro"');
+    expect(card).toContain("if (isPro)");
+    // Refreshes on cross-window storage changes (dictation happens in the overlay window)
+    expect(card).toContain("STARTER_USAGE_KEY");
+    expect(card).toContain('addEventListener("storage"');
+
+    const dashboard = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "pages", "DashboardPage.tsx"),
+      "utf8"
+    );
+    expect(dashboard).toContain("<StarterUsageCard refreshToken={transcriptionsVersion} />");
+  });
 });
