@@ -8,6 +8,7 @@ import {
 } from "../../stores/transcriptionStore";
 import { useSettings } from "../../hooks/useSettings";
 import TranscriptionItem from "../ui/TranscriptionItem";
+import StarterUsageCard from "../ui/StarterUsageCard";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
 import { formatHotkeyLabel } from "../../utils/hotkeys";
 import { isBuiltInMicrophone } from "../../utils/audioDeviceUtils";
@@ -521,6 +522,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             </div>
           </div>
         </div>
+
+        {/* Starter plan daily usage (hidden for Pro) */}
+        <StarterUsageCard refreshToken={transcriptionsVersion} />
 
         {/* Recent History */}
         <div className="rounded-2xl border border-border-subtle bg-surface-1 overflow-hidden">

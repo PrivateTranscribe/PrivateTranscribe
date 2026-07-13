@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.5 - 2026-07-13
+
+### Added
+
+- Added a Dashboard card showing Starter words used, words remaining, and when the daily allowance resets.
+
+### Changed
+
+- Pre-warmed the local transcription server when recording starts so it can load while the user is speaking.
+- Improved overlay visibility handling so taskbar snapping, tray actions, and settings use one reliable hide/show state.
+- Added a verified recovery workflow for publishing CUDA engine version metadata without rebuilding existing packages.
+
+### Fixed
+
+- Allowed slow local model cold starts up to 60 seconds without leaving failed startup attempts hanging indefinitely.
+
 ## 0.13.4 - 2026-07-10
 
 ### Changed

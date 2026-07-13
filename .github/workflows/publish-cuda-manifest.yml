@@ -1,0 +1,102 @@
+name: Publish CUDA Manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine_version:
+        description: Existing CUDA engine package version to advertise
+        required: true
+        default: v0.0.9
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-cuda-manifest
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate packages and publish latest-cuda.json
+    runs-on: ubuntu-latest
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: privatetranscribe-assets
+
+    steps:
+      - name: Validate inputs and credentials
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.engine_version }}"
+          if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: engine_version '$VERSION' must look like v0.0.9"
+            exit 1
+          fi
+          test -n "$R2_ACCOUNT_ID" || (echo "Missing R2_ACCOUNT_ID" && exit 1)
+          test -n "$R2_ACCESS_KEY_ID" || (echo "Missing R2_ACCESS_KEY_ID" && exit 1)
+          test -n "$R2_SECRET_ACCESS_KEY" || (echo "Missing R2_SECRET_ACCESS_KEY" && exit 1)
+
+      - name: Configure R2 credentials
+        run: |
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+
+      - name: Verify both CUDA packages exist
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.engine_version }}"
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          for PACKAGE in \
+            whisper-server-win32-x64-cuda.zip \
+            whisper-server-linux-x64-cuda.zip; do
+            KEY="binaries/${VERSION}/${PACKAGE}"
+            aws s3api head-object \
+              --bucket "$R2_BUCKET" \
+              --key "$KEY" \
+              --endpoint-url "$ENDPOINT" \
+              >/dev/null
+            echo "Verified s3://${R2_BUCKET}/${KEY}"
+          done
+
+      - name: Publish manifest
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.engine_version }}"
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          printf '{"version":"%s","updatedAt":"%s"}\n' \
+            "$VERSION" "$(date -u +%FT%TZ)" > latest-cuda.json
+          jq -e --arg version "$VERSION" '.version == $version and (.updatedAt | type == "string")' \
+            latest-cuda.json >/dev/null
+          aws s3 cp latest-cuda.json \
+            "s3://${R2_BUCKET}/binaries/latest-cuda.json" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/json \
+            --cache-control "max-age=300" \
+            --no-progress
+
+      - name: Verify public CDN manifest
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.engine_version }}"
+          URL="https://updates.privatetranscribe.com/binaries/latest-cuda.json"
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error \
+              --user-agent "PrivateTranscribe/manifest-publisher" \
+              --header "Cache-Control: no-cache" \
+              "$URL?verify=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output published.json; then
+              PUBLISHED_VERSION="$(jq -r '.version // empty' published.json)"
+              if [ "$PUBLISHED_VERSION" = "$VERSION" ]; then
+                echo "Verified public manifest advertises $VERSION"
+                cat published.json
+                exit 0
+              fi
+              echo "published version mismatch: expected $VERSION, got ${PUBLISHED_VERSION:-missing}"
+            fi
+            sleep 10
+          done
+          echo "ERROR: public manifest verification failed"
+          exit 1

@@ -240,34 +240,47 @@ class TrayManager {
   }
 
   buildContextMenuTemplate() {
+    const overlayState = this.windowManager?.getOverlayState?.() ?? { mode: "shown" };
     const dictationVisible = this.windowManager?.isDictationPanelVisible?.() ?? false;
-    const overlayDisabled = this.windowManager?.isOverlayDisabled?.() ?? false;
+    // Checked means "the overlay is (or is about to be) on screen". A snoozed
+    // or disabled overlay, or one dismissed with Escape, reads as unchecked.
+    const overlayShown = overlayState.mode === "shown" && dictationVisible;
+
+    const snoozeInfo = [];
+    if (overlayState.mode === "snoozed" && overlayState.snoozeUntil) {
+      const time = new Date(overlayState.snoozeUntil).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      snoozeInfo.push({ label: `Overlay hidden until ${time}`, enabled: false });
+    }
 
     return [
-      {
-        // Tray "Hide Overlay" intentionally disables/destroys the visual overlay
-        // to eliminate DWM lag. This is different from hideDictationPanel's normal
-        // hide path when overlayDisabled is false, which keeps the window alive.
-        label: overlayDisabled || !dictationVisible ? "Show Overlay" : "Hide Overlay",
-        click: () => {
-          if (!this.windowManager) return;
-          if (overlayDisabled) {
-            // Overlay is disabled — re-enable and show it
-            this.windowManager.setOverlayDisabled(false);
-          } else if (!dictationVisible) {
-            // Overlay exists but is hidden — just show it
-            this.windowManager.showDictationPanel({ focus: true });
-          } else {
-            // Overlay is visible — hide and disable (destroy window to eliminate DWM lag)
-            this.windowManager.setOverlayDisabled(true);
-          }
-          this.updateTrayMenu();
-        },
-      },
       {
         label: "Open PrivateTranscribe",
         click: async () => {
           await this.showControlPanelFromTray();
+        },
+      },
+      { type: "separator" },
+      ...snoozeInfo,
+      {
+        label: "Show overlay",
+        type: "checkbox",
+        checked: overlayShown,
+        click: () => {
+          if (!this.windowManager) return;
+          if (overlayShown) {
+            // Turning the overlay off destroys the window to eliminate DWM lag;
+            // dictation keeps working in the background via the hotkey.
+            this.windowManager.setOverlayMode("off");
+          } else {
+            this.windowManager.setOverlayMode("shown");
+            // Covers the Escape-dismissed case where the mode is already
+            // "shown" but the window is hidden.
+            void this.windowManager.showDictationPanel({ focus: true });
+          }
+          this.updateTrayMenu();
         },
       },
       { type: "separator" },

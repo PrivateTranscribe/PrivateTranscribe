@@ -80,17 +80,37 @@ Important rules:
 9. The CPU fallback is **temporary, not session-sticky**. A CUDA startup failure arms a retry backoff (1 min → 5 min → 30 min per consecutive failure); the next server start after the window retries the CUDA binary, and a warm CPU-fallback server is restarted once the retry is due. A successful CUDA start resets the failure state. Rationale: transient failures (NVIDIA driver update in progress, GPU reset) resolve on their own — before this, the app silently stayed on CPU until an app restart or a manual CPU→GPU toggle.
 10. Fallback transitions must be user-visible: `whisperServer.js` fires `onEngineFallbackChanged`, broadcast to all windows as `whisper-engine-fallback-changed`, and both the overlay and control panel show a toast when the fallback engages and when CUDA recovers. Do not remove this in favor of passive status text only.
 
+### Cold-start latency (first model load)
+
+The local model is loaded lazily — the whisper server is _not_ pre-warmed at
+app startup (removed on purpose in "Reduce idle game interference" so the GPU
+is free while gaming), and it auto-stops after 30 idle minutes. Two mitigations
+keep the first dictation fast without bringing startup pre-warming back:
+
+1. `audioManager.startRecording()` fires a fire-and-forget server pre-warm the
+   moment recording begins, so the model loads while the user is speaking.
+   Server startup is idempotent (in-flight starts are shared), and per-request
+   parameters (language, dictionary prompt, decoding options) mean a
+   pre-warmed server transcribes identically.
+2. `STARTUP_TIMEOUT_MS` in `whisperServer.js` is 60s, not 30s. Cold loads of
+   ~20s were observed on an RTX 5070 laptop; a timeout is classified as a
+   recoverable CUDA failure (`failed to start within`), so a too-short window
+   makes a merely _slow_ load flip the app into CPU fallback. Crashes are
+   still detected immediately via the process-exit checks in `waitForReady`.
+
 ### Engine version pinning and the latest-cuda manifest
 
-Each app build pins the engine it installs via `BINARY_VERSION` in `gpuBinaryManager.js`; downloads always come from `binaries/<BINARY_VERSION>/`. A released app therefore shows "Current" even when a newer engine has been uploaded to R2 — the newer engine only becomes *required* when an app release with the bumped `BINARY_VERSION` ships.
+Each app build pins the engine it installs via `BINARY_VERSION` in `gpuBinaryManager.js`; downloads always come from `binaries/<BINARY_VERSION>/`. A released app therefore shows "Current" even when a newer engine has been uploaded to R2 — the newer engine only becomes _required_ when an app release with the bumped `BINARY_VERSION` ships.
 
 To make that state visible, the `build-cuda-binary.yml` workflow also publishes `binaries/latest-cuda.json` (`{"version":"v0.0.9", ...}`) after both platform packages upload. `GpuBinaryManager.fetchLatestAvailableVersion()` reads it (cached, fail-soft), `get-cuda-binary-status` returns it as `latestAvailableVersion`, and the Settings CUDA card tells the user a newer engine is published and installs with the next app update. The manifest never changes which version gets downloaded.
 
 Release checklist for a new engine version:
 
-1. Run the workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
+1. Run the `Build CUDA Binary` workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
 2. Bump `BINARY_VERSION` in `gpuBinaryManager.js` to the same value.
 3. Ship the app release; its CUDA auto-update installs the new engine.
+
+If both versioned packages already exist but the manifest is missing or stale, run the separate `Publish CUDA Manifest` workflow with the existing engine version. It verifies that both Windows and Linux packages exist in R2 before publishing, then verifies the manifest through the public CDN. Do not rebuild 800 MB packages solely to recover this small metadata file.
 
 ## UI/UX lessons
 

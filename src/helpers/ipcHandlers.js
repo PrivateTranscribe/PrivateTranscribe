@@ -390,16 +390,28 @@ class IPCHandlers {
     });
 
     ipcMain.handle("show-dictation-panel", async () => {
+      // Explicitly bringing the overlay back also clears any snooze/off state.
+      this.windowManager.setOverlayMode("shown");
       await this.windowManager.showDictationPanel();
     });
 
-    ipcMain.handle("set-overlay-disabled", (_event, disabled) => {
-      this.windowManager.setOverlayDisabled(Boolean(disabled));
-      return { success: true, disabled: Boolean(disabled) };
+    ipcMain.handle("get-overlay-state", () => {
+      return this.windowManager.getOverlayState();
     });
 
-    ipcMain.handle("get-overlay-disabled", () => {
-      return { disabled: this.windowManager.isOverlayDisabled() };
+    ipcMain.handle("set-overlay-mode", (_event, mode) => {
+      // Only the persistent modes are settable directly; snoozing goes
+      // through "snooze-overlay" so a duration is always supplied.
+      const nextMode = mode === "off" ? "off" : "shown";
+      return this.windowManager.setOverlayMode(nextMode);
+    });
+
+    ipcMain.handle("snooze-overlay", (_event, durationMs) => {
+      return this.windowManager.snoozeOverlay(Number(durationMs));
+    });
+
+    ipcMain.handle("migrate-legacy-overlay-disabled", (_event, disabled) => {
+      return { migrated: this.windowManager.migrateLegacyOverlayDisabled(Boolean(disabled)) };
     });
 
     ipcMain.handle("set-overlay-snap-to-taskbar", (_event, enabled) => {

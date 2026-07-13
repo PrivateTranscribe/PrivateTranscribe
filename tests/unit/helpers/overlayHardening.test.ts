@@ -20,7 +20,10 @@ function readSrc(relPath: string): string {
 const windowManager = readHelper("windowManager.js");
 const windowConfig = readHelper("windowConfig.js");
 const dragManager = readHelper("dragManager.js");
+const trayJs = readHelper("tray.js");
 const appJsx = readSrc("App.jsx");
+const settingsPage = readSrc("components/SettingsPage.tsx");
+const useSettingsTs = readSrc("hooks/useSettings.ts");
 const useWindowDrag = readSrc("hooks/useWindowDrag.js");
 const toastTsx = readSrc("components/ui/Toast.tsx");
 const preloadJs = fs.readFileSync(path.resolve(__dirname, "../../../preload.js"), "utf8");
@@ -304,10 +307,107 @@ describe("main.js / windowManager.js — startup overlay readiness", () => {
     expect(block).toContain("must stay immediate");
     expect(block).toContain("Do not route this through the cosmetic startup delay");
     expect(block).toContain("!this.mainWindow.isVisible()");
-    expect(block).toContain("!this.overlayDisabled");
+    expect(block).toContain("!this.isOverlaySuppressed()");
     expect(block).toContain("showInactive");
     expect(block).not.toContain("setTimeout");
     expect(block).not.toContain("initialShowDelayMs");
+  });
+});
+
+// ─── Overlay visibility state model — single source of truth ────────────────
+
+describe("overlay state model — main process owns visibility", () => {
+  test("windowManager defines the three-mode overlay state", () => {
+    expect(windowManager).toContain('this.overlayMode = "shown"');
+    expect(windowManager).toContain("setOverlayMode(mode, options = {})");
+    expect(windowManager).toContain("snoozeOverlay(durationMs)");
+    expect(windowManager).toContain("isOverlaySuppressed()");
+  });
+
+  test("snoozes are never persisted across restarts, shown/off are", () => {
+    const idx = windowManager.indexOf("  _loadPersistedOverlayMode() {");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 600);
+    expect(block).toContain('parsed.mode === "shown" || parsed.mode === "off"');
+    // The snoozed branch of setOverlayMode must not persist.
+    const setIdx = windowManager.indexOf("setOverlayMode(mode, options = {})");
+    const setBlock = windowManager.slice(setIdx, setIdx + 2500);
+    const snoozeBranch = setBlock.slice(
+      setBlock.indexOf('if (mode === "snoozed")'),
+      setBlock.indexOf("} else {")
+    );
+    expect(snoozeBranch).not.toContain("_persistOverlayMode");
+  });
+
+  test("state changes are broadcast to all renderers", () => {
+    expect(windowManager).toContain('webContents.send("overlay-state-changed", state)');
+    expect(preloadJs).toContain("onOverlayStateChanged");
+    expect(preloadJs).toContain('"overlay-state-changed"');
+  });
+
+  test("showDictationPanel refuses to show a snoozed or off overlay", () => {
+    const idx = windowManager.indexOf("async showDictationPanel");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 900);
+    expect(block).toContain("this.isOverlaySuppressed()");
+    expect(block).toContain("return null");
+  });
+
+  test("hotkey dictation does not force-show a suppressed overlay", () => {
+    const idx = windowManager.indexOf("createHotkeyCallback()");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 3000);
+    expect(block).toContain("if (this.isOverlaySuppressed())");
+    expect(block).toContain('send("toggle-dictation")');
+  });
+
+  test("renderers no longer push a localStorage overlayDisabled copy to main", () => {
+    // The old push-sync could destroy a freshly re-shown overlay. Only the
+    // one-time legacy migration may reference the localStorage key.
+    expect(appJsx).not.toContain("setOverlayDisabled");
+    expect(settingsPage).not.toContain("setOverlayDisabled(");
+    expect(settingsPage).not.toContain('useLocalStorage("overlayDisabled"');
+    expect(useSettingsTs).not.toContain('"overlayDisabled"');
+    expect(appJsx).toContain("migrateLegacyOverlayDisabled");
+    expect(appJsx).toContain('localStorage.removeItem("overlayDisabled")');
+  });
+
+  test("settings toggle mirrors main-process state via broadcast", () => {
+    expect(settingsPage).toContain("getOverlayState");
+    expect(settingsPage).toContain("onOverlayStateChanged");
+    expect(settingsPage).toContain("setOverlayMode?.(mode)");
+  });
+
+  test("legacy migration never overrides a mode the main process persisted", () => {
+    const idx = windowManager.indexOf("migrateLegacyOverlayDisabled(disabled)");
+    expect(idx).toBeGreaterThan(-1);
+    const block = windowManager.slice(idx, idx + 400);
+    expect(block).toContain("hasPersistedOverlayMode()");
+    expect(block).toContain("return false");
+  });
+});
+
+describe("tray.js — menu layout and overlay toggle", () => {
+  test("Open PrivateTranscribe is first, Exit is last", () => {
+    const idx = trayJs.indexOf("buildContextMenuTemplate()");
+    expect(idx).toBeGreaterThan(-1);
+    const block = trayJs.slice(idx, idx + 2500);
+    const openIdx = block.indexOf('"Open PrivateTranscribe"');
+    const showIdx = block.indexOf('"Show overlay"');
+    const exitIdx = block.indexOf('"Exit PrivateTranscribe"');
+    expect(openIdx).toBeGreaterThan(-1);
+    expect(showIdx).toBeGreaterThan(openIdx);
+    expect(exitIdx).toBeGreaterThan(showIdx);
+  });
+
+  test("overlay toggle is a checkbox that routes through setOverlayMode", () => {
+    expect(trayJs).toContain('type: "checkbox"');
+    expect(trayJs).toContain('setOverlayMode("off")');
+    expect(trayJs).toContain('setOverlayMode("shown")');
+  });
+
+  test("a snoozed overlay is surfaced in the tray menu", () => {
+    expect(trayJs).toContain("Overlay hidden until");
   });
 });
 

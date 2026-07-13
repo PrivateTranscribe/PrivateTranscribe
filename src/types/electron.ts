@@ -347,6 +347,13 @@ export interface TranscriptionSettingsBroadcast {
   customTranscriptionApiKey?: string;
 }
 
+export interface OverlayState {
+  /** "shown" = visible, "snoozed" = temporarily hidden, "off" = persistently disabled */
+  mode: "shown" | "snoozed" | "off";
+  /** Epoch ms when a snooze auto-restores the overlay; null unless mode is "snoozed" */
+  snoozeUntil: number | null;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -354,8 +361,11 @@ declare global {
       pasteText: (text: string) => Promise<void>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
-      setOverlayDisabled?: (disabled: boolean) => Promise<{ success: boolean; disabled: boolean }>;
-      getOverlayDisabled?: () => Promise<{ disabled: boolean }>;
+      getOverlayState?: () => Promise<OverlayState>;
+      setOverlayMode?: (mode: "shown" | "off") => Promise<OverlayState>;
+      snoozeOverlay?: (durationMs: number) => Promise<OverlayState>;
+      migrateLegacyOverlayDisabled?: (disabled: boolean) => Promise<{ migrated: boolean }>;
+      onOverlayStateChanged?: (callback: (state: OverlayState) => void) => (() => void) | void;
       setOverlaySnapToTaskbar?: (
         enabled: boolean
       ) => Promise<{ success: boolean; enabled: boolean }>;

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ChevronRight,
   Clock3,
+  EyeOff,
   Settings,
   Mic2,
   Languages,
@@ -19,9 +20,11 @@ import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 
-const OVERLAY_HIDE_DURATION_MS = 60 * 60 * 1000;
+const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
+// Delay between showing the "overlay hidden" toast and actually hiding, so the
+// user sees where the overlay can be turned back on before it disappears.
+const OVERLAY_HIDE_TOAST_MS = 1800;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
-const OVERLAY_HIDDEN_UNTIL_KEY = "overlayHiddenUntil";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
 
@@ -222,13 +225,23 @@ export default function App() {
   useEffect(() => {
     window.electronAPI?.notifyDictationOverlayReady?.();
 
-    // Sync overlay disabled state from localStorage to main process.
-    // If the user previously disabled the overlay, tell main to destroy it
-    // immediately so it doesn't cause DWM lag at startup.
-    const overlayDisabled = localStorage.getItem("overlayDisabled") === "true";
-    if (overlayDisabled) {
-      window.electronAPI?.setOverlayDisabled?.(true).catch(() => {});
+    // Overlay visibility is owned by the main process (persisted there).
+    // Migrate the legacy renderer-owned localStorage flag once, then drop it —
+    // the old push-sync here could destroy a freshly re-shown overlay.
+    const legacyOverlayDisabled = localStorage.getItem("overlayDisabled");
+    if (legacyOverlayDisabled !== null) {
+      const migrate =
+        window.electronAPI?.migrateLegacyOverlayDisabled?.(legacyOverlayDisabled === "true") ??
+        Promise.resolve();
+      migrate
+        .catch(() => {})
+        .then(() => {
+          localStorage.removeItem("overlayDisabled");
+        });
     }
+    // Legacy "hide for 1 hour" timestamp — no longer used.
+    localStorage.removeItem("overlayHiddenUntil");
+
     // Default on: only an explicit "false" disables it (unset === on).
     const overlaySnapToTaskbar = localStorage.getItem("overlaySnapToTaskbar") !== "false";
     window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
@@ -505,12 +518,6 @@ export default function App() {
     isDragging,
   ]);
 
-  useEffect(() => {
-    // "Hide for 1 hour" is a session-only feature - it should not persist across app restarts.
-    // Clear the timer on every startup so the overlay always shows fresh after a restart.
-    localStorage.removeItem(OVERLAY_HIDDEN_UNTIL_KEY);
-  }, []);
-
   // Analytics consent is handled by ControlPanelShell (dashboard window)
 
   // Track recording start
@@ -557,17 +564,33 @@ export default function App() {
       .filter(Boolean);
   }, [selectedLanguage]);
 
-  const handleHideForHour = useCallback(() => {
-    const hideUntil = Date.now() + OVERLAY_HIDE_DURATION_MS;
-    localStorage.setItem(OVERLAY_HIDDEN_UNTIL_KEY, String(hideUntil));
+  const handleSnoozeOverlay = useCallback(() => {
     closeContextMenu();
-    window.electronAPI?.hideWindow?.();
-
-    toast({
-      title: "Overlay hidden",
-      description: `Hidden until ${new Date(hideUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
-      duration: 4000,
+    const backAt = new Date(Date.now() + OVERLAY_SNOOZE_DURATION_MS).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
     });
+    toast({
+      title: "Overlay hidden for 1 hour",
+      description: `Back at ${backAt}. Dictation keeps working — restore it early from the tray icon.`,
+      duration: OVERLAY_HIDE_TOAST_MS,
+    });
+    // Let the toast land before the window disappears.
+    setTimeout(() => {
+      window.electronAPI?.snoozeOverlay?.(OVERLAY_SNOOZE_DURATION_MS)?.catch?.(() => {});
+    }, OVERLAY_HIDE_TOAST_MS);
+  }, [closeContextMenu, toast]);
+
+  const handleTurnOverlayOff = useCallback(() => {
+    closeContextMenu();
+    toast({
+      title: "Overlay turned off",
+      description: "Dictation keeps working. Turn it back on from the tray icon or Settings.",
+      duration: OVERLAY_HIDE_TOAST_MS,
+    });
+    setTimeout(() => {
+      window.electronAPI?.setOverlayMode?.("off")?.catch?.(() => {});
+    }, OVERLAY_HIDE_TOAST_MS);
   }, [closeContextMenu, toast]);
 
   const handleSelectLanguage = useCallback(
@@ -923,7 +946,12 @@ export default function App() {
 
             {activeSubmenu === "root" && (
               <>
-                <MenuRow icon={Clock3} label="Hide this for 1 hour" onClick={handleHideForHour} />
+                <MenuRow
+                  icon={EyeOff}
+                  label="Hide overlay"
+                  trailing="chevron"
+                  onClick={() => setActiveSubmenu("hide")}
+                />
 
                 <MenuRow
                   icon={Settings}
@@ -963,6 +991,21 @@ export default function App() {
                   disabled={!lastTranscript}
                   onClick={() => void handlePasteLastTranscript()}
                 />
+              </>
+            )}
+
+            {activeSubmenu === "hide" && (
+              <>
+                <MenuRow icon={Clock3} label="Hide for 1 hour" onClick={handleSnoozeOverlay} />
+                <MenuRow
+                  icon={EyeOff}
+                  label="Hide until I turn it back on"
+                  onClick={handleTurnOverlayOff}
+                />
+                <p className="px-2 pt-1.5 pb-1 text-[10.5px] leading-snug text-white/45">
+                  Dictation keeps working with your hotkey. Bring the overlay back from the tray
+                  icon.
+                </p>
               </>
             )}
 

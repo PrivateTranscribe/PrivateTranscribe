@@ -1088,6 +1088,31 @@ class AudioManager {
     return { audio: { autoGainControl: true } };
   }
 
+  // Fire-and-forget pre-warm of the local transcription server so the model
+  // loads into memory while the user is still speaking instead of serially
+  // after they stop. Server startup is idempotent: an in-flight start is
+  // shared with the transcription request, and the idle timeout still
+  // applies, so a cancelled dictation never keeps the engine alive longer
+  // than a completed one would. Transcription behavior is unchanged —
+  // language, dictionary prompt, and decoding options are sent per request.
+  _preWarmLocalTranscriptionServer() {
+    try {
+      if (typeof window === "undefined" || !window.electronAPI) return;
+      if (this.getTranscriptionSetting("useLocalWhisper", "false") !== "true") return;
+
+      const provider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
+      if (provider === "nvidia") {
+        const model = this.getTranscriptionSetting("parakeetModel", "parakeet-tdt-0.6b-v3");
+        window.electronAPI.parakeetServerStart?.(model)?.catch?.(() => {});
+      } else {
+        const model = this.getTranscriptionSetting("whisperModel", "base");
+        window.electronAPI.whisperServerStart?.(model)?.catch?.(() => {});
+      }
+    } catch {
+      // Pre-warming is an optimization only; never block or fail recording.
+    }
+  }
+
   async startRecording() {
     let stream = null;
 
@@ -1105,6 +1130,8 @@ class AudioManager {
       this.pendingStopAfterStart = false;
       this.pendingCancelAfterStart = false;
       this.discardCurrentRecording = false;
+
+      this._preWarmLocalTranscriptionServer();
 
       const constraints = await this.getAudioConstraints();
       stream = await this._acquireStream(constraints);
