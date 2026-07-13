@@ -15,7 +15,14 @@ const gpuBinaryManager = new GpuBinaryManager();
 
 const PORT_RANGE_START = 8178;
 const PORT_RANGE_END = 8199;
-const STARTUP_TIMEOUT_MS = 30000;
+// Cold starts must cover reading a multi-GB model from disk and uploading it
+// to VRAM — first loads of ~20s were observed on an RTX 5070 laptop (slow
+// disk, antivirus scan, GPU waking from low-power state), leaving too little
+// margin at 30s. Crashes and spawn errors are detected immediately by the
+// exit checks inside waitForReady, so this timeout only bounds a server that
+// is alive but still loading; a timeout here is treated as a recoverable
+// CUDA failure and triggers CPU fallback.
+const STARTUP_TIMEOUT_MS = 120000;
 // Backoff before automatically retrying the CUDA binary after a startup
 // failure. Transient failures (e.g. an NVIDIA driver update in progress)
 // resolve within minutes, so retry quickly at first, then back off.
