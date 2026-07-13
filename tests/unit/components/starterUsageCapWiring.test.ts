@@ -39,6 +39,9 @@ describe("Starter usage cap wiring", () => {
     // Refreshes on cross-window storage changes (dictation happens in the overlay window)
     expect(card).toContain("STARTER_USAGE_KEY");
     expect(card).toContain('addEventListener("storage"');
+    expect(card).toContain("formatTimeUntilLocalMidnight");
+    expect(card).toContain("resets in");
+    expect(card).not.toContain("resets at midnight");
 
     const dashboard = fs.readFileSync(
       path.join(process.cwd(), "src", "components", "pages", "DashboardPage.tsx"),

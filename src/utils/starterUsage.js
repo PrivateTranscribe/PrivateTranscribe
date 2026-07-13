@@ -8,6 +8,18 @@ export function getLocalDay(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+export function formatTimeUntilLocalMidnight(date = new Date()) {
+  const nextMidnight = new Date(date);
+  nextMidnight.setHours(24, 0, 0, 0);
+  const totalMinutes = Math.max(1, Math.ceil((nextMidnight.getTime() - date.getTime()) / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 export function countWords(text) {
   if (typeof text !== "string") return 0;
   const matches = text.trim().match(/[\p{L}\p{N}]+(?:[’'\-][\p{L}\p{N}]+)*/gu);

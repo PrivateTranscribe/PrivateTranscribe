@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
-import { readStarterUsage, STARTER_USAGE_KEY } from "../../utils/starterUsage";
+import {
+  formatTimeUntilLocalMidnight,
+  readStarterUsage,
+  STARTER_USAGE_KEY,
+} from "../../utils/starterUsage";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
 
 // Custom event dispatched by the Pro Preview toggle (see useProStatus.ts)
@@ -57,6 +61,7 @@ export default function StarterUsageCard({ refreshToken }: StarterUsageCardProps
   const percentUsed = Math.min(100, (usage.wordsUsed / usage.limit) * 100);
   const limitReached = usage.wordsUsed >= usage.limit;
   const nearLimit = !limitReached && percentUsed >= 90;
+  const resetCountdown = formatTimeUntilLocalMidnight();
 
   const barColor = limitReached || nearLimit ? "bg-amber-400" : "bg-primary";
 
@@ -96,8 +101,8 @@ export default function StarterUsageCard({ refreshToken }: StarterUsageCardProps
           }`}
         >
           {limitReached
-            ? "Daily limit reached · resets at midnight"
-            : `${Math.max(0, usage.limit - usage.wordsUsed).toLocaleString("en-US")} words left · resets at midnight`}
+            ? `Daily limit reached · resets in ${resetCountdown}`
+            : `${Math.max(0, usage.limit - usage.wordsUsed).toLocaleString("en-US")} words left · resets in ${resetCountdown}`}
         </span>
       </div>
     </div>
