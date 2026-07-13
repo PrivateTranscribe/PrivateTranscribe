@@ -92,7 +92,7 @@ keep the first dictation fast without bringing startup pre-warming back:
    Server startup is idempotent (in-flight starts are shared), and per-request
    parameters (language, dictionary prompt, decoding options) mean a
    pre-warmed server transcribes identically.
-2. `STARTUP_TIMEOUT_MS` in `whisperServer.js` is 120s, not 30s. Cold loads of
+2. `STARTUP_TIMEOUT_MS` in `whisperServer.js` is 60s, not 30s. Cold loads of
    ~20s were observed on an RTX 5070 laptop; a timeout is classified as a
    recoverable CUDA failure (`failed to start within`), so a too-short window
    makes a merely _slow_ load flip the app into CPU fallback. Crashes are

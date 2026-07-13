@@ -22,7 +22,7 @@ const PORT_RANGE_END = 8199;
 // exit checks inside waitForReady, so this timeout only bounds a server that
 // is alive but still loading; a timeout here is treated as a recoverable
 // CUDA failure and triggers CPU fallback.
-const STARTUP_TIMEOUT_MS = 120000;
+const STARTUP_TIMEOUT_MS = 60000;
 // Backoff before automatically retrying the CUDA binary after a startup
 // failure. Transient failures (e.g. an NVIDIA driver update in progress)
 // resolve within minutes, so retry quickly at first, then back off.
