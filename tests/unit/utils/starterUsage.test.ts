@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   STARTER_DAILY_WORD_LIMIT,
   countWords,
+  formatTimeUntilLocalMidnight,
   isStarterLimitReached,
   readStarterUsage,
   recordStarterWords,
@@ -64,6 +65,12 @@ describe("starterUsage", () => {
       wordsUsed: 0,
       limit: STARTER_DAILY_WORD_LIMIT,
     });
+  });
+
+  it("formats the remaining time until the next local midnight", () => {
+    expect(formatTimeUntilLocalMidnight(new Date(2026, 6, 13, 16, 30, 0))).toBe("7h 30m");
+    expect(formatTimeUntilLocalMidnight(new Date(2026, 6, 13, 23, 45, 0))).toBe("15m");
+    expect(formatTimeUntilLocalMidnight(new Date(2026, 6, 13, 23, 59, 30))).toBe("1m");
   });
 
   it("records only aggregate word counts", () => {

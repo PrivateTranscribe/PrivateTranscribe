@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.6 - 2026-07-13
+
+### Changed
+
+- Replaced the Starter usage card's midnight reset label with a live countdown showing the hours and minutes until the daily allowance resets.
+
 ## 0.13.5 - 2026-07-13
 
 ### Added
