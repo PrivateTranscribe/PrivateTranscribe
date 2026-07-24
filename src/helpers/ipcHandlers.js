@@ -2148,6 +2148,14 @@ class IPCHandlers {
         return false;
       }
     });
+    ipcMain.handle("analytics-get-consent", () => {
+      try {
+        return analyticsManager.getConsentStatus();
+      } catch (err) {
+        debugLogger.error("[IPC:analytics-get-consent] error:", err.message);
+        return null;
+      }
+    });
     ipcMain.handle("analytics-set-consent", (_e, granted) => {
       try {
         return analyticsManager.setConsent(granted);

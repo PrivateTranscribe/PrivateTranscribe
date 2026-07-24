@@ -1177,6 +1177,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
 
   // GPU support status and model recommendation - fetched only when the picker is visible.
   const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
@@ -1255,6 +1256,22 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   // Settings export/import (privacy-first): API keys are excluded by default.
   const [includeApiKeysInExport, setIncludeApiKeysInExport] = useState(false);
   const [allowApiKeysOnImport, setAllowApiKeysOnImport] = useState(false);
+
+  useEffect(() => {
+    window.electronAPI
+      ?.analyticsGetConsent?.()
+      .then((status) => setAnalyticsEnabled(status === "granted"))
+      .catch(() => setAnalyticsEnabled(false));
+  }, []);
+
+  const handleAnalyticsEnabledChange = useCallback(async (enabled: boolean) => {
+    try {
+      await window.electronAPI?.analyticsSetConsent?.(enabled);
+      setAnalyticsEnabled(enabled);
+    } catch {
+      // Keep the displayed state unchanged if consent persistence fails.
+    }
+  }, []);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const buildSettingsExport = useCallback(
@@ -2512,9 +2529,18 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             <div className="border-t border-border/30 pt-8">
               <SectionHeader
                 title="Privacy & History"
-                description="Control how long transcriptions are kept"
+                description="Control what leaves your device and how long transcriptions are kept"
               />
               <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Anonymous usage analytics"
+                    description="Share setup milestones and feature usage counts. Never sends audio, transcripts, window titles, filenames, or API keys."
+                  >
+                    <Toggle checked={analyticsEnabled} onChange={handleAnalyticsEnabledChange} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+
                 <SettingsPanelRow>
                   <SettingsRow
                     label="History limit"

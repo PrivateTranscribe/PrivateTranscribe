@@ -3,10 +3,12 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import ControlPanelShell from "./components/ControlPanelShell.tsx";
 import OnboardingFlow from "./components/OnboardingFlow.tsx";
+import { AnalyticsConsentModal } from "./components/AnalyticsConsentModal.jsx";
 import { ToastProvider } from "./components/ui/Toast.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { useTheme } from "./hooks/useTheme";
 import { refreshProStatus } from "./services/LicensingService.ts";
+import { trackAnalyticsEventOnce } from "./utils/analytics.ts";
 import "./index.css";
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -15,6 +17,7 @@ function AppRouter() {
   useTheme();
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAnalyticsConsent, setShowAnalyticsConsent] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Check if this is the control panel window
@@ -34,6 +37,9 @@ function AppRouter() {
     if (isControlPanel && !onboardingCompleted) {
       // Show onboarding for control panel if not completed
       setShowOnboarding(true);
+      window.electronAPI?.analyticsNeedsConsent?.().then((needs) => {
+        if (needs) setShowAnalyticsConsent(true);
+      });
     }
 
     // Hide dictation panel window unless onboarding is complete or we're past the permissions step
@@ -47,9 +53,28 @@ function AppRouter() {
     setIsLoading(false);
   }, [isControlPanel, isDictationPanel]);
 
+  useEffect(() => {
+    if (isControlPanel && showOnboarding) {
+      void trackAnalyticsEventOnce("onboarding_started", { step_count: 6 });
+    }
+  }, [isControlPanel, showOnboarding]);
+
   const handleOnboardingComplete = () => {
     setShowOnboarding(false);
     localStorage.setItem("onboardingCompleted", "true");
+  };
+
+  const handleAnalyticsConsent = (granted) => {
+    setShowAnalyticsConsent(false);
+    if (granted && isControlPanel && showOnboarding) {
+      const rawStep = parseInt(localStorage.getItem("onboardingCurrentStep") || "0", 10);
+      const currentStep = Number.isFinite(rawStep) ? Math.max(0, Math.min(rawStep, 5)) : 0;
+      void trackAnalyticsEventOnce("onboarding_started", { step_count: 6 });
+      void window.electronAPI?.analyticsTrack?.("onboarding_step_viewed", {
+        step: currentStep + 1,
+        step_count: 6,
+      });
+    }
   };
 
   if (isLoading) {
@@ -64,7 +89,12 @@ function AppRouter() {
   }
 
   if (isControlPanel && showOnboarding) {
-    return <OnboardingFlow onComplete={handleOnboardingComplete} />;
+    return (
+      <>
+        <OnboardingFlow onComplete={handleOnboardingComplete} />
+        {showAnalyticsConsent && <AnalyticsConsentModal onConsent={handleAnalyticsConsent} />}
+      </>
+    );
   }
 
   // Only apply grain overlay on control panel, not dictation window (transparent bg)

@@ -7,6 +7,7 @@ import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
 import { useToast } from "./ui/Toast";
 import { useUpdater } from "../hooks/useUpdater";
+import { trackAnalyticsEvent } from "../utils/analytics";
 
 import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -67,6 +68,12 @@ export default function ControlPanelShell() {
       if (needs) setShowConsentModal(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (activePage === "settings") {
+      void trackAnalyticsEvent("settings_opened");
+    }
+  }, [activePage]);
 
   useEffect(() => {
     if (updateStatus.updateDownloaded && !isDownloading) {

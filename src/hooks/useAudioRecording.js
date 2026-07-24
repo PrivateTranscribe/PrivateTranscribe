@@ -7,6 +7,11 @@ import {
   readStarterUsage,
   recordStarterWords,
 } from "../utils/starterUsage";
+import {
+  buildTranscriptionAnalyticsProperties,
+  trackAnalyticsEvent,
+  trackAnalyticsEventOnce,
+} from "../utils/analytics";
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -60,7 +65,7 @@ export const useAudioRecording = (toast, options = {}) => {
     };
 
     const trackUsageEvent = (event, extra = {}) => {
-      window.electronAPI?.analyticsTrack?.(event, extra)?.catch?.(() => {});
+      void trackAnalyticsEvent(event, extra);
     };
 
     const showStarterLimitReached = () => {
@@ -348,6 +353,22 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
+        const outputAction = actionHandled
+          ? "action"
+          : shouldPaste
+            ? "paste"
+            : shouldCopy
+              ? "copy"
+              : "none";
+        const analyticsProperties = buildTranscriptionAnalyticsProperties({
+          source: result.source,
+          outputAction,
+          text,
+          durationSeconds: result.durationSeconds,
+        });
+        void trackAnalyticsEvent("transcription_completed", analyticsProperties);
+        void trackAnalyticsEventOnce("first_transcription_completed", analyticsProperties);
+
         // Correction memory: only surface the learn action after the user copies
         // a changed version, not after every transcription.
         try {
@@ -618,6 +639,8 @@ export const useAudioRecording = (toast, options = {}) => {
         if (!started) {
           restoreAudio();
           resumeMedia();
+        } else {
+          void trackAnalyticsEvent("transcription_started");
         }
         return started;
       } catch (error) {
@@ -717,6 +740,8 @@ export const useAudioRecording = (toast, options = {}) => {
       if (!started) {
         window.electronAPI?.restoreSystemAudio?.();
         window.electronAPI?.mediaResume?.();
+      } else {
+        void trackAnalyticsEvent("transcription_started");
       }
       return started;
     } catch (error) {

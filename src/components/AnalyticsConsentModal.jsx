@@ -59,8 +59,9 @@ export function AnalyticsConsentModal({ onConsent }) {
             marginBottom: "1.25rem",
           }}
         >
-          Help make PrivateTranscribe better. Send anonymous crash reports and feature usage counts.
-          No audio, no text, ever. You can change this anytime in settings.
+          Share anonymous setup milestones and feature usage counts. PrivateTranscribe never sends
+          audio, transcripts, window titles, filenames, or API keys. You can change this anytime in
+          Settings.
         </p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
