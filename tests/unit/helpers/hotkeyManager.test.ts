@@ -6,6 +6,10 @@ const isRegistered = vi.fn(() => false);
 const unregisterAll = vi.fn();
 
 vi.mock("electron", () => ({
+  Tray: vi.fn(),
+  Menu: { buildFromTemplate: vi.fn() },
+  nativeImage: {},
+  app: {},
   globalShortcut: {
     register,
     unregister,
@@ -95,5 +99,50 @@ describe("HotkeyManager Windows native routing", () => {
     const mod = await loadHotkeyManager("win32");
 
     expect(mod.shouldUseWindowsNativeListener("DefinitelyNotAKey", "push")).toBe(false);
+  });
+
+  it("keeps native hotkey changes paused until the session toggle is enabled again", async () => {
+    const mod = await loadHotkeyManager("win32");
+    const HotkeyManager = mod.default ?? mod;
+    const manager = new HotkeyManager();
+
+    manager.setupShortcuts("Mouse4", vi.fn());
+    register.mockClear();
+
+    await manager.setSessionHotkeyEnabled(false);
+    expect(manager.isSessionHotkeyEnabled()).toBe(false);
+
+    manager.setupShortcuts("Mouse5", vi.fn());
+    expect(register).not.toHaveBeenCalled();
+    expect(manager.getCurrentHotkey()).toBe("Mouse5");
+
+    await manager.setSessionHotkeyEnabled(true);
+    expect(manager.isSessionHotkeyEnabled()).toBe(true);
+  });
+});
+
+describe("TrayManager hotkey toggle", () => {
+  it("shows the session-only disabled state and enables it from the checkbox", async () => {
+    const mod = await import("../../../src/helpers/tray.js");
+    const TrayManager = mod.default ?? mod;
+    const setSessionHotkeyEnabled = vi.fn().mockResolvedValue({ success: true });
+    const manager = new TrayManager();
+    manager.setWindowManager({
+      getOverlayState: () => ({ mode: "shown" }),
+      isDictationPanelVisible: () => false,
+      setOverlayStateChangeCallback: vi.fn(),
+      setSessionHotkeyEnabled,
+      hotkeyManager: { isSessionHotkeyEnabled: () => false },
+    });
+
+    const template = manager.buildContextMenuTemplate();
+    const toggle = template.find((item: any) => item.label === "Enable dictation hotkey");
+    const status = template.find((item: any) => item.label?.startsWith("Hotkey disabled until"));
+
+    expect(toggle).toMatchObject({ type: "checkbox", checked: false });
+    expect(status).toMatchObject({ enabled: false });
+
+    await toggle.click();
+    expect(setSessionHotkeyEnabled).toHaveBeenCalledWith(true);
   });
 });

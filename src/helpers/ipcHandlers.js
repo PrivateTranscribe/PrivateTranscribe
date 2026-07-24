@@ -1183,7 +1183,7 @@ class IPCHandlers {
             debugLogger.warn("[IPC] Failed to unregister GNOME keybinding:", err.message);
           });
         }
-      } else {
+      } else if (hotkeyManager.isSessionHotkeyEnabled()) {
         // Exiting capture mode - re-register globalShortcut if not already registered
         // (Skip native-listener hotkeys: mouse buttons and modifier-only combos like Control+Super)
         if (

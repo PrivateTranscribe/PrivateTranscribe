@@ -944,6 +944,28 @@ class WindowManager {
     return await this.hotkeyManager.updateHotkey(hotkey, this.createHotkeyCallback());
   }
 
+  async setSessionHotkeyEnabled(enabled) {
+    const result = await this.hotkeyManager.setSessionHotkeyEnabled(enabled);
+    if (!result.success || process.platform !== "win32" || !this._windowsKeyManagerRef) {
+      return result;
+    }
+
+    this._windowsKeyManagerRef.stop();
+    if (enabled) {
+      const hotkey = this.hotkeyManager.getCurrentHotkey();
+      const activationMode = await this.getActivationMode();
+      if (
+        hotkey &&
+        hotkey !== "GLOBE" &&
+        (activationMode !== "tap" || this.hotkeyManager.isNativeListenerHotkey(hotkey))
+      ) {
+        this._windowsKeyManagerRef.start(hotkey);
+      }
+    }
+
+    return result;
+  }
+
   isUsingGnomeHotkeys() {
     return this.hotkeyManager.isUsingGnome();
   }
