@@ -446,7 +446,7 @@ export default function TranscribePage() {
         });
         if (usage.limitReached) {
           window.electronAPI?.analyticsTrack?.("starter_limit_reached", {
-            source: "file_transcription",
+            source: "file-transcription",
             words_used: usage.wordsUsed,
             daily_limit: usage.limit,
           });

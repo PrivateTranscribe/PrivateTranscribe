@@ -2534,8 +2534,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Anonymous usage analytics"
-                    description="Share setup milestones and feature usage counts. Never sends audio, transcripts, window titles, filenames, or API keys."
+                    label="Optional product analytics"
+                    description="Share setup milestones and feature usage counts using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
                   >
                     <Toggle checked={analyticsEnabled} onChange={handleAnalyticsEnabledChange} />
                   </SettingsRow>

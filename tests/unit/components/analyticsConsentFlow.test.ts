@@ -25,7 +25,8 @@ describe("Analytics consent flow regression checks", () => {
     expect(contents).toContain("analyticsSetConsent");
     expect(contents).toContain("onConsent(granted)");
     expect(contents).toContain("never sends");
-    expect(contents).toContain("audio, transcripts, window titles, filenames, or API keys");
+    expect(contents).toContain("audio, transcripts, window");
+    expect(contents).toContain("titles, filenames, or API keys");
   });
 
   it("preload and ipc handlers expose the analytics consent bridge", () => {
@@ -53,7 +54,7 @@ describe("Analytics consent flow regression checks", () => {
     const settingsPath = path.join(process.cwd(), "src", "components", "SettingsPage.tsx");
     const contents = fs.readFileSync(settingsPath, "utf8");
 
-    expect(contents).toContain("Anonymous usage analytics");
+    expect(contents).toContain("Optional product analytics");
     expect(contents).toContain("analyticsGetConsent");
     expect(contents).toContain("handleAnalyticsEnabledChange");
     expect(contents).toContain("analyticsSetConsent");

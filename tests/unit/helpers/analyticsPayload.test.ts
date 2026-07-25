@@ -47,6 +47,35 @@ describe("analytics payload privacy", () => {
     expect(sanitizeAnalyticsProperties(["not", "an", "object"])).toEqual({});
   });
 
+  it("rejects free-form text and out-of-range values inside allowlisted fields", () => {
+    expect(
+      sanitizeAnalyticsProperties({
+        source: "Confidential client matter",
+        output_action: "email transcript",
+        word_count_bucket: "the entire transcript",
+        step: 1.5,
+        words_used: -1,
+        limit_reached: "yes",
+      })
+    ).toEqual({});
+
+    expect(
+      sanitizeAnalyticsProperties({
+        source: "local-parakeet",
+        output_action: "paste",
+        step: 2,
+        words_used: 5000,
+        limit_reached: true,
+      })
+    ).toEqual({
+      source: "local-parakeet",
+      output_action: "paste",
+      step: 2,
+      words_used: 5000,
+      limit_reached: true,
+    });
+  });
+
   it("keeps the client and database allowlists aligned", () => {
     const migration = fs.readFileSync(
       path.join(
