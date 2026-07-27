@@ -4,7 +4,9 @@ const fs = require("fs");
 const {
   DEFAULT_AUTO_START_LAUNCH_MODE,
   normalizeAutoStartLaunchMode,
+  buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  getAutoStartApprovalState,
 } = require("./src/helpers/autoStartLoginItemSettings");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privatetranscribe.app";
@@ -317,16 +319,39 @@ async function startApp() {
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
     if (!fs.existsSync(flagPath)) {
-      app.setLoginItemSettings(
-        buildAutoStartSetOptions({
-          enabled: true,
-          platform: process.platform,
-          isPackaged: app.isPackaged,
-          execPath: process.execPath,
-          appPath: app.getAppPath(),
-          launchMode: autoStartLaunchMode,
-        })
+      // Never overrule a decision the user already made in Task Manager or Windows
+      // Settings. An existing Run entry — approved or disabled — means this machine has
+      // been set up before, even if our marker file was lost (reinstall, data reset).
+      const existingApproval = getAutoStartApprovalState(
+        app.getLoginItemSettings(
+          buildAutoStartLaunchOptions({
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+            launchMode: autoStartLaunchMode,
+          })
+        ),
+        process.execPath
       );
+
+      if (existingApproval === null) {
+        app.setLoginItemSettings(
+          buildAutoStartSetOptions({
+            enabled: true,
+            startupApproved: true,
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+            launchMode: autoStartLaunchMode,
+          })
+        );
+      } else {
+        debugLogger.debug("Skipping first-run auto-start default", {
+          existingApproval,
+        });
+      }
       fs.writeFileSync(flagPath, "1");
     }
   } catch {
@@ -477,7 +502,11 @@ async function startApp() {
       }
 
       // Handle dictation if Globe is the current hotkey
-      if (hotkeyManager.getCurrentHotkey && hotkeyManager.getCurrentHotkey() === "GLOBE") {
+      if (
+        hotkeyManager.isSessionHotkeyEnabled() &&
+        hotkeyManager.getCurrentHotkey &&
+        hotkeyManager.getCurrentHotkey() === "GLOBE"
+      ) {
         if (isLiveWindow(windowManager.mainWindow)) {
           const activationMode = await windowManager.getActivationMode();
           await windowManager.showDictationPanel();
@@ -504,7 +533,11 @@ async function startApp() {
 
     globeKeyManager.on("globe-up", async () => {
       // Handle push-to-talk release if Globe is the current hotkey
-      if (hotkeyManager.getCurrentHotkey && hotkeyManager.getCurrentHotkey() === "GLOBE") {
+      if (
+        hotkeyManager.isSessionHotkeyEnabled() &&
+        hotkeyManager.getCurrentHotkey &&
+        hotkeyManager.getCurrentHotkey() === "GLOBE"
+      ) {
         const activationMode = await windowManager.getActivationMode();
         if (activationMode === "push") {
           globeKeyDownTime = 0;
@@ -577,6 +610,10 @@ async function startApp() {
 
     windowsKeyManager.on("key-down", (key) => {
       debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
+
+      if (!hotkeyManager.isSessionHotkeyEnabled()) {
+        return;
+      }
 
       if (currentActivationMode === "tap") {
         // Tap mode: native listener is only used for modifier-only/mouse hotkeys.
@@ -716,7 +753,10 @@ async function startApp() {
         currentHotkey,
       });
 
-      if (needsNativeListener(currentHotkey, currentActivationMode)) {
+      if (
+        hotkeyManager.isSessionHotkeyEnabled() &&
+        needsNativeListener(currentHotkey, currentActivationMode)
+      ) {
         debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
           hotkey: currentHotkey,
         });
@@ -751,7 +791,10 @@ async function startApp() {
 
       const currentHotkey = hotkeyManager.getCurrentHotkey();
       windowsKeyManager.stop();
-      if (needsNativeListener(currentHotkey, currentActivationMode)) {
+      if (
+        hotkeyManager.isSessionHotkeyEnabled() &&
+        needsNativeListener(currentHotkey, currentActivationMode)
+      ) {
         debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
         windowsKeyManager.start(currentHotkey);
       }
@@ -762,7 +805,10 @@ async function startApp() {
       debugLogger.debug("[Push-to-Talk] IPC: Hotkey changed", { hotkey });
       stopPushToTalkRecording("hotkey-changed");
       windowsKeyManager.stop();
-      if (needsNativeListener(hotkey, currentActivationMode)) {
+      if (
+        hotkeyManager.isSessionHotkeyEnabled() &&
+        needsNativeListener(hotkey, currentActivationMode)
+      ) {
         debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
         windowsKeyManager.start(hotkey);
       }

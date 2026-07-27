@@ -37,6 +37,7 @@ import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { DownloadProgressBar } from "./ui/DownloadProgressBar";
 import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
+import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -69,6 +70,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       },
     }
   );
+
+  useEffect(() => {
+    void trackAnalyticsEvent("onboarding_step_viewed", {
+      step: currentStep + 1,
+      step_count: steps.length,
+    });
+  }, [currentStep, steps.length]);
 
   const {
     useLocalWhisper,
@@ -532,13 +540,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         return;
       }
       setOnboardingError(null);
+      void trackAnalyticsEventOnce("onboarding_completed", { step_count: steps.length });
       removeCurrentStep();
       onComplete();
     } catch (error) {
       console.error("Failed to finish onboarding:", error);
       setOnboardingError("Something went wrong. Please try again.");
     }
-  }, [saveSettings, removeCurrentStep, onComplete]);
+  }, [saveSettings, removeCurrentStep, onComplete, steps.length]);
 
   const cleanupMicTestResources = useCallback(() => {
     if (micTestRafRef.current !== null) {

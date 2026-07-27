@@ -256,6 +256,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Analytics
   analyticsNeedsConsent: () => ipcRenderer.invoke("analytics-needs-consent"),
+  analyticsGetConsent: () => ipcRenderer.invoke("analytics-get-consent"),
   analyticsSetConsent: (granted) => ipcRenderer.invoke("analytics-set-consent", granted),
   analyticsTrack: (event, extra) => ipcRenderer.invoke("analytics-track", event, extra),
 

@@ -245,6 +245,7 @@ class TrayManager {
     // Checked means "the overlay is (or is about to be) on screen". A snoozed
     // or disabled overlay, or one dismissed with Escape, reads as unchecked.
     const overlayShown = overlayState.mode === "shown" && dictationVisible;
+    const hotkeyEnabled = this.windowManager?.hotkeyManager?.isSessionHotkeyEnabled?.() ?? true;
 
     const snoozeInfo = [];
     if (overlayState.mode === "snoozed" && overlayState.snoozeUntil) {
@@ -283,6 +284,21 @@ class TrayManager {
           this.updateTrayMenu();
         },
       },
+      {
+        label: "Enable dictation hotkey",
+        type: "checkbox",
+        checked: hotkeyEnabled,
+        click: async () => {
+          const result = await this.windowManager?.setSessionHotkeyEnabled?.(!hotkeyEnabled);
+          if (result?.success === false) {
+            console.error("Failed to change dictation hotkey state:", result.error);
+          }
+          this.updateTrayMenu();
+        },
+      },
+      ...(!hotkeyEnabled
+        ? [{ label: "Hotkey disabled until PrivateTranscribe restarts", enabled: false }]
+        : []),
       { type: "separator" },
       {
         label: "Exit PrivateTranscribe",

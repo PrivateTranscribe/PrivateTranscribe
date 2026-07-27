@@ -267,6 +267,7 @@ class HotkeyManager {
     this.useGnome = false;
     this.hotkeyCallback = null;
     this.activationMode = "tap";
+    this.sessionHotkeyEnabled = true;
   }
 
   setActivationMode(mode) {
@@ -281,6 +282,68 @@ class HotkeyManager {
 
   isInListeningMode() {
     return this.isListeningMode;
+  }
+
+  isSessionHotkeyEnabled() {
+    return this.sessionHotkeyEnabled;
+  }
+
+  async setSessionHotkeyEnabled(enabled) {
+    const nextEnabled = Boolean(enabled);
+    if (nextEnabled === this.sessionHotkeyEnabled) {
+      return { success: true };
+    }
+
+    if (!nextEnabled) {
+      this.sessionHotkeyEnabled = false;
+      if (this.useGnome && this.gnomeManager) {
+        try {
+          const success = await this.gnomeManager.unregisterKeybinding();
+          if (!success) {
+            this.sessionHotkeyEnabled = true;
+            return { success: false, error: "Could not unregister the dictation hotkey" };
+          }
+        } catch (error) {
+          this.sessionHotkeyEnabled = true;
+          return { success: false, error: error.message };
+        }
+      } else if (
+        this.currentHotkey &&
+        this.currentHotkey !== "GLOBE" &&
+        !isWindowsNativeOnlyHotkey(this.currentHotkey)
+      ) {
+        globalShortcut.unregister(this.currentHotkey);
+      }
+      debugLogger.log("[HotkeyManager] Dictation hotkey disabled for this session");
+      return { success: true };
+    }
+
+    this.sessionHotkeyEnabled = true;
+    let result;
+    try {
+      if (this.useGnome && this.gnomeManager) {
+        const gnomeHotkey = GnomeShortcutManager.convertToGnomeFormat(this.currentHotkey);
+        const success = await this.gnomeManager.registerKeybinding(gnomeHotkey);
+        result = { success };
+      } else if (this.hotkeyCallback) {
+        result = this.setupShortcuts(this.currentHotkey, this.hotkeyCallback);
+      } else {
+        result = { success: true };
+      }
+    } catch (error) {
+      result = { success: false, error: error.message };
+    }
+
+    if (!result.success) {
+      this.sessionHotkeyEnabled = false;
+      return {
+        ...result,
+        error: result.error || "Could not register the dictation hotkey",
+      };
+    }
+
+    debugLogger.log("[HotkeyManager] Dictation hotkey enabled for this session");
+    return result;
   }
 
   /**
@@ -350,6 +413,7 @@ class HotkeyManager {
       throw new Error("Callback function is required for hotkey setup");
     }
 
+    this.hotkeyCallback = callback;
     debugLogger.log(`[HotkeyManager] Setting up hotkey: "${hotkey}"`);
     debugLogger.log(`[HotkeyManager] Platform: ${process.platform}, Arch: ${process.arch}`);
     debugLogger.log(`[HotkeyManager] Current hotkey: "${this.currentHotkey}"`);
@@ -380,6 +444,11 @@ class HotkeyManager {
         reason: "unsupported_key",
         suggestions,
       };
+    }
+
+    if (!this.sessionHotkeyEnabled) {
+      this.currentHotkey = hotkey;
+      return { success: true, hotkey };
     }
 
     // If we're already using this hotkey AND it's actually registered, return success
@@ -532,6 +601,11 @@ class HotkeyManager {
             `);
             const hotkey = savedHotkey && savedHotkey.trim() !== "" ? savedHotkey : "Alt+R";
             const gnomeHotkey = GnomeShortcutManager.convertToGnomeFormat(hotkey);
+
+            if (!this.sessionHotkeyEnabled) {
+              this.currentHotkey = hotkey;
+              return;
+            }
 
             const success = await this.gnomeManager.registerKeybinding(gnomeHotkey);
             if (success) {
@@ -702,6 +776,19 @@ class HotkeyManager {
     }
 
     try {
+      if (!this.sessionHotkeyEnabled) {
+        const result = this.setupShortcuts(hotkey, callback);
+        if (!result.success) {
+          return {
+            success: false,
+            message: result.error,
+            suggestions: result.suggestions,
+          };
+        }
+        await this.saveHotkeyToRenderer(hotkey);
+        return { success: true, message: `Hotkey updated to: ${hotkey}` };
+      }
+
       if (this.useGnome && this.gnomeManager) {
         debugLogger.log(`[HotkeyManager] Updating GNOME hotkey to "${hotkey}"`);
         const gnomeHotkey = GnomeShortcutManager.convertToGnomeFormat(hotkey);

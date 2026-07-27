@@ -287,7 +287,6 @@ export default function App() {
       } finally {
         closeContextMenu();
       }
-      window.electronAPI?.analyticsTrack?.("settings_opened");
     },
     [closeContextMenu]
   );
@@ -520,15 +519,6 @@ export default function App() {
 
   // Analytics consent is handled by ControlPanelShell (dashboard window)
 
-  // Track recording start
-  const prevIsRecordingRef = useRef(false);
-  useEffect(() => {
-    if (isRecording && !prevIsRecordingRef.current) {
-      window.electronAPI?.analyticsTrack?.("transcription_started");
-    }
-    prevIsRecordingRef.current = isRecording;
-  }, [isRecording]);
-
   useEffect(() => {
     if (!transcript || !transcript.trim()) {
       return;
@@ -536,7 +526,6 @@ export default function App() {
     const text = transcript.trim();
     setLastTranscript(text);
     localStorage.setItem(LAST_TRANSCRIPT_KEY, text);
-    window.electronAPI?.analyticsTrack?.("transcription_completed");
   }, [transcript]);
 
   useEffect(() => {

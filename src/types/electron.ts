@@ -409,6 +409,15 @@ declare global {
       /** Returns distinct "YYYY-MM-DD" date strings for real dictation sessions (last 366 days). */
       getStreakDates: () => Promise<string[]>;
 
+      // Optional, consent-based analytics. Properties never include audio or transcript text.
+      analyticsNeedsConsent?: () => Promise<boolean>;
+      analyticsGetConsent?: () => Promise<"granted" | "denied" | null>;
+      analyticsSetConsent?: (granted: boolean) => Promise<{ saved?: boolean } | void>;
+      analyticsTrack?: (
+        event: string,
+        properties?: Record<string, string | number | boolean>
+      ) => Promise<{ sent: boolean; reason?: string }>;
+
       // Database event listeners
       onTranscriptionAdded?: (callback: (item: TranscriptionItem) => void) => (() => void) | void;
       onTranscriptionDeleted?: (callback: (payload: { id: number }) => void) => (() => void) | void;
