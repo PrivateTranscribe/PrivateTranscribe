@@ -4,7 +4,9 @@ const fs = require("fs");
 const {
   DEFAULT_AUTO_START_LAUNCH_MODE,
   normalizeAutoStartLaunchMode,
+  buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  getAutoStartApprovalState,
 } = require("./src/helpers/autoStartLoginItemSettings");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privatetranscribe.app";
@@ -317,16 +319,39 @@ async function startApp() {
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
     if (!fs.existsSync(flagPath)) {
-      app.setLoginItemSettings(
-        buildAutoStartSetOptions({
-          enabled: true,
-          platform: process.platform,
-          isPackaged: app.isPackaged,
-          execPath: process.execPath,
-          appPath: app.getAppPath(),
-          launchMode: autoStartLaunchMode,
-        })
+      // Never overrule a decision the user already made in Task Manager or Windows
+      // Settings. An existing Run entry — approved or disabled — means this machine has
+      // been set up before, even if our marker file was lost (reinstall, data reset).
+      const existingApproval = getAutoStartApprovalState(
+        app.getLoginItemSettings(
+          buildAutoStartLaunchOptions({
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+            launchMode: autoStartLaunchMode,
+          })
+        ),
+        process.execPath
       );
+
+      if (existingApproval === null) {
+        app.setLoginItemSettings(
+          buildAutoStartSetOptions({
+            enabled: true,
+            startupApproved: true,
+            platform: process.platform,
+            isPackaged: app.isPackaged,
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+            launchMode: autoStartLaunchMode,
+          })
+        );
+      } else {
+        debugLogger.debug("Skipping first-run auto-start default", {
+          existingApproval,
+        });
+      }
       fs.writeFileSync(flagPath, "1");
     }
   } catch {

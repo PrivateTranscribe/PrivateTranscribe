@@ -36,7 +36,12 @@ function buildAutoStartLaunchOptions({
   return options;
 }
 
-function buildAutoStartSetOptions({ enabled, platform = process.platform, ...launchOptions } = {}) {
+function buildAutoStartSetOptions({
+  enabled,
+  startupApproved,
+  platform = process.platform,
+  ...launchOptions
+} = {}) {
   const options = {
     ...buildAutoStartLaunchOptions({ platform, ...launchOptions }),
     openAtLogin: Boolean(enabled),
@@ -49,7 +54,67 @@ function buildAutoStartSetOptions({ enabled, platform = process.platform, ...lau
     options.openAsHidden = true;
   }
 
+  // Windows has two independent switches: the `Run` registry value, and the
+  // `StartupApproved` flag that Task Manager and Windows Settings toggle. Electron's
+  // `enabled` option defaults to true, so any write silently re-approves an entry the
+  // user disabled in Task Manager. Always state it explicitly, and let callers carry
+  // the existing approval forward when they are only rewriting the launch arguments.
+  if (platform === "win32") {
+    options.enabled = startupApproved === undefined ? Boolean(enabled) : Boolean(startupApproved);
+  }
+
   return options;
+}
+
+function normalizeExecutablePath(value) {
+  return String(value || "")
+    .replace(/^"|"$/g, "")
+    .replace(/\//g, "\\")
+    .toLowerCase();
+}
+
+/**
+ * Find the Windows Run-key entry that belongs to this executable, if any.
+ * Returns null on other platforms and whenever no entry is registered.
+ */
+function findAutoStartLaunchItem(loginItemSettings, execPath = process.execPath) {
+  const items = Array.isArray(loginItemSettings?.launchItems) ? loginItemSettings.launchItems : [];
+  if (items.length === 0) {
+    return null;
+  }
+
+  const target = normalizeExecutablePath(execPath);
+  return items.find((item) => normalizeExecutablePath(item?.path) === target) || null;
+}
+
+/**
+ * Windows startup approval state for this executable:
+ * true = registered and approved, false = registered but disabled in Task Manager,
+ * null = no registry entry at all (no user decision recorded yet).
+ */
+function getAutoStartApprovalState(loginItemSettings, execPath = process.execPath) {
+  const item = findAutoStartLaunchItem(loginItemSettings, execPath);
+  return item ? Boolean(item.enabled) : null;
+}
+
+/**
+ * Whether the OS will actually launch the app at login.
+ *
+ * On Windows `openAtLogin` only reports whether the Run key exists — it stays true
+ * after the user disables the entry in Task Manager or Windows Settings.
+ * `executableWillLaunchAtLogin` folds in the StartupApproved flag, and ignores the
+ * args option so installs registered before startup-mode args still resolve.
+ */
+function resolveAutoStartEnabled(loginItemSettings, platform = process.platform) {
+  if (!loginItemSettings) {
+    return false;
+  }
+
+  if (platform === "win32" && typeof loginItemSettings.executableWillLaunchAtLogin === "boolean") {
+    return loginItemSettings.executableWillLaunchAtLogin;
+  }
+
+  return Boolean(loginItemSettings.openAtLogin);
 }
 
 module.exports = {
@@ -58,4 +123,7 @@ module.exports = {
   normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  findAutoStartLaunchItem,
+  getAutoStartApprovalState,
+  resolveAutoStartEnabled,
 };

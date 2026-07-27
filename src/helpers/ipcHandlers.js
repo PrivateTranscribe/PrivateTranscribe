@@ -20,6 +20,7 @@ const {
   normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  resolveAutoStartEnabled,
 } = require("./autoStartLoginItemSettings");
 
 /**
@@ -313,9 +314,14 @@ class IPCHandlers {
     return normalized;
   }
 
-  _buildAutoStartSetOptions(enabled, launchMode = this._readAutoStartLaunchMode()) {
+  _buildAutoStartSetOptions(
+    enabled,
+    launchMode = this._readAutoStartLaunchMode(),
+    startupApproved = undefined
+  ) {
     return buildAutoStartSetOptions({
       enabled,
+      startupApproved,
       platform: process.platform,
       isPackaged: app.isPackaged,
       execPath: process.execPath,
@@ -336,13 +342,12 @@ class IPCHandlers {
 
   _getAutoStartEnabled(launchMode = this._readAutoStartLaunchMode()) {
     const loginSettings = app.getLoginItemSettings(this._buildAutoStartLaunchOptions(launchMode));
-    if (loginSettings.openAtLogin || process.platform !== "win32") {
-      return loginSettings.openAtLogin;
-    }
 
-    // Older installs registered the app without the explicit startup-mode args.
-    // Preserve their enabled state when the user changes launch mode.
-    return app.getLoginItemSettings().openAtLogin;
+    // Report what the OS will actually do, not just whether a registry entry exists —
+    // a Windows entry the user disabled in Task Manager must read as off in the app.
+    // This also covers older installs registered without startup-mode args, because
+    // executableWillLaunchAtLogin ignores the args option.
+    return resolveAutoStartEnabled(loginSettings, process.platform);
   }
 
   setupHandlers() {
@@ -1333,7 +1338,11 @@ class IPCHandlers {
     ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
       try {
         const launchMode = this._readAutoStartLaunchMode();
-        app.setLoginItemSettings(this._buildAutoStartSetOptions(enabled, launchMode));
+        // Explicit user action, so the Windows startup approval follows the toggle:
+        // turning it on here also re-enables the entry in Task Manager.
+        app.setLoginItemSettings(
+          this._buildAutoStartSetOptions(enabled, launchMode, Boolean(enabled))
+        );
         debugLogger.debug("Auto-start setting updated", { enabled, launchMode });
         return { success: true };
       } catch (error) {
@@ -1351,7 +1360,14 @@ class IPCHandlers {
         const previousLaunchMode = this._readAutoStartLaunchMode();
         const wasEnabled = this._getAutoStartEnabled(previousLaunchMode);
         const launchMode = this._writeAutoStartLaunchMode(mode);
-        app.setLoginItemSettings(this._buildAutoStartSetOptions(wasEnabled, launchMode));
+
+        // Only rewrite the login item while auto-start is actually on. If it is off —
+        // including when the user disabled it in Task Manager — the stored mode is
+        // enough; touching the registry here would re-register and re-approve the app
+        // behind the user's back.
+        if (wasEnabled) {
+          app.setLoginItemSettings(this._buildAutoStartSetOptions(true, launchMode, true));
+        }
         debugLogger.debug("Auto-start launch mode updated", {
           launchMode,
           enabled: wasEnabled,
