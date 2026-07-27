@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.7 - 2026-07-27
+
+### Added
+
+- Added a tray toggle that suspends the dictation hotkey for the current session.
+- Added a Settings control for changing product analytics consent at any time.
+
+### Changed
+
+- Constrained the pseudonymous analytics events to known values, removed duplicate emitters, and added a 12-month retention policy.
+
+### Fixed
+
+- Disabling PrivateTranscribe's startup entry in Windows Task Manager or Windows Settings is now respected: the app no longer re-enables it behind the user's back, and the startup setting in the app reflects the real Windows state.
+
 ## 0.13.6 - 2026-07-13
 
 ### Changed
