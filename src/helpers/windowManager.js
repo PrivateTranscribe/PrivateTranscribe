@@ -7,7 +7,8 @@ const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
-const { DEV_SERVER_PORT } = DevServerManager;
+const { applyNavigationGuard } = require("./navigationGuard");
+const { DEV_SERVER_PORT, DEV_SERVER_URL } = DevServerManager;
 const isEnvFlagEnabled = (name) => {
   const value = process.env[name];
   if (value === undefined || value === null) return false;
@@ -436,6 +437,8 @@ class WindowManager {
       ...position,
     });
 
+    this._guardWindowNavigation(this.mainWindow, "dictation overlay");
+
     // Main window (dictation overlay) should never appear in dock/taskbar
     // On macOS, users access the app via the menu bar tray icon
     // On Windows/Linux, the control panel stays in the taskbar when minimized
@@ -689,6 +692,21 @@ class WindowManager {
     // Menu, toast, and recording state expand/collapse inside with CSS — Electron never
     // calls setBounds for these transitions, eliminating the button-jump on resize.
     return { success: true };
+  }
+
+  /**
+   * Restrict a window to app-owned content and send external links to the
+   * system browser. Applied to every window that loads the preload bridge.
+   * @param {BrowserWindow} window
+   * @param {string} label - window name, used for debug logging only
+   */
+  _guardWindowNavigation(window, label) {
+    applyNavigationGuard(window.webContents, {
+      devServerUrl: process.env.NODE_ENV === "development" ? DEV_SERVER_URL : null,
+      onBlocked: (url) => {
+        debugLogger.log(`Blocked in-app navigation from ${label}`, { url });
+      },
+    });
   }
 
   /**
@@ -1004,6 +1022,8 @@ class WindowManager {
     }
 
     this.controlPanelWindow = new BrowserWindow(CONTROL_PANEL_CONFIG);
+
+    this._guardWindowNavigation(this.controlPanelWindow, "control panel");
 
     const visibilityTimer = this._controlPanelStartHidden
       ? null
