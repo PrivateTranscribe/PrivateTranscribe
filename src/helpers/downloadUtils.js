@@ -25,6 +25,47 @@ const RETRYABLE_CODES = new Set([
   "ERR_STREAM_PREMATURE_CLOSE",
 ]);
 
+/**
+ * Loopback and link-local hosts, where plain HTTP carries no meaningful
+ * interception risk (local model servers, developer fixtures).
+ */
+function isLocalHost(hostname) {
+  const h = String(hostname || "")
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h === "::1" || h === "0.0.0.0") return true;
+  // Full-match only: a prefix test would also accept "127.0.0.1.evil.example",
+  // which resolves to an attacker-controlled host.
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
+}
+
+/**
+ * Downloaded artifacts are executed as native code (whisper-server,
+ * llama-server, sherpa-onnx, key listeners), so they must arrive over a
+ * channel that cannot be rewritten in transit. Plain HTTP is refused for
+ * remote hosts, including via redirect — an https:// URL that redirects to
+ * http:// would otherwise be fetched in the clear and run.
+ *
+ * @param {string} urlString
+ * @throws {Error} tagged isHttpError so the retry loop treats it as fatal
+ */
+function assertSecureDownloadUrl(urlString) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    throw Object.assign(new Error(`Invalid download URL: ${urlString}`), { isHttpError: true });
+  }
+
+  if (parsed.protocol === "https:") return parsed;
+  if (parsed.protocol === "http:" && isLocalHost(parsed.hostname)) return parsed;
+
+  throw Object.assign(
+    new Error(`Refusing insecure download URL (${parsed.protocol}//${parsed.host}): HTTPS required`),
+    { isHttpError: true }
+  );
+}
+
 function isRetryable(error) {
   if (error.isAbort || error.isHttpError) return false;
   return RETRYABLE_CODES.has(error.code);
@@ -48,8 +89,14 @@ function resolveRedirects(url, timeout) {
         return;
       }
 
-      const client = currentUrl.startsWith("https") ? https : http;
-      const parsed = new URL(currentUrl);
+      let parsed;
+      try {
+        parsed = assertSecureDownloadUrl(currentUrl);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      const client = parsed.protocol === "https:" ? https : http;
       const req = client.request({
         method: "HEAD",
         hostname: parsed.hostname,
@@ -107,7 +154,15 @@ function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffs
       headers["Range"] = `bytes=${startOffset}-`;
     }
 
-    const client = url.startsWith("https") ? https : http;
+    let parsedUrl;
+    try {
+      parsedUrl = assertSecureDownloadUrl(url);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const client = parsedUrl.protocol === "https:" ? https : http;
     let activeFile = fs.createWriteStream(tempPath, { flags: startOffset > 0 ? "a" : "w" });
 
     let downloadedSize = startOffset;
@@ -364,4 +419,10 @@ function createDownloadSignal() {
   };
 }
 
-module.exports = { downloadFile, createDownloadSignal, cleanStaleTmpFiles, isRetryable };
+module.exports = {
+  downloadFile,
+  createDownloadSignal,
+  cleanStaleTmpFiles,
+  isRetryable,
+  assertSecureDownloadUrl,
+};
