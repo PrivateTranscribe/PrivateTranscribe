@@ -1,6 +1,5 @@
 const path = require("path");
 const fs = require("fs");
-const { app, safeStorage } = require("electron");
 
 /**
  * API keys that contain secrets and must be stored encrypted.
@@ -31,7 +30,14 @@ const PLAIN_ENV_KEYS = [
 ];
 
 class EnvironmentManager {
-  constructor() {
+  /**
+   * @param {{ app: Electron.App, safeStorage: Electron.SafeStorage }} [runtime]
+   *   Electron services, injectable so this class can be unit-tested without a
+   *   live Electron runtime. Production callers use the default.
+   */
+  constructor(runtime = require("electron")) {
+    const { app, safeStorage } = runtime;
+    this._safeStorage = safeStorage;
     this._encryptedStorePath = path.join(app.getPath("userData"), "keys.enc");
     this._plainEnvPath = path.join(app.getPath("userData"), ".env");
     this._encryptionAvailable = safeStorage.isEncryptionAvailable();
@@ -49,10 +55,46 @@ class EnvironmentManager {
     // 2. Load secrets from encrypted store (overrides any .env fallback).
     if (this._encryptionAvailable) {
       this._loadEncryptedStore();
+      // 3. Sweep up secrets left in clear text by an older build or by a run
+      //    that had no keyring available.
+      this._migratePlainEnvSecrets();
     } else {
       // Encryption unavailable (e.g. headless Linux without a keyring).
       // Plain .env already loaded above; nothing more to do.
     }
+  }
+
+  /**
+   * Move any clear-text secrets sitting in our own .env into the encrypted
+   * store, then rewrite the file without them.
+   *
+   * Builds before the encrypted store existed — and any run on a machine with
+   * no keyring — wrote API keys to userData/.env in clear text. Once encryption
+   * is available those keys would otherwise sit on disk unprotected forever,
+   * because the normal save path only ever appends to the encrypted store.
+   *
+   * Only the app-owned file in userData is touched. The development and
+   * resourcesPath .env candidates are the developer's or the installer's files,
+   * so they are left alone.
+   */
+  _migratePlainEnvSecrets() {
+    let contents;
+    try {
+      if (!fs.existsSync(this._plainEnvPath)) return;
+      contents = fs.readFileSync(this._plainEnvPath, "utf8");
+    } catch {
+      return;
+    }
+
+    const hasPlainSecret = [...SECRET_ENV_KEYS].some((key) =>
+      new RegExp(`^\\s*${key}\\s*=`, "m").test(contents)
+    );
+    if (!hasPlainSecret) return;
+
+    // Only rewrite the plain file once the secrets are safely encrypted,
+    // otherwise a failed write here would discard the user's keys.
+    if (!this._persistEncryptedStore()) return;
+    this._persistPlainEnvFile();
   }
 
   /**
@@ -64,7 +106,7 @@ class EnvironmentManager {
     try {
       if (!fs.existsSync(this._encryptedStorePath)) return;
       const cipherBuf = fs.readFileSync(this._encryptedStorePath);
-      const jsonStr = safeStorage.decryptString(cipherBuf);
+      const jsonStr = this._safeStorage.decryptString(cipherBuf);
       const parsed = JSON.parse(jsonStr);
       if (parsed && typeof parsed === "object") {
         for (const [key, value] of Object.entries(parsed)) {
@@ -83,18 +125,20 @@ class EnvironmentManager {
    * Called after every key save to keep the store in sync.
    */
   _persistEncryptedStore() {
-    if (!this._encryptionAvailable) return;
+    if (!this._encryptionAvailable) return false;
     const secrets = {};
     for (const key of SECRET_ENV_KEYS) {
       if (process.env[key]) secrets[key] = process.env[key];
     }
     try {
-      const cipherBuf = safeStorage.encryptString(JSON.stringify(secrets));
+      const cipherBuf = this._safeStorage.encryptString(JSON.stringify(secrets));
       fs.writeFileSync(this._encryptedStorePath, cipherBuf);
+      return true;
     } catch (err) {
       // Non-fatal: in-memory value already set; worst case the key is gone on
       // next restart and the user re-enters it.
       console.error("Failed to persist encrypted key store:", err.message);
+      return false;
     }
   }
 
@@ -107,10 +151,15 @@ class EnvironmentManager {
       this._plainEnvPath,
       // Development
       path.join(__dirname, "..", ".env"),
-      // Production legacy paths
-      path.join(process.resourcesPath, ".env"),
-      path.join(process.resourcesPath, "app.asar.unpacked", ".env"),
-      path.join(process.resourcesPath, "app", ".env"),
+      // Production legacy paths. resourcesPath only exists in a packaged app,
+      // so skip them rather than throwing when it is undefined.
+      ...(process.resourcesPath
+        ? [
+            path.join(process.resourcesPath, ".env"),
+            path.join(process.resourcesPath, "app.asar.unpacked", ".env"),
+            path.join(process.resourcesPath, "app", ".env"),
+          ]
+        : []),
     ];
     for (const envPath of candidates) {
       try {
