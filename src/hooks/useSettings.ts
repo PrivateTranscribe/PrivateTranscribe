@@ -155,7 +155,7 @@ export function useSettings() {
 
   const [cloudTranscriptionModel, setCloudTranscriptionModel] = useLocalStorage(
     "cloudTranscriptionModel",
-    "gpt-4o-mini-transcribe",
+    "gpt-transcribe",
     {
       serialize: String,
       deserialize: String,
