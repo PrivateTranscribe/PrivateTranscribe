@@ -104,14 +104,19 @@
       "baseUrl": "https://api.openai.com/v1",
       "models": [
         {
+          "id": "gpt-transcribe",
+          "name": "GPT Transcribe",
+          "description": "Recommended · highest accuracy · $0.0045/min"
+        },
+        {
           "id": "gpt-4o-mini-transcribe",
           "name": "GPT-4o Mini Transcribe",
-          "description": "Fast and accurate transcription"
+          "description": "Budget option · $0.003/min"
         },
         {
           "id": "gpt-4o-transcribe",
           "name": "GPT-4o Transcribe",
-          "description": "Most accurate transcription"
+          "description": "Previous high-accuracy model · $0.006/min"
         },
         {
           "id": "whisper-1",

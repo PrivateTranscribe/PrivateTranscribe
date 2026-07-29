@@ -84,8 +84,9 @@ const mockTranscriptionProviders: TranscriptionProviderData[] = [
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
     models: [
-      { id: "gpt-4o-transcribe", name: "GPT-4o Transcribe", description: "Latest" },
+      { id: "gpt-transcribe", name: "GPT Transcribe", description: "Recommended" },
       { id: "gpt-4o-mini-transcribe", name: "GPT-4o Mini Transcribe", description: "Efficient" },
+      { id: "gpt-4o-transcribe", name: "GPT-4o Transcribe", description: "Previous" },
       { id: "whisper-1", name: "Whisper-1", description: "Classic" },
     ],
   },
@@ -157,7 +158,7 @@ function getTranscriptionModels(providerId: string): TranscriptionModelDefinitio
 
 function getDefaultTranscriptionModel(providerId: string): string {
   const models = getTranscriptionModels(providerId);
-  return models[0]?.id || "gpt-4o-mini-transcribe";
+  return models[0]?.id || "gpt-transcribe";
 }
 
 describe("ModelRegistry", () => {
@@ -277,7 +278,8 @@ describe("ModelRegistry", () => {
   describe("getTranscriptionModels", () => {
     it("returns models for valid provider", () => {
       const models = getTranscriptionModels("openai");
-      expect(models.length).toBe(3);
+      expect(models.length).toBe(4);
+      expect(models.map((m) => m.id)).toContain("gpt-transcribe");
       expect(models.map((m) => m.id)).toContain("gpt-4o-transcribe");
       expect(models.map((m) => m.id)).toContain("whisper-1");
     });
@@ -296,12 +298,12 @@ describe("ModelRegistry", () => {
 
   describe("getDefaultTranscriptionModel", () => {
     it("returns first model for valid provider", () => {
-      expect(getDefaultTranscriptionModel("openai")).toBe("gpt-4o-transcribe");
+      expect(getDefaultTranscriptionModel("openai")).toBe("gpt-transcribe");
       expect(getDefaultTranscriptionModel("groq")).toBe("whisper-large-v3-turbo");
     });
 
     it("returns fallback for non-existent provider", () => {
-      expect(getDefaultTranscriptionModel("nonexistent")).toBe("gpt-4o-mini-transcribe");
+      expect(getDefaultTranscriptionModel("nonexistent")).toBe("gpt-transcribe");
     });
   });
 });
