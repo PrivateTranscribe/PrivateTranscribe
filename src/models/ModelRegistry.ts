@@ -47,6 +47,7 @@ export interface TranscriptionModelDefinition {
   id: string;
   name: string;
   description: string;
+  recommended?: boolean;
 }
 
 export interface TranscriptionProviderData {

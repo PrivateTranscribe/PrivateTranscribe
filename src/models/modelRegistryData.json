@@ -106,7 +106,8 @@
         {
           "id": "gpt-transcribe",
           "name": "GPT Transcribe",
-          "description": "Recommended · highest accuracy · $0.0045/min"
+          "description": "Highest accuracy · $0.0045/min",
+          "recommended": true
         },
         {
           "id": "gpt-4o-mini-transcribe",

@@ -41,6 +41,7 @@ describe("OpenAI GPT Transcribe integration", () => {
     expect(models[0]).toMatchObject({
       id: "gpt-transcribe",
       name: "GPT Transcribe",
+      recommended: true,
     });
     expect(getDefaultTranscriptionModel("openai")).toBe("gpt-transcribe");
   });
