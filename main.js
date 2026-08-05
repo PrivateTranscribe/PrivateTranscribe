@@ -8,6 +8,7 @@ const {
   buildAutoStartSetOptions,
   getAutoStartApprovalState,
 } = require("./src/helpers/autoStartLoginItemSettings");
+const { ensureStartMenuShortcut } = require("./src/helpers/startMenuShortcut");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privatetranscribe.app";
 
@@ -356,6 +357,25 @@ async function startApp() {
     }
   } catch {
     // Non-fatal — skip if userData isn't ready yet
+  }
+
+  // Claim the per-user Start Menu shortcut before the first toast notification, otherwise
+  // Windows writes its own and drops the last character of the name. Packaged only: in dev
+  // process.execPath is electron.exe, and pointing a PrivateTranscribe shortcut at it is
+  // exactly what poisons the app-resolver cache.
+  if (process.platform === "win32" && app.isPackaged) {
+    try {
+      ensureStartMenuShortcut({
+        appDataPath: app.getPath("appData"),
+        appName: APP_NAME,
+        exePath: process.execPath,
+        appUserModelId: APP_ID,
+      });
+    } catch (error) {
+      debugLogger.debug("Start Menu shortcut refresh failed (non-fatal)", {
+        error: error.message,
+      });
+    }
   }
 
   // In development, add a small delay to let Vite start properly
