@@ -23,24 +23,9 @@ const {
   resolveAutoStartEnabled,
 } = require("./autoStartLoginItemSettings");
 
-/**
- * Allowlist of URL protocols that may be passed to shell.openExternal().
- * - https / http  : web links
- * - mailto        : email client links (e.g. support@privatetranscribe.com)
- *
- * Explicitly excluded: file://, javascript:, data:, and any unknown protocol
- * that could be exploited on the host desktop environment.
- */
-const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
-
-function isAllowedExternalUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_EXTERNAL_PROTOCOLS.has(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
+// Shared with the window navigation guard so the two openExternal paths cannot
+// drift apart. See navigationGuard.js for the protocol allowlist rationale.
+const { isAllowedExternalUrl } = require("./navigationGuard");
 
 /**
  * Returns true if the filename looks like a safe GGUF model file name.

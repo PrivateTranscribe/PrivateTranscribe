@@ -2287,6 +2287,9 @@ class AudioManager {
     if (!normalized || normalized === "whisper-1") {
       return false;
     }
+    if (normalized === "gpt-transcribe") {
+      return true;
+    }
     if (normalized === "gpt-4o-transcribe" || normalized === "gpt-4o-transcribe-diarize") {
       return true;
     }
@@ -2547,7 +2550,13 @@ class AudioManager {
       formData.append("model", model);
 
       if (language && language !== "auto") {
-        formData.append("language", language);
+        // GPT Transcribe replaces the legacy singular `language` field with
+        // one or more `languages[]` hints. Sending both fields is rejected.
+        if (model === "gpt-transcribe") {
+          formData.append("languages[]", language);
+        } else {
+          formData.append("language", language);
+        }
       }
 
       // Add custom dictionary as prompt hint for cloud transcription
@@ -2596,7 +2605,11 @@ class AudioManager {
           formDataFields: [
             "file",
             "model",
-            language && language !== "auto" ? "language" : null,
+            language && language !== "auto"
+              ? model === "gpt-transcribe"
+                ? "languages[]"
+                : "language"
+              : null,
             shouldStream ? "stream" : null,
           ].filter(Boolean),
         },
@@ -2844,7 +2857,10 @@ class AudioManager {
       // Validate model matches provider to handle settings migration
       if (trimmedModel) {
         const isGroqModel = trimmedModel.startsWith("whisper-large-v3");
-        const isOpenAIModel = trimmedModel.startsWith("gpt-4o") || trimmedModel === "whisper-1";
+        const isOpenAIModel =
+          trimmedModel === "gpt-transcribe" ||
+          trimmedModel.startsWith("gpt-4o") ||
+          trimmedModel === "whisper-1";
 
         if (provider === "groq" && isGroqModel) {
           return trimmedModel;
@@ -2856,9 +2872,9 @@ class AudioManager {
       }
 
       // Return provider-appropriate default
-      return provider === "groq" ? "whisper-large-v3-turbo" : "gpt-4o-mini-transcribe";
+      return provider === "groq" ? "whisper-large-v3-turbo" : "gpt-transcribe";
     } catch (error) {
-      return "gpt-4o-mini-transcribe";
+      return "gpt-transcribe";
     }
   }
 

@@ -644,6 +644,7 @@ export default function TranscriptionModelPicker({
       value: m.id,
       label: m.name,
       description: m.description,
+      recommended: m.recommended,
       icon: getProviderIcon(selectedCloudProvider),
       invertInDark: isMonochromeProvider(selectedCloudProvider),
     }));

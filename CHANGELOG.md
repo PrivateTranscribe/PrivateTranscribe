@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.8 - 2026-08-06
+
+### Added
+
+- Added OpenAI GPT Transcribe as a recommended cloud transcription model.
+
+### Changed
+
+- Hardened app navigation, model downloads, release credentials, and local API key storage.
+
+### Fixed
+
+- Fixed automatic pasting into Windows terminal interfaces such as Claude Code by routing paste through the terminal emulator and allowing bracketed paste to finish before restoring the clipboard.
+- Fixed the Transcribe language menu clipping near the bottom of the window.
+- Fixed the misspelled PrivateTranscribe entry in the Windows Start Menu.
+
 ## 0.13.7 - 2026-07-27
 
 ### Added

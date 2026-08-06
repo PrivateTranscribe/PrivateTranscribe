@@ -219,7 +219,7 @@ describe("AudioManager recorder lifecycle", () => {
         },
         useLocalWhisper: false,
         localProvider: "whisper",
-        activeModel: "gpt-4o-mini-transcribe",
+        activeModel: "gpt-transcribe",
       }));
     const processTranscription = vi
       .spyOn(manager, "processTranscription")
@@ -288,7 +288,7 @@ describe("AudioManager recorder lifecycle", () => {
       },
       useLocalWhisper: false,
       localProvider: "whisper",
-      activeModel: "gpt-4o-mini-transcribe",
+      activeModel: "gpt-transcribe",
     } as never);
 
     await manager.startRecording();

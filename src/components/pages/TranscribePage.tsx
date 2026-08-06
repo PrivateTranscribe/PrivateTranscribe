@@ -683,7 +683,7 @@ export default function TranscribePage() {
       )}
 
       {/* Settings panel */}
-      <div className="mb-5 rounded-xl border border-border-subtle/50 bg-surface-raised/30 overflow-hidden">
+      <div className="mb-5 rounded-xl border border-border-subtle/50 bg-surface-raised/30">
         <button
           type="button"
           onClick={() => setSettingsOpen((open) => !open)}
