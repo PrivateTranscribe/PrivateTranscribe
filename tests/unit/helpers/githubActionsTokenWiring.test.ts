@@ -17,4 +17,15 @@ describe("release workflow GitHub authentication", () => {
       expect(workflow).not.toContain("secrets.GH_TOKEN");
     }
   );
+
+  it("supports explicit production dispatch without weakening the push version gate", () => {
+    const workflow = fs.readFileSync(
+      path.join(process.cwd(), ".github/workflows/release-production.yml"),
+      "utf8"
+    );
+
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("if: github.event_name == 'push'");
+    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
+  });
 });
