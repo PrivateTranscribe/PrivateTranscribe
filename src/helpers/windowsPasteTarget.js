@@ -1,107 +1,75 @@
 "use strict";
 
-const TERMINAL_PROCESS_NAMES = new Set([
-  "alacritty",
-  "cmd",
-  "cmder",
-  "conemu",
-  "conemu64",
-  "console",
-  "consolez",
-  "conhost",
-  "fluentterminal",
-  "ghostty",
-  "hyper",
-  "kitty",
-  "mintty",
-  "powershell",
-  "pwsh",
-  "tabby",
-  "terminus",
-  "warp",
-  "wezterm",
-  "wezterm-gui",
-  "windowsterminal",
-  "wt",
-]);
+const fs = require("fs");
+const path = require("path");
 
-function normalizeProcessName(processName) {
-  return String(processName || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\.exe$/i, "");
-}
+const FAST_PASTE_EXECUTABLE = "windows-fast-paste.exe";
 
-function isWindowsTerminalTarget({ processName = "", focusLooksLikeTerminal = false } = {}) {
-  if (TERMINAL_PROCESS_NAMES.has(normalizeProcessName(processName))) {
-    return true;
+/**
+ * Candidate locations for the compiled fast paste helper, in priority order:
+ * the packaged resources directory first, then the two development layouts.
+ */
+function getWindowsFastPasteExecutablePaths({
+  resourcesPath = process.resourcesPath,
+  cwd = process.cwd(),
+  helpersDir = __dirname,
+} = {}) {
+  const candidates = [];
+  if (resourcesPath) {
+    candidates.push(path.join(resourcesPath, "bin", FAST_PASTE_EXECUTABLE));
   }
-
-  // Electron-based editors such as VS Code and Cursor own both their editor and
-  // integrated terminal windows. UI Automation exposes terminal-specific focus
-  // metadata (for example, "Terminal input" or "xterm-helper-textarea"). The
-  // detector reduces that metadata to a boolean before returning it here.
-  return focusLooksLikeTerminal === true;
+  candidates.push(
+    path.join(helpersDir, "..", "..", "resources", "bin", FAST_PASTE_EXECUTABLE),
+    path.join(cwd, "resources", "bin", FAST_PASTE_EXECUTABLE)
+  );
+  return [...new Set(candidates.map((candidate) => path.resolve(candidate)))];
 }
 
-function getWindowsPasteShortcut(target = {}) {
-  const isTerminal = isWindowsTerminalTarget(target);
+function resolveWindowsFastPasteExecutable(options = {}) {
+  const { existsSync = fs.existsSync, ...pathOptions } = options;
+  const found = getWindowsFastPasteExecutablePaths(pathOptions).find((candidate) => {
+    try {
+      return existsSync(candidate);
+    } catch {
+      return false;
+    }
+  });
+  return found || null;
+}
+
+/**
+ * Parses the single JSON line the helper writes. Detection is best effort, so an
+ * unreadable line degrades to "not a terminal" rather than failing the paste.
+ */
+function parseWindowsFastPasteOutput(stdout) {
+  try {
+    const parsed = JSON.parse(String(stdout || "").trim());
+    return {
+      pasted: parsed.pasted === true,
+      isTerminal: parsed.isTerminal === true,
+      windowClass: typeof parsed.windowClass === "string" ? parsed.windowClass.slice(0, 128) : "",
+      processName: typeof parsed.processName === "string" ? parsed.processName.slice(0, 128) : "",
+    };
+  } catch {
+    return { pasted: false, isTerminal: false, windowClass: "", processName: "" };
+  }
+}
+
+/**
+ * Paste chord for the nircmd/PowerShell fallback path, used only when the helper
+ * is unavailable. Without the helper there is no target detection, so this
+ * defaults to the ordinary Ctrl+V that shipped before terminal support existed.
+ */
+function getWindowsPasteShortcut({ isTerminal = false } = {}) {
   return isTerminal
     ? { isTerminal: true, nircmdKeys: "ctrl+shift+v", sendKeys: "^+v" }
     : { isTerminal: false, nircmdKeys: "ctrl+v", sendKeys: "^v" };
 }
 
-// The script returns only the process name and a terminal/not-terminal boolean.
-// It does not read the focused control's value or any clipboard/transcript text.
-const WINDOWS_PASTE_TARGET_SCRIPT = `Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class PasteTargetWin32 {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-}
-"@
-
-$processName = ""
-$focusLooksLikeTerminal = $false
-
-try {
-  $window = [PasteTargetWin32]::GetForegroundWindow()
-  $processId = 0
-  [void][PasteTargetWin32]::GetWindowThreadProcessId($window, [ref]$processId)
-  $processName = (Get-Process -Id $processId -ErrorAction Stop).ProcessName
-} catch {}
-
-try {
-  Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop
-  $element = [System.Windows.Automation.AutomationElement]::FocusedElement
-  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
-
-  for ($depth = 0; $element -ne $null -and $depth -lt 7; $depth++) {
-    $structuralMetadata = @(
-      $element.Current.AutomationId,
-      $element.Current.ClassName,
-      $element.Current.ControlType.ProgrammaticName
-    ) -join ' '
-    $name = [string]$element.Current.Name
-
-    if ($structuralMetadata -match '(^|[\\s._-])(terminal|xterm|console)($|[\\s._-])' -or
-        $name -match '^(terminal|terminal input)(:|$)' -or
-        $name -match 'xterm') {
-      $focusLooksLikeTerminal = $true
-      break
-    }
-    $element = $walker.GetParent($element)
-  }
-} catch {}
-
-[pscustomobject]@{
-  processName = $processName
-  focusLooksLikeTerminal = $focusLooksLikeTerminal
-} | ConvertTo-Json -Compress`;
-
 module.exports = {
-  WINDOWS_PASTE_TARGET_SCRIPT,
+  FAST_PASTE_EXECUTABLE,
+  getWindowsFastPasteExecutablePaths,
   getWindowsPasteShortcut,
-  isWindowsTerminalTarget,
+  parseWindowsFastPasteOutput,
+  resolveWindowsFastPasteExecutable,
 };

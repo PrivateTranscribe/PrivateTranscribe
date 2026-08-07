@@ -1,72 +1,193 @@
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
-  WINDOWS_PASTE_TARGET_SCRIPT,
+  FAST_PASTE_EXECUTABLE,
+  getWindowsFastPasteExecutablePaths,
   getWindowsPasteShortcut,
-  isWindowsTerminalTarget,
+  parseWindowsFastPasteOutput,
+  resolveWindowsFastPasteExecutable,
 } = require("../../../src/helpers/windowsPasteTarget");
 
-describe("Windows paste target routing", () => {
-  test.each([
-    "WindowsTerminal.exe",
-    "pwsh",
-    "powershell.exe",
-    "cmd.exe",
-    "conhost.exe",
-    "wezterm-gui.exe",
-    "alacritty.exe",
-    "mintty.exe",
-  ])("recognizes standalone terminal host %s", (processName) => {
-    expect(isWindowsTerminalTarget({ processName })).toBe(true);
-  });
-
-  test("recognizes an integrated terminal from focused UI Automation metadata", () => {
-    expect(
-      isWindowsTerminalTarget({
-        processName: "Code.exe",
-        focusLooksLikeTerminal: true,
-      })
-    ).toBe(true);
-
-    expect(
-      isWindowsTerminalTarget({
-        processName: "Cursor.exe",
-        focusLooksLikeTerminal: true,
-      })
-    ).toBe(true);
-  });
-
-  test("does not treat normal editor or document fields as terminals", () => {
-    expect(
-      isWindowsTerminalTarget({
-        processName: "Code.exe",
-        windowTitle: "clipboard.js - PrivateTranscribe - Visual Studio Code",
-        focusLooksLikeTerminal: false,
-      })
-    ).toBe(false);
-    expect(isWindowsTerminalTarget({ processName: "notepad.exe" })).toBe(false);
-    expect(isWindowsTerminalTarget({ processName: "WINWORD.EXE" })).toBe(false);
-  });
-
-  test("keeps target detection metadata-only", () => {
-    expect(WINDOWS_PASTE_TARGET_SCRIPT).toContain("focusLooksLikeTerminal");
-    expect(WINDOWS_PASTE_TARGET_SCRIPT).not.toContain("ValuePattern");
-    expect(WINDOWS_PASTE_TARGET_SCRIPT).not.toContain("TextPattern");
-    expect(WINDOWS_PASTE_TARGET_SCRIPT).not.toContain("Clipboard");
-  });
-
-  test("uses the terminal-owned paste chord only for terminal targets", () => {
-    expect(getWindowsPasteShortcut({ processName: "WindowsTerminal.exe" })).toEqual({
+describe("getWindowsPasteShortcut", () => {
+  test("uses Ctrl+Shift+V for terminal targets", () => {
+    expect(getWindowsPasteShortcut({ isTerminal: true })).toEqual({
       isTerminal: true,
       nircmdKeys: "ctrl+shift+v",
       sendKeys: "^+v",
     });
+  });
 
-    expect(getWindowsPasteShortcut({ processName: "notepad.exe" })).toEqual({
+  test("uses Ctrl+V for ordinary targets", () => {
+    expect(getWindowsPasteShortcut({ isTerminal: false })).toEqual({
       isTerminal: false,
       nircmdKeys: "ctrl+v",
       sendKeys: "^v",
     });
+  });
+
+  test("defaults to Ctrl+V when no target information is available", () => {
+    expect(getWindowsPasteShortcut()).toEqual({
+      isTerminal: false,
+      nircmdKeys: "ctrl+v",
+      sendKeys: "^v",
+    });
+  });
+});
+
+describe("getWindowsFastPasteExecutablePaths", () => {
+  test("prefers the packaged resources directory", () => {
+    const paths = getWindowsFastPasteExecutablePaths({
+      resourcesPath: path.join("C:", "app", "resources"),
+      cwd: path.join("C:", "project"),
+      helpersDir: path.join("C:", "project", "src", "helpers"),
+    });
+
+    expect(paths[0]).toBe(
+      path.resolve(path.join("C:", "app", "resources", "bin", FAST_PASTE_EXECUTABLE))
+    );
+  });
+
+  test("includes the development layout when not packaged", () => {
+    const paths = getWindowsFastPasteExecutablePaths({
+      resourcesPath: undefined,
+      cwd: path.join("C:", "project"),
+      helpersDir: path.join("C:", "project", "src", "helpers"),
+    });
+
+    expect(paths).toContain(
+      path.resolve(path.join("C:", "project", "resources", "bin", FAST_PASTE_EXECUTABLE))
+    );
+  });
+
+  test("does not repeat identical candidates", () => {
+    const paths = getWindowsFastPasteExecutablePaths({
+      resourcesPath: undefined,
+      cwd: path.join("C:", "project"),
+      helpersDir: path.join("C:", "project", "src", "helpers"),
+    });
+
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+});
+
+describe("resolveWindowsFastPasteExecutable", () => {
+  const pathOptions = {
+    resourcesPath: path.join("C:", "app", "resources"),
+    cwd: path.join("C:", "project"),
+    helpersDir: path.join("C:", "project", "src", "helpers"),
+  };
+
+  test("returns the first candidate that exists", () => {
+    const packaged = path.resolve(
+      path.join("C:", "app", "resources", "bin", FAST_PASTE_EXECUTABLE)
+    );
+
+    expect(
+      resolveWindowsFastPasteExecutable({
+        ...pathOptions,
+        existsSync: (candidate: string) => candidate === packaged,
+      })
+    ).toBe(packaged);
+  });
+
+  test("falls through to a later candidate when the packaged one is missing", () => {
+    const development = path.resolve(
+      path.join("C:", "project", "resources", "bin", FAST_PASTE_EXECUTABLE)
+    );
+
+    expect(
+      resolveWindowsFastPasteExecutable({
+        ...pathOptions,
+        existsSync: (candidate: string) => candidate === development,
+      })
+    ).toBe(development);
+  });
+
+  test("returns null when no candidate exists", () => {
+    expect(
+      resolveWindowsFastPasteExecutable({ ...pathOptions, existsSync: () => false })
+    ).toBeNull();
+  });
+
+  test("treats a throwing existence check as missing", () => {
+    expect(
+      resolveWindowsFastPasteExecutable({
+        ...pathOptions,
+        existsSync: () => {
+          throw new Error("EPERM");
+        },
+      })
+    ).toBeNull();
+  });
+});
+
+describe("parseWindowsFastPasteOutput", () => {
+  test("reads a successful terminal paste", () => {
+    const output = JSON.stringify({
+      pasted: true,
+      isTerminal: true,
+      windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
+      processName: "WindowsTerminal",
+      chord: "ctrl+shift+v",
+    });
+
+    expect(parseWindowsFastPasteOutput(output)).toEqual({
+      pasted: true,
+      isTerminal: true,
+      windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
+      processName: "WindowsTerminal",
+    });
+  });
+
+  test("reads a successful ordinary paste", () => {
+    const output = JSON.stringify({
+      pasted: true,
+      isTerminal: false,
+      windowClass: "Notepad",
+      processName: "notepad",
+      chord: "ctrl+v",
+    });
+
+    expect(parseWindowsFastPasteOutput(output).isTerminal).toBe(false);
+  });
+
+  test("degrades to a non-terminal result on unreadable output", () => {
+    expect(parseWindowsFastPasteOutput("not json")).toEqual({
+      pasted: false,
+      isTerminal: false,
+      windowClass: "",
+      processName: "",
+    });
+  });
+
+  test("degrades on empty output", () => {
+    expect(parseWindowsFastPasteOutput("").isTerminal).toBe(false);
+  });
+
+  test("only treats a literal true as terminal", () => {
+    expect(parseWindowsFastPasteOutput('{"isTerminal":"true"}').isTerminal).toBe(false);
+    expect(parseWindowsFastPasteOutput('{"isTerminal":1}').isTerminal).toBe(false);
+  });
+
+  test("caps oversized metadata strings", () => {
+    const output = JSON.stringify({
+      pasted: true,
+      isTerminal: false,
+      windowClass: "c".repeat(500),
+      processName: "p".repeat(500),
+    });
+    const parsed = parseWindowsFastPasteOutput(output);
+
+    expect(parsed.windowClass).toHaveLength(128);
+    expect(parsed.processName).toHaveLength(128);
+  });
+
+  test("ignores non-string metadata", () => {
+    const parsed = parseWindowsFastPasteOutput('{"windowClass":42,"processName":null}');
+
+    expect(parsed.windowClass).toBe("");
+    expect(parsed.processName).toBe("");
   });
 });

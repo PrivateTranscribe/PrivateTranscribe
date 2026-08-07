@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.13.8 - 2026-08-06
+## 0.13.9 - 2026-08-07
 
 ### Added
 
@@ -12,7 +12,9 @@
 
 ### Fixed
 
-- Fixed automatic pasting into Windows terminal interfaces such as Claude Code by routing paste through the terminal emulator and allowing bracketed paste to finish before restoring the clipboard.
+- Fixed automatic pasting into Windows terminals such as Claude Code, which now use the terminal paste shortcut and get time to finish before the clipboard is restored.
+- Fixed pasting when a dictation hotkey modifier is still held down, which previously turned the paste into a different shortcut and did nothing.
+- Stopped antivirus warnings during auto-paste by dropping PowerShell from the Windows paste path entirely.
 - Fixed the Transcribe language menu clipping near the bottom of the window.
 - Fixed the misspelled PrivateTranscribe entry in the Windows Start Menu.
 
