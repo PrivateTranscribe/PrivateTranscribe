@@ -4,7 +4,11 @@ const { killProcess } = require("../utils/process");
 const path = require("path");
 const fs = require("fs");
 const debugLogger = require("./debugLogger");
-const { WINDOWS_PASTE_TARGET_SCRIPT, getWindowsPasteShortcut } = require("./windowsPasteTarget");
+const {
+  getWindowsPasteShortcut,
+  parseWindowsFastPasteOutput,
+  resolveWindowsFastPasteExecutable,
+} = require("./windowsPasteTarget");
 
 // Cache TTL constants - these mirror CACHE_CONFIG.AVAILABILITY_CHECK_TTL in src/config/constants.ts
 const CACHE_TTL_MS = 30000;
@@ -32,6 +36,7 @@ const getLinuxSessionInfo = () => {
 // Each platform has different timing requirements based on their paste mechanism
 const PASTE_DELAYS = {
   darwin: 50, // macOS: AppleScript keystroke is async, needs time for clipboard to settle
+  win32_fastpaste: 30, // Windows native helper: give clipboard time to sync
   win32_nircmd: 30, // Windows nircmd: give clipboard time to sync
   win32_pwsh: 40, // Windows PowerShell: give clipboard time to sync
   linux: 50, // Linux: Allow time for focus to return to target window on X11
@@ -41,6 +46,7 @@ const PASTE_DELAYS = {
 // Ensures paste is fully processed before restoring original clipboard content
 const RESTORE_DELAYS = {
   darwin: 100, // macOS: AppleScript needs time to complete keystroke
+  win32_fastpaste: 80, // Windows native helper: allow time for paste processing
   win32_nircmd: 80, // Windows nircmd: allow time for paste processing
   win32_pwsh: 80, // Windows PowerShell: allow time for paste processing
   win32_terminal: 250, // Terminal hosts process bracketed paste asynchronously
@@ -56,6 +62,27 @@ class ClipboardManager {
     this.commandAvailabilityCache = new Map();
     this.nircmdPath = null;
     this.nircmdChecked = false;
+    this.fastPastePath = null;
+    this.fastPasteChecked = false;
+  }
+
+  // Get path to the native fast paste helper (Windows only)
+  getFastPastePath() {
+    if (this.fastPasteChecked) {
+      return this.fastPastePath;
+    }
+
+    this.fastPasteChecked = true;
+
+    if (process.platform !== "win32") {
+      return null;
+    }
+
+    this.fastPastePath = resolveWindowsFastPasteExecutable();
+    if (this.fastPastePath) {
+      this.safeLog(`✅ Found fast paste helper at: ${this.fastPastePath}`);
+    }
+    return this.fastPastePath;
   }
 
   // Get path to nircmd.exe (Windows only)
@@ -193,6 +220,16 @@ class ClipboardManager {
     }
   }
 
+  _restoreClipboardAfter(snapshot, delayMs) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this._restoreClipboard(snapshot);
+        this.safeLog("🔄 Clipboard restored");
+        resolve();
+      }, delayMs);
+    });
+  }
+
   async pasteText(text) {
     const startTime = Date.now();
     const platform = process.platform;
@@ -312,15 +349,26 @@ class ClipboardManager {
   }
 
   async pasteWindows(originalClipboard) {
-    const target = await this.detectWindowsPasteTarget();
-    const shortcut = getWindowsPasteShortcut(target);
-    this.safeLog("Windows paste routing", {
-      processName: target.processName || "unknown",
-      isTerminal: shortcut.isTerminal,
-      shortcut: shortcut.nircmdKeys,
-    });
+    // The native helper detects the target window and sends the matching paste
+    // chord in one step. It replaced an inline PowerShell probe, which tripped
+    // antivirus heuristics because PowerShell submits evaluated script blocks to
+    // AMSI for inspection.
+    const fastPastePath = this.getFastPastePath();
 
-    // Try nircmd first if available, fallback to PowerShell
+    if (fastPastePath) {
+      try {
+        return await this.pasteWithFastPaste(fastPastePath, originalClipboard);
+      } catch (error) {
+        this.safeLog("⚠️ Fast paste helper failed, falling back to Ctrl+V", {
+          error: error.message,
+        });
+      }
+    } else {
+      this.safeLog("⚠️ Fast paste helper not found, falling back to Ctrl+V");
+    }
+
+    // Fallback path: no target detection is available here, so use plain Ctrl+V.
+    const shortcut = getWindowsPasteShortcut();
     const nircmdPath = this.getNircmdPath();
 
     if (nircmdPath) {
@@ -330,60 +378,78 @@ class ClipboardManager {
     }
   }
 
-  detectWindowsPasteTarget() {
-    return new Promise((resolve) => {
-      let settled = false;
-      let stdout = "";
-      let timeoutId;
-      const finish = (result = {}) => {
-        if (settled) return;
-        settled = true;
-        resolve(result);
-      };
+  async pasteWithFastPaste(fastPastePath, originalClipboard) {
+    return new Promise((resolve, reject) => {
+      const pasteDelay = PASTE_DELAYS.win32_fastpaste;
 
-      let detector;
-      try {
-        detector = spawn(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            WINDOWS_PASTE_TARGET_SCRIPT,
-          ],
-          { windowsHide: true }
-        );
-      } catch {
-        finish();
-        return;
-      }
+      setTimeout(() => {
+        let hasTimedOut = false;
+        let stdout = "";
+        let stderr = "";
+        const startTime = Date.now();
 
-      detector.stdout?.on("data", (data) => {
-        if (stdout.length < 64 * 1024) stdout += data.toString();
-      });
+        this.safeLog(`⚡ Fast paste starting (delay: ${pasteDelay}ms)`);
 
-      detector.on("close", (code) => {
-        clearTimeout(timeoutId);
-        if (code !== 0) return finish();
-
+        let pasteProcess;
         try {
-          finish(JSON.parse(stdout.trim()));
-        } catch {
-          finish();
+          pasteProcess = spawn(fastPastePath, [], { windowsHide: true });
+        } catch (error) {
+          reject(new Error(`Fast paste helper could not start: ${error.message}`));
+          return;
         }
-      });
 
-      detector.on("error", () => {
-        clearTimeout(timeoutId);
-        finish();
-      });
+        pasteProcess.stdout?.on("data", (data) => {
+          if (stdout.length < 4096) stdout += data.toString();
+        });
 
-      timeoutId = setTimeout(() => {
-        killProcess(detector, "SIGKILL");
-        finish();
-      }, 2500);
+        pasteProcess.stderr?.on("data", (data) => {
+          if (stderr.length < 4096) stderr += data.toString();
+        });
+
+        pasteProcess.on("close", (code) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+
+          const elapsed = Date.now() - startTime;
+
+          if (code !== 0) {
+            reject(
+              new Error(
+                `Fast paste helper exited with code ${code}${stderr ? `: ${stderr.trim()}` : ""}`
+              )
+            );
+            return;
+          }
+
+          const result = parseWindowsFastPasteOutput(stdout);
+          const restoreDelay = result.isTerminal
+            ? RESTORE_DELAYS.win32_terminal
+            : RESTORE_DELAYS.win32_fastpaste;
+
+          this.safeLog(`✅ Fast paste success`, {
+            elapsedMs: elapsed,
+            isTerminal: result.isTerminal,
+            windowClass: result.windowClass || "unknown",
+            processName: result.processName || "unknown",
+            restoreDelayMs: restoreDelay,
+          });
+
+          this._restoreClipboardAfter(originalClipboard, restoreDelay).then(resolve);
+        });
+
+        pasteProcess.on("error", (error) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          reject(new Error(`Fast paste helper failed: ${error.message}`));
+        });
+
+        const timeoutId = setTimeout(() => {
+          hasTimedOut = true;
+          killProcess(pasteProcess, "SIGKILL");
+          pasteProcess.removeAllListeners();
+          reject(new Error("Fast paste helper timed out"));
+        }, 2500);
+      }, pasteDelay);
     });
   }
 
@@ -419,11 +485,7 @@ class ClipboardManager {
               elapsedMs: elapsed,
               restoreDelayMs: restoreDelay,
             });
-            setTimeout(() => {
-              this._restoreClipboard(originalClipboard);
-              this.safeLog("🔄 Clipboard restored");
-            }, restoreDelay);
-            resolve();
+            this._restoreClipboardAfter(originalClipboard, restoreDelay).then(resolve);
           } else {
             this.safeLog(`❌ nircmd failed (code ${code}), falling back to PowerShell`, {
               elapsedMs: elapsed,
@@ -500,11 +562,7 @@ class ClipboardManager {
               elapsedMs: elapsed,
               restoreDelayMs: restoreDelay,
             });
-            setTimeout(() => {
-              this._restoreClipboard(originalClipboard);
-              this.safeLog("🔄 Clipboard restored");
-            }, restoreDelay);
-            resolve();
+            this._restoreClipboardAfter(originalClipboard, restoreDelay).then(resolve);
           } else {
             this.safeLog(`❌ PowerShell paste failed`, {
               code,
