@@ -40,6 +40,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LLAMA_CPP_VERSION: b9016
 
+      - name: Verify fast paste helper was built
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "resources/bin/windows-fast-paste.exe")) {
+            Write-Error "windows-fast-paste.exe is missing. Auto-paste into terminals would silently fall back to Ctrl+V."
+            exit 1
+          }
+
       - name: Build renderer
         run: npm run build:renderer
 
