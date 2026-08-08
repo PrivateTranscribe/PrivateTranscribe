@@ -146,7 +146,7 @@ export default function ProSettingsSection() {
               {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Unlimited dictation unlocked. One-time license, validated automatically when online.
+              Unlimited private dictation unlocked with your one-time Pro purchase.
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {status.betaAccess
