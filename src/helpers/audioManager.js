@@ -31,6 +31,7 @@ const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
 const RECORDER_FINAL_DATA_GRACE_MS = 250;
+const MIN_DICTATION_DURATION_MS = 500;
 const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
 const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
 const LONG_SESSION_SEGMENT_MS = 60 * 1000;
@@ -412,9 +413,14 @@ class AudioManager {
   }
 
   emitStateChange() {
+    const isFinalizingRecording = this.isRecording && this.isStoppingRecording;
     this.onStateChange?.({
-      isRecording: this.isRecording,
-      isProcessing: this.isProcessing,
+      // Stop listening in the UI as soon as the user releases the hotkey. The
+      // recorder may still need a brief grace period to flush its final data,
+      // but leaving the overlay in its recording state makes the meter look
+      // frozen if the MediaRecorder stop event is delayed or never arrives.
+      isRecording: this.isRecording && !isFinalizingRecording,
+      isProcessing: this.isProcessing || (isFinalizingRecording && !this.discardCurrentRecording),
       longSession: this.getLongSessionSnapshot(),
     });
   }
@@ -1342,26 +1348,56 @@ class AudioManager {
     }
 
     if (this.mediaRecorder?.state === "recording") {
-      this.discardCurrentRecording = false;
+      const durationMs = this.recordingStartTime ? Date.now() - this.recordingStartTime : null;
+      const isTooShort = durationMs !== null && durationMs < MIN_DICTATION_DURATION_MS;
+
+      this.discardCurrentRecording = isTooShort;
       this.isStoppingRecording = true;
+      this.emitStateChange();
+
+      if (isTooShort) {
+        logger.debug(
+          "Discarding recording shorter than the minimum dictation duration",
+          { durationMs, minimumDurationMs: MIN_DICTATION_DURATION_MS },
+          "audio"
+        );
+      }
+
       try {
         this.mediaRecorder.requestData?.();
       } catch {
         // Ignore requestData errors from some browsers/recorders.
       }
-      this.mediaRecorder.stop();
-      this.scheduleRecorderStopWatchdog({ discard: false });
+
+      try {
+        this.mediaRecorder.stop();
+      } catch (error) {
+        logger.warn(
+          "MediaRecorder stop failed; forcing finalization",
+          { error: error?.message, discard: isTooShort },
+          "audio"
+        );
+        void this.forceFinalizeRecording({ discard: isTooShort });
+        return true;
+      }
+
+      this.scheduleRecorderStopWatchdog({
+        discard: isTooShort,
+        ...(isTooShort ? { timeoutMs: 350 } : {}),
+      });
       // State change will be handled in onstop callback
       return true;
     }
 
     if (this.isRecording) {
+      const durationMs = this.recordingStartTime ? Date.now() - this.recordingStartTime : null;
+      const isTooShort = durationMs !== null && durationMs < MIN_DICTATION_DURATION_MS;
       logger.warn(
         "Recorder state drift detected during stop; forcing finalization",
-        { recorderState: this.mediaRecorder?.state },
+        { recorderState: this.mediaRecorder?.state, durationMs, discard: isTooShort },
         "audio"
       );
-      void this.forceFinalizeRecording({ discard: false });
+      void this.forceFinalizeRecording({ discard: isTooShort });
       return true;
     }
 
@@ -1377,18 +1413,32 @@ class AudioManager {
 
     if (this.isStoppingRecording) {
       this.discardCurrentRecording = true;
+      this.emitStateChange();
       return true;
     }
 
     if (this.mediaRecorder?.state === "recording") {
       this.discardCurrentRecording = true;
       this.isStoppingRecording = true;
+      this.emitStateChange();
       try {
         this.mediaRecorder.requestData?.();
       } catch {
         // Ignore requestData errors from some browsers/recorders.
       }
-      this.mediaRecorder.stop();
+
+      try {
+        this.mediaRecorder.stop();
+      } catch (error) {
+        logger.warn(
+          "MediaRecorder stop failed during cancellation; forcing cleanup",
+          { error: error?.message },
+          "audio"
+        );
+        void this.forceFinalizeRecording({ discard: true });
+        return true;
+      }
+
       this.scheduleRecorderStopWatchdog({ discard: true, timeoutMs: 350 });
       return true;
     }

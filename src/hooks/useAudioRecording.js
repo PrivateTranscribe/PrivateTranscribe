@@ -792,6 +792,14 @@ export const useAudioRecording = (toast, options = {}) => {
   const cancelProcessing = useCallback(() => {
     try {
       if (audioManagerRef.current) {
+        // The renderer presents the recorder's short final-data flush as
+        // processing so the voice meter can stop immediately. If Escape is
+        // pressed during that window, preserve the user's cancel intent by
+        // discarding the recording instead of asking a not-yet-started
+        // transcription request to abort.
+        if (audioManagerRef.current.getState().isStoppingRecording) {
+          return audioManagerRef.current.cancelRecording();
+        }
         return audioManagerRef.current.cancelProcessing();
       }
       return false;

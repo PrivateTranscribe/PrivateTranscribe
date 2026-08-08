@@ -107,6 +107,7 @@ describe("AudioManager recorder lifecycle", () => {
     const recorder = MockMediaRecorder.instances[0];
     recorder.ondataavailable?.({ data: new Blob(["first chunk"], { type: "audio/webm" }) });
 
+    await vi.advanceTimersByTimeAsync(500);
     manager.stopRecording();
     await vi.advanceTimersByTimeAsync(2500);
 
@@ -125,6 +126,7 @@ describe("AudioManager recorder lifecycle", () => {
     const recorder = MockMediaRecorder.instances[0];
     recorder.ondataavailable?.({ data: new Blob(["first chunk "], { type: "audio/webm" }) });
 
+    await vi.advanceTimersByTimeAsync(500);
     manager.stopRecording();
     const stopPromise = recorder.onstop?.();
     recorder.ondataavailable?.({ data: new Blob(["final tail"], { type: "audio/webm" }) });
@@ -139,6 +141,130 @@ describe("AudioManager recorder lifecycle", () => {
     await expect(processAudio.mock.calls[0][0].text()).resolves.toBe("first chunk final tail");
   });
 
+  it("discards sub-500ms recordings without entering transcription", async () => {
+    const manager = new AudioManager();
+    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
+    const onStateChange = vi.fn();
+    manager.setCallbacks({
+      onStateChange,
+      onError: vi.fn(),
+      onTranscriptionComplete: vi.fn(),
+    });
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+    recorder.ondataavailable?.({ data: new Blob(["tiny capture"], { type: "audio/webm" }) });
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(manager.stopRecording()).toBe(true);
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isRecording: false, isProcessing: false })
+    );
+
+    const stopPromise = recorder.onstop?.();
+    await vi.advanceTimersByTimeAsync(250);
+    await stopPromise;
+
+    expect(processAudio).not.toHaveBeenCalled();
+    expect(manager.getState()).toMatchObject({
+      isRecording: false,
+      isProcessing: false,
+      isStoppingRecording: false,
+    });
+  });
+
+  it("discards a push-to-talk release that arrives before microphone startup finishes", async () => {
+    const manager = new AudioManager();
+    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
+    let resolveStream!: (stream: ReturnType<typeof makeStream>) => void;
+    const streamPromise = new Promise<ReturnType<typeof makeStream>>((resolve) => {
+      resolveStream = resolve;
+    });
+    (navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      streamPromise
+    );
+
+    const startPromise = manager.startRecording();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(manager.getState().isStartingRecording).toBe(true);
+    expect(manager.stopRecording()).toBe(true);
+
+    resolveStream(makeStream());
+    await startPromise;
+
+    const recorder = MockMediaRecorder.instances[0];
+    expect(recorder.stop).toHaveBeenCalledOnce();
+    const stopPromise = recorder.onstop?.();
+    await vi.advanceTimersByTimeAsync(250);
+    await stopPromise;
+
+    expect(processAudio).not.toHaveBeenCalled();
+    expect(manager.getState()).toMatchObject({
+      isRecording: false,
+      isProcessing: false,
+      isStartingRecording: false,
+      isStoppingRecording: false,
+    });
+  });
+
+  it("keeps the transcription path for recordings at least 500ms long", async () => {
+    const manager = new AudioManager();
+    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
+    const onStateChange = vi.fn();
+    manager.setCallbacks({
+      onStateChange,
+      onError: vi.fn(),
+      onTranscriptionComplete: vi.fn(),
+    });
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+    recorder.ondataavailable?.({ data: new Blob(["valid capture"], { type: "audio/webm" }) });
+
+    await vi.advanceTimersByTimeAsync(500);
+    manager.stopRecording();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isRecording: false, isProcessing: true })
+    );
+    const stopPromise = recorder.onstop?.();
+    await vi.advanceTimersByTimeAsync(250);
+    await stopPromise;
+
+    expect(processAudio).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers immediately when MediaRecorder throws while stopping", async () => {
+    const manager = new AudioManager();
+    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
+    const onStateChange = vi.fn();
+    manager.setCallbacks({
+      onStateChange,
+      onError: vi.fn(),
+      onTranscriptionComplete: vi.fn(),
+    });
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+    recorder.stop.mockImplementationOnce(() => {
+      throw new DOMException("Recorder was not ready", "InvalidStateError");
+    });
+
+    expect(manager.stopRecording()).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(processAudio).not.toHaveBeenCalled();
+    expect(manager.getState()).toMatchObject({
+      isRecording: false,
+      isProcessing: false,
+      isStoppingRecording: false,
+    });
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isRecording: false, isProcessing: false })
+    );
+  });
+
   it("ignores duplicate stop while waiting for final recorder data", async () => {
     const manager = new AudioManager();
     const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
@@ -147,6 +273,7 @@ describe("AudioManager recorder lifecycle", () => {
     const recorder = MockMediaRecorder.instances[0];
     recorder.ondataavailable?.({ data: new Blob(["first chunk "], { type: "audio/webm" }) });
 
+    await vi.advanceTimersByTimeAsync(500);
     expect(manager.stopRecording()).toBe(true);
     const stopPromise = recorder.onstop?.();
     expect(manager.stopRecording()).toBe(true);
