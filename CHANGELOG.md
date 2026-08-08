@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.10 - 2026-08-08
+
+### Changed
+
+- Separated stable paid Pro access from unfinished Beta features, which remain limited to approved testers.
+- Simplified the active Pro license message around unlimited private dictation.
+
+### Fixed
+
+- Applied a newly activated Pro license immediately, including after the Starter daily word limit has already been reached.
+- Prevented development previews from accidentally granting approved-tester access or masking a real paid license after activation.
+- Preserved complete audio across long dictations and reduced truncated or hallucinated transcript endings.
+- Restored reliable navigation between the dictation overlay and control panel.
+- Kept transparent overlay regions click-through and removed repeated toast notifications.
+
 ## 0.13.9 - 2026-08-07
 
 ### Added
