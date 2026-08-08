@@ -53,6 +53,9 @@
     "uninstall:full:windows": "scripts\\complete-uninstall-windows.bat",
     "audit:branding": "node scripts/audit-branding.js",
     "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js",
+    "fixture:long-dictation": "node scripts/long-dictation-test.js prepare",
+    "start:long-dictation-test": "node scripts/long-dictation-test.js launch",
+    "score:long-dictation": "node scripts/long-dictation-test.js score",
     "smoke:diarization": "node scripts/diarization-smoke.js"
   },
   "keywords": [
