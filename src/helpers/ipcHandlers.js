@@ -429,8 +429,8 @@ class IPCHandlers {
       return { success: true };
     });
 
-    ipcMain.handle("open-control-panel", async () => {
-      await this.windowManager.createControlPanelWindow();
+    ipcMain.handle("open-control-panel", async (_event, destination) => {
+      await this.windowManager.openControlPanel(destination);
       return { success: true };
     });
 

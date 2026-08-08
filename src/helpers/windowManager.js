@@ -8,6 +8,7 @@ const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
 const { applyNavigationGuard } = require("./navigationGuard");
+const { normalizeControlPanelDestination } = require("./controlPanelNavigation");
 const { DEV_SERVER_PORT, DEV_SERVER_URL } = DevServerManager;
 const isEnvFlagEnabled = (name) => {
   const value = process.env[name];
@@ -1106,6 +1107,34 @@ class WindowManager {
 
     await this.loadControlPanel();
     await this.initializeHotkey(this.controlPanelWindow);
+  }
+
+  /**
+   * Open the control panel for an explicit user action and optionally navigate
+   * its already-mounted renderer to a requested page/settings tab.
+   */
+  async openControlPanel(destination) {
+    const normalizedDestination = normalizeControlPanelDestination(destination);
+
+    // Explicit open actions must never inherit the Windows startup-minimized default.
+    await this.createControlPanelWindow({ startHidden: false, startMinimized: false });
+
+    const controlPanel = this.controlPanelWindow;
+    if (!normalizedDestination || !controlPanel || controlPanel.isDestroyed()) {
+      return;
+    }
+
+    const sendNavigation = () => {
+      if (!controlPanel.isDestroyed() && !controlPanel.webContents.isDestroyed()) {
+        controlPanel.webContents.send("control-panel-navigate", normalizedDestination);
+      }
+    };
+
+    if (controlPanel.webContents.isLoading()) {
+      controlPanel.webContents.once("did-finish-load", sendNavigation);
+    } else {
+      sendNavigation();
+    }
   }
 
   async loadControlPanel() {

@@ -17,9 +17,21 @@ const getSettingsTabs = (): SettingsTab[] => [
   { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },
 ];
 
-export default function SettingsPageWrapper() {
+export default function SettingsPageWrapper({
+  requestedSection,
+  requestId,
+}: {
+  requestedSection?: SettingsSectionType;
+  requestId?: number;
+}) {
   const [activeTab, setActiveTab] = useState<SettingsSectionType>("general");
   const tabs = getSettingsTabs();
+
+  useEffect(() => {
+    if (requestedSection) {
+      setActiveTab(requestedSection);
+    }
+  }, [requestedSection, requestId]);
 
   useEffect(() => {
     const requestedSection = localStorage.getItem("controlPanelInitialSettingsTab");

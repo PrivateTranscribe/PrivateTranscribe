@@ -266,7 +266,7 @@ export default function App() {
 
       try {
         if (window.electronAPI?.openControlPanel) {
-          await window.electronAPI.openControlPanel();
+          await window.electronAPI.openControlPanel({ page, settingsTab });
         }
       } finally {
         closeContextMenu();

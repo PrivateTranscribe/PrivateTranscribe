@@ -354,6 +354,31 @@ export interface OverlayState {
   snoozeUntil: number | null;
 }
 
+export type ControlPanelPage =
+  | "home"
+  | "history"
+  | "transcribe"
+  | "dictionary"
+  | "ai-enhancement"
+  | "voice-assistant"
+  | "correction-memory"
+  | "action-engine"
+  | "settings";
+
+export type ControlPanelSettingsTab =
+  | "general"
+  | "preferences"
+  | "transcription"
+  | "permissions"
+  | "pro"
+  | "help"
+  | "developer";
+
+export interface ControlPanelDestination {
+  page: ControlPanelPage;
+  settingsTab?: ControlPanelSettingsTab;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -371,7 +396,10 @@ declare global {
       ) => Promise<{ success: boolean; enabled: boolean }>;
       getOverlaySnapToTaskbar?: () => Promise<{ enabled: boolean }>;
       notifyDictationOverlayReady?: () => Promise<{ success: boolean }>;
-      openControlPanel?: () => Promise<{ success: boolean }>;
+      openControlPanel?: (destination?: ControlPanelDestination) => Promise<{ success: boolean }>;
+      onControlPanelNavigate?: (
+        callback: (destination: ControlPanelDestination) => void
+      ) => (() => void) | void;
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;

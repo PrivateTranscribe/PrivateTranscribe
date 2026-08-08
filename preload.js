@@ -38,7 +38,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setOverlaySnapToTaskbar: (enabled) => ipcRenderer.invoke("set-overlay-snap-to-taskbar", enabled),
   getOverlaySnapToTaskbar: () => ipcRenderer.invoke("get-overlay-snap-to-taskbar"),
   notifyDictationCompleted: () => ipcRenderer.invoke("notify-dictation-completed"),
-  openControlPanel: () => ipcRenderer.invoke("open-control-panel"),
+  openControlPanel: (destination) => ipcRenderer.invoke("open-control-panel", destination),
+  onControlPanelNavigate: registerListener(
+    "control-panel-navigate",
+    (callback) => (_event, destination) => callback(destination)
+  ),
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
