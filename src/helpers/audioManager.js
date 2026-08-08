@@ -1728,6 +1728,9 @@ class AudioManager {
       const options = {
         model,
       };
+      if (metadata?.source === "long-session") {
+        options.longSessionChunk = true;
+      }
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
       }

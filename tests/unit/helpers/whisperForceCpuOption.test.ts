@@ -61,6 +61,41 @@ describe("WhisperManager engine mode", () => {
     expect(manager.serverManager.transcribe).toHaveBeenCalled();
   });
 
+  it("passes the live long-session decoding mode to whisper-server", async () => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-long-session-"));
+    const modelPath = path.join(tempDir, "ggml-turbo.bin");
+    writeFileSync(modelPath, "model");
+
+    const manager = new WhisperManager();
+    manager.getModelPath = vi.fn(() => modelPath);
+    manager.getModelFileStatus = vi.fn(() => ({
+      modelPath,
+      exists: true,
+      valid: true,
+      size: 2_000_000_000,
+    }));
+    manager.serverManager = {
+      forceCpu: false,
+      activeServerBinaryPath: path.join(tempDir, "whisper-server-win32-x64.exe"),
+      isAvailable: vi.fn(() => true),
+      ready: true,
+      stoppedDueToIdle: false,
+      port: 8178,
+      start: vi.fn(async () => {}),
+      transcribe: vi.fn(async () => ({ text: "hello" })),
+    };
+
+    await manager.transcribeLocalWhisper(Buffer.from("audio"), {
+      model: "turbo",
+      longSessionChunk: true,
+    });
+
+    expect(manager.serverManager.transcribe).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      expect.objectContaining({ longSessionChunk: true })
+    );
+  });
+
   it("delegates getEngineStatus to serverManager", () => {
     const manager = new WhisperManager();
     const mockStatus = { desiredMode: "gpu", effectiveEngine: "cuda", fallback: { active: false } };
@@ -78,7 +113,9 @@ describe("WhisperManager engine mode", () => {
     const manager = new WhisperManager();
     manager.gpuBinaryManager = {
       getPlatformKey: vi.fn(() => "win32-x64"),
-      getCudaBinaryFilePath: vi.fn(() => "C:\\PrivateTranscribe\\whisper-server-win32-x64-cuda.exe"),
+      getCudaBinaryFilePath: vi.fn(
+        () => "C:\\PrivateTranscribe\\whisper-server-win32-x64-cuda.exe"
+      ),
       getCudaBinaryVersion: vi.fn(() => "v0.0.7"),
       isCudaBinaryUpToDate: vi.fn(() => false),
       getExpectedCudaBinaryVersion: vi.fn(() => "v0.0.9"),

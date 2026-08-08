@@ -1065,6 +1065,7 @@ class WhisperServerManager {
         speakerDetection = false,
         diarize = false,
         vad = false,
+        longSessionChunk = false,
         onProgress,
       } = options;
 
@@ -1124,6 +1125,7 @@ class WhisperServerManager {
             diarize,
             tinydiarize: fileMode && speakerDetection,
             vad,
+            longSessionChunk,
           });
         } catch (error) {
           if (!fileMode) throw error;
@@ -1237,6 +1239,7 @@ class WhisperServerManager {
       diarize = false,
       tinydiarize = false,
       vad = false,
+      longSessionChunk = false,
     } = options;
     const form = new FormData();
     const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
@@ -1252,11 +1255,10 @@ class WhisperServerManager {
 
     form.append("response_format", fileMode ? "verbose_json" : "json");
 
-    if (fileMode) {
-      // Long files are especially prone to Whisper repeating stale context after
-      // silence/noise. Keep each request independent and ask whisper.cpp to be
-      // more conservative about non-speech so one bad short window does not poison
-      // the rest of a 45+ minute upload.
+    if (fileMode || longSessionChunk) {
+      // Long-form audio is especially prone to Whisper repeating stale context
+      // after silence/noise. Keep internal decode windows independent and use
+      // conservative non-speech handling so a bad window does not poison the tail.
       form.append("no_context", "true");
       form.append("suppress_nst", "true");
       form.append("temperature", "0.0");

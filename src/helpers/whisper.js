@@ -359,6 +359,7 @@ class WhisperManager {
         outputFormat: options.outputFormat || "plain",
         diarize: options.diarize === true,
         vad: options.vad === true,
+        longSessionChunk: options.longSessionChunk === true,
         onProgress: options.onProgress,
       }
     );
@@ -584,6 +585,13 @@ class WhisperManager {
     if (!text) return text;
 
     let cleaned = text;
+
+    // A long run of the same punctuated word at the very end is a common
+    // Whisper-on-silence artifact (for example, "Yeah. Yeah. Yeah..."). Drop
+    // the whole tail rather than preserving one invented word.
+    cleaned = cleaned
+      .replace(/(?:^|\s)([\p{L}\p{N}'’]+)(?:[.!?,;:…]+)?(?:\s+\1(?:[.!?,;:…]+)?){4,}\s*$/iu, "")
+      .trim();
 
     // 1) Collapse long repeated phrases (3–30 word n-grams repeated 3+ times)
     //    Uses a greedy approach: try longest n-gram first so we catch the biggest loops.
