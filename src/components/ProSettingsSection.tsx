@@ -11,6 +11,7 @@ import {
   isLicensingConfigured,
   type ProStatus,
 } from "../services/LicensingService";
+import { setProPreview } from "../hooks/useProStatus";
 
 const PRO_FEATURES_AVAILABLE = [
   {
@@ -60,6 +61,9 @@ export default function ProSettingsSection() {
     try {
       const result = await activateLicense(key);
       if (result.success) {
+        // A real activation should end any dev-only Starter/Pro/tester preview.
+        // Otherwise the preview can keep a newly paid user artificially capped.
+        setProPreview(null);
         setStatus(getProStatus());
         setKeyInput("");
         toast({
@@ -263,7 +267,7 @@ export default function ProSettingsSection() {
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">What's included</h3>
             <Badge variant="warning" className="text-[10px]">
-              Tester beta
+              Beta
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">

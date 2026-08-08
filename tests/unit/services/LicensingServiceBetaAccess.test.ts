@@ -53,7 +53,10 @@ describe("LicensingService beta entitlement integrity", () => {
 
   it("accepts beta access after a successful server activation", async () => {
     installBrowserMocks();
-    vi.stubGlobal("fetch", vi.fn(async () => activationResponse(true)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => activationResponse(true))
+    );
     const licensing = await import("../../../src/services/LicensingService");
 
     expect(await licensing.activateLicense("TEST-TEST-TEST-TEST")).toMatchObject({
@@ -62,9 +65,38 @@ describe("LicensingService beta entitlement integrity", () => {
     expect(licensing.getProStatus().betaAccess).toBe(true);
   });
 
+  it("notifies the current renderer immediately after activation", async () => {
+    installBrowserMocks();
+    const dispatchEvent = vi.fn();
+    window.dispatchEvent = dispatchEvent;
+    vi.stubGlobal(
+      "CustomEvent",
+      class CustomEvent {
+        type: string;
+        constructor(type: string) {
+          this.type = type;
+        }
+      }
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => activationResponse(false))
+    );
+    const licensing = await import("../../../src/services/LicensingService");
+
+    await licensing.activateLicense("PAID-PAID-PAID-PAID");
+
+    expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: licensing.LICENSE_STATUS_EVENT })
+    );
+  });
+
   it("does not restore beta access from a forged local entitlement and seal", async () => {
     const { localStorage } = installBrowserMocks();
-    vi.stubGlobal("fetch", vi.fn(async () => activationResponse(false)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => activationResponse(false))
+    );
     const licensing = await import("../../../src/services/LicensingService");
 
     await licensing.activateLicense("PAID-PAID-PAID-PAID");
@@ -77,9 +109,7 @@ describe("LicensingService beta entitlement integrity", () => {
     localStorage.setItem("privatetranscribe_entitlement", forgedEntitlement);
     localStorage.setItem(
       "privatetranscribe_seal",
-      computeSeal(
-        `PAID-PAID-PAID-PAID|${forgedEntitlement}|${navigator.userAgent.slice(0, 20)}`
-      )
+      computeSeal(`PAID-PAID-PAID-PAID|${forgedEntitlement}|${navigator.userAgent.slice(0, 20)}`)
     );
 
     expect(licensing.getProStatus()).toMatchObject({

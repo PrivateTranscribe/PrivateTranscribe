@@ -28,8 +28,10 @@ describe("paid Pro and tester beta access contract", () => {
   });
 
   it("keeps ordinary paid licenses on the default non-tester entitlement", () => {
-    const source = readSource("supabase/functions/stripe-webhook/index.ts");
-    expect(source).toContain("beta_access: false");
+    const webhook = readSource("supabase/functions/stripe-webhook/index.ts");
+    const manualGenerator = readSource("scripts/generate-license.js");
+    expect(webhook).toContain("beta_access: false");
+    expect(manualGenerator).toContain("beta_access: false");
   });
 
   it("migrates the existing licenses table and preserves approved testers", () => {
@@ -79,5 +81,14 @@ describe("paid Pro and tester beta access contract", () => {
     expect(correctionMemory).not.toContain("Unlock it with Pro");
     expect(actionEngine).toContain("This beta requires approved tester access.");
     expect(actionEngine).not.toContain("Get it with Pro");
+
+    for (const source of [
+      correctionMemory,
+      actionEngine,
+      readSource("src/components/ProSettingsSection.tsx"),
+      readSource("src/components/SettingsPage.tsx"),
+    ]) {
+      expect(source).not.toMatch(/Tester beta|Approved tester beta/);
+    }
   });
 });

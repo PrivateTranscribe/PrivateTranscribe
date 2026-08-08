@@ -6,6 +6,7 @@ import {
   STARTER_USAGE_KEY,
 } from "../../utils/starterUsage";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
+import { LICENSE_STATUS_EVENT } from "../../services/LicensingService";
 
 // Custom event dispatched by the Pro Preview toggle (see useProStatus.ts)
 const PRO_PREVIEW_EVENT = "privatetranscribe-pro-preview-changed";
@@ -45,11 +46,13 @@ export default function StarterUsageCard({ refreshToken }: StarterUsageCardProps
     window.addEventListener("storage", onStorage);
     window.addEventListener("focus", refresh);
     window.addEventListener(PRO_PREVIEW_EVENT, refresh);
+    window.addEventListener(LICENSE_STATUS_EVENT, refresh);
     return () => {
       window.clearInterval(rolloverTimer);
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", refresh);
       window.removeEventListener(PRO_PREVIEW_EVENT, refresh);
+      window.removeEventListener(LICENSE_STATUS_EVENT, refresh);
     };
   }, [refresh]);
 

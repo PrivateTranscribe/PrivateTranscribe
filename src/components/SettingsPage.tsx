@@ -2281,7 +2281,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       correctionMemoryUnlocked
                         ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                        : "Tester beta - approved access is required to enable correction learning."
+                        : "Beta - approved tester access is required to enable correction learning."
                     }
                   >
                     <Toggle
@@ -2564,7 +2564,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       smartContextUnlocked
                         ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
-                        : "Tester beta - approved access is required to enable Smart Context"
+                        : "Beta - approved tester access is required to enable Smart Context"
                     }
                   >
                     <Toggle
@@ -2848,7 +2848,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {!aiEnhancementUnlocked && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
                 <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Approved tester beta</h3>
+                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
                   AI Enhancement automatically polishes your transcriptions - fixing grammar,
                   formatting text, and handling intelligent rewrites. This unfinished beta requires
@@ -2969,7 +2969,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {!voiceAssistantUnlocked && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
                 <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Approved tester beta</h3>
+                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
                   Customize your voice assistant with a personal name and fine-tuned system prompts
                   for AI-enhanced transcriptions. This unfinished beta requires approved tester
