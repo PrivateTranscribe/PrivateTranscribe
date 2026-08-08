@@ -621,7 +621,8 @@ class AudioManager {
     state.promotedAt = Date.now();
     this.longSession = state;
 
-    if (!this.startLongSessionSegmentCapture()) {
+    const initialSegment = this.longSessionSegment;
+    if (!initialSegment && !this.startLongSessionSegmentCapture()) {
       this.longSession = this.createLongSessionState();
       this.longSessionPromotionUnavailable = true;
       logger.warn(
@@ -641,7 +642,11 @@ class AudioManager {
     this.audioChunks = [];
     this.recordingChunkDurationsMs = [];
 
-    if (chunks.length > 0) {
+    if (initialSegment) {
+      // The continuous recorder produces a self-contained WebM. Reassembling the
+      // primary recorder's timeslice blobs can lose timestamp clusters in FFmpeg.
+      void this.stopLongSessionSegmentCapture({ restart: true });
+    } else if (chunks.length > 0) {
       this.enqueueLongSessionChunk(
         new Blob(chunks, { type: this.recordingMimeType || "audio/webm" }),
         Math.max(promotedDurationMs, RECORDER_TIMESLICE_MS)
@@ -662,7 +667,7 @@ class AudioManager {
     this.emitStateChange();
   }
 
-  enqueueLongSessionChunk(blob, durationMs = RECORDER_TIMESLICE_MS) {
+  enqueueLongSessionChunk(blob, durationMs = RECORDER_TIMESLICE_MS, options = {}) {
     const state = this.longSession;
     if (!state.active || state.cancelled) {
       return;
@@ -674,6 +679,7 @@ class AudioManager {
       durationMs,
       sessionId: state.sessionId,
       attempts: 0,
+      trimTrailingSilence: options.trimTrailingSilence === true,
     };
 
     state.queue.push(item);
@@ -683,7 +689,7 @@ class AudioManager {
     void this.drainLongSessionQueue();
   }
 
-  startLongSessionSegmentCapture() {
+  startLongSessionSegmentCapture({ promotionCapture = false } = {}) {
     if (this.longSessionSegment || !this.recordingStream) {
       return false;
     }
@@ -698,6 +704,7 @@ class AudioManager {
         stopping: false,
         discard: false,
         restartAfterStop: false,
+        promotionCapture,
         stopResolvers: [],
         finished: false,
       };
@@ -724,9 +731,11 @@ class AudioManager {
 
       this.longSessionSegment = segment;
       recorder.start();
-      segment.rotateTimer = setTimeout(() => {
-        void this.rotateLongSessionSegment();
-      }, LONG_SESSION_SEGMENT_MS);
+      if (!promotionCapture) {
+        segment.rotateTimer = setTimeout(() => {
+          void this.rotateLongSessionSegment();
+        }, LONG_SESSION_SEGMENT_MS);
+      }
       return true;
     } catch (error) {
       this.longSessionSegment = null;
@@ -757,7 +766,8 @@ class AudioManager {
     if (!segment.discard && segment.chunks.length > 0 && this.longSession.active) {
       this.enqueueLongSessionChunk(
         new Blob(segment.chunks, { type: segment.recorder.mimeType || this.recordingMimeType }),
-        durationMs
+        durationMs,
+        { trimTrailingSilence: !segment.restartAfterStop }
       );
     }
 
@@ -846,6 +856,7 @@ class AudioManager {
             skipPostProcessing: true,
             skipOptimization: true,
             chunkIndex: item.index,
+            trimTrailingSilence: item.trimTrailingSilence,
           });
 
           const text = String(result?.result?.text || "").trim();
@@ -1032,6 +1043,9 @@ class AudioManager {
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
+    if (!wasLongSession) {
+      void this.stopLongSessionSegmentCapture({ discard: true });
+    }
     this.releaseMediaRecorder();
 
     if (discard) {
@@ -1249,6 +1263,9 @@ class AudioManager {
         this.pendingStopAfterStart = false;
         this.pendingCancelAfterStart = false;
         this.discardCurrentRecording = false;
+        if (!wasLongSession) {
+          void this.stopLongSessionSegmentCapture({ discard: true });
+        }
         this.releaseMediaRecorder();
 
         if (shouldDiscard) {
@@ -1298,6 +1315,12 @@ class AudioManager {
       // final stop flush. If that final flush is slow, the watchdog may process
       // only earlier data and the transcript appears truncated.
       this.mediaRecorder.start(RECORDER_TIMESLICE_MS);
+      // Keep a continuous first segment in parallel. Chromium's timeslice blobs
+      // are useful for normal short recordings, but joining several of them can
+      // produce a WebM whose timestamp clusters FFmpeg decodes incompletely.
+      // This recorder is discarded for short dictations and becomes chunk zero
+      // only if the recording crosses the long-session threshold.
+      this.startLongSessionSegmentCapture({ promotionCapture: true });
       this.isRecording = true;
       this.isProcessing = false;
       this.isStartingRecording = false;
@@ -1730,6 +1753,7 @@ class AudioManager {
       };
       if (metadata?.source === "long-session") {
         options.longSessionChunk = true;
+        options.trimTrailingSilence = metadata.trimTrailingSilence === true;
       }
       if (resolvedLanguage) {
         options.language = resolvedLanguage;

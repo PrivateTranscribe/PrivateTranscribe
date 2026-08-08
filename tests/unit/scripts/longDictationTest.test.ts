@@ -70,6 +70,32 @@ describe("long dictation transcript scoring", () => {
     expect(result.repeatedTail).toEqual({ phrase: "yeah", repetitions: 6 });
   });
 
+  it("fails when Whisper duplicates a long passage inside the transcript", () => {
+    const passage = "the night was clear starlit and splendid after the storm passed away";
+    const manifest = {
+      referenceText: `${passage} everyone returned safely`,
+      boundaryChecks: [],
+    };
+
+    const result = scoreLongDictation(manifest, `${passage} ${passage} everyone returned safely`);
+
+    expect(result.passed).toBe(false);
+    expect(result.repeatedPassage).toEqual({ phrase: passage, wordCount: 12 });
+  });
+
+  it("fails when Whisper invents words after the known final passage", () => {
+    const ending = "the story came back and I wondered whether it was true";
+    const manifest = {
+      referenceText: `an ordinary opening ${ending}`,
+      boundaryChecks: [{ label: "ending", text: ending }],
+    };
+
+    const result = scoreLongDictation(manifest, `an ordinary opening ${ending} I was not alone`);
+
+    expect(result.passed).toBe(false);
+    expect(result.unexpectedTail).toEqual({ text: "i was not alone", wordCount: 4 });
+  });
+
   it("builds checks from speech around five minutes and the real ending", () => {
     const clips = [
       { startSeconds: 0, endSeconds: 290, text: "opening material" },

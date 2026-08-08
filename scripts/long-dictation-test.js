@@ -380,6 +380,16 @@ function scoreTranscript(transcriptPath, maximumWordErrorRate) {
       `Repeated ending: "${result.repeatedTail.phrase}" × ${result.repeatedTail.repetitions}`
     );
   }
+  if (result.repeatedPassage) {
+    console.log(
+      `Repeated passage: ${result.repeatedPassage.wordCount} words duplicated ("${result.repeatedPassage.phrase}")`
+    );
+  }
+  if (result.unexpectedTail) {
+    console.log(
+      `Unexpected ending: ${result.unexpectedTail.wordCount} unsupported words ("${result.unexpectedTail.text}")`
+    );
+  }
   return result;
 }
 
@@ -452,7 +462,7 @@ async function main() {
   if (command === "score") {
     const transcriptPath = values.get("transcript");
     if (!transcriptPath) throw new Error("The score command requires --transcript <text-file>");
-    const maximumWordErrorRate = Number(values.get("max-wer") || 0.35);
+    const maximumWordErrorRate = Number(values.get("max-wer") || 0.2);
     if (
       !Number.isFinite(maximumWordErrorRate) ||
       maximumWordErrorRate < 0 ||

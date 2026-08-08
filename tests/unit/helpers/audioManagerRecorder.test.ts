@@ -97,6 +97,7 @@ describe("AudioManager recorder lifecycle", () => {
 
     const recorder = MockMediaRecorder.instances[0];
     expect(recorder.start).toHaveBeenCalledWith(30000);
+    expect(MockMediaRecorder.instances[1].start).toHaveBeenCalledWith();
   });
 
   it("does not force-process partial recorder chunks after only 2.5 seconds", async () => {
@@ -363,6 +364,11 @@ describe("AudioManager recorder lifecycle", () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     recorder.ondataavailable?.({ data: new Blob(["first"], { type: "audio/webm" }) });
+    const initialSegmentRecorder = MockMediaRecorder.instances[1];
+    initialSegmentRecorder.ondataavailable?.({
+      data: new Blob(["continuous first"], { type: "audio/webm" }),
+    });
+    await initialSegmentRecorder.onstop?.();
     await vi.advanceTimersByTimeAsync(0);
 
     expect(manager.getState().longSession.active).toBe(true);
@@ -371,17 +377,20 @@ describe("AudioManager recorder lifecycle", () => {
       source: "long-session",
       skipPostProcessing: true,
     });
+    await expect(runTranscription.mock.calls[0][0].text()).resolves.toBe("continuous first");
 
     manager.stopRecording();
     const stopPromise = recorder.onstop?.();
     await vi.advanceTimersByTimeAsync(250);
-    const segmentRecorder = MockMediaRecorder.instances[1];
+    const segmentRecorder = MockMediaRecorder.instances[2];
     segmentRecorder.ondataavailable?.({ data: new Blob(["tail"], { type: "audio/webm" }) });
     await segmentRecorder.onstop?.();
     await stopPromise;
 
     expect(processAudio).not.toHaveBeenCalled();
     expect(runTranscription).toHaveBeenCalledTimes(2);
+    expect(runTranscription.mock.calls[0][1]).not.toMatchObject({ trimTrailingSilence: true });
+    expect(runTranscription.mock.calls[1][1]).toMatchObject({ trimTrailingSilence: true });
     expect(processTranscription).toHaveBeenCalledTimes(1);
     expect(processTranscription).toHaveBeenCalledWith("chunk-0 chunk-1", "long-session");
     expect(onTranscriptionComplete).toHaveBeenCalledTimes(1);
@@ -512,14 +521,14 @@ describe("AudioManager recorder lifecycle", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     recorder.ondataavailable?.({ data: new Blob(["first"], { type: "audio/webm" }) });
 
-    expect(startSegment).toHaveBeenCalledTimes(1);
+    expect(startSegment).toHaveBeenCalledTimes(2);
     expect(manager.getState().longSession.active).toBe(false);
     expect(manager.audioChunks).toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
     recorder.ondataavailable?.({ data: new Blob(["second"], { type: "audio/webm" }) });
 
-    expect(startSegment).toHaveBeenCalledTimes(1);
+    expect(startSegment).toHaveBeenCalledTimes(2);
     expect(manager.audioChunks).toHaveLength(2);
   });
 });

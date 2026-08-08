@@ -124,6 +124,28 @@ describe("Whisper parsing utilities", () => {
         text: "We can use a language model until a certain point. At least maybe...",
       });
     });
+
+    it("collapses a long passage hallucinated twice inside a long transcription", () => {
+      const manager = new WhisperManager();
+
+      expect(
+        manager.parseWhisperResult({
+          text: "The night was clear, starlit and splendid after the storm passed away. The night was clear, starlit and splendid after the storm passed away. Everyone returned safely.",
+        })
+      ).toEqual({
+        success: true,
+        text: "The night was clear, starlit and splendid after the storm passed away. Everyone returned safely.",
+      });
+    });
+
+    it("preserves a short sentence intentionally spoken twice", () => {
+      const manager = new WhisperManager();
+
+      expect(manager.parseWhisperResult({ text: "Please try again. Please try again." })).toEqual({
+        success: true,
+        text: "Please try again. Please try again.",
+      });
+    });
   });
 
   describe("normalizeWhitespace", () => {

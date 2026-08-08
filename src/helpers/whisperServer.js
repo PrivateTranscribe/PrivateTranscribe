@@ -53,6 +53,20 @@ const ALLOWED_INPUT_EXTENSIONS = new Set([
   ".avi",
 ]);
 
+function getTranscriptionAudioFilters(options = {}) {
+  const filters = [];
+  if (options.noiseReduction) filters.push("afftdn=nf=-25");
+  return filters;
+}
+
+function getTrailingSilenceFilters() {
+  return [
+    "areverse",
+    "silenceremove=start_periods=1:start_duration=0.5:start_threshold=-50dB",
+    "areverse",
+  ];
+}
+
 function resolveTempInputExtension(inputFileName) {
   if (!inputFileName || typeof inputFileName !== "string") {
     return DEFAULT_INPUT_EXTENSION;
@@ -1066,6 +1080,7 @@ class WhisperServerManager {
         diarize = false,
         vad = false,
         longSessionChunk = false,
+        trimTrailingSilence = false,
         onProgress,
       } = options;
 
@@ -1083,6 +1098,8 @@ class WhisperServerManager {
         // whisper.cpp stereo diarization needs two channels; tdrz/tinydiarize stays mono.
         channels: fileMode && diarize ? 2 : 1,
         noiseReduction: fileMode && noiseReduction,
+        longSessionChunk,
+        trimTrailingSilence,
       });
 
       const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer);
@@ -1390,17 +1407,31 @@ class WhisperServerManager {
     const inputExtension = resolveTempInputExtension(inputFileName);
     const tempInputPath = path.join(tempDir, `whisper-input-${tempId}${inputExtension}`);
     const tempWavPath = path.join(tempDir, `whisper-output-${tempId}.wav`);
+    const tempTrimmedWavPath = path.join(tempDir, `whisper-trimmed-${tempId}.wav`);
 
     try {
       await fs.promises.writeFile(tempInputPath, audioBuffer);
       await convertToWav(tempInputPath, tempWavPath, {
         sampleRate: 16000,
         channels: options.channels || 1,
-        audioFilters: options.noiseReduction ? ["afftdn=nf=-25"] : [],
+        audioFilters: getTranscriptionAudioFilters(options),
       });
+
+      // Browser MediaRecorder WebM files can contain multiple timestamp clusters.
+      // Reversing while decoding that container can discard a cluster, so normalize
+      // the complete stream to PCM WAV first and only then trim its trailing silence.
+      if (options.trimTrailingSilence) {
+        await convertToWav(tempWavPath, tempTrimmedWavPath, {
+          sampleRate: 16000,
+          channels: options.channels || 1,
+          audioFilters: getTrailingSilenceFilters(),
+        });
+        return await fs.promises.readFile(tempTrimmedWavPath);
+      }
+
       return await fs.promises.readFile(tempWavPath);
     } finally {
-      for (const f of [tempInputPath, tempWavPath]) {
+      for (const f of [tempInputPath, tempWavPath, tempTrimmedWavPath]) {
         await fs.promises.rm(f, { force: true }).catch(() => {});
       }
     }
@@ -1510,5 +1541,8 @@ class WhisperServerManager {
     };
   }
 }
+
+WhisperServerManager.getTranscriptionAudioFilters = getTranscriptionAudioFilters;
+WhisperServerManager.getTrailingSilenceFilters = getTrailingSilenceFilters;
 
 module.exports = WhisperServerManager;
