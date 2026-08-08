@@ -33,9 +33,7 @@ describe("paid Pro and tester beta access contract", () => {
   });
 
   it("migrates the existing licenses table and preserves approved testers", () => {
-    const source = readSource(
-      "supabase/migrations/202608080001_add_license_beta_access.sql"
-    );
+    const source = readSource("supabase/migrations/202608080001_add_license_beta_access.sql");
     expect(source).toContain("ALTER TABLE public.licenses");
     expect(source).toContain("ADD COLUMN IF NOT EXISTS beta_access");
     expect(source).toContain("SET beta_access = TRUE");
@@ -51,6 +49,10 @@ describe("paid Pro and tester beta access contract", () => {
     expect(functions).toContain("ref: ${{ github.event.workflow_run.head_sha }}");
     expect(migrations).not.toContain("Dry-run only");
     expect(functions).toContain("validate-creator-code stripe-webhook");
+    expect(functions).toContain("LICENSE_SIGNING_SECRET: ${{ secrets.LICENSE_SIGNING_SECRET }}");
+    expect(functions).toContain(
+      'supabase secrets set LICENSE_SIGNING_SECRET="$LICENSE_SIGNING_SECRET"'
+    );
   });
 
   it("gates tester-only UI reads and Action Engine operations", () => {
