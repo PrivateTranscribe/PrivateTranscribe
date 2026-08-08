@@ -242,6 +242,7 @@ class AudioManager {
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
     this._cachedSmartContext = null;
+    this._checkBetaFeatureAccess = null;
     this._deviceChangeHandler = null;
 
     // Pre-warm device cache and keep it fresh
@@ -1689,11 +1690,12 @@ class AudioManager {
     const timings = {};
 
     try {
-      // Refresh correction hints so they're included in the whisper prompt
-      // (Pro feature - only inject hints when Pro entitlement is active)
-      const proEnabled =
-        typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
-      const correctionHintsPromise = proEnabled
+      // Correction Memory is an approved-tester beta. Never read or inject its
+      // hints for Starter or ordinary paid Pro users.
+      const correctionMemoryEnabled =
+        typeof this._checkBetaFeatureAccess === "function" &&
+        this._checkBetaFeatureAccess("correction-memory");
+      const correctionHintsPromise = correctionMemoryEnabled
         ? this.refreshCorrectionHints()
         : Promise.resolve().then(() => {
             this._cachedCorrectionHints = [];
@@ -1716,7 +1718,7 @@ class AudioManager {
         audioBufferPromise,
       ]);
 
-      if (!proEnabled) {
+      if (!correctionMemoryEnabled) {
         this._cachedCorrectionHints = [];
       }
       this._cachedSmartContext = smartContext;
@@ -2128,6 +2130,13 @@ class AudioManager {
 
   async isReasoningAvailable() {
     if (typeof window === "undefined" || !window.localStorage) {
+      return false;
+    }
+
+    if (
+      typeof this._checkBetaFeatureAccess !== "function" ||
+      !this._checkBetaFeatureAccess("ai-enhancement")
+    ) {
       return false;
     }
 

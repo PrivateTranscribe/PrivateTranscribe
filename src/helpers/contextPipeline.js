@@ -9,7 +9,7 @@
  */
 
 import logger from "../utils/logger";
-import { getEffectiveEntitlement } from "../hooks/useProStatus";
+import { hasTesterAccess } from "../hooks/useProStatus";
 
 /** Default IPC timeout – short enough to never stall transcription. */
 const DEFAULT_TIMEOUT_MS = 300;
@@ -34,7 +34,7 @@ const WHISPER_TITLE_MAX = 80;
 export function isSmartContextEnabled() {
   if (typeof window === "undefined" || !window.localStorage) return false;
   try {
-    if (getEffectiveEntitlement() !== "pro") return false;
+    if (!hasTesterAccess()) return false;
     const v = window.localStorage.getItem("smartContextEnabled");
     if (v === "true") return true;
     if (v === "false") return false;
@@ -75,7 +75,7 @@ export function isFileIdentifiersEnabled() {
 export function isLlmContextEnhancementEnabled() {
   if (typeof window === "undefined" || !window.localStorage) return false;
   try {
-    if (getEffectiveEntitlement() !== "pro") return false;
+    if (!hasTesterAccess()) return false;
     return window.localStorage.getItem("llmContextEnhancement") === "true";
   } catch {
     return false;

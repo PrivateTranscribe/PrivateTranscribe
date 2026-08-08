@@ -98,7 +98,7 @@ export interface UseActionEngineResult {
   pruneRuns: (maxRuns: number) => Promise<{ success: boolean; pruned?: number }>;
 }
 
-export function useActionEngine(): UseActionEngineResult {
+export function useActionEngine(isUnlocked = false): UseActionEngineResult {
   const [actions, setActions] = useState<Action[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,12 +111,21 @@ export function useActionEngine(): UseActionEngineResult {
     resolveRunsRetentionLimit(localStorage.getItem(RUNS_RETENTION_LIMIT_KEY))
   );
 
-  const setGlobalEnabled = useCallback((enabled: boolean) => {
-    localStorage.setItem(ACTION_ENGINE_ENABLED_KEY, enabled ? "true" : "false");
-    setGlobalEnabledState(enabled);
-  }, []);
+  const setGlobalEnabled = useCallback(
+    (enabled: boolean) => {
+      if (!isUnlocked) return;
+      localStorage.setItem(ACTION_ENGINE_ENABLED_KEY, enabled ? "true" : "false");
+      setGlobalEnabledState(enabled);
+    },
+    [isUnlocked]
+  );
 
   const refresh = useCallback(async () => {
+    if (!isUnlocked) {
+      setActions([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -131,31 +140,36 @@ export function useActionEngine(): UseActionEngineResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isUnlocked]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  const createAction = useCallback(async (payload: ActionCreatePayload): Promise<Action | null> => {
-    try {
-      setError(null);
-      const result = await window.electronAPI?.actionEngineCreate?.(payload);
-      if (result?.success && result.action) {
-        setActions((prev) => [...prev, result.action!]);
-        return result.action;
+  const createAction = useCallback(
+    async (payload: ActionCreatePayload): Promise<Action | null> => {
+      if (!isUnlocked) return null;
+      try {
+        setError(null);
+        const result = await window.electronAPI?.actionEngineCreate?.(payload);
+        if (result?.success && result.action) {
+          setActions((prev) => [...prev, result.action!]);
+          return result.action;
+        }
+        setError(result?.error ?? "Failed to create action.");
+        return null;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to create action.";
+        setError(msg);
+        return null;
       }
-      setError(result?.error ?? "Failed to create action.");
-      return null;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to create action.";
-      setError(msg);
-      return null;
-    }
-  }, []);
+    },
+    [isUnlocked]
+  );
 
   const updateAction = useCallback(
     async (id: string, patch: ActionUpdatePayload): Promise<Action | null> => {
+      if (!isUnlocked) return null;
       try {
         setError(null);
         const result = await window.electronAPI?.actionEngineUpdate?.(id, patch);
@@ -171,28 +185,33 @@ export function useActionEngine(): UseActionEngineResult {
         return null;
       }
     },
-    []
+    [isUnlocked]
   );
 
-  const deleteAction = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      setError(null);
-      const result = await window.electronAPI?.actionEngineDelete?.(id);
-      if (result?.success) {
-        setActions((prev) => prev.filter((a) => a.id !== id));
-        return true;
+  const deleteAction = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!isUnlocked) return false;
+      try {
+        setError(null);
+        const result = await window.electronAPI?.actionEngineDelete?.(id);
+        if (result?.success) {
+          setActions((prev) => prev.filter((a) => a.id !== id));
+          return true;
+        }
+        setError(result?.error ?? "Failed to delete action.");
+        return false;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to delete action.";
+        setError(msg);
+        return false;
       }
-      setError(result?.error ?? "Failed to delete action.");
-      return false;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to delete action.";
-      setError(msg);
-      return false;
-    }
-  }, []);
+    },
+    [isUnlocked]
+  );
 
   const toggleEnabled = useCallback(
     async (id: string, enabled: boolean): Promise<Action | null> => {
+      if (!isUnlocked) return null;
       try {
         setError(null);
         const result = await window.electronAPI?.actionEngineToggle?.(id, enabled);
@@ -208,36 +227,51 @@ export function useActionEngine(): UseActionEngineResult {
         return null;
       }
     },
-    []
+    [isUnlocked]
   );
 
-  const executeAction = useCallback(async (id: string): Promise<ActionExecuteResult> => {
-    try {
-      const result = await window.electronAPI?.actionEngineExecute?.(id, { triggeredBy: "manual" });
-      return result ?? { success: false, error: "Action Engine unavailable." };
-    } catch (err: unknown) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Execution failed.",
-      };
-    }
-  }, []);
-
-  const loadRuns = useCallback(async (limit = 50): Promise<void> => {
-    try {
-      setRunsLoading(true);
-      const result = await window.electronAPI?.actionEngineRunsList?.(limit);
-      if (result?.success && Array.isArray(result.runs)) {
-        setRuns(result.runs);
+  const executeAction = useCallback(
+    async (id: string): Promise<ActionExecuteResult> => {
+      if (!isUnlocked) return { success: false, error: "Approved tester access required." };
+      try {
+        const result = await window.electronAPI?.actionEngineExecute?.(id, {
+          triggeredBy: "manual",
+        });
+        return result ?? { success: false, error: "Action Engine unavailable." };
+      } catch (err: unknown) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Execution failed.",
+        };
       }
-    } catch {
-      // Non-fatal: run history is observability-only.
-    } finally {
-      setRunsLoading(false);
-    }
-  }, []);
+    },
+    [isUnlocked]
+  );
+
+  const loadRuns = useCallback(
+    async (limit = 50): Promise<void> => {
+      if (!isUnlocked) {
+        setRuns([]);
+        setRunsLoading(false);
+        return;
+      }
+      try {
+        setRunsLoading(true);
+        const result = await window.electronAPI?.actionEngineRunsList?.(limit);
+        if (result?.success && Array.isArray(result.runs)) {
+          setRuns(result.runs);
+        }
+      } catch {
+        // Non-fatal: run history is observability-only.
+      } finally {
+        setRunsLoading(false);
+      }
+    },
+    [isUnlocked]
+  );
 
   const clearRuns = useCallback(async (): Promise<boolean> => {
+    if (!isUnlocked) return false;
     try {
       const result = await window.electronAPI?.actionEngineRunsClear?.();
       if (result?.success) {
@@ -248,10 +282,11 @@ export function useActionEngine(): UseActionEngineResult {
     } catch {
       return false;
     }
-  }, []);
+  }, [isUnlocked]);
 
   const pruneRuns = useCallback(
     async (maxRuns: number): Promise<{ success: boolean; pruned?: number }> => {
+      if (!isUnlocked) return { success: false };
       try {
         const result = await window.electronAPI?.actionEngineRunsPrune?.(maxRuns);
         return result ?? { success: false };
@@ -259,11 +294,12 @@ export function useActionEngine(): UseActionEngineResult {
         return { success: false };
       }
     },
-    []
+    [isUnlocked]
   );
 
   const setRunsRetentionLimit = useCallback(
     async (limit: number): Promise<void> => {
+      if (!isUnlocked) return;
       const safeLimit = Math.max(0, Math.round(limit));
       localStorage.setItem(RUNS_RETENTION_LIMIT_KEY, String(safeLimit));
       setRunsRetentionLimitState(safeLimit);
@@ -274,7 +310,7 @@ export function useActionEngine(): UseActionEngineResult {
         await loadRuns(safeLimit);
       }
     },
-    [pruneRuns, loadRuns]
+    [isUnlocked, pruneRuns, loadRuns]
   );
 
   return {

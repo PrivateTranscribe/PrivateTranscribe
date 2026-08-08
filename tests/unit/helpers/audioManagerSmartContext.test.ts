@@ -180,7 +180,7 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     (globalThis as any).electronAPI = { getCorrectionMemory };
 
     const manager: any = new AudioManager();
-    manager._checkProEntitlement = () => true;
+    manager._checkBetaFeatureAccess = (featureId: string) => featureId === "correction-memory";
     vi.spyOn(manager, "processTranscription").mockResolvedValue("hello world");
 
     const audioBlob = {

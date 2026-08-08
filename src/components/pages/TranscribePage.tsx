@@ -24,7 +24,7 @@ import {
   Info,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
-import { getEffectiveEntitlement } from "../../hooks/useProStatus";
+import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProStatus";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import LanguageSelector from "../ui/LanguageSelector";
@@ -184,7 +184,8 @@ export default function TranscribePage() {
 
   useEffect(() => {
     const mgr = new AudioManager();
-    mgr._checkProEntitlement = () => getEffectiveEntitlement() === "pro";
+    mgr._checkProEntitlement = () => isFeatureUnlocked("correction-memory");
+    mgr._checkBetaFeatureAccess = (featureId: string) => isFeatureUnlocked(featureId);
     audioManagerRef.current = mgr;
     return () => {
       audioManagerRef.current?.cleanup();

@@ -45,7 +45,7 @@ export default function VoiceAssistantPage() {
           </Badge>
           {!isUnlocked && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
-              <Lock size={10} /> Pro
+              <Lock size={10} /> Tester
             </span>
           )}
         </div>
@@ -61,7 +61,7 @@ export default function VoiceAssistantPage() {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             Name your assistant, then address it mid-dictation to switch from text cleanup to direct
             instruction mode. Fine-tune the system prompt to match your exact writing style and
-            workflow. A Pro feature.
+            workflow. This unfinished beta requires approved tester access.
           </p>
         </div>
       )}

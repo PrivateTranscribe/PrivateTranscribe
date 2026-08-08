@@ -1,0 +1,81 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+function readSource(relativePath: string): string {
+  return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
+}
+
+describe("paid Pro and tester beta access contract", () => {
+  it("marks approved tester licenses with beta access", () => {
+    const source = readSource("supabase/functions/tester-signup/index.ts");
+    expect(source).toContain("beta_access: true");
+  });
+
+  it("returns beta access in the signed activation entitlement", () => {
+    const source = readSource("supabase/functions/activate/index.ts");
+    expect(source).toContain("betaAccess: license.beta_access === true");
+  });
+
+  it("enforces tester access in beta feature runtime paths", () => {
+    const audioHook = readSource("src/hooks/useAudioRecording.js");
+    const audioManager = readSource("src/helpers/audioManager.js");
+    const contextPipeline = readSource("src/helpers/contextPipeline.js");
+
+    expect(audioHook).toContain('isBetaFeatureUnlocked("correction-memory")');
+    expect(audioManager).toContain('this._checkBetaFeatureAccess("ai-enhancement")');
+    expect(contextPipeline).toContain("hasTesterAccess()");
+  });
+
+  it("keeps ordinary paid licenses on the default non-tester entitlement", () => {
+    const source = readSource("supabase/functions/stripe-webhook/index.ts");
+    expect(source).toContain("beta_access: false");
+  });
+
+  it("migrates the existing licenses table and preserves approved testers", () => {
+    const source = readSource(
+      "supabase/migrations/202608080001_add_license_beta_access.sql"
+    );
+    expect(source).toContain("ALTER TABLE public.licenses");
+    expect(source).toContain("ADD COLUMN IF NOT EXISTS beta_access");
+    expect(source).toContain("SET beta_access = TRUE");
+    expect(source).toContain("testers.approval_status = 'approved'");
+  });
+
+  it("deploys functions only after the database migration workflow succeeds", () => {
+    const migrations = readSource(".github/workflows/deploy-supabase.yml");
+    const functions = readSource(".github/workflows/deploy-supabase-functions.yml");
+    expect(migrations).toContain('"supabase/functions/**"');
+    expect(functions).toContain('workflows: ["Deploy Database Migrations"]');
+    expect(functions).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(functions).toContain("ref: ${{ github.event.workflow_run.head_sha }}");
+    expect(migrations).not.toContain("Dry-run only");
+    expect(functions).toContain("validate-creator-code stripe-webhook");
+  });
+
+  it("gates tester-only UI reads and Action Engine operations", () => {
+    const correctionPage = readSource("src/components/pages/CorrectionMemoryPage.tsx");
+    const settings = readSource("src/components/SettingsPage.tsx");
+    const actionHook = readSource("src/hooks/useActionEngine.ts");
+    const actionPage = readSource("src/components/pages/ActionEnginePage.tsx");
+
+    expect(correctionPage).toContain("if (!isUnlocked)");
+    expect(settings).toContain("if (!correctionMemoryUnlocked || !enableCorrectionLearning)");
+    expect(settings).toContain("if (!correctionMemoryUnlocked) return;");
+    expect(actionHook).toContain("export function useActionEngine(isUnlocked = false)");
+    expect(actionHook).toContain("if (!isUnlocked) return null;");
+    expect(actionHook).toContain('error: "Approved tester access required."');
+    expect(actionPage).toContain("useActionEngine(isUnlocked)");
+  });
+
+  it("does not tell users that paid Pro unlocks tester-only screens", () => {
+    const correctionMemory = readSource("src/components/pages/CorrectionMemoryPage.tsx");
+    const actionEngine = readSource("src/components/pages/ActionEnginePage.tsx");
+    expect(correctionMemory.replace(/\s+/g, " ")).toContain(
+      "This beta requires approved tester access."
+    );
+    expect(correctionMemory).not.toContain("Unlock it with Pro");
+    expect(actionEngine).toContain("This beta requires approved tester access.");
+    expect(actionEngine).not.toContain("Get it with Pro");
+  });
+});

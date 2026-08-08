@@ -13,9 +13,13 @@ import path from "path";
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock useProStatus so getEffectiveEntitlement is controllable in every test.
 // ─────────────────────────────────────────────────────────────────────────────
-vi.mock("../../../src/hooks/useProStatus", () => ({
-  getEffectiveEntitlement: vi.fn(() => "pro"),
-}));
+vi.mock("../../../src/hooks/useProStatus", () => {
+  const getEffectiveEntitlement = vi.fn(() => "pro");
+  return {
+    getEffectiveEntitlement,
+    hasTesterAccess: vi.fn(() => getEffectiveEntitlement() === "pro"),
+  };
+});
 
 import { getEffectiveEntitlement } from "../../../src/hooks/useProStatus";
 

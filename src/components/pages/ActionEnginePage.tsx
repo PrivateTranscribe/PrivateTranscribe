@@ -910,7 +910,7 @@ export default function ActionEnginePage() {
     clearRuns,
     runsRetentionLimit,
     setRunsRetentionLimit,
-  } = useActionEngine();
+  } = useActionEngine(isUnlocked);
 
   // Dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -985,7 +985,7 @@ export default function ActionEnginePage() {
             </Badge>
             {!isUnlocked && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
-                <Lock size={10} /> Pro
+                <Lock size={10} /> Tester
               </span>
             )}
           </div>
@@ -1057,7 +1057,7 @@ export default function ActionEnginePage() {
             <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
               Say a phrase, trigger a real action. Open apps, run scripts, switch modes, or browse
               to any URL - without touching the keyboard. Build a personal command vocabulary that
-              works exactly how you think. Get it with Pro.
+              works exactly how you think. This beta requires approved tester access.
             </p>
           </div>
         </>

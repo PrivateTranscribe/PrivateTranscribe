@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../../src/services/LicensingService", () => ({
   getProStatus: vi.fn(() => ({
     isPro: false,
+    betaAccess: false,
     licenseKey: null,
     expiresAt: null,
     offlineGrace: false,
@@ -13,7 +14,12 @@ vi.mock("../../../src/services/LicensingService", () => ({
   _verifyToken: vi.fn(() => false),
 }));
 
-import { getEffectiveEntitlement, getProPreview } from "../../../src/hooks/useProStatus";
+import { _verifyToken, getProStatus } from "../../../src/services/LicensingService";
+import {
+  getEffectiveEntitlement,
+  getProPreview,
+  isFeatureUnlocked,
+} from "../../../src/hooks/useProStatus";
 
 function installLocalStorage() {
   const store = new Map<string, string>();
@@ -92,5 +98,40 @@ describe("useProStatus entitlement overrides", () => {
 
     localStorage.setItem("privatetranscribe_pro_preview", "pro");
     expect(getEffectiveEntitlement()).toBe("pro");
+  });
+
+  it("keeps beta workflow features locked for a regular paid Pro license", () => {
+    vi.stubEnv("PROD", true);
+    vi.mocked(_verifyToken).mockReturnValue(true);
+    vi.mocked(getProStatus).mockReturnValue({
+      isPro: true,
+      betaAccess: false,
+      licenseKey: "PAID-PAID-PAID-PAID",
+      expiresAt: null,
+      offlineGrace: false,
+      error: null,
+      _t: Math.floor(Date.now() / 60000) * 7 + 42,
+    });
+
+    expect(getEffectiveEntitlement()).toBe("pro");
+    expect(isFeatureUnlocked("ai-enhancement")).toBe(false);
+    expect(isFeatureUnlocked("correction-memory")).toBe(false);
+  });
+
+  it("unlocks beta workflow features only for an approved tester entitlement", () => {
+    vi.stubEnv("PROD", true);
+    vi.mocked(_verifyToken).mockReturnValue(true);
+    vi.mocked(getProStatus).mockReturnValue({
+      isPro: true,
+      betaAccess: true,
+      licenseKey: "TEST-TEST-TEST-TEST",
+      expiresAt: null,
+      offlineGrace: false,
+      error: null,
+      _t: Math.floor(Date.now() / 60000) * 7 + 42,
+    });
+
+    expect(isFeatureUnlocked("ai-enhancement")).toBe(true);
+    expect(isFeatureUnlocked("action-engine")).toBe(true);
   });
 });
