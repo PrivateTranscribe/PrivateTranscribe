@@ -140,11 +140,12 @@ export function hasTesterAccess(): boolean {
   if (preview === "tester") return true;
   if (preview === "free" || preview === "pro") return false;
 
-  // Development remains fully unlocked unless a preview mode is selected.
-  if (!isProEnforcementEnabled()) return true;
-
   const status = getProStatus();
-  return status.isPro && status.betaAccess === true && _verifyToken(status._t);
+  if (status.isPro && status.betaAccess === true && _verifyToken(status._t)) return true;
+
+  // Development gets stable Pro behavior by default, but unfinished features
+  // require either a real tester entitlement or the explicit Tester preview.
+  return false;
 }
 
 /**

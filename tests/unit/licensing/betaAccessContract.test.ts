@@ -28,14 +28,14 @@ describe("paid Pro and tester beta access contract", () => {
   });
 
   it("keeps ordinary paid licenses on the default non-tester entitlement", () => {
-    const source = readSource("supabase/functions/stripe-webhook/index.ts");
-    expect(source).toContain("beta_access: false");
+    const webhook = readSource("supabase/functions/stripe-webhook/index.ts");
+    const manualGenerator = readSource("scripts/generate-license.js");
+    expect(webhook).toContain("beta_access: false");
+    expect(manualGenerator).toContain("beta_access: false");
   });
 
   it("migrates the existing licenses table and preserves approved testers", () => {
-    const source = readSource(
-      "supabase/migrations/202608080001_add_license_beta_access.sql"
-    );
+    const source = readSource("supabase/migrations/202608080001_add_license_beta_access.sql");
     expect(source).toContain("ALTER TABLE public.licenses");
     expect(source).toContain("ADD COLUMN IF NOT EXISTS beta_access");
     expect(source).toContain("SET beta_access = TRUE");
@@ -51,6 +51,10 @@ describe("paid Pro and tester beta access contract", () => {
     expect(functions).toContain("ref: ${{ github.event.workflow_run.head_sha }}");
     expect(migrations).not.toContain("Dry-run only");
     expect(functions).toContain("validate-creator-code stripe-webhook");
+    expect(functions).toContain("LICENSE_SIGNING_SECRET: ${{ secrets.LICENSE_SIGNING_SECRET }}");
+    expect(functions).toContain(
+      'supabase secrets set LICENSE_SIGNING_SECRET="$LICENSE_SIGNING_SECRET"'
+    );
   });
 
   it("gates tester-only UI reads and Action Engine operations", () => {
@@ -77,5 +81,14 @@ describe("paid Pro and tester beta access contract", () => {
     expect(correctionMemory).not.toContain("Unlock it with Pro");
     expect(actionEngine).toContain("This beta requires approved tester access.");
     expect(actionEngine).not.toContain("Get it with Pro");
+
+    for (const source of [
+      correctionMemory,
+      actionEngine,
+      readSource("src/components/ProSettingsSection.tsx"),
+      readSource("src/components/SettingsPage.tsx"),
+    ]) {
+      expect(source).not.toMatch(/Tester beta|Approved tester beta/);
+    }
   });
 });

@@ -100,6 +100,18 @@ describe("useProStatus entitlement overrides", () => {
     expect(getEffectiveEntitlement()).toBe("pro");
   });
 
+  it("keeps beta features locked by default in development", () => {
+    vi.stubEnv("PROD", false);
+    vi.stubEnv("DEV", true);
+
+    expect(getEffectiveEntitlement()).toBe("pro");
+    expect(isFeatureUnlocked("ai-enhancement")).toBe(false);
+    expect(isFeatureUnlocked("action-engine")).toBe(false);
+
+    localStorage.setItem("privatetranscribe_pro_preview", "tester");
+    expect(isFeatureUnlocked("ai-enhancement")).toBe(true);
+  });
+
   it("keeps beta workflow features locked for a regular paid Pro license", () => {
     vi.stubEnv("PROD", true);
     vi.mocked(_verifyToken).mockReturnValue(true);

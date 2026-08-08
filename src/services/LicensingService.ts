@@ -13,6 +13,7 @@ const LICENSING_BASE_URL =
 const STORAGE_LICENSE_KEY = "privatetranscribe_license_key";
 const STORAGE_ENTITLEMENT = "privatetranscribe_entitlement";
 const STORAGE_PRO_STATUS = "privatetranscribe_pro_status";
+export const LICENSE_STATUS_EVENT = "privatetranscribe-license-status-changed";
 
 // Internal integrity - scattered validation markers
 const _SEAL_KEY = "privatetranscribe_seal";
@@ -22,6 +23,14 @@ const _EPOCH_KEY = "privatetranscribe_ts";
 // response from the licensing server and is never restored from mutable localStorage.
 // Approved testers therefore need one online validation after each app restart.
 let _serverVerifiedBetaAccess = false;
+
+function _notifyLicenseStatusChanged(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(LICENSE_STATUS_EVENT));
+  } catch {
+    // The current environment may not expose a renderer event target.
+  }
+}
 
 /**
  * Simple hash for integrity checks (not crypto-grade, just tamper detection)
@@ -58,6 +67,7 @@ function _clearLicenseData(): void {
   localStorage.removeItem(STORAGE_PRO_STATUS);
   localStorage.removeItem(_SEAL_KEY);
   localStorage.removeItem(_EPOCH_KEY);
+  _notifyLicenseStatusChanged();
 }
 
 /**
@@ -241,6 +251,7 @@ export async function activateLicense(key: string): Promise<{
     localStorage.setItem(STORAGE_ENTITLEMENT, entitlementStr);
     localStorage.setItem(STORAGE_PRO_STATUS, "active");
     _writeSeal(normalizedKey, entitlementStr);
+    _notifyLicenseStatusChanged();
 
     return { success: true, reachedServer: true };
   } catch (err: any) {

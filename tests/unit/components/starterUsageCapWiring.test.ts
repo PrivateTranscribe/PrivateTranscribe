@@ -31,6 +31,10 @@ describe("Starter usage cap wiring", () => {
       path.join(process.cwd(), "src", "components", "ui", "StarterUsageCard.tsx"),
       "utf8"
     );
+    const proSettings = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "ProSettingsSection.tsx"),
+      "utf8"
+    );
 
     // Reads live usage and hides itself for Pro entitlements
     expect(card).toContain("readStarterUsage()");
@@ -39,6 +43,9 @@ describe("Starter usage cap wiring", () => {
     // Refreshes on cross-window storage changes (dictation happens in the overlay window)
     expect(card).toContain("STARTER_USAGE_KEY");
     expect(card).toContain('addEventListener("storage"');
+    expect(card).toContain("LICENSE_STATUS_EVENT");
+    expect(card).toContain("addEventListener(LICENSE_STATUS_EVENT");
+    expect(proSettings).toContain("setProPreview(null)");
     expect(card).toContain("formatTimeUntilLocalMidnight");
     expect(card).toContain("resets in");
     expect(card).not.toContain("resets at midnight");
