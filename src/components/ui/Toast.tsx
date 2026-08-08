@@ -1,6 +1,7 @@
 import * as React from "react";
 import { X, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { cn } from "../lib/utils";
+import { getToastDedupeKey, upsertToast } from "./toastState";
 
 export interface ToastProps {
   id?: string;
@@ -31,13 +32,22 @@ export const useToast = () => {
 
 interface ToastState extends ToastProps {
   id: string;
+  dedupeKey: string;
   isExiting?: boolean;
   createdAt: number;
 }
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = React.useState<ToastState[]>([]);
+  const toastsRef = React.useRef<ToastState[]>([]);
   const timersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const exitTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const updateToasts = React.useCallback((updater: (current: ToastState[]) => ToastState[]) => {
+    const nextToasts = updater(toastsRef.current);
+    toastsRef.current = nextToasts;
+    setToasts(nextToasts);
+  }, []);
 
   const clearTimer = React.useCallback((id: string) => {
     const timer = timersRef.current[id];
@@ -47,20 +57,48 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  const startExitAnimation = React.useCallback((id: string) => {
-    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, isExiting: true } : t)));
-    // Remove after exit animation completes
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 200);
+  const clearExitTimer = React.useCallback((id: string) => {
+    const timer = exitTimersRef.current[id];
+    if (timer) {
+      clearTimeout(timer);
+      delete exitTimersRef.current[id];
+    }
   }, []);
+
+  const startExitAnimation = React.useCallback(
+    (id: string) => {
+      clearTimer(id);
+      clearExitTimer(id);
+      updateToasts((current) =>
+        current.map((toast) => (toast.id === id ? { ...toast, isExiting: true } : toast))
+      );
+      // Remove after exit animation completes. Track this separately so a repeated
+      // toast can cancel the removal and revive the existing item.
+      exitTimersRef.current[id] = setTimeout(() => {
+        delete exitTimersRef.current[id];
+        updateToasts((current) => current.filter((toast) => toast.id !== id));
+      }, 200);
+    },
+    [clearExitTimer, clearTimer, updateToasts]
+  );
 
   const toast = React.useCallback(
     (props: Omit<ToastProps, "id">) => {
-      const id = Math.random().toString(36).substring(2, 11);
-      const newToast: ToastState = { ...props, id, createdAt: Date.now() };
+      const incomingToast: ToastState = {
+        ...props,
+        id: Math.random().toString(36).substring(2, 11),
+        dedupeKey: getToastDedupeKey(props),
+        isExiting: false,
+        createdAt: Date.now(),
+      };
+      const result = upsertToast(toastsRef.current, incomingToast);
+      const id = result.id;
 
-      setToasts((prev) => [...prev, newToast]);
+      if (result.replaced) {
+        clearTimer(id);
+        clearExitTimer(id);
+      }
+      updateToasts(() => result.toasts);
 
       const duration = props.duration ?? 3500;
       if (duration > 0) {
@@ -72,7 +110,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return id;
     },
-    [startExitAnimation]
+    [clearExitTimer, clearTimer, startExitAnimation, updateToasts]
   );
 
   const dismiss = React.useCallback(
@@ -81,14 +119,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         clearTimer(id);
         startExitAnimation(id);
       } else {
-        const lastToast = toasts[toasts.length - 1];
+        const lastToast = toastsRef.current[toastsRef.current.length - 1];
         if (lastToast) {
           clearTimer(lastToast.id);
           startExitAnimation(lastToast.id);
         }
       }
     },
-    [toasts, clearTimer, startExitAnimation]
+    [clearTimer, startExitAnimation]
   );
 
   const pauseTimer = React.useCallback(
@@ -113,9 +151,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Cleanup on unmount
   React.useEffect(() => {
     const timers = timersRef.current;
+    const exitTimers = exitTimersRef.current;
     return () => {
       for (const id in timers) {
         clearTimeout(timers[id]);
+      }
+      for (const id in exitTimers) {
+        clearTimeout(exitTimers[id]);
       }
     };
   }, []);
@@ -306,6 +348,7 @@ const Toast: React.FC<
       {duration > 0 && !isExiting && (
         <div className="absolute bottom-0 left-0 right-0 h-[2px] overflow-hidden">
           <div
+            key={createdAt}
             className={cn("h-full", config.progressClass)}
             style={{
               animation: `toast-progress ${duration}ms linear forwards`,
