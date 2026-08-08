@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import "./index.css";
 import {
   Check,
@@ -202,7 +202,7 @@ export default function App() {
 
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
-  const { toast, toastCount } = useToast();
+  const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
 
@@ -243,11 +243,11 @@ export default function App() {
     (shouldReleaseInteractivity = true) => {
       setIsCommandMenuOpen(false);
       setActiveSubmenu("root");
-      if (shouldReleaseInteractivity && !isHovered && toastCount === 0) {
+      if (shouldReleaseInteractivity && !isHovered) {
         setWindowInteractivity(false);
       }
     },
-    [isHovered, toastCount, setWindowInteractivity]
+    [isHovered, setWindowInteractivity]
   );
 
   const openControlPanel = useCallback(
@@ -382,12 +382,12 @@ export default function App() {
   // ── End Action Engine ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (isCommandMenuOpen || toastCount > 0) {
+    if (isCommandMenuOpen) {
       setWindowInteractivity(true);
     } else if (!isHovered) {
       setWindowInteractivity(false);
     }
-  }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
+  }, [isCommandMenuOpen, isHovered, setWindowInteractivity]);
 
   useEffect(() => {
     const handleVisibilityReturn = () => {
@@ -453,7 +453,11 @@ export default function App() {
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    window.addEventListener("blur", closeContextMenu);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("blur", closeContextMenu);
+    };
   }, [isCommandMenuOpen, closeContextMenu]);
 
   useEffect(() => {
@@ -702,6 +706,30 @@ export default function App() {
     }
   })();
 
+  useLayoutEffect(() => {
+    const menu = isCommandMenuOpen ? commandMenuRef.current : null;
+    const padding = 12;
+    const rect = menu?.getBoundingClientRect();
+    const regions = rect
+      ? [
+          {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+          },
+        ]
+      : [];
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("overlay-menu", regions);
+  }, [activeSubmenu, isCommandMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("overlay-menu", []);
+    };
+  }, []);
+
   return (
     <div className="dictation-window">
       <style>{`
@@ -751,7 +779,7 @@ export default function App() {
             }}
             onMouseLeave={() => {
               setIsHovered(false);
-              if (!isCommandMenuOpen && toastCount === 0) {
+              if (!isCommandMenuOpen) {
                 setWindowInteractivity(false);
               }
             }}

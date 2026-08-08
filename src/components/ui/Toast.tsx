@@ -181,6 +181,7 @@ const ToastViewport: React.FC<{
   onPauseTimer: (id: string) => void;
   onResumeTimer: (id: string, remainingTime: number) => void;
 }> = ({ toasts, onDismiss, onPauseTimer, onResumeTimer }) => {
+  const viewportRef = React.useRef<HTMLDivElement>(null);
   // Detect if we're in the dictation panel (minimal overlay with mic button)
   const isDictationPanel = React.useMemo(() => {
     return (
@@ -195,10 +196,35 @@ const ToastViewport: React.FC<{
   // Near the right screen edge, expand to the left of center instead of the right.
   const toastOnLeft = isDictationPanel && window.screenX + 380 > window.screen.width;
 
+  React.useLayoutEffect(() => {
+    if (!isDictationPanel) {
+      return;
+    }
+
+    const regions = Array.from(
+      viewportRef.current?.querySelectorAll<HTMLElement>("[data-overlay-toast]") ?? []
+    ).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("overlay-toasts", regions);
+  }, [isDictationPanel, toasts]);
+
+  React.useEffect(() => {
+    if (!isDictationPanel) {
+      return;
+    }
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("overlay-toasts", []);
+    };
+  }, [isDictationPanel]);
+
   if (toasts.length === 0) return null;
 
   return (
     <div
+      ref={viewportRef}
       className={cn(
         "fixed z-50 flex flex-col gap-1.5 pointer-events-none",
         isDictationPanel
@@ -286,6 +312,7 @@ const Toast: React.FC<
 
   return (
     <div
+      data-overlay-toast
       className={cn(
         // Layout - fixed ideal width but responsive so it can't overflow a narrow window
         // (relevant in the dictation overlay where the window may be narrower than 320px)

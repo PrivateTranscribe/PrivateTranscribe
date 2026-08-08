@@ -439,6 +439,13 @@ class IPCHandlers {
       return { success: true };
     });
 
+    ipcMain.handle("set-main-window-interactive-regions", (event, source, regions) => {
+      if (event.sender !== this.windowManager.mainWindow?.webContents) {
+        return { success: false };
+      }
+      return this.windowManager.setMainWindowInteractiveRegions(source, regions);
+    });
+
     ipcMain.handle("refresh-main-window-interactivity", () => {
       this.windowManager.refreshMainWindowInteractivity("renderer");
       return { success: true };

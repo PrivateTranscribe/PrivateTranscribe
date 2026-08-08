@@ -614,6 +614,10 @@ declare global {
       startWindowDrag: () => Promise<void>;
       stopWindowDrag: () => Promise<void>;
       setMainWindowInteractivity: (interactive: boolean) => Promise<void>;
+      setMainWindowInteractiveRegions?: (
+        source: string,
+        regions: Array<{ x: number; y: number; width: number; height: number }>
+      ) => Promise<{ success: boolean }>;
       refreshMainWindowInteractivity: () => Promise<void>;
 
       // App management
