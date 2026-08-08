@@ -436,6 +436,71 @@ describe("AudioManager recorder lifecycle", () => {
     expect(manager.getState().longSession.active).toBe(false);
   });
 
+  it("retries a failed long-session chunk and preserves its text", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 42;
+    manager.longSession = state;
+    const attempts = new Map<number, number>();
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => {
+      const attempt = (attempts.get(metadata.chunkIndex) || 0) + 1;
+      attempts.set(metadata.chunkIndex, attempt);
+      if (metadata.chunkIndex === 1 && attempt === 1) {
+        throw new Error("temporary provider failure");
+      }
+      return {
+        result: { success: true, text: `chunk-${metadata.chunkIndex}`, source: "openai" },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      } as never;
+    });
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    await expect(manager.finalizeLongSessionResult(120)).resolves.toMatchObject({
+      success: true,
+      text: "chunk-0 chunk-1",
+      longSession: { chunks: 2, failedChunks: 0 },
+    });
+    expect(attempts.get(1)).toBe(2);
+  });
+
+  it("rejects a partial long-session transcript when a chunk keeps failing", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 43;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => {
+      if (metadata.chunkIndex === 1) {
+        throw new Error("persistent provider failure");
+      }
+      return {
+        result: { success: true, text: "first chunk", source: "openai" },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      } as never;
+    });
+    const processTranscription = vi.spyOn(manager, "processTranscription");
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    await expect(manager.finalizeLongSessionResult(120)).rejects.toThrow(
+      "could not be transcribed completely"
+    );
+    expect(processTranscription).not.toHaveBeenCalled();
+  });
+
   it("keeps the normal recorder path if standalone segment recording is unavailable", async () => {
     const manager = new AudioManager();
     manager.longSessionPromotionMs = 60_000;

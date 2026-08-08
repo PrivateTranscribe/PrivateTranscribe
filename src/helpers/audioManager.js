@@ -35,6 +35,7 @@ const MIN_DICTATION_DURATION_MS = 500;
 const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
 const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
 const LONG_SESSION_SEGMENT_MS = 60 * 1000;
+const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 2;
 
 const isTranscriptionTextDebugEnabled = () => {
   try {
@@ -672,6 +673,7 @@ class AudioManager {
       blob,
       durationMs,
       sessionId: state.sessionId,
+      attempts: 0,
     };
 
     state.queue.push(item);
@@ -837,6 +839,7 @@ class AudioManager {
         }
 
         try {
+          item.attempts += 1;
           const result = await this.runTranscription(item.blob, {
             durationSeconds: item.durationMs / 1000,
             source: "long-session",
@@ -855,6 +858,22 @@ class AudioManager {
           if (state.cancelled || error?.name === "AbortError") {
             return;
           }
+
+          if (item.attempts < LONG_SESSION_CHUNK_MAX_ATTEMPTS) {
+            state.queue.unshift(item);
+            logger.warn(
+              "Retrying failed long-session chunk",
+              {
+                chunkIndex: item.index,
+                attempt: item.attempts + 1,
+                maxAttempts: LONG_SESSION_CHUNK_MAX_ATTEMPTS,
+                error: error?.message,
+              },
+              "transcription"
+            );
+            continue;
+          }
+
           state.errors.push({
             index: item.index,
             message: error?.message || "Chunk transcription failed",
@@ -898,6 +917,12 @@ class AudioManager {
     await this.waitForLongSessionQueue();
 
     const state = this.longSession;
+    if (state.errors.length > 0) {
+      throw new Error(
+        `Long recording could not be transcribed completely after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
+      );
+    }
+
     const rawText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, text]) => text)
@@ -906,11 +931,6 @@ class AudioManager {
       .trim();
 
     if (!rawText) {
-      if (state.errors.length > 0) {
-        throw new Error(
-          `Long recording transcription failed before producing text: ${state.errors[0].message}`
-        );
-      }
       throw new Error("No text transcribed - audio may be silent or unavailable");
     }
 

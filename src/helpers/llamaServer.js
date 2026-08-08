@@ -16,12 +16,21 @@ const STARTUP_POLL_INTERVAL_MS = 500;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
 
+const extractCompletionText = (response) => {
+  const choice = response?.choices?.[0];
+  if (choice?.finish_reason === "length") {
+    throw new Error("Local reasoning reached its output or context limit before finishing");
+  }
+  return (choice?.message?.content || "").trim();
+};
+
 class LlamaServerManager {
   constructor() {
     this.process = null;
     this.port = null;
     this.ready = false;
     this.modelPath = null;
+    this.contextSize = null;
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.healthCheckFailures = 0;
@@ -99,8 +108,18 @@ class LlamaServerManager {
   async start(modelPath, options = {}) {
     if (this.startupPromise) return this.startupPromise;
 
-    // Already running with same model
-    if (this.ready && this.modelPath === modelPath) return;
+    const requestedContextSize = options.contextSize || 4096;
+
+    // Reuse only when the live server can satisfy the requested context. A
+    // server first started with the old 4K default otherwise keeps truncating
+    // later, longer dictations even when callers request a larger window.
+    if (
+      this.ready &&
+      this.modelPath === modelPath &&
+      Number(this.contextSize || 0) >= requestedContextSize
+    ) {
+      return;
+    }
 
     // Stop existing server if running
     if (this.process) {
@@ -122,6 +141,7 @@ class LlamaServerManager {
 
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;
+    this.contextSize = options.contextSize || 4096;
 
     const args = [
       "--model",
@@ -131,7 +151,7 @@ class LlamaServerManager {
       "--port",
       String(this.port),
       "--ctx-size",
-      String(options.contextSize || 4096),
+      String(this.contextSize),
       "--threads",
       String(options.threads || 4),
     ];
@@ -375,10 +395,10 @@ class LlamaServerManager {
             try {
               const response = JSON.parse(data);
               // Extract text from OpenAI-compatible response
-              const text = response.choices?.[0]?.message?.content || "";
+              const text = extractCompletionText(response);
               this.lastUsedTime = Date.now();
               this._scheduleIdleCheck();
-              resolve(text.trim());
+              resolve(text);
             } catch (e) {
               reject(new Error(`Failed to parse llama-server response: ${e.message}`));
             }
@@ -443,6 +463,7 @@ class LlamaServerManager {
     this.ready = false;
     this.port = null;
     this.modelPath = null;
+    this.contextSize = null;
   }
 
   getStatus() {
@@ -451,6 +472,7 @@ class LlamaServerManager {
       running: this.ready && this.process !== null,
       port: this.port,
       modelPath: this.modelPath,
+      contextSize: this.contextSize,
       modelName: this.modelPath ? path.basename(this.modelPath, ".gguf") : null,
       idleTimeoutMinutes: this.idleTimeoutMs > 0 ? this.idleTimeoutMs / 60000 : 0,
       lastUsedTime: this.lastUsedTime,
@@ -459,3 +481,4 @@ class LlamaServerManager {
 }
 
 module.exports = LlamaServerManager;
+module.exports.extractCompletionText = extractCompletionText;
