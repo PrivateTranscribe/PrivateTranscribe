@@ -1,4 +1,7 @@
 const { autoUpdater } = require("electron-updater");
+const { app } = require("electron");
+const { existsSync } = require("fs");
+const { resolveUpdateRuntime } = require("./helpers/updateRuntime");
 
 class UpdateManager {
   constructor() {
@@ -11,6 +14,7 @@ class UpdateManager {
     this.isDownloading = false;
     this.eventListeners = [];
     this.beforeQuitAndInstall = null;
+    this.updateRuntime = null;
 
     this.setupAutoUpdater();
   }
@@ -25,9 +29,15 @@ class UpdateManager {
   }
 
   setupAutoUpdater() {
-    // Only configure auto-updater in production
-    if (process.env.NODE_ENV === "development") {
-      // Auto-updater disabled in development mode
+    this.updateRuntime = resolveUpdateRuntime({
+      isDevelopment: process.env.NODE_ENV === "development",
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      configExists: existsSync,
+    });
+
+    if (!this.updateRuntime.automaticUpdatesAvailable) {
+      console.warn(`Auto-updater unavailable: ${this.updateRuntime.message}`);
       return;
     }
 
@@ -130,10 +140,10 @@ class UpdateManager {
 
   async checkForUpdates() {
     try {
-      if (process.env.NODE_ENV === "development") {
+      if (!this.updateRuntime.automaticUpdatesAvailable) {
         return {
           updateAvailable: false,
-          message: "Update checks are disabled in development mode",
+          ...this.updateRuntime,
         };
       }
 
@@ -168,10 +178,10 @@ class UpdateManager {
 
   async downloadUpdate() {
     try {
-      if (process.env.NODE_ENV === "development") {
+      if (!this.updateRuntime.automaticUpdatesAvailable) {
         return {
           success: false,
-          message: "Update downloads are disabled in development mode",
+          ...this.updateRuntime,
         };
       }
 
@@ -204,10 +214,10 @@ class UpdateManager {
 
   async installUpdate() {
     try {
-      if (process.env.NODE_ENV === "development") {
+      if (!this.updateRuntime.automaticUpdatesAvailable) {
         return {
           success: false,
-          message: "Update installation is disabled in development mode",
+          ...this.updateRuntime,
         };
       }
 
@@ -268,7 +278,7 @@ class UpdateManager {
       return {
         updateAvailable: this.updateAvailable,
         updateDownloaded: this.updateDownloaded,
-        isDevelopment: process.env.NODE_ENV === "development",
+        ...this.updateRuntime,
       };
     } catch (error) {
       console.error("❌ Error getting update status:", error);
@@ -286,7 +296,7 @@ class UpdateManager {
   }
 
   checkForUpdatesOnStartup() {
-    if (process.env.NODE_ENV !== "development") {
+    if (this.updateRuntime.automaticUpdatesAvailable) {
       setTimeout(() => {
         console.log("🔄 Checking for updates on startup...");
         autoUpdater.checkForUpdates().catch((err) => {

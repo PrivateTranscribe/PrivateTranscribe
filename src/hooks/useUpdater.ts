@@ -10,6 +10,10 @@ interface UpdateStatus {
   updateAvailable: boolean;
   updateDownloaded: boolean;
   isDevelopment: boolean;
+  automaticUpdatesAvailable?: boolean;
+  manualInstallRequired?: boolean;
+  manualInstallUrl?: string;
+  message?: string;
 }
 
 interface UpdateInfo {

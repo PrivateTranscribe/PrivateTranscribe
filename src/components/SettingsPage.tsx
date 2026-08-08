@@ -1923,9 +1923,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       updateStatus.isDevelopment
                         ? "Running in development mode"
-                        : isUpdateAvailable
-                          ? "A newer version is available"
-                          : "You're on the latest version"
+                        : updateStatus.manualInstallRequired
+                          ? "This unpacked copy needs the official installer"
+                          : isUpdateAvailable
+                            ? "A newer version is available"
+                            : "You're on the latest version"
                     }
                   >
                     <div className="flex items-center gap-2.5">
@@ -1934,6 +1936,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       </span>
                       {updateStatus.isDevelopment ? (
                         <Badge variant="warning">Dev</Badge>
+                      ) : updateStatus.manualInstallRequired ? (
+                        <Badge variant="warning">Installer</Badge>
                       ) : isUpdateAvailable ? (
                         <Badge variant="success">Update</Badge>
                       ) : (
@@ -1945,39 +1949,56 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
                 <SettingsPanelRow>
                   <div className="space-y-2.5">
-                    <Button
-                      onClick={async () => {
-                        try {
-                          const result = await checkForUpdates();
-                          if (result?.updateAvailable) {
+                    {updateStatus.manualInstallRequired ? (
+                      <Button
+                        onClick={() =>
+                          window.electronAPI.openExternal(
+                            updateStatus.manualInstallUrl ||
+                              "https://privatetranscribe.com/download/windows"
+                          )
+                        }
+                        variant="success"
+                        className="w-full"
+                        size="sm"
+                      >
+                        <Download size={13} className="mr-1.5" />
+                        Download Official Installer
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={async () => {
+                          try {
+                            const result = await checkForUpdates();
+                            if (result?.updateAvailable) {
+                              showAlertDialog({
+                                title: "Update Available",
+                                description: `Update available - v${result.version || "new version"}`,
+                              });
+                            } else {
+                              showAlertDialog({
+                                title: "No Updates",
+                                description: result?.message || "No updates available",
+                              });
+                            }
+                          } catch (error: any) {
                             showAlertDialog({
-                              title: "Update Available",
-                              description: `Update available - v${result.version || "new version"}`,
-                            });
-                          } else {
-                            showAlertDialog({
-                              title: "No Updates",
-                              description: result?.message || "No updates available",
+                              title: "Update Check Failed",
+                              description: `Error checking for updates: ${error.message}`,
                             });
                           }
-                        } catch (error: any) {
-                          showAlertDialog({
-                            title: "Update Check Failed",
-                            description: `Error checking for updates: ${error.message}`,
-                          });
-                        }
-                      }}
-                      disabled={checkingForUpdates || updateStatus.isDevelopment}
-                      variant="outline"
-                      className="w-full"
-                      size="sm"
-                    >
-                      <RefreshCw
-                        size={13}
-                        className={`mr-1.5 ${checkingForUpdates ? "animate-spin" : ""}`}
-                      />
-                      {checkingForUpdates ? "Checking..." : "Check for Updates"}
-                    </Button>
+                        }}
+                        disabled={checkingForUpdates || updateStatus.isDevelopment}
+                        variant="outline"
+                        className="w-full"
+                        size="sm"
+                      >
+                        <RefreshCw
+                          size={13}
+                          className={`mr-1.5 ${checkingForUpdates ? "animate-spin" : ""}`}
+                        />
+                        {checkingForUpdates ? "Checking..." : "Check for Updates"}
+                      </Button>
+                    )}
 
                     {isUpdateAvailable && !updateStatus.updateDownloaded && (
                       <div className="space-y-2">
