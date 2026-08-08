@@ -32,12 +32,11 @@ export const useAudioRecording = (toast, options = {}) => {
 
   useEffect(() => {
     const manager = new AudioManager();
-    // Wire Pro entitlement check so correction hints are gated
-    manager._checkProEntitlement = () => {
+    // Wire tester access so unfinished workflow features stay unavailable to regular Pro users.
+    manager._checkBetaFeatureAccess = (featureId) => {
       try {
-        // Dynamic import avoids circular dependency with TS hooks
-        const { getEffectiveEntitlement } = require("../hooks/useProStatus");
-        return getEffectiveEntitlement() === "pro";
+        const { isFeatureUnlocked } = require("../hooks/useProStatus");
+        return isFeatureUnlocked(featureId);
       } catch {
         return false;
       }
@@ -59,6 +58,15 @@ export const useAudioRecording = (toast, options = {}) => {
       try {
         const { getEffectiveEntitlement } = require("../hooks/useProStatus");
         return getEffectiveEntitlement() === "pro";
+      } catch {
+        return false;
+      }
+    };
+
+    const isBetaFeatureUnlocked = (featureId) => {
+      try {
+        const { isFeatureUnlocked } = require("../hooks/useProStatus");
+        return isFeatureUnlocked(featureId);
       } catch {
         return false;
       }
@@ -234,7 +242,9 @@ export const useAudioRecording = (toast, options = {}) => {
               dictionaryWords,
               parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"))
             );
-            const corrections = await window.electronAPI?.getCorrectionMemory?.(200);
+            const corrections = isBetaFeatureUnlocked("correction-memory")
+              ? await window.electronAPI?.getCorrectionMemory?.(200)
+              : [];
             text = snapTranscript({ transcript: rawText, dictionaryWords: snapWords, corrections });
           }
         } catch {
@@ -250,7 +260,7 @@ export const useAudioRecording = (toast, options = {}) => {
           toastRef.current?.({
             title: "Starter limit reached",
             description:
-              "This transcription went through. Starter resets tomorrow, or join Pro Early Access for unlimited words.",
+              "This transcription went through. Starter resets tomorrow, or buy Pro for unlimited words.",
             variant: "default",
             duration: 7000,
           });
@@ -267,7 +277,11 @@ export const useAudioRecording = (toast, options = {}) => {
         let actionHandled = false;
         try {
           const aeEnabled = localStorage.getItem("actionEngineEnabled") !== "false";
-          if (aeEnabled && window.electronAPI?.actionEngineMatch) {
+          if (
+            aeEnabled &&
+            isBetaFeatureUnlocked("action-engine") &&
+            window.electronAPI?.actionEngineMatch
+          ) {
             const matchResult = await window.electronAPI.actionEngineMatch(text);
             if (!canCommit()) {
               return;
@@ -378,6 +392,7 @@ export const useAudioRecording = (toast, options = {}) => {
             (localStorage.getItem("enablePhraseCorrectionLearning") || "false") === "true";
           if (
             enableLearning &&
+            isBetaFeatureUnlocked("correction-memory") &&
             window.electronAPI?.readClipboard &&
             window.electronAPI?.confirmCorrection
           ) {

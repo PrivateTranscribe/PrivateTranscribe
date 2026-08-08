@@ -64,7 +64,7 @@ export default function ProSettingsSection() {
         setKeyInput("");
         toast({
           title: "License activated!",
-          description: "PrivateTranscribe Pro features are now unlocked.",
+          description: "Unlimited private dictation is now unlocked.",
           variant: "success",
           duration: 4000,
         });
@@ -146,7 +146,12 @@ export default function ProSettingsSection() {
               {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              One-time license — validated automatically when you're online.
+              Unlimited dictation unlocked. One-time license, validated automatically when online.
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {status.betaAccess
+                ? "Approved tester access is active for unfinished beta workflows."
+                : "Unfinished beta workflows remain locked unless tester access is approved."}
             </p>
             <div className="flex items-center gap-2 mt-3">
               <Button
@@ -180,7 +185,7 @@ export default function ProSettingsSection() {
                 Activate PrivateTranscribe Pro
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Enter your license key to unlock all Pro features.
+                Enter your license key to unlock unlimited private dictation.
               </p>
             </div>
 
@@ -218,8 +223,8 @@ export default function ProSettingsSection() {
             <div>
               <h3 className="text-base font-semibold text-foreground">Get PrivateTranscribe Pro</h3>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                One-time purchase. Unlock all Pro features permanently - no subscription, no
-                recurring fees.
+                One-time purchase. Remove the Starter daily word limit permanently - no subscription
+                or recurring fees.
               </p>
             </div>
             <Button
@@ -258,11 +263,11 @@ export default function ProSettingsSection() {
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">What's included</h3>
             <Badge variant="warning" className="text-[10px]">
-              Beta
+              Tester beta
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Pro features are available for founding testers and still being refined.
+            These unfinished workflows are available only to approved testers while we refine them.
           </p>
         </div>
 
@@ -310,8 +315,8 @@ export default function ProSettingsSection() {
               One-time purchase - no subscription
             </p>
             <p className="text-xs text-muted-foreground">
-              PrivateTranscribe Pro is a single payment that unlocks all current Pro features. No
-              recurring fees, no expiry.
+              PrivateTranscribe Pro is a single payment that removes the daily word limit. Beta
+              workflow access is separate until those features are stable.
             </p>
           </div>
           <Button

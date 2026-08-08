@@ -18,6 +18,11 @@ const STORAGE_PRO_STATUS = "privatetranscribe_pro_status";
 const _SEAL_KEY = "privatetranscribe_seal";
 const _EPOCH_KEY = "privatetranscribe_ts";
 
+// Beta access is intentionally session-only. It is populated only by a successful
+// response from the licensing server and is never restored from mutable localStorage.
+// Approved testers therefore need one online validation after each app restart.
+let _serverVerifiedBetaAccess = false;
+
 /**
  * Simple hash for integrity checks (not crypto-grade, just tamper detection)
  */
@@ -47,6 +52,7 @@ function _verifySeal(): boolean {
 
 /** Remove all locally cached license/entitlement data. */
 function _clearLicenseData(): void {
+  _serverVerifiedBetaAccess = false;
   localStorage.removeItem(STORAGE_LICENSE_KEY);
   localStorage.removeItem(STORAGE_ENTITLEMENT);
   localStorage.removeItem(STORAGE_PRO_STATUS);
@@ -89,6 +95,7 @@ function getDeviceName(): string {
 
 export interface ProStatus {
   isPro: boolean;
+  betaAccess: boolean;
   licenseKey: string | null;
   expiresAt: string | null;
   offlineGrace: boolean;
@@ -126,6 +133,7 @@ export function getProStatus(): ProStatus {
   if (!key || !entitlementRaw) {
     return {
       isPro: false,
+      betaAccess: false,
       licenseKey: null,
       expiresAt: null,
       offlineGrace: false,
@@ -138,6 +146,7 @@ export function getProStatus(): ProStatus {
   if (!_verifySeal()) {
     return {
       isPro: false,
+      betaAccess: false,
       licenseKey: key,
       expiresAt: null,
       offlineGrace: false,
@@ -158,6 +167,7 @@ export function getProStatus(): ProStatus {
     // (see refreshProStatus), never from local time.
     return {
       isPro: true,
+      betaAccess: _serverVerifiedBetaAccess,
       licenseKey: key,
       expiresAt,
       offlineGrace: false,
@@ -167,6 +177,7 @@ export function getProStatus(): ProStatus {
   } catch {
     return {
       isPro: false,
+      betaAccess: false,
       licenseKey: key,
       expiresAt: null,
       offlineGrace: false,
@@ -221,7 +232,11 @@ export async function activateLicense(key: string): Promise<{
 
     // Cache locally
     const normalizedKey = key.trim().toUpperCase();
-    const entitlementStr = JSON.stringify(data.entitlement);
+    _serverVerifiedBetaAccess = data.entitlement?.betaAccess === true;
+    const entitlementStr = JSON.stringify({
+      token: data.entitlement?.token,
+      expiresAt: data.entitlement?.expiresAt,
+    });
     localStorage.setItem(STORAGE_LICENSE_KEY, normalizedKey);
     localStorage.setItem(STORAGE_ENTITLEMENT, entitlementStr);
     localStorage.setItem(STORAGE_PRO_STATUS, "active");
@@ -296,6 +311,7 @@ export async function refreshProStatus(): Promise<ProStatus> {
     _clearLicenseData();
     return {
       isPro: false,
+      betaAccess: false,
       licenseKey: key,
       expiresAt: null,
       offlineGrace: false,
@@ -314,6 +330,7 @@ export async function refreshProStatus(): Promise<ProStatus> {
 
   return {
     isPro: false,
+    betaAccess: false,
     licenseKey: key,
     expiresAt: null,
     offlineGrace: false,

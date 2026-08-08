@@ -79,5 +79,5 @@ export function recordStarterWords(text, storage = globalThis.localStorage, date
 
 export function buildStarterLimitMessage(usage) {
   const limit = usage?.limit || STARTER_DAILY_WORD_LIMIT;
-  return `Starter includes ${limit.toLocaleString()} words per day. It resets tomorrow. Join Pro Early Access for unlimited private dictation.`;
+  return `Starter includes ${limit.toLocaleString()} words per day. It resets tomorrow. Buy Pro for unlimited private dictation.`;
 }

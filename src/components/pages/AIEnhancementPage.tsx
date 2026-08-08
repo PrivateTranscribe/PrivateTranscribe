@@ -61,7 +61,7 @@ export default function AIEnhancementPage() {
           </Badge>
           {!isUnlocked && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
-              <Lock size={10} /> Pro
+              <Lock size={10} /> Tester
             </span>
           )}
         </div>
@@ -79,8 +79,8 @@ export default function AIEnhancementPage() {
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             AI Enhancement silently cleans up raw dictation - fixing grammar, cutting filler words,
-            and reformatting text before it reaches the clipboard. You speak; it polishes. Requires
-            PrivateTranscribe Pro.
+            and reformatting text before it reaches the clipboard. This beta requires approved
+            tester access while it is still being built.
           </p>
         </div>
       )}

@@ -57,14 +57,14 @@ const navGroups: NavGroup[] = [
         id: "ai-enhancement",
         label: "AI Enhancement",
         icon: Brain,
-        badge: "Pro",
+        badge: "Beta",
         badgeVariant: "pro",
       },
       {
         id: "voice-assistant",
         label: "Voice Assistant",
         icon: MessageSquare,
-        badge: "Pro",
+        badge: "Beta",
         badgeVariant: "pro",
       },
     ],
@@ -72,7 +72,13 @@ const navGroups: NavGroup[] = [
   {
     label: "ADVANCED",
     items: [
-      { id: "action-engine", label: "Action Engine", icon: Zap, badge: "Pro", badgeVariant: "pro" },
+      {
+        id: "action-engine",
+        label: "Action Engine",
+        icon: Zap,
+        badge: "Beta",
+        badgeVariant: "pro",
+      },
     ],
   },
 ];
