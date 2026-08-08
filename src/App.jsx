@@ -28,22 +28,6 @@ const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
 
-const formatCompactDuration = (seconds = 0) => {
-  const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const remainingSeconds = safeSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(
-      2,
-      "0"
-    )}`;
-  }
-
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-};
-
 const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
   return (
     <div className="flex items-center justify-center gap-[3px]">
@@ -312,7 +296,6 @@ export default function App() {
   const {
     isRecording,
     isProcessing,
-    longSession,
     transcript,
     toggleListening,
     cancelRecording,
@@ -615,22 +598,6 @@ export default function App() {
 
   const micState = getMicState();
 
-  const longSessionStatus = useMemo(() => {
-    if (!longSession?.active) {
-      return null;
-    }
-
-    const recorded = formatCompactDuration(longSession.recordedSeconds);
-    const transcribed = formatCompactDuration(longSession.transcribedSeconds);
-    const pendingChunks = longSession.pendingChunks || 0;
-
-    if (pendingChunks > 0) {
-      return `Long recording · ${transcribed}/${recorded} · ${pendingChunks} pending`;
-    }
-
-    return `Long recording · ${transcribed}/${recorded}`;
-  }, [longSession]);
-
   const getMicButtonStyles = () => {
     const base = {
       borderRadius: 999,
@@ -889,16 +856,6 @@ export default function App() {
               )}
             </button>
           </div>
-
-          {isRecording && longSessionStatus && (
-            <div
-              className="px-2 py-1 rounded-md text-[10px] font-medium bg-[#101310]/92 text-white/70 border border-[#70FFBA]/16 whitespace-nowrap shadow-[0_6px_18px_rgba(0,0,0,0.26)]"
-              style={{ pointerEvents: "none", flexShrink: 0 }}
-              title="PrivateTranscribe is transcribing long-recording chunks while recording continues."
-            >
-              {longSessionStatus}
-            </div>
-          )}
 
           {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (
