@@ -61,7 +61,9 @@ function assertSecureDownloadUrl(urlString) {
   if (parsed.protocol === "http:" && isLocalHost(parsed.hostname)) return parsed;
 
   throw Object.assign(
-    new Error(`Refusing insecure download URL (${parsed.protocol}//${parsed.host}): HTTPS required`),
+    new Error(
+      `Refusing insecure download URL (${parsed.protocol}//${parsed.host}): HTTPS required`
+    ),
     { isHttpError: true }
   );
 }

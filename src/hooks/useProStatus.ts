@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { getProStatus, _verifyToken } from "../services/LicensingService";
 
-// Features that require a Pro entitlement (controls lock gating)
-const PRO_FEATURES = new Set([
+// Unfinished workflow features that require approved tester access.
+const BETA_FEATURES = new Set([
   "correction-memory",
   "smart-context",
   "action-engine",
@@ -10,8 +10,8 @@ const PRO_FEATURES = new Set([
   "voice-assistant",
 ]);
 
-// Subset of PRO_FEATURES that also carry a visible badge in the sidebar/page headers
-const SIDEBAR_PRO_ITEMS = new Set([
+// Subset of beta features that carry a visible badge in sidebar/page headers.
+const SIDEBAR_BETA_ITEMS = new Set([
   "correction-memory",
   "ai-enhancement",
   "voice-assistant",
@@ -54,7 +54,7 @@ function isProEnforcementEnabled(): boolean {
 // Lets Kristian preview Free vs Pro UI state without changing the real license.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ProPreviewMode = "free" | "pro" | null;
+export type ProPreviewMode = "free" | "pro" | "tester" | null;
 
 /** Read the current preview override from localStorage. */
 export function getProPreview(): ProPreviewMode {
@@ -62,7 +62,7 @@ export function getProPreview(): ProPreviewMode {
 
   try {
     const val = localStorage.getItem(PREVIEW_KEY);
-    if (val === "free" || val === "pro") return val;
+    if (val === "free" || val === "pro" || val === "tester") return val;
   } catch {
     // ignore
   }
@@ -120,7 +120,7 @@ export function useProPreview(): [ProPreviewMode, (mode: ProPreviewMode) => void
 export function getEffectiveEntitlement(): "free" | "pro" {
   // 1. Internal override (Pro Preview toggle)
   const preview = getProPreview();
-  if (preview === "pro") return "pro";
+  if (preview === "pro" || preview === "tester") return "pro";
   if (preview === "free") return "free";
 
   // 2. Dev mode - contributors get Pro access without a license
@@ -134,20 +134,34 @@ export function getEffectiveEntitlement(): "free" | "pro" {
   return "free";
 }
 
-/**
- * Whether to show a "Pro" badge on a sidebar/page-header item.
- * Badges are hidden once the effective entitlement is Pro (visual clutter).
- */
-export function shouldShowProBadge(featureId: string): boolean {
-  if (!SIDEBAR_PRO_ITEMS.has(featureId)) return false;
-  return getEffectiveEntitlement() === "free";
+/** Whether the current entitlement may use unfinished tester-only workflows. */
+export function hasTesterAccess(): boolean {
+  const preview = getProPreview();
+  if (preview === "tester") return true;
+  if (preview === "free" || preview === "pro") return false;
+
+  const status = getProStatus();
+  if (status.isPro && status.betaAccess === true && _verifyToken(status._t)) return true;
+
+  // Development gets stable Pro behavior by default, but unfinished features
+  // require either a real tester entitlement or the explicit Tester preview.
+  return false;
 }
 
 /**
- * Whether a Pro-gated feature is accessible.
- * Non-Pro features always return true.  Pro features gate on effective entitlement.
+ * Whether to show a beta badge on a sidebar/page-header item.
+ * Badges are hidden once approved tester access is active.
+ */
+export function shouldShowProBadge(featureId: string): boolean {
+  if (!SIDEBAR_BETA_ITEMS.has(featureId)) return false;
+  return !hasTesterAccess();
+}
+
+/**
+ * Whether a tester-gated feature is accessible.
+ * Stable features always return true. Beta features require approved tester access.
  */
 export function isFeatureUnlocked(featureId: string): boolean {
-  if (!PRO_FEATURES.has(featureId)) return true;
-  return getEffectiveEntitlement() === "pro";
+  if (!BETA_FEATURES.has(featureId)) return true;
+  return hasTesterAccess();
 }

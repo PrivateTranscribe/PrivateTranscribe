@@ -2,6 +2,18 @@ const modelManager = require("../helpers/modelManagerBridge").default;
 const debugLogger = require("../helpers/debugLogger");
 const { getSystemPrompt } = require("../helpers/prompts");
 
+const LOCAL_REASONING_MIN_CONTEXT_TOKENS = 8192;
+const LOCAL_REASONING_MAX_CONTEXT_TOKENS = 32768;
+const LOCAL_REASONING_MIN_OUTPUT_TOKENS = 512;
+const LOCAL_REASONING_MAX_OUTPUT_TOKENS = 4096;
+const LOCAL_REASONING_CONTEXT_HEADROOM_TOKENS = 512;
+const CONSERVATIVE_CHARS_PER_TOKEN = 3;
+
+const estimateTokens = (textLength) =>
+  Math.max(0, Math.ceil(Number(textLength || 0) / CONSERVATIVE_CHARS_PER_TOKEN));
+
+const roundUpToTokenBlock = (tokens, blockSize = 1024) => Math.ceil(tokens / blockSize) * blockSize;
+
 class LocalReasoningService {
   constructor() {
     this.isProcessing = false;
@@ -41,20 +53,25 @@ class LocalReasoningService {
         hasAgentName: !!agentName,
       });
 
+      const systemPrompt = getSystemPrompt(
+        agentName,
+        config.customDictionary,
+        config.dictationMode,
+        config.preferredLanguage
+      );
+      const maxTokens = config.maxTokens || this.calculateMaxTokens(text.length);
+      const contextSize =
+        config.contextSize ||
+        this.calculateContextSize(text.length, systemPrompt.length, maxTokens);
       const inferenceConfig = {
-        maxTokens: config.maxTokens || this.calculateMaxTokens(text.length),
+        maxTokens,
         temperature: config.temperature || 0.7,
         topK: config.topK || 40,
         topP: config.topP || 0.9,
         repeatPenalty: config.repeatPenalty || 1.1,
-        contextSize: config.contextSize || 4096,
+        contextSize,
         threads: config.threads || 4,
-        systemPrompt: getSystemPrompt(
-          agentName,
-          config.customDictionary,
-          config.dictationMode,
-          config.preferredLanguage
-        ),
+        systemPrompt,
       };
 
       debugLogger.logReasoning("LOCAL_BRIDGE_INFERENCE", {
@@ -91,8 +108,27 @@ class LocalReasoningService {
     }
   }
 
-  calculateMaxTokens(textLength, minTokens = 100, maxTokens = 2048, multiplier = 2) {
-    return Math.max(minTokens, Math.min(textLength * multiplier, maxTokens));
+  calculateMaxTokens(
+    textLength,
+    minTokens = LOCAL_REASONING_MIN_OUTPUT_TOKENS,
+    maxTokens = LOCAL_REASONING_MAX_OUTPUT_TOKENS
+  ) {
+    // Cleanup normally preserves roughly the same amount of text. Reserve a
+    // modest buffer for punctuation/formatting instead of treating characters
+    // as tokens, which made multi-minute dictations hit the old 2K cap.
+    return Math.max(minTokens, Math.min(estimateTokens(textLength) + 512, maxTokens));
+  }
+
+  calculateContextSize(textLength, systemPromptLength, maxOutputTokens) {
+    const requiredTokens =
+      estimateTokens(textLength + systemPromptLength) +
+      maxOutputTokens +
+      LOCAL_REASONING_CONTEXT_HEADROOM_TOKENS;
+
+    return Math.max(
+      LOCAL_REASONING_MIN_CONTEXT_TOKENS,
+      Math.min(roundUpToTokenBlock(requiredTokens), LOCAL_REASONING_MAX_CONTEXT_TOKENS)
+    );
   }
 }
 

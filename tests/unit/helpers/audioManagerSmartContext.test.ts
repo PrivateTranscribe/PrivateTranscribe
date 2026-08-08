@@ -158,6 +158,18 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(options.translate).toBeUndefined();
   });
 
+  it("marks live long-session chunks for conservative Whisper decoding", async () => {
+    const manager = new AudioManager();
+
+    await manager.processWithLocalWhisper(makeBlob(), "large", {
+      source: "long-session",
+      skipPostProcessing: true,
+    });
+
+    const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
+    expect(options.longSessionChunk).toBe(true);
+  });
+
   it("starts correction hints, smart context, and audio buffer reads in parallel", async () => {
     const correctionMemory = deferred<any[]>();
     const smartContext = deferred<any>();
@@ -168,7 +180,7 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     (globalThis as any).electronAPI = { getCorrectionMemory };
 
     const manager: any = new AudioManager();
-    manager._checkProEntitlement = () => true;
+    manager._checkBetaFeatureAccess = (featureId: string) => featureId === "correction-memory";
     vi.spyOn(manager, "processTranscription").mockResolvedValue("hello world");
 
     const audioBlob = {

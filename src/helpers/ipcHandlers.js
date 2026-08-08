@@ -429,14 +429,21 @@ class IPCHandlers {
       return { success: true };
     });
 
-    ipcMain.handle("open-control-panel", async () => {
-      await this.windowManager.createControlPanelWindow();
+    ipcMain.handle("open-control-panel", async (_event, destination) => {
+      await this.windowManager.openControlPanel(destination);
       return { success: true };
     });
 
     ipcMain.handle("set-main-window-interactivity", (event, shouldCapture) => {
       this.windowManager.setMainWindowInteractivity(Boolean(shouldCapture));
       return { success: true };
+    });
+
+    ipcMain.handle("set-main-window-interactive-regions", (event, source, regions) => {
+      if (event.sender !== this.windowManager.mainWindow?.webContents) {
+        return { success: false };
+      }
+      return this.windowManager.setMainWindowInteractiveRegions(source, regions);
     });
 
     ipcMain.handle("refresh-main-window-interactivity", () => {

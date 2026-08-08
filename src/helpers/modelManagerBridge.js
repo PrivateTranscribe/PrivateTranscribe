@@ -346,8 +346,15 @@ class ModelManager {
       );
     }
 
-    // Start/restart server if needed or if model changed
-    if (!this.serverManager.ready || this.currentServerModelId !== modelId) {
+    const requestedContextSize = options.contextSize || modelInfo.model.contextLength || 4096;
+    const needsServerStart =
+      !this.serverManager.ready ||
+      this.currentServerModelId !== modelId ||
+      Number(this.serverManager.contextSize || 0) < requestedContextSize;
+
+    // Start/restart server if needed, if the model changed, or if the live
+    // server's context is too small for this transcription.
+    if (needsServerStart) {
       debugLogger.logReasoning("INFERENCE_STARTING_SERVER", {
         currentModel: this.currentServerModelId,
         requestedModel: modelId,
@@ -355,7 +362,7 @@ class ModelManager {
       });
 
       await this.serverManager.start(modelPath, {
-        contextSize: options.contextSize || modelInfo.model.contextLength || 4096,
+        contextSize: requestedContextSize,
         threads: options.threads || 4,
       });
       this.currentServerModelId = modelId;

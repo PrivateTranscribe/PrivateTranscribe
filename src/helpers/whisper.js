@@ -359,6 +359,8 @@ class WhisperManager {
         outputFormat: options.outputFormat || "plain",
         diarize: options.diarize === true,
         vad: options.vad === true,
+        longSessionChunk: options.longSessionChunk === true,
+        trimTrailingSilence: options.trimTrailingSilence === true,
         onProgress: options.onProgress,
       }
     );
@@ -585,8 +587,23 @@ class WhisperManager {
 
     let cleaned = text;
 
+    // A long run of the same punctuated word at the very end is a common
+    // Whisper-on-silence artifact (for example, "Yeah. Yeah. Yeah..."). Drop
+    // the whole tail rather than preserving one invented word.
+    cleaned = cleaned
+      .replace(/(?:^|\s)([\p{L}\p{N}'’]+)(?:[.!?,;:…]+)?(?:\s+\1(?:[.!?,;:…]+)?){4,}\s*$/iu, "")
+      .trim();
+
     // 1) Collapse long repeated phrases (3–30 word n-grams repeated 3+ times)
     //    Uses a greedy approach: try longest n-gram first so we catch the biggest loops.
+    // Whisper can also emit a whole sentence or passage twice around long-form
+    // decode boundaries. Collapse exact adjacent duplicates only when the phrase
+    // is long enough that an intentional repeat is unlikely.
+    for (let n = 50; n >= 8; n--) {
+      const duplicatePassagePattern = new RegExp(`((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1)+`, "gi");
+      cleaned = cleaned.replace(duplicatePassagePattern, "$1");
+    }
+
     for (let n = 30; n >= 3; n--) {
       // Build a regex that matches an n-word phrase repeated 3+ times in a row.
       // The phrase is captured, then required to repeat (with whitespace) 2+ more times.

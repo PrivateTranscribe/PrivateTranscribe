@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import "./index.css";
 import {
   Check,
@@ -27,22 +27,6 @@ const OVERLAY_HIDE_TOAST_MS = 1800;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
-
-const formatCompactDuration = (seconds = 0) => {
-  const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const remainingSeconds = safeSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(
-      2,
-      "0"
-    )}`;
-  }
-
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-};
 
 const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
   return (
@@ -218,7 +202,7 @@ export default function App() {
 
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
-  const { toast, toastCount } = useToast();
+  const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
 
@@ -259,11 +243,11 @@ export default function App() {
     (shouldReleaseInteractivity = true) => {
       setIsCommandMenuOpen(false);
       setActiveSubmenu("root");
-      if (shouldReleaseInteractivity && !isHovered && toastCount === 0) {
+      if (shouldReleaseInteractivity && !isHovered) {
         setWindowInteractivity(false);
       }
     },
-    [isHovered, toastCount, setWindowInteractivity]
+    [isHovered, setWindowInteractivity]
   );
 
   const openControlPanel = useCallback(
@@ -282,7 +266,7 @@ export default function App() {
 
       try {
         if (window.electronAPI?.openControlPanel) {
-          await window.electronAPI.openControlPanel();
+          await window.electronAPI.openControlPanel({ page, settingsTab });
         }
       } finally {
         closeContextMenu();
@@ -312,7 +296,6 @@ export default function App() {
   const {
     isRecording,
     isProcessing,
-    longSession,
     transcript,
     toggleListening,
     cancelRecording,
@@ -399,12 +382,12 @@ export default function App() {
   // ── End Action Engine ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (isCommandMenuOpen || toastCount > 0) {
+    if (isCommandMenuOpen) {
       setWindowInteractivity(true);
     } else if (!isHovered) {
       setWindowInteractivity(false);
     }
-  }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
+  }, [isCommandMenuOpen, isHovered, setWindowInteractivity]);
 
   useEffect(() => {
     const handleVisibilityReturn = () => {
@@ -470,7 +453,11 @@ export default function App() {
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    window.addEventListener("blur", closeContextMenu);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("blur", closeContextMenu);
+    };
   }, [isCommandMenuOpen, closeContextMenu]);
 
   useEffect(() => {
@@ -615,22 +602,6 @@ export default function App() {
 
   const micState = getMicState();
 
-  const longSessionStatus = useMemo(() => {
-    if (!longSession?.active) {
-      return null;
-    }
-
-    const recorded = formatCompactDuration(longSession.recordedSeconds);
-    const transcribed = formatCompactDuration(longSession.transcribedSeconds);
-    const pendingChunks = longSession.pendingChunks || 0;
-
-    if (pendingChunks > 0) {
-      return `Long recording · ${transcribed}/${recorded} · ${pendingChunks} pending`;
-    }
-
-    return `Long recording · ${transcribed}/${recorded}`;
-  }, [longSession]);
-
   const getMicButtonStyles = () => {
     const base = {
       borderRadius: 999,
@@ -735,6 +706,30 @@ export default function App() {
     }
   })();
 
+  useLayoutEffect(() => {
+    const menu = isCommandMenuOpen ? commandMenuRef.current : null;
+    const padding = 12;
+    const rect = menu?.getBoundingClientRect();
+    const regions = rect
+      ? [
+          {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+          },
+        ]
+      : [];
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("overlay-menu", regions);
+  }, [activeSubmenu, isCommandMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("overlay-menu", []);
+    };
+  }, []);
+
   return (
     <div className="dictation-window">
       <style>{`
@@ -784,7 +779,7 @@ export default function App() {
             }}
             onMouseLeave={() => {
               setIsHovered(false);
-              if (!isCommandMenuOpen && toastCount === 0) {
+              if (!isCommandMenuOpen) {
                 setWindowInteractivity(false);
               }
             }}
@@ -889,16 +884,6 @@ export default function App() {
               )}
             </button>
           </div>
-
-          {isRecording && longSessionStatus && (
-            <div
-              className="px-2 py-1 rounded-md text-[10px] font-medium bg-[#101310]/92 text-white/70 border border-[#70FFBA]/16 whitespace-nowrap shadow-[0_6px_18px_rgba(0,0,0,0.26)]"
-              style={{ pointerEvents: "none", flexShrink: 0 }}
-              title="PrivateTranscribe is transcribing long-recording chunks while recording continues."
-            >
-              {longSessionStatus}
-            </div>
-          )}
 
           {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (

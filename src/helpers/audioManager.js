@@ -31,9 +31,11 @@ const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
 const RECORDER_FINAL_DATA_GRACE_MS = 250;
+const MIN_DICTATION_DURATION_MS = 500;
 const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
 const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
 const LONG_SESSION_SEGMENT_MS = 60 * 1000;
+const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 2;
 
 const isTranscriptionTextDebugEnabled = () => {
   try {
@@ -240,6 +242,7 @@ class AudioManager {
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
     this._cachedSmartContext = null;
+    this._checkBetaFeatureAccess = null;
     this._deviceChangeHandler = null;
 
     // Pre-warm device cache and keep it fresh
@@ -412,9 +415,14 @@ class AudioManager {
   }
 
   emitStateChange() {
+    const isFinalizingRecording = this.isRecording && this.isStoppingRecording;
     this.onStateChange?.({
-      isRecording: this.isRecording,
-      isProcessing: this.isProcessing,
+      // Stop listening in the UI as soon as the user releases the hotkey. The
+      // recorder may still need a brief grace period to flush its final data,
+      // but leaving the overlay in its recording state makes the meter look
+      // frozen if the MediaRecorder stop event is delayed or never arrives.
+      isRecording: this.isRecording && !isFinalizingRecording,
+      isProcessing: this.isProcessing || (isFinalizingRecording && !this.discardCurrentRecording),
       longSession: this.getLongSessionSnapshot(),
     });
   }
@@ -614,7 +622,8 @@ class AudioManager {
     state.promotedAt = Date.now();
     this.longSession = state;
 
-    if (!this.startLongSessionSegmentCapture()) {
+    const initialSegment = this.longSessionSegment;
+    if (!initialSegment && !this.startLongSessionSegmentCapture()) {
       this.longSession = this.createLongSessionState();
       this.longSessionPromotionUnavailable = true;
       logger.warn(
@@ -634,7 +643,11 @@ class AudioManager {
     this.audioChunks = [];
     this.recordingChunkDurationsMs = [];
 
-    if (chunks.length > 0) {
+    if (initialSegment) {
+      // The continuous recorder produces a self-contained WebM. Reassembling the
+      // primary recorder's timeslice blobs can lose timestamp clusters in FFmpeg.
+      void this.stopLongSessionSegmentCapture({ restart: true });
+    } else if (chunks.length > 0) {
       this.enqueueLongSessionChunk(
         new Blob(chunks, { type: this.recordingMimeType || "audio/webm" }),
         Math.max(promotedDurationMs, RECORDER_TIMESLICE_MS)
@@ -655,7 +668,7 @@ class AudioManager {
     this.emitStateChange();
   }
 
-  enqueueLongSessionChunk(blob, durationMs = RECORDER_TIMESLICE_MS) {
+  enqueueLongSessionChunk(blob, durationMs = RECORDER_TIMESLICE_MS, options = {}) {
     const state = this.longSession;
     if (!state.active || state.cancelled) {
       return;
@@ -666,6 +679,8 @@ class AudioManager {
       blob,
       durationMs,
       sessionId: state.sessionId,
+      attempts: 0,
+      trimTrailingSilence: options.trimTrailingSilence === true,
     };
 
     state.queue.push(item);
@@ -675,7 +690,7 @@ class AudioManager {
     void this.drainLongSessionQueue();
   }
 
-  startLongSessionSegmentCapture() {
+  startLongSessionSegmentCapture({ promotionCapture = false } = {}) {
     if (this.longSessionSegment || !this.recordingStream) {
       return false;
     }
@@ -690,6 +705,7 @@ class AudioManager {
         stopping: false,
         discard: false,
         restartAfterStop: false,
+        promotionCapture,
         stopResolvers: [],
         finished: false,
       };
@@ -716,9 +732,11 @@ class AudioManager {
 
       this.longSessionSegment = segment;
       recorder.start();
-      segment.rotateTimer = setTimeout(() => {
-        void this.rotateLongSessionSegment();
-      }, LONG_SESSION_SEGMENT_MS);
+      if (!promotionCapture) {
+        segment.rotateTimer = setTimeout(() => {
+          void this.rotateLongSessionSegment();
+        }, LONG_SESSION_SEGMENT_MS);
+      }
       return true;
     } catch (error) {
       this.longSessionSegment = null;
@@ -749,7 +767,8 @@ class AudioManager {
     if (!segment.discard && segment.chunks.length > 0 && this.longSession.active) {
       this.enqueueLongSessionChunk(
         new Blob(segment.chunks, { type: segment.recorder.mimeType || this.recordingMimeType }),
-        durationMs
+        durationMs,
+        { trimTrailingSilence: !segment.restartAfterStop }
       );
     }
 
@@ -831,12 +850,14 @@ class AudioManager {
         }
 
         try {
+          item.attempts += 1;
           const result = await this.runTranscription(item.blob, {
             durationSeconds: item.durationMs / 1000,
             source: "long-session",
             skipPostProcessing: true,
             skipOptimization: true,
             chunkIndex: item.index,
+            trimTrailingSilence: item.trimTrailingSilence,
           });
 
           const text = String(result?.result?.text || "").trim();
@@ -849,6 +870,22 @@ class AudioManager {
           if (state.cancelled || error?.name === "AbortError") {
             return;
           }
+
+          if (item.attempts < LONG_SESSION_CHUNK_MAX_ATTEMPTS) {
+            state.queue.unshift(item);
+            logger.warn(
+              "Retrying failed long-session chunk",
+              {
+                chunkIndex: item.index,
+                attempt: item.attempts + 1,
+                maxAttempts: LONG_SESSION_CHUNK_MAX_ATTEMPTS,
+                error: error?.message,
+              },
+              "transcription"
+            );
+            continue;
+          }
+
           state.errors.push({
             index: item.index,
             message: error?.message || "Chunk transcription failed",
@@ -892,6 +929,12 @@ class AudioManager {
     await this.waitForLongSessionQueue();
 
     const state = this.longSession;
+    if (state.errors.length > 0) {
+      throw new Error(
+        `Long recording could not be transcribed completely after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
+      );
+    }
+
     const rawText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, text]) => text)
@@ -900,11 +943,6 @@ class AudioManager {
       .trim();
 
     if (!rawText) {
-      if (state.errors.length > 0) {
-        throw new Error(
-          `Long recording transcription failed before producing text: ${state.errors[0].message}`
-        );
-      }
       throw new Error("No text transcribed - audio may be silent or unavailable");
     }
 
@@ -1006,6 +1044,9 @@ class AudioManager {
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
+    if (!wasLongSession) {
+      void this.stopLongSessionSegmentCapture({ discard: true });
+    }
     this.releaseMediaRecorder();
 
     if (discard) {
@@ -1223,6 +1264,9 @@ class AudioManager {
         this.pendingStopAfterStart = false;
         this.pendingCancelAfterStart = false;
         this.discardCurrentRecording = false;
+        if (!wasLongSession) {
+          void this.stopLongSessionSegmentCapture({ discard: true });
+        }
         this.releaseMediaRecorder();
 
         if (shouldDiscard) {
@@ -1272,6 +1316,12 @@ class AudioManager {
       // final stop flush. If that final flush is slow, the watchdog may process
       // only earlier data and the transcript appears truncated.
       this.mediaRecorder.start(RECORDER_TIMESLICE_MS);
+      // Keep a continuous first segment in parallel. Chromium's timeslice blobs
+      // are useful for normal short recordings, but joining several of them can
+      // produce a WebM whose timestamp clusters FFmpeg decodes incompletely.
+      // This recorder is discarded for short dictations and becomes chunk zero
+      // only if the recording crosses the long-session threshold.
+      this.startLongSessionSegmentCapture({ promotionCapture: true });
       this.isRecording = true;
       this.isProcessing = false;
       this.isStartingRecording = false;
@@ -1342,26 +1392,56 @@ class AudioManager {
     }
 
     if (this.mediaRecorder?.state === "recording") {
-      this.discardCurrentRecording = false;
+      const durationMs = this.recordingStartTime ? Date.now() - this.recordingStartTime : null;
+      const isTooShort = durationMs !== null && durationMs < MIN_DICTATION_DURATION_MS;
+
+      this.discardCurrentRecording = isTooShort;
       this.isStoppingRecording = true;
+      this.emitStateChange();
+
+      if (isTooShort) {
+        logger.debug(
+          "Discarding recording shorter than the minimum dictation duration",
+          { durationMs, minimumDurationMs: MIN_DICTATION_DURATION_MS },
+          "audio"
+        );
+      }
+
       try {
         this.mediaRecorder.requestData?.();
       } catch {
         // Ignore requestData errors from some browsers/recorders.
       }
-      this.mediaRecorder.stop();
-      this.scheduleRecorderStopWatchdog({ discard: false });
+
+      try {
+        this.mediaRecorder.stop();
+      } catch (error) {
+        logger.warn(
+          "MediaRecorder stop failed; forcing finalization",
+          { error: error?.message, discard: isTooShort },
+          "audio"
+        );
+        void this.forceFinalizeRecording({ discard: isTooShort });
+        return true;
+      }
+
+      this.scheduleRecorderStopWatchdog({
+        discard: isTooShort,
+        ...(isTooShort ? { timeoutMs: 350 } : {}),
+      });
       // State change will be handled in onstop callback
       return true;
     }
 
     if (this.isRecording) {
+      const durationMs = this.recordingStartTime ? Date.now() - this.recordingStartTime : null;
+      const isTooShort = durationMs !== null && durationMs < MIN_DICTATION_DURATION_MS;
       logger.warn(
         "Recorder state drift detected during stop; forcing finalization",
-        { recorderState: this.mediaRecorder?.state },
+        { recorderState: this.mediaRecorder?.state, durationMs, discard: isTooShort },
         "audio"
       );
-      void this.forceFinalizeRecording({ discard: false });
+      void this.forceFinalizeRecording({ discard: isTooShort });
       return true;
     }
 
@@ -1377,18 +1457,32 @@ class AudioManager {
 
     if (this.isStoppingRecording) {
       this.discardCurrentRecording = true;
+      this.emitStateChange();
       return true;
     }
 
     if (this.mediaRecorder?.state === "recording") {
       this.discardCurrentRecording = true;
       this.isStoppingRecording = true;
+      this.emitStateChange();
       try {
         this.mediaRecorder.requestData?.();
       } catch {
         // Ignore requestData errors from some browsers/recorders.
       }
-      this.mediaRecorder.stop();
+
+      try {
+        this.mediaRecorder.stop();
+      } catch (error) {
+        logger.warn(
+          "MediaRecorder stop failed during cancellation; forcing cleanup",
+          { error: error?.message },
+          "audio"
+        );
+        void this.forceFinalizeRecording({ discard: true });
+        return true;
+      }
+
       this.scheduleRecorderStopWatchdog({ discard: true, timeoutMs: 350 });
       return true;
     }
@@ -1619,11 +1713,12 @@ class AudioManager {
     const timings = {};
 
     try {
-      // Refresh correction hints so they're included in the whisper prompt
-      // (Pro feature - only inject hints when Pro entitlement is active)
-      const proEnabled =
-        typeof this._checkProEntitlement === "function" ? this._checkProEntitlement() : false;
-      const correctionHintsPromise = proEnabled
+      // Correction Memory is an approved-tester beta. Never read or inject its
+      // hints for Starter or ordinary paid Pro users.
+      const correctionMemoryEnabled =
+        typeof this._checkBetaFeatureAccess === "function" &&
+        this._checkBetaFeatureAccess("correction-memory");
+      const correctionHintsPromise = correctionMemoryEnabled
         ? this.refreshCorrectionHints()
         : Promise.resolve().then(() => {
             this._cachedCorrectionHints = [];
@@ -1646,7 +1741,7 @@ class AudioManager {
         audioBufferPromise,
       ]);
 
-      if (!proEnabled) {
+      if (!correctionMemoryEnabled) {
         this._cachedCorrectionHints = [];
       }
       this._cachedSmartContext = smartContext;
@@ -1658,6 +1753,10 @@ class AudioManager {
       const options = {
         model,
       };
+      if (metadata?.source === "long-session") {
+        options.longSessionChunk = true;
+        options.trimTrailingSilence = metadata.trimTrailingSilence === true;
+      }
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
       }
@@ -2055,6 +2154,13 @@ class AudioManager {
 
   async isReasoningAvailable() {
     if (typeof window === "undefined" || !window.localStorage) {
+      return false;
+    }
+
+    if (
+      typeof this._checkBetaFeatureAccess !== "function" ||
+      !this._checkBetaFeatureAccess("ai-enhancement")
+    ) {
       return false;
     }
 

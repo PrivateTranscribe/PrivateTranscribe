@@ -191,14 +191,15 @@ export default function DeveloperSection() {
     }
   };
 
-  // NOTE: null (no override) is the internal default; only Free/Pro are exposed in the UI.
+  // NOTE: null (no override) is the internal default.
   const proPreviewOptions: {
     value: Exclude<ProPreviewMode, null>;
     label: string;
     description: string;
   }[] = [
-    { value: "free", label: "Free", description: "Pro features locked - upsell badges visible" },
-    { value: "pro", label: "Pro", description: "All Pro features unlocked - badges hidden" },
+    { value: "free", label: "Starter", description: "Daily limit active - beta features locked" },
+    { value: "pro", label: "Paid Pro", description: "Unlimited words - beta features locked" },
+    { value: "tester", label: "Approved tester", description: "Unlimited words and beta features" },
   ];
 
   return (
@@ -215,8 +216,7 @@ export default function DeveloperSection() {
             </span>
           </div>
           <p className="text-[12px] text-muted-foreground leading-relaxed">
-            Temporarily preview Free or Pro UI state without changing your license. Affects sidebar
-            badges, page headers, and feature gating.
+            Preview Starter, paid Pro, or approved-tester access without changing your license.
           </p>
         </div>
         <div className="rounded-xl border border-border-subtle bg-surface-2 divide-y divide-border-subtle">

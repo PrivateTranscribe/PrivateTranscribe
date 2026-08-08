@@ -63,6 +63,43 @@ describe("WhisperServer file mode", () => {
     expect(body).toContain('name="no_speech_thold"');
   });
 
+  it("uses conservative decoding controls for live long-session chunks", async () => {
+    let body = "";
+    const server = http.createServer((req, res) => {
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ text: "ok" }));
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Failed to start test server");
+
+    const manager: any = new WhisperServerManager();
+    manager.port = address.port;
+
+    try {
+      await manager._postInference(Buffer.from("wav"), {
+        longSessionChunk: true,
+        durationSeconds: 60,
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+
+    expect(body).toContain('name="response_format"');
+    expect(body).toContain("json");
+    expect(body).toContain('name="no_context"');
+    expect(body).toContain('name="suppress_nst"');
+    expect(body).toContain('name="temperature_inc"');
+    expect(body).toContain('name="no_speech_thold"');
+  });
+
   it("retries file-mode verbose_json failures without restarting the server", async () => {
     const manager: any = new WhisperServerManager();
     manager.ready = true;

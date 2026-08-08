@@ -111,6 +111,41 @@ describe("Whisper parsing utilities", () => {
         text: "Can we test this?",
       });
     });
+
+    it("removes a punctuated repeated-word hallucination from the transcript tail", () => {
+      const manager = new WhisperManager();
+
+      expect(
+        manager.parseWhisperResult({
+          text: "We can use a language model until a certain point. At least maybe... Yeah. Yeah. Yeah. Yeah. Yeah. Yeah. Yeah. Yeah.",
+        })
+      ).toEqual({
+        success: true,
+        text: "We can use a language model until a certain point. At least maybe...",
+      });
+    });
+
+    it("collapses a long passage hallucinated twice inside a long transcription", () => {
+      const manager = new WhisperManager();
+
+      expect(
+        manager.parseWhisperResult({
+          text: "The night was clear, starlit and splendid after the storm passed away. The night was clear, starlit and splendid after the storm passed away. Everyone returned safely.",
+        })
+      ).toEqual({
+        success: true,
+        text: "The night was clear, starlit and splendid after the storm passed away. Everyone returned safely.",
+      });
+    });
+
+    it("preserves a short sentence intentionally spoken twice", () => {
+      const manager = new WhisperManager();
+
+      expect(manager.parseWhisperResult({ text: "Please try again. Please try again." })).toEqual({
+        success: true,
+        text: "Please try again. Please try again.",
+      });
+    });
   });
 
   describe("normalizeWhitespace", () => {
@@ -333,9 +368,7 @@ describe("Whisper parsing utilities", () => {
         };
         const result = parseWhisperResult(response);
         expect(result.success).toBe(true);
-        expect(result.text).toBe(
-          "First paragraph here. Second paragraph here. Third paragraph."
-        );
+        expect(result.text).toBe("First paragraph here. Second paragraph here. Third paragraph.");
       });
     });
   });

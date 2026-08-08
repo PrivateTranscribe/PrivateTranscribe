@@ -8,6 +8,11 @@ const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
 const { applyNavigationGuard } = require("./navigationGuard");
+const { normalizeControlPanelDestination } = require("./controlPanelNavigation");
+const {
+  isScreenPointInOverlayRegions,
+  normalizeOverlayInteractiveRegions,
+} = require("./overlayHitTest");
 const { DEV_SERVER_PORT, DEV_SERVER_URL } = DevServerManager;
 const isEnvFlagEnabled = (name) => {
   const value = process.env[name];
@@ -79,6 +84,7 @@ class WindowManager {
     this._ignoreOverlayMoveSaveUntil = 0;
     this._hoverInteractivityTimer = null;
     this._overlayMouseCaptured = null;
+    this._overlayInteractiveRegions = new Map();
 
     this._registerExitHandlers();
     this._loadPersistedOverlayMode();
@@ -395,6 +401,12 @@ class WindowManager {
     const initialShowDelayMs = Math.max(0, Number(options.initialShowDelayMs) || 0);
     const display = screen.getPrimaryDisplay();
 
+    // BrowserWindow starts mouse-interactive. Reset state cached for any previous
+    // overlay instance so setMainWindowInteractivity(false) always applies
+    // setIgnoreMouseEvents to the newly created transparent window.
+    this._overlayMouseCaptured = null;
+    this._overlayInteractiveRegions.clear();
+
     const saved = this._loadSavedPosition();
     let position;
     if (saved) {
@@ -544,19 +556,12 @@ class WindowManager {
     }
 
     this.isMainWindowInteractive = shouldCapture;
-
-    if (process.platform === "win32") {
-      if (shouldCapture) {
-        this._stopHoverInteractivityProbe();
-        this._setMainWindowMouseCapture(true);
-      } else {
-        this._startHoverInteractivityProbe();
-        this._refreshHoverInteractivity("set-interactivity");
-      }
-      return;
+    this._startHoverInteractivityProbe();
+    if (shouldCapture) {
+      this._setMainWindowMouseCapture(true);
+    } else {
+      this._refreshHoverInteractivity("set-interactivity");
     }
-
-    this._setMainWindowMouseCapture(shouldCapture);
   }
 
   _setMainWindowMouseCapture(shouldCapture) {
@@ -589,18 +594,52 @@ class WindowManager {
     return dx * dx + dy * dy <= radius * radius;
   }
 
-  _refreshHoverInteractivity(reason) {
-    if (this.isMainWindowInteractive) {
-      return;
+  setMainWindowInteractiveRegions(source, regions) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      return { success: false };
     }
 
+    const sourceKey = typeof source === "string" ? source.slice(0, 64) : "unknown";
+    const normalizedRegions = normalizeOverlayInteractiveRegions(
+      regions,
+      this.mainWindow.getContentBounds()
+    );
+
+    if (normalizedRegions.length > 0) {
+      this._overlayInteractiveRegions.set(sourceKey, normalizedRegions);
+    } else {
+      this._overlayInteractiveRegions.delete(sourceKey);
+    }
+
+    this._startHoverInteractivityProbe();
+    this._refreshHoverInteractivity("interactive-regions");
+
+    return { success: true };
+  }
+
+  _isCursorOverOverlayInteractiveRegion() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed() || !this.mainWindow.isVisible()) {
+      return false;
+    }
+
+    return isScreenPointInOverlayRegions(
+      screen.getCursorScreenPoint(),
+      this.mainWindow.getContentBounds(),
+      this._overlayInteractiveRegions.values()
+    );
+  }
+
+  _refreshHoverInteractivity(reason) {
     try {
-      // Do not depend on Electron's forwarded mouse-enter events after sleep.
-      // Poll the cursor against the real mic circle so only the button captures
-      // input and the transparent/glow area remains click-through.
-      this._setMainWindowMouseCapture(
-        this.dragManager.isDragActive() || this._isCursorOverOverlayButton()
-      );
+      // Poll real interactive regions instead of trusting renderer hover state.
+      // The transparent/glow area remains click-through in the 400x500 window,
+      // including when a toast is visible or mouse-leave was missed.
+      const shouldCapture =
+        this.dragManager.isDragActive() ||
+        this._isCursorOverOverlayButton() ||
+        this._isCursorOverOverlayInteractiveRegion();
+      this.isMainWindowInteractive = shouldCapture;
+      this._setMainWindowMouseCapture(shouldCapture);
     } catch (error) {
       debugLogger.debug("[Window] Failed to refresh overlay hover interactivity:", {
         reason,
@@ -611,7 +650,7 @@ class WindowManager {
   }
 
   _startHoverInteractivityProbe() {
-    if (process.platform !== "win32" || this._hoverInteractivityTimer) {
+    if (this._hoverInteractivityTimer) {
       return;
     }
 
@@ -1106,6 +1145,34 @@ class WindowManager {
 
     await this.loadControlPanel();
     await this.initializeHotkey(this.controlPanelWindow);
+  }
+
+  /**
+   * Open the control panel for an explicit user action and optionally navigate
+   * its already-mounted renderer to a requested page/settings tab.
+   */
+  async openControlPanel(destination) {
+    const normalizedDestination = normalizeControlPanelDestination(destination);
+
+    // Explicit open actions must never inherit the Windows startup-minimized default.
+    await this.createControlPanelWindow({ startHidden: false, startMinimized: false });
+
+    const controlPanel = this.controlPanelWindow;
+    if (!normalizedDestination || !controlPanel || controlPanel.isDestroyed()) {
+      return;
+    }
+
+    const sendNavigation = () => {
+      if (!controlPanel.isDestroyed() && !controlPanel.webContents.isDestroyed()) {
+        controlPanel.webContents.send("control-panel-navigate", normalizedDestination);
+      }
+    };
+
+    if (controlPanel.webContents.isLoading()) {
+      controlPanel.webContents.once("did-finish-load", sendNavigation);
+    } else {
+      sendNavigation();
+    }
   }
 
   async loadControlPanel() {

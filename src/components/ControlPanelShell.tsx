@@ -17,11 +17,16 @@ import AIEnhancementPage from "./pages/AIEnhancementPage";
 import VoiceAssistantPage from "./pages/VoiceAssistantPage";
 import ActionEnginePage from "./pages/ActionEnginePage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
+import type { SettingsSectionType } from "./SettingsPage";
 
 import { AnalyticsConsentModal } from "./AnalyticsConsentModal";
 
 export default function ControlPanelShell() {
   const [activePage, setActivePage] = useState<PageId>("home");
+  const [settingsTabRequest, setSettingsTabRequest] = useState<{
+    section?: SettingsSectionType;
+    requestId: number;
+  }>({ requestId: 0 });
   const [showConsentModal, setShowConsentModal] = useState(false);
   const { toast } = useToast();
   const { confirmDialog, alertDialog, showConfirmDialog, hideConfirmDialog, hideAlertDialog } =
@@ -61,6 +66,20 @@ export default function ControlPanelShell() {
     }
 
     localStorage.removeItem("controlPanelInitialPage");
+  }, []);
+
+  useEffect(() => {
+    return window.electronAPI?.onControlPanelNavigate?.((destination) => {
+      const requestedPage =
+        destination.page === "correction-memory" ? "dictionary" : destination.page;
+      setActivePage(requestedPage);
+      if (destination.settingsTab) {
+        setSettingsTabRequest((current) => ({
+          section: destination.settingsTab,
+          requestId: current.requestId + 1,
+        }));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -207,7 +226,12 @@ export default function ControlPanelShell() {
       case "action-engine":
         return <ActionEnginePage />;
       case "settings":
-        return <SettingsPageWrapper />;
+        return (
+          <SettingsPageWrapper
+            requestedSection={settingsTabRequest.section}
+            requestId={settingsTabRequest.requestId}
+          />
+        );
       default:
         return <DashboardPage onNavigate={setActivePage} />;
     }

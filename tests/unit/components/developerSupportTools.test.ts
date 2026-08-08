@@ -78,16 +78,20 @@ describe("Settings support and diagnostics tools", () => {
       "utf8"
     );
 
+    const feedbackPayloadType =
+      electronTypes.match(/export interface FeedbackSubmitPayload[\s\S]*?\n}/)?.[0] ?? "";
+    expect(feedbackPayloadType).toContain("export interface FeedbackSubmitPayload");
+
     for (const value of ["bug", "confusing", "feature", "general"]) {
       expect(feedbackDialog).toContain(`value: "${value}"`);
       expect(ipcHandlers).toContain(`"${value}"`);
-      expect(electronTypes).toContain(`"${value}"`);
+      expect(feedbackPayloadType).toContain(`"${value}"`);
     }
 
     for (const oldValue of ["install", "onboarding", "transcription", "hotkey", "performance"]) {
       expect(feedbackDialog).not.toContain(`value: "${oldValue}"`);
       expect(ipcHandlers).not.toContain(`"${oldValue}"`);
-      expect(electronTypes).not.toContain(`| "${oldValue}"`);
+      expect(feedbackPayloadType).not.toContain(`"${oldValue}"`);
     }
 
     expect(feedbackDialog).toContain("Your note");

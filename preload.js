@@ -38,7 +38,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setOverlaySnapToTaskbar: (enabled) => ipcRenderer.invoke("set-overlay-snap-to-taskbar", enabled),
   getOverlaySnapToTaskbar: () => ipcRenderer.invoke("get-overlay-snap-to-taskbar"),
   notifyDictationCompleted: () => ipcRenderer.invoke("notify-dictation-completed"),
-  openControlPanel: () => ipcRenderer.invoke("open-control-panel"),
+  openControlPanel: (destination) => ipcRenderer.invoke("open-control-panel", destination),
+  onControlPanelNavigate: registerListener(
+    "control-panel-navigate",
+    (callback) => (_event, destination) => callback(destination)
+  ),
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
@@ -195,6 +199,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopWindowDrag: () => ipcRenderer.invoke("stop-window-drag"),
   setMainWindowInteractivity: (interactive) =>
     ipcRenderer.invoke("set-main-window-interactivity", interactive),
+  setMainWindowInteractiveRegions: (source, regions) =>
+    ipcRenderer.invoke("set-main-window-interactive-regions", source, regions),
   refreshMainWindowInteractivity: () => ipcRenderer.invoke("refresh-main-window-interactivity"),
   resizeMainWindow: (sizeKey) => ipcRenderer.invoke("resize-main-window", sizeKey),
 

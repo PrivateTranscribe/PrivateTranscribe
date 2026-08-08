@@ -1201,12 +1201,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [isClearingCorrections, setIsClearingCorrections] = useState(false);
 
   useEffect(() => {
-    if (!enableCorrectionLearning) return;
+    if (!correctionMemoryUnlocked || !enableCorrectionLearning) {
+      setCorrectionCount(null);
+      return;
+    }
     window.electronAPI
       ?.getCorrectionMemory?.(1000)
       .then((rows) => setCorrectionCount(Array.isArray(rows) ? rows.length : 0))
       .catch(() => setCorrectionCount(0));
-  }, [enableCorrectionLearning]);
+  }, [correctionMemoryUnlocked, enableCorrectionLearning]);
 
   // Sync overlay taskbar-snap preference to main process on settings mount.
   // (Overlay visibility is main-process-owned and needs no push-sync.)
@@ -1215,6 +1218,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   }, [overlaySnapToTaskbar]);
 
   const handleClearCorrections = useCallback(async () => {
+    if (!correctionMemoryUnlocked) return;
     if (!clearConfirmPending) {
       setClearConfirmPending(true);
       return;
@@ -1230,7 +1234,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setIsClearingCorrections(false);
       setClearConfirmPending(false);
     }
-  }, [clearConfirmPending]);
+  }, [clearConfirmPending, correctionMemoryUnlocked]);
 
   // Whisper-server idle shutdown setting (minutes) has a draft state to avoid snapping
   // while typing (e.g. clearing the field).
@@ -2258,8 +2262,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Apply dictionary and correction memory"
-                    description="Use dictionary entries and learned corrections while transcribing."
+                    label="Apply dictionary matching"
+                    description={
+                      correctionMemoryUnlocked
+                        ? "Use dictionary entries and approved-tester correction memory while transcribing."
+                        : "Use dictionary entries while transcribing. Correction Memory requires approved tester access."
+                    }
                   >
                     <Toggle
                       checked={enableVariableSnapping}
@@ -2273,7 +2281,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       correctionMemoryUnlocked
                         ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                        : "Pro feature - unlock in Settings > Pro to enable correction learning."
+                        : "Beta - approved tester access is required to enable correction learning."
                     }
                   >
                     <Toggle
@@ -2556,7 +2564,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       smartContextUnlocked
                         ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
-                        : "Pro feature - unlock in Settings → Pro to enable Smart Context"
+                        : "Beta - approved tester access is required to enable Smart Context"
                     }
                   >
                     <Toggle
@@ -2840,13 +2848,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {!aiEnhancementUnlocked && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
                 <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">
-                  Available with PrivateTranscribe Pro
-                </h3>
+                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
                   AI Enhancement automatically polishes your transcriptions - fixing grammar,
-                  formatting text, and handling intelligent rewrites. Unlock it with a Pro license
-                  in Settings.
+                  formatting text, and handling intelligent rewrites. This unfinished beta requires
+                  approved tester access.
                 </p>
               </div>
             )}
@@ -2963,12 +2969,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {!voiceAssistantUnlocked && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
                 <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">
-                  Available with PrivateTranscribe Pro
-                </h3>
+                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
                   Customize your voice assistant with a personal name and fine-tuned system prompts
-                  for AI-enhanced transcriptions. Unlock it with a Pro license in Settings.
+                  for AI-enhanced transcriptions. This unfinished beta requires approved tester
+                  access.
                 </p>
               </div>
             )}

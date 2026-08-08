@@ -12,6 +12,10 @@ describe("Pro branding", () => {
 
     expect(source).toContain("#A885FF");
     expect(source).toContain("#2D1B69");
+    expect(source).not.toContain("validated automatically when online");
+    expect(source).toContain(
+      "Unlimited private dictation unlocked with your one-time Pro purchase"
+    );
     expect(source).not.toContain("border-green-500/30");
     expect(source).not.toContain("bg-green-500/5");
     expect(source).not.toContain("text-green-500");

@@ -1,5 +1,5 @@
 import { BookMarked, Trash2, Lock, Pencil } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -60,7 +60,12 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
   const [saving, setSaving] = useState(false);
   const [deletingSource, setDeletingSource] = useState<string | null>(null);
 
-  const fetchRows = async () => {
+  const fetchRows = useCallback(async () => {
+    if (!isUnlocked) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -81,11 +86,11 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
     } finally {
       setLoading(false);
     }
-  };
+  }, [isUnlocked]);
 
   useEffect(() => {
     void fetchRows();
-  }, []);
+  }, [fetchRows]);
 
   const sorted = useMemo(() => {
     const list = [...rows];
@@ -106,6 +111,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
   }, [rows, source]);
 
   const handleAdd = async () => {
+    if (!isUnlocked) return;
     const s = source.trim();
     const t = target.trim();
     if (!s || !t || s === t) return;
@@ -130,6 +136,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
   };
 
   const handleDelete = async (src: string) => {
+    if (!isUnlocked) return;
     try {
       setDeletingSource(src);
       setError(null);
@@ -161,7 +168,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
             </Badge>
             {!isUnlocked && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
-                <Lock size={10} /> Pro
+                <Lock size={10} /> Approved testers only
               </span>
             )}
           </div>
@@ -184,8 +191,8 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
             <span className="font-mono">use login error</span>
             {" → "}
             <span className="font-mono">useLoginError</span> - and applies them to every future
-            dictation automatically. The longer you use PrivateTranscribe, the sharper it gets.
-            Unlock it with Pro.
+            dictation automatically. The longer you use PrivateTranscribe, the sharper it gets. This
+            beta requires approved tester access.
           </p>
         </div>
       )}
