@@ -101,7 +101,7 @@ describe("AudioManager recorder lifecycle", () => {
     expect(MockMediaRecorder.instances[1].start).toHaveBeenCalledWith();
   });
 
-  it("does not report an unconfirmed Windows clipboard fallback as a successful paste", async () => {
+  it("keeps an unconfirmed Windows paste quiet while falling back to the clipboard", async () => {
     const onError = vi.fn();
     (window as any).electronAPI = {
       pasteText: vi.fn().mockResolvedValue({ delivered: false, fallback: "clipboard" }),
@@ -110,12 +110,7 @@ describe("AudioManager recorder lifecycle", () => {
     manager.setCallbacks({ onStateChange: vi.fn(), onError, onTranscriptionComplete: vi.fn() });
 
     await expect(manager.safePaste("recoverable text")).resolves.toBe(false);
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Paste not confirmed",
-        description: expect.stringContaining("Check the target before pasting manually"),
-      })
-    );
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("does not force-process partial recorder chunks after only 2.5 seconds", async () => {

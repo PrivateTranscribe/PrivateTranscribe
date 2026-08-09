@@ -3268,11 +3268,6 @@ class AudioManager {
     try {
       const result = await window.electronAPI.pasteText(text);
       if (result?.delivered === false) {
-        this.onError?.({
-          title: "Paste not confirmed",
-          description:
-            "The paste shortcut was sent, but insertion could not be confirmed. Check the target before pasting manually; the transcription is on the clipboard.",
-        });
         return false;
       }
       return true;
