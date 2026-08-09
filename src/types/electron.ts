@@ -16,6 +16,17 @@ export interface TranscriptionItem {
   include_in_stats: number; // 1 = real dictation (counts toward streak/stats), 0 = file upload etc.
 }
 
+export interface DictationRecoveryItem {
+  id: string;
+  status: "pending" | "failed" | "canceled" | "interrupted";
+  createdAt: string;
+  updatedAt: string;
+  mimeType: string;
+  durationSeconds: number | null;
+  sizeBytes: number;
+  reason: string;
+}
+
 export interface WhisperCheckResult {
   installed: boolean;
   working: boolean;
@@ -383,7 +394,11 @@ declare global {
   interface Window {
     electronAPI: {
       // Basic window operations
-      pasteText: (text: string) => Promise<void>;
+      pasteText: (text: string) => Promise<{
+        delivered: boolean;
+        fallback?: "clipboard";
+        method?: string;
+      }>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
       getOverlayState?: () => Promise<OverlayState>;
@@ -422,6 +437,21 @@ declare global {
         limit: number
       ) => Promise<{ trimmed?: number; cleared?: number; success: boolean }>;
       setHistoryLimit?: (limit: number) => Promise<{ success: boolean }>;
+      stageDictationRecovery?: (
+        audio: ArrayBuffer,
+        metadata?: { mimeType?: string; durationSeconds?: number | null }
+      ) => Promise<{ success: boolean; skipped?: boolean; recovery?: DictationRecoveryItem }>;
+      markDictationRecoveryFailed?: (
+        id: string,
+        reason: string
+      ) => Promise<{ success: boolean; recovery?: DictationRecoveryItem }>;
+      markDictationRecoveryCanceled?: (
+        id: string
+      ) => Promise<{ success: boolean; recovery?: DictationRecoveryItem }>;
+      completeDictationRecovery?: (id: string) => Promise<{ success: boolean }>;
+      listDictationRecoveries?: () => Promise<DictationRecoveryItem[]>;
+      revealDictationRecovery?: (id: string) => Promise<{ success: boolean; error?: string }>;
+      deleteDictationRecovery?: (id: string) => Promise<{ success: boolean; error?: string }>;
 
       // Dictionary operations
       getDictionary: () => Promise<string[]>;

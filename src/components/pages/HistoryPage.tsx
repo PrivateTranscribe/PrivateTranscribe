@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Search, Trash2, Mic } from "lucide-react";
+import { Search, Trash2, Mic, FolderOpen, ShieldCheck } from "lucide-react";
 import { useTranscriptions, initializeTranscriptions } from "../../stores/transcriptionStore";
 import TranscriptionItem from "../ui/TranscriptionItem";
 import { useToast } from "../ui/Toast";
@@ -9,7 +9,10 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useSettings } from "../../hooks/useSettings";
 import { formatHotkeyLabel } from "../../utils/hotkeys";
-import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
+import type {
+  DictationRecoveryItem,
+  TranscriptionItem as TranscriptionItemType,
+} from "../../types/electron";
 
 // ---------------------------------------------------------------------------
 // Date grouping helpers
@@ -70,11 +73,27 @@ export default function HistoryPage() {
   const hotkeyLabel = formatHotkeyLabel(dictationKey);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [recoveries, setRecoveries] = useState<DictationRecoveryItem[]>([]);
 
   // Initialise store on mount, respecting the user's history limit setting
   useEffect(() => {
     initializeTranscriptions(historyLimit);
   }, [historyLimit]);
+
+  useEffect(() => {
+    let active = true;
+    window.electronAPI
+      ?.listDictationRecoveries?.()
+      .then((items) => {
+        if (active) setRecoveries(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        if (active) setRecoveries([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // ------- Filtered + grouped data -------
   const activeQuery = searchQuery.trim();
@@ -165,6 +184,50 @@ export default function HistoryPage() {
     });
   }, [showConfirmDialog, toast]);
 
+  const handleRevealRecovery = useCallback(
+    async (id: string) => {
+      const result = await window.electronAPI?.revealDictationRecovery?.(id);
+      if (!result?.success) {
+        toast({
+          title: "Could not open recovered audio",
+          description: result?.error || "The local recovery file is no longer available.",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
+
+  const handleDeleteRecovery = useCallback(
+    (item: DictationRecoveryItem) => {
+      showConfirmDialog({
+        title: "Delete recovered audio",
+        description:
+          "This removes the only saved audio copy of this dictation. This action cannot be undone.",
+        confirmText: "Delete audio",
+        variant: "destructive",
+        onConfirm: async () => {
+          const result = await window.electronAPI?.deleteDictationRecovery?.(item.id);
+          if (!result?.success) {
+            toast({
+              title: "Could not delete recovered audio",
+              description: result?.error || "Try again.",
+              variant: "destructive",
+            });
+            return;
+          }
+          setRecoveries((current) => current.filter((entry) => entry.id !== item.id));
+          toast({
+            title: "Recovered audio deleted",
+            description: "The local audio copy was permanently removed.",
+            variant: "success",
+          });
+        },
+      });
+    },
+    [showConfirmDialog, toast]
+  );
+
   // ------- Render -------
   const isEmpty = transcriptions.length === 0;
   const noResults = !isEmpty && filtered.length === 0;
@@ -216,9 +279,101 @@ export default function HistoryPage() {
 
       {/* ---- Content area ---- */}
       <div className="flex-1 overflow-y-auto min-h-0 -mx-8 px-8">
+        {recoveries.length > 0 && (
+          <section className="mb-8" aria-labelledby="recovered-audio-heading">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/8 text-amber-500">
+                  <ShieldCheck size={16} />
+                </div>
+                <div>
+                  <h2
+                    id="recovered-audio-heading"
+                    className="text-sm font-semibold text-foreground"
+                  >
+                    Recovered audio
+                  </h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Stored only on this PC after an interrupted, failed, or canceled dictation.
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {recoveries.length} of 10
+              </span>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-amber-500/20 bg-amber-500/[0.035]">
+              {recoveries.map((item, index) => {
+                const recordedAt = new Date(item.createdAt);
+                const duration =
+                  typeof item.durationSeconds === "number"
+                    ? `${Math.max(1, Math.round(item.durationSeconds))}s`
+                    : "Duration unknown";
+                const statusLabel =
+                  item.status === "failed"
+                    ? "Transcription failed"
+                    : item.status === "canceled"
+                      ? "Canceled"
+                      : item.status === "interrupted"
+                        ? "App interrupted"
+                        : "Processing";
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-4 px-4 py-3 ${index > 0 ? "border-t border-border-subtle/60" : ""}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-sm font-medium text-foreground">{statusLabel}</span>
+                        <span className="text-xs text-muted-foreground">{duration}</span>
+                        {!Number.isNaN(recordedAt.getTime()) && (
+                          <time className="text-xs text-muted-foreground" dateTime={item.createdAt}>
+                            {recordedAt.toLocaleString()}
+                          </time>
+                        )}
+                      </div>
+                      {item.reason && (
+                        <p
+                          className="mt-1 truncate text-xs text-muted-foreground"
+                          title={item.reason}
+                        >
+                          {item.reason}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        onClick={() => void handleRevealRecovery(item.id)}
+                      >
+                        <FolderOpen size={14} />
+                        Show file
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Delete recovered audio"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => handleDeleteRecovery(item)}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Empty state */}
         {isEmpty && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 select-none">
+          <div
+            className={`flex flex-col items-center justify-center gap-4 select-none ${recoveries.length > 0 ? "h-64" : "h-full"}`}
+          >
             <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 shadow-[0_0_30px_rgba(112,255,186,0.08)]">
               <Mic size={28} className="text-primary/60" />
             </div>

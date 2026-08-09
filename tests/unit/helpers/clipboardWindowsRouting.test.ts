@@ -66,4 +66,19 @@ describe("ClipboardManager Windows paste routing", () => {
 
     expect(nircmd).toHaveBeenCalledWith("C:\\tools\\nircmd.exe", { text: "before" }, PLAIN_CTRL_V);
   });
+
+  test("does not replace a negative paste acknowledgement with an unconfirmed legacy success", async () => {
+    const manager = new ClipboardManager();
+    vi.spyOn(manager, "getFastPastePath").mockReturnValue(HELPER_PATH);
+    const notConfirmed = Object.assign(new Error("not confirmed"), {
+      code: "WINDOWS_PASTE_NOT_CONFIRMED",
+    });
+    vi.spyOn(manager, "pasteWithFastPaste").mockRejectedValue(notConfirmed);
+    const nircmd = vi.spyOn(manager, "pasteWithNircmd").mockResolvedValue(undefined);
+    const powershell = vi.spyOn(manager, "pasteWithPowerShell").mockResolvedValue(undefined);
+
+    await expect(manager.pasteWindows({ text: "before" })).rejects.toBe(notConfirmed);
+    expect(nircmd).not.toHaveBeenCalled();
+    expect(powershell).not.toHaveBeenCalled();
+  });
 });

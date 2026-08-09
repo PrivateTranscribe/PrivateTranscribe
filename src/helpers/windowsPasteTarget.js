@@ -55,6 +55,18 @@ function parseWindowsFastPasteOutput(stdout) {
   }
 }
 
+function assertWindowsFastPasteSucceeded(stdout) {
+  const result = parseWindowsFastPasteOutput(stdout);
+  if (!result.pasted) {
+    const error = new Error(
+      "Windows paste helper did not confirm text insertion. The transcription remains copied to the clipboard."
+    );
+    error.code = "WINDOWS_PASTE_NOT_CONFIRMED";
+    throw error;
+  }
+  return result;
+}
+
 /**
  * Paste chord for the nircmd/PowerShell fallback path, used only when the helper
  * is unavailable. Without the helper there is no target detection, so this
@@ -67,6 +79,7 @@ function getWindowsPasteShortcut({ isTerminal = false } = {}) {
 }
 
 module.exports = {
+  assertWindowsFastPasteSucceeded,
   FAST_PASTE_EXECUTABLE,
   getWindowsFastPasteExecutablePaths,
   getWindowsPasteShortcut,

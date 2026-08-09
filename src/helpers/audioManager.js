@@ -6,6 +6,7 @@ import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
+import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import {
   buildDictionaryPrompt,
   getDictionaryRepairTerms,
@@ -241,6 +242,7 @@ class AudioManager {
     this.processingGeneration = 0;
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
+    this.recoveryIdsByGeneration = new Map();
     this._cachedSmartContext = null;
     this._checkBetaFeatureAccess = null;
     this._deviceChangeHandler = null;
@@ -434,6 +436,8 @@ class AudioManager {
       queue: [],
       results: new Map(),
       errors: [],
+      recoveryIds: new Set(),
+      failedRecoveryIds: new Set(),
       processing: false,
       processingPromise: null,
       sessionId: 0,
@@ -481,6 +485,9 @@ class AudioManager {
 
     this.longSession.cancelled = true;
     this.longSession.queue = [];
+    for (const recoveryId of this.longSession.recoveryIds || []) {
+      void this.markDictationRecoveryCanceled(recoveryId);
+    }
     void this.stopLongSessionSegmentCapture({ discard: true });
   }
 
@@ -551,6 +558,61 @@ class AudioManager {
       }
     }
     this.clearActiveTranscriptionAbortController();
+  }
+
+  isRecoveryEnabled() {
+    try {
+      const historyLimit = parseInt(localStorage.getItem("historyLimit") ?? "50", 10);
+      return historyLimit !== 0 && !!window.electronAPI?.stageDictationRecovery;
+    } catch {
+      return false;
+    }
+  }
+
+  async stageDictationRecovery(audioBlob, metadata = {}) {
+    if (!this.isRecoveryEnabled() || !audioBlob || audioBlob.size <= 0) {
+      return null;
+    }
+    try {
+      const response = await window.electronAPI.stageDictationRecovery(
+        toIpcSafeArrayBuffer(await audioBlob.arrayBuffer()),
+        {
+          mimeType: audioBlob.type || "audio/webm",
+          durationSeconds: metadata.durationSeconds ?? null,
+        }
+      );
+      return response?.success && response?.recovery?.id ? response.recovery.id : null;
+    } catch (error) {
+      logger.warn("Failed to stage dictation recovery audio", { error: error?.message }, "audio");
+      return null;
+    }
+  }
+
+  async markDictationRecoveryFailed(id, reason) {
+    if (!id) return;
+    try {
+      await window.electronAPI?.markDictationRecoveryFailed?.(id, reason);
+    } catch {
+      // The staged pending entry remains recoverable after a metadata update failure.
+    }
+  }
+
+  async markDictationRecoveryCanceled(id) {
+    if (!id) return;
+    try {
+      await window.electronAPI?.markDictationRecoveryCanceled?.(id);
+    } catch {
+      // The staged pending entry remains recoverable after a metadata update failure.
+    }
+  }
+
+  async completeDictationRecovery(id) {
+    if (!id) return;
+    try {
+      await window.electronAPI?.completeDictationRecovery?.(id);
+    } catch {
+      // A completed entry may remain until bounded pruning; never risk deleting another entry.
+    }
   }
 
   clearRecorderStopWatchdog() {
@@ -770,6 +832,16 @@ class AudioManager {
         durationMs,
         { trimTrailingSilence: !segment.restartAfterStop }
       );
+    } else if (segment.discard && segment.chunks.length > 0) {
+      const canceledAudio = new Blob(segment.chunks, {
+        type: segment.recorder.mimeType || this.recordingMimeType,
+      });
+      void (async () => {
+        const recoveryId = await this.stageDictationRecovery(canceledAudio, {
+          durationSeconds: durationMs / 1000,
+        });
+        await this.markDictationRecoveryCanceled(recoveryId);
+      })();
     }
 
     if (this.longSessionSegment === segment) {
@@ -850,6 +922,15 @@ class AudioManager {
         }
 
         try {
+          if (!item.recoveryStaged) {
+            item.recoveryStaged = true;
+            item.recoveryId = await this.stageDictationRecovery(item.blob, {
+              durationSeconds: item.durationMs / 1000,
+            });
+            if (item.recoveryId) {
+              state.recoveryIds.add(item.recoveryId);
+            }
+          }
           item.attempts += 1;
           const result = await this.runTranscription(item.blob, {
             durationSeconds: item.durationMs / 1000,
@@ -890,6 +971,13 @@ class AudioManager {
             index: item.index,
             message: error?.message || "Chunk transcription failed",
           });
+          if (item.recoveryId) {
+            state.failedRecoveryIds.add(item.recoveryId);
+          }
+          await this.markDictationRecoveryFailed(
+            item.recoveryId,
+            error?.message || "Chunk transcription failed"
+          );
           logger.warn(
             "Long-session chunk transcription failed",
             {
@@ -1050,6 +1138,10 @@ class AudioManager {
     this.releaseMediaRecorder();
 
     if (discard) {
+      if (audioBlob?.size > 0) {
+        const recoveryId = await this.stageDictationRecovery(audioBlob, { durationSeconds });
+        await this.markDictationRecoveryCanceled(recoveryId);
+      }
       this.cancelLongSessionWork();
       this.resetLongSessionState();
       this.isProcessing = false;
@@ -1270,6 +1362,10 @@ class AudioManager {
         this.releaseMediaRecorder();
 
         if (shouldDiscard) {
+          if (audioBlob?.size > 0) {
+            const recoveryId = await this.stageDictationRecovery(audioBlob, { durationSeconds });
+            await this.markDictationRecoveryCanceled(recoveryId);
+          }
           this.cancelLongSessionWork();
           this.resetLongSessionState();
           this.isProcessing = false;
@@ -1502,6 +1598,8 @@ class AudioManager {
 
   cancelProcessing() {
     if (this.isProcessing) {
+      const recoveryId = this.recoveryIdsByGeneration.get(this.processingGeneration);
+      void this.markDictationRecoveryCanceled(recoveryId);
       this.processingGeneration += 1;
       this.abortActiveTranscriptionRequest();
       this.cancelLongSessionWork();
@@ -1519,6 +1617,10 @@ class AudioManager {
       ...metadata,
       processingGeneration,
     };
+    const recoveryId = await this.stageDictationRecovery(audioBlob, metadata);
+    if (recoveryId) {
+      this.recoveryIdsByGeneration.set(processingGeneration, recoveryId);
+    }
 
     try {
       const { result, useLocalWhisper, localProvider, activeModel } = await this.runTranscription(
@@ -1527,6 +1629,7 @@ class AudioManager {
       );
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        await this.markDictationRecoveryCanceled(recoveryId);
         return;
       }
 
@@ -1535,14 +1638,30 @@ class AudioManager {
         result.durationSeconds = metadata.durationSeconds;
       }
       result.processingGeneration = processingGeneration;
+      result.completeness = assessTranscriptionCompleteness({
+        text: result.text,
+        durationSeconds: result.durationSeconds ?? metadata.durationSeconds,
+      });
 
-      await this.onTranscriptionComplete?.(result, {
+      const completionResult = await this.onTranscriptionComplete?.(result, {
         processingGeneration,
         isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
       });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        await this.markDictationRecoveryCanceled(recoveryId);
         return;
+      }
+
+      if (result.completeness.suspicious || completionResult?.recoverable === false) {
+        await this.markDictationRecoveryFailed(
+          recoveryId,
+          result.completeness.suspicious
+            ? "Transcription may be incomplete for the recorded duration"
+            : completionResult?.reason || "History, paste, and clipboard delivery failed"
+        );
+      } else {
+        await this.completeDictationRecovery(recoveryId);
       }
 
       const roundTripDurationMs = Math.round(performance.now() - pipelineStart);
@@ -1572,6 +1691,7 @@ class AudioManager {
         error?.name === "AbortError" ||
         !this.isCurrentProcessingGeneration(processingGeneration)
       ) {
+        await this.markDictationRecoveryCanceled(recoveryId);
         logger.debug(
           "Transcription request canceled",
           {
@@ -1583,6 +1703,7 @@ class AudioManager {
       }
 
       const errorAtMs = Math.round(performance.now() - pipelineStart);
+      await this.markDictationRecoveryFailed(recoveryId, error?.message || "Transcription failed");
 
       logger.error(
         "Pipeline failed",
@@ -1600,6 +1721,7 @@ class AudioManager {
         });
       }
     } finally {
+      this.recoveryIdsByGeneration.delete(processingGeneration);
       this.clearActiveTranscriptionAbortController(processingGeneration);
 
       if (this.processingGeneration === processingGeneration && this.isProcessing) {
@@ -1618,18 +1740,44 @@ class AudioManager {
       const result = await this.finalizeLongSessionResult(durationSeconds);
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        for (const recoveryId of this.longSession.recoveryIds || []) {
+          await this.markDictationRecoveryCanceled(recoveryId);
+        }
         return;
       }
 
       result.processingGeneration = processingGeneration;
+      result.completeness = assessTranscriptionCompleteness({
+        text: result.text,
+        durationSeconds,
+      });
 
-      await this.onTranscriptionComplete?.(result, {
+      const completionResult = await this.onTranscriptionComplete?.(result, {
         processingGeneration,
         isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
       });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        for (const recoveryId of this.longSession.recoveryIds || []) {
+          await this.markDictationRecoveryCanceled(recoveryId);
+        }
         return;
+      }
+
+      for (const recoveryId of this.longSession.recoveryIds || []) {
+        if (this.longSession.failedRecoveryIds?.has(recoveryId)) {
+          continue;
+        }
+        if (result.completeness.suspicious || completionResult?.recoverable === false) {
+          await this.markDictationRecoveryFailed(
+            recoveryId,
+            result.completeness.suspicious
+              ? "Transcription may be incomplete for the recorded duration"
+              : completionResult?.reason || "History, paste, and clipboard delivery failed"
+          );
+        } else {
+          await this.completeDictationRecovery(recoveryId);
+        }
       }
 
       logger.info(
@@ -1649,6 +1797,9 @@ class AudioManager {
         error?.name === "AbortError" ||
         !this.isCurrentProcessingGeneration(processingGeneration)
       ) {
+        for (const recoveryId of this.longSession.recoveryIds || []) {
+          await this.markDictationRecoveryCanceled(recoveryId);
+        }
         logger.debug(
           "Long-session transcription canceled",
           {
@@ -1667,6 +1818,13 @@ class AudioManager {
         },
         "performance"
       );
+
+      for (const recoveryId of this.longSession.recoveryIds || []) {
+        await this.markDictationRecoveryFailed(
+          recoveryId,
+          error?.message || "Long-session transcription failed"
+        );
+      }
 
       if (error.message !== "No audio detected") {
         this.onError?.({
@@ -3108,7 +3266,15 @@ class AudioManager {
 
   async safePaste(text) {
     try {
-      await window.electronAPI.pasteText(text);
+      const result = await window.electronAPI.pasteText(text);
+      if (result?.delivered === false) {
+        this.onError?.({
+          title: "Paste not confirmed",
+          description:
+            "PrivateTranscribe could not confirm insertion. The transcription was copied to the clipboard for manual paste.",
+        });
+        return false;
+      }
       return true;
     } catch (error) {
       this.onError?.({
@@ -3121,8 +3287,8 @@ class AudioManager {
 
   async saveTranscription(text, durationSeconds = null) {
     try {
-      await window.electronAPI.saveTranscription(text, durationSeconds);
-      return true;
+      const result = await window.electronAPI.saveTranscription(text, durationSeconds);
+      return result?.success === true;
     } catch (error) {
       return false;
     }

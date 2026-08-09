@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  assertWindowsFastPasteSucceeded,
   FAST_PASTE_EXECUTABLE,
   getWindowsFastPasteExecutablePaths,
   getWindowsPasteShortcut,
@@ -189,5 +190,20 @@ describe("parseWindowsFastPasteOutput", () => {
 
     expect(parsed.windowClass).toBe("");
     expect(parsed.processName).toBe("");
+  });
+});
+
+describe("assertWindowsFastPasteSucceeded", () => {
+  test("rejects a zero-exit helper response that says no paste occurred", () => {
+    expect(() =>
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({
+          pasted: false,
+          isTerminal: false,
+          windowClass: "Chrome_WidgetWin_1",
+          processName: "Code.exe",
+        })
+      )
+    ).toThrow("did not confirm text insertion");
   });
 });

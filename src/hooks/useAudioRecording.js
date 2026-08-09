@@ -13,6 +13,7 @@ import {
   trackAnalyticsEventOnce,
 } from "../utils/analytics";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "./useProStatus";
+import { deliverDictation } from "../utils/dictationDelivery";
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -210,12 +211,12 @@ export const useAudioRecording = (toast, options = {}) => {
           !disposed && (typeof commitContext.isCurrent !== "function" || commitContext.isCurrent());
 
         if (!canCommit() || !result.success) {
-          return;
+          return { recoverable: false, reason: "Dictation completion was canceled" };
         }
 
         const rawText = result.text || "";
         if (!rawText.trim()) {
-          return;
+          return { recoverable: false, reason: "No usable transcription text was produced" };
         }
 
         let text = rawText;
@@ -265,6 +266,15 @@ export const useAudioRecording = (toast, options = {}) => {
         }
 
         setTranscript(text);
+
+        if (result.completeness?.suspicious) {
+          toastRef.current?.({
+            title: "Transcription may be incomplete",
+            description: "The audio was kept under History → Recovered audio so you can review it.",
+            variant: "default",
+            duration: 8000,
+          });
+        }
 
         // ── Action Engine ──────────────────────────────────────────────────────
         // Check whether the final transcript triggers any user-configured action.
@@ -331,23 +341,20 @@ export const useAudioRecording = (toast, options = {}) => {
         const shouldPaste = (localStorage.getItem("autoPaste") ?? "true") !== "false";
         const shouldCopy = (localStorage.getItem("copyToClipboard") ?? "true") !== "false";
 
-        if (!actionHandled) {
-          if (!canCommit()) {
-            return;
-          }
-          if (shouldPaste) {
-            await manager.safePaste(text);
-            if (!canCommit()) {
-              return;
-            }
-            // If "copy to clipboard" is also on, re-write the transcription after paste
-            // (safePaste restores the original clipboard; this ensures the text stays in it)
-            if (shouldCopy && window.electronAPI?.writeClipboard) {
-              await window.electronAPI.writeClipboard(text);
-            }
-          } else if (shouldCopy && window.electronAPI?.writeClipboard) {
-            await window.electronAPI.writeClipboard(text);
-          }
+        const historyLimitRaw = localStorage.getItem("historyLimit");
+        const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
+        const delivery = await deliverDictation({
+          text,
+          shouldPersist: isNaN(historyLimit) || historyLimit > 0,
+          shouldPaste: !actionHandled && shouldPaste,
+          shouldCopy: !actionHandled && shouldCopy,
+          additionalConfirmedDelivery: actionHandled,
+          persist: () => manager.saveTranscription(text, result.durationSeconds),
+          paste: () => manager.safePaste(text),
+          copy: (value) => window.electronAPI?.writeClipboard?.(value),
+        });
+        if (!canCommit()) {
+          return;
         }
 
         // Success confirmation notification (skipped for action triggers - those
@@ -356,7 +363,7 @@ export const useAudioRecording = (toast, options = {}) => {
         if (!canCommit()) {
           return;
         }
-        if (showSuccess && !actionHandled) {
+        if (showSuccess && !actionHandled && delivery.outputAction !== "copy-fallback") {
           toastRef.current?.({
             title: "Transcription complete",
             description: text.length > 80 ? text.slice(0, 80) + "…" : text,
@@ -367,11 +374,9 @@ export const useAudioRecording = (toast, options = {}) => {
 
         const outputAction = actionHandled
           ? "action"
-          : shouldPaste
-            ? "paste"
-            : shouldCopy
-              ? "copy"
-              : "none";
+          : delivery.outputAction === "copy-fallback"
+            ? "copy"
+            : delivery.outputAction;
         const analyticsProperties = buildTranscriptionAnalyticsProperties({
           source: result.source,
           outputAction,
@@ -494,13 +499,6 @@ export const useAudioRecording = (toast, options = {}) => {
           // ignore
         }
 
-        // Only save to history if the user hasn't disabled history entirely
-        const historyLimitRaw = localStorage.getItem("historyLimit");
-        const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
-        if (canCommit() && (isNaN(historyLimit) || historyLimit > 0)) {
-          void manager.saveTranscription(text, result.durationSeconds);
-        }
-
         if (
           canCommit() &&
           (result.source === "openai" || result.source === "openai-fallback") &&
@@ -517,6 +515,10 @@ export const useAudioRecording = (toast, options = {}) => {
         // When overlay is disabled, this triggers the window to be destroyed
         // so it doesn't cause DWM lag while gaming.
         window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
+        return {
+          recoverable: delivery.recoverable,
+          reason: delivery.recoverable ? null : "History, paste, and clipboard delivery failed",
+        };
       },
     });
 

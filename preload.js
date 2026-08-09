@@ -73,6 +73,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteTranscription: (id) => ipcRenderer.invoke("db-delete-transcription", id),
   trimTranscriptions: (limit) => ipcRenderer.invoke("db-trim-transcriptions", limit),
   setHistoryLimit: (limit) => ipcRenderer.invoke("set-history-limit", limit),
+  stageDictationRecovery: (audio, metadata) =>
+    ipcRenderer.invoke("dictation-recovery-stage", audio, metadata),
+  markDictationRecoveryFailed: (id, reason) =>
+    ipcRenderer.invoke("dictation-recovery-failed", id, reason),
+  markDictationRecoveryCanceled: (id) => ipcRenderer.invoke("dictation-recovery-canceled", id),
+  completeDictationRecovery: (id) => ipcRenderer.invoke("dictation-recovery-complete", id),
+  listDictationRecoveries: () => ipcRenderer.invoke("dictation-recovery-list"),
+  revealDictationRecovery: (id) => ipcRenderer.invoke("dictation-recovery-reveal", id),
+  deleteDictationRecovery: (id) => ipcRenderer.invoke("dictation-recovery-delete", id),
   // Dictionary functions
   getDictionary: () => ipcRenderer.invoke("db-get-dictionary"),
   setDictionary: (words) => ipcRenderer.invoke("db-set-dictionary", words),
