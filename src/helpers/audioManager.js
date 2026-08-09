@@ -400,9 +400,9 @@ class AudioManager {
     try {
       const corrections = await globalThis.electronAPI?.getCorrectionMemory?.(200);
       if (Array.isArray(corrections)) {
-        // Only include corrections used more than once (higher confidence)
+        // Prompt hints can influence transcription, so require explicit approval here too.
         this._cachedCorrectionHints = corrections
-          .filter((r) => r?.target && (r?.count || 0) >= 2)
+          .filter((r) => r?.target && r?.confirmed)
           .map((r) => r.target);
       }
     } catch {

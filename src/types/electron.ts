@@ -457,7 +457,6 @@ declare global {
       getDictionary: () => Promise<string[]>;
       setDictionary: (words: string[]) => Promise<{ success: boolean }>;
       getCorrectionMemory: (limit?: number) => Promise<any[]>;
-      upsertCorrection: (source: string, target: string) => Promise<{ success: boolean }>;
       confirmCorrection: (source: string, target: string) => Promise<{ success: boolean }>;
       deleteCorrection: (source: string) => Promise<{ success: boolean }>;
 

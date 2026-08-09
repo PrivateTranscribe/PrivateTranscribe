@@ -72,6 +72,18 @@ describe("paid Pro and tester beta access contract", () => {
     expect(actionPage).toContain("useActionEngine(isUnlocked)");
   });
 
+  it("exposes only the explicitly confirmed correction write path", () => {
+    const preload = readSource("preload.js");
+    const ipcHandlers = readSource("src/helpers/ipcHandlers.js");
+    const electronTypes = readSource("src/types/electron.ts");
+
+    expect(preload).toContain("confirmCorrection:");
+    expect(ipcHandlers).toContain('ipcMain.handle("db-confirm-correction"');
+    expect(preload).not.toContain("upsertCorrection:");
+    expect(ipcHandlers).not.toContain('ipcMain.handle("db-upsert-correction"');
+    expect(electronTypes).not.toContain("upsertCorrection:");
+  });
+
   it("does not tell users that paid Pro unlocks tester-only screens", () => {
     const correctionMemory = readSource("src/components/pages/CorrectionMemoryPage.tsx");
     const actionEngine = readSource("src/components/pages/ActionEnginePage.tsx");

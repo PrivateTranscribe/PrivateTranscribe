@@ -200,7 +200,10 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(audioBlob.arrayBuffer).toHaveBeenCalledTimes(1);
     expect((window as any).electronAPI.transcribeLocalWhisper).not.toHaveBeenCalled();
 
-    correctionMemory.resolve([{ target: "PrivateTranscribe", count: 2 }]);
+    correctionMemory.resolve([
+      { target: "PrivateTranscribe", count: 2, confirmed: true },
+      { target: "UnapprovedHint", count: 99, confirmed: false },
+    ]);
     smartContext.resolve({
       available: true,
       fileIdentifiers: { available: true, identifiers: [] },
@@ -213,5 +216,6 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
       source: "local",
     });
     expect((window as any).electronAPI.transcribeLocalWhisper).toHaveBeenCalledTimes(1);
+    expect(manager._cachedCorrectionHints).toEqual(["PrivateTranscribe"]);
   });
 });

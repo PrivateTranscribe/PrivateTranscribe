@@ -672,15 +672,6 @@ class IPCHandlers {
       }
     });
 
-    ipcMain.handle("db-upsert-correction", async (event, source, target) => {
-      try {
-        return this.databaseManager.upsertCorrection(source, target);
-      } catch (err) {
-        debugLogger.error("[IPC:db-upsert-correction] error:", err.message);
-        return { success: false, error: err.message };
-      }
-    });
-
     ipcMain.handle("db-confirm-correction", async (event, source, target) => {
       try {
         return this.databaseManager.confirmCorrection(source, target);
