@@ -6,6 +6,8 @@
  * to avoid filesystem and Electron dependencies.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // In-memory implementation for testing database logic
@@ -49,6 +51,7 @@ interface SaveOptions {
 
 class MockDatabaseManager {
   private transcriptions: Transcription[] = [];
+  private streakActivity = new Map<string, string>();
   private dictionary: DictionaryEntry[] = [];
   private corrections: CorrectionEntry[] = [];
   private stats: Stats = {
@@ -94,10 +97,9 @@ class MockDatabaseManager {
       this.stats.total_transcriptions += 1;
       this.stats.total_seconds += actualSeconds;
       this.stats.average_wpm =
-        this.stats.total_seconds > 0
-          ? this.stats.total_words / (this.stats.total_seconds / 60)
-          : 0;
+        this.stats.total_seconds > 0 ? this.stats.total_words / (this.stats.total_seconds / 60) : 0;
       this.stats.updated_at = now;
+      this.recordStreakActivity(now);
     }
 
     return { id: transcription.id, success: true, transcription };
@@ -118,6 +120,7 @@ class MockDatabaseManager {
   clearTranscriptions(): { cleared: number; success: boolean } {
     const cleared = this.transcriptions.length;
     this.transcriptions = [];
+    this.streakActivity.clear();
     return { cleared, success: true };
   }
 
@@ -136,40 +139,15 @@ class MockDatabaseManager {
       return { trimmed: result.cleared, success: result.success };
     }
 
-    const sorted = this.transcriptions
-      .slice()
-      .sort((a, b) => {
-        // Primary sort by timestamp descending, secondary by ID descending
-        const timeDiff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        if (timeDiff !== 0) return timeDiff;
-        return b.id - a.id;
-      });
+    const sorted = this.transcriptions.slice().sort((a, b) => {
+      // Primary sort by timestamp descending, secondary by ID descending
+      const timeDiff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return b.id - a.id;
+    });
 
-    // IDs to keep from the regular history window (newest `limit` rows).
+    // IDs to keep from the strict history window (newest `limit` rows).
     const toKeep = new Set(sorted.slice(0, limit).map((t) => t.id));
-
-    // Mirrors the streak-protection subquery in the SQL implementation:
-    // preserve the oldest (min id) include_in_stats=1 row per UTC calendar date so
-    // that getStreakDates() always has at least one sentinel per active day.
-    // Extracting the UTC date handles both ISO-Z strings ("…T14:00:00.000Z") and
-    // SQLite-format strings ("2026-03-23 14:00:00", treated as UTC by slicing).
-    const utcDateKey = (ts: string): string =>
-      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(ts)
-        ? ts.slice(0, 10) // SQLite "YYYY-MM-DD HH:MM:SS" → already UTC
-        : new Date(ts).toISOString().slice(0, 10); // ISO string with Z
-
-    const sentinelByDay = new Map<string, number>(); // utcDateKey → min id
-    for (const t of this.transcriptions) {
-      if (t.include_in_stats !== 1) continue;
-      const key = utcDateKey(t.timestamp);
-      const existing = sentinelByDay.get(key);
-      if (existing === undefined || t.id < existing) {
-        sentinelByDay.set(key, t.id);
-      }
-    }
-    for (const sentinelId of sentinelByDay.values()) {
-      toKeep.add(sentinelId);
-    }
 
     const before = this.transcriptions.length;
     this.transcriptions = this.transcriptions.filter((t) => toKeep.has(t.id));
@@ -259,13 +237,15 @@ class MockDatabaseManager {
   }
 
   getStreakDates(): string[] {
-    const distinct = new Set<string>();
-    for (const transcription of this.transcriptions) {
-      if (transcription.include_in_stats !== 1) continue;
-      const parsed = this.parseStoredTimestampAsUtc(transcription.timestamp);
-      distinct.add(this.toLocalDateKey(parsed));
+    return Array.from(this.streakActivity.keys()).sort().reverse();
+  }
+
+  private recordStreakActivity(timestamp: string): void {
+    const parsed = this.parseStoredTimestampAsUtc(timestamp);
+    const localDate = this.toLocalDateKey(parsed);
+    if (!this.streakActivity.has(localDate)) {
+      this.streakActivity.set(localDate, timestamp);
     }
-    return Array.from(distinct).sort().reverse();
   }
 
   insertTestTranscription({
@@ -284,11 +264,13 @@ class MockDatabaseManager {
       created_at: timestamp,
       include_in_stats: includeInStats ? 1 : 0,
     });
+    if (includeInStats) this.recordStreakActivity(timestamp);
   }
 
   // Test helper to reset state
   reset(): void {
     this.transcriptions = [];
+    this.streakActivity.clear();
     this.dictionary = [];
     this.corrections = [];
     this.stats = {
@@ -420,11 +402,11 @@ describe("DatabaseManager", () => {
       db.insertTestTranscription({ text: "late night", timestamp: "2026-03-16 23:30:00" });
       db.insertTestTranscription({ text: "after midnight", timestamp: "2026-03-17 00:30:00" });
 
-      const expected = [
-        new Date("2026-03-17T00:30:00Z"),
-        new Date("2026-03-16T23:30:00Z"),
-      ]
-        .map((d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
+      const expected = [new Date("2026-03-17T00:30:00Z"), new Date("2026-03-16T23:30:00Z")]
+        .map(
+          (d) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+        )
         .filter((value, index, arr) => arr.indexOf(value) === index)
         .sort()
         .reverse();
@@ -483,19 +465,16 @@ describe("DatabaseManager", () => {
   });
 
   describe("trimTranscriptions", () => {
-    it("keeps only the newest entries up to limit (plus per-day sentinels)", () => {
+    it("keeps exactly the newest entries up to the privacy limit", () => {
       for (let i = 1; i <= 10; i++) {
         db.saveTranscription(`Entry ${i}`);
       }
 
       const result = db.trimTranscriptions(3);
 
-      // All 10 entries share the same UTC date, so the oldest (id=1, "Entry 1")
-      // is preserved as the per-day streak sentinel in addition to the top-3 window.
-      // That gives 4 rows total and 6 deletions instead of the naive 7.
       expect(result.success).toBe(true);
-      expect(result.trimmed).toBe(6);
-      expect(db.getTranscriptions().length).toBe(4);
+      expect(result.trimmed).toBe(7);
+      expect(db.getTranscriptions().length).toBe(3);
       expect(db.getTranscriptions()[0].text).toBe("Entry 10");
     });
 
@@ -519,14 +498,11 @@ describe("DatabaseManager", () => {
       expect(db.getTranscriptions().length).toBe(2);
     });
 
-    it("preserves the oldest entry per day as a streak sentinel even when beyond the limit", () => {
-      // Regression test: filling the history window with today's dictations used to
-      // delete yesterday's only entry, dropping the streak counter mid-session.
-      //
-      // Scenario: limit=5, 1 entry from yesterday + 5 from today.
-      // Without protection: trim keeps only the 5 newest (all today) → yesterday gone.
-      // With protection: yesterday's lone entry (id=1) is a sentinel and survives.
-      db.insertTestTranscription({ text: "Yesterday lone entry", timestamp: "2026-03-23 10:00:00" }); // id 1
+    it("preserves streak dates without retaining transcript text beyond the limit", () => {
+      db.insertTestTranscription({
+        text: "Yesterday lone entry",
+        timestamp: "2026-03-23 10:00:00",
+      }); // id 1
       db.insertTestTranscription({ text: "Today 1", timestamp: "2026-03-24 08:00:00" }); // id 2
       db.insertTestTranscription({ text: "Today 2", timestamp: "2026-03-24 09:00:00" }); // id 3
       db.insertTestTranscription({ text: "Today 3", timestamp: "2026-03-24 10:00:00" }); // id 4
@@ -538,8 +514,8 @@ describe("DatabaseManager", () => {
       const remaining = db.getTranscriptions();
       const texts = remaining.map((t) => t.text);
 
-      // Yesterday's entry must survive because it is the day's sentinel.
-      expect(texts).toContain("Yesterday lone entry");
+      expect(remaining).toHaveLength(5);
+      expect(texts).not.toContain("Yesterday lone entry");
 
       // getStreakDates must still include yesterday's date.
       const streakDates = db.getStreakDates();
@@ -547,9 +523,7 @@ describe("DatabaseManager", () => {
       expect(streakDates).toContain("2026-03-24");
     });
 
-    it("does not preserve include_in_stats=0 entries as sentinels", () => {
-      // Entries excluded from stats (e.g. after a stats reset) must not be protected,
-      // since getStreakDates() ignores them anyway.
+    it("does not add include_in_stats=0 entries to streak metadata", () => {
       db.insertTestTranscription({
         text: "Excluded old",
         timestamp: "2026-03-20 10:00:00",
@@ -563,8 +537,8 @@ describe("DatabaseManager", () => {
       const remaining = db.getTranscriptions();
       const texts = remaining.map((t) => t.text);
 
-      // The excluded entry should NOT be protected — it offers no streak value.
       expect(texts).not.toContain("Excluded old");
+      expect(db.getStreakDates()).not.toContain("2026-03-20");
     });
   });
 
@@ -700,5 +674,24 @@ describe("DatabaseManager", () => {
       // 5 words / (90/60) minutes = 3.33 WPM
       expect(stats.average_wpm).toBeCloseTo(3.33, 1);
     });
+  });
+});
+
+describe("production history privacy contract", () => {
+  it("stores streak dates separately and applies an exact transcript limit", () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "src", "helpers", "database.js"),
+      "utf8"
+    );
+    const trimBlock = source.slice(
+      source.indexOf("trimTranscriptions(limit)"),
+      source.indexOf("getDictionary()")
+    );
+
+    expect(source).toContain("CREATE TABLE IF NOT EXISTS streak_activity");
+    expect(source).toContain("INSERT OR IGNORE INTO streak_activity");
+    expect(source).toContain("FROM streak_activity");
+    expect(trimBlock).not.toContain("GROUP BY date(timestamp)");
+    expect(trimBlock).not.toContain("AND id NOT IN");
   });
 });

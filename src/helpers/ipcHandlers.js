@@ -473,7 +473,13 @@ class IPCHandlers {
       const parsed = parseInt(limit, 10);
       // Clamp to [0, 100 000]: 0 = disabled (no history), upper bound prevents runaway values.
       this.historyLimit = isNaN(parsed) || parsed < 0 ? 50 : Math.min(parsed, 100_000);
-      return { success: true };
+      try {
+        const result = this.databaseManager.trimTranscriptions(this.historyLimit);
+        return { success: true, ...result };
+      } catch (error) {
+        debugLogger.error("Failed to enforce history limit:", error.message);
+        return { success: false, error: error.message };
+      }
     });
 
     ipcMain.handle("db-save-transcription", async (event, text, durationSeconds, options = {}) => {
