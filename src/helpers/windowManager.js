@@ -879,6 +879,29 @@ class WindowManager {
     };
   }
 
+  async sendToggleDictation() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.isOverlaySuppressed()) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        await this.createMainWindow();
+      }
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("toggle-dictation");
+      }
+      return;
+    }
+
+    const dictationWindow = await this.showDictationPanel();
+    if (!dictationWindow || dictationWindow.isDestroyed()) {
+      return;
+    }
+    dictationWindow.moveTop();
+    dictationWindow.webContents.send("toggle-dictation");
+  }
+
   async sendStartDictation() {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
