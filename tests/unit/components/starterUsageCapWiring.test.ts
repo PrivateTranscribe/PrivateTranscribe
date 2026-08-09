@@ -15,6 +15,18 @@ describe("Starter usage cap wiring", () => {
     expect(hook).toContain("recordStarterUsageIfNeeded(text)");
   });
 
+  it("uses a bundled entitlement import before applying the Starter cap", () => {
+    const hook = fs.readFileSync(
+      path.join(process.cwd(), "src", "hooks", "useAudioRecording.js"),
+      "utf8"
+    );
+
+    expect(hook).toMatch(
+      /import\s*\{[^}]*getEffectiveEntitlement[^}]*isFeatureUnlocked[^}]*\}\s*from\s*["']\.\/useProStatus["']/s
+    );
+    expect(hook).not.toContain('require("../hooks/useProStatus")');
+  });
+
   it("counts uploaded file transcription words without locking model access", () => {
     const page = fs.readFileSync(
       path.join(process.cwd(), "src", "components", "pages", "TranscribePage.tsx"),

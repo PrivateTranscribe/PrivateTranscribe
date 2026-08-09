@@ -12,6 +12,7 @@ import {
   trackAnalyticsEvent,
   trackAnalyticsEventOnce,
 } from "../utils/analytics";
+import { getEffectiveEntitlement, isFeatureUnlocked } from "./useProStatus";
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -35,7 +36,6 @@ export const useAudioRecording = (toast, options = {}) => {
     // Wire tester access so unfinished workflow features stay unavailable to regular Pro users.
     manager._checkBetaFeatureAccess = (featureId) => {
       try {
-        const { isFeatureUnlocked } = require("../hooks/useProStatus");
         return isFeatureUnlocked(featureId);
       } catch {
         return false;
@@ -56,7 +56,6 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const isProEntitled = () => {
       try {
-        const { getEffectiveEntitlement } = require("../hooks/useProStatus");
         return getEffectiveEntitlement() === "pro";
       } catch {
         return false;
@@ -65,7 +64,6 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const isBetaFeatureUnlocked = (featureId) => {
       try {
-        const { isFeatureUnlocked } = require("../hooks/useProStatus");
         return isFeatureUnlocked(featureId);
       } catch {
         return false;
@@ -713,7 +711,6 @@ export const useAudioRecording = (toast, options = {}) => {
     }
 
     try {
-      const { getEffectiveEntitlement } = require("../hooks/useProStatus");
       if (getEffectiveEntitlement() !== "pro" && isStarterLimitReached()) {
         const usage = readStarterUsage();
         toastRef.current?.({

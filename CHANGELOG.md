@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.11 - 2026-08-09
+
+### Fixed
+
+- Ensured an active paid Pro license bypasses the Starter daily word limit in packaged production builds.
+- Replaced the raw updater error in unsupported unpacked builds with a clear link to the official Windows installer.
+
 ## 0.13.10 - 2026-08-08
 
 ### Changed
