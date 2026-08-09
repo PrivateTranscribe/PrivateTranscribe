@@ -1,5 +1,5 @@
 /**
- * Commit a completed transcript to local recovery/history before attempting to
+ * Commit a completed transcript to local history before attempting to
  * deliver it outside the app. A failed or unconfirmed paste always falls back
  * to the clipboard, even when the user's normal copy-after-paste preference is off.
  */

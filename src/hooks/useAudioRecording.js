@@ -270,7 +270,7 @@ export const useAudioRecording = (toast, options = {}) => {
         if (result.completeness?.suspicious) {
           toastRef.current?.({
             title: "Transcription may be incomplete",
-            description: "The audio was kept under History → Recovered audio so you can review it.",
+            description: "Review the transcription before using it.",
             variant: "default",
             duration: 8000,
           });

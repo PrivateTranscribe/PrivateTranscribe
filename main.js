@@ -78,7 +78,6 @@ process.on("unhandledRejection", (reason, promise) => {
 const EnvironmentManager = require("./src/helpers/environment");
 const WindowManager = require("./src/helpers/windowManager");
 const DatabaseManager = require("./src/helpers/database");
-const DictationRecoveryManager = require("./src/helpers/dictationRecoveryManager");
 const ClipboardManager = require("./src/helpers/clipboard");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
@@ -101,7 +100,6 @@ let environmentManager = null;
 let windowManager = null;
 let hotkeyManager = null;
 let databaseManager = null;
-let dictationRecoveryManager = null;
 let clipboardManager = null;
 let whisperManager = null;
 let parakeetManager = null;
@@ -160,14 +158,6 @@ async function initializeManagers() {
   windowManager = new WindowManager();
   hotkeyManager = windowManager.hotkeyManager;
   databaseManager = new DatabaseManager();
-  dictationRecoveryManager = new DictationRecoveryManager({
-    baseDir: path.join(app.getPath("userData"), "dictation-recovery"),
-  });
-  try {
-    dictationRecoveryManager.recoverInterrupted();
-  } catch (error) {
-    debugLogger.warn("Dictation recovery startup scan failed", { error: error.message });
-  }
   actionEngineManager = new ActionEngineManager(databaseManager);
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
@@ -231,7 +221,6 @@ async function initializeManagers() {
   const _ipcHandlers = new IPCHandlers({
     environmentManager,
     databaseManager,
-    dictationRecoveryManager,
     clipboardManager,
     whisperManager,
     parakeetManager,

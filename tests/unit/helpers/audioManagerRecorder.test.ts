@@ -249,101 +249,6 @@ describe("AudioManager recorder lifecycle", () => {
     expect(processAudio).toHaveBeenCalledTimes(1);
   });
 
-  it("retains a local recovery copy when transcription fails", async () => {
-    const stageDictationRecovery = vi.fn().mockResolvedValue({
-      success: true,
-      recovery: { id: "recovery-1" },
-    });
-    const markDictationRecoveryFailed = vi.fn().mockResolvedValue({ success: true });
-    (window as any).electronAPI = {
-      stageDictationRecovery,
-      markDictationRecoveryFailed,
-    };
-    localStorageMock.setItem("historyLimit", "50");
-
-    const manager = new AudioManager();
-    manager.isProcessing = true;
-    vi.spyOn(manager, "runTranscription").mockRejectedValue(new Error("model crashed"));
-
-    await manager.processAudio(new Blob(["private audio"], { type: "audio/webm" }), {
-      durationSeconds: 3,
-    });
-
-    expect(stageDictationRecovery).toHaveBeenCalledOnce();
-    expect(markDictationRecoveryFailed).toHaveBeenCalledWith("recovery-1", "model crashed");
-  });
-
-  it("retains recovery audio when every transcript delivery path fails", async () => {
-    const stageDictationRecovery = vi.fn().mockResolvedValue({
-      success: true,
-      recovery: { id: "undelivered-1" },
-    });
-    const markDictationRecoveryFailed = vi.fn().mockResolvedValue({ success: true });
-    const completeDictationRecovery = vi.fn().mockResolvedValue({ success: true });
-    (window as any).electronAPI = {
-      stageDictationRecovery,
-      markDictationRecoveryFailed,
-      completeDictationRecovery,
-    };
-    localStorageMock.setItem("historyLimit", "50");
-
-    const manager = new AudioManager();
-    manager.isProcessing = true;
-    manager.setCallbacks({
-      onStateChange: vi.fn(),
-      onError: vi.fn(),
-      onTranscriptionComplete: vi.fn().mockResolvedValue({
-        recoverable: false,
-        reason: "History, paste, and clipboard delivery failed",
-      }),
-    });
-    vi.spyOn(manager, "runTranscription").mockResolvedValue({
-      result: { success: true, text: "irreplaceable text", source: "local" },
-      useLocalWhisper: true,
-      localProvider: "whisper",
-      activeModel: "base",
-    } as never);
-
-    await manager.processAudio(new Blob(["private audio"], { type: "audio/webm" }), {
-      durationSeconds: 3,
-    });
-
-    expect(markDictationRecoveryFailed).toHaveBeenCalledWith(
-      "undelivered-1",
-      "History, paste, and clipboard delivery failed"
-    );
-    expect(completeDictationRecovery).not.toHaveBeenCalled();
-  });
-
-  it("retains recorded audio when the user cancels before transcription starts", async () => {
-    const stageDictationRecovery = vi.fn().mockResolvedValue({
-      success: true,
-      recovery: { id: "canceled-1" },
-    });
-    const markDictationRecoveryCanceled = vi.fn().mockResolvedValue({ success: true });
-    (window as any).electronAPI = {
-      stageDictationRecovery,
-      markDictationRecoveryCanceled,
-    };
-    localStorageMock.setItem("historyLimit", "50");
-    const manager = new AudioManager();
-    const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
-
-    await manager.startRecording();
-    const recorder = MockMediaRecorder.instances[0];
-    recorder.ondataavailable?.({ data: new Blob(["canceled audio"], { type: "audio/webm" }) });
-    await vi.advanceTimersByTimeAsync(500);
-    expect(manager.cancelRecording()).toBe(true);
-
-    const stopPromise = recorder.onstop?.();
-    await vi.advanceTimersByTimeAsync(250);
-    await stopPromise;
-
-    expect(processAudio).not.toHaveBeenCalled();
-    expect(stageDictationRecovery).toHaveBeenCalledOnce();
-    expect(markDictationRecoveryCanceled).toHaveBeenCalledWith("canceled-1");
-  });
-
   it("recovers immediately when MediaRecorder throws while stopping", async () => {
     const manager = new AudioManager();
     const processAudio = vi.spyOn(manager, "processAudio").mockResolvedValue(undefined as never);
@@ -553,31 +458,6 @@ describe("AudioManager recorder lifecycle", () => {
     expect(manager.getState().longSession.active).toBe(false);
   });
 
-  it("retains the in-progress long-session segment when cancellation discards it", async () => {
-    const manager = new AudioManager();
-    const stage = vi.spyOn(manager, "stageDictationRecovery").mockResolvedValue("canceled-segment");
-    const markCanceled = vi
-      .spyOn(manager, "markDictationRecoveryCanceled")
-      .mockResolvedValue(undefined);
-    const segment = {
-      recorder: { mimeType: "audio/webm" },
-      chunks: [new Blob(["current segment"], { type: "audio/webm" })],
-      startedAt: Date.now() - 5_000,
-      rotateTimer: null,
-      stopping: true,
-      discard: true,
-      restartAfterStop: false,
-      promotionCapture: false,
-      stopResolvers: [],
-      finished: false,
-    };
-
-    manager.finishLongSessionSegment(segment);
-
-    await vi.waitFor(() => expect(markCanceled).toHaveBeenCalledWith("canceled-segment"));
-    expect(stage).toHaveBeenCalledWith(expect.any(Blob), { durationSeconds: 5 });
-  });
-
   it("retries a failed long-session chunk and preserves its text", async () => {
     const manager = new AudioManager();
     const state = manager.createLongSessionState();
@@ -641,62 +521,6 @@ describe("AudioManager recorder lifecycle", () => {
       "could not be transcribed completely"
     );
     expect(processTranscription).not.toHaveBeenCalled();
-  });
-
-  it("stages long-session chunks before transcription so a failed chunk remains recoverable", async () => {
-    let recoveryNumber = 0;
-    const stageDictationRecovery = vi.fn(async () => ({
-      success: true,
-      recovery: { id: `long-${++recoveryNumber}` },
-    }));
-    const markDictationRecoveryFailed = vi.fn().mockResolvedValue({ success: true });
-    (window as any).electronAPI = {
-      stageDictationRecovery,
-      markDictationRecoveryFailed,
-    };
-    localStorageMock.setItem("historyLimit", "50");
-    const manager = new AudioManager();
-    const state = manager.createLongSessionState();
-    state.active = true;
-    state.sessionId = 44;
-    manager.longSession = state;
-    vi.spyOn(manager, "runTranscription").mockRejectedValue(new Error("chunk crashed"));
-
-    manager.enqueueLongSessionChunk(new Blob(["recover this chunk"], { type: "audio/webm" }), 1000);
-    await manager.waitForLongSessionQueue();
-
-    expect(stageDictationRecovery).toHaveBeenCalledOnce();
-    expect(markDictationRecoveryFailed).toHaveBeenCalledWith("long-1", "chunk crashed");
-  });
-
-  it("never deletes a failed chunk recovery when a long-session result completes", async () => {
-    const manager = new AudioManager();
-    const state = manager.createLongSessionState();
-    state.active = true;
-    state.recoveryIds.add("successful-chunk");
-    state.recoveryIds.add("failed-chunk");
-    state.failedRecoveryIds.add("failed-chunk");
-    manager.longSession = state;
-    manager.isProcessing = true;
-    manager.setCallbacks({
-      onStateChange: vi.fn(),
-      onError: vi.fn(),
-      onTranscriptionComplete: vi.fn().mockResolvedValue({ recoverable: true }),
-    });
-    vi.spyOn(manager, "stopLongSessionSegmentCapture").mockResolvedValue(undefined);
-    vi.spyOn(manager, "finalizeLongSessionResult").mockResolvedValue({
-      success: true,
-      text: "complete long dictation output",
-      source: "long-session",
-      longSession: { chunks: 2, failedChunks: 0 },
-      timings: {},
-    } as never);
-    const complete = vi.spyOn(manager, "completeDictationRecovery").mockResolvedValue(undefined);
-
-    await manager.processLongSessionAudio({ durationSeconds: 5 });
-
-    expect(complete).toHaveBeenCalledWith("successful-chunk");
-    expect(complete).not.toHaveBeenCalledWith("failed-chunk");
   });
 
   it("keeps the normal recorder path if standalone segment recording is unavailable", async () => {

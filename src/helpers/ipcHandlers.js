@@ -219,7 +219,6 @@ class IPCHandlers {
   constructor(managers) {
     this.environmentManager = managers.environmentManager;
     this.databaseManager = managers.databaseManager;
-    this.dictationRecoveryManager = managers.dictationRecoveryManager || null;
     this.clipboardManager = managers.clipboardManager;
     this.whisperManager = managers.whisperManager;
     this.parakeetManager = managers.parakeetManager;
@@ -474,9 +473,6 @@ class IPCHandlers {
       const parsed = parseInt(limit, 10);
       // Clamp to [0, 100 000]: 0 = disabled (no history), upper bound prevents runaway values.
       this.historyLimit = isNaN(parsed) || parsed < 0 ? 50 : Math.min(parsed, 100_000);
-      if (this.historyLimit === 0) {
-        this.dictationRecoveryManager?.clear();
-      }
       return { success: true };
     });
 
@@ -514,70 +510,6 @@ class IPCHandlers {
       } catch (err) {
         debugLogger.error("[IPC:db-get-transcriptions] error:", err.message);
         return { success: true, data: [] };
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-stage", async (_event, audio, metadata = {}) => {
-      if (this.historyLimit === 0 || !this.dictationRecoveryManager) {
-        return { success: true, skipped: true };
-      }
-      try {
-        const staged = this.dictationRecoveryManager.stage(Buffer.from(audio), metadata);
-        return { success: true, recovery: staged };
-      } catch (error) {
-        debugLogger.error("[IPC:dictation-recovery-stage] error:", error.message);
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-failed", async (_event, id, reason) => {
-      try {
-        return { success: true, recovery: this.dictationRecoveryManager?.markFailed(id, reason) };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-canceled", async (_event, id) => {
-      try {
-        return { success: true, recovery: this.dictationRecoveryManager?.markCanceled(id) };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-complete", async (_event, id) => {
-      try {
-        return this.dictationRecoveryManager?.remove(id) || { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-list", async () => {
-      try {
-        return this.dictationRecoveryManager?.list() || [];
-      } catch (error) {
-        debugLogger.error("[IPC:dictation-recovery-list] error:", error.message);
-        return [];
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-reveal", async (_event, id) => {
-      try {
-        const audioPath = this.dictationRecoveryManager.getAudioPath(id);
-        shell.showItemInFolder(audioPath);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
-    });
-
-    ipcMain.handle("dictation-recovery-delete", async (_event, id) => {
-      try {
-        return this.dictationRecoveryManager?.remove(id) || { success: true };
-      } catch (error) {
-        return { success: false, error: error.message };
       }
     });
 
