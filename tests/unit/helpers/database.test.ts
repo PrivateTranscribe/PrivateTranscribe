@@ -105,6 +105,24 @@ class MockDatabaseManager {
     return { id: transcription.id, success: true, transcription };
   }
 
+  recordTranscriptionActivity(
+    text: string,
+    durationSeconds: number | null = null
+  ): { success: boolean; timestamp: string } {
+    const timestamp = new Date().toISOString();
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const actualSeconds =
+      durationSeconds && durationSeconds > 0 ? durationSeconds : (wordCount / 150) * 60;
+    this.stats.total_words += wordCount;
+    this.stats.total_transcriptions += 1;
+    this.stats.total_seconds += actualSeconds;
+    this.stats.average_wpm =
+      this.stats.total_seconds > 0 ? this.stats.total_words / (this.stats.total_seconds / 60) : 0;
+    this.stats.updated_at = timestamp;
+    this.recordStreakActivity(timestamp);
+    return { success: true, timestamp };
+  }
+
   getTranscriptions(limit: number = 50): Transcription[] {
     return this.transcriptions
       .slice()
@@ -120,7 +138,6 @@ class MockDatabaseManager {
   clearTranscriptions(): { cleared: number; success: boolean } {
     const cleared = this.transcriptions.length;
     this.transcriptions = [];
-    this.streakActivity.clear();
     return { cleared, success: true };
   }
 
@@ -349,6 +366,19 @@ describe("DatabaseManager", () => {
       // Average: 6 words / (12/60) minutes = 30 WPM
       expect(stats.average_wpm).toBe(30);
     });
+
+    it("records stats and streak activity without retaining transcript text", () => {
+      const result = db.recordTranscriptionActivity("private words stay ephemeral", 8);
+
+      expect(result.success).toBe(true);
+      expect(db.getTranscriptions()).toEqual([]);
+      expect(db.getStats()).toMatchObject({
+        total_words: 4,
+        total_transcriptions: 1,
+        total_seconds: 8,
+      });
+      expect(db.getStreakDates()).toHaveLength(1);
+    });
   });
 
   describe("getTranscriptions", () => {
@@ -456,6 +486,7 @@ describe("DatabaseManager", () => {
       expect(result.success).toBe(true);
       expect(result.cleared).toBe(3);
       expect(db.getTranscriptions()).toEqual([]);
+      expect(db.getStreakDates()).toHaveLength(1);
     });
 
     it("returns 0 cleared when empty", () => {
@@ -486,6 +517,7 @@ describe("DatabaseManager", () => {
 
       expect(result.trimmed).toBe(2);
       expect(db.getTranscriptions()).toEqual([]);
+      expect(db.getStreakDates()).toHaveLength(1);
     });
 
     it("does nothing when fewer entries than limit", () => {
@@ -691,7 +723,25 @@ describe("production history privacy contract", () => {
     expect(source).toContain("CREATE TABLE IF NOT EXISTS streak_activity");
     expect(source).toContain("INSERT OR IGNORE INTO streak_activity");
     expect(source).toContain("FROM streak_activity");
+    expect(source).toContain("recordTranscriptionActivity(text, durationSeconds = null)");
     expect(trimBlock).not.toContain("GROUP BY date(timestamp)");
     expect(trimBlock).not.toContain("AND id NOT IN");
+  });
+
+  it("records streak activity without transcript history when the limit is zero", () => {
+    const hookSource = fs.readFileSync(
+      path.join(process.cwd(), "src", "hooks", "useAudioRecording.js"),
+      "utf8"
+    );
+    const ipcSource = fs.readFileSync(
+      path.join(process.cwd(), "src", "helpers", "ipcHandlers.js"),
+      "utf8"
+    );
+    const preloadSource = fs.readFileSync(path.join(process.cwd(), "preload.js"), "utf8");
+
+    expect(hookSource).toContain("if (historyLimit === 0)");
+    expect(hookSource).toContain("await manager.recordTranscriptionActivity");
+    expect(ipcSource).toContain('ipcMain.handle("db-record-transcription-activity"');
+    expect(preloadSource).toContain('ipcRenderer.invoke("db-record-transcription-activity"');
   });
 });

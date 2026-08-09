@@ -420,6 +420,10 @@ declare global {
         durationSeconds?: number | null,
         options?: SaveTranscriptionOptions
       ) => Promise<{ id: number; success: boolean }>;
+      recordTranscriptionActivity?: (
+        text: string,
+        durationSeconds?: number | null
+      ) => Promise<{ success: boolean }>;
       getTranscriptions: (limit?: number) => Promise<TranscriptionItem[]>;
       clearTranscriptions: () => Promise<{ cleared: number; success: boolean }>;
       deleteTranscription: (id: number) => Promise<{ success: boolean }>;
@@ -437,7 +441,7 @@ declare global {
       // Stats operations
       getStats: () => Promise<AggregateStats>;
       resetStats: () => Promise<{ success: boolean }>;
-      /** Returns distinct "YYYY-MM-DD" date strings for real dictation sessions (last 366 days). */
+      /** Returns one representative UTC timestamp for each local dictation day. */
       getStreakDates: () => Promise<string[]>;
 
       // Optional, consent-based analytics. Properties never include audio or transcript text.

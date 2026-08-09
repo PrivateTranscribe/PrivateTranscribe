@@ -509,6 +509,15 @@ class IPCHandlers {
       }
     });
 
+    ipcMain.handle("db-record-transcription-activity", async (event, text, durationSeconds) => {
+      try {
+        return this.databaseManager.recordTranscriptionActivity(text, durationSeconds);
+      } catch (err) {
+        debugLogger.error("[IPC:db-record-transcription-activity] error:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
+
     ipcMain.handle("db-get-transcriptions", async (event, limit = 50) => {
       const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 50, 10_000));
       try {

@@ -221,6 +221,48 @@ class DatabaseManager {
       .run(this._toLocalDateKey(timestamp), timestamp);
   }
 
+  _updateStatsAndStreak(text, durationSeconds, timestamp) {
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const actualSeconds =
+      durationSeconds && durationSeconds > 0 ? durationSeconds : (wordCount / 150) * 60;
+    const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
+    const newTotalWords = (currentStats?.total_words || 0) + wordCount;
+    const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
+    const averageWPM = newTotalSeconds > 0 ? newTotalWords / (newTotalSeconds / 60) : 0;
+
+    this.db
+      .prepare(
+        `
+          UPDATE stats
+          SET total_words = total_words + ?,
+              total_transcriptions = total_transcriptions + 1,
+              total_seconds = total_seconds + ?,
+              average_wpm = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = 1
+        `
+      )
+      .run(wordCount, actualSeconds, averageWPM);
+    this._recordStreakActivity(timestamp);
+  }
+
+  recordTranscriptionActivity(text, durationSeconds = null) {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      const recordActivity = this.db.transaction(() => {
+        const { timestamp } = this.db.prepare("SELECT CURRENT_TIMESTAMP AS timestamp").get();
+        this._updateStatsAndStreak(text, durationSeconds, timestamp);
+        return timestamp;
+      });
+      return { success: true, timestamp: recordActivity() };
+    } catch (error) {
+      console.error("Error recording transcription activity:", error.message);
+      throw error;
+    }
+  }
+
   saveTranscription(text, durationSeconds = null, options = {}) {
     try {
       if (!this.db) {
@@ -237,32 +279,7 @@ class DatabaseManager {
       const transcription = fetchStmt.get(result.lastInsertRowid);
 
       if (includeInStats) {
-        // Update aggregate stats
-        const wordCount = text.split(/\s+/).filter(Boolean).length;
-
-        // Use actual recording duration if available, otherwise estimate at 150 WPM
-        const actualSeconds =
-          durationSeconds && durationSeconds > 0 ? durationSeconds : (wordCount / 150) * 60;
-
-        // Get current stats to calculate cumulative average WPM
-        const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
-        const newTotalWords = (currentStats?.total_words || 0) + wordCount;
-        const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
-
-        // Calculate average WPM: (total words / total minutes)
-        const averageWPM = newTotalSeconds > 0 ? newTotalWords / (newTotalSeconds / 60) : 0;
-
-        const updateStats = this.db.prepare(`
-          UPDATE stats 
-          SET total_words = total_words + ?,
-              total_transcriptions = total_transcriptions + 1,
-              total_seconds = total_seconds + ?,
-              average_wpm = ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = 1
-        `);
-        updateStats.run(wordCount, actualSeconds, averageWPM);
-        this._recordStreakActivity(transcription.timestamp);
+        this._updateStatsAndStreak(text, durationSeconds, transcription.timestamp);
       }
 
       return { id: result.lastInsertRowid, success: true, transcription };
@@ -291,12 +308,7 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      const clear = this.db.transaction(() => {
-        const result = this.db.prepare("DELETE FROM transcriptions").run();
-        this.db.prepare("DELETE FROM streak_activity").run();
-        return result;
-      });
-      const result = clear();
+      const result = this.db.prepare("DELETE FROM transcriptions").run();
       return { cleared: result.changes, success: true };
     } catch (error) {
       console.error("Error clearing transcriptions:", error.message);

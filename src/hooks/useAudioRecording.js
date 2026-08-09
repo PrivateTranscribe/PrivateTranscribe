@@ -343,6 +343,12 @@ export const useAudioRecording = (toast, options = {}) => {
 
         const historyLimitRaw = localStorage.getItem("historyLimit");
         const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
+        if (historyLimit === 0) {
+          await manager.recordTranscriptionActivity(text, result.durationSeconds);
+          if (!canCommit()) {
+            return;
+          }
+        }
         const delivery = await deliverDictation({
           text,
           shouldPersist: isNaN(historyLimit) || historyLimit > 0,

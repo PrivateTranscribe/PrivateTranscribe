@@ -3133,7 +3133,16 @@ class AudioManager {
     try {
       const result = await window.electronAPI.saveTranscription(text, durationSeconds);
       return result?.success === true;
-    } catch (error) {
+    } catch {
+      return false;
+    }
+  }
+
+  async recordTranscriptionActivity(text, durationSeconds = null) {
+    try {
+      const result = await window.electronAPI.recordTranscriptionActivity?.(text, durationSeconds);
+      return result?.success === true;
+    } catch {
       return false;
     }
   }
