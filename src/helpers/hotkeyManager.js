@@ -95,13 +95,14 @@ function normalizeActivationMode(mode) {
   return "tap";
 }
 
-function shouldUseWindowsNativeListener(hotkey, activationMode = "tap") {
+function shouldUseWindowsNativeListener(hotkey, _activationMode = "tap") {
   if (!hotkey || hotkey === "GLOBE") return false;
   if (isWindowsNativeOnlyHotkey(hotkey)) return true;
 
-  // Push-to-talk and tap+hold need key-up detection. Electron globalShortcut can
-  // reserve normal accelerators, but it cannot tell us when the user releases them.
-  return normalizeActivationMode(activationMode) !== "tap" && isValidAccelerator(hotkey);
+  // Every activation mode needs key-up detection: Tap must reject long presses,
+  // Hold must reject short presses, and Both must distinguish between the two.
+  // Electron globalShortcut cannot tell us when the user releases an accelerator.
+  return isValidAccelerator(hotkey);
 }
 
 // Valid accelerator key names per Electron docs (partial list for validation).
@@ -267,12 +268,21 @@ class HotkeyManager {
     this.useGnome = false;
     this.hotkeyCallback = null;
     this.activationMode = "tap";
+    this.windowsNativeListenerActive = false;
     this.sessionHotkeyEnabled = true;
   }
 
   setActivationMode(mode) {
     this.activationMode = normalizeActivationMode(mode);
     debugLogger.log(`[HotkeyManager] Activation mode set to: ${this.activationMode}`);
+  }
+
+  setWindowsNativeListenerActive(active) {
+    this.windowsNativeListenerActive = Boolean(active);
+  }
+
+  shouldHandleWindowsGlobalShortcut() {
+    return this.activationMode === "tap" && !this.windowsNativeListenerActive;
   }
 
   setListeningMode(enabled) {
@@ -523,7 +533,11 @@ class HotkeyManager {
       const effectiveCallback =
         process.platform === "win32"
           ? () => {
-              if (this.activationMode === "tap") callback();
+              // Keep globalShortcut registered as a fallback, but let the native
+              // listener own gestures while it is active so one press cannot fire twice.
+              if (this.shouldHandleWindowsGlobalShortcut()) {
+                callback();
+              }
             }
           : callback;
       const success = globalShortcut.register(hotkey, effectiveCallback);

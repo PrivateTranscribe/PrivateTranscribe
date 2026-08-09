@@ -40,11 +40,23 @@ describe("HotkeyManager Windows native routing", () => {
     isRegistered.mockReturnValue(false);
   });
 
-  it("keeps normal tap-mode accelerators off the Windows native listener", async () => {
+  it("routes normal tap-mode accelerators through the Windows native listener", async () => {
     const mod = await loadHotkeyManager("win32");
 
-    expect(mod.shouldUseWindowsNativeListener("CommandOrControl+Space", "tap")).toBe(false);
-    expect(mod.shouldUseWindowsNativeListener("Control+Space", "tap")).toBe(false);
+    expect(mod.shouldUseWindowsNativeListener("CommandOrControl+Space", "tap")).toBe(true);
+    expect(mod.shouldUseWindowsNativeListener("Control+Space", "tap")).toBe(true);
+  });
+
+  it("suppresses the global shortcut while the Windows native listener owns the gesture", async () => {
+    const mod = await loadHotkeyManager("win32");
+    const HotkeyManager = mod.default ?? mod;
+    const manager = new HotkeyManager();
+
+    manager.setWindowsNativeListenerActive(true);
+    expect(manager.shouldHandleWindowsGlobalShortcut()).toBe(false);
+
+    manager.setWindowsNativeListenerActive(false);
+    expect(manager.shouldHandleWindowsGlobalShortcut()).toBe(true);
   });
 
   it("routes normal accelerators through the Windows native listener for tap+hold", async () => {

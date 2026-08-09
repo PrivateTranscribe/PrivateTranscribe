@@ -86,6 +86,7 @@ const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
+const ActivationGestureController = require("./src/helpers/activationGestureController");
 const {
   normalizeActivationMode,
   shouldUseWindowsNativeListener,
@@ -511,9 +512,36 @@ async function startApp() {
   updateManager.checkForUpdatesOnStartup();
 
   if (process.platform === "darwin") {
-    let globeKeyDownTime = 0;
-    let globeKeyIsRecording = false;
-    const MIN_HOLD_DURATION_MS = 150; // Minimum hold time to trigger push-to-talk
+    let globePreparingPress = false;
+    let globeReleasePending = false;
+    let globePressSequence = 0;
+    let globeHoldStartActive = false;
+
+    const globeGestureController = new ActivationGestureController({
+      onTap: () => {
+        windowManager.sendToggleDictation();
+      },
+      onHoldStart: () => {
+        globeHoldStartActive = true;
+        Promise.resolve(windowManager.sendStartDictation())
+          .then(() => {
+            if (!globeHoldStartActive) {
+              windowManager.sendStopDictation();
+            }
+          })
+          .catch((error) => {
+            globeHoldStartActive = false;
+            windowManager.sendStopDictation();
+            debugLogger.warn("[Activation] Failed to start Globe hold dictation", {
+              error: error?.message || String(error),
+            });
+          });
+      },
+      onHoldEnd: () => {
+        globeHoldStartActive = false;
+        windowManager.sendStopDictation();
+      },
+    });
 
     globeKeyManager.on("globe-down", async () => {
       // Forward to control panel for hotkey capture
@@ -527,49 +555,33 @@ async function startApp() {
         hotkeyManager.getCurrentHotkey &&
         hotkeyManager.getCurrentHotkey() === "GLOBE"
       ) {
-        if (isLiveWindow(windowManager.mainWindow)) {
-          const activationMode = await windowManager.getActivationMode();
-          await windowManager.showDictationPanel();
-          if (activationMode === "tapHold") {
-            await windowManager.sendHybridDictationKeyDown();
-          } else if (activationMode === "push") {
-            // Track when key was pressed for push-to-talk
-            globeKeyDownTime = Date.now();
-            globeKeyIsRecording = false;
-            // Start recording after a brief delay to distinguish tap from hold
-            setTimeout(async () => {
-              // Only start if key is still being held
-              if (globeKeyDownTime > 0 && !globeKeyIsRecording) {
-                globeKeyIsRecording = true;
-                windowManager.sendStartDictation();
-              }
-            }, MIN_HOLD_DURATION_MS);
-          } else {
-            windowManager.mainWindow.webContents.send("toggle-dictation");
-          }
+        if (globePreparingPress || globeGestureController.isPressed) {
+          return;
+        }
+
+        globePreparingPress = true;
+        globeReleasePending = false;
+        const sequence = ++globePressSequence;
+        const activationMode = await windowManager.getActivationMode();
+        if (sequence !== globePressSequence) {
+          return;
+        }
+
+        globeGestureController.setMode(activationMode);
+        globeGestureController.keyDown();
+        globePreparingPress = false;
+        if (globeReleasePending) {
+          globeReleasePending = false;
+          globeGestureController.keyUp();
         }
       }
     });
 
-    globeKeyManager.on("globe-up", async () => {
-      // Handle push-to-talk release if Globe is the current hotkey
-      if (
-        hotkeyManager.isSessionHotkeyEnabled() &&
-        hotkeyManager.getCurrentHotkey &&
-        hotkeyManager.getCurrentHotkey() === "GLOBE"
-      ) {
-        const activationMode = await windowManager.getActivationMode();
-        if (activationMode === "push") {
-          globeKeyDownTime = 0;
-          // Only stop if we actually started recording
-          if (globeKeyIsRecording) {
-            globeKeyIsRecording = false;
-            windowManager.sendStopDictation();
-          }
-          // If released too quickly, don't do anything (tap is ignored in push mode)
-        } else if (activationMode === "tapHold") {
-          windowManager.sendHybridDictationKeyUp();
-        }
+    globeKeyManager.on("globe-up", () => {
+      if (globePreparingPress) {
+        globeReleasePending = true;
+      } else {
+        globeGestureController.keyUp();
       }
     });
 
@@ -584,35 +596,40 @@ async function startApp() {
     }
 
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
-    let winKeyIsRecording = false;
     let currentActivationMode = "tap";
-    let winHybridPressActive = false;
-    let winHybridKeyDownDelivered = false;
-    let winHybridPendingRelease = false;
-    let winHybridSequence = 0;
+    let winHoldStartActive = false;
 
-    const stopPushToTalkRecording = (reason) => {
-      if (!winKeyIsRecording) {
-        return;
-      }
-
-      winKeyIsRecording = false;
-      debugLogger.debug("[Push-to-Talk] Stopping recording", { reason });
-      windowManager.sendStopDictation();
-    };
-
-    const resetHybridPress = () => {
-      winHybridSequence += 1;
-      winHybridPressActive = false;
-      winHybridKeyDownDelivered = false;
-      winHybridPendingRelease = false;
-    };
-
-    const sendHybridKeyUp = (reason) => {
-      debugLogger.debug("[Tap+Hold] Sending key up", { reason });
-      windowManager.sendHybridDictationKeyUp();
-      resetHybridPress();
-    };
+    const winGestureController = new ActivationGestureController({
+      mode: currentActivationMode,
+      onTap: () => {
+        debugLogger.debug("[Activation] Tap completed");
+        windowManager.sendToggleDictation();
+      },
+      onHoldStart: () => {
+        debugLogger.debug("[Activation] Hold threshold reached");
+        winHoldStartActive = true;
+        Promise.resolve(windowManager.sendStartDictation())
+          .then(() => {
+            // The key can be released while a hidden overlay is still loading.
+            // Re-send stop after startup completes so audio cannot stay ducked.
+            if (!winHoldStartActive) {
+              windowManager.sendStopDictation();
+            }
+          })
+          .catch((error) => {
+            winHoldStartActive = false;
+            windowManager.sendStopDictation();
+            debugLogger.warn("[Activation] Failed to start hold dictation", {
+              error: error?.message || String(error),
+            });
+          });
+      },
+      onHoldEnd: () => {
+        debugLogger.debug("[Activation] Hold released");
+        winHoldStartActive = false;
+        windowManager.sendStopDictation();
+      },
+    });
 
     // Helper to check if hotkey is valid for Windows key listener
     // Supports compound hotkeys like "CommandOrControl+F11"
@@ -622,109 +639,40 @@ async function startApp() {
       return true;
     };
 
-    // Mouse buttons, modifier-only combos, and locale/OEM keys cannot use
-    // globalShortcut safely. Push mode also needs native key-up detection.
+    // All three gesture modes require the native listener's key-up detection.
     const needsNativeListener = (hotkey, mode) => {
       return isValidHotkey(hotkey) && shouldUseWindowsNativeListener(hotkey, mode);
     };
 
+    const startNativeListener = (hotkey) => {
+      windowsKeyManager.start(hotkey);
+      hotkeyManager.setWindowsNativeListenerActive(windowsKeyManager.isListening());
+    };
+
     windowsKeyManager.on("key-down", (key) => {
-      debugLogger.debug("[Push-to-Talk] Key DOWN received", { key });
+      debugLogger.debug("[Activation] Key DOWN received", { key });
 
       if (!hotkeyManager.isSessionHotkeyEnabled()) {
         return;
       }
 
-      if (currentActivationMode === "tap") {
-        // Tap mode: native listener is only used for modifier-only/mouse hotkeys.
-        // key-down fires the toggle (key-up is ignored in tap mode).
-        if (isLiveWindow(windowManager.mainWindow)) {
-          windowManager.sendToggleDictation();
-        }
-        return;
-      }
-
-      if (currentActivationMode === "tapHold") {
-        if (winHybridPressActive) {
-          sendHybridKeyUp("recovery-duplicate-key-down");
-        }
-
-        debugLogger.debug("[Tap+Hold] Starting key sequence");
-        winHybridPressActive = true;
-        winHybridKeyDownDelivered = false;
-        winHybridPendingRelease = false;
-        const sequence = ++winHybridSequence;
-        windowManager
-          .sendHybridDictationKeyDown()
-          .then(() => {
-            if (!winHybridPressActive || sequence !== winHybridSequence) {
-              return;
-            }
-            winHybridKeyDownDelivered = true;
-            if (winHybridPendingRelease) {
-              sendHybridKeyUp("pending-release");
-            }
-          })
-          .catch((error) => {
-            debugLogger.warn("[Tap+Hold] Failed to send key down", {
-              error: error?.message || String(error),
-            });
-            if (sequence === winHybridSequence) {
-              resetHybridPress();
-            }
-          });
-        return;
-      }
-
-      // Push mode below
-      if (currentActivationMode !== "push") {
-        return;
-      }
-
-      // Recovery path: if we get a new key-down while still marked recording,
-      // assume a missed key-up and force-stop first.
-      if (winKeyIsRecording) {
-        stopPushToTalkRecording("recovery-duplicate-key-down");
-        return;
-      }
-
-      debugLogger.debug("[Push-to-Talk] Starting recording sequence");
-      winKeyIsRecording = true;
-      windowManager.sendStartDictation().then(() => {
-        // If the user released the key while the lazy overlay was still loading,
-        // stop immediately so push-to-talk cannot get stuck recording.
-        if (!winKeyIsRecording) {
-          windowManager.sendStopDictation();
-        }
-      });
+      winGestureController.keyDown();
     });
 
     windowsKeyManager.on("key-up", () => {
-      debugLogger.debug("[Push-to-Talk] Key UP received");
+      debugLogger.debug("[Activation] Key UP received");
+      winGestureController.keyUp();
+    });
 
-      if (currentActivationMode === "tapHold") {
-        if (!winHybridPressActive) {
-          return;
-        }
-
-        if (winHybridKeyDownDelivered) {
-          sendHybridKeyUp("key-up");
-        } else {
-          winHybridPendingRelease = true;
-        }
-        return;
-      }
-
-      // Always stop if recording is active, even if activation mode state drifted.
-      if (winKeyIsRecording) {
-        stopPushToTalkRecording("key-up");
-      }
+    windowsKeyManager.on("stopped", () => {
+      hotkeyManager.setWindowsNativeListenerActive(false);
+      winGestureController.cancel();
     });
 
     windowsKeyManager.on("error", (error) => {
       debugLogger.warn("[Push-to-Talk] Windows key listener error", { error: error.message });
-      stopPushToTalkRecording("listener-error");
-      resetHybridPress();
+      hotkeyManager.setWindowsNativeListenerActive(false);
+      winGestureController.cancel();
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
@@ -735,11 +683,9 @@ async function startApp() {
     });
 
     windowsKeyManager.on("unavailable", () => {
-      debugLogger.debug(
-        "[Push-to-Talk] Windows key listener not available - falling back to toggle mode"
-      );
-      stopPushToTalkRecording("listener-unavailable");
-      resetHybridPress();
+      debugLogger.debug("[Activation] Windows key listener not available");
+      hotkeyManager.setWindowsNativeListenerActive(false);
+      winGestureController.cancel();
       windowManager.setWindowsPushToTalkAvailable(false);
       if (isLiveWindow(windowManager.mainWindow)) {
         windowManager.mainWindow.webContents.send("windows-ptt-unavailable", {
@@ -751,6 +697,7 @@ async function startApp() {
 
     windowsKeyManager.on("ready", () => {
       debugLogger.debug("[Push-to-Talk] WindowsKeyManager is ready and listening");
+      hotkeyManager.setWindowsNativeListenerActive(true);
       windowManager.setWindowsPushToTalkAvailable(true);
     });
 
@@ -758,6 +705,7 @@ async function startApp() {
       currentActivationMode = await windowManager.getActivationMode();
       windowManager.setActivationMode(currentActivationMode);
       hotkeyManager.setActivationMode(currentActivationMode);
+      winGestureController.setMode(currentActivationMode);
       debugLogger.debug("[Push-to-Talk] Refreshed activation mode", {
         activationMode: currentActivationMode,
       });
@@ -780,7 +728,7 @@ async function startApp() {
         debugLogger.debug("[Push-to-Talk] Starting Windows key listener", {
           hotkey: currentHotkey,
         });
-        windowsKeyManager.start(currentHotkey);
+        startNativeListener(currentHotkey);
       } else {
         debugLogger.debug("[Push-to-Talk] Native listener not needed for this hotkey/mode");
       }
@@ -802,35 +750,32 @@ async function startApp() {
       currentActivationMode = normalizeActivationMode(mode);
       windowManager.setActivationMode(currentActivationMode);
       hotkeyManager.setActivationMode(currentActivationMode);
-      if (currentActivationMode !== "push") {
-        stopPushToTalkRecording("activation-mode-changed");
-      }
-      if (currentActivationMode !== "tapHold") {
-        resetHybridPress();
-      }
+      winGestureController.setMode(currentActivationMode);
 
       const currentHotkey = hotkeyManager.getCurrentHotkey();
+      hotkeyManager.setWindowsNativeListenerActive(false);
       windowsKeyManager.stop();
       if (
         hotkeyManager.isSessionHotkeyEnabled() &&
         needsNativeListener(currentHotkey, currentActivationMode)
       ) {
         debugLogger.debug("[Push-to-Talk] Starting listener", { hotkey: currentHotkey });
-        windowsKeyManager.start(currentHotkey);
+        startNativeListener(currentHotkey);
       }
     });
 
     // Listen for hotkey changes from renderer
     ipcMain.on("hotkey-changed", async (_event, hotkey) => {
       debugLogger.debug("[Push-to-Talk] IPC: Hotkey changed", { hotkey });
-      stopPushToTalkRecording("hotkey-changed");
+      winGestureController.cancel();
+      hotkeyManager.setWindowsNativeListenerActive(false);
       windowsKeyManager.stop();
       if (
         hotkeyManager.isSessionHotkeyEnabled() &&
         needsNativeListener(hotkey, currentActivationMode)
       ) {
         debugLogger.debug("[Push-to-Talk] Starting listener for new hotkey", { hotkey });
-        windowsKeyManager.start(hotkey);
+        startNativeListener(hotkey);
       }
     });
   }
