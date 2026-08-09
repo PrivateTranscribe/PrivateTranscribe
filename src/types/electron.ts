@@ -396,6 +396,7 @@ declare global {
       // Basic window operations
       pasteText: (text: string) => Promise<{
         delivered: boolean;
+        dispatched?: boolean;
         fallback?: "clipboard";
         method?: string;
       }>;

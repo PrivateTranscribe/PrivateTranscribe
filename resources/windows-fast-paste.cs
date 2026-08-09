@@ -23,9 +23,18 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Windows.Automation;
+using System.Windows.Forms;
 
 internal static class WindowsFastPaste
 {
+    private sealed class AccessibleTextSnapshot
+    {
+        public string Text;
+        public int[] RuntimeId;
+    }
+
     private static readonly string[] TerminalWindowClasses =
     {
         "ConsoleWindowClass",
@@ -73,6 +82,7 @@ internal static class WindowsFastPaste
         VkLWin, VkRWin,
     };
 
+    [STAThread]
     private static int Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
@@ -91,12 +101,15 @@ internal static class WindowsFastPaste
 
         if (detectOnly)
         {
-            WriteResult(false, isTerminal, windowClass, processName);
+            WriteResult(false, false, isTerminal, windowClass, processName);
             return 0;
         }
 
+        string clipboardText = ReadClipboardText();
+        AccessibleTextSnapshot textBefore = ReadFocusedAccessibleText();
+
         // Give the foreground window a moment to settle after the hotkey release.
-        System.Threading.Thread.Sleep(10);
+        Thread.Sleep(10);
 
         ushort[] heldModifiers = ReleaseHeldModifiers();
         bool sent = SendPasteChord(isTerminal);
@@ -108,18 +121,157 @@ internal static class WindowsFastPaste
             return 1;
         }
 
-        WriteResult(true, isTerminal, windowClass, processName);
+        bool confirmed = ConfirmAccessibleInsertion(textBefore, clipboardText);
+        WriteResult(confirmed, true, isTerminal, windowClass, processName);
         return 0;
     }
 
-    private static void WriteResult(bool pasted, bool isTerminal, string windowClass, string processName)
+    private static void WriteResult(
+        bool pasted,
+        bool dispatched,
+        bool isTerminal,
+        string windowClass,
+        string processName)
     {
         Console.Write(
             "{\"pasted\":" + (pasted ? "true" : "false") +
+            ",\"dispatched\":" + (dispatched ? "true" : "false") +
             ",\"isTerminal\":" + (isTerminal ? "true" : "false") +
             ",\"windowClass\":\"" + EscapeJson(windowClass) +
             "\",\"processName\":\"" + EscapeJson(processName) +
             "\",\"chord\":\"" + (isTerminal ? "ctrl+shift+v" : "ctrl+v") + "\"}");
+    }
+
+    // SendInput success proves only that Windows accepted the key events. Report
+    // insertion only when the focused accessible text changes and contains the
+    // clipboard text. Captured content stays in this process and is never
+    // written to stdout, stderr, logs, analytics, or disk.
+    private static bool ConfirmAccessibleInsertion(
+        AccessibleTextSnapshot textBefore,
+        string clipboardText)
+    {
+        if (textBefore == null || string.IsNullOrEmpty(clipboardText))
+        {
+            return false;
+        }
+
+        string normalizedBefore = NormalizeNewlines(textBefore.Text);
+        string normalizedClipboard = NormalizeNewlines(clipboardText);
+        int occurrencesBefore = CountOccurrences(normalizedBefore, normalizedClipboard);
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            Thread.Sleep(25);
+            AccessibleTextSnapshot textAfter = ReadFocusedAccessibleText();
+            if (textAfter == null || !SameRuntimeId(textBefore.RuntimeId, textAfter.RuntimeId))
+            {
+                continue;
+            }
+
+            string normalizedAfter = NormalizeNewlines(textAfter.Text);
+            if (!string.Equals(normalizedAfter, normalizedBefore, StringComparison.Ordinal) &&
+                CountOccurrences(normalizedAfter, normalizedClipboard) > occurrencesBefore)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string ReadClipboardText()
+    {
+        try
+        {
+            return Clipboard.ContainsText(TextDataFormat.UnicodeText)
+                ? Clipboard.GetText(TextDataFormat.UnicodeText)
+                : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static AccessibleTextSnapshot ReadFocusedAccessibleText()
+    {
+        try
+        {
+            AutomationElement focused = AutomationElement.FocusedElement;
+            if (focused == null)
+            {
+                return null;
+            }
+
+            int[] runtimeId = focused.GetRuntimeId();
+            if (runtimeId == null || runtimeId.Length == 0)
+            {
+                return null;
+            }
+
+            object pattern;
+            if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out pattern))
+            {
+                return new AccessibleTextSnapshot
+                {
+                    Text = ((ValuePattern)pattern).Current.Value ?? string.Empty,
+                    RuntimeId = runtimeId,
+                };
+            }
+
+            if (focused.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
+            {
+                // Bound the local read rather than retaining an arbitrary document.
+                // Missing evidence is a safe false negative: the caller preserves
+                // the transcript in history and on the clipboard.
+                return new AccessibleTextSnapshot
+                {
+                    Text = ((TextPattern)pattern).DocumentRange.GetText(131072) ?? string.Empty,
+                    RuntimeId = runtimeId,
+                };
+            }
+        }
+        catch
+        {
+            // Elevated, protected, or non-accessible targets remain unconfirmed.
+        }
+        return null;
+    }
+
+    private static bool SameRuntimeId(int[] left, int[] right)
+    {
+        if (left == null || right == null || left.Length != right.Length)
+        {
+            return false;
+        }
+        for (int index = 0; index < left.Length; index++)
+        {
+            if (left[index] != right[index])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static string NormalizeNewlines(string value)
+    {
+        return (value ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
+    }
+
+    private static int CountOccurrences(string value, string candidate)
+    {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(candidate))
+        {
+            return 0;
+        }
+
+        int count = 0;
+        int offset = 0;
+        while ((offset = value.IndexOf(candidate, offset, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += candidate.Length;
+        }
+        return count;
     }
 
     private static string ReadWindowClass(IntPtr window)

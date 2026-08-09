@@ -3271,7 +3271,7 @@ class AudioManager {
         this.onError?.({
           title: "Paste not confirmed",
           description:
-            "PrivateTranscribe could not confirm insertion. The transcription was copied to the clipboard for manual paste.",
+            "The paste shortcut was sent, but insertion could not be confirmed. Check the target before pasting manually; the transcription is on the clipboard.",
         });
         return false;
       }

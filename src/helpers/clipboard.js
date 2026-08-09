@@ -364,7 +364,12 @@ class ClipboardManager {
         return await this.pasteWithFastPaste(fastPastePath, originalClipboard);
       } catch (error) {
         if (error?.code === "WINDOWS_PASTE_NOT_CONFIRMED") {
-          throw error;
+          return {
+            delivered: false,
+            dispatched: error.dispatched === true,
+            fallback: "clipboard",
+            method: "windows-fast-paste",
+          };
         }
         this.safeLog("⚠️ Fast paste helper failed, falling back to Ctrl+V", {
           error: error.message,

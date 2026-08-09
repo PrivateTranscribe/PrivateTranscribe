@@ -72,12 +72,18 @@ describe("ClipboardManager Windows paste routing", () => {
     vi.spyOn(manager, "getFastPastePath").mockReturnValue(HELPER_PATH);
     const notConfirmed = Object.assign(new Error("not confirmed"), {
       code: "WINDOWS_PASTE_NOT_CONFIRMED",
+      dispatched: true,
     });
     vi.spyOn(manager, "pasteWithFastPaste").mockRejectedValue(notConfirmed);
     const nircmd = vi.spyOn(manager, "pasteWithNircmd").mockResolvedValue(undefined);
     const powershell = vi.spyOn(manager, "pasteWithPowerShell").mockResolvedValue(undefined);
 
-    await expect(manager.pasteWindows({ text: "before" })).rejects.toBe(notConfirmed);
+    await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
+      delivered: false,
+      dispatched: true,
+      fallback: "clipboard",
+      method: "windows-fast-paste",
+    });
     expect(nircmd).not.toHaveBeenCalled();
     expect(powershell).not.toHaveBeenCalled();
   });

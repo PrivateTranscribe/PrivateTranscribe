@@ -113,7 +113,7 @@ describe("AudioManager recorder lifecycle", () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Paste not confirmed",
-        description: expect.stringContaining("copied to the clipboard"),
+        description: expect.stringContaining("Check the target before pasting manually"),
       })
     );
   });

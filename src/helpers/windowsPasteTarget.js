@@ -46,12 +46,19 @@ function parseWindowsFastPasteOutput(stdout) {
     const parsed = JSON.parse(String(stdout || "").trim());
     return {
       pasted: parsed.pasted === true,
+      dispatched: parsed.dispatched === true,
       isTerminal: parsed.isTerminal === true,
       windowClass: typeof parsed.windowClass === "string" ? parsed.windowClass.slice(0, 128) : "",
       processName: typeof parsed.processName === "string" ? parsed.processName.slice(0, 128) : "",
     };
   } catch {
-    return { pasted: false, isTerminal: false, windowClass: "", processName: "" };
+    return {
+      pasted: false,
+      dispatched: false,
+      isTerminal: false,
+      windowClass: "",
+      processName: "",
+    };
   }
 }
 
@@ -62,6 +69,7 @@ function assertWindowsFastPasteSucceeded(stdout) {
       "Windows paste helper did not confirm text insertion. The transcription remains copied to the clipboard."
     );
     error.code = "WINDOWS_PASTE_NOT_CONFIRMED";
+    error.dispatched = result.dispatched;
     throw error;
   }
   return result;

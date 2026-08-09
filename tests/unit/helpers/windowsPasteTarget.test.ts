@@ -128,6 +128,7 @@ describe("parseWindowsFastPasteOutput", () => {
   test("reads a successful terminal paste", () => {
     const output = JSON.stringify({
       pasted: true,
+      dispatched: true,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
@@ -136,6 +137,7 @@ describe("parseWindowsFastPasteOutput", () => {
 
     expect(parseWindowsFastPasteOutput(output)).toEqual({
       pasted: true,
+      dispatched: true,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
@@ -154,9 +156,29 @@ describe("parseWindowsFastPasteOutput", () => {
     expect(parseWindowsFastPasteOutput(output).isTerminal).toBe(false);
   });
 
+  test("distinguishes a dispatched shortcut from confirmed insertion", () => {
+    const parsed = parseWindowsFastPasteOutput(
+      JSON.stringify({
+        pasted: false,
+        dispatched: true,
+        isTerminal: false,
+        windowClass: "Chrome_WidgetWin_1",
+        processName: "Code",
+      })
+    );
+
+    expect(parsed).toMatchObject({ pasted: false, dispatched: true });
+    expect(() =>
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, dispatched: true, isTerminal: false })
+      )
+    ).toThrow("did not confirm text insertion");
+  });
+
   test("degrades to a non-terminal result on unreadable output", () => {
     expect(parseWindowsFastPasteOutput("not json")).toEqual({
       pasted: false,
+      dispatched: false,
       isTerminal: false,
       windowClass: "",
       processName: "",
