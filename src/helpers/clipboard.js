@@ -359,34 +359,32 @@ class ClipboardManager {
     // AMSI for inspection.
     const fastPastePath = this.getFastPastePath();
 
-    if (fastPastePath) {
-      try {
-        return await this.pasteWithFastPaste(fastPastePath, originalClipboard);
-      } catch (error) {
-        if (error?.code === "WINDOWS_PASTE_NOT_CONFIRMED") {
-          return {
-            delivered: false,
-            dispatched: error.dispatched === true,
-            fallback: "clipboard",
-            method: "windows-fast-paste",
-          };
-        }
-        this.safeLog("⚠️ Fast paste helper failed, falling back to Ctrl+V", {
-          error: error.message,
-        });
-      }
-    } else {
-      this.safeLog("⚠️ Fast paste helper not found, falling back to Ctrl+V");
+    if (!fastPastePath) {
+      this.safeLog("Windows paste helper not found; keeping text on the clipboard");
+      return {
+        delivered: false,
+        dispatched: false,
+        fallback: "clipboard",
+        method: "windows-fast-paste",
+      };
     }
 
-    // Fallback path: no target detection is available here, so use plain Ctrl+V.
-    const shortcut = getWindowsPasteShortcut();
-    const nircmdPath = this.getNircmdPath();
-
-    if (nircmdPath) {
-      return this.pasteWithNircmd(nircmdPath, originalClipboard, shortcut);
-    } else {
-      return this.pasteWithPowerShell(originalClipboard, shortcut);
+    try {
+      return await this.pasteWithFastPaste(fastPastePath, originalClipboard);
+    } catch (error) {
+      const notConfirmed = error?.code === "WINDOWS_PASTE_NOT_CONFIRMED";
+      this.safeLog(
+        notConfirmed
+          ? "Windows paste was dispatched but not confirmed; keeping text on the clipboard"
+          : "Windows paste helper failed; keeping text on the clipboard",
+        notConfirmed ? { dispatched: error.dispatched === true } : { error: error.message }
+      );
+      return {
+        delivered: false,
+        dispatched: notConfirmed && error.dispatched === true,
+        fallback: "clipboard",
+        method: "windows-fast-paste",
+      };
     }
   }
 

@@ -16,7 +16,6 @@ vi.mock("electron", () => ({
 const ClipboardManager = require("../../../src/helpers/clipboard");
 
 const HELPER_PATH = "C:\\app\\resources\\bin\\windows-fast-paste.exe";
-const PLAIN_CTRL_V = { isTerminal: false, nircmdKeys: "ctrl+v", sendKeys: "^v" };
 
 describe("ClipboardManager Windows paste routing", () => {
   test("uses the native fast paste helper when it is available", async () => {
@@ -33,38 +32,39 @@ describe("ClipboardManager Windows paste routing", () => {
     expect(powershell).not.toHaveBeenCalled();
   });
 
-  test("falls back to nircmd with plain Ctrl+V when the helper is missing", async () => {
+  test("keeps the transcript on the clipboard when the helper is missing", async () => {
     const manager = new ClipboardManager();
     vi.spyOn(manager, "getFastPastePath").mockReturnValue(null);
-    vi.spyOn(manager, "getNircmdPath").mockReturnValue("C:\\tools\\nircmd.exe");
     const nircmd = vi.spyOn(manager, "pasteWithNircmd").mockResolvedValue(undefined);
-
-    await manager.pasteWindows({ text: "before" });
-
-    expect(nircmd).toHaveBeenCalledWith("C:\\tools\\nircmd.exe", { text: "before" }, PLAIN_CTRL_V);
-  });
-
-  test("falls back to PowerShell when neither the helper nor nircmd is available", async () => {
-    const manager = new ClipboardManager();
-    vi.spyOn(manager, "getFastPastePath").mockReturnValue(null);
-    vi.spyOn(manager, "getNircmdPath").mockReturnValue(null);
     const powershell = vi.spyOn(manager, "pasteWithPowerShell").mockResolvedValue(undefined);
 
-    await manager.pasteWindows({ text: "before" });
+    await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
+      delivered: false,
+      dispatched: false,
+      fallback: "clipboard",
+      method: "windows-fast-paste",
+    });
 
-    expect(powershell).toHaveBeenCalledWith({ text: "before" }, PLAIN_CTRL_V);
+    expect(nircmd).not.toHaveBeenCalled();
+    expect(powershell).not.toHaveBeenCalled();
   });
 
-  test("falls back to the legacy path when the helper itself fails", async () => {
+  test("does not attempt an unconfirmable second paste when the helper fails", async () => {
     const manager = new ClipboardManager();
     vi.spyOn(manager, "getFastPastePath").mockReturnValue(HELPER_PATH);
     vi.spyOn(manager, "pasteWithFastPaste").mockRejectedValue(new Error("SendInput failed"));
-    vi.spyOn(manager, "getNircmdPath").mockReturnValue("C:\\tools\\nircmd.exe");
     const nircmd = vi.spyOn(manager, "pasteWithNircmd").mockResolvedValue(undefined);
+    const powershell = vi.spyOn(manager, "pasteWithPowerShell").mockResolvedValue(undefined);
 
-    await manager.pasteWindows({ text: "before" });
+    await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
+      delivered: false,
+      dispatched: false,
+      fallback: "clipboard",
+      method: "windows-fast-paste",
+    });
 
-    expect(nircmd).toHaveBeenCalledWith("C:\\tools\\nircmd.exe", { text: "before" }, PLAIN_CTRL_V);
+    expect(nircmd).not.toHaveBeenCalled();
+    expect(powershell).not.toHaveBeenCalled();
   });
 
   test("does not replace a negative paste acknowledgement with an unconfirmed legacy success", async () => {
