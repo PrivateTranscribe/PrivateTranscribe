@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown, Search, X, Check } from "lucide-react";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "../../utils/languages";
+import { selectTriggerClass, selectContentClass, selectItemClass } from "./selectStyles";
+import { cn } from "../lib/utils";
 
 interface LanguageSelectorProps {
   value: string;
@@ -96,24 +98,25 @@ export default function LanguageSelector({
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className={`w-full flex items-center justify-between px-3 py-2 border rounded-lg bg-surface-1 text-left transition-all duration-200 ${
-          isOpen
-            ? "border-primary/50 ring-1 ring-primary/20 bg-surface-raised"
-            : "border-border-subtle hover:border-border-hover hover:bg-surface-raised"
-        }`}
+        className={cn(
+          selectTriggerClass,
+          "text-left transition-colors",
+          isOpen ? "border-primary/50 ring-1 ring-primary/15" : "hover:border-border-hover"
+        )}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="truncate text-sm text-foreground">{getLanguageLabel(value)}</span>
+        <span className="truncate text-foreground">{getLanguageLabel(value)}</span>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={cn(
+            "h-4 w-4 shrink-0 opacity-50 transition-transform duration-200",
+            isOpen && "rotate-180"
+          )}
         />
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1.5 bg-popover/95 backdrop-blur-xl border border-border-subtle rounded-xl shadow-xl max-h-60 overflow-hidden">
+        <div className={cn(selectContentClass, "absolute top-full mt-1 w-full max-h-60")}>
           <div className="p-2 border-b border-border-subtle">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -146,18 +149,21 @@ export default function LanguageSelector({
                     key={language.value}
                     type="button"
                     onClick={() => handleSelect(language.value)}
-                    className={`w-full px-2.5 py-1.5 text-left text-sm rounded-md transition-colors ${
-                      language.value === value
-                        ? "bg-primary/15 text-primary font-medium"
-                        : "text-foreground hover:bg-surface-raised"
-                    } ${index === highlightedIndex && language.value !== value ? "bg-surface-raised" : ""}`}
+                    className={cn(
+                      selectItemClass,
+                      "text-left",
+                      language.value === value && "bg-primary/15 text-primary font-medium",
+                      index === highlightedIndex && language.value !== value && "bg-primary/15"
+                    )}
                     role="option"
                     aria-selected={language.value === value}
                   >
-                    <span className="flex items-center justify-between">
-                      {language.label}
-                      {language.value === value && <Check className="w-3.5 h-3.5" />}
-                    </span>
+                    {language.label}
+                    {language.value === value && (
+                      <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+                        <Check className="h-4 w-4" />
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

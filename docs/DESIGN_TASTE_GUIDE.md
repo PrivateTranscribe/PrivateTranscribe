@@ -123,6 +123,24 @@ Bad:
 - motion that distracts during dictation
 - animations on every settings interaction
 
+## One control, one component
+
+Two controls that do the same kind of job must never look different. If a screen needs a
+dropdown, a button, a toggle, or an input, reach for the existing primitive in
+`src/components/ui/` instead of hand-rolling one.
+
+Rules:
+
+- Never write a native `<select>`. Use `Select` from `src/components/ui/select.tsx`.
+  ESLint blocks this (`no-restricted-syntax` in `src/eslint.config.js`).
+- Dropdown look lives in `src/components/ui/selectStyles.ts`. Both the Radix `Select`
+  and the bespoke searchable `LanguageSelector` consume it, so they stay identical.
+  Change the styling there, never at the call site.
+- If a primitive is genuinely missing, add it to `src/components/ui/` and use it
+  everywhere. Do not style a one-off in a page component.
+- If a primitive is close but not quite right, extend the primitive rather than
+  overriding it with a pile of classNames at the call site.
+
 ## Agent workflow for UI changes
 
 Before editing:

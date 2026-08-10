@@ -28,6 +28,7 @@ import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProSt
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import LanguageSelector from "../ui/LanguageSelector";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useToast } from "../ui/Toast";
 import { useSettings } from "../../hooks/useSettings";
 import { formatBytes } from "../../utils/formatBytes";
@@ -765,17 +766,18 @@ export default function TranscribePage() {
                       </p>
                     </div>
                   </div>
-                  <select
-                    value={expectedSpeakers}
-                    onChange={(e) => setExpectedSpeakers(e.target.value)}
-                    className="h-9 rounded-lg border border-border-subtle bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-w-[160px]"
-                  >
-                    {SPEAKER_COUNT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={expectedSpeakers} onValueChange={setExpectedSpeakers}>
+                    <SelectTrigger className="min-w-[160px] sm:w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SPEAKER_COUNT_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Model status indicator */}

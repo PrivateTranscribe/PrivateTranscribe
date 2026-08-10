@@ -4,6 +4,19 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
+// Design-system guardrails: native form controls render with OS chrome that will never
+// match the app's styled primitives, so they are banned in favour of the shared components.
+const designSystemRules = {
+  "no-restricted-syntax": [
+    "error",
+    {
+      selector: "JSXOpeningElement[name.name='select']",
+      message:
+        "Do not use a native <select>. Use the Select primitive from components/ui/select so every dropdown shares one design.",
+    },
+  ],
+};
+
 export default [
   { ignores: ["dist", "helpers/**", "utils/**"] },
   // JS and JSX files (renderer - ES modules)
@@ -38,6 +51,7 @@ export default [
       "no-useless-catch": "off",
       "no-async-promise-executor": "off",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      ...designSystemRules,
     },
   },
   // TypeScript files
@@ -68,6 +82,7 @@ export default [
       "no-console": "off",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      ...designSystemRules,
     },
   },
 ];
