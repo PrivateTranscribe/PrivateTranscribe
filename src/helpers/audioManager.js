@@ -2005,6 +2005,14 @@ class AudioManager {
         "performance"
       );
 
+      // A long-session chunk holding only silence is a normal outcome — the
+      // speaker paused, or the recording ran on after they stopped talking.
+      // It is not a failure: treating it as one exhausts the chunk's retries
+      // and makes finalizeLongSessionResult discard the whole dictation.
+      if (metadata?.source === "long-session" && !result.text) {
+        return { success: true, text: "", source: "local", timings };
+      }
+
       if (result.success && result.text) {
         if (metadata?.skipPostProcessing) {
           return { success: true, text: result.text, source: "local", timings };

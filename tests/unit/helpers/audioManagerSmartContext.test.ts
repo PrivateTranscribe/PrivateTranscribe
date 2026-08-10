@@ -180,6 +180,33 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(options.trimTrailingSilence).toBeUndefined();
   });
 
+  it("treats a silent long-session chunk as empty, not as a failure", async () => {
+    // A chunk holding only a pause is normal. Throwing here burns the chunk's
+    // retries and makes finalizeLongSessionResult discard the whole dictation.
+    const manager = new AudioManager();
+    (window as any).electronAPI.transcribeLocalWhisper = vi
+      .fn()
+      .mockResolvedValue({ success: false, message: "No audio detected" });
+
+    await expect(
+      manager.processWithLocalWhisper(makeBlob(), "large", {
+        source: "long-session",
+        skipPostProcessing: true,
+      })
+    ).resolves.toMatchObject({ success: true, text: "" });
+  });
+
+  it("still reports no audio for an ordinary silent dictation", async () => {
+    const manager = new AudioManager();
+    (window as any).electronAPI.transcribeLocalWhisper = vi
+      .fn()
+      .mockResolvedValue({ success: false, message: "No audio detected" });
+
+    await expect(
+      manager.processWithLocalWhisper(makeBlob(), "large", { skipPostProcessing: true })
+    ).rejects.toThrow("No audio detected");
+  });
+
   it("marks live long-session chunks for conservative Whisper decoding", async () => {
     const manager = new AudioManager();
 
