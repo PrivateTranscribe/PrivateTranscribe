@@ -193,6 +193,100 @@ internal static class WindowsHoldKey
             case "space":
                 key = Keys.Space;
                 break;
+
+            // Names the hotkey picker emits that the Keys enum does not know.
+            // Without these the fallback Enum.Parse below throws, the helper
+            // exits before pressing anything, and the user dictates unmuted.
+            // The picker's names come from KeyboardEvent.code, which identifies
+            // a physical key position, and the Oem* members are position-based
+            // too, so the pairing holds on non-US layouts.
+            case "esc":
+                key = Keys.Escape;
+                break;
+            case "backspace":
+                key = Keys.Back;
+                break;
+            case "scrolllock":
+                key = Keys.Scroll;
+                break;
+            case "num0":
+                key = Keys.NumPad0;
+                break;
+            case "num1":
+                key = Keys.NumPad1;
+                break;
+            case "num2":
+                key = Keys.NumPad2;
+                break;
+            case "num3":
+                key = Keys.NumPad3;
+                break;
+            case "num4":
+                key = Keys.NumPad4;
+                break;
+            case "num5":
+                key = Keys.NumPad5;
+                break;
+            case "num6":
+                key = Keys.NumPad6;
+                break;
+            case "num7":
+                key = Keys.NumPad7;
+                break;
+            case "num8":
+                key = Keys.NumPad8;
+                break;
+            case "num9":
+                key = Keys.NumPad9;
+                break;
+            case "numadd":
+                key = Keys.Add;
+                break;
+            case "numsub":
+                key = Keys.Subtract;
+                break;
+            case "nummult":
+                key = Keys.Multiply;
+                break;
+            case "numdiv":
+                key = Keys.Divide;
+                break;
+            case "numdec":
+                key = Keys.Decimal;
+                break;
+            case "`":
+                key = Keys.Oemtilde;
+                break;
+            case "-":
+                key = Keys.OemMinus;
+                break;
+            case "=":
+                key = Keys.Oemplus;
+                break;
+            case "[":
+                key = Keys.OemOpenBrackets;
+                break;
+            case "]":
+                key = Keys.OemCloseBrackets;
+                break;
+            case "\\":
+                key = Keys.OemPipe;
+                break;
+            case ";":
+                key = Keys.OemSemicolon;
+                break;
+            case "'":
+                key = Keys.OemQuotes;
+                break;
+            case ",":
+                key = Keys.Oemcomma;
+                break;
+            case ".":
+                key = Keys.OemPeriod;
+                break;
+            case "/":
+                key = Keys.OemQuestion;
+                break;
         }
 
         if (key == Keys.None)
