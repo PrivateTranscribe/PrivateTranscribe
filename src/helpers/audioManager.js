@@ -36,6 +36,15 @@ const MIN_DICTATION_DURATION_MS = 500;
 const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
 const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
 const LONG_SESSION_SEGMENT_MS = 60 * 1000;
+// Segments are transcribed independently, so a boundary that lands mid-sentence
+// leaves Whisper decoding an utterance that never finishes. It reacts by
+// inventing a plausible ending. Once the target length is reached, wait for a
+// real pause in speech before rotating, and only cut mid-speech if the speaker
+// never pauses before the hard cap.
+const LONG_SESSION_SEGMENT_MAX_MS = 90 * 1000;
+const LONG_SESSION_SEGMENT_PAUSE_POLL_MS = 100;
+const LONG_SESSION_SEGMENT_PAUSE_HOLD_MS = 300;
+const LONG_SESSION_SEGMENT_PAUSE_RMS = 0.015;
 const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 2;
 
 const isTranscriptionTextDebugEnabled = () => {
@@ -230,6 +239,7 @@ class AudioManager {
     this.longSession = this.createLongSessionState();
     this.longSessionSegment = null;
     this.longSessionPromotionUnavailable = false;
+    this.segmentLevelAnalyser = null;
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
@@ -703,6 +713,7 @@ class AudioManager {
         chunks: [],
         startedAt: Date.now(),
         rotateTimer: null,
+        pauseHeldMs: 0,
         stopping: false,
         discard: false,
         restartAfterStop: false,
@@ -735,7 +746,8 @@ class AudioManager {
       recorder.start();
       if (!promotionCapture) {
         segment.rotateTimer = setTimeout(() => {
-          void this.rotateLongSessionSegment();
+          segment.rotateTimer = null;
+          this.rotateLongSessionSegmentAtNextPause(segment);
         }, LONG_SESSION_SEGMENT_MS);
       }
       return true;
@@ -783,6 +795,131 @@ class AudioManager {
     if (shouldRestart) {
       this.startLongSessionSegmentCapture();
     }
+  }
+
+  /**
+   * Tap the live recording stream so segment rotation can wait for a pause.
+   * Returns null when Web Audio is unavailable or refuses the stream; callers
+   * then fall back to rotating on the wall clock.
+   */
+  ensureSegmentLevelAnalyser() {
+    if (this.segmentLevelAnalyser) {
+      return this.segmentLevelAnalyser;
+    }
+
+    const stream = this.recordingStream;
+    if (!stream) {
+      return null;
+    }
+
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) {
+        return null;
+      }
+
+      const context = new AudioCtx();
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+
+      this.segmentLevelAnalyser = {
+        context,
+        source,
+        analyser,
+        samples: new Float32Array(analyser.fftSize),
+      };
+      return this.segmentLevelAnalyser;
+    } catch (error) {
+      this.segmentLevelAnalyser = null;
+      logger.debug(
+        "Segment pause detection unavailable; rotating on the wall clock",
+        { error: error?.message },
+        "audio"
+      );
+      return null;
+    }
+  }
+
+  disposeSegmentLevelAnalyser() {
+    const node = this.segmentLevelAnalyser;
+    this.segmentLevelAnalyser = null;
+    if (!node) {
+      return;
+    }
+
+    try {
+      node.source.disconnect();
+      node.analyser.disconnect();
+      void node.context.close();
+    } catch {
+      // Ignore teardown errors from an already-closed context.
+    }
+  }
+
+  readSegmentLevelRms() {
+    const node = this.segmentLevelAnalyser;
+    if (!node) {
+      return null;
+    }
+
+    try {
+      node.analyser.getFloatTimeDomainData(node.samples);
+    } catch {
+      return null;
+    }
+
+    let sumOfSquares = 0;
+    for (let i = 0; i < node.samples.length; i += 1) {
+      sumOfSquares += node.samples[i] * node.samples[i];
+    }
+    const rms = Math.sqrt(sumOfSquares / node.samples.length);
+    return Number.isFinite(rms) ? rms : null;
+  }
+
+  rotateLongSessionSegmentAtNextPause(segment) {
+    if (segment.finished || segment.stopping || this.longSessionSegment !== segment) {
+      return;
+    }
+
+    if (!this.ensureSegmentLevelAnalyser()) {
+      void this.rotateLongSessionSegment();
+      return;
+    }
+
+    segment.pauseHeldMs = 0;
+
+    const poll = () => {
+      segment.rotateTimer = null;
+      if (segment.finished || segment.stopping || this.longSessionSegment !== segment) {
+        return;
+      }
+
+      const rms = this.readSegmentLevelRms();
+      if (rms === null) {
+        void this.rotateLongSessionSegment();
+        return;
+      }
+
+      segment.pauseHeldMs =
+        rms < LONG_SESSION_SEGMENT_PAUSE_RMS
+          ? segment.pauseHeldMs + LONG_SESSION_SEGMENT_PAUSE_POLL_MS
+          : 0;
+
+      const elapsedMs = Date.now() - segment.startedAt;
+      if (
+        segment.pauseHeldMs >= LONG_SESSION_SEGMENT_PAUSE_HOLD_MS ||
+        elapsedMs >= LONG_SESSION_SEGMENT_MAX_MS
+      ) {
+        void this.rotateLongSessionSegment();
+        return;
+      }
+
+      segment.rotateTimer = setTimeout(poll, LONG_SESSION_SEGMENT_PAUSE_POLL_MS);
+    };
+
+    segment.rotateTimer = setTimeout(poll, LONG_SESSION_SEGMENT_PAUSE_POLL_MS);
   }
 
   rotateLongSessionSegment() {
@@ -967,6 +1104,8 @@ class AudioManager {
   }
 
   stopRecordingStream() {
+    this.disposeSegmentLevelAnalyser();
+
     const stream = this.recordingStream || this.mediaRecorder?.stream || null;
     if (!stream) {
       this.recordingStream = null;
@@ -984,6 +1123,7 @@ class AudioManager {
 
   releaseMediaRecorder() {
     this.clearRecorderStopWatchdog();
+    this.disposeSegmentLevelAnalyser();
 
     if (this.mediaRecorder) {
       this.mediaRecorder.ondataavailable = null;
