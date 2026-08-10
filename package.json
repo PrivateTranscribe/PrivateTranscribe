@@ -55,6 +55,7 @@
     "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js",
     "fixture:long-dictation": "node scripts/long-dictation-test.js prepare",
     "start:long-dictation-test": "node scripts/long-dictation-test.js launch",
+    "run:long-dictation": "node scripts/long-dictation-headless.js",
     "score:long-dictation": "node scripts/long-dictation-test.js score",
     "smoke:diarization": "node scripts/diarization-smoke.js"
   },
