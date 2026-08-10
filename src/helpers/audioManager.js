@@ -1091,11 +1091,6 @@ class AudioManager {
     await this.waitForLongSessionQueue();
 
     const state = this.longSession;
-    if (state.errors.length > 0) {
-      throw new Error(
-        `Long recording could not be transcribed completely after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
-      );
-    }
 
     const rawText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
@@ -1104,8 +1099,28 @@ class AudioManager {
       .join(" ")
       .trim();
 
+    // A failed chunk used to discard the whole dictation, so one bad section
+    // out of five cost the speaker every word they said. Keep what did
+    // transcribe and flag it as incomplete; only give up when nothing survived.
     if (!rawText) {
+      if (state.errors.length > 0) {
+        throw new Error(
+          `Long recording could not be transcribed after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
+        );
+      }
       throw new Error("No text transcribed - audio may be silent or unavailable");
+    }
+
+    if (state.errors.length > 0) {
+      logger.warn(
+        "Returning a partial long-session transcript",
+        {
+          failedChunks: state.errors.length,
+          completedChunks: state.completedChunks,
+          firstError: state.errors[0]?.message,
+        },
+        "transcription"
+      );
     }
 
     const reasoningStart = performance.now();
@@ -1123,6 +1138,7 @@ class AudioManager {
       longSession: {
         chunks: state.completedChunks,
         failedChunks: state.errors.length,
+        totalChunks: state.completedChunks + state.errors.length,
       },
     };
   }
@@ -1793,6 +1809,18 @@ class AudioManager {
         text: result.text,
         durationSeconds,
       });
+
+      // A partial transcript reads as a complete one, so it must never paste
+      // silently. Known missing sections outrank the heuristic assessment.
+      if (result.longSession?.failedChunks > 0) {
+        result.completeness = {
+          ...result.completeness,
+          suspicious: true,
+          reason: "failed-chunks",
+          failedChunks: result.longSession.failedChunks,
+          totalChunks: result.longSession.totalChunks,
+        };
+      }
 
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,

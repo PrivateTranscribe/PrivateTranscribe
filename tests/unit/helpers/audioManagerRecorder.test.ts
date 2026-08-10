@@ -545,7 +545,9 @@ describe("AudioManager recorder lifecycle", () => {
     expect(attempts.get(1)).toBe(2);
   });
 
-  it("rejects a partial long-session transcript when a chunk keeps failing", async () => {
+  it("keeps the chunks that succeeded when one keeps failing", async () => {
+    // Discarding everything used to cost the speaker every word they said
+    // because one section out of several failed.
     const manager = new AudioManager();
     const state = manager.createLongSessionState();
     state.active = true;
@@ -557,22 +559,82 @@ describe("AudioManager recorder lifecycle", () => {
         throw new Error("persistent provider failure");
       }
       return {
-        result: { success: true, text: "first chunk", source: "openai" },
+        result: { success: true, text: `chunk-${metadata.chunkIndex}`, source: "openai" },
         useLocalWhisper: false,
         localProvider: "whisper",
         activeModel: "gpt-transcribe",
       } as never;
     });
-    const processTranscription = vi.spyOn(manager, "processTranscription");
+    const processTranscription = vi
+      .spyOn(manager, "processTranscription")
+      .mockImplementation(async (text) => text as never);
 
     manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["middle"]), 60_000);
     manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
 
     await manager.waitForLongSessionQueue();
-    await expect(manager.finalizeLongSessionResult(120)).rejects.toThrow(
-      "could not be transcribed completely"
+    const result = await manager.finalizeLongSessionResult(180);
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "chunk-0 chunk-2",
+      longSession: { chunks: 2, failedChunks: 1, totalChunks: 3 },
+    });
+    expect(processTranscription).toHaveBeenCalledWith("chunk-0 chunk-2", "long-session");
+  });
+
+  it("still fails when no chunk survives", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 44;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async () => {
+      throw new Error("persistent provider failure");
+    });
+
+    manager.enqueueLongSessionChunk(new Blob(["only"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    await expect(manager.finalizeLongSessionResult(60)).rejects.toThrow(
+      "persistent provider failure"
     );
-    expect(processTranscription).not.toHaveBeenCalled();
+  });
+
+  it("marks a partial transcript as incomplete so it cannot paste silently", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 45;
+    manager.longSession = state;
+    // The real caller sets this before delegating; the generation guard needs it.
+    manager.isProcessing = true;
+
+    vi.spyOn(manager, "finalizeLongSessionResult").mockResolvedValue({
+      success: true,
+      text: "surviving text",
+      source: "long-session",
+      longSession: { chunks: 2, failedChunks: 1, totalChunks: 3 },
+    } as never);
+    const onTranscriptionComplete = vi.fn();
+    const onError = vi.fn();
+    manager.setCallbacks({
+      onStateChange: vi.fn(),
+      onError,
+      onTranscriptionComplete,
+    });
+
+    await manager.processLongSessionAudio({ durationSeconds: 180 });
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onTranscriptionComplete.mock.calls[0][0].completeness).toMatchObject({
+      suspicious: true,
+      reason: "failed-chunks",
+      failedChunks: 1,
+      totalChunks: 3,
+    });
   });
 
   it("keeps the normal recorder path if standalone segment recording is unavailable", async () => {

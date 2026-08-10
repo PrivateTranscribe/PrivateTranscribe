@@ -267,7 +267,16 @@ export const useAudioRecording = (toast, options = {}) => {
 
         setTranscript(text);
 
-        if (result.completeness?.suspicious) {
+        if (result.completeness?.reason === "failed-chunks") {
+          const failed = result.completeness.failedChunks;
+          const total = result.completeness.totalChunks;
+          toastRef.current?.({
+            title: "Part of this recording is missing",
+            description: `${failed} of ${total} sections could not be transcribed. The text below is everything that came through.`,
+            variant: "destructive",
+            duration: 12000,
+          });
+        } else if (result.completeness?.suspicious) {
           toastRef.current?.({
             title: "Transcription may be incomplete",
             description: "Review the transcription before using it.",
