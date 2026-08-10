@@ -57,9 +57,15 @@ const isTranscriptionTextDebugEnabled = () => {
   }
 };
 
+// Keep both ends of a long transcript. Hallucinated endings are the artifact
+// this trace exists to diagnose, and a head-only preview hides them.
 const previewText = (value, limit = 500) => {
   const text = String(value || "");
-  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+  if (text.length <= limit) return text;
+
+  const head = Math.ceil(limit / 2);
+  const tail = limit - head;
+  return `${text.slice(0, head)}...[${text.length - limit} chars omitted]...${text.slice(-tail)}`;
 };
 
 const emitTranscriptionTextTrace = (stage, meta = {}) => {
