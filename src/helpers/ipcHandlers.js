@@ -1157,7 +1157,11 @@ class IPCHandlers {
       const hotkeyManager = this.windowManager.hotkeyManager;
 
       // When exiting capture mode with a new hotkey, use that to avoid reading stale state
-      const effectiveHotkey = !enabled && newHotkey ? newHotkey : hotkeyManager.getCurrentHotkey();
+      const effectiveHotkey = resolveEffectiveHotkey(
+        enabled,
+        newHotkey,
+        hotkeyManager.getCurrentHotkey()
+      );
 
       if (enabled) {
         // Entering capture mode - unregister globalShortcut so it doesn't consume key events
@@ -2390,4 +2394,21 @@ class IPCHandlers {
   }
 }
 
+/**
+ * Which hotkey the dictation shortcut should be registered to when capture mode
+ * ends.
+ *
+ * A null `newHotkey` means "restore what was already there". Only the dictation
+ * hotkey field hands over the key it captured; every other HotkeyInput on the
+ * settings screen passes null, because adopting a mute key as the dictation
+ * hotkey would leave the user unable to start dictating at all.
+ */
+function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
+  if (!enabled && newHotkey) {
+    return newHotkey;
+  }
+  return currentHotkey;
+}
+
 module.exports = IPCHandlers;
+module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;

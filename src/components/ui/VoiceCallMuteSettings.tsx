@@ -127,7 +127,12 @@ export default function VoiceCallMuteSettings({
             <p className="text-sm text-foreground/90 mt-2 mb-3 leading-relaxed">
               Press the same key so PrivateTranscribe knows what to send.
             </p>
-            <HotkeyInput value={muteKey} onChange={onMuteKeyChange} />
+            {/* This is the voice app's mute key, not the dictation hotkey. */}
+            <HotkeyInput
+              value={muteKey}
+              onChange={onMuteKeyChange}
+              appliesToDictationHotkey={false}
+            />
           </div>
 
           {/* Live state, so the mechanism is visible rather than mysterious */}
