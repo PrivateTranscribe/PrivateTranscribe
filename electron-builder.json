@@ -140,7 +140,12 @@
       {
         "from": "resources/bin/",
         "to": "bin/",
-        "filter": ["*.dll", "windows-fast-paste.exe", "windows-mic-watch.exe"]
+        "filter": [
+          "*.dll",
+          "windows-fast-paste.exe",
+          "windows-mic-watch.exe",
+          "windows-hold-key.exe"
+        ]
       }
     ]
   },
