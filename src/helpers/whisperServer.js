@@ -35,6 +35,7 @@ const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const WAV_HEADER_BYTES = 44;
 const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
 const WHISPER_CHUNK_SECONDS = 60;
+const TRAILING_SILENCE_PAD_SECONDS = 0.8;
 const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
 const WHISPER_REQUEST_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -64,6 +65,12 @@ function getTrailingSilenceFilters() {
     "areverse",
     "silenceremove=start_periods=1:start_duration=0.5:start_threshold=-50dB",
     "areverse",
+    // Whisper decides an utterance ended when it hears a pause. Trimming the
+    // recording flush against the last word removes that cue, and the decoder
+    // then keeps generating a plausible continuation of the unfinished
+    // sentence. Restore a fixed short pause so the tail terminates cleanly
+    // without reintroducing the long silence the trim exists to remove.
+    `apad=pad_dur=${TRAILING_SILENCE_PAD_SECONDS}`,
   ];
 }
 
