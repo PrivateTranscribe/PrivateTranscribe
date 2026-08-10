@@ -1920,6 +1920,14 @@ class AudioManager {
       if (metadata?.source === "long-session") {
         options.longSessionChunk = true;
         options.trimTrailingSilence = metadata.trimTrailingSilence === true;
+      } else if (!metadata?.fileMode) {
+        // Every dictation ends with silence — the speaker stops talking before
+        // they reach for the hotkey. Whisper fills that silence by inventing a
+        // continuation of the last sentence rather than ending the transcript,
+        // so the recording arrives with text nobody spoke appended to it.
+        // Trimming was previously applied only to long-session chunks, which
+        // left every ordinary dictation exposed.
+        options.trimTrailingSilence = true;
       }
       if (resolvedLanguage) {
         options.language = resolvedLanguage;

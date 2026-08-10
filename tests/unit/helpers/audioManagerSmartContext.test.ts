@@ -158,6 +158,28 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(options.translate).toBeUndefined();
   });
 
+  it("trims trailing silence on ordinary dictations, not just long sessions", async () => {
+    const manager = new AudioManager();
+
+    await manager.processWithLocalWhisper(makeBlob(), "large", { skipPostProcessing: true });
+
+    const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
+    expect(options.trimTrailingSilence).toBe(true);
+    expect(options.longSessionChunk).toBeUndefined();
+  });
+
+  it("leaves uploaded files untrimmed", async () => {
+    const manager = new AudioManager();
+
+    await manager.processWithLocalWhisper(makeBlob(), "large", {
+      fileMode: true,
+      skipPostProcessing: true,
+    });
+
+    const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
+    expect(options.trimTrailingSilence).toBeUndefined();
+  });
+
   it("marks live long-session chunks for conservative Whisper decoding", async () => {
     const manager = new AudioManager();
 

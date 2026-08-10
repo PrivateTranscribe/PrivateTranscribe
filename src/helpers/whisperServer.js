@@ -1439,12 +1439,27 @@ class WhisperServerManager {
       // Reversing while decoding that container can discard a cluster, so normalize
       // the complete stream to PCM WAV first and only then trim its trailing silence.
       if (options.trimTrailingSilence) {
-        await convertToWav(tempWavPath, tempTrimmedWavPath, {
-          sampleRate: 16000,
-          channels: options.channels || 1,
-          audioFilters: getTrailingSilenceFilters(),
-        });
-        return await fs.promises.readFile(tempTrimmedWavPath);
+        try {
+          await convertToWav(tempWavPath, tempTrimmedWavPath, {
+            sampleRate: 16000,
+            channels: options.channels || 1,
+            audioFilters: getTrailingSilenceFilters(),
+          });
+          const trimmed = await fs.promises.readFile(tempTrimmedWavPath);
+          // A recording quieter than the threshold end to end trims away to
+          // nothing. Transcribing a quiet recording badly beats transcribing
+          // an empty one, so keep the untrimmed audio in that case.
+          if (trimmed.length > WAV_HEADER_BYTES) {
+            return trimmed;
+          }
+          debugLogger.warn("Trailing-silence trim emptied the audio; using untrimmed input", {
+            trimmedBytes: trimmed.length,
+          });
+        } catch (error) {
+          debugLogger.warn("Trailing-silence trim failed; using untrimmed input", {
+            error: error.message,
+          });
+        }
       }
 
       return await fs.promises.readFile(tempWavPath);
