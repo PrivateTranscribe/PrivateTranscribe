@@ -14,6 +14,8 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
+const micWatcher = require("./micWatcher");
+const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
 const {
   DEFAULT_AUTO_START_LAUNCH_MODE,
@@ -2114,6 +2116,55 @@ class IPCHandlers {
         // Fail silently
       }
       return { success: true };
+    });
+
+    // Voice-call mute — hold the voice app's push-to-mute key while dictating,
+    // so the room doesn't hear the dictation.
+    ipcMain.handle("voice-mute-start", async (_event, options = {}) => {
+      try {
+        const key = typeof options.key === "string" ? options.key.trim() : "";
+        if (!key) {
+          return { muted: false, reason: "no-key" };
+        }
+
+        // Only act when a known voice app is actually streaming from the
+        // microphone. Holding a mute key outside a call is harmless, but
+        // sending pointless keystrokes into whatever has focus is not.
+        const activeApps = micWatcher.getActiveApps();
+        if (activeApps.length === 0) {
+          return { muted: false, reason: "no-call" };
+        }
+
+        const muted = await voiceMuter.hold(key);
+        return { muted, reason: muted ? "held" : "hold-failed", apps: activeApps };
+      } catch (error) {
+        debugLogger.warn("[IPC] voice-mute-start failed:", error.message);
+        return { muted: false, reason: "error" };
+      }
+    });
+
+    ipcMain.handle("voice-mute-stop", async () => {
+      try {
+        // release() is a no-op unless we are the ones holding the key, so this
+        // can never unmute somebody who muted themselves.
+        const released = await voiceMuter.release();
+        return { released };
+      } catch (error) {
+        debugLogger.warn("[IPC] voice-mute-stop failed:", error.message);
+        return { released: false };
+      }
+    });
+
+    ipcMain.handle("voice-mute-status", async () => {
+      try {
+        return {
+          supported: voiceMuter.isSupported,
+          activeApps: micWatcher.getActiveApps(),
+          muted: voiceMuter.isMuted(),
+        };
+      } catch (error) {
+        return { supported: false, activeApps: [], muted: false };
+      }
     });
 
     // Licensing - stable device identifier

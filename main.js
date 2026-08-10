@@ -79,6 +79,8 @@ const EnvironmentManager = require("./src/helpers/environment");
 const WindowManager = require("./src/helpers/windowManager");
 const DatabaseManager = require("./src/helpers/database");
 const ClipboardManager = require("./src/helpers/clipboard");
+const micWatcher = require("./src/helpers/micWatcher");
+const voiceMuter = require("./src/helpers/voiceMuter");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
 const TrayManager = require("./src/helpers/tray");
@@ -446,6 +448,27 @@ async function startApp() {
   // Log paste-helper status on Windows (for debugging bundled dependencies)
   if (process.platform === "win32") {
     debugLogger.debug("Windows paste tool status", clipboardManager.getWindowsPasteStatus());
+
+    // Clear a mute key a previous crash may have left logically held. A helper
+    // killed outright never runs its own release, and a stuck modifier would
+    // corrupt every keystroke the user types. Sending the key-up half for a key
+    // that is already up is harmless.
+    try {
+      const lastMuteKey = process.env.PRIVATETRANSCRIBE_VOICE_MUTE_KEY || null;
+      if (lastMuteKey) {
+        voiceMuter.clearStuckKey(lastMuteKey);
+      }
+    } catch (err) {
+      debugLogger.debug("voice mute cleanup skipped", { error: err.message });
+    }
+
+    // Watch which voice apps are live on the microphone, so auto-mute only
+    // fires when a call is actually happening.
+    try {
+      micWatcher.start();
+    } catch (err) {
+      debugLogger.debug("mic watcher failed to start (non-fatal)", { error: err.message });
+    }
   }
 
   // Create windows according to the login launch mode. Normal launches keep the

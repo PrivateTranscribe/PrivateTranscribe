@@ -157,6 +157,27 @@ export const useAudioRecording = (toast, options = {}) => {
       window.electronAPI?.mediaResume?.();
     };
 
+    // ── Voice-call mute helpers ──────────────────────────────────────────────
+    // Hold the voice app's push-to-mute key while recording so a Discord call
+    // doesn't hear the dictation. The main process decides whether a call is
+    // actually happening and only releases a key it holds, so unmute is a safe
+    // no-op when nothing was muted.
+    let voiceMuteRequested = false;
+
+    const muteVoiceCall = () => {
+      if (localStorage.getItem("muteVoiceCallOnRecord") !== "true") return;
+      const key = localStorage.getItem("voiceCallMuteKey");
+      if (!key) return;
+      voiceMuteRequested = true;
+      window.electronAPI?.voiceMuteStart?.({ key });
+    };
+
+    const unmuteVoiceCall = () => {
+      if (!voiceMuteRequested) return;
+      voiceMuteRequested = false;
+      window.electronAPI?.voiceMuteStop?.();
+    };
+
     // ── Audio feedback helper ─────────────────────────────────────────────────
     const playFeedback = (sound) => {
       const enabled = localStorage.getItem("audioFeedback") === "true";
@@ -206,6 +227,8 @@ export const useAudioRecording = (toast, options = {}) => {
         // Always restore audio when transcription finishes (safety net)
         restoreAudio();
         resumeMedia();
+        unmuteVoiceCall();
+        unmuteVoiceCall();
 
         const canCommit = () =>
           !disposed && (typeof commitContext.isCurrent !== "function" || commitContext.isCurrent());
@@ -664,11 +687,14 @@ export const useAudioRecording = (toast, options = {}) => {
       }
       duckAudio();
       pauseMedia();
+      muteVoiceCall();
       try {
         const started = await manager.startRecording();
         if (!started) {
           restoreAudio();
           resumeMedia();
+          unmuteVoiceCall();
+          unmuteVoiceCall();
         } else {
           void trackAnalyticsEvent("transcription_started");
         }
@@ -676,6 +702,8 @@ export const useAudioRecording = (toast, options = {}) => {
       } catch (error) {
         restoreAudio();
         resumeMedia();
+        unmuteVoiceCall();
+        unmuteVoiceCall();
         throw error;
       }
     };
@@ -685,6 +713,8 @@ export const useAudioRecording = (toast, options = {}) => {
       if (!currentState.isRecording && !currentState.isStartingRecording) {
         restoreAudio();
         resumeMedia();
+        unmuteVoiceCall();
+        unmuteVoiceCall();
         return false;
       }
 
@@ -694,6 +724,7 @@ export const useAudioRecording = (toast, options = {}) => {
       const stopped = manager.stopRecording();
       restoreAudio();
       resumeMedia();
+      unmuteVoiceCall();
       return stopped;
     };
 

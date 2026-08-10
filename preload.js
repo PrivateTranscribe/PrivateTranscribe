@@ -358,6 +358,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   mediaPause: () => ipcRenderer.invoke("media-pause"),
   mediaResume: () => ipcRenderer.invoke("media-resume"),
 
+  // Voice-call mute — hold a voice app's push-to-mute key while dictating
+  voiceMuteStart: (options) => ipcRenderer.invoke("voice-mute-start", options),
+  voiceMuteStop: () => ipcRenderer.invoke("voice-mute-stop"),
+  voiceMuteStatus: () => ipcRenderer.invoke("voice-mute-status"),
+
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
 
