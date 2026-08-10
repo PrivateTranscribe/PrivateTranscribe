@@ -379,6 +379,14 @@ export interface ControlPanelDestination {
   settingsTab?: ControlPanelSettingsTab;
 }
 
+/** A voice app currently streaming from the microphone, i.e. actually in a call. */
+export interface VoiceCallApp {
+  id: string;
+  label: string;
+  pid: number;
+  pushToMute: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -658,6 +666,21 @@ declare global {
         newHotkey?: string | null
       ) => Promise<{ success: boolean }>;
       getHotkeyModeInfo?: () => Promise<{ isUsingGnome: boolean }>;
+
+      // Voice-call mute - holds a voice app's push-to-mute key while dictating
+      voiceMuteStart?: (options: {
+        key: string;
+      }) => Promise<{ muted: boolean; reason?: string; apps?: VoiceCallApp[] }>;
+      voiceMuteStop?: () => Promise<{ released: boolean }>;
+      voiceMuteStatus?: () => Promise<{
+        supported: boolean;
+        activeApps: VoiceCallApp[];
+        muted: boolean;
+      }>;
+      voiceMuteTest?: (options: {
+        key: string;
+        holdMs?: number;
+      }) => Promise<{ ok: boolean; reason?: string }>;
 
       // Globe key listener for hotkey capture (macOS only)
       onGlobeKeyPressed?: (callback: () => void) => () => void;

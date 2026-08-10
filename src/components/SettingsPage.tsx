@@ -58,6 +58,7 @@ import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
+import VoiceCallMuteSettings from "./ui/VoiceCallMuteSettings";
 import DeveloperSection from "./DeveloperSection";
 import FeedbackDialog from "./FeedbackDialog";
 import { SettingsRow } from "./ui/SettingsSection";
@@ -1130,6 +1131,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setShowPanelOnError,
     pauseMediaOnRecord,
     setPauseMediaOnRecord,
+    muteVoiceCallOnRecord,
+    setMuteVoiceCallOnRecord,
+    voiceCallMuteKey,
+    setVoiceCallMuteKey,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,
@@ -2442,6 +2447,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     )}
                   </SettingsRow>
                 </SettingsPanelRow>
+                {platform === "win32" && (
+                  <SettingsPanelRow>
+                    <VoiceCallMuteSettings
+                      enabled={muteVoiceCallOnRecord}
+                      onEnabledChange={setMuteVoiceCallOnRecord}
+                      muteKey={voiceCallMuteKey}
+                      onMuteKeyChange={setVoiceCallMuteKey}
+                    />
+                  </SettingsPanelRow>
+                )}
               </SettingsPanel>
             </div>
 

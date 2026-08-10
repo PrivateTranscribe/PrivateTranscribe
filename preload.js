@@ -362,6 +362,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   voiceMuteStart: (options) => ipcRenderer.invoke("voice-mute-start", options),
   voiceMuteStop: () => ipcRenderer.invoke("voice-mute-stop"),
   voiceMuteStatus: () => ipcRenderer.invoke("voice-mute-status"),
+  voiceMuteTest: (options) => ipcRenderer.invoke("voice-mute-test", options),
 
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),

@@ -846,6 +846,12 @@ export function useSettings() {
     false,
     boolSerializer
   );
+  const [muteVoiceCallOnRecord, setMuteVoiceCallOnRecord] = useLocalStorage(
+    "muteVoiceCallOnRecord",
+    false,
+    boolSerializer
+  );
+  const [voiceCallMuteKey, setVoiceCallMuteKey] = useLocalStorage("voiceCallMuteKey", "");
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
@@ -1113,6 +1119,10 @@ export function useSettings() {
     setShowPanelOnError,
     pauseMediaOnRecord,
     setPauseMediaOnRecord,
+    muteVoiceCallOnRecord,
+    setMuteVoiceCallOnRecord,
+    voiceCallMuteKey,
+    setVoiceCallMuteKey,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,

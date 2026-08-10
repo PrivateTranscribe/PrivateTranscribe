@@ -2155,6 +2155,35 @@ class IPCHandlers {
       }
     });
 
+    // Test cycle for the settings screen: hold the key briefly and release, so
+    // the user can watch their voice app's own mute indicator flip and confirm
+    // the keybind matches before trusting the feature in a real call. Skips the
+    // in-a-call check on purpose, since testing outside a call is the point.
+    ipcMain.handle("voice-mute-test", async (_event, options = {}) => {
+      try {
+        const key = typeof options.key === "string" ? options.key.trim() : "";
+        if (!key) {
+          return { ok: false, reason: "no-key" };
+        }
+        const holdMs = Math.min(Math.max(Number(options.holdMs) || 1200, 300), 5000);
+        const held = await voiceMuter.hold(key, holdMs + 2000);
+        if (!held) {
+          return { ok: false, reason: "hold-failed" };
+        }
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+        await voiceMuter.release();
+        return { ok: true };
+      } catch (error) {
+        debugLogger.warn("[IPC] voice-mute-test failed:", error.message);
+        try {
+          await voiceMuter.release();
+        } catch {
+          // Best effort: never leave a test holding the key.
+        }
+        return { ok: false, reason: "error" };
+      }
+    });
+
     ipcMain.handle("voice-mute-status", async () => {
       try {
         return {
