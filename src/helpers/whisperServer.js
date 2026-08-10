@@ -60,17 +60,28 @@ function getTranscriptionAudioFilters(options = {}) {
   return filters;
 }
 
+// Trailing silence is trimmed by reversing the stream, dropping the leading
+// silence, and reversing back.
+//
+// `start_duration` must stay at 0. It is the amount of *non-silence* that has
+// to be observed before trimming stops, and everything buffered while waiting
+// is discarded — so any non-zero value deletes that much real speech from the
+// end of the recording. The previous 0.5 turned "3s of speech" into "2.5s of
+// speech", cutting the final words mid-utterance. Whisper responds to an
+// utterance that stops mid-sentence by inventing the rest of it.
+//
+// `start_silence` keeps a fixed short pause instead of cutting flush against
+// the last word, which is the cue Whisper uses to decide speech has ended.
 function getTrailingSilenceFilters() {
   return [
     "areverse",
-    "silenceremove=start_periods=1:start_duration=0.5:start_threshold=-50dB",
+    [
+      "silenceremove=start_periods=1",
+      "start_duration=0",
+      "start_threshold=-50dB",
+      `start_silence=${TRAILING_SILENCE_PAD_SECONDS}`,
+    ].join(":"),
     "areverse",
-    // Whisper decides an utterance ended when it hears a pause. Trimming the
-    // recording flush against the last word removes that cue, and the decoder
-    // then keeps generating a plausible continuation of the unfinished
-    // sentence. Restore a fixed short pause so the tail terminates cleanly
-    // without reintroducing the long silence the trim exists to remove.
-    `apad=pad_dur=${TRAILING_SILENCE_PAD_SECONDS}`,
   ];
 }
 

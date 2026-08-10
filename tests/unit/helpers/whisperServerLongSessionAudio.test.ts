@@ -9,19 +9,25 @@ describe("Whisper server long-session audio preparation", () => {
     ).toEqual([]);
     expect(WhisperServerManager.getTrailingSilenceFilters()).toEqual([
       "areverse",
-      "silenceremove=start_periods=1:start_duration=0.5:start_threshold=-50dB",
+      "silenceremove=start_periods=1:start_duration=0:start_threshold=-50dB:start_silence=0.8",
       "areverse",
-      "apad=pad_dur=0.8",
     ]);
   });
 
-  it("leaves a short pause after the last word so the tail cannot run on", () => {
-    const filters = WhisperServerManager.getTrailingSilenceFilters();
+  it("never trims real speech off the end of the recording", () => {
+    // start_duration is the amount of non-silence FFmpeg observes before it
+    // stops trimming, and that audio is discarded. Anything above 0 silently
+    // deletes the final words of the dictation.
+    const [, silenceRemove] = WhisperServerManager.getTrailingSilenceFilters();
 
-    expect(filters[filters.length - 1]).toMatch(/^apad=pad_dur=/);
-    expect(
-      filters.indexOf("silenceremove=start_periods=1:start_duration=0.5:start_threshold=-50dB")
-    ).toBeLessThan(filters.length - 1);
+    expect(silenceRemove).toContain("start_duration=0:");
+    expect(silenceRemove).not.toMatch(/start_duration=(?!0:)/);
+  });
+
+  it("leaves a short pause after the last word so the tail cannot run on", () => {
+    const [, silenceRemove] = WhisperServerManager.getTrailingSilenceFilters();
+
+    expect(silenceRemove).toMatch(/start_silence=0\.\d+$/);
   });
 
   it("does not trim ordinary short dictations", () => {
