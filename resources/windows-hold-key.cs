@@ -174,16 +174,26 @@ internal static class WindowsHoldKey
 
         switch (normalized.ToLowerInvariant())
         {
+            // The left-hand specific codes, not the aggregate ones. VK_CONTROL,
+            // VK_SHIFT and VK_MENU describe the state of "either" modifier and
+            // no physical keyboard ever sends them: pressing left shift sends
+            // VK_LSHIFT, and Windows derives the aggregate from it.
+            //
+            // Voice apps register their global keybinds with a low-level
+            // keyboard hook, which receives the raw code rather than the derived
+            // one, so a keybind the user recorded by pressing left shift never
+            // matches a synthesized VK_SHIFT. Combinations silently did nothing
+            // while single keys worked, because single keys have no such split.
             case "ctrl":
             case "control":
             case "commandorcontrol":
-                key = Keys.ControlKey;
+                key = Keys.LControlKey;
                 break;
             case "shift":
-                key = Keys.ShiftKey;
+                key = Keys.LShiftKey;
                 break;
             case "alt":
-                key = Keys.Menu;
+                key = Keys.LMenu;
                 break;
             case "win":
             case "super":
@@ -459,6 +469,30 @@ internal static class WindowsHoldKey
         }
 
         heldKeys = keys;
+
+        // Diagnostic mode: report what the combination resolved to and send
+        // nothing. Which virtual-key codes go out is the difference between a
+        // keybind matching and silently doing nothing, and it is otherwise
+        // invisible from outside this process.
+        if (HasFlag(args, "--print-keys"))
+        {
+            for (int i = 0; i < keys.Count; i++)
+            {
+                HeldInput held = keys[i];
+                if (held.IsMouse)
+                {
+                    Console.Out.WriteLine("mouse 0x" +
+                        held.DownFlag.ToString("x", CultureInfo.InvariantCulture) +
+                        " data=" + held.MouseData.ToString(CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    Console.Out.WriteLine("key " + held.Key.ToString() + " 0x" +
+                        ((int)held.Key).ToString("x2", CultureInfo.InvariantCulture));
+                }
+            }
+            return 0;
+        }
 
         // Recovery mode: send only the key-up half. PrivateTranscribe runs this
         // at startup for the configured combination, because a helper killed

@@ -101,4 +101,31 @@ describe("every key the picker can emit is one the helper can press", () => {
     );
     expect(rejected).toEqual([]);
   });
+
+  /**
+   * Modifiers have to go out as the left-hand specific codes. VK_SHIFT and
+   * VK_CONTROL describe "either" modifier and no keyboard emits them, so a
+   * voice app's low-level keyboard hook never matches them against a keybind
+   * the user recorded by pressing a real key. Sending the aggregate codes made
+   * every combination silently do nothing while single keys worked.
+   */
+  test.runIf(runnable)("modifiers are sent as the codes a real keyboard emits", () => {
+    const resolved = (key: string) =>
+      spawnSync(exePath, [`--key=${key}`, "--print-keys"], { encoding: "utf8" })
+        .stdout.trim()
+        .split(/\r?\n/);
+
+    expect(resolved("CommandOrControl+Shift+Y")).toEqual([
+      "key LControlKey 0xa2",
+      "key LShiftKey 0xa0",
+      "key Y 0x59",
+    ]);
+    expect(resolved("Alt+P")).toEqual(["key LMenu 0xa4", "key P 0x50"]);
+    expect(resolved("Super+P")).toEqual(["key LWin 0x5b", "key P 0x50"]);
+
+    // None of the aggregate codes may appear: 0x10 shift, 0x11 control, 0x12 alt.
+    for (const key of ["CommandOrControl+A", "Shift+A", "Alt+A"]) {
+      expect(resolved(key).join(" ")).not.toMatch(/0x1[012]\b/);
+    }
+  });
 });
