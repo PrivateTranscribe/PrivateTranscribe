@@ -162,3 +162,28 @@ export function isValidHotkeyFormat(hotkey: string): boolean {
   // Check that all parts are non-empty
   return parts.every((part) => part.trim().length > 0);
 }
+
+/**
+ * Reads a hotkey value that was written to localStorage, tolerating a
+ * JSON-quoted wrapper.
+ *
+ * Hotkey settings are stored raw, so `Mouse4` is the literal contents. An
+ * earlier build wrote the voice-call mute key through the default JSON
+ * serializer, which stored `"Mouse4"` with the quote characters included. The
+ * settings screen read it back through the same serializer and looked correct,
+ * while the dictation hook read localStorage directly and got a key name no
+ * amount of parsing would match. Stripping the wrapper here repairs anyone who
+ * saved a key before the serializer was fixed.
+ */
+export function readStoredHotkey(raw: string | null): string {
+  const value = (raw || "").trim();
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    try {
+      const unwrapped = JSON.parse(value);
+      return typeof unwrapped === "string" ? unwrapped : "";
+    } catch {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+}

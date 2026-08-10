@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatHotkeyLabel } from "../../../src/utils/hotkeys";
+import { formatHotkeyLabel, readStoredHotkey } from "../../../src/utils/hotkeys";
 
 /**
  * These assertions import the real formatter, unlike hotkeys.test.ts which
@@ -18,5 +18,27 @@ describe("formatHotkeyLabel mouse buttons (real implementation)", () => {
     expect(formatHotkeyLabel("MButton")).toBe("Mouse 3 (Middle)");
     expect(formatHotkeyLabel("XButton1")).toBe("Mouse 4 (Back)");
     expect(formatHotkeyLabel("XButton2")).toBe("Mouse 5 (Forward)");
+  });
+});
+
+describe("readStoredHotkey", () => {
+  test("returns a raw stored key unchanged", () => {
+    expect(readStoredHotkey("Mouse4")).toBe("Mouse4");
+    expect(readStoredHotkey("Ctrl+Shift+M")).toBe("Ctrl+Shift+M");
+    expect(readStoredHotkey("`")).toBe("`");
+  });
+
+  test("unwraps a value written by the default JSON serializer", () => {
+    // The settings screen deserialized this correctly while the dictation hook
+    // read localStorage directly and got a key name with quote characters in
+    // it, so the mute fired in the settings test and never during a dictation.
+    expect(readStoredHotkey('"Mouse4"')).toBe("Mouse4");
+    expect(readStoredHotkey('"Ctrl+Shift+M"')).toBe("Ctrl+Shift+M");
+  });
+
+  test("treats missing or empty values as no key", () => {
+    expect(readStoredHotkey(null)).toBe("");
+    expect(readStoredHotkey("")).toBe("");
+    expect(readStoredHotkey('""')).toBe("");
   });
 });

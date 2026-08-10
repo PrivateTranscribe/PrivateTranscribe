@@ -851,7 +851,13 @@ export function useSettings() {
     false,
     boolSerializer
   );
-  const [voiceCallMuteKey, setVoiceCallMuteKey] = useLocalStorage("voiceCallMuteKey", "");
+  // Stored raw, matching dictationKey. The default serializer is JSON, which
+  // would write "Mouse4" with quote characters included, and the dictation hook
+  // reads this key straight out of localStorage rather than through this hook.
+  const [voiceCallMuteKey, setVoiceCallMuteKey] = useLocalStorage("voiceCallMuteKey", "", {
+    serialize: String,
+    deserialize: String,
+  });
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",

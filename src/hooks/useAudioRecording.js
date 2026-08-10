@@ -14,6 +14,7 @@ import {
 } from "../utils/analytics";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "./useProStatus";
 import { deliverDictation } from "../utils/dictationDelivery";
+import { readStoredHotkey } from "../utils/hotkeys";
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -166,7 +167,7 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const muteVoiceCall = () => {
       if (localStorage.getItem("muteVoiceCallOnRecord") !== "true") return;
-      const key = localStorage.getItem("voiceCallMuteKey");
+      const key = readStoredHotkey(localStorage.getItem("voiceCallMuteKey"));
       if (!key) return;
       voiceMuteRequested = true;
       window.electronAPI?.voiceMuteStart?.({ key });
