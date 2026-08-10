@@ -13,17 +13,26 @@ type TestState = "idle" | "running" | "passed" | "failed";
  * Advice about a chosen key, or null when it is a good one.
  *
  * The distinction that matters here is hold versus tap. This key is held down
- * for the entire length of the dictation, which makes it a different problem
- * from an ordinary shortcut. Anything fine to tap can be ruinous to hold.
+ * for as long as the dictation runs, which makes it a different question from
+ * an ordinary shortcut. Things that are unremarkable to tap can misbehave when
+ * held for minutes.
+ *
+ * What bounds the risk is when the key comes back up: the release is sent as
+ * soon as speech stops, well before any text is pasted. So a held modifier
+ * cannot corrupt the dictation itself, and the exposure is only what happens
+ * during the seconds you are talking.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function describeKeyRisk(key: string): string | null {
   if (!key) return null;
-  if (key.includes("+")) {
-    return "This key is held down until you stop dictating, so its modifiers stay pressed the whole time. That changes every keystroke and mouse click that lands anywhere else on your machine. A single key with no modifiers avoids it.";
+  if (/(^|\+)(Alt|Option|Win|Super|Meta|Command|Cmd)\+/.test(key)) {
+    return "Alt and the Windows key act on their own when they come back up — focusing a menu bar, opening Start — and this key is released every time you stop dictating. Ctrl and Shift do nothing on release, so they are the safe modifiers to hold.";
   }
-  if (key.startsWith("Mouse")) {
-    return "Mouse buttons are held down until you stop dictating, so the release at the end can fire back or forward in whichever window has focus. A single key avoids it.";
+  if (key.includes("Mouse")) {
+    return "A held mouse button is a click that lasts the whole dictation, so releasing it can fire back or forward in whichever window has focus. A keyboard key avoids it.";
+  }
+  if (key.includes("+")) {
+    return "Held for as long as you dictate, so clicking or scrolling mid-dictation behaves as though you were holding these modifiers. Your text is unaffected — the key is released before anything is pasted.";
   }
   return null;
 }
@@ -140,7 +149,9 @@ export default function VoiceCallMuteSettings({
               Windows gives no way for one app to mute another app&apos;s microphone, so this
               keybind is the only way in. Pause/Break is the suggestion because the key is held for
               as long as you dictate, and it is the one key that does nothing else in Windows. Any
-              single key you don&apos;t otherwise use works too.
+              single key you don&apos;t otherwise use works too. If they are all spoken for, add
+              Ctrl+Shift to a key you already use — the pair does nothing on its own, and the
+              combination collides with nothing.
             </p>
           </div>
 

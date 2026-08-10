@@ -17,10 +17,21 @@ describe("describeKeyRisk", () => {
     expect(describeKeyRisk("")).toBeNull();
   });
 
-  test("warns that modifiers stay pressed for the length of the dictation", () => {
+  test("Ctrl and Shift are flagged but not condemned", () => {
+    // These are usable. The note says what the real exposure is — mousing
+    // mid-dictation — and reassures that the text itself is safe, because the
+    // key is released before anything is pasted.
     const risk = describeKeyRisk("CommandOrControl+Shift+M");
-    expect(risk).toContain("held down");
-    expect(risk).toContain("modifiers");
+    expect(risk).toContain("clicking or scrolling");
+    expect(risk).toContain("text is unaffected");
+  });
+
+  test("Alt and the Windows key are called out separately", () => {
+    // These are the modifiers that do something on release, which is exactly
+    // what happens at the end of every dictation.
+    for (const key of ["Alt+M", "CommandOrControl+Alt+M", "Super+M"]) {
+      expect(describeKeyRisk(key)).toContain("on release");
+    }
   });
 
   test("warns about mouse buttons firing navigation on release", () => {
@@ -30,7 +41,8 @@ describe("describeKeyRisk", () => {
     expect(describeKeyRisk("Mouse5")).toContain("back or forward");
   });
 
-  test("a modifier plus a mouse button is still reported", () => {
-    expect(describeKeyRisk("Shift+Mouse4")).not.toBeNull();
+  test("a modifier plus a mouse button reports the mouse problem", () => {
+    // The more serious of the two, so it wins over the generic modifier note.
+    expect(describeKeyRisk("Shift+Mouse4")).toContain("back or forward");
   });
 });
