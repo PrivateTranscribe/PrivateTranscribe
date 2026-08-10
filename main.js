@@ -443,10 +443,9 @@ async function startApp() {
     });
   }
 
-  // Log nircmd status on Windows (for debugging bundled dependencies)
+  // Log paste-helper status on Windows (for debugging bundled dependencies)
   if (process.platform === "win32") {
-    const nircmdStatus = clipboardManager.getNircmdStatus();
-    debugLogger.debug("Windows paste tool status", nircmdStatus);
+    debugLogger.debug("Windows paste tool status", clipboardManager.getWindowsPasteStatus());
   }
 
   // Create windows according to the login launch mode. Normal launches keep the
