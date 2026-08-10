@@ -126,13 +126,23 @@ Bad:
 ## One control, one component
 
 Two controls that do the same kind of job must never look different. If a screen needs a
-dropdown, a button, a toggle, or an input, reach for the existing primitive in
+dropdown, a button, a checkbox, a label, or an input, reach for the existing primitive in
 `src/components/ui/` instead of hand-rolling one.
+
+| Need                  | Use                                                                       |
+| --------------------- | ------------------------------------------------------------------------- |
+| Dropdown              | `Select` (`ui/select.tsx`); `LanguageSelector` when it must be searchable |
+| Text or number input  | `Input` (`ui/input.tsx`)                                                  |
+| Button                | `Button` (`ui/button.tsx`)                                                |
+| Checkbox              | `Checkbox`, or `CheckboxField` when it needs a label and description      |
+| Range slider          | `Slider` (`ui/slider.tsx`)                                                |
+| Small uppercase label | `SectionLabel` (`ui/SectionLabel.tsx`)                                    |
+| Tinted icon square    | `IconTile` (`ui/IconTile.tsx`)                                            |
+| Status pill           | `Badge` (`ui/badge.tsx`)                                                  |
 
 Rules:
 
-- Never write a native `<select>`. Use `Select` from `src/components/ui/select.tsx`.
-  ESLint blocks this (`no-restricted-syntax` in `src/eslint.config.js`).
+- Never write a native `<select>`. ESLint blocks it.
 - Dropdown look lives in `src/components/ui/selectStyles.ts`. Both the Radix `Select`
   and the bespoke searchable `LanguageSelector` consume it, so they stay identical.
   Change the styling there, never at the call site.
@@ -140,6 +150,31 @@ Rules:
   everywhere. Do not style a one-off in a page component.
 - If a primitive is close but not quite right, extend the primitive rather than
   overriding it with a pile of classNames at the call site.
+
+## Colour comes from the theme, always
+
+Every colour in the app is a token in the `@theme` block of `src/index.css`. Semantic
+names: `primary`, `destructive`, `warning`, `success`, `info`, `pro`, `muted`,
+`foreground`, `surface-*`, `border-*`, plus `*-hover` / `*-active` interaction shades.
+
+ESLint blocks all four ways this gets bypassed:
+
+- Tailwind's stock palette (`text-red-400`, `bg-amber-500`) — use `text-destructive`,
+  `bg-warning`.
+- Hex in a className (`bg-[#A885FF]`) — add a token instead.
+- Hex in an inline `style` object — use `"var(--color-primary)"`.
+- `dark:` variants — the app is dark-only and declares no custom dark variant, so
+  `dark:` silently follows the OS theme and will not fire reliably.
+
+## Two Tailwind v4 traps that already bit us
+
+- **Tokens must live in `@theme`, not `:root`.** Tailwind only generates utilities from
+  `@theme`. Shadow and font tokens sat in `:root` for months, so `shadow-elevated` and
+  every `font-mono` in the app silently rendered as nothing and as the browser default
+  monospace.
+- **Element rules must live in `@layer base`.** Unlayered CSS beats every layered
+  utility. A plain `input { background-color: … }` rule made `bg-surface-1` on `<Input>`
+  a no-op, so component styling appeared to work in source and did nothing on screen.
 
 ## Agent workflow for UI changes
 
