@@ -1448,12 +1448,16 @@ class WhisperServerManager {
           const trimmed = await fs.promises.readFile(tempTrimmedWavPath);
           // A recording quieter than the threshold end to end trims away to
           // nothing. Transcribing a quiet recording badly beats transcribing
-          // an empty one, so keep the untrimmed audio in that case.
-          if (trimmed.length > WAV_HEADER_BYTES) {
+          // an empty one, so keep the untrimmed audio in that case. Measure the
+          // PCM payload, not the file size — FFmpeg still writes a LIST chunk
+          // around zero samples, so an empty result is well over a header.
+          const trimmedPcmBytes = parseWavPcmInfo(trimmed)?.dataSize ?? 0;
+          if (trimmedPcmBytes > 0) {
             return trimmed;
           }
           debugLogger.warn("Trailing-silence trim emptied the audio; using untrimmed input", {
             trimmedBytes: trimmed.length,
+            trimmedPcmBytes,
           });
         } catch (error) {
           debugLogger.warn("Trailing-silence trim failed; using untrimmed input", {
