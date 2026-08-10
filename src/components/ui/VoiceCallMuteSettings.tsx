@@ -32,7 +32,7 @@ export function describeKeyRisk(key: string): string | null {
     return "A held mouse button is a click that lasts the whole dictation, so releasing it can fire back or forward in whichever window has focus. A keyboard key avoids it.";
   }
   if (key.includes("+")) {
-    return "Held for as long as you dictate, so clicking or scrolling mid-dictation behaves as though you were holding these modifiers. Your text is unaffected — the key is released before anything is pasted.";
+    return "Check that the last key here is not already a keybind on its own in your voice app. Discord matches on the base key, so a combination built on a key you have already bound fires both keybinds at once.";
   }
   return null;
 }
@@ -149,9 +149,9 @@ export default function VoiceCallMuteSettings({
               Windows gives no way for one app to mute another app&apos;s microphone, so this
               keybind is the only way in. Pause/Break is the suggestion because the key is held for
               as long as you dictate, and it is the one key that does nothing else in Windows. Any
-              single key you don&apos;t otherwise use works too. If they are all spoken for, add
-              Ctrl+Shift to a key you already use — the pair does nothing on its own, and the
-              combination collides with nothing.
+              single key you don&apos;t otherwise use works too. If every quiet key is spoken for,
+              use Ctrl+Shift with a plain letter — Discord matches on the base key, so building the
+              combination on top of a key you have already bound will fire both keybinds at once.
             </p>
           </div>
 

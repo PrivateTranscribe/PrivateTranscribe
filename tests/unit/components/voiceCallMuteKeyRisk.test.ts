@@ -17,13 +17,13 @@ describe("describeKeyRisk", () => {
     expect(describeKeyRisk("")).toBeNull();
   });
 
-  test("Ctrl and Shift are flagged but not condemned", () => {
-    // These are usable. The note says what the real exposure is — mousing
-    // mid-dictation — and reassures that the text itself is safe, because the
-    // key is released before anything is pasted.
-    const risk = describeKeyRisk("CommandOrControl+Shift+M");
-    expect(risk).toContain("clicking or scrolling");
-    expect(risk).toContain("text is unaffected");
+  test("Ctrl and Shift are usable, with the collision to check for", () => {
+    // Observed in Discord: a bare Pause keybind also fires on Ctrl+Shift+Pause,
+    // so the push-to-mute and the toggle both trigger and cancel each other
+    // out. The base key is the thing to check, so the note names it.
+    const risk = describeKeyRisk("CommandOrControl+Shift+Pause");
+    expect(risk).toContain("base key");
+    expect(risk).toContain("both keybinds");
   });
 
   test("Alt and the Windows key are called out separately", () => {
