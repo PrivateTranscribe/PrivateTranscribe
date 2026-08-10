@@ -110,6 +110,19 @@ describe.runIf(ffmpegAvailable)("Trailing-silence trim over real audio", () => {
     expect(readPcm(converted).seconds).toBeGreaterThan(4.9);
   }, 30000);
 
+  it("hands back an empty result for a silent long-session chunk", async () => {
+    const manager = new WhisperServerManager();
+
+    // A silent stretch mid-dictation must not be transcribed. Whisper answers
+    // pure silence with filler like "Thank you." dropped into the transcript.
+    const trimmed = await manager._convertToWav(buildWav(0, 3), "chunk.wav", {
+      trimTrailingSilence: true,
+      dropSilentResult: true,
+    });
+
+    expect(readPcm(trimmed).samples).toBe(0);
+  }, 30000);
+
   it("falls back to the untrimmed audio when the recording is silent end to end", async () => {
     const manager = new WhisperServerManager();
 

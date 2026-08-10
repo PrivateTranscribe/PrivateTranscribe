@@ -785,10 +785,15 @@ class AudioManager {
       segment.restartAfterStop && this.longSession.active && !this.longSession.cancelled;
 
     if (!segment.discard && segment.chunks.length > 0 && this.longSession.active) {
+      // Every chunk is trimmed, not just the last one. A speaker who stops to
+      // think leaves an intermediate chunk ending in a long silence, and
+      // Whisper fills that silence with invented sentences that land in the
+      // middle of the transcript. A chunk cut mid-speech has no trailing
+      // silence, so trimming it is a no-op.
       this.enqueueLongSessionChunk(
         new Blob(segment.chunks, { type: segment.recorder.mimeType || this.recordingMimeType }),
         durationMs,
-        { trimTrailingSilence: !segment.restartAfterStop }
+        { trimTrailingSilence: true }
       );
     }
 

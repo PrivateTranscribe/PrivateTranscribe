@@ -402,7 +402,9 @@ describe("AudioManager recorder lifecycle", () => {
 
     expect(processAudio).not.toHaveBeenCalled();
     expect(runTranscription).toHaveBeenCalledTimes(2);
-    expect(runTranscription.mock.calls[0][1]).not.toMatchObject({ trimTrailingSilence: true });
+    // Intermediate chunks are trimmed too: a speaker pausing to think leaves a
+    // chunk ending in silence, which Whisper fills with invented sentences.
+    expect(runTranscription.mock.calls[0][1]).toMatchObject({ trimTrailingSilence: true });
     expect(runTranscription.mock.calls[1][1]).toMatchObject({ trimTrailingSilence: true });
     expect(processTranscription).toHaveBeenCalledTimes(1);
     expect(processTranscription).toHaveBeenCalledWith("chunk-0 chunk-1", "long-session");

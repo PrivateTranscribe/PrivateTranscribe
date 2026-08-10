@@ -1118,7 +1118,13 @@ class WhisperServerManager {
         noiseReduction: fileMode && noiseReduction,
         longSessionChunk,
         trimTrailingSilence,
+        dropSilentResult: longSessionChunk,
       });
+
+      if (longSessionChunk && (parseWavPcmInfo(finalBuffer)?.dataSize ?? 0) === 0) {
+        debugLogger.info("Long-session chunk held no speech after trimming; skipping inference");
+        return { text: "" };
+      }
 
       const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer);
       if (chunks.length > 1) {
@@ -1453,6 +1459,13 @@ class WhisperServerManager {
           // around zero samples, so an empty result is well over a header.
           const trimmedPcmBytes = parseWavPcmInfo(trimmed)?.dataSize ?? 0;
           if (trimmedPcmBytes > 0) {
+            return trimmed;
+          }
+          // A long-session chunk that trims to nothing is a silent stretch in
+          // the middle of a dictation. Hand the empty result back so the caller
+          // can skip it — transcribing the silence instead produces invented
+          // filler like "Thank you." in the middle of the transcript.
+          if (options.dropSilentResult) {
             return trimmed;
           }
           debugLogger.warn("Trailing-silence trim emptied the audio; using untrimmed input", {
