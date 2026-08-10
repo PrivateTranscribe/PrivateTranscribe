@@ -7,6 +7,7 @@ import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
+import { getSharedAudioContext } from "../utils/sharedAudioContext";
 import {
   buildDictionaryPrompt,
   getDictionaryRepairTerms,
@@ -819,12 +820,14 @@ class AudioManager {
     }
 
     try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) {
+      // Must be the shared context. A per-recording AudioContext can get stuck
+      // "suspended" on Windows after sleep/wake and then reports pure silence,
+      // which this detector would read as a pause and cut on immediately.
+      const context = getSharedAudioContext();
+      if (!context) {
         return null;
       }
 
-      const context = new AudioCtx();
       const source = context.createMediaStreamSource(stream);
       const analyser = context.createAnalyser();
       analyser.fftSize = 1024;
@@ -856,17 +859,24 @@ class AudioManager {
     }
 
     try {
+      // The context is shared across recordings and deliberately not closed.
       node.source.disconnect();
       node.analyser.disconnect();
-      void node.context.close();
     } catch {
-      // Ignore teardown errors from an already-closed context.
+      // Ignore teardown errors from an already-disconnected graph.
     }
   }
 
   readSegmentLevelRms() {
     const node = this.segmentLevelAnalyser;
     if (!node) {
+      return null;
+    }
+
+    // A suspended context hands back zeros forever. Treating that as a pause
+    // would cut every segment on the wall clock again, silently.
+    if (node.context.state !== "running") {
+      void node.context.resume?.().catch?.(() => {});
       return null;
     }
 
@@ -902,16 +912,17 @@ class AudioManager {
         return;
       }
 
+      // A null reading means the level is unmeasurable right now (typically a
+      // context the OS suspended). Never treat that as a pause — unmeasurable
+      // is not silent. Hold the boundary and let the hard cap end the segment
+      // if the reading never comes back.
       const rms = this.readSegmentLevelRms();
-      if (rms === null) {
-        void this.rotateLongSessionSegment();
-        return;
+      if (rms !== null) {
+        segment.pauseHeldMs =
+          rms < LONG_SESSION_SEGMENT_PAUSE_RMS
+            ? segment.pauseHeldMs + LONG_SESSION_SEGMENT_PAUSE_POLL_MS
+            : 0;
       }
-
-      segment.pauseHeldMs =
-        rms < LONG_SESSION_SEGMENT_PAUSE_RMS
-          ? segment.pauseHeldMs + LONG_SESSION_SEGMENT_PAUSE_POLL_MS
-          : 0;
 
       const elapsedMs = Date.now() - segment.startedAt;
       if (

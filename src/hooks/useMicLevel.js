@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import {
+  __resetSharedAudioContextForTests,
+  getSharedAudioContext,
+  resetSharedAudioContext,
+  waitForAudioContextRunning,
+} from "../utils/sharedAudioContext";
 
 /**
  * useMicLevel - real-time microphone amplitude tracking for voice-reactive UI.
@@ -20,107 +26,10 @@ import { useState, useEffect, useRef } from "react";
  * @returns {number} micLevel - smoothed amplitude in [0, 1]
  */
 
-// ---------------------------------------------------------------------------
-// Module-level singleton — reused across recordings, but replaceable if Windows
-// leaves it suspended after sleep/wake or Electron window hide/show.
-// ---------------------------------------------------------------------------
-let sharedCtx = null;
-let removeSharedVisibilityListener = null;
-let unsubscribeSharedWindowShown = null;
-
-function disposeSharedAudioContext({ close = false } = {}) {
-  const ctx = sharedCtx;
-
-  if (removeSharedVisibilityListener) {
-    removeSharedVisibilityListener();
-    removeSharedVisibilityListener = null;
-  }
-
-  if (unsubscribeSharedWindowShown) {
-    unsubscribeSharedWindowShown();
-    unsubscribeSharedWindowShown = null;
-  }
-
-  sharedCtx = null;
-
-  if (close && ctx && ctx.state !== "closed") {
-    try {
-      ctx.close?.();
-    } catch {
-      // Ignore browser teardown errors; a new context will be created on demand.
-    }
-  }
-}
-
-function resetSharedAudioContext() {
-  disposeSharedAudioContext({ close: true });
-  return getSharedAudioContext();
-}
-
-/**
- * Returns the shared AudioContext, creating it on first call.
- * If the existing context was closed (should not happen in normal use),
- * a new one is created.
- */
-function getSharedAudioContext() {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return null;
-
-  if (!sharedCtx || sharedCtx.state === "closed") {
-    sharedCtx = new AudioCtx();
-
-    // Proactively resume whenever the page becomes visible again (e.g. after
-    // the display wakes from sleep). This covers the case where the context
-    // was suspended by the OS while the screen was off.
-    const handleSharedVisibility = () => {
-      if (document.visibilityState === "visible" && sharedCtx?.state === "suspended") {
-        sharedCtx.resume().catch(() => {});
-      }
-    };
-    document.addEventListener("visibilitychange", handleSharedVisibility);
-    removeSharedVisibilityListener = () => {
-      document.removeEventListener("visibilitychange", handleSharedVisibility);
-    };
-
-    // Also resume when the Electron window is shown after being hidden
-    // (visibilitychange does not always fire for Electron window show/hide)
-    unsubscribeSharedWindowShown = window.electronAPI?.onMainWindowShown?.(() => {
-      if (sharedCtx?.state === "suspended") {
-        sharedCtx.resume().catch(() => {});
-      }
-    });
-  }
-
-  return sharedCtx;
-}
-
-export async function waitForAudioContextRunning(ctx, { attempts = 10, delayMs = 50 } = {}) {
-  if (!ctx || ctx.state === "closed") {
-    return false;
-  }
-
-  if (ctx.state === "running") {
-    return true;
-  }
-
-  try {
-    await ctx.resume?.();
-  } catch {
-    return false;
-  }
-
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    if (ctx.state === "running") {
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-  }
-
-  return ctx.state === "running";
-}
+export { waitForAudioContextRunning };
 
 export function __resetMicLevelAudioContextForTests() {
-  disposeSharedAudioContext({ close: true });
+  __resetSharedAudioContextForTests();
 }
 
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ vi.mock("../../../src/utils/languageCompat", () => ({
 }));
 
 import AudioManager from "../../../src/helpers/audioManager";
+import { __resetSharedAudioContextForTests } from "../../../src/utils/sharedAudioContext";
 
 const makeStream = () => ({
   active: true,
@@ -72,8 +73,10 @@ const installAudioContext = () => {
   }
 
   class MockAudioContext {
+    state = "running";
     createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
     createAnalyser = vi.fn(() => new MockAnalyserNode());
+    resume = vi.fn(async () => {});
     close = vi.fn(async () => {});
   }
 
@@ -109,6 +112,7 @@ describe("AudioManager long-session segment rotation", () => {
     (window as any).electronAPI = {};
     delete (window as any).AudioContext;
     delete (window as any).webkitAudioContext;
+    __resetSharedAudioContextForTests();
     (globalThis as any).MediaRecorder = MockMediaRecorder;
     Object.defineProperty(globalThis, "navigator", {
       value: {
@@ -126,6 +130,7 @@ describe("AudioManager long-session segment rotation", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    __resetSharedAudioContextForTests();
     delete (window as any).AudioContext;
   });
 
@@ -176,6 +181,26 @@ describe("AudioManager long-session segment rotation", () => {
     expect(segment.stop).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(2_000);
+    expect(segment.stop).toHaveBeenCalled();
+  });
+
+  it("does not read a suspended context's zeros as a pause", async () => {
+    installAudioContext();
+    micLevel = 0.2;
+    const manager = makeManager();
+    const segment = await startRotatingSegment(manager);
+
+    // A suspended context returns all zeros; that must not count as silence.
+    const analyser = manager.ensureSegmentLevelAnalyser();
+    analyser.context.state = "suspended";
+    micLevel = 0;
+
+    await vi.advanceTimersByTimeAsync(65_000);
+    expect(segment.stop).not.toHaveBeenCalled();
+    expect(analyser.context.resume).toHaveBeenCalled();
+
+    // The hard cap still ends the segment if the context never wakes up.
+    await vi.advanceTimersByTimeAsync(26_000);
     expect(segment.stop).toHaveBeenCalled();
   });
 
