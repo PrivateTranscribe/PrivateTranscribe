@@ -1037,9 +1037,7 @@ class WindowManager {
       const activationMode = await this.getActivationMode();
       if (shouldUseWindowsNativeListener(hotkey, activationMode)) {
         this._windowsKeyManagerRef.start(hotkey);
-        this.hotkeyManager.setWindowsNativeListenerActive(
-          this._windowsKeyManagerRef.isListening()
-        );
+        this.hotkeyManager.setWindowsNativeListenerActive(this._windowsKeyManagerRef.isListening());
       }
     }
 

@@ -9,6 +9,11 @@ module.exports = [
       "src/dist/**",
       "*.min.js",
       "build/**",
+      // Gitignored local scratch. Linting it broke `npm run format:check`:
+      // tmp/ hit EPERM on Windows, website/ is browser code the CommonJS
+      // main-process config below cannot parse.
+      "tmp/**",
+      "website/**",
       "src/**", // src has its own config
     ],
   },
