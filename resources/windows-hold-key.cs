@@ -44,9 +44,20 @@ internal static class WindowsHoldKey
     private const int DefaultMaxHoldMs = 120000;
     private const int MinMaxHoldMs = 1000;
 
+    private const int InputMouse = 0;
     private const int InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventExtendedKey = 0x0001;
+
+    // Mouse buttons are worth supporting because they are a common push-to-talk
+    // and push-to-mute binding, and they travel through SendInput as MOUSEINPUT
+    // rather than KEYBDINPUT.
+    private const uint MouseEventMiddleDown = 0x0020;
+    private const uint MouseEventMiddleUp = 0x0040;
+    private const uint MouseEventXDown = 0x0080;
+    private const uint MouseEventXUp = 0x0100;
+    private const uint XButton1 = 0x0001;
+    private const uint XButton2 = 0x0002;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct KEYBDINPUT
@@ -58,13 +69,26 @@ internal static class WindowsHoldKey
         public IntPtr dwExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
     [StructLayout(LayoutKind.Explicit)]
     private struct INPUTUNION
     {
         [FieldOffset(0)]
+        public MOUSEINPUT mi;
+        [FieldOffset(0)]
         public KEYBDINPUT ki;
-        // Pad the union out to the size of the largest member (MOUSEINPUT on
-        // x64) so the marshalled struct size matches what SendInput expects.
+        // Pad the union out to the size of the largest member so the marshalled
+        // struct size matches what SendInput expects.
         [FieldOffset(0)]
         private Padding pad;
     }
@@ -93,17 +117,38 @@ internal static class WindowsHoldKey
         Keys.NumLock, Keys.PrintScreen, Keys.Divide,
     };
 
+    /// One element of a combination: either a keyboard key or a mouse button.
+    private sealed class HeldInput
+    {
+        public bool IsMouse;
+        public Keys Key;        // keyboard only
+        public uint DownFlag;   // mouse only
+        public uint UpFlag;     // mouse only
+        public uint MouseData;  // mouse only, identifies which X button
+    }
+
     private static readonly object SendLock = new object();
-    private static List<Keys> heldKeys;
+    private static List<HeldInput> heldKeys;
     private static bool released;
 
     // -----------------------------------------------------------------------
     // Key parsing
     // -----------------------------------------------------------------------
 
-    private static bool TryParseKeyToken(string token, out Keys key)
+    private static HeldInput MakeMouse(uint downFlag, uint upFlag, uint mouseData)
     {
-        key = Keys.None;
+        var input = new HeldInput();
+        input.IsMouse = true;
+        input.DownFlag = downFlag;
+        input.UpFlag = upFlag;
+        input.MouseData = mouseData;
+        return input;
+    }
+
+    private static bool TryParseKeyToken(string token, out HeldInput input)
+    {
+        input = null;
+        Keys key = Keys.None;
         if (string.IsNullOrEmpty(token))
         {
             return false;
@@ -111,51 +156,79 @@ internal static class WindowsHoldKey
 
         string normalized = token.Trim();
 
+        // Mouse button names follow the same numbering Discord uses in its own
+        // keybind list, so what the user sees in both apps lines up.
+        switch (normalized.ToLowerInvariant().Replace(" ", ""))
+        {
+            case "mouse3":
+            case "middlemouse":
+                input = MakeMouse(MouseEventMiddleDown, MouseEventMiddleUp, 0);
+                return true;
+            case "mouse4":
+                input = MakeMouse(MouseEventXDown, MouseEventXUp, XButton1);
+                return true;
+            case "mouse5":
+                input = MakeMouse(MouseEventXDown, MouseEventXUp, XButton2);
+                return true;
+        }
+
         switch (normalized.ToLowerInvariant())
         {
             case "ctrl":
             case "control":
             case "commandorcontrol":
                 key = Keys.ControlKey;
-                return true;
+                break;
             case "shift":
                 key = Keys.ShiftKey;
-                return true;
+                break;
             case "alt":
                 key = Keys.Menu;
-                return true;
+                break;
             case "win":
             case "super":
             case "meta":
                 key = Keys.LWin;
-                return true;
+                break;
             case "space":
                 key = Keys.Space;
-                return true;
+                break;
         }
 
-        // Bare digits parse as the D-prefixed members of the Keys enum.
-        if (normalized.Length == 1 && normalized[0] >= '0' && normalized[0] <= '9')
+        if (key == Keys.None)
         {
-            normalized = "D" + normalized;
+            // Bare digits parse as the D-prefixed members of the Keys enum.
+            if (normalized.Length == 1 && normalized[0] >= '0' && normalized[0] <= '9')
+            {
+                normalized = "D" + normalized;
+            }
+
+            try
+            {
+                key = (Keys)Enum.Parse(typeof(Keys), normalized, true);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
-        try
-        {
-            key = (Keys)Enum.Parse(typeof(Keys), normalized, true);
-            return key != Keys.None;
-        }
-        catch (Exception)
+        if (key == Keys.None)
         {
             return false;
         }
+
+        input = new HeldInput();
+        input.IsMouse = false;
+        input.Key = key;
+        return true;
     }
 
     /// Parses "Ctrl+Shift+M" into the key sequence to press, modifiers first so
     /// they are already down when the main key arrives.
-    private static List<Keys> ParseCombination(string combination)
+    private static List<HeldInput> ParseCombination(string combination)
     {
-        var result = new List<Keys>();
+        var result = new List<HeldInput>();
         if (string.IsNullOrEmpty(combination))
         {
             return result;
@@ -164,15 +237,12 @@ internal static class WindowsHoldKey
         string[] parts = combination.Split('+');
         for (int i = 0; i < parts.Length; i++)
         {
-            Keys key;
-            if (!TryParseKeyToken(parts[i], out key))
+            HeldInput parsed;
+            if (!TryParseKeyToken(parts[i], out parsed))
             {
-                return new List<Keys>();
+                return new List<HeldInput>();
             }
-            if (!result.Contains(key))
-            {
-                result.Add(key);
-            }
+            result.Add(parsed);
         }
         return result;
     }
@@ -181,25 +251,39 @@ internal static class WindowsHoldKey
     // Input
     // -----------------------------------------------------------------------
 
-    private static bool SendKeyEvent(Keys key, bool keyUp)
+    private static bool SendKeyEvent(HeldInput held, bool keyUp)
     {
         var input = new INPUT();
-        input.type = InputKeyboard;
-        input.u.ki.wVk = (ushort)key;
-        input.u.ki.wScan = 0;
-        input.u.ki.dwFlags = keyUp ? KeyEventKeyUp : 0;
-        if (ExtendedKeys.Contains(key))
+
+        if (held.IsMouse)
         {
-            input.u.ki.dwFlags |= KeyEventExtendedKey;
+            input.type = InputMouse;
+            input.u.mi.dx = 0;
+            input.u.mi.dy = 0;
+            input.u.mi.mouseData = held.MouseData;
+            input.u.mi.dwFlags = keyUp ? held.UpFlag : held.DownFlag;
+            input.u.mi.time = 0;
+            input.u.mi.dwExtraInfo = IntPtr.Zero;
         }
-        input.u.ki.time = 0;
-        input.u.ki.dwExtraInfo = IntPtr.Zero;
+        else
+        {
+            input.type = InputKeyboard;
+            input.u.ki.wVk = (ushort)held.Key;
+            input.u.ki.wScan = 0;
+            input.u.ki.dwFlags = keyUp ? KeyEventKeyUp : 0;
+            if (ExtendedKeys.Contains(held.Key))
+            {
+                input.u.ki.dwFlags |= KeyEventExtendedKey;
+            }
+            input.u.ki.time = 0;
+            input.u.ki.dwExtraInfo = IntPtr.Zero;
+        }
 
         var inputs = new INPUT[] { input };
         return SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT))) == 1;
     }
 
-    private static void PressAll(List<Keys> keys)
+    private static void PressAll(List<HeldInput> keys)
     {
         for (int i = 0; i < keys.Count; i++)
         {

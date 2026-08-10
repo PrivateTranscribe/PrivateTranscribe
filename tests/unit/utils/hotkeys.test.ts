@@ -37,6 +37,9 @@ function formatModifierPart(part: string, isMac: boolean): string {
     case "Super":
     case "Meta":
       return isMac ? "Cmd" : "Win";
+    case "Mouse3":
+    case "MButton":
+      return "Mouse 3 (Middle)";
     case "Mouse4":
     case "XButton1":
       return "Mouse 4 (Back)";
@@ -193,6 +196,11 @@ describe("hotkeys", () => {
     });
 
     describe("mouse button formatting", () => {
+      it("formats Mouse3/MButton", () => {
+        expect(formatHotkeyLabel("Mouse3")).toBe("Mouse 3 (Middle)");
+        expect(formatHotkeyLabel("MButton")).toBe("Mouse 3 (Middle)");
+      });
+
       it("formats Mouse4/XButton1", () => {
         expect(formatHotkeyLabel("Mouse4")).toBe("Mouse 4 (Back)");
         expect(formatHotkeyLabel("XButton1")).toBe("Mouse 4 (Back)");

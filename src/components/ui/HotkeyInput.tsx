@@ -175,7 +175,14 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
 export function mapMouseEventToHotkey(e: MouseEvent): string | null {
   // Browser MouseEvent.button mapping:
   // 0=Left, 1=Middle, 2=Right, 3=Back, 4=Forward
+  //
+  // Middle and the two side buttons are capturable. Left and right are not,
+  // because binding them would make the rest of the interface unusable.
+  // The Mouse3/4/5 names match the numbering Discord shows in its own keybind
+  // list, so a user setting the same physical button in both apps sees the same
+  // label in both places.
   let baseKey: string | null = null;
+  if (e.button === 1) baseKey = "Mouse3";
   if (e.button === 3) baseKey = "Mouse4";
   if (e.button === 4) baseKey = "Mouse5";
   if (!baseKey) return null;
@@ -325,8 +332,12 @@ export function HotkeyInput({
   useEffect(() => {
     if (!isCapturing) return;
 
-    // Allow capturing mouse side buttons (Mouse4/Mouse5) while the input is "listening".
-    // Important: preventDefault to avoid browser back/forward navigation.
+    // Allow capturing the middle and side mouse buttons (Mouse3/Mouse4/Mouse5)
+    // while the input is "listening". Voice apps commonly bind push-to-talk and
+    // push-to-mute to these, so a keyboard-only field could not express what the
+    // user already has set up.
+    // Important: preventDefault to avoid browser back/forward navigation and
+    // middle-click autoscroll.
     const onMouseDown = (e: MouseEvent) => {
       if (disabled) return;
       const hotkey = mapMouseEventToHotkey(e);
