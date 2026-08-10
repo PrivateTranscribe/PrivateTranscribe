@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Check, X } from "lucide-react";
+import { Mic, MicOff, Check, X, AlertTriangle } from "lucide-react";
 import HotkeyInput from "./HotkeyInput";
 import { Toggle } from "./toggle";
 import type { VoiceCallApp } from "../../types/electron";
@@ -8,6 +8,25 @@ const STATUS_POLL_MS = 2000;
 const TEST_HOLD_MS = 1200;
 
 type TestState = "idle" | "running" | "passed" | "failed";
+
+/**
+ * Advice about a chosen key, or null when it is a good one.
+ *
+ * The distinction that matters here is hold versus tap. This key is held down
+ * for the entire length of the dictation, which makes it a different problem
+ * from an ordinary shortcut. Anything fine to tap can be ruinous to hold.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function describeKeyRisk(key: string): string | null {
+  if (!key) return null;
+  if (key.includes("+")) {
+    return "This key is held down until you stop dictating, so its modifiers stay pressed the whole time. That changes every keystroke and mouse click that lands anywhere else on your machine. A single key with no modifiers avoids it.";
+  }
+  if (key.startsWith("Mouse")) {
+    return "Mouse buttons are held down until you stop dictating, so the release at the end can fire back or forward in whichever window has focus. A single key avoids it.";
+  }
+  return null;
+}
 
 interface VoiceCallMuteSettingsProps {
   enabled: boolean;
@@ -79,6 +98,7 @@ export default function VoiceCallMuteSettings({
   }, [muteKey]);
 
   const inCall = activeApps.length > 0;
+  const keyRisk = describeKeyRisk(muteKey);
 
   return (
     <div className="space-y-4">
@@ -110,12 +130,17 @@ export default function VoiceCallMuteSettings({
             </div>
             <p className="text-sm text-foreground/90 mt-2 leading-relaxed">
               Open <span className="font-medium">Settings → Keybinds → Add a Keybind</span>, set the
-              action to <span className="font-medium">Push to Mute</span>, and press a key you
-              don&apos;t otherwise use.
+              action to <span className="font-medium">Push to Mute</span>, and press{" "}
+              <kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-subtle rounded text-xs font-semibold">
+                Pause/Break
+              </kbd>
+              . Discord ships without this keybind, so there is nothing to reuse.
             </p>
             <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
               Windows gives no way for one app to mute another app&apos;s microphone, so this
-              keybind is the only way in. A key without modifiers is the tidiest choice.
+              keybind is the only way in. Pause/Break is the suggestion because the key is held for
+              as long as you dictate, and it is the one key that does nothing else in Windows. Any
+              single key you don&apos;t otherwise use works too.
             </p>
           </div>
 
@@ -133,6 +158,12 @@ export default function VoiceCallMuteSettings({
               onChange={onMuteKeyChange}
               appliesToDictationHotkey={false}
             />
+            {keyRisk && (
+              <p className="flex items-start gap-2 text-xs text-muted-foreground mt-3 leading-relaxed">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{keyRisk}</span>
+              </p>
+            )}
           </div>
 
           {/* Live state, so the mechanism is visible rather than mysterious */}
