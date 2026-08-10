@@ -46,7 +46,15 @@ const LONG_SESSION_SEGMENT_MAX_MS = 90 * 1000;
 const LONG_SESSION_SEGMENT_PAUSE_POLL_MS = 100;
 const LONG_SESSION_SEGMENT_PAUSE_HOLD_MS = 300;
 const LONG_SESSION_SEGMENT_PAUSE_RMS = 0.015;
-const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 2;
+const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 3;
+// Retrying a failed chunk instantly just re-runs it against whatever broke it.
+// A short pause lets a busy or restarting whisper-server come back first.
+const LONG_SESSION_CHUNK_RETRY_BACKOFF_MS = 500;
+
+// A missing section is invisible in pasted prose: the sentences on either side
+// join up and read as one continuous thought. Mark the gap so the speaker can
+// see where their words went instead of discovering the hole later.
+export const MISSING_SECTION_MARKER = "[... missing section ...]";
 
 const isTranscriptionTextDebugEnabled = () => {
   try {
@@ -243,6 +251,7 @@ class AudioManager {
     this.lastRecorderDataAt = null;
     this.longSessionPromotionMs = LONG_SESSION_PROMOTION_MS;
     this.longSessionChunkTargetMs = LONG_SESSION_CHUNK_TARGET_MS;
+    this.longSessionChunkRetryBackoffMs = LONG_SESSION_CHUNK_RETRY_BACKOFF_MS;
     this.longSession = this.createLongSessionState();
     this.longSessionSegment = null;
     this.longSessionPromotionUnavailable = false;
@@ -580,6 +589,10 @@ class AudioManager {
 
   waitForRecorderFinalData() {
     return new Promise((resolve) => setTimeout(resolve, RECORDER_FINAL_DATA_GRACE_MS));
+  }
+
+  delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   estimateRecorderChunkDurationMs() {
@@ -1045,12 +1058,19 @@ class AudioManager {
               },
               "transcription"
             );
+            if (this.longSessionChunkRetryBackoffMs > 0) {
+              await this.delay(this.longSessionChunkRetryBackoffMs);
+            }
             continue;
           }
 
+          // Keep the audio. The queue is still draining behind this chunk, so
+          // whatever broke it may well be gone by the time the recording ends,
+          // and finalizeLongSessionResult gets one more attempt at it.
           state.errors.push({
             index: item.index,
             message: error?.message || "Chunk transcription failed",
+            item,
           });
           logger.warn(
             "Long-session chunk transcription failed",
@@ -1087,12 +1107,111 @@ class AudioManager {
     }
   }
 
+  // Chunks that exhausted their inline retries kept their audio. By the time
+  // the recording ends the queue has drained and nothing else is competing for
+  // whisper-server, so a transient failure (a busy server, a restart, a
+  // timeout) usually clears. Spend one last attempt here rather than reporting
+  // a gap the user could have had filled.
+  async retryFailedLongSessionChunks() {
+    const state = this.longSession;
+    if (!state || state.cancelled || state.errors.length === 0) {
+      return;
+    }
+
+    const pending = state.errors.filter((entry) => entry.item?.blob);
+    if (pending.length === 0) {
+      return;
+    }
+
+    state.errors = state.errors.filter((entry) => !entry.item?.blob);
+
+    for (const entry of pending) {
+      const item = entry.item;
+
+      if (state.cancelled) {
+        state.errors.push({ index: entry.index, message: entry.message });
+        continue;
+      }
+
+      try {
+        const result = await this.runTranscription(item.blob, {
+          durationSeconds: item.durationMs / 1000,
+          source: "long-session",
+          skipPostProcessing: true,
+          skipOptimization: true,
+          chunkIndex: item.index,
+          trimTrailingSilence: item.trimTrailingSilence,
+        });
+
+        const text = String(result?.result?.text || "").trim();
+        if (text) {
+          state.results.set(item.index, text);
+        }
+        state.completedChunks += 1;
+        logger.info(
+          "Recovered a failed long-session chunk on the final retry",
+          { chunkIndex: item.index, recoveredCharacters: text.length },
+          "transcription"
+        );
+      } catch (error) {
+        state.errors.push({
+          index: entry.index,
+          message: error?.message || entry.message,
+        });
+      }
+    }
+
+    this.emitStateChange();
+  }
+
+  // Joins the transcribed chunks in order, standing a marker where a chunk is
+  // missing. Silent chunks contribute nothing and are not gaps.
+  buildLongSessionText(state) {
+    const failedIndexes = new Set(state.errors.map((entry) => entry.index));
+    const indexes = [...new Set([...state.results.keys(), ...failedIndexes])].sort(
+      (left, right) => left - right
+    );
+
+    const parts = [];
+    for (const index of indexes) {
+      if (failedIndexes.has(index)) {
+        parts.push(MISSING_SECTION_MARKER);
+        continue;
+      }
+      const text = String(state.results.get(index) || "").trim();
+      if (text) {
+        parts.push(text);
+      }
+    }
+
+    return parts.join(" ").trim();
+  }
+
+  // AI cleanup rewrites the transcript, and a bracketed marker is exactly the
+  // kind of stray text it likes to tidy away. The gap is still real, so put
+  // back any marker the model dropped. Position is lost at that point, so the
+  // recovered markers land at the end rather than not appearing at all.
+  preserveMissingSectionMarkers(text, expectedMarkers) {
+    if (!expectedMarkers) {
+      return text;
+    }
+
+    const present = text.split(MISSING_SECTION_MARKER).length - 1;
+    if (present >= expectedMarkers) {
+      return text;
+    }
+
+    const missing = Array.from({ length: expectedMarkers - present }, () => MISSING_SECTION_MARKER);
+    return `${text} ${missing.join(" ")}`.trim();
+  }
+
   async finalizeLongSessionResult(durationSeconds) {
     await this.waitForLongSessionQueue();
+    await this.retryFailedLongSessionChunks();
 
     const state = this.longSession;
 
-    const rawText = [...state.results.entries()]
+    const transcribedText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, text]) => text)
       .filter(Boolean)
@@ -1102,7 +1221,7 @@ class AudioManager {
     // A failed chunk used to discard the whole dictation, so one bad section
     // out of five cost the speaker every word they said. Keep what did
     // transcribe and flag it as incomplete; only give up when nothing survived.
-    if (!rawText) {
+    if (!transcribedText) {
       if (state.errors.length > 0) {
         throw new Error(
           `Long recording could not be transcribed after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
@@ -1110,6 +1229,8 @@ class AudioManager {
       }
       throw new Error("No text transcribed - audio may be silent or unavailable");
     }
+
+    const rawText = this.buildLongSessionText(state);
 
     if (state.errors.length > 0) {
       logger.warn(
@@ -1124,12 +1245,13 @@ class AudioManager {
     }
 
     const reasoningStart = performance.now();
-    const text = await this.processTranscription(rawText, "long-session");
+    const reasonedText = await this.processTranscription(rawText, "long-session");
+    const text = this.preserveMissingSectionMarkers(reasonedText || rawText, state.errors.length);
     const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
 
     return {
       success: true,
-      text: text || rawText,
+      text,
       source,
       durationSeconds,
       timings: {

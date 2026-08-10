@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import AudioManager from "../helpers/audioManager";
+import AudioManager, { MISSING_SECTION_MARKER } from "../helpers/audioManager";
 import { getDictionaryRepairTerms, parseDictionaryEntryModes } from "../utils/dictionaryEntryModes";
 import {
   buildStarterLimitMessage,
@@ -272,7 +272,7 @@ export const useAudioRecording = (toast, options = {}) => {
           const total = result.completeness.totalChunks;
           toastRef.current?.({
             title: "Part of this recording is missing",
-            description: `${failed} of ${total} sections could not be transcribed. The text below is everything that came through.`,
+            description: `${failed} of ${total} sections could not be transcribed. Each gap is marked "${MISSING_SECTION_MARKER}" in the text.`,
             variant: "destructive",
             duration: 12000,
           });
