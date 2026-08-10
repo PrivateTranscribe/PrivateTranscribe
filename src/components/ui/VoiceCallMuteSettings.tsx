@@ -7,7 +7,24 @@ import type { VoiceCallApp } from "../../types/electron";
 const STATUS_POLL_MS = 2000;
 const TEST_HOLD_MS = 1200;
 
+// Seconds between asking for the key to be sent and sending it. Discord only
+// records a keybind while its own window has focus, so the delay is what lets
+// the user get over there first.
+const SEND_DELAY_S = 5;
+const SEND_HOLD_MS = 400;
+
+// F13 is the key to reach for when every real one is taken. No keyboard ships
+// it, which is exactly why nothing can already be using it, and PrivateTranscribe
+// is the one pressing it anyway.
+const SPARE_KEY = "F13";
+
 type TestState = "idle" | "running" | "passed" | "failed";
+
+/** Whether a key exists only as a signal, with no button on any keyboard. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function isKeyboardlessKey(key: string): boolean {
+  return /^F(1[3-9]|2[0-4])$/.test(key);
+}
 
 /**
  * Advice about a chosen key, or null when it is a good one.
@@ -53,6 +70,7 @@ export default function VoiceCallMuteSettings({
   const [activeApps, setActiveApps] = useState<VoiceCallApp[]>([]);
   const [supported, setSupported] = useState(true);
   const [testState, setTestState] = useState<TestState>("idle");
+  const [countdown, setCountdown] = useState<number | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -97,8 +115,26 @@ export default function VoiceCallMuteSettings({
     }
   }, [muteKey]);
 
+  // Counts down, then presses the key for real so Discord's recording field can
+  // capture it. This is the only way to bind a key the keyboard cannot produce,
+  // and it works for an awkward-to-reach one too.
+  useEffect(() => {
+    if (countdown === null) return undefined;
+    if (countdown > 0) {
+      const id = setTimeout(
+        () => setCountdown((value) => (value === null ? null : value - 1)),
+        1000
+      );
+      return () => clearTimeout(id);
+    }
+    setCountdown(null);
+    void window.electronAPI?.voiceMuteTest?.({ key: muteKey, holdMs: SEND_HOLD_MS });
+    return undefined;
+  }, [countdown, muteKey]);
+
   const inCall = activeApps.length > 0;
   const keyRisk = describeKeyRisk(muteKey);
+  const usingSpareKey = isKeyboardlessKey(muteKey);
 
   return (
     <div className="space-y-4">
@@ -140,7 +176,8 @@ export default function VoiceCallMuteSettings({
               Windows gives no way for one app to mute another app&apos;s microphone, so this
               keybind is the only way in. Pause/Break is the suggestion because the key is held for
               as long as you dictate, and it is the one key that does nothing else in Windows. Any
-              single key you don&apos;t otherwise use works too.
+              single key you don&apos;t otherwise use works too — and if they are all taken, step 2
+              can bind a key your keyboard does not even have.
             </p>
           </div>
 
@@ -163,6 +200,39 @@ export default function VoiceCallMuteSettings({
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>{keyRisk}</span>
               </p>
+            )}
+
+            {/* The way out when every key on the keyboard is already spoken for */}
+            {usingSpareKey ? (
+              <div className="mt-3 pt-3 border-t border-border-subtle/60">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Your keyboard has no {muteKey} key, and that is the point — nothing else can
+                  already be using it. You never press it yourself; PrivateTranscribe sends it.
+                </p>
+                <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                  To bind it: open Discord&apos;s <span className="font-medium">Push to Mute</span>{" "}
+                  keybind and click its record field, then come back and press the button below. It
+                  waits {SEND_DELAY_S} seconds so you can switch to Discord before the key lands.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCountdown(SEND_DELAY_S)}
+                  disabled={countdown !== null}
+                  className="mt-3 text-sm px-3 py-1.5 rounded-md border border-border-subtle hover:bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {countdown !== null
+                    ? `Sending ${muteKey} in ${countdown}…`
+                    : `Send ${muteKey} to Discord`}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onMuteKeyChange(SPARE_KEY)}
+                className="mt-3 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
+              >
+                Every key already taken? Use {SPARE_KEY} instead
+              </button>
             )}
           </div>
 

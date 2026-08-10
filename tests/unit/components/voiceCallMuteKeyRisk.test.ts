@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { describeKeyRisk } from "../../../src/components/ui/VoiceCallMuteSettings";
+import {
+  describeKeyRisk,
+  isKeyboardlessKey,
+} from "../../../src/components/ui/VoiceCallMuteSettings";
 
 /**
  * The mute key is held for the whole dictation rather than tapped, so the
@@ -32,5 +35,33 @@ describe("describeKeyRisk", () => {
 
   test("a modifier plus a mouse button is still reported", () => {
     expect(describeKeyRisk("Shift+Mouse4")).not.toBeNull();
+  });
+});
+
+/**
+ * F13 upwards are the keys worth reaching for once every real key is taken, and
+ * the reason is the same thing that makes them awkward: no keyboard has them,
+ * so nothing can already be bound to them. The settings screen swaps in a
+ * different set of instructions for these, because the user cannot press one.
+ */
+describe("isKeyboardlessKey", () => {
+  test("recognises the extended function keys", () => {
+    expect(isKeyboardlessKey("F13")).toBe(true);
+    expect(isKeyboardlessKey("F19")).toBe(true);
+    expect(isKeyboardlessKey("F24")).toBe(true);
+  });
+
+  test("keys that exist on a keyboard are not in the set", () => {
+    expect(isKeyboardlessKey("F12")).toBe(false);
+    expect(isKeyboardlessKey("F1")).toBe(false);
+    expect(isKeyboardlessKey("Pause")).toBe(false);
+    expect(isKeyboardlessKey("Scrolllock")).toBe(false);
+    expect(isKeyboardlessKey("")).toBe(false);
+  });
+
+  test("does not match past the end of the range", () => {
+    // F25 has no virtual-key code, so the helper would reject it anyway.
+    expect(isKeyboardlessKey("F25")).toBe(false);
+    expect(isKeyboardlessKey("F130")).toBe(false);
   });
 });
