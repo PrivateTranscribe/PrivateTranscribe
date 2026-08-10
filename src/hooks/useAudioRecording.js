@@ -14,7 +14,20 @@ import {
 } from "../utils/analytics";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "./useProStatus";
 import { deliverDictation } from "../utils/dictationDelivery";
-import { readStoredHotkey } from "../utils/hotkeys";
+import { formatHotkeyLabel, readStoredHotkey } from "../utils/hotkeys";
+
+/**
+ * Whether a voice-mute attempt failed in a way the user needs to hear about.
+ *
+ * Only two outcomes qualify. "no-call" and "no-key" are the ordinary quiet
+ * cases — warning on those would put a toast in front of anyone who dictates
+ * while not in a call, which is most dictations. "hold-failed" and "error" are
+ * different: the app decided a call was live, tried to mute it, and could not.
+ */
+export const shouldWarnAboutFailedMute = (result) => {
+  if (!result || result.muted) return false;
+  return result.reason === "hold-failed" || result.reason === "error";
+};
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -170,7 +183,25 @@ export const useAudioRecording = (toast, options = {}) => {
       const key = readStoredHotkey(localStorage.getItem("voiceCallMuteKey"));
       if (!key) return;
       voiceMuteRequested = true;
-      window.electronAPI?.voiceMuteStart?.({ key });
+
+      // A mute that does not happen has to be visible. Being outside a call is
+      // the ordinary case and stays quiet, but a key the helper could not send
+      // means the user is talking into a live call in the belief that nobody
+      // can hear them. Staying silent about that is the one failure this whole
+      // feature exists to prevent.
+      Promise.resolve(window.electronAPI?.voiceMuteStart?.({ key }))
+        .then((result) => {
+          if (disposed || !shouldWarnAboutFailedMute(result)) return;
+          toastRef.current?.({
+            title: "Your call was not muted",
+            description: `PrivateTranscribe could not send ${formatHotkeyLabel(key)} to your voice app, so the call can hear this dictation. Check the mute key in Settings.`,
+            variant: "destructive",
+            duration: 10000,
+          });
+        })
+        .catch(() => {
+          // The mute is best effort; a broken IPC bridge must not stop recording.
+        });
     };
 
     const unmuteVoiceCall = () => {
@@ -228,7 +259,6 @@ export const useAudioRecording = (toast, options = {}) => {
         // Always restore audio when transcription finishes (safety net)
         restoreAudio();
         resumeMedia();
-        unmuteVoiceCall();
         unmuteVoiceCall();
 
         const canCommit = () =>
@@ -695,7 +725,6 @@ export const useAudioRecording = (toast, options = {}) => {
           restoreAudio();
           resumeMedia();
           unmuteVoiceCall();
-          unmuteVoiceCall();
         } else {
           void trackAnalyticsEvent("transcription_started");
         }
@@ -703,7 +732,6 @@ export const useAudioRecording = (toast, options = {}) => {
       } catch (error) {
         restoreAudio();
         resumeMedia();
-        unmuteVoiceCall();
         unmuteVoiceCall();
         throw error;
       }
@@ -714,7 +742,6 @@ export const useAudioRecording = (toast, options = {}) => {
       if (!currentState.isRecording && !currentState.isStartingRecording) {
         restoreAudio();
         resumeMedia();
-        unmuteVoiceCall();
         unmuteVoiceCall();
         return false;
       }
