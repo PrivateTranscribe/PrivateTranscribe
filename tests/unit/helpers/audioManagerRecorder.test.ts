@@ -421,6 +421,56 @@ describe("AudioManager recorder lifecycle", () => {
     expect(manager.getState().longSession.active).toBe(false);
   });
 
+  it("never queues primary-recorder fragments once a long session is running", async () => {
+    // The primary recorder keeps emitting timeslice blobs for the whole
+    // recording. Those are mid-stream WebM with no EBML header, so FFmpeg
+    // rejects them and the failure discards the entire dictation. Only the
+    // segment recorders may feed the queue.
+    const manager = new AudioManager();
+    manager.longSessionPromotionMs = 60_000;
+    const runTranscription = vi
+      .spyOn(manager, "runTranscription")
+      .mockImplementation(async (_blob, metadata: any) => ({
+        result: {
+          success: true,
+          text: `chunk-${metadata.chunkIndex}`,
+          source: "openai",
+          timings: {},
+        },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      }));
+    manager.setCallbacks({
+      onStateChange: vi.fn(),
+      onError: vi.fn(),
+      onTranscriptionComplete: vi.fn(),
+    });
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    recorder.ondataavailable?.({ data: new Blob(["first"], { type: "audio/webm" }) });
+    const initialSegmentRecorder = MockMediaRecorder.instances[1];
+    initialSegmentRecorder.ondataavailable?.({
+      data: new Blob(["promoted"], { type: "audio/webm" }),
+    });
+    await initialSegmentRecorder.onstop?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager.getState().longSession.active).toBe(true);
+    const afterPromotion = runTranscription.mock.calls.length;
+
+    // Detach the segment recorder, then let the primary recorder flush — this
+    // is the window the failing run hit at the end of a 7-minute dictation.
+    manager.longSessionSegment = null;
+    recorder.ondataavailable?.({ data: new Blob(["headerless fragment"], { type: "audio/webm" }) });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runTranscription).toHaveBeenCalledTimes(afterPromotion);
+  });
+
   it("cancels queued long-session work without completing transcription", async () => {
     const manager = new AudioManager();
     manager.longSessionPromotionMs = 60_000;

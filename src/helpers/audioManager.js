@@ -608,11 +608,13 @@ class AudioManager {
     const durationMs = this.estimateRecorderChunkDurationMs();
 
     if (this.longSession.active) {
-      if (this.longSessionSegment) {
-        return;
-      }
-
-      this.enqueueLongSessionChunk(data, durationMs);
+      // Segment recorders are the only valid source once a long session is
+      // running. The primary recorder emits mid-stream WebM fragments that
+      // carry no EBML header, so FFmpeg rejects them outright ("EBML header
+      // parsing failed"). Enqueuing one costs the whole dictation: the chunk
+      // fails, exhausts its retries, and finalizeLongSessionResult then
+      // discards every chunk that did transcribe. Drop them instead — the
+      // segment recorders already cover this audio.
       return;
     }
 
