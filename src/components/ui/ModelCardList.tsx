@@ -104,7 +104,7 @@ export default function ModelCardList({
               : "bg-success shadow-[0_0_4px_rgba(34,197,94,0.5)]";
           }
           if (isDownloading) {
-            return "bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.5)]";
+            return "bg-warning shadow-[0_0_4px_rgba(245,158,11,0.5)]";
           }
           return "bg-muted-foreground/20";
         };

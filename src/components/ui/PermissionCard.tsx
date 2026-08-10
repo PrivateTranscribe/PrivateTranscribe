@@ -1,6 +1,7 @@
 import { Button } from "./button";
 import { Check, LucideIcon, Settings } from "lucide-react";
 import { cn } from "../lib/utils";
+import { SectionLabel } from "./SectionLabel";
 
 interface PermissionCardProps {
   icon: LucideIcon;
@@ -51,9 +52,9 @@ export default function PermissionCard({
           <div className="flex items-center gap-1.5">
             <h3 className="text-[12px] font-medium text-foreground leading-tight">{title}</h3>
             {granted && (
-              <span className="text-[9px] font-medium text-success/70 uppercase tracking-wider">
+              <SectionLabel as="span" className="text-success/70">
                 Granted
-              </span>
+              </SectionLabel>
             )}
           </div>
           <p className="text-[10px] text-muted-foreground/80 leading-snug mt-0.5">{description}</p>

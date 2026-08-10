@@ -7,6 +7,8 @@ import {
 } from "../../utils/starterUsage";
 import { getEffectiveEntitlement } from "../../hooks/useProStatus";
 import { LICENSE_STATUS_EVENT } from "../../services/LicensingService";
+import { IconTile } from "./IconTile";
+import { SectionLabel } from "./SectionLabel";
 
 // Custom event dispatched by the Pro Preview toggle (see useProStatus.ts)
 const PRO_PREVIEW_EVENT = "privatetranscribe-pro-preview-changed";
@@ -66,20 +68,18 @@ export default function StarterUsageCard({ refreshToken }: StarterUsageCardProps
   const nearLimit = !limitReached && percentUsed >= 90;
   const resetCountdown = formatTimeUntilLocalMidnight();
 
-  const barColor = limitReached || nearLimit ? "bg-amber-400" : "bg-primary";
+  const barColor = limitReached || nearLimit ? "bg-warning" : "bg-primary";
 
   return (
     <div className="rounded-2xl border border-border-subtle bg-surface-1 px-8 py-5">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         {/* Label */}
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <IconTile>
             <CalendarClock size={14} />
-          </div>
+          </IconTile>
           <div className="flex flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-              Starter plan
-            </span>
+            <SectionLabel as="span">Starter plan</SectionLabel>
             <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
               {wordsUsed.toLocaleString("en-US")} of {usage.limit.toLocaleString("en-US")} words
               today
@@ -100,7 +100,7 @@ export default function StarterUsageCard({ refreshToken }: StarterUsageCardProps
         {/* Status note */}
         <span
           className={`text-xs whitespace-nowrap ${
-            limitReached ? "text-amber-400 font-medium" : "text-muted-foreground"
+            limitReached ? "text-warning font-medium" : "text-muted-foreground"
           }`}
         >
           {limitReached

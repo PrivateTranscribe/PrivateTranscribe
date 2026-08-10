@@ -28,7 +28,7 @@ const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
 
-const SoundWaveIcon = ({ size = 16, color = "#70FFBA" }) => {
+const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
   return (
     <div className="flex items-center justify-center gap-[3px]">
       <div
@@ -79,7 +79,7 @@ const VoiceBars = ({ micLevel }) => {
             width: 2,
             height: h,
             borderRadius: 2,
-            backgroundColor: "#080908",
+            backgroundColor: "var(--color-background)",
             // Fast transition keeps it responsive; easing keeps it elegant
             transition: "height 60ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
           }}
@@ -136,7 +136,7 @@ const VoiceWaveIndicator = ({ isListening }) => {
           key={i}
           className="w-[3px] rounded-full transition-all duration-150"
           style={{
-            backgroundColor: "#70FFBA",
+            backgroundColor: "var(--color-primary)",
             height: isListening ? animatedHeights[i] : staticHeights[i],
             animation: isListening
               ? `wave-bar-${i} 0.6s ease-in-out ${i * 0.1}s infinite alternate`
@@ -175,7 +175,7 @@ const MenuRow = ({ icon: Icon, label, hint, trailing, disabled = false, onClick 
 
         {hint && <span className="text-[11px] text-white/45 whitespace-nowrap">{hint}</span>}
         {trailing === "chevron" && <ChevronRight size={14} className="text-white/45 shrink-0" />}
-        {trailing === "check" && <Check size={14} className="text-[#70FFBA] shrink-0" />}
+        {trailing === "check" && <Check size={14} className="text-primary shrink-0" />}
       </div>
     </button>
   );
@@ -622,7 +622,7 @@ export default function App() {
         return {
           ...base,
           backgroundColor: "rgba(8, 9, 8, 0.72)",
-          border: "1.5px solid #222523",
+          border: "1.5px solid var(--color-border)",
           boxShadow: "none",
         };
       case "hover":
@@ -635,14 +635,14 @@ export default function App() {
       case "recording":
         return {
           ...base,
-          backgroundColor: "#70FFBA",
+          backgroundColor: "var(--color-primary)",
           border: "1.5px solid rgba(112, 255, 186, 0.5)",
           boxShadow: "0 0 18px rgba(112, 255, 186, 0.24)",
         };
       case "processing":
         return {
           ...base,
-          backgroundColor: "#1A2E26",
+          backgroundColor: "var(--color-surface-3)",
           border: "1.5px solid rgba(112, 255, 186, 0.16)",
           boxShadow: "none",
         };
@@ -880,7 +880,7 @@ export default function App() {
               )}
 
               {micState === "processing" && (
-                <div className="absolute inset-0 rounded-full border border-[#70FFBA]/15" />
+                <div className="absolute inset-0 rounded-full border border-primary/15" />
               )}
             </button>
           </div>
@@ -901,7 +901,7 @@ export default function App() {
         {isCommandMenuOpen && menuStyle && (
           <div
             ref={commandMenuRef}
-            className="w-[248px] rounded-xl border border-white/12 bg-[#111311]/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
+            className="w-[248px] rounded-xl border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
             style={{
               animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
               ...menuStyle,

@@ -5,7 +5,9 @@ import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { AlertDialog } from "../ui/dialog";
 import { Badge } from "../ui/badge";
+import { Input } from "../ui/input";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { SectionLabel } from "../ui/SectionLabel";
 
 export default function AIEnhancementPage() {
   const isUnlocked = isFeatureUnlocked("ai-enhancement");
@@ -60,7 +62,7 @@ export default function AIEnhancementPage() {
             Beta
           </Badge>
           {!isUnlocked && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
               <Lock size={10} /> Tester
             </span>
           )}
@@ -89,9 +91,7 @@ export default function AIEnhancementPage() {
         <>
           {/* Before/After example */}
           <div className="mb-8 rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
-            <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-4">
-              How it works
-            </p>
+            <SectionLabel className="mb-4">How it works</SectionLabel>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] text-muted-foreground/50 mb-2">Before (raw dictation)</p>
@@ -142,9 +142,7 @@ export default function AIEnhancementPage() {
           {/* Local llama-server idle shutdown - only relevant when local provider is selected */}
           {reasoningProvider === "local" && (
             <div className="mt-6 rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
-              <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-4">
-                Local model server performance
-              </p>
+              <SectionLabel className="mb-4">Local model server performance</SectionLabel>
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">Idle shutdown (minutes)</p>
@@ -154,7 +152,7 @@ export default function AIEnhancementPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     max={240}
@@ -175,7 +173,7 @@ export default function AIEnhancementPage() {
                       // Best-effort: apply immediately if the server is already running.
                       window.electronAPI?.llamaServerSetIdleTimeoutMinutes(next)?.catch(() => {});
                     }}
-                    className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    className="w-24 text-right"
                     aria-label="Llama server idle shutdown minutes"
                   />
                   <span className="text-xs text-muted-foreground">min</span>

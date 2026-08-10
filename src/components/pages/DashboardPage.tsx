@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Command, Flame, Gauge, Settings, Timer, Upload } from "lucide-react";
+import { IconTile } from "../ui/IconTile";
 import { PageId } from "../AppSidebar";
 import {
   useTranscriptions,
@@ -14,6 +15,7 @@ import { formatHotkeyLabel } from "../../utils/hotkeys";
 import { isBuiltInMicrophone } from "../../utils/audioDeviceUtils";
 import type { AggregateStats } from "../../types/electron";
 import logger from "../../utils/logger";
+import { SectionLabel } from "../ui/SectionLabel";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
@@ -415,9 +417,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 Total words dictated
               </span>
               <div className="text-right">
-                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                <SectionLabel as="span" className="block">
                   Dictations
-                </span>
+                </SectionLabel>
                 <span className="block text-sm font-semibold text-foreground tabular-nums">
                   {formatNumber(stats.total_transcriptions)}
                 </span>
@@ -435,13 +437,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             {/* Sub-stat Pills */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
               <div className="flex min-w-0 items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <IconTile>
                   <Flame size={15} />
-                </div>
+                </IconTile>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                    Streak
-                  </span>
+                  <SectionLabel as="span">Streak</SectionLabel>
                   <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
                     {streak} {streak === 1 ? "day" : "days"}
                   </span>
@@ -449,13 +449,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               </div>
 
               <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <IconTile>
                   <Timer size={15} />
-                </div>
+                </IconTile>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                    Time
-                  </span>
+                  <SectionLabel as="span">Time</SectionLabel>
                   <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
                     {formatSpeakingTime(stats.total_seconds)}
                   </span>
@@ -463,13 +461,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               </div>
 
               <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <IconTile>
                   <Gauge size={15} />
-                </div>
+                </IconTile>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                    Speed
-                  </span>
+                  <SectionLabel as="span">Speed</SectionLabel>
                   <span
                     className="block max-w-full truncate text-sm font-semibold text-foreground tabular-nums"
                     title={`${Math.round(stats.average_wpm)} WPM`}
@@ -485,9 +481,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
           <div className="flex-[2] min-w-0 rounded-2xl border border-border-subtle bg-surface-1 p-8">
             {/* Header */}
             <div className="flex items-center gap-2 mb-6">
-              <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
+              <IconTile>
                 <Settings size={14} className="text-primary" />
-              </div>
+              </IconTile>
               <span className="text-sm font-semibold text-foreground">Current dictation setup</span>
             </div>
 
@@ -503,9 +499,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                   {/* Mint dot indicator */}
                   <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 shadow-[0_0_6px_rgba(112,255,186,0.4)]" />
                   <div className="flex flex-col min-w-0">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                      {row.label}
-                    </span>
+                    <SectionLabel as="span">{row.label}</SectionLabel>
                     <span
                       className="inline-block truncate text-sm text-foreground"
                       title={row.value}

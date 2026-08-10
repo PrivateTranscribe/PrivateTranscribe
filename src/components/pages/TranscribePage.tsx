@@ -25,8 +25,10 @@ import {
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProStatus";
+import { IconTile } from "../ui/IconTile";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { CheckboxField } from "../ui/checkbox";
 import LanguageSelector from "../ui/LanguageSelector";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useToast } from "../ui/Toast";
@@ -717,40 +719,21 @@ export default function TranscribePage() {
 
             {/* Noise reduction + Speaker labels row */}
             <div className="grid gap-4 sm:grid-cols-2">
-              {/* Noise reduction */}
-              <div className="flex items-start gap-3">
-                <input
-                  id="file-noise-reduction"
-                  type="checkbox"
-                  checked={noiseReduction}
-                  onChange={(event) => setNoiseReduction(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
-                />
-                <label htmlFor="file-noise-reduction" className="cursor-pointer">
-                  <span className="text-sm font-medium text-foreground">Noise reduction</span>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Clean audio before transcription. Helps with calls, podcasts, and screen
-                    recordings.
-                  </p>
-                </label>
-              </div>
+              <CheckboxField
+                id="file-noise-reduction"
+                label="Noise reduction"
+                description="Clean audio before transcription. Helps with calls, podcasts, and screen recordings."
+                checked={noiseReduction}
+                onChange={(event) => setNoiseReduction(event.target.checked)}
+              />
 
-              {/* Speaker labels */}
-              <div className="flex items-start gap-3">
-                <input
-                  id="file-speaker-labels"
-                  type="checkbox"
-                  checked={speakerLabelsEnabled}
-                  onChange={(event) => handleSpeakerLabelsToggle(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
-                />
-                <label htmlFor="file-speaker-labels" className="cursor-pointer">
-                  <span className="text-sm font-medium text-foreground">Speaker labels</span>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Identify and label different speakers in the transcript.
-                  </p>
-                </label>
-              </div>
+              <CheckboxField
+                id="file-speaker-labels"
+                label="Speaker labels"
+                description="Identify and label different speakers in the transcript."
+                checked={speakerLabelsEnabled}
+                onChange={(event) => handleSpeakerLabelsToggle(event.target.checked)}
+              />
             </div>
 
             {/* Speaker count selector - only shown when speaker labels enabled */}
@@ -782,9 +765,9 @@ export default function TranscribePage() {
 
                 {/* Model status indicator */}
                 {needsModelDownload && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                    <AlertCircle size={13} className="shrink-0 text-amber-400" />
-                    <p className="text-xs text-amber-200">
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                    <AlertCircle size={13} className="shrink-0 text-warning" />
+                    <p className="text-xs text-warning">
                       Speaker models not yet downloaded.{" "}
                       <button
                         type="button"
@@ -926,9 +909,9 @@ export default function TranscribePage() {
           <div className="flex flex-col gap-4 border-b border-border-subtle/60 px-5 py-4 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <IconTile size="md">
                   <FileText size={16} />
-                </span>
+                </IconTile>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">Transcript</p>
                   <p className="truncate text-xs text-muted-foreground">{selectedFileName}</p>

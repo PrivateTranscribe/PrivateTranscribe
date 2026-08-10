@@ -130,7 +130,7 @@ function LocalModelCard({
               }`}
             />
           ) : isDownloading ? (
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.5)]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-warning shadow-[0_0_4px_rgba(245,158,11,0.5)]" />
           ) : (
             <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/20" />
           )}
@@ -794,8 +794,8 @@ export default function TranscriptionModelPicker({
       <ModeToggle useLocalWhisper={useLocalWhisper} onModeChange={handleModeChange} />
 
       {!useLocalWhisper && (
-        <div className="flex items-start gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/8 px-3 py-2">
-          <span className="text-amber-500 text-xs leading-relaxed">
+        <div className="flex items-start gap-1.5 rounded-md border border-warning/25 bg-warning/8 px-3 py-2">
+          <span className="text-warning text-xs leading-relaxed">
             ⚠️ Cloud mode sends your audio to a third-party server. Your voice data leaves this
             device.
           </span>
@@ -973,10 +973,10 @@ export default function TranscriptionModelPicker({
               <div
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                   engineStatus.fallback?.active
-                    ? "bg-amber-500"
+                    ? "bg-warning"
                     : engineStatus.running
-                      ? "bg-emerald-500"
-                      : "bg-zinc-500"
+                      ? "bg-success"
+                      : "bg-muted-foreground"
                 }`}
               />
               <span className="text-[9px] text-muted-foreground/60">
