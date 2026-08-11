@@ -319,10 +319,15 @@ async function startApp() {
   const autoStartLaunchMode = readAutoStartLaunchMode();
   const loginLaunchMode = getLoginLaunchMode();
 
-  // Set auto-start on first run (default: enabled, tray-only at login)
+  // Set auto-start on first run (default: enabled, tray-only at login).
+  // Packaged builds only. `npm run dev` runs bare electron.exe out of node_modules, so
+  // registering here points the Run key at the checkout: Windows then launches the dev
+  // copy at login with the Electron atom icon and whatever version is on disk. Dev shares
+  // userData with the install, so the marker file has to stay unwritten too — otherwise
+  // the first dev run consumes the install's one shot at the default.
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
-    if (!fs.existsSync(flagPath)) {
+    if (app.isPackaged && !fs.existsSync(flagPath)) {
       // Never overrule a decision the user already made in Task Manager or Windows
       // Settings. An existing Run entry — approved or disabled — means this machine has
       // been set up before, even if our marker file was lost (reinstall, data reset).
