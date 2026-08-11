@@ -407,6 +407,47 @@ internal static class WindowsHoldKey
         }
     }
 
+    /// How often the chord is re-asserted during a hold. See the call site.
+    private const int RepressIntervalMs = 500;
+
+    /// Re-asserts the chord without ending the hold, giving the voice app a
+    /// fresh key-down edge before it decides the key has gone away.
+    ///
+    /// The base key comes up first and goes back down last, mirroring
+    /// ReleaseAll and PressAll, so it is never held without its modifiers and
+    /// cannot leak a bare keystroke into whatever has focus.
+    ///
+    /// Mouse buttons are deliberately excluded: re-pressing one is a fresh
+    /// click every interval, and a back or forward button would navigate the
+    /// focused window repeatedly. A mouse hold keeps the old behaviour of one
+    /// press held for the duration.
+    private static void RepressAll()
+    {
+        lock (SendLock)
+        {
+            if (released || heldKeys == null)
+            {
+                return;
+            }
+            for (int i = 0; i < heldKeys.Count; i++)
+            {
+                if (heldKeys[i].IsMouse)
+                {
+                    return;
+                }
+            }
+            for (int i = heldKeys.Count - 1; i >= 0; i--)
+            {
+                SendKeyEvent(heldKeys[i], true);
+            }
+            Thread.Sleep(15);
+            for (int i = 0; i < heldKeys.Count; i++)
+            {
+                SendKeyEvent(heldKeys[i], false);
+            }
+        }
+    }
+
     /// Releases in reverse order so modifiers come up last, which is what a
     /// real keyboard does and what applications expect.
     private static void ReleaseAll()
@@ -557,7 +598,26 @@ internal static class WindowsHoldKey
         reader.IsBackground = true;
         reader.Start();
 
-        done.WaitOne(maxHoldMs);
+        // Discord stops honouring a synthesized push-to-mute a few seconds into
+        // a single long press, so re-assert the chord on an interval instead of
+        // pressing once and waiting. Measured on a live call: no re-press held
+        // about 4s, every 2s held about 14s, every 500ms held about 40s. Not a
+        // cure, but it covers any realistic dictation. See
+        // docs/VOICE_CALL_MUTE.md.
+        int remaining = maxHoldMs;
+        while (remaining > 0)
+        {
+            int slice = remaining < RepressIntervalMs ? remaining : RepressIntervalMs;
+            if (done.WaitOne(slice))
+            {
+                break; // released by stdin, an explicit release, or a signal
+            }
+            remaining -= slice;
+            if (remaining > 0)
+            {
+                RepressAll();
+            }
+        }
 
         ReleaseAll();
         return 0;
