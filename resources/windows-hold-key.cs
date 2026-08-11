@@ -108,6 +108,11 @@ internal static class WindowsHoldKey
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+    [DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+    private const uint MapVkToScanCode = 0;
+
     // Keys that live on the extended part of the keyboard and need the
     // extended-key flag for applications that read scan codes.
     private static readonly HashSet<Keys> ExtendedKeys = new HashSet<Keys>
@@ -373,7 +378,14 @@ internal static class WindowsHoldKey
         {
             input.type = InputKeyboard;
             input.u.ki.wVk = (ushort)held.Key;
-            input.u.ki.wScan = 0;
+            // Carry the scan code as well as the virtual key. Windows will
+            // deliver the event either way, and a single key matches on the
+            // virtual key alone, but a combination does not: measured against
+            // Discord with push-to-mute on Ctrl+Shift+Y, a hold with wScan = 0
+            // never muted, and the same hold with the scan code populated muted
+            // for the full duration and released cleanly. A real keypress
+            // always carries both, so sending both is also simply more honest.
+            input.u.ki.wScan = (ushort)MapVirtualKey((uint)held.Key, MapVkToScanCode);
             input.u.ki.dwFlags = keyUp ? KeyEventKeyUp : 0;
             if (ExtendedKeys.Contains(held.Key))
             {

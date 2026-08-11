@@ -13,11 +13,11 @@ describe("describeKeyRisk", () => {
     expect(describeKeyRisk("Insert")).toBeNull();
   });
 
-  test("lock keys are called out as the one category that does not hold", () => {
-    // Measured against a live Discord call with push-to-mute on Num Lock: the
-    // mute fired, then dropped again a few seconds into a single continuous
-    // hold. Scroll Lock used to be listed here as a safe choice, which was
-    // wrong for the same reason.
+  test("lock keys are called out for flipping their own state", () => {
+    // Measured on a live Discord call: Num Lock read False before a hold and
+    // True after, so the numpad quietly changes mode every dictation. Scroll
+    // Lock used to be listed as a safe choice here, which was wrong for the
+    // same reason.
     for (const key of [
       "Numlock",
       "Num Lock",
@@ -25,7 +25,7 @@ describe("describeKeyRisk", () => {
       "Scrolllock",
       "CommandOrControl+Numlock",
     ]) {
-      expect(describeKeyRisk(key)).toContain("don't stay held");
+      expect(describeKeyRisk(key)).toContain("flip their own state");
     }
   });
 
