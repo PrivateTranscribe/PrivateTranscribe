@@ -25,6 +25,15 @@ type TestState = "idle" | "running" | "passed" | "failed";
 // eslint-disable-next-line react-refresh/only-export-components
 export function describeKeyRisk(key: string): string | null {
   if (!key) return null;
+  // Lock keys come first because they are the one category that measurably
+  // fails rather than merely carrying a side effect. Measured against a live
+  // Discord call with push-to-mute on Num Lock: the mute fired, then dropped
+  // again about three seconds later while the key was still held down. The
+  // lock state also flips on every press, so a dictation leaves the numpad in
+  // the opposite mode from where it started.
+  if (/(^|\+)(Num ?lock|Caps ?lock|Scroll ?lock)$/i.test(key)) {
+    return "Lock keys don't stay held. Measured on Discord, the mute drops a few seconds into a dictation even though the key is still down, and every press flips the lock on or off. Pick an ordinary key instead.";
+  }
   if (/(^|\+)(Alt|Option|Win|Super|Meta|Command|Cmd)\+/.test(key)) {
     return "Alt and the Windows key act on their own when they come back up — focusing a menu bar, opening Start — and this key is released every time you stop dictating. Ctrl and Shift do nothing on release, so they are the safe modifiers to hold.";
   }
