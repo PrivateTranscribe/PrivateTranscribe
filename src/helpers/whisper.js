@@ -450,11 +450,22 @@ class WhisperManager {
       resultKeys: Object.keys(result),
     });
 
+    // parseWhisperResult intentionally narrows the server payload to
+    // {success, text}. The detected language has to be carried across
+    // explicitly or the caller cannot pin it for the next chunk.
+    const detectedLanguage =
+      typeof result?.detectedLanguage === "string" ? result.detectedLanguage : null;
+
     const parsed = this.parseWhisperResult(result);
     if (requestOptions.fileMode && parsed.success) {
-      return { ...parsed, raw: result, segments: result?.segments || [] };
+      return {
+        ...parsed,
+        raw: result,
+        segments: result?.segments || [],
+        ...(detectedLanguage ? { detectedLanguage } : {}),
+      };
     }
-    return parsed;
+    return detectedLanguage ? { ...parsed, detectedLanguage } : parsed;
   }
 
   async audioBlobToBuffer(audioBlob) {

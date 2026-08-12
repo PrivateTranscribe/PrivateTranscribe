@@ -9,6 +9,7 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
+const { resolveLockableLanguage } = require("./whisperLanguage");
 const GpuBinaryManager = require("./gpuBinaryManager");
 
 const gpuBinaryManager = new GpuBinaryManager();
@@ -1144,6 +1145,15 @@ class WhisperServerManager {
         });
       }
 
+      // Whisper decides the language independently for every request it gets.
+      // Left alone, a chunked recording re-rolls that decision per chunk, and
+      // languages with close neighbours (Danish against Norwegian and Swedish)
+      // lose some of the rolls — so a recording comes back partly transcribed
+      // as a language nobody spoke. Detect once, then pin it for the rest of
+      // the audio, which is what upstream Whisper does for long-form input.
+      const explicitLanguage = language && language !== "auto" ? language : null;
+      let lockedLanguage = explicitLanguage;
+
       const results = [];
       for (let index = 0; index < chunks.length; index += 1) {
         const chunk = chunks[index];
@@ -1152,11 +1162,13 @@ class WhisperServerManager {
           chunks: chunks.length,
           durationSeconds: Math.round(chunk.durationSeconds),
           sizeBytes: chunk.buffer.length,
+          language: lockedLanguage || "auto",
         });
         let result;
         try {
           result = await this._postInference(chunk.buffer, {
-            language,
+            language: lockedLanguage,
+            detectLanguage: !lockedLanguage,
             translate,
             initialPrompt,
             chunkIndex: index,
@@ -1179,7 +1191,8 @@ class WhisperServerManager {
             }
           );
           result = await this._postInference(chunk.buffer, {
-            language,
+            language: lockedLanguage,
+            detectLanguage: !lockedLanguage,
             translate,
             initialPrompt,
             chunkIndex: index,
@@ -1195,6 +1208,22 @@ class WhisperServerManager {
             };
           }
         }
+        if (!lockedLanguage) {
+          // Only a chunk that actually produced speech gets to decide. A
+          // recording that opens with silence, breathing or keyboard noise
+          // would otherwise pin the whole session to whatever the detector
+          // guessed off that noise.
+          const detected = resolveLockableLanguage(result);
+          if (detected) {
+            lockedLanguage = detected;
+            debugLogger.info("Locked auto-detected language for remaining audio", {
+              language: detected,
+              decidedByChunk: index + 1,
+              chunks: chunks.length,
+            });
+          }
+        }
+
         results.push(
           fileMode ? offsetVerboseJsonSegments(result, chunk.offsetSeconds || 0) : result
         );
@@ -1210,19 +1239,27 @@ class WhisperServerManager {
         }
       }
 
-      if (results.length === 1) return results[0];
+      // Report the language back only when we were the ones who worked it out.
+      // A caller that supplied an explicit language already knows it, and
+      // echoing it would let a stale value look like a fresh detection.
+      const withDetectedLanguage = (payload) =>
+        explicitLanguage || !lockedLanguage
+          ? payload
+          : { ...payload, detectedLanguage: lockedLanguage };
+
+      if (results.length === 1) return withDetectedLanguage(results[0]);
 
       if (fileMode && results.some((result) => Array.isArray(result?.segments))) {
-        return mergeVerboseJsonResults(results);
+        return withDetectedLanguage(mergeVerboseJsonResults(results));
       }
 
-      return {
+      return withDetectedLanguage({
         text: results
           .map((result) => (typeof result?.text === "string" ? result.text.trim() : ""))
           .filter(Boolean)
           .join(" "),
         chunks: results.length,
-      };
+      });
     } finally {
       this.activeTranscriptions = Math.max(0, this.activeTranscriptions - 1);
     }
@@ -1281,6 +1318,7 @@ class WhisperServerManager {
       tinydiarize = false,
       vad = false,
       longSessionChunk = false,
+      detectLanguage = false,
     } = options;
     const form = new FormData();
     const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
@@ -1294,7 +1332,11 @@ class WhisperServerManager {
       debugLogger.info("Using custom dictionary prompt", { prompt: initialPrompt });
     }
 
-    form.append("response_format", fileMode ? "verbose_json" : "json");
+    // Only verbose_json reliably carries the detected language across
+    // whisper.cpp builds — plain json has returned it inconsistently. Ask for
+    // the richer format solely while we still need to learn the language, so
+    // requests that already know it keep the cheaper response.
+    form.append("response_format", fileMode || detectLanguage ? "verbose_json" : "json");
 
     if (fileMode || longSessionChunk) {
       // Long-form audio is especially prone to Whisper repeating stale context

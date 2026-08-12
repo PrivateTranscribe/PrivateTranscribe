@@ -470,6 +470,11 @@ class AudioManager {
       recordedSeconds: 0,
       transcribedSeconds: 0,
       promotedAt: null,
+      // Set once, from the first segment that comes back with real speech, and
+      // then sent with every later segment of this recording. Scoped to the
+      // session on purpose: it dies with resetLongSessionState(), so switching
+      // language between recordings still works without touching a setting.
+      detectedLanguage: null,
     };
   }
 
@@ -1033,7 +1038,22 @@ class AudioManager {
             skipOptimization: true,
             chunkIndex: item.index,
             trimTrailingSilence: item.trimTrailingSilence,
+            lockedLanguage: state.detectedLanguage,
           });
+
+          // Segments are transcribed one at a time, so the language learned
+          // here is already pinned by the time the next one is submitted.
+          if (!state.detectedLanguage) {
+            const detected = result?.result?.detectedLanguage;
+            if (detected) {
+              state.detectedLanguage = detected;
+              logger.info(
+                "Locked auto-detected language for remaining long-session chunks",
+                { language: detected, decidedByChunk: item.index },
+                "transcription"
+              );
+            }
+          }
 
           const text = String(result?.result?.text || "").trim();
           if (text) {
@@ -2088,9 +2108,16 @@ class AudioManager {
       }
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
+      } else if (metadata?.lockedLanguage) {
+        // Auto-detect is still what the user asked for; we are only stopping
+        // whisper from answering the question differently on every segment.
+        options.language = metadata.lockedLanguage;
       }
       const shouldTranslate = shouldTranslateLocalWhisperToEnglish({
         translateToEnglish,
+        // Deliberately the user's setting, not the locked language. Translation
+        // stays gated on an explicit language choice, so auto-detect can never
+        // start silently translating a recording into English.
         resolvedLanguage,
         model,
       });
@@ -2165,7 +2192,16 @@ class AudioManager {
 
       if (result.success && result.text) {
         if (metadata?.skipPostProcessing) {
-          return { success: true, text: result.text, source: "local", timings };
+          // detectedLanguage is only present when the user is on auto-detect
+          // and whisper reported something usable. Long-session chunks are the
+          // consumer: the drain loop pins it for the rest of the recording.
+          return {
+            success: true,
+            text: result.text,
+            source: "local",
+            timings,
+            ...(result.detectedLanguage ? { detectedLanguage: result.detectedLanguage } : {}),
+          };
         }
 
         const reasoningStart = performance.now();
