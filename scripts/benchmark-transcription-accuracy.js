@@ -189,6 +189,12 @@ function ensureDataset(locale) {
       throw new Error(`Extraction produced no audio for ${locale}. Removed ${audioDir}; re-run.`);
     }
     console.log(`Extracted ${extracted} utterances.`);
+
+    // Drop the archive now that its contents are verified on disk. Keeping
+    // both doubled the CI cache to 1.5 GB and cost the same again on every
+    // developer machine, all to avoid a re-download that only happens if the
+    // extracted audio goes missing - in which case re-fetching is correct.
+    fs.rmSync(tarPath, { force: true });
   }
 
   return { tsvPath, audioDir };
