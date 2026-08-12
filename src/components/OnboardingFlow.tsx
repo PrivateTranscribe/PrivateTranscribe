@@ -42,6 +42,7 @@ import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics
 import { SectionLabel } from "./ui/SectionLabel";
 import LanguageSelector from "./ui/LanguageSelector";
 import { getLanguageLabel } from "../utils/languages";
+import { isWeakForNonEnglish } from "../utils/modelAccuracy";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -741,17 +742,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
 
       case 2: // Setup - Choose Mode & Configure
-        // Measured on FLEURS Danish: large 14.5% WER, turbo 15.4%, medium
-        // 24.4%, small 37.5%, base 62.8%. The same models stay usable for
-        // English, so this is a non-English cliff rather than a general one.
-        // Reproduce with scripts/benchmark-transcription-accuracy.js
-        const SMALL_MODELS_WEAK_OUTSIDE_ENGLISH = ["tiny", "base", "small", "medium"];
         const selectedLanguageLabel = getLanguageLabel(preferredLanguage);
         const showSmallModelLanguageWarning =
-          useLocalWhisper &&
-          preferredLanguage !== "auto" &&
-          preferredLanguage !== "en" &&
-          SMALL_MODELS_WEAK_OUTSIDE_ENGLISH.includes(whisperModel);
+          useLocalWhisper && isWeakForNonEnglish(whisperModel, preferredLanguage);
 
         const shouldShowCudaDownload =
           useLocalWhisper &&
@@ -854,6 +847,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
               onDownloadComplete={checkModelStatus}
+              preferredLanguage={preferredLanguage}
               variant="onboarding"
             />
 

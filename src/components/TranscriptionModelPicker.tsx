@@ -20,6 +20,7 @@ import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
 import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 import { isValidApiUrl } from "../helpers/urlValidation";
+import { getWhisperPerfRating } from "../utils/modelAccuracy";
 
 interface LocalModel {
   model: string;
@@ -47,17 +48,6 @@ interface LocalModelCardProps {
   onCancel: () => void;
   styles: ReturnType<(typeof MODEL_PICKER_COLORS)[keyof typeof MODEL_PICKER_COLORS]>;
 }
-
-// Speed vs. accuracy ratings (1-5) for Whisper models, rendered as segmented meters.
-// Speed = how fast it transcribes; quality = transcription accuracy.
-const WHISPER_PERF_RATINGS: Record<string, { speed: number; quality: number }> = {
-  tiny: { speed: 5, quality: 1 },
-  base: { speed: 4, quality: 2 },
-  small: { speed: 3, quality: 3 },
-  medium: { speed: 2, quality: 4 },
-  large: { speed: 1, quality: 5 },
-  turbo: { speed: 4, quality: 4 },
-};
 
 // Compact 5-segment meter matching the calm operator look.
 function PerfMeter({ label, value }: { label: string; value: number }) {
@@ -242,6 +232,12 @@ interface TranscriptionModelPickerProps {
   gpuSupported?: boolean;
   /** Hardware-detected Whisper recommendation. Overrides the static registry badge. */
   recommendedLocalModel?: string;
+  /**
+   * Language the user dictates in. The accuracy meters are language-specific,
+   * because model quality drops far more steeply outside English. Omitted or
+   * "auto" shows the general scale.
+   */
+  preferredLanguage?: string;
   onDownloadComplete?: () => void;
 }
 
@@ -313,6 +309,7 @@ export default function TranscriptionModelPicker({
   onWhisperForceCpuChange,
   gpuSupported = false,
   recommendedLocalModel,
+  preferredLanguage,
   onDownloadComplete,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
@@ -745,7 +742,7 @@ export default function TranscriptionModelPicker({
             size: "Unknown",
           };
 
-          const perf = WHISPER_PERF_RATINGS[modelId];
+          const perf = getWhisperPerfRating(modelId, preferredLanguage);
           const isRecommended = recommendedLocalModel
             ? modelId === recommendedLocalModel
             : info.recommended;

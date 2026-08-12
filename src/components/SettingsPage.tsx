@@ -2730,6 +2730,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               }
               gpuSupported={gpuSupportedForPicker}
               recommendedLocalModel={recommendedWhisperModelForPicker}
+              preferredLanguage={preferredLanguage}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });

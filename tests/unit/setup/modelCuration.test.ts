@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { getWhisperPerfRating } from "../../../src/utils/modelAccuracy";
 
 /**
  * Regression checks for model curation invariants.
@@ -122,17 +123,12 @@ describe("Model curation invariants", () => {
     });
 
     it("Whisper speed/accuracy ratings invert (fast tiny, accurate large) and cover turbo", () => {
-      const pickerPath = path.join(
-        process.cwd(),
-        "src",
-        "components",
-        "TranscriptionModelPicker.tsx"
-      );
-      const contents = fs.readFileSync(pickerPath, "utf8");
-
-      expect(contents).toMatch(/tiny:\s*\{\s*speed:\s*5,\s*quality:\s*1\s*\}/);
-      expect(contents).toMatch(/large:\s*\{\s*speed:\s*1,\s*quality:\s*5\s*\}/);
-      expect(contents).toMatch(/turbo:\s*\{\s*speed:\s*4,\s*quality:\s*4\s*\}/);
+      // The ratings moved out of the component into src/utils/modelAccuracy.ts
+      // when they became language-aware, so assert the values themselves
+      // rather than matching the source text they used to be written in.
+      expect(getWhisperPerfRating("tiny", "en")).toEqual({ speed: 5, quality: 1 });
+      expect(getWhisperPerfRating("large", "en")).toEqual({ speed: 1, quality: 5 });
+      expect(getWhisperPerfRating("turbo", "en")).toEqual({ speed: 4, quality: 4 });
     });
 
     it("model recommendation badges can use hardware recommendations instead of static registry defaults", () => {

@@ -93,6 +93,41 @@ test.describe("Onboarding dictation language", () => {
     });
   });
 
+  test("lowers the accuracy meters once a non-English language is set", async ({
+    controlPanel,
+  }) => {
+    // The meters were language-blind, so Base advertised a middling accuracy
+    // bar to a Danish user while getting most of their words wrong.
+    const filledBars = async () =>
+      controlPanel
+        .locator('[title^="Accuracy"]')
+        .first()
+        .evaluate((el) => el.getAttribute("title"));
+
+    await controlPanel.evaluate(() => {
+      localStorage.setItem("preferredLanguage", "en");
+      localStorage.setItem("useLocalWhisper", "true");
+      localStorage.setItem("whisperModel", "base");
+    });
+    await openSetupStep(controlPanel);
+    const englishTitle = await filledBars();
+
+    await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "da"));
+    await openSetupStep(controlPanel);
+    const danishTitle = await filledBars();
+
+    expect(englishTitle).not.toBe(danishTitle);
+
+    const englishValue = Number(englishTitle?.match(/(\d)\/5/)?.[1]);
+    const danishValue = Number(danishTitle?.match(/(\d)\/5/)?.[1]);
+    expect(danishValue).toBeLessThan(englishValue);
+
+    await controlPanel.screenshot({
+      path: "test-results/e2e/onboarding-accuracy-meters-danish.png",
+      fullPage: true,
+    });
+  });
+
   test("stays quiet when the chosen model is strong enough", async ({ controlPanel }) => {
     await controlPanel.evaluate(() => {
       localStorage.setItem("preferredLanguage", "da");
