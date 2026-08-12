@@ -1347,8 +1347,25 @@ class IPCHandlers {
         app.setLoginItemSettings(
           this._buildAutoStartSetOptions(enabled, launchMode, Boolean(enabled))
         );
+
+        // setLoginItemSettings is fire-and-forget: it never reports a rejected registry
+        // write, so an antivirus blocking the Run key used to leave the toggle showing
+        // "on" while nothing launched at login. Read the state back and report the truth.
+        const actual = this._getAutoStartEnabled(launchMode);
+        if (actual !== Boolean(enabled)) {
+          debugLogger.warn("Auto-start change did not stick", { enabled, actual, launchMode });
+          return {
+            success: false,
+            enabled: actual,
+            error:
+              process.platform === "win32"
+                ? "Windows did not save the startup entry. Security software often blocks unsigned apps from writing it."
+                : "The system did not save the startup entry.",
+          };
+        }
+
         debugLogger.debug("Auto-start setting updated", { enabled, launchMode });
-        return { success: true };
+        return { success: true, enabled: actual };
       } catch (error) {
         debugLogger.error("Error setting auto-start:", error);
         return { success: false, error: error.message };

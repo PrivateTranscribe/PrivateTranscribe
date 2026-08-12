@@ -1715,6 +1715,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [autoStartLaunchMode, setAutoStartLaunchMode] = useState<AutoStartLaunchMode>("tray");
   const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [autoStartError, setAutoStartError] = useState<string | null>(null);
 
   useEffect(() => {
     if (platform === "linux") {
@@ -1743,12 +1744,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     if (window.electronAPI?.setAutoStartEnabled) {
       try {
         setAutoStartLoading(true);
+        setAutoStartError(null);
         const result = await window.electronAPI.setAutoStartEnabled(enabled);
-        if (result.success) {
-          setAutoStartEnabled(enabled);
+        // Trust the verified state the main process read back, never the requested one —
+        // a blocked registry write must not leave the toggle claiming it worked.
+        setAutoStartEnabled(result.enabled ?? (result.success ? enabled : !enabled));
+        if (!result.success) {
+          setAutoStartError(result.error || "Couldn't change the startup setting.");
         }
       } catch (error) {
         console.error("Failed to set auto-start:", error);
+        setAutoStartError("Couldn't change the startup setting.");
       } finally {
         setAutoStartLoading(false);
       }
@@ -2140,6 +2146,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         disabled={autoStartLoading}
                       />
                     </SettingsRow>
+                    {autoStartError && (
+                      <p className="text-[13px] text-destructive mt-2 leading-relaxed">
+                        {autoStartError}
+                      </p>
+                    )}
                   </SettingsPanelRow>
 
                   {autoStartEnabled && (

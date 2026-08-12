@@ -259,8 +259,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
     try {
       const result = await window.electronAPI?.setAutoStartEnabled?.(enabled);
+      // Follow the state the main process verified, not the requested one — a registry
+      // write the OS rejected must show as off rather than silently claiming success.
+      setAutoStartEnabled(result?.enabled ?? (result?.success ? enabled : !enabled));
       if (result?.success) {
-        setAutoStartEnabled(enabled);
         return;
       }
 
