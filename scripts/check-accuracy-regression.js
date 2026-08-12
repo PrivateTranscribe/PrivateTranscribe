@@ -135,6 +135,21 @@ async function main() {
     process.exit(1);
   }
 
+  // Measured, not theorised: moving the same models and audio from a Windows
+  // CUDA machine to a Linux CPU runner shifted English by 0.9-1.5 points and
+  // Danish by 3.5-4.8. A cross-platform comparison is therefore not a
+  // meaningful regression signal, and silently producing one wasted a full CI
+  // run before this warning existed.
+  const baselinePlatform = baseline.measuredOn?.platform;
+  if (baselinePlatform && baselinePlatform !== process.platform) {
+    console.warn(
+      `\nWARNING: baseline was measured on ${baselinePlatform}, this is ${process.platform}.\n` +
+        `Backends disagree by several WER points, more so outside English, so treat\n` +
+        `differences below as platform drift rather than a real change. Compare like\n` +
+        `for like before believing a regression.`
+    );
+  }
+
   const comparison = compareToBaseline(results, baseline.entries, { tolerancePoints });
 
   console.log("");
