@@ -451,6 +451,11 @@ export const useAudioRecording = (toast, options = {}) => {
           outputAction,
           text,
           durationSeconds: result.durationSeconds,
+          // Non-English accuracy is materially worse, and worse still on the
+          // smaller models. Without these two we cannot tell whether that
+          // affects a handful of users or most of them.
+          preferredLanguage: localStorage.getItem("preferredLanguage"),
+          model: result.activeModel,
         });
         void trackAnalyticsEvent("transcription_completed", analyticsProperties);
         void trackAnalyticsEventOnce("first_transcription_completed", analyticsProperties);

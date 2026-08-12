@@ -1857,6 +1857,9 @@ class AudioManager {
         result.durationSeconds = metadata.durationSeconds;
       }
       result.processingGeneration = processingGeneration;
+      // Carried so analytics can report which model produced this without
+      // re-deriving the local/cloud choice from localStorage a second time.
+      result.activeModel = activeModel;
       result.completeness = assessTranscriptionCompleteness({
         text: result.text,
         durationSeconds: result.durationSeconds ?? metadata.durationSeconds,
