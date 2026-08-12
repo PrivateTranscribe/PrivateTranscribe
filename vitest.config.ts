@@ -10,6 +10,7 @@ export default defineConfig({
       "**/node_modules/**",
       "**/dist/**",
       "tests/setup-validation.test.js", // Legacy test, run with npm run test:legacy
+      "tests/e2e/**", // Playwright Electron suite, run with npm run test:e2e
     ],
     coverage: {
       provider: "v8",

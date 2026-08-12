@@ -45,6 +45,10 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:legacy": "node tests/setup-validation.test.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
     "format:js": "eslint . --fix && cd src && eslint . --fix && prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "format": "npm run format:js",
     "format:check": "eslint . && cd src && eslint . && prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
@@ -77,6 +81,7 @@
   "devDependencies": {
     "@electron/notarize": "^3.0.1",
     "@eslint/js": "^9.25.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.1.10",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
