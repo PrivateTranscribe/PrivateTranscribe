@@ -1,0 +1,30 @@
+{
+  "measuredOn": { "platform": "win32", "arch": "x64" },
+  "samples": 40,
+  "entries": [
+    {
+      "language": "en",
+      "model": "base",
+      "wer": 0.1198,
+      "utterances": 40
+    },
+    {
+      "language": "en",
+      "model": "small",
+      "wer": 0.0841,
+      "utterances": 40
+    },
+    {
+      "language": "da",
+      "model": "base",
+      "wer": 0.6378,
+      "utterances": 40
+    },
+    {
+      "language": "da",
+      "model": "small",
+      "wer": 0.3736,
+      "utterances": 40
+    }
+  ]
+}

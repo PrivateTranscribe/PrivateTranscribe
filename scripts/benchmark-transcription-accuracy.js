@@ -307,6 +307,73 @@ async function scoreModel(manager, model, samples, language) {
   };
 }
 
+/**
+ * Runs the benchmark and returns the results, without printing a report or
+ * touching the process exit code.
+ *
+ * Split out from the CLI so the CI regression gate
+ * (scripts/check-accuracy-regression.js) measures with exactly the same code
+ * path a developer runs by hand. A second implementation would drift, and a
+ * regression gate that measures something slightly different from the
+ * documented benchmark is worse than none.
+ *
+ * Throws rather than exiting, so a caller can decide what a missing model or
+ * an empty dataset means for it.
+ */
+async function runBenchmark({ language, models = null, samples: sampleLimit = 50, quiet = false }) {
+  const locale = FLEURS_LOCALES[language];
+  if (!locale) {
+    throw new Error(
+      `No FLEURS split mapped for "${language}". Available: ${Object.keys(FLEURS_LOCALES).join(", ")}`
+    );
+  }
+
+  const manager = new WhisperManager();
+  if (!manager.serverManager.isAvailable()) {
+    throw new Error("whisper-server binary not found. Run: npm run download:whisper-cpp");
+  }
+
+  const { available, missing, registry } = resolveModels(manager, models);
+
+  if (missing.length > 0 && !quiet) {
+    console.log("Skipping models that are not ready:");
+    for (const entry of missing) console.log(`  - ${entry.model} (${entry.reason})`);
+    console.log(`Known model ids: ${registry.join(", ")}`);
+    console.log("Download more from the app's Settings, then re-run.\n");
+  }
+
+  if (available.length === 0) {
+    throw new Error("No downloaded models to benchmark.");
+  }
+
+  const { tsvPath, audioDir } = ensureDataset(locale);
+  const samples = loadSamples(tsvPath, audioDir, sampleLimit);
+
+  if (samples.length === 0) {
+    throw new Error(`No utterances found. Check the extracted audio under ${audioDir}`);
+  }
+
+  if (!quiet) {
+    console.log(
+      `\nFLEURS ${locale} — ${samples.length} utterances, language pinned to "${language}"`
+    );
+    console.log(`Models: ${available.join(", ")}\n`);
+  }
+
+  const results = [];
+  for (const model of available) {
+    results.push(await scoreModel(manager, model, samples, language));
+  }
+
+  try {
+    await manager.serverManager.stop();
+  } catch {
+    // Best effort: the benchmark is done either way.
+  }
+
+  return { locale, language, sampleCount: samples.length, missing, results };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
 
@@ -315,56 +382,11 @@ async function main() {
     return;
   }
 
-  const locale = FLEURS_LOCALES[args.language];
-  if (!locale) {
-    console.error(`No FLEURS split mapped for "${args.language}".`);
-    console.error(`Available: ${Object.keys(FLEURS_LOCALES).join(", ")}`);
-    process.exit(1);
-  }
-
-  const manager = new WhisperManager();
-  if (!manager.serverManager.isAvailable()) {
-    console.error("whisper-server binary not found. Run: npm run download:whisper-cpp");
-    process.exit(1);
-  }
-
-  const { available, missing, registry } = resolveModels(manager, args.models);
-
-  if (missing.length > 0) {
-    console.log("Skipping models that are not ready:");
-    for (const entry of missing) console.log(`  - ${entry.model} (${entry.reason})`);
-    console.log(`Known model ids: ${registry.join(", ")}`);
-    console.log("Download more from the app's Settings, then re-run.\n");
-  }
-
-  if (available.length === 0) {
-    console.error("No downloaded models to benchmark.");
-    process.exit(1);
-  }
-
-  const { tsvPath, audioDir } = ensureDataset(locale);
-  const samples = loadSamples(tsvPath, audioDir, args.samples);
-
-  if (samples.length === 0) {
-    console.error(`No utterances found. Check the extracted audio under ${audioDir}`);
-    process.exit(1);
-  }
-
-  console.log(
-    `\nFLEURS ${locale} — ${samples.length} utterances, language pinned to "${args.language}"`
-  );
-  console.log(`Models: ${available.join(", ")}\n`);
-
-  const results = [];
-  for (const model of available) {
-    results.push(await scoreModel(manager, model, samples, args.language));
-  }
-
-  try {
-    await manager.serverManager.stop();
-  } catch {
-    // Best effort: the benchmark is done either way.
-  }
+  const { locale, sampleCount, results } = await runBenchmark({
+    language: args.language,
+    models: args.models,
+    samples: args.samples,
+  });
 
   results.sort((a, b) => a.wer - b.wer);
 
@@ -393,15 +415,22 @@ async function main() {
   );
 
   if (args.json) {
-    fs.writeFileSync(
-      args.json,
-      JSON.stringify({ locale, samples: samples.length, results }, null, 2)
-    );
+    fs.writeFileSync(args.json, JSON.stringify({ locale, samples: sampleCount, results }, null, 2));
     console.log(`\nPer-utterance results written to ${args.json}`);
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  runBenchmark,
+  wordErrors,
+  normalizeForScoring,
+  toWords,
+  FLEURS_LOCALES,
+};
