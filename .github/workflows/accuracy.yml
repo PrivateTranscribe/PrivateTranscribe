@@ -66,14 +66,22 @@ jobs:
 
       # Whisper models and the FLEURS split are large and never change, so a
       # cache miss is the slow path and a hit makes the run mostly inference.
-      - name: Cache Whisper models
-        uses: actions/cache@v4
+      #
+      # Restore and save are split deliberately. actions/cache skips its save
+      # step when the job fails, and this job's whole purpose is to fail when
+      # accuracy drops - so the combined action threw away ~1.4 GB of downloads
+      # on exactly the runs we most want to re-run quickly. The saves below are
+      # conditioned on `always()` so a red gate still leaves a warm cache.
+      - name: Restore Whisper models
+        id: cache-models
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/PrivateTranscribe/whisper-models
           key: whisper-models-${{ hashFiles('benchmarks/accuracy-config.json') }}
 
-      - name: Cache FLEURS benchmark data
-        uses: actions/cache@v4
+      - name: Restore FLEURS benchmark data
+        id: cache-fleurs
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/PrivateTranscribe/benchmarks
           key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}
@@ -101,6 +109,15 @@ jobs:
           })().catch((error) => { console.error(error.message); process.exit(1); });
           "
 
+      # Saved before the gate runs, since the models are complete at this point
+      # and their download is the same work whatever the gate decides.
+      - name: Save Whisper models
+        if: always() && steps.cache-models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/PrivateTranscribe/whisper-models
+          key: whisper-models-${{ hashFiles('benchmarks/accuracy-config.json') }}
+
       - name: Check accuracy against baseline
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.update_baseline }}
         run: |
@@ -112,10 +129,21 @@ jobs:
         run: node scripts/check-accuracy-regression.js --update-baseline
 
       # Uploaded rather than committed. A baseline is a claim about what is
-      # correct, so a human decides when to accept a new one.
+      # correct, so a human decides when to accept a new one. Kept ahead of the
+      # cache save so housekeeping can never cost us the actual deliverable.
       - name: Upload baseline for review
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baseline }}
         uses: actions/upload-artifact@v4
         with:
           name: accuracy-baseline
           path: benchmarks/accuracy-baseline.json
+
+      # FLEURS is fetched inside the steps above rather than by a step of its
+      # own, so this has to come after them. `always()` is the point: a failing
+      # gate is the case where a warm cache matters most.
+      - name: Save FLEURS benchmark data
+        if: always() && steps.cache-fleurs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/PrivateTranscribe/benchmarks
+          key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}
