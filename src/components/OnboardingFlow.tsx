@@ -40,6 +40,8 @@ import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
 import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics";
 import { SectionLabel } from "./ui/SectionLabel";
+import LanguageSelector from "./ui/LanguageSelector";
+import { getLanguageLabel } from "../utils/languages";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -87,6 +89,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
+    preferredLanguage,
     openaiApiKey,
     groqApiKey,
     customTranscriptionApiKey,
@@ -736,6 +739,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
 
       case 2: // Setup - Choose Mode & Configure
+        // Measured on FLEURS Danish: large 14.5% WER, turbo 15.4%, medium
+        // 24.4%, small 37.5%, base 62.8%. The same models stay usable for
+        // English, so this is a non-English cliff rather than a general one.
+        // Reproduce with scripts/benchmark-transcription-accuracy.js
+        const SMALL_MODELS_WEAK_OUTSIDE_ENGLISH = ["tiny", "base", "small", "medium"];
+        const selectedLanguageLabel = getLanguageLabel(preferredLanguage);
+        const showSmallModelLanguageWarning =
+          useLocalWhisper &&
+          preferredLanguage !== "auto" &&
+          preferredLanguage !== "en" &&
+          SMALL_MODELS_WEAK_OUTSIDE_ENGLISH.includes(whisperModel);
+
         const shouldShowCudaDownload =
           useLocalWhisper &&
           isModelDownloaded &&
@@ -753,6 +768,51 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 Transcription Setup
               </h2>
               <p className="text-xs text-muted-foreground">Pick the fastest way to get started</p>
+            </div>
+
+            {/* Asked before the model, not after it. Setup never mentioned
+                language at all, so every non-English user silently ran on
+                auto-detect. It also has to come first because the answer
+                changes which models are usable: on our Danish benchmark the
+                small models fall apart while staying fine for English. */}
+            <div
+              className="rounded-lg border border-border-subtle bg-surface-1 p-3 space-y-2"
+              data-testid="onboarding-language"
+            >
+              <SectionLabel>Dictation language</SectionLabel>
+              <LanguageSelector
+                value={preferredLanguage}
+                onChange={(value) => updateTranscriptionSettings({ preferredLanguage: value })}
+              />
+              {preferredLanguage === "auto" ? (
+                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
+                  Auto-detect guesses from the first seconds of audio, and it mixes up languages
+                  that sound alike, such as Danish, Norwegian and Swedish. Picking your language
+                  stops the guessing.
+                </p>
+              ) : (
+                preferredLanguage !== "en" && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="onboarding-language-hint"
+                  >
+                    Accuracy outside English is lower on every model, so expect a few more
+                    corrections. Adding names and jargon to your dictionary later wins some back.
+                  </p>
+                )
+              )}
+              {showSmallModelLanguageWarning && (
+                <div
+                  className="flex items-start gap-1.5 rounded-md border border-warning/25 bg-warning/8 px-3 py-2"
+                  data-testid="onboarding-language-model-warning"
+                >
+                  <span className="text-warning text-xs leading-relaxed">
+                    ⚠️ The smaller models drop off sharply outside English. On our Danish test, Base
+                    got most words wrong while Turbo stayed usable. For {selectedLanguageLabel},
+                    pick Turbo or Large if your machine can run them.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Unified configuration with integrated mode toggle */}
@@ -794,6 +854,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               onDownloadComplete={checkModelStatus}
               variant="onboarding"
             />
+
             {shouldShowCudaDownload && (
               <div className="rounded-lg border border-border-subtle bg-surface-1 overflow-hidden">
                 <div className="p-3 border-b border-border-subtle">
