@@ -1614,6 +1614,10 @@ class WindowManager {
     if (this.loadErrorShown) {
       return;
     }
+    if (this.isQuitting) {
+      // A load aborted by shutdown is expected, not a failure worth a dialog.
+      return;
+    }
     this.loadErrorShown = true;
     const detailLines = [
       `Window: ${windowName}`,

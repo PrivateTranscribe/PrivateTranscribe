@@ -831,9 +831,22 @@ if (gotSingleInstanceLock) {
     }
   });
 
+  // Quitting while startup is still in flight destroys the windows mid-load, so
+  // the pending loadFile()/loadURL() rejects with ERR_FAILED. That is an ordinary
+  // shutdown, not a crash, and it must never raise a modal error box —
+  // showErrorBox blocks the main process, so the app then hangs instead of exiting.
+  let isShuttingDown = false;
+  app.on("before-quit", () => {
+    isShuttingDown = true;
+  });
+
   app.whenReady().then(() => {
     startApp().catch((error) => {
       logMainError("Failed to start app:", error);
+      if (isShuttingDown) {
+        app.exit(0);
+        return;
+      }
       dialog.showErrorBox(
         "PrivateTranscribe Startup Error",
         `Failed to start the application:\n\n${error.message}\n\nPlease report this issue.`
