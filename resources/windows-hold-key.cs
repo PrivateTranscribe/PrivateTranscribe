@@ -111,6 +111,9 @@ internal static class WindowsHoldKey
     [DllImport("user32.dll")]
     private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
     private const uint MapVkToScanCode = 0;
 
     // Keys that live on the extended part of the keyboard and need the
@@ -452,6 +455,50 @@ internal static class WindowsHoldKey
         }
     }
 
+    /// Diagnostic: reports every change in what Windows thinks the held keys
+    /// are doing, to stderr, for the length of the hold.
+    ///
+    /// This exists because "our keys stay down, the voice app drops them
+    /// anyway" was written down as established fact with nothing in the repo
+    /// that could reproduce it. A claim about who is at fault is worth very
+    /// little if the next person has to take it on trust. GetAsyncKeyState
+    /// reads global key state, so sampling from this process is as good as
+    /// sampling from another one.
+    private static void StartKeyStateWatch(int intervalMs, ManualResetEvent finished)
+    {
+        var watcher = new Thread(delegate()
+        {
+            var start = System.Diagnostics.Stopwatch.StartNew();
+            var previous = new Dictionary<Keys, bool>();
+
+            while (!finished.WaitOne(0))
+            {
+                for (int i = 0; i < heldKeys.Count; i++)
+                {
+                    HeldInput held = heldKeys[i];
+                    if (held.IsMouse)
+                    {
+                        continue;
+                    }
+
+                    bool down = (GetAsyncKeyState((int)held.Key) & 0x8000) != 0;
+                    bool seen;
+                    if (!previous.TryGetValue(held.Key, out seen) || seen != down)
+                    {
+                        previous[held.Key] = down;
+                        Console.Error.WriteLine(
+                            start.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture) +
+                            "ms " + held.Key.ToString() + " " + (down ? "down" : "UP"));
+                        Console.Error.Flush();
+                    }
+                }
+                Thread.Sleep(intervalMs);
+            }
+        });
+        watcher.IsBackground = true;
+        watcher.Start();
+    }
+
     /// Releases in reverse order so modifiers come up last, which is what a
     /// real keyboard does and what applications expect.
     private static void ReleaseAll()
@@ -611,6 +658,17 @@ internal static class WindowsHoldKey
         });
         reader.IsBackground = true;
         reader.Start();
+
+        string rawWatch = GetOption(args, "--watch-ms=");
+        if (!string.IsNullOrEmpty(rawWatch))
+        {
+            int parsedWatch;
+            if (int.TryParse(rawWatch, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedWatch) &&
+                parsedWatch > 0)
+            {
+                StartKeyStateWatch(parsedWatch, done);
+            }
+        }
 
         // Default: press once and hold, which is what a finger does.
         //
