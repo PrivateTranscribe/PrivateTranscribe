@@ -4,6 +4,7 @@ import { FolderOpen, Copy, Check, Mail } from "lucide-react";
 import { useToast } from "./ui/Toast";
 import { Toggle } from "./ui/toggle";
 import { useProPreview, type ProPreviewMode } from "../hooks/useProStatus";
+import { SectionLabel } from "./ui/SectionLabel";
 
 export default function DeveloperSection() {
   const [proPreview, setProPreview] = useProPreview();
@@ -253,7 +254,7 @@ export default function DeveloperSection() {
       <div className="flex items-center gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} className="text-xs">
           {copiedDebugInfo ? (
-            <Check className="mr-1.5 h-3.5 w-3.5 text-green-500" />
+            <Check className="mr-1.5 h-3.5 w-3.5 text-success" />
           ) : (
             <Copy className="mr-1.5 h-3.5 w-3.5" />
           )}
@@ -308,9 +309,7 @@ export default function DeveloperSection() {
         {/* Log Path - only when active */}
         {debugEnabled && logPath && (
           <div className="px-5 py-4">
-            <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-2">
-              Current log file
-            </p>
+            <SectionLabel className="mb-2">Current log file</SectionLabel>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-[11px] text-muted-foreground font-mono break-all leading-relaxed bg-surface-raised/30 px-3 py-2 rounded-lg border border-border/30">
                 {logPath}

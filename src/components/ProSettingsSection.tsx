@@ -12,6 +12,7 @@ import {
   type ProStatus,
 } from "../services/LicensingService";
 import { setProPreview } from "../hooks/useProStatus";
+import { SectionLabel } from "./ui/SectionLabel";
 
 const PRO_FEATURES_AVAILABLE = [
   {
@@ -141,13 +142,13 @@ export default function ProSettingsSection() {
     <div className="space-y-8">
       {/* Status banner */}
       {status.isPro ? (
-        <div className="rounded-xl border border-[#A885FF]/30 bg-[#2D1B69]/20 p-5 flex items-start gap-3">
-          <Check size={20} className="text-[#A885FF] mt-0.5 shrink-0" />
+        <div className="rounded-xl border border-pro/30 bg-pro-deep/20 p-5 flex items-start gap-3">
+          <Check size={20} className="text-pro mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-foreground">PrivateTranscribe Pro - Active</p>
             <p className="text-xs text-muted-foreground mt-1">
               License: <span className="font-mono">{status.licenseKey}</span>
-              {status.offlineGrace && <span className="ml-2 text-amber-500">(offline mode)</span>}
+              {status.offlineGrace && <span className="ml-2 text-warning">(offline mode)</span>}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Unlimited private dictation unlocked with your one-time Pro purchase.
@@ -173,7 +174,7 @@ export default function ProSettingsSection() {
                 size="sm"
                 onClick={handleDeactivate}
                 disabled={deactivating}
-                className="text-xs text-red-400 hover:text-red-300"
+                className="text-xs text-destructive hover:text-destructive/30"
               >
                 {deactivating ? "Deactivating…" : "Deactivate this device"}
               </Button>
@@ -214,7 +215,7 @@ export default function ProSettingsSection() {
             </div>
 
             {status.error && (
-              <p className="text-xs text-red-400 flex items-center gap-1">
+              <p className="text-xs text-destructive flex items-center gap-1">
                 <X size={12} /> {status.error}
               </p>
             )}
@@ -223,7 +224,7 @@ export default function ProSettingsSection() {
       ) : (
         <>
           {/* Licensing not yet live - purchase CTA */}
-          <div className="rounded-xl border border-[#A885FF]/25 bg-[#2D1B69]/15 p-6 space-y-4">
+          <div className="rounded-xl border border-pro/25 bg-pro-deep/15 p-6 space-y-4">
             <div>
               <h3 className="text-base font-semibold text-foreground">Get PrivateTranscribe Pro</h3>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
@@ -245,7 +246,7 @@ export default function ProSettingsSection() {
               Already have a key?{" "}
               <a
                 href="mailto:support@privatetranscribe.com"
-                className="text-[#A885FF] hover:underline"
+                className="text-pro hover:underline"
                 onClick={(e) => {
                   e.preventDefault();
                   window.electronAPI?.openExternal?.(
@@ -280,7 +281,7 @@ export default function ProSettingsSection() {
             key={feature.name}
             className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
           >
-            <Check size={14} className="shrink-0 text-[#A885FF]" />
+            <Check size={14} className="shrink-0 text-pro" />
             <div className="min-w-0 flex-1">
               <span className="text-sm font-medium text-foreground">{feature.name}</span>
               <p className="text-xs text-muted-foreground">{feature.desc}</p>
@@ -290,9 +291,7 @@ export default function ProSettingsSection() {
 
         {PRO_FEATURES_COMING.length > 0 && (
           <div className="mt-4 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Coming later
-            </p>
+            <SectionLabel>Coming later</SectionLabel>
             {PRO_FEATURES_COMING.map((feature) => (
               <div
                 key={feature.name}
@@ -313,7 +312,7 @@ export default function ProSettingsSection() {
 
       {/* Pricing info */}
       {!status.isPro && licensingReady && (
-        <div className="rounded-xl border border-[#A885FF]/25 bg-[#2D1B69]/15 p-5 space-y-3">
+        <div className="rounded-xl border border-pro/25 bg-pro-deep/15 p-5 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">
               One-time purchase - no subscription

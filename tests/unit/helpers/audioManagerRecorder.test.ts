@@ -20,7 +20,7 @@ vi.mock("../../../src/utils/languageCompat", () => ({
   resolveTranscriptionLanguage: vi.fn(() => null),
 }));
 
-import AudioManager from "../../../src/helpers/audioManager";
+import AudioManager, { MISSING_SECTION_MARKER } from "../../../src/helpers/audioManager";
 
 const makeStream = () => ({
   active: true,
@@ -71,6 +71,7 @@ describe("AudioManager recorder lifecycle", () => {
     MockMediaRecorder.instances = [];
     localStorageMock.clear();
     (globalThis as any).localStorage = localStorageMock;
+    (window as any).electronAPI = {};
     (globalThis as any).MediaRecorder = MockMediaRecorder;
     Object.defineProperty(globalThis, "navigator", {
       value: {
@@ -98,6 +99,18 @@ describe("AudioManager recorder lifecycle", () => {
     const recorder = MockMediaRecorder.instances[0];
     expect(recorder.start).toHaveBeenCalledWith(30000);
     expect(MockMediaRecorder.instances[1].start).toHaveBeenCalledWith();
+  });
+
+  it("keeps an unconfirmed Windows paste quiet while falling back to the clipboard", async () => {
+    const onError = vi.fn();
+    (window as any).electronAPI = {
+      pasteText: vi.fn().mockResolvedValue({ delivered: false, fallback: "clipboard" }),
+    };
+    const manager = new AudioManager();
+    manager.setCallbacks({ onStateChange: vi.fn(), onError, onTranscriptionComplete: vi.fn() });
+
+    await expect(manager.safePaste("recoverable text")).resolves.toBe(false);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("does not force-process partial recorder chunks after only 2.5 seconds", async () => {
@@ -389,7 +402,9 @@ describe("AudioManager recorder lifecycle", () => {
 
     expect(processAudio).not.toHaveBeenCalled();
     expect(runTranscription).toHaveBeenCalledTimes(2);
-    expect(runTranscription.mock.calls[0][1]).not.toMatchObject({ trimTrailingSilence: true });
+    // Intermediate chunks are trimmed too: a speaker pausing to think leaves a
+    // chunk ending in silence, which Whisper fills with invented sentences.
+    expect(runTranscription.mock.calls[0][1]).toMatchObject({ trimTrailingSilence: true });
     expect(runTranscription.mock.calls[1][1]).toMatchObject({ trimTrailingSilence: true });
     expect(processTranscription).toHaveBeenCalledTimes(1);
     expect(processTranscription).toHaveBeenCalledWith("chunk-0 chunk-1", "long-session");
@@ -404,6 +419,56 @@ describe("AudioManager recorder lifecycle", () => {
       },
     });
     expect(manager.getState().longSession.active).toBe(false);
+  });
+
+  it("never queues primary-recorder fragments once a long session is running", async () => {
+    // The primary recorder keeps emitting timeslice blobs for the whole
+    // recording. Those are mid-stream WebM with no EBML header, so FFmpeg
+    // rejects them and the failure discards the entire dictation. Only the
+    // segment recorders may feed the queue.
+    const manager = new AudioManager();
+    manager.longSessionPromotionMs = 60_000;
+    const runTranscription = vi
+      .spyOn(manager, "runTranscription")
+      .mockImplementation(async (_blob, metadata: any) => ({
+        result: {
+          success: true,
+          text: `chunk-${metadata.chunkIndex}`,
+          source: "openai",
+          timings: {},
+        },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      }));
+    manager.setCallbacks({
+      onStateChange: vi.fn(),
+      onError: vi.fn(),
+      onTranscriptionComplete: vi.fn(),
+    });
+
+    await manager.startRecording();
+    const recorder = MockMediaRecorder.instances[0];
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    recorder.ondataavailable?.({ data: new Blob(["first"], { type: "audio/webm" }) });
+    const initialSegmentRecorder = MockMediaRecorder.instances[1];
+    initialSegmentRecorder.ondataavailable?.({
+      data: new Blob(["promoted"], { type: "audio/webm" }),
+    });
+    await initialSegmentRecorder.onstop?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager.getState().longSession.active).toBe(true);
+    const afterPromotion = runTranscription.mock.calls.length;
+
+    // Detach the segment recorder, then let the primary recorder flush — this
+    // is the window the failing run hit at the end of a 7-minute dictation.
+    manager.longSessionSegment = null;
+    recorder.ondataavailable?.({ data: new Blob(["headerless fragment"], { type: "audio/webm" }) });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runTranscription).toHaveBeenCalledTimes(afterPromotion);
   });
 
   it("cancels queued long-session work without completing transcription", async () => {
@@ -447,6 +512,8 @@ describe("AudioManager recorder lifecycle", () => {
 
   it("retries a failed long-session chunk and preserves its text", async () => {
     const manager = new AudioManager();
+    // Fake timers are global here, so the real backoff would never elapse.
+    manager.longSessionChunkRetryBackoffMs = 0;
     const state = manager.createLongSessionState();
     state.active = true;
     state.sessionId = 42;
@@ -480,8 +547,11 @@ describe("AudioManager recorder lifecycle", () => {
     expect(attempts.get(1)).toBe(2);
   });
 
-  it("rejects a partial long-session transcript when a chunk keeps failing", async () => {
+  it("keeps the chunks that succeeded when one keeps failing", async () => {
+    // Discarding everything used to cost the speaker every word they said
+    // because one section out of several failed.
     const manager = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
     const state = manager.createLongSessionState();
     state.active = true;
     state.sessionId = 43;
@@ -492,22 +562,158 @@ describe("AudioManager recorder lifecycle", () => {
         throw new Error("persistent provider failure");
       }
       return {
-        result: { success: true, text: "first chunk", source: "openai" },
+        result: { success: true, text: `chunk-${metadata.chunkIndex}`, source: "openai" },
         useLocalWhisper: false,
         localProvider: "whisper",
         activeModel: "gpt-transcribe",
       } as never;
     });
-    const processTranscription = vi.spyOn(manager, "processTranscription");
+    const processTranscription = vi
+      .spyOn(manager, "processTranscription")
+      .mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["middle"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    const result = await manager.finalizeLongSessionResult(180);
+
+    // The gap sits where the missing section was spoken, not at the end, so the
+    // sentences either side never silently join up into one thought.
+    expect(result).toMatchObject({
+      success: true,
+      text: `chunk-0 ${MISSING_SECTION_MARKER} chunk-2`,
+      longSession: { chunks: 2, failedChunks: 1, totalChunks: 3 },
+    });
+    expect(processTranscription).toHaveBeenCalledWith(
+      `chunk-0 ${MISSING_SECTION_MARKER} chunk-2`,
+      "long-session"
+    );
+  });
+
+  it("gives a failed chunk one more attempt once the queue has drained", async () => {
+    // Whatever broke the chunk mid-recording is usually gone by the end, and a
+    // recovered chunk is worth far more than a marked gap.
+    const manager = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 46;
+    manager.longSession = state;
+
+    let inlineAttempts = 0;
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => {
+      if (metadata.chunkIndex === 1) {
+        inlineAttempts += 1;
+        if (inlineAttempts <= 3) {
+          throw new Error("server restarting");
+        }
+      }
+      return {
+        result: { success: true, text: `chunk-${metadata.chunkIndex}`, source: "openai" },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      } as never;
+    });
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["middle"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    const result = await manager.finalizeLongSessionResult(120);
+
+    expect(result.text).toBe("chunk-0 chunk-1");
+    expect(result.longSession).toMatchObject({ chunks: 2, failedChunks: 0 });
+    expect(inlineAttempts).toBe(4);
+  });
+
+  it("puts back a gap marker that AI cleanup removed", async () => {
+    // Reasoning rewrites the transcript and a bracketed marker is exactly the
+    // kind of stray text it tidies away, but the gap is still real.
+    const manager = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 47;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => {
+      if (metadata.chunkIndex === 0) {
+        throw new Error("persistent provider failure");
+      }
+      return {
+        result: { success: true, text: "chunk-1", source: "openai" },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      } as never;
+    });
+    vi.spyOn(manager, "processTranscription").mockResolvedValue("Polished text." as never);
 
     manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
     manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
 
     await manager.waitForLongSessionQueue();
-    await expect(manager.finalizeLongSessionResult(120)).rejects.toThrow(
-      "could not be transcribed completely"
+    const result = await manager.finalizeLongSessionResult(120);
+
+    expect(result.text).toBe(`Polished text. ${MISSING_SECTION_MARKER}`);
+  });
+
+  it("still fails when no chunk survives", async () => {
+    const manager = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 44;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async () => {
+      throw new Error("persistent provider failure");
+    });
+
+    manager.enqueueLongSessionChunk(new Blob(["only"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    await expect(manager.finalizeLongSessionResult(60)).rejects.toThrow(
+      "persistent provider failure"
     );
-    expect(processTranscription).not.toHaveBeenCalled();
+  });
+
+  it("marks a partial transcript as incomplete so it cannot paste silently", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 45;
+    manager.longSession = state;
+    // The real caller sets this before delegating; the generation guard needs it.
+    manager.isProcessing = true;
+
+    vi.spyOn(manager, "finalizeLongSessionResult").mockResolvedValue({
+      success: true,
+      text: "surviving text",
+      source: "long-session",
+      longSession: { chunks: 2, failedChunks: 1, totalChunks: 3 },
+    } as never);
+    const onTranscriptionComplete = vi.fn();
+    const onError = vi.fn();
+    manager.setCallbacks({
+      onStateChange: vi.fn(),
+      onError,
+      onTranscriptionComplete,
+    });
+
+    await manager.processLongSessionAudio({ durationSeconds: 180 });
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onTranscriptionComplete.mock.calls[0][0].completeness).toMatchObject({
+      suspicious: true,
+      reason: "failed-chunks",
+      failedChunks: 1,
+      totalChunks: 3,
+    });
   });
 
   it("keeps the normal recorder path if standalone segment recording is unavailable", async () => {

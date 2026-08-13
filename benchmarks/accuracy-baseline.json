@@ -1,0 +1,33 @@
+{
+  "measuredOn": {
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "samples": 40,
+  "entries": [
+    {
+      "language": "en",
+      "model": "base",
+      "wer": 0.1348,
+      "utterances": 40
+    },
+    {
+      "language": "en",
+      "model": "small",
+      "wer": 0.0933,
+      "utterances": 40
+    },
+    {
+      "language": "da",
+      "model": "base",
+      "wer": 0.6733,
+      "utterances": 40
+    },
+    {
+      "language": "da",
+      "model": "small",
+      "wer": 0.4219,
+      "utterances": 40
+    }
+  ]
+}

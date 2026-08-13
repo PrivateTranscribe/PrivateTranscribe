@@ -31,4 +31,14 @@ describe("auto-start respects the Windows Task Manager state", () => {
     expect(source).toContain("getAutoStartApprovalState");
     expect(source).toContain("if (existingApproval === null) {");
   });
+
+  // Dev runs launch node_modules/electron/dist/electron.exe against the checkout. Letting
+  // the first-run default register that path makes Windows start the dev copy at login,
+  // and burns the shared marker file so the real install never registers itself.
+  it("skips the first-run default outside packaged builds", () => {
+    const source = read("main.js");
+
+    expect(source).toContain("if (app.isPackaged && !fs.existsSync(flagPath)) {");
+    expect(source).not.toContain("if (!fs.existsSync(flagPath)) {");
+  });
 });

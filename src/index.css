@@ -34,6 +34,17 @@
   --color-info: #6bb8ff;
   --color-info-foreground: #ffffff;
 
+  /* Interaction shades — hover/active for filled buttons */
+  --color-primary-hover: #8bffc8;
+  --color-primary-active: #5de6a6;
+  --color-destructive-hover: #ff8585;
+  --color-destructive-active: #e65555;
+
+  /* Pro / tester accent — the only violet in the product */
+  --color-pro: #a885ff;
+  --color-pro-foreground: #ffffff;
+  --color-pro-deep: #2d1b69;
+
   /* Surface hierarchy — layered depth */
   --color-surface-0: #080908;
   --color-surface-1: #0d0f0d;
@@ -41,21 +52,20 @@
   --color-surface-3: #1a2e26;
   --color-surface-raised: #1a1d1a;
 
+  /* Neutral text ramp — nav and chrome text between foreground and muted */
+  --color-foreground-subtle: #b0b5b2;
+  --color-foreground-muted: #8a8f8c;
+  --color-foreground-faint: #4a4f4c;
+
   /* Border states */
   --color-border-subtle: #1c1f1c;
   --color-border-hover: #2e3230;
   --color-border-active: #70ffba;
-}
 
-:root {
-  /* Typography */
-  --font-family-sans: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-family-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
-
-  /* Opacities */
-  --opacity-subtle: 0.1;
-  --opacity-medium: 0.5;
-  --opacity-high: 0.9;
+  /* Typography — names must match Tailwind's --font-* namespace or the
+     font-sans / font-mono utilities silently fall back to browser defaults. */
+  --font-sans: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
   /* Border Radius — tight, precise geometry */
   --radius: 0.5rem;
@@ -69,6 +79,11 @@
   --shadow-card-hover: 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-modal: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+
+  /* Opacities — referenced directly via var(), no utility namespace exists */
+  --opacity-subtle: 0.1;
+  --opacity-medium: 0.5;
+  --opacity-high: 0.9;
 }
 
 @layer base {
@@ -85,7 +100,7 @@
     color: var(--color-foreground);
     margin: 0;
     padding: 0;
-    font-family: var(--font-family-sans);
+    font-family: var(--font-sans);
     font-feature-settings:
       "liga" 1,
       "kern" 1;
@@ -115,85 +130,105 @@
   }
 }
 
-/* Privoca Typography */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-family-sans);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-}
+/* Element defaults live in @layer base so component classes and Tailwind utilities
+   can override them. Unlayered rules beat every layered utility, which silently
+   killed things like `bg-surface-1` on <input>. Do not move these out of the layer. */
+@layer base {
+  /* PrivateTranscribe typography */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+  }
 
-h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-}
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+  }
 
-button {
-  font-family: var(--font-family-sans);
-  cursor: pointer;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-}
+  button {
+    font-family: var(--font-sans);
+    cursor: pointer;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
 
-button:focus {
-  outline: none;
-}
+  button:focus {
+    outline: none;
+  }
 
-button:active {
-  outline: none;
-}
+  button:active {
+    outline: none;
+  }
 
-button:hover,
-[role="button"]:hover,
-.cursor-pointer:hover {
-  cursor: pointer;
-}
+  button:hover,
+  [role="button"]:hover,
+  .cursor-pointer:hover {
+    cursor: pointer;
+  }
 
-/* Inputs — flat, minimal */
-input,
-textarea,
-select {
-  border-radius: var(--radius-md);
-  transition: all 0.2s ease;
-  font-family: var(--font-family-sans);
-  background-color: var(--color-input);
-  border: 1px solid var(--color-border);
-  color: var(--color-foreground);
-  box-shadow: none;
-}
+  /* Text-like inputs — flat, minimal. Checkboxes, radios and ranges are
+     excluded so they keep their native rendering and honour accent-color. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    font-family: var(--font-sans);
+    background-color: var(--color-input);
+    border: 1px solid var(--color-border);
+    color: var(--color-foreground);
+    box-shadow: none;
+  }
 
-input:focus,
-textarea:focus,
-select:focus {
-  border-color: var(--color-border-active);
-  box-shadow: 0 0 0 2px rgba(112, 255, 186, 0.1);
-}
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--color-border-active);
+    box-shadow: 0 0 0 2px rgba(112, 255, 186, 0.1);
+  }
 
-input::placeholder,
-textarea::placeholder {
-  color: var(--color-muted-foreground);
-  opacity: 0.5;
-}
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-muted-foreground);
+    opacity: 0.5;
+  }
 
-select {
-  color-scheme: dark;
-  background-color: var(--color-input);
-  cursor: pointer;
-}
+  select {
+    color-scheme: dark;
+    background-color: var(--color-input);
+    cursor: pointer;
+  }
 
-select option {
-  background-color: var(--color-popover);
-  color: var(--color-foreground);
-}
+  select option {
+    background-color: var(--color-popover);
+    color: var(--color-foreground);
+  }
 
-select option:checked {
-  background-color: var(--color-surface-3);
-  color: var(--color-primary);
+  select option:checked {
+    background-color: var(--color-surface-3);
+    color: var(--color-primary);
+  }
+
+  /* Links */
+  a {
+    color: var(--color-link);
+    text-decoration: none;
+    transition: color 0.2s ease;
+    cursor: pointer;
+  }
+
+  a:hover {
+    color: var(--color-link);
+    opacity: 0.8;
+    text-decoration: underline;
+  }
 }
 
 /* Cards — flat, border-only differentiation */
@@ -206,20 +241,6 @@ select option:checked {
 
 .card:hover {
   border-color: var(--color-border-hover);
-}
-
-/* Links */
-a {
-  color: var(--color-link);
-  text-decoration: none;
-  transition: color 0.2s ease;
-  cursor: pointer;
-}
-
-a:hover {
-  color: var(--color-link);
-  opacity: 0.8;
-  text-decoration: underline;
 }
 
 /* Section panel */

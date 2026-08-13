@@ -34,6 +34,7 @@ import {
 } from "../ui/dialog";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useActionEngine } from "../../hooks/useActionEngine";
+import { SectionLabel } from "../ui/SectionLabel";
 import type {
   Action,
   ActionConfig,
@@ -518,7 +519,7 @@ function ActionFormDialog({
             </div>
           </div>
 
-          {regexError && <p className="text-xs text-red-400">{regexError}</p>}
+          {regexError && <p className="text-xs text-destructive">{regexError}</p>}
 
           {/* Action type */}
           <div className="space-y-1.5">
@@ -571,7 +572,7 @@ function ActionFormDialog({
           </div>
 
           {formError && (
-            <p className="text-sm text-red-400 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+            <p className="text-sm text-destructive rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
               {formError}
             </p>
           )}
@@ -652,7 +653,7 @@ function ActionRow({
         )}
         {myResult && (
           <p
-            className={`text-[11px] mt-0.5 ${myResult.success ? "text-green-400" : "text-red-400"}`}
+            className={`text-[11px] mt-0.5 ${myResult.success ? "text-success" : "text-destructive"}`}
           >
             {myResult.success ? "✓ " : "✗ "}
             {myResult.message}
@@ -677,7 +678,7 @@ function ActionRow({
         <button
           onClick={() => onRun(action)}
           disabled={isRunning || !action.enabled}
-          className="p-1.5 rounded text-muted-foreground hover:text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-40"
+          className="p-1.5 rounded text-muted-foreground hover:text-success hover:bg-success/10 transition-colors disabled:opacity-40"
           title="Test this action now"
         >
           <Play size={14} />
@@ -693,7 +694,7 @@ function ActionRow({
 
         <button
           onClick={() => onDelete(action)}
-          className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
           title="Delete action"
         >
           <Trash2 size={14} />
@@ -803,7 +804,7 @@ function RunHistoryPanel({
               variant="ghost"
               onClick={handleClear}
               disabled={clearing}
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             >
               {clearing ? "Clearing…" : "Clear"}
             </Button>
@@ -836,11 +837,15 @@ function RunHistoryPanel({
                 {run.success ? (
                   <CheckCircle2
                     size={13}
-                    className="mt-0.5 shrink-0 text-green-500"
+                    className="mt-0.5 shrink-0 text-success"
                     aria-label="Success"
                   />
                 ) : (
-                  <XCircle size={13} className="mt-0.5 shrink-0 text-red-400" aria-label="Failed" />
+                  <XCircle
+                    size={13}
+                    className="mt-0.5 shrink-0 text-destructive"
+                    aria-label="Failed"
+                  />
                 )}
 
                 {/* Main info */}
@@ -866,7 +871,7 @@ function RunHistoryPanel({
                     </p>
                   )}
                   {!run.success && run.error && (
-                    <p className="text-red-400/80 truncate">{run.error}</p>
+                    <p className="text-destructive/80 truncate">{run.error}</p>
                   )}
                   {run.success && run.output && (
                     <p className="text-muted-foreground truncate font-mono">{run.output}</p>
@@ -984,7 +989,7 @@ export default function ActionEnginePage() {
               Beta
             </Badge>
             {!isUnlocked && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
                 <Lock size={10} /> Tester
               </span>
             )}
@@ -1067,7 +1072,7 @@ export default function ActionEnginePage() {
       {isUnlocked && (
         <>
           {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
               {error}
             </div>
           )}
@@ -1077,7 +1082,7 @@ export default function ActionEnginePage() {
             className={`rounded-xl border p-4 flex items-center justify-between gap-4 transition-colors ${
               globalEnabled
                 ? "border-border-subtle/50 bg-surface-raised/30"
-                : "border-amber-500/30 bg-amber-500/5"
+                : "border-warning/30 bg-warning/5"
             }`}
           >
             <div>
@@ -1133,9 +1138,7 @@ export default function ActionEnginePage() {
               </div>
             ) : actions.length === 0 ? (
               <div className="space-y-4 py-4">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Start with a template
-                </p>
+                <SectionLabel>Start with a template</SectionLabel>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {STARTER_TEMPLATES.map((tpl) => {
                     const Icon = tpl.icon;

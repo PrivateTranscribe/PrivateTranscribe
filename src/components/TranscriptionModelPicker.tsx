@@ -17,9 +17,10 @@ import {
 } from "../models/ModelRegistry";
 import { MODEL_PICKER_COLORS, type ColorScheme } from "../utils/modelPickerStyles";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
-import { API_ENDPOINTS } from "../config/constants";
+import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 import { isValidApiUrl } from "../helpers/urlValidation";
+import { getWhisperPerfRating } from "../utils/modelAccuracy";
 
 interface LocalModel {
   model: string;
@@ -47,17 +48,6 @@ interface LocalModelCardProps {
   onCancel: () => void;
   styles: ReturnType<(typeof MODEL_PICKER_COLORS)[keyof typeof MODEL_PICKER_COLORS]>;
 }
-
-// Speed vs. accuracy ratings (1-5) for Whisper models, rendered as segmented meters.
-// Speed = how fast it transcribes; quality = transcription accuracy.
-const WHISPER_PERF_RATINGS: Record<string, { speed: number; quality: number }> = {
-  tiny: { speed: 5, quality: 1 },
-  base: { speed: 4, quality: 2 },
-  small: { speed: 3, quality: 3 },
-  medium: { speed: 2, quality: 4 },
-  large: { speed: 1, quality: 5 },
-  turbo: { speed: 4, quality: 4 },
-};
 
 // Compact 5-segment meter matching the calm operator look.
 function PerfMeter({ label, value }: { label: string; value: number }) {
@@ -130,7 +120,7 @@ function LocalModelCard({
               }`}
             />
           ) : isDownloading ? (
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.5)]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-warning shadow-[0_0_4px_rgba(245,158,11,0.5)]" />
           ) : (
             <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/20" />
           )}
@@ -242,6 +232,12 @@ interface TranscriptionModelPickerProps {
   gpuSupported?: boolean;
   /** Hardware-detected Whisper recommendation. Overrides the static registry badge. */
   recommendedLocalModel?: string;
+  /**
+   * Language the user dictates in. The accuracy meters are language-specific,
+   * because model quality drops far more steeply outside English. Omitted or
+   * "auto" shows the general scale.
+   */
+  preferredLanguage?: string;
   onDownloadComplete?: () => void;
 }
 
@@ -313,6 +309,7 @@ export default function TranscriptionModelPicker({
   onWhisperForceCpuChange,
   gpuSupported = false,
   recommendedLocalModel,
+  preferredLanguage,
   onDownloadComplete,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
@@ -579,8 +576,6 @@ export default function TranscriptionModelPicker({
     const trimmed = (cloudTranscriptionBaseUrl || "").trim();
     if (!trimmed) return;
 
-    // Normalize the URL using the existing util from constants
-    const { normalizeBaseUrl } = require("../config/constants");
     const normalized = normalizeBaseUrl(trimmed);
 
     if (normalized && normalized !== cloudTranscriptionBaseUrl) {
@@ -747,7 +742,7 @@ export default function TranscriptionModelPicker({
             size: "Unknown",
           };
 
-          const perf = WHISPER_PERF_RATINGS[modelId];
+          const perf = getWhisperPerfRating(modelId, preferredLanguage);
           const isRecommended = recommendedLocalModel
             ? modelId === recommendedLocalModel
             : info.recommended;
@@ -796,8 +791,8 @@ export default function TranscriptionModelPicker({
       <ModeToggle useLocalWhisper={useLocalWhisper} onModeChange={handleModeChange} />
 
       {!useLocalWhisper && (
-        <div className="flex items-start gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/8 px-3 py-2">
-          <span className="text-amber-500 text-xs leading-relaxed">
+        <div className="flex items-start gap-1.5 rounded-md border border-warning/25 bg-warning/8 px-3 py-2">
+          <span className="text-warning text-xs leading-relaxed">
             ⚠️ Cloud mode sends your audio to a third-party server. Your voice data leaves this
             device.
           </span>
@@ -975,10 +970,10 @@ export default function TranscriptionModelPicker({
               <div
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                   engineStatus.fallback?.active
-                    ? "bg-amber-500"
+                    ? "bg-warning"
                     : engineStatus.running
-                      ? "bg-emerald-500"
-                      : "bg-zinc-500"
+                      ? "bg-success"
+                      : "bg-muted-foreground"
                 }`}
               />
               <span className="text-[9px] text-muted-foreground/60">

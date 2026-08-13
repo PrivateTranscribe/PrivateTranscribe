@@ -23,7 +23,7 @@ export function AnalyticsConsentModal({ onConsent }) {
     >
       <div
         style={{
-          backgroundColor: "#0f0f0f",
+          backgroundColor: "var(--color-card)",
           border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: "1rem",
           padding: "1.5rem",
@@ -35,7 +35,7 @@ export function AnalyticsConsentModal({ onConsent }) {
           style={{
             fontSize: "0.75rem",
             fontWeight: 600,
-            color: "#70FFBA",
+            color: "var(--color-primary)",
             marginBottom: "0.5rem",
           }}
         >
@@ -45,7 +45,7 @@ export function AnalyticsConsentModal({ onConsent }) {
           style={{
             fontSize: "1rem",
             fontWeight: 600,
-            color: "#ffffff",
+            color: "var(--color-foreground)",
             marginBottom: "0.75rem",
           }}
         >
@@ -91,8 +91,8 @@ export function AnalyticsConsentModal({ onConsent }) {
               padding: "0.5rem 1rem",
               borderRadius: "0.5rem",
               border: "none",
-              backgroundColor: yesHover ? "#8FFFCA" : "#70FFBA",
-              color: "#000000",
+              backgroundColor: yesHover ? "var(--color-primary-hover)" : "var(--color-primary)",
+              color: "var(--color-primary-foreground)",
               fontSize: "0.875rem",
               fontWeight: 500,
               cursor: "pointer",

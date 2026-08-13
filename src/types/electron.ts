@@ -379,11 +379,24 @@ export interface ControlPanelDestination {
   settingsTab?: ControlPanelSettingsTab;
 }
 
+/** A voice app currently streaming from the microphone, i.e. actually in a call. */
+export interface VoiceCallApp {
+  id: string;
+  label: string;
+  pid: number;
+  pushToMute: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI: {
       // Basic window operations
-      pasteText: (text: string) => Promise<void>;
+      pasteText: (text: string) => Promise<{
+        delivered: boolean;
+        dispatched?: boolean;
+        fallback?: "clipboard";
+        method?: string;
+      }>;
       hideWindow: () => Promise<void>;
       showDictationPanel: () => Promise<void>;
       getOverlayState?: () => Promise<OverlayState>;
@@ -415,6 +428,10 @@ declare global {
         durationSeconds?: number | null,
         options?: SaveTranscriptionOptions
       ) => Promise<{ id: number; success: boolean }>;
+      recordTranscriptionActivity?: (
+        text: string,
+        durationSeconds?: number | null
+      ) => Promise<{ success: boolean }>;
       getTranscriptions: (limit?: number) => Promise<TranscriptionItem[]>;
       clearTranscriptions: () => Promise<{ cleared: number; success: boolean }>;
       deleteTranscription: (id: number) => Promise<{ success: boolean }>;
@@ -422,19 +439,17 @@ declare global {
         limit: number
       ) => Promise<{ trimmed?: number; cleared?: number; success: boolean }>;
       setHistoryLimit?: (limit: number) => Promise<{ success: boolean }>;
-
       // Dictionary operations
       getDictionary: () => Promise<string[]>;
       setDictionary: (words: string[]) => Promise<{ success: boolean }>;
       getCorrectionMemory: (limit?: number) => Promise<any[]>;
-      upsertCorrection: (source: string, target: string) => Promise<{ success: boolean }>;
       confirmCorrection: (source: string, target: string) => Promise<{ success: boolean }>;
       deleteCorrection: (source: string) => Promise<{ success: boolean }>;
 
       // Stats operations
       getStats: () => Promise<AggregateStats>;
       resetStats: () => Promise<{ success: boolean }>;
-      /** Returns distinct "YYYY-MM-DD" date strings for real dictation sessions (last 366 days). */
+      /** Returns one representative UTC timestamp for each local dictation day. */
       getStreakDates: () => Promise<string[]>;
 
       // Optional, consent-based analytics. Properties never include audio or transcript text.
@@ -652,6 +667,21 @@ declare global {
       ) => Promise<{ success: boolean }>;
       getHotkeyModeInfo?: () => Promise<{ isUsingGnome: boolean }>;
 
+      // Voice-call mute - holds a voice app's push-to-mute key while dictating
+      voiceMuteStart?: (options: {
+        key: string;
+      }) => Promise<{ muted: boolean; reason?: string; apps?: VoiceCallApp[] }>;
+      voiceMuteStop?: () => Promise<{ released: boolean }>;
+      voiceMuteStatus?: () => Promise<{
+        supported: boolean;
+        activeApps: VoiceCallApp[];
+        muted: boolean;
+      }>;
+      voiceMuteTest?: (options: {
+        key: string;
+        holdMs?: number;
+      }) => Promise<{ ok: boolean; reason?: string }>;
+
       // Globe key listener for hotkey capture (macOS only)
       onGlobeKeyPressed?: (callback: () => void) => () => void;
 
@@ -729,7 +759,9 @@ declare global {
 
       // Auto-start at login
       getAutoStartEnabled?: () => Promise<boolean>;
-      setAutoStartEnabled?: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+      setAutoStartEnabled?: (
+        enabled: boolean
+      ) => Promise<{ success: boolean; enabled?: boolean; error?: string }>;
       getAutoStartLaunchMode?: () => Promise<"tray" | "minimized" | "window">;
       setAutoStartLaunchMode?: (mode: "tray" | "minimized" | "window") => Promise<{
         success: boolean;

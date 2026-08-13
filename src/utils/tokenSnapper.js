@@ -179,9 +179,8 @@ export function snapTranscript({
   if (!original.trim()) return original;
 
   // Apply explicit correction pairs first.
-  // A correction is applied when either:
-  //   - count >= 2  (seen at least twice via auto-learning → high confidence)
-  //   - confirmed   (user explicitly added/confirmed it via UI → apply immediately)
+  // Only corrections explicitly approved by the user may alter future text.
+  // Counts are retained for migration/display purposes but never substitute for consent.
   let output = original;
   const sortedCorrections = [...(corrections || [])].sort((a, b) => {
     const aLength = extractLearningTokens(a?.source).length;
@@ -192,10 +191,9 @@ export function snapTranscript({
   for (const row of sortedCorrections) {
     const source = row?.source;
     const target = row?.target;
-    const count = row?.count || 0;
     const confirmed = row?.confirmed ? true : false;
     if (!source || !target || source === target) continue;
-    if (count < 2 && !confirmed) continue;
+    if (!confirmed) continue;
     const re = buildCorrectionRegex(source, target);
     if (!re) continue;
     output = output.replace(re, target);

@@ -4,7 +4,8 @@
  *
  * The helper is built with the C# compiler that ships inside every .NET
  * Framework 4 install, so contributors do not need Visual Studio, MinGW, or any
- * other toolchain. It references nothing beyond the default assemblies.
+ * other toolchain. UI Automation distinguishes key dispatch from observable
+ * text insertion.
  *
  * Missing the compiler is not fatal: PrivateTranscribe falls back to nircmd or
  * PowerShell with a plain Ctrl+V, which is what it did before this helper
@@ -52,6 +53,7 @@ if (isUpToDate()) {
 
 const compilerPath = compilerCandidates.find((candidate) => fs.existsSync(candidate));
 if (!compilerPath) {
+  fs.rmSync(outputPath, { force: true });
   console.warn("[windows-fast-paste] .NET Framework C# compiler was not found.");
   console.warn(
     "[windows-fast-paste] Auto-paste will fall back to Ctrl+V without terminal support."
@@ -60,14 +62,27 @@ if (!compilerPath) {
 }
 
 fs.mkdirSync(outputDir, { recursive: true });
+const automationAssemblyDir = path.join(path.dirname(compilerPath), "WPF");
+const automationClientPath = path.join(automationAssemblyDir, "UIAutomationClient.dll");
+const automationTypesPath = path.join(automationAssemblyDir, "UIAutomationTypes.dll");
 
 const result = spawnSync(
   compilerPath,
-  ["/nologo", "/optimize+", "/target:exe", `/out:${outputPath}`, sourcePath],
+  [
+    "/nologo",
+    "/optimize+",
+    "/target:exe",
+    "/reference:System.Windows.Forms.dll",
+    `/reference:${automationClientPath}`,
+    `/reference:${automationTypesPath}`,
+    `/out:${outputPath}`,
+    sourcePath,
+  ],
   { cwd: projectRoot, stdio: "inherit", shell: false }
 );
 
 if (result.status !== 0 || !fs.existsSync(outputPath)) {
+  fs.rmSync(outputPath, { force: true });
   console.warn("[windows-fast-paste] Compilation failed.");
   console.warn(
     "[windows-fast-paste] Auto-paste will fall back to Ctrl+V without terminal support."

@@ -14,6 +14,8 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
+const micWatcher = require("./micWatcher");
+const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
 const {
   DEFAULT_AUTO_START_LAUNCH_MODE,
@@ -473,7 +475,13 @@ class IPCHandlers {
       const parsed = parseInt(limit, 10);
       // Clamp to [0, 100 000]: 0 = disabled (no history), upper bound prevents runaway values.
       this.historyLimit = isNaN(parsed) || parsed < 0 ? 50 : Math.min(parsed, 100_000);
-      return { success: true };
+      try {
+        const result = this.databaseManager.trimTranscriptions(this.historyLimit);
+        return { success: true, ...result };
+      } catch (error) {
+        debugLogger.error("Failed to enforce history limit:", error.message);
+        return { success: false, error: error.message };
+      }
     });
 
     ipcMain.handle("db-save-transcription", async (event, text, durationSeconds, options = {}) => {
@@ -499,6 +507,15 @@ class IPCHandlers {
         return result;
       } catch (err) {
         debugLogger.error("[IPC:db-save-transcription] error:", err.message);
+        return { success: false, error: err.message };
+      }
+    });
+
+    ipcMain.handle("db-record-transcription-activity", async (event, text, durationSeconds) => {
+      try {
+        return this.databaseManager.recordTranscriptionActivity(text, durationSeconds);
+      } catch (err) {
+        debugLogger.error("[IPC:db-record-transcription-activity] error:", err.message);
         return { success: false, error: err.message };
       }
     });
@@ -601,15 +618,6 @@ class IPCHandlers {
       } catch (err) {
         debugLogger.error("[IPC:db-get-correction-memory] error:", err.message);
         return [];
-      }
-    });
-
-    ipcMain.handle("db-upsert-correction", async (event, source, target) => {
-      try {
-        return this.databaseManager.upsertCorrection(source, target);
-      } catch (err) {
-        debugLogger.error("[IPC:db-upsert-correction] error:", err.message);
-        return { success: false, error: err.message };
       }
     });
 
@@ -1149,7 +1157,11 @@ class IPCHandlers {
       const hotkeyManager = this.windowManager.hotkeyManager;
 
       // When exiting capture mode with a new hotkey, use that to avoid reading stale state
-      const effectiveHotkey = !enabled && newHotkey ? newHotkey : hotkeyManager.getCurrentHotkey();
+      const effectiveHotkey = resolveEffectiveHotkey(
+        enabled,
+        newHotkey,
+        hotkeyManager.getCurrentHotkey()
+      );
 
       if (enabled) {
         // Entering capture mode - unregister globalShortcut so it doesn't consume key events
@@ -1335,8 +1347,25 @@ class IPCHandlers {
         app.setLoginItemSettings(
           this._buildAutoStartSetOptions(enabled, launchMode, Boolean(enabled))
         );
+
+        // setLoginItemSettings is fire-and-forget: it never reports a rejected registry
+        // write, so an antivirus blocking the Run key used to leave the toggle showing
+        // "on" while nothing launched at login. Read the state back and report the truth.
+        const actual = this._getAutoStartEnabled(launchMode);
+        if (actual !== Boolean(enabled)) {
+          debugLogger.warn("Auto-start change did not stick", { enabled, actual, launchMode });
+          return {
+            success: false,
+            enabled: actual,
+            error:
+              process.platform === "win32"
+                ? "Windows did not save the startup entry. Security software often blocks unsigned apps from writing it."
+                : "The system did not save the startup entry.",
+          };
+        }
+
         debugLogger.debug("Auto-start setting updated", { enabled, launchMode });
-        return { success: true };
+        return { success: true, enabled: actual };
       } catch (error) {
         debugLogger.error("Error setting auto-start:", error);
         return { success: false, error: error.message };
@@ -2110,6 +2139,84 @@ class IPCHandlers {
       return { success: true };
     });
 
+    // Voice-call mute — hold the voice app's push-to-mute key while dictating,
+    // so the room doesn't hear the dictation.
+    ipcMain.handle("voice-mute-start", async (_event, options = {}) => {
+      try {
+        const key = typeof options.key === "string" ? options.key.trim() : "";
+        if (!key) {
+          return { muted: false, reason: "no-key" };
+        }
+
+        // Only act when a known voice app is actually streaming from the
+        // microphone. Holding a mute key outside a call is harmless, but
+        // sending pointless keystrokes into whatever has focus is not.
+        const activeApps = micWatcher.getActiveApps();
+        if (activeApps.length === 0) {
+          return { muted: false, reason: "no-call" };
+        }
+
+        const muted = await voiceMuter.hold(key);
+        return { muted, reason: muted ? "held" : "hold-failed", apps: activeApps };
+      } catch (error) {
+        debugLogger.warn("[IPC] voice-mute-start failed:", error.message);
+        return { muted: false, reason: "error" };
+      }
+    });
+
+    ipcMain.handle("voice-mute-stop", async () => {
+      try {
+        // release() is a no-op unless we are the ones holding the key, so this
+        // can never unmute somebody who muted themselves.
+        const released = await voiceMuter.release();
+        return { released };
+      } catch (error) {
+        debugLogger.warn("[IPC] voice-mute-stop failed:", error.message);
+        return { released: false };
+      }
+    });
+
+    // Test cycle for the settings screen: hold the key briefly and release, so
+    // the user can watch their voice app's own mute indicator flip and confirm
+    // the keybind matches before trusting the feature in a real call. Skips the
+    // in-a-call check on purpose, since testing outside a call is the point.
+    ipcMain.handle("voice-mute-test", async (_event, options = {}) => {
+      try {
+        const key = typeof options.key === "string" ? options.key.trim() : "";
+        if (!key) {
+          return { ok: false, reason: "no-key" };
+        }
+        const holdMs = Math.min(Math.max(Number(options.holdMs) || 1200, 300), 5000);
+        const held = await voiceMuter.hold(key, holdMs + 2000);
+        if (!held) {
+          return { ok: false, reason: "hold-failed" };
+        }
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+        await voiceMuter.release();
+        return { ok: true };
+      } catch (error) {
+        debugLogger.warn("[IPC] voice-mute-test failed:", error.message);
+        try {
+          await voiceMuter.release();
+        } catch {
+          // Best effort: never leave a test holding the key.
+        }
+        return { ok: false, reason: "error" };
+      }
+    });
+
+    ipcMain.handle("voice-mute-status", async () => {
+      try {
+        return {
+          supported: voiceMuter.isSupported,
+          activeApps: micWatcher.getActiveApps(),
+          muted: voiceMuter.isMuted(),
+        };
+      } catch (error) {
+        return { supported: false, activeApps: [], muted: false };
+      }
+    });
+
     // Licensing - stable device identifier
     ipcMain.handle("get-machine-id", async () => {
       try {
@@ -2304,4 +2411,21 @@ class IPCHandlers {
   }
 }
 
+/**
+ * Which hotkey the dictation shortcut should be registered to when capture mode
+ * ends.
+ *
+ * A null `newHotkey` means "restore what was already there". Only the dictation
+ * hotkey field hands over the key it captured; every other HotkeyInput on the
+ * settings screen passes null, because adopting a mute key as the dictation
+ * hotkey would leave the user unable to start dictating at all.
+ */
+function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
+  if (!enabled && newHotkey) {
+    return newHotkey;
+  }
+  return currentHotkey;
+}
+
 module.exports = IPCHandlers;
+module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;

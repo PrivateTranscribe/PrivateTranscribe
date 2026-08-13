@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Database functions
   saveTranscription: (text, durationSeconds, options) =>
     ipcRenderer.invoke("db-save-transcription", text, durationSeconds, options),
+  recordTranscriptionActivity: (text, durationSeconds) =>
+    ipcRenderer.invoke("db-record-transcription-activity", text, durationSeconds),
   getTranscriptions: (limit) => ipcRenderer.invoke("db-get-transcriptions", limit),
   clearTranscriptions: () => ipcRenderer.invoke("db-clear-transcriptions"),
   deleteTranscription: (id) => ipcRenderer.invoke("db-delete-transcription", id),
@@ -79,7 +81,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Correction memory
   getCorrectionMemory: (limit) => ipcRenderer.invoke("db-get-correction-memory", limit),
-  upsertCorrection: (source, target) => ipcRenderer.invoke("db-upsert-correction", source, target),
   confirmCorrection: (source, target) =>
     ipcRenderer.invoke("db-confirm-correction", source, target),
   deleteCorrection: (source) => ipcRenderer.invoke("db-delete-correction", source),
@@ -356,6 +357,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Media pause — pause playing media while recording, resume when done
   mediaPause: () => ipcRenderer.invoke("media-pause"),
   mediaResume: () => ipcRenderer.invoke("media-resume"),
+
+  // Voice-call mute — hold a voice app's push-to-mute key while dictating
+  voiceMuteStart: (options) => ipcRenderer.invoke("voice-mute-start", options),
+  voiceMuteStop: () => ipcRenderer.invoke("voice-mute-stop"),
+  voiceMuteStatus: () => ipcRenderer.invoke("voice-mute-status"),
+  voiceMuteTest: (options) => ipcRenderer.invoke("voice-mute-test", options),
 
   // Licensing
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),

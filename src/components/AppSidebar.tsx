@@ -13,6 +13,7 @@ import { shouldShowProBadge } from "../hooks/useProStatus";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import FeedbackDialog from "./FeedbackDialog";
+import { Badge } from "./ui/badge";
 
 export type PageId =
   | "home"
@@ -125,8 +126,8 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "#0D0F0D",
-        borderRight: "1px solid #222523",
+        backgroundColor: "var(--color-surface-1)",
+        borderRight: "1px solid var(--color-border)",
         overflow: "hidden",
       }}
     >
@@ -142,7 +143,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                 style={{
                   fontSize: "9px",
                   fontWeight: 600,
-                  color: "#4A4F4C",
+                  color: "var(--color-foreground-faint)",
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
                   padding: "12px 12px 6px",
@@ -166,11 +167,13 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                     width: "100%",
                     padding: "8px 12px",
                     marginBottom: "2px",
-                    backgroundColor: isActive ? "#1A1D1A" : "transparent",
-                    color: isActive ? "#70FFBA" : "#8A8F8C",
+                    backgroundColor: isActive ? "var(--color-surface-raised)" : "transparent",
+                    color: isActive ? "var(--color-primary)" : "var(--color-foreground-muted)",
                     border: "none",
                     borderRadius: "8px",
-                    borderLeft: isActive ? "2px solid #70FFBA" : "2px solid transparent",
+                    borderLeft: isActive
+                      ? "2px solid var(--color-primary)"
+                      : "2px solid transparent",
                     cursor: "pointer",
                     fontSize: "13px",
                     fontWeight: isActive ? 500 : 400,
@@ -180,14 +183,14 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) {
-                      e.currentTarget.style.backgroundColor = "#141614";
-                      e.currentTarget.style.color = "#B0B5B2";
+                      e.currentTarget.style.backgroundColor = "var(--color-popover)";
+                      e.currentTarget.style.color = "var(--color-foreground-subtle)";
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isActive) {
                       e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.color = "#8A8F8C";
+                      e.currentTarget.style.color = "var(--color-foreground-muted)";
                     }
                   }}
                 >
@@ -201,29 +204,18 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                   />
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {item.badge && (item.badgeVariant !== "pro" || shouldShowProBadge(item.id)) && (
-                    <span
-                      style={{
-                        fontSize: "9px",
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                        padding: "1px 6px",
-                        borderRadius: "4px",
-                        backgroundColor:
-                          item.badgeVariant === "new"
-                            ? "rgba(112,255,186,0.15)"
-                            : item.badgeVariant === "pro"
-                              ? "rgba(168,133,255,0.15)"
-                              : "rgba(255,255,255,0.06)",
-                        color:
-                          item.badgeVariant === "new"
-                            ? "#70FFBA"
-                            : item.badgeVariant === "pro"
-                              ? "#A885FF"
-                              : "#6B7370",
-                      }}
+                    <Badge
+                      variant={
+                        item.badgeVariant === "new"
+                          ? "default"
+                          : item.badgeVariant === "pro"
+                            ? "pro"
+                            : "outline"
+                      }
+                      className="rounded px-1.5 py-px text-[9px] font-semibold tracking-[0.02em]"
                     >
                       {item.badge}
-                    </span>
+                    </Badge>
                   )}
                 </button>
               );
@@ -235,7 +227,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
         <div
           style={{
             height: "1px",
-            backgroundColor: "#222523",
+            backgroundColor: "var(--color-border)",
             margin: "8px 12px",
           }}
         />
@@ -252,11 +244,11 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                 gap: "10px",
                 width: "100%",
                 padding: "8px 12px",
-                backgroundColor: isActive ? "#1A1D1A" : "transparent",
-                color: isActive ? "#70FFBA" : "#8A8F8C",
+                backgroundColor: isActive ? "var(--color-surface-raised)" : "transparent",
+                color: isActive ? "var(--color-primary)" : "var(--color-foreground-muted)",
                 border: "none",
                 borderRadius: "8px",
-                borderLeft: isActive ? "2px solid #70FFBA" : "2px solid transparent",
+                borderLeft: isActive ? "2px solid var(--color-primary)" : "2px solid transparent",
                 cursor: "pointer",
                 fontSize: "13px",
                 fontWeight: isActive ? 500 : 400,
@@ -266,14 +258,14 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.backgroundColor = "#141614";
-                  e.currentTarget.style.color = "#B0B5B2";
+                  e.currentTarget.style.backgroundColor = "var(--color-popover)";
+                  e.currentTarget.style.color = "var(--color-foreground-subtle)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.color = "#8A8F8C";
+                  e.currentTarget.style.color = "var(--color-foreground-muted)";
                 }
               }}
             >
@@ -295,19 +287,26 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
       <div
         style={{
           padding: "12px 16px 14px",
-          borderTop: "1px solid #1A1D1A",
+          borderTop: "1px solid var(--color-surface-raised)",
           display: "flex",
           flexDirection: "column",
           gap: "8px",
         }}
       >
         {/* Hotkey hint */}
-        <p style={{ fontSize: "11px", color: "#4A4F4C", margin: 0, lineHeight: 1.5 }}>
+        <p
+          style={{
+            fontSize: "11px",
+            color: "var(--color-foreground-faint)",
+            margin: 0,
+            lineHeight: 1.5,
+          }}
+        >
           Press{" "}
           <span
             style={{
               fontFamily: "'JetBrains Mono', monospace",
-              color: "#5E6B64",
+              color: "var(--color-foreground-faint)",
               fontWeight: 500,
             }}
           >
@@ -332,7 +331,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
                 borderRadius: "8px",
                 border: "1px solid rgba(112,255,186,0.25)",
                 backgroundColor: "rgba(112,255,186,0.08)",
-                color: "#70FFBA",
+                color: "var(--color-primary)",
                 cursor: "pointer",
                 fontSize: "12px",
                 fontWeight: 600,
@@ -351,7 +350,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
             <p
               style={{
                 fontSize: "10px",
-                color: "#2E332F",
+                color: "var(--color-border-hover)",
                 margin: 0,
               }}
             >
@@ -360,7 +359,7 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
             <span
               style={{
                 fontSize: "9px",
-                color: "#70FFBA",
+                color: "var(--color-primary)",
                 backgroundColor: "rgba(112,255,186,0.08)",
                 border: "1px solid rgba(112,255,186,0.16)",
                 borderRadius: "999px",

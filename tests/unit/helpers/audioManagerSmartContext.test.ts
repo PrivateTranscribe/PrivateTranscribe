@@ -158,6 +158,55 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(options.translate).toBeUndefined();
   });
 
+  it("trims trailing silence on ordinary dictations, not just long sessions", async () => {
+    const manager = new AudioManager();
+
+    await manager.processWithLocalWhisper(makeBlob(), "large", { skipPostProcessing: true });
+
+    const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
+    expect(options.trimTrailingSilence).toBe(true);
+    expect(options.longSessionChunk).toBeUndefined();
+  });
+
+  it("leaves uploaded files untrimmed", async () => {
+    const manager = new AudioManager();
+
+    await manager.processWithLocalWhisper(makeBlob(), "large", {
+      fileMode: true,
+      skipPostProcessing: true,
+    });
+
+    const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
+    expect(options.trimTrailingSilence).toBeUndefined();
+  });
+
+  it("treats a silent long-session chunk as empty, not as a failure", async () => {
+    // A chunk holding only a pause is normal. Throwing here burns the chunk's
+    // retries and makes finalizeLongSessionResult discard the whole dictation.
+    const manager = new AudioManager();
+    (window as any).electronAPI.transcribeLocalWhisper = vi
+      .fn()
+      .mockResolvedValue({ success: false, message: "No audio detected" });
+
+    await expect(
+      manager.processWithLocalWhisper(makeBlob(), "large", {
+        source: "long-session",
+        skipPostProcessing: true,
+      })
+    ).resolves.toMatchObject({ success: true, text: "" });
+  });
+
+  it("still reports no audio for an ordinary silent dictation", async () => {
+    const manager = new AudioManager();
+    (window as any).electronAPI.transcribeLocalWhisper = vi
+      .fn()
+      .mockResolvedValue({ success: false, message: "No audio detected" });
+
+    await expect(
+      manager.processWithLocalWhisper(makeBlob(), "large", { skipPostProcessing: true })
+    ).rejects.toThrow("No audio detected");
+  });
+
   it("marks live long-session chunks for conservative Whisper decoding", async () => {
     const manager = new AudioManager();
 
@@ -200,7 +249,10 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(audioBlob.arrayBuffer).toHaveBeenCalledTimes(1);
     expect((window as any).electronAPI.transcribeLocalWhisper).not.toHaveBeenCalled();
 
-    correctionMemory.resolve([{ target: "PrivateTranscribe", count: 2 }]);
+    correctionMemory.resolve([
+      { target: "PrivateTranscribe", count: 2, confirmed: true },
+      { target: "UnapprovedHint", count: 99, confirmed: false },
+    ]);
     smartContext.resolve({
       available: true,
       fileIdentifiers: { available: true, identifiers: [] },
@@ -213,5 +265,6 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
       source: "local",
     });
     expect((window as any).electronAPI.transcribeLocalWhisper).toHaveBeenCalledTimes(1);
+    expect(manager._cachedCorrectionHints).toEqual(["PrivateTranscribe"]);
   });
 });

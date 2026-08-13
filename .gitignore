@@ -20,6 +20,12 @@ coverage/
 *.lcov
 .nyc_output/
 
+# Playwright (Electron e2e)
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 # Build / dist outputs
 .next/
 dist/

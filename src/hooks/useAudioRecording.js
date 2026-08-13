@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import AudioManager from "../helpers/audioManager";
+import AudioManager, { MISSING_SECTION_MARKER } from "../helpers/audioManager";
 import { getDictionaryRepairTerms, parseDictionaryEntryModes } from "../utils/dictionaryEntryModes";
 import {
   buildStarterLimitMessage,
@@ -13,6 +13,21 @@ import {
   trackAnalyticsEventOnce,
 } from "../utils/analytics";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "./useProStatus";
+import { deliverDictation } from "../utils/dictationDelivery";
+import { formatHotkeyLabel, readStoredHotkey } from "../utils/hotkeys";
+
+/**
+ * Whether a voice-mute attempt failed in a way the user needs to hear about.
+ *
+ * Only two outcomes qualify. "no-call" and "no-key" are the ordinary quiet
+ * cases — warning on those would put a toast in front of anyone who dictates
+ * while not in a call, which is most dictations. "hold-failed" and "error" are
+ * different: the app decided a call was live, tried to mute it, and could not.
+ */
+export const shouldWarnAboutFailedMute = (result) => {
+  if (!result || result.muted) return false;
+  return result.reason === "hold-failed" || result.reason === "error";
+};
 
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -156,6 +171,45 @@ export const useAudioRecording = (toast, options = {}) => {
       window.electronAPI?.mediaResume?.();
     };
 
+    // ── Voice-call mute helpers ──────────────────────────────────────────────
+    // Hold the voice app's push-to-mute key while recording so a Discord call
+    // doesn't hear the dictation. The main process decides whether a call is
+    // actually happening and only releases a key it holds, so unmute is a safe
+    // no-op when nothing was muted.
+    let voiceMuteRequested = false;
+
+    const muteVoiceCall = () => {
+      if (localStorage.getItem("muteVoiceCallOnRecord") !== "true") return;
+      const key = readStoredHotkey(localStorage.getItem("voiceCallMuteKey"));
+      if (!key) return;
+      voiceMuteRequested = true;
+
+      // A mute that does not happen has to be visible. Being outside a call is
+      // the ordinary case and stays quiet, but a key the helper could not send
+      // means the user is talking into a live call in the belief that nobody
+      // can hear them. Staying silent about that is the one failure this whole
+      // feature exists to prevent.
+      Promise.resolve(window.electronAPI?.voiceMuteStart?.({ key }))
+        .then((result) => {
+          if (disposed || !shouldWarnAboutFailedMute(result)) return;
+          toastRef.current?.({
+            title: "Your call was not muted",
+            description: `PrivateTranscribe could not send ${formatHotkeyLabel(key)} to your voice app, so the call can hear this dictation. Check the mute key in Settings.`,
+            variant: "destructive",
+            duration: 10000,
+          });
+        })
+        .catch(() => {
+          // The mute is best effort; a broken IPC bridge must not stop recording.
+        });
+    };
+
+    const unmuteVoiceCall = () => {
+      if (!voiceMuteRequested) return;
+      voiceMuteRequested = false;
+      window.electronAPI?.voiceMuteStop?.();
+    };
+
     // ── Audio feedback helper ─────────────────────────────────────────────────
     const playFeedback = (sound) => {
       const enabled = localStorage.getItem("audioFeedback") === "true";
@@ -205,17 +259,18 @@ export const useAudioRecording = (toast, options = {}) => {
         // Always restore audio when transcription finishes (safety net)
         restoreAudio();
         resumeMedia();
+        unmuteVoiceCall();
 
         const canCommit = () =>
           !disposed && (typeof commitContext.isCurrent !== "function" || commitContext.isCurrent());
 
         if (!canCommit() || !result.success) {
-          return;
+          return { recoverable: false, reason: "Dictation completion was canceled" };
         }
 
         const rawText = result.text || "";
         if (!rawText.trim()) {
-          return;
+          return { recoverable: false, reason: "No usable transcription text was produced" };
         }
 
         let text = rawText;
@@ -265,6 +320,24 @@ export const useAudioRecording = (toast, options = {}) => {
         }
 
         setTranscript(text);
+
+        if (result.completeness?.reason === "failed-chunks") {
+          const failed = result.completeness.failedChunks;
+          const total = result.completeness.totalChunks;
+          toastRef.current?.({
+            title: "Part of this recording is missing",
+            description: `${failed} of ${total} sections could not be transcribed. Each gap is marked "${MISSING_SECTION_MARKER}" in the text.`,
+            variant: "destructive",
+            duration: 12000,
+          });
+        } else if (result.completeness?.suspicious) {
+          toastRef.current?.({
+            title: "Transcription may be incomplete",
+            description: "Review the transcription before using it.",
+            variant: "default",
+            duration: 8000,
+          });
+        }
 
         // ── Action Engine ──────────────────────────────────────────────────────
         // Check whether the final transcript triggers any user-configured action.
@@ -331,23 +404,26 @@ export const useAudioRecording = (toast, options = {}) => {
         const shouldPaste = (localStorage.getItem("autoPaste") ?? "true") !== "false";
         const shouldCopy = (localStorage.getItem("copyToClipboard") ?? "true") !== "false";
 
-        if (!actionHandled) {
+        const historyLimitRaw = localStorage.getItem("historyLimit");
+        const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
+        if (historyLimit === 0) {
+          await manager.recordTranscriptionActivity(text, result.durationSeconds);
           if (!canCommit()) {
             return;
           }
-          if (shouldPaste) {
-            await manager.safePaste(text);
-            if (!canCommit()) {
-              return;
-            }
-            // If "copy to clipboard" is also on, re-write the transcription after paste
-            // (safePaste restores the original clipboard; this ensures the text stays in it)
-            if (shouldCopy && window.electronAPI?.writeClipboard) {
-              await window.electronAPI.writeClipboard(text);
-            }
-          } else if (shouldCopy && window.electronAPI?.writeClipboard) {
-            await window.electronAPI.writeClipboard(text);
-          }
+        }
+        const delivery = await deliverDictation({
+          text,
+          shouldPersist: isNaN(historyLimit) || historyLimit > 0,
+          shouldPaste: !actionHandled && shouldPaste,
+          shouldCopy: !actionHandled && shouldCopy,
+          additionalConfirmedDelivery: actionHandled,
+          persist: () => manager.saveTranscription(text, result.durationSeconds),
+          paste: () => manager.safePaste(text),
+          copy: (value) => window.electronAPI?.writeClipboard?.(value),
+        });
+        if (!canCommit()) {
+          return;
         }
 
         // Success confirmation notification (skipped for action triggers - those
@@ -356,7 +432,7 @@ export const useAudioRecording = (toast, options = {}) => {
         if (!canCommit()) {
           return;
         }
-        if (showSuccess && !actionHandled) {
+        if (showSuccess && !actionHandled && delivery.outputAction !== "copy-fallback") {
           toastRef.current?.({
             title: "Transcription complete",
             description: text.length > 80 ? text.slice(0, 80) + "…" : text,
@@ -367,16 +443,19 @@ export const useAudioRecording = (toast, options = {}) => {
 
         const outputAction = actionHandled
           ? "action"
-          : shouldPaste
-            ? "paste"
-            : shouldCopy
-              ? "copy"
-              : "none";
+          : delivery.outputAction === "copy-fallback"
+            ? "copy"
+            : delivery.outputAction;
         const analyticsProperties = buildTranscriptionAnalyticsProperties({
           source: result.source,
           outputAction,
           text,
           durationSeconds: result.durationSeconds,
+          // Non-English accuracy is materially worse, and worse still on the
+          // smaller models. Without these two we cannot tell whether that
+          // affects a handful of users or most of them.
+          preferredLanguage: localStorage.getItem("preferredLanguage"),
+          model: result.activeModel,
         });
         void trackAnalyticsEvent("transcription_completed", analyticsProperties);
         void trackAnalyticsEventOnce("first_transcription_completed", analyticsProperties);
@@ -494,13 +573,6 @@ export const useAudioRecording = (toast, options = {}) => {
           // ignore
         }
 
-        // Only save to history if the user hasn't disabled history entirely
-        const historyLimitRaw = localStorage.getItem("historyLimit");
-        const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
-        if (canCommit() && (isNaN(historyLimit) || historyLimit > 0)) {
-          void manager.saveTranscription(text, result.durationSeconds);
-        }
-
         if (
           canCommit() &&
           (result.source === "openai" || result.source === "openai-fallback") &&
@@ -517,6 +589,10 @@ export const useAudioRecording = (toast, options = {}) => {
         // When overlay is disabled, this triggers the window to be destroyed
         // so it doesn't cause DWM lag while gaming.
         window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
+        return {
+          recoverable: delivery.recoverable,
+          reason: delivery.recoverable ? null : "History, paste, and clipboard delivery failed",
+        };
       },
     });
 
@@ -647,11 +723,13 @@ export const useAudioRecording = (toast, options = {}) => {
       }
       duckAudio();
       pauseMedia();
+      muteVoiceCall();
       try {
         const started = await manager.startRecording();
         if (!started) {
           restoreAudio();
           resumeMedia();
+          unmuteVoiceCall();
         } else {
           void trackAnalyticsEvent("transcription_started");
         }
@@ -659,6 +737,7 @@ export const useAudioRecording = (toast, options = {}) => {
       } catch (error) {
         restoreAudio();
         resumeMedia();
+        unmuteVoiceCall();
         throw error;
       }
     };
@@ -668,6 +747,7 @@ export const useAudioRecording = (toast, options = {}) => {
       if (!currentState.isRecording && !currentState.isStartingRecording) {
         restoreAudio();
         resumeMedia();
+        unmuteVoiceCall();
         return false;
       }
 
@@ -677,6 +757,7 @@ export const useAudioRecording = (toast, options = {}) => {
       const stopped = manager.stopRecording();
       restoreAudio();
       resumeMedia();
+      unmuteVoiceCall();
       return stopped;
     };
 

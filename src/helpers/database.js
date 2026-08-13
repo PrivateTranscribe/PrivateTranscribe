@@ -39,6 +39,16 @@ class DatabaseManager {
         )
       `);
 
+      // Streaks need only a local calendar date and representative timestamp.
+      // Keeping this metadata separate lets transcript retention remain a strict
+      // privacy limit without sacrificing the user's activity streak.
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS streak_activity (
+          local_date TEXT PRIMARY KEY,
+          timestamp DATETIME NOT NULL
+        )
+      `);
+
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS custom_dictionary (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,6 +142,27 @@ class DatabaseManager {
         console.error("Migration warning:", migrationError.message);
       }
 
+      // Backfill date-only streak metadata before strict history trimming can
+      // remove older transcript text. This migration is idempotent.
+      try {
+        const rows = this.db
+          .prepare(
+            `SELECT timestamp FROM transcriptions WHERE include_in_stats = 1 ORDER BY timestamp ASC`
+          )
+          .all();
+        const insertActivity = this.db.prepare(
+          `INSERT OR IGNORE INTO streak_activity (local_date, timestamp) VALUES (?, ?)`
+        );
+        const backfill = this.db.transaction((timestamps) => {
+          for (const row of timestamps) {
+            insertActivity.run(this._toLocalDateKey(row.timestamp), row.timestamp);
+          }
+        });
+        backfill(rows);
+      } catch (migrationError) {
+        console.error("Migration warning (streak activity):", migrationError.message);
+      }
+
       // Migration: Add average_wpm column if it doesn't exist (for existing databases)
       try {
         const columns = this.db.prepare("PRAGMA table_info(stats)").all();
@@ -173,6 +204,65 @@ class DatabaseManager {
     }
   }
 
+  _toLocalDateKey(timestamp) {
+    const value = String(timestamp || "");
+    const parsed = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+      ? new Date(value.replace(" ", "T") + "Z")
+      : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error("Invalid streak timestamp");
+    }
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+  }
+
+  _recordStreakActivity(timestamp) {
+    this.db
+      .prepare(`INSERT OR IGNORE INTO streak_activity (local_date, timestamp) VALUES (?, ?)`)
+      .run(this._toLocalDateKey(timestamp), timestamp);
+  }
+
+  _updateStatsAndStreak(text, durationSeconds, timestamp) {
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const actualSeconds =
+      durationSeconds && durationSeconds > 0 ? durationSeconds : (wordCount / 150) * 60;
+    const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
+    const newTotalWords = (currentStats?.total_words || 0) + wordCount;
+    const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
+    const averageWPM = newTotalSeconds > 0 ? newTotalWords / (newTotalSeconds / 60) : 0;
+
+    this.db
+      .prepare(
+        `
+          UPDATE stats
+          SET total_words = total_words + ?,
+              total_transcriptions = total_transcriptions + 1,
+              total_seconds = total_seconds + ?,
+              average_wpm = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = 1
+        `
+      )
+      .run(wordCount, actualSeconds, averageWPM);
+    this._recordStreakActivity(timestamp);
+  }
+
+  recordTranscriptionActivity(text, durationSeconds = null) {
+    try {
+      if (!this.db) {
+        throw new Error("Database not initialized");
+      }
+      const recordActivity = this.db.transaction(() => {
+        const { timestamp } = this.db.prepare("SELECT CURRENT_TIMESTAMP AS timestamp").get();
+        this._updateStatsAndStreak(text, durationSeconds, timestamp);
+        return timestamp;
+      });
+      return { success: true, timestamp: recordActivity() };
+    } catch (error) {
+      console.error("Error recording transcription activity:", error.message);
+      throw error;
+    }
+  }
+
   saveTranscription(text, durationSeconds = null, options = {}) {
     try {
       if (!this.db) {
@@ -189,31 +279,7 @@ class DatabaseManager {
       const transcription = fetchStmt.get(result.lastInsertRowid);
 
       if (includeInStats) {
-        // Update aggregate stats
-        const wordCount = text.split(/\s+/).filter(Boolean).length;
-
-        // Use actual recording duration if available, otherwise estimate at 150 WPM
-        const actualSeconds =
-          durationSeconds && durationSeconds > 0 ? durationSeconds : (wordCount / 150) * 60;
-
-        // Get current stats to calculate cumulative average WPM
-        const currentStats = this.db.prepare("SELECT * FROM stats WHERE id = 1").get();
-        const newTotalWords = (currentStats?.total_words || 0) + wordCount;
-        const newTotalSeconds = (currentStats?.total_seconds || 0) + actualSeconds;
-
-        // Calculate average WPM: (total words / total minutes)
-        const averageWPM = newTotalSeconds > 0 ? newTotalWords / (newTotalSeconds / 60) : 0;
-
-        const updateStats = this.db.prepare(`
-          UPDATE stats 
-          SET total_words = total_words + ?,
-              total_transcriptions = total_transcriptions + 1,
-              total_seconds = total_seconds + ?,
-              average_wpm = ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = 1
-        `);
-        updateStats.run(wordCount, actualSeconds, averageWPM);
+        this._updateStatsAndStreak(text, durationSeconds, transcription.timestamp);
       }
 
       return { id: result.lastInsertRowid, success: true, transcription };
@@ -242,8 +308,7 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      const stmt = this.db.prepare("DELETE FROM transcriptions");
-      const result = stmt.run();
+      const result = this.db.prepare("DELETE FROM transcriptions").run();
       return { cleared: result.changes, success: true };
     } catch (error) {
       console.error("Error clearing transcriptions:", error.message);
@@ -266,24 +331,8 @@ class DatabaseManager {
     }
   }
 
-  // Deletes all records beyond the newest `limit` entries (oldest first),
-  // but always preserves one row per UTC calendar day for streak accuracy.
-  //
-  // Root cause this guards against: trimTranscriptions physically deletes rows from
-  // the DB.  getStreakDates() fetches ALL rows with include_in_stats=1 to compute
-  // the streak — there is no secondary "day activity" table.  Without the protection
-  // below, a user who fills their history limit with today's dictations causes the
-  // trim to delete yesterday's (now-oldest) entry, and the streak drops by one day
-  // the very next time they dictate.
-  //
-  // The protection subquery keeps the oldest (MIN id) include_in_stats=1 row per
-  // UTC date.  That one sentinel row per day is enough for the renderer's
-  // toLocalDateKey(parseUtcTimestamp(ts)) to correctly attribute the day to the
-  // user's local calendar date.  Rows that have already been excluded from stats
-  // (include_in_stats=0 via resetStats) are not protected — they're invisible to
-  // getStreakDates() anyway.
-  //
-  // If limit is 0, deletes everything (same as clearTranscriptions).
+  // Deletes every transcript beyond the newest `limit` entries. Streak metadata
+  // lives separately and contains no transcript text, so this limit is exact.
   trimTranscriptions(limit) {
     try {
       if (!this.db) {
@@ -298,14 +347,6 @@ class DatabaseManager {
           SELECT id FROM transcriptions
           ORDER BY timestamp DESC, id DESC
           LIMIT ?
-        )
-        AND id NOT IN (
-          -- Preserve the oldest include_in_stats=1 row per UTC date so that
-          -- getStreakDates() always has at least one timestamp to represent each
-          -- active day, even after aggressive trimming.
-          SELECT MIN(id) FROM transcriptions
-          WHERE include_in_stats = 1
-          GROUP BY date(timestamp)
         )
       `);
       const result = stmt.run(limit);
@@ -458,14 +499,9 @@ class DatabaseManager {
       if (!this.db) {
         throw new Error("Database not initialized");
       }
-      // Return raw UTC timestamps so the renderer can convert to local dates reliably.
-      // SQLite's 'localtime' modifier is unreliable on some Linux builds (may be a no-op),
-      // which caused dates to appear as UTC keys and broke the streak counter at day boundaries.
-      // The renderer's toLocalDateKey() uses JS Date which always applies the correct system TZ.
       const stmt = this.db.prepare(`
         SELECT timestamp
-        FROM transcriptions
-        WHERE include_in_stats = 1
+        FROM streak_activity
         ORDER BY timestamp DESC
       `);
       return stmt.all().map((r) => r.timestamp);
@@ -502,6 +538,7 @@ class DatabaseManager {
         this.db
           .prepare(`UPDATE transcriptions SET include_in_stats = 0 WHERE include_in_stats != 0`)
           .run();
+        this.db.prepare("DELETE FROM streak_activity").run();
       });
 
       tx();

@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  assertWindowsFastPasteSucceeded,
   FAST_PASTE_EXECUTABLE,
   getWindowsFastPasteExecutablePaths,
   getWindowsPasteShortcut,
@@ -127,6 +128,7 @@ describe("parseWindowsFastPasteOutput", () => {
   test("reads a successful terminal paste", () => {
     const output = JSON.stringify({
       pasted: true,
+      dispatched: true,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
@@ -135,6 +137,7 @@ describe("parseWindowsFastPasteOutput", () => {
 
     expect(parseWindowsFastPasteOutput(output)).toEqual({
       pasted: true,
+      dispatched: true,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
@@ -153,9 +156,29 @@ describe("parseWindowsFastPasteOutput", () => {
     expect(parseWindowsFastPasteOutput(output).isTerminal).toBe(false);
   });
 
+  test("distinguishes a dispatched shortcut from confirmed insertion", () => {
+    const parsed = parseWindowsFastPasteOutput(
+      JSON.stringify({
+        pasted: false,
+        dispatched: true,
+        isTerminal: false,
+        windowClass: "Chrome_WidgetWin_1",
+        processName: "Code",
+      })
+    );
+
+    expect(parsed).toMatchObject({ pasted: false, dispatched: true });
+    expect(() =>
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, dispatched: true, isTerminal: false })
+      )
+    ).toThrow("did not confirm text insertion");
+  });
+
   test("degrades to a non-terminal result on unreadable output", () => {
     expect(parseWindowsFastPasteOutput("not json")).toEqual({
       pasted: false,
+      dispatched: false,
       isTerminal: false,
       windowClass: "",
       processName: "",
@@ -189,5 +212,20 @@ describe("parseWindowsFastPasteOutput", () => {
 
     expect(parsed.windowClass).toBe("");
     expect(parsed.processName).toBe("");
+  });
+});
+
+describe("assertWindowsFastPasteSucceeded", () => {
+  test("rejects a zero-exit helper response that says no paste occurred", () => {
+    expect(() =>
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({
+          pasted: false,
+          isTerminal: false,
+          windowClass: "Chrome_WidgetWin_1",
+          processName: "Code.exe",
+        })
+      )
+    ).toThrow("did not confirm text insertion");
   });
 });

@@ -1,0 +1,15 @@
+{
+  "_comment": "Language/model pairs guarded by the accuracy gate. English alone would not have caught the Danish cliff, so a non-English language is deliberately included. Models are kept small enough that CI can download them in reasonable time; the gate watches for regressions, it does not rank models. Full comparisons live in docs/TRANSCRIPTION_ACCURACY.md.",
+  "samples": 40,
+  "tolerancePoints": 1.5,
+  "targets": [
+    {
+      "language": "en",
+      "models": ["base", "small"]
+    },
+    {
+      "language": "da",
+      "models": ["base", "small"]
+    }
+  ]
+}

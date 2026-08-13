@@ -19,6 +19,7 @@ import ReasoningService from "../../services/ReasoningService";
 import { getModelProvider } from "../../models/ModelRegistry";
 import logger from "../../utils/logger";
 import { UNIFIED_SYSTEM_PROMPT } from "../../config/prompts";
+import { SectionLabel } from "./SectionLabel";
 
 interface PromptStudioProps {
   className?: string;
@@ -268,9 +269,7 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
             <div className="px-5 py-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                    {isCustomPrompt ? "Custom prompt" : "Default prompt"}
-                  </p>
+                  <SectionLabel>{isCustomPrompt ? "Custom prompt" : "Default prompt"}</SectionLabel>
                   {isCustomPrompt && (
                     <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded-full bg-primary/10 text-primary">
                       Modified
@@ -375,18 +374,14 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
                 <div className="px-5 py-4">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                      <p className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">
-                        Model
-                      </p>
+                      <SectionLabel>Model</SectionLabel>
                       <p className="text-[12px] font-medium text-foreground font-mono">
                         {reasoningModel || "None"}
                       </p>
                     </div>
                     <div className="h-3 w-px bg-border/40" />
                     <div className="flex items-center gap-2">
-                      <p className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">
-                        Provider
-                      </p>
+                      <SectionLabel>Provider</SectionLabel>
                       <p className="text-[12px] font-medium text-foreground">
                         {providerConfig.label}
                       </p>

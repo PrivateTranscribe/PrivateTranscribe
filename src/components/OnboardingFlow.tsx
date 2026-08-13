@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { IconTile } from "./ui/IconTile";
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
@@ -38,6 +39,10 @@ import { DownloadProgressBar } from "./ui/DownloadProgressBar";
 import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
 import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics";
+import { SectionLabel } from "./ui/SectionLabel";
+import LanguageSelector from "./ui/LanguageSelector";
+import { getLanguageLabel } from "../utils/languages";
+import { isWeakForNonEnglish } from "../utils/modelAccuracy";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -85,6 +90,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
+    preferredLanguage,
     openaiApiKey,
     groqApiKey,
     customTranscriptionApiKey,
@@ -254,8 +260,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
     try {
       const result = await window.electronAPI?.setAutoStartEnabled?.(enabled);
+      // Follow the state the main process verified, not the requested one — a registry
+      // write the OS rejected must show as off rather than silently claiming success.
+      setAutoStartEnabled(result?.enabled ?? (result?.success ? enabled : !enabled));
       if (result?.success) {
-        setAutoStartEnabled(enabled);
         return;
       }
 
@@ -689,23 +697,23 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {/* Feature grid - compact and refined */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <IconTile size="md">
                   <Mic className="w-4 h-4 text-primary" />
-                </div>
+                </IconTile>
                 <span className="text-xs font-medium text-foreground">Voice to Text</span>
                 <span className="text-sm text-muted-foreground">Instant</span>
               </div>
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <IconTile size="md">
                   <Command className="w-4 h-4 text-primary" />
-                </div>
+                </IconTile>
                 <span className="text-xs font-medium text-foreground">Works Anywhere</span>
                 <span className="text-sm text-muted-foreground">Any app</span>
               </div>
               <div className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-surface-1 border border-border-subtle">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <IconTile size="md">
                   <Shield className="w-4 h-4 text-primary" />
-                </div>
+                </IconTile>
                 <span className="text-xs font-medium text-foreground">Private</span>
                 <span className="text-sm text-muted-foreground">Your choice</span>
               </div>
@@ -734,6 +742,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
 
       case 2: // Setup - Choose Mode & Configure
+        const selectedLanguageLabel = getLanguageLabel(preferredLanguage);
+        const showSmallModelLanguageWarning =
+          useLocalWhisper && isWeakForNonEnglish(whisperModel, preferredLanguage);
+
         const shouldShowCudaDownload =
           useLocalWhisper &&
           isModelDownloaded &&
@@ -751,6 +763,51 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 Transcription Setup
               </h2>
               <p className="text-xs text-muted-foreground">Pick the fastest way to get started</p>
+            </div>
+
+            {/* Asked before the model, not after it. Setup never mentioned
+                language at all, so every non-English user silently ran on
+                auto-detect. It also has to come first because the answer
+                changes which models are usable: on our Danish benchmark the
+                small models fall apart while staying fine for English. */}
+            <div
+              className="rounded-lg border border-border-subtle bg-surface-1 p-3 space-y-2"
+              data-testid="onboarding-language"
+            >
+              <SectionLabel>Dictation language</SectionLabel>
+              <LanguageSelector
+                value={preferredLanguage}
+                onChange={(value) => updateTranscriptionSettings({ preferredLanguage: value })}
+              />
+              {preferredLanguage === "auto" ? (
+                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
+                  Auto-detect guesses from the first seconds of audio, and it mixes up languages
+                  that sound alike, such as Danish, Norwegian and Swedish. Picking your language
+                  stops the guessing.
+                </p>
+              ) : (
+                preferredLanguage !== "en" && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="onboarding-language-hint"
+                  >
+                    Accuracy outside English is lower on every model, so expect a few more
+                    corrections. Adding names and jargon to your dictionary later wins some back.
+                  </p>
+                )
+              )}
+              {showSmallModelLanguageWarning && (
+                <div
+                  className="flex items-start gap-1.5 rounded-md border border-warning/25 bg-warning/8 px-3 py-2"
+                  data-testid="onboarding-language-model-warning"
+                >
+                  <span className="text-warning text-xs leading-relaxed">
+                    ⚠️ The smaller models drop off sharply outside English. On our Danish test, Base
+                    got most words wrong while Turbo stayed usable. For {selectedLanguageLabel},
+                    pick Turbo or Large if your machine can run them.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Unified configuration with integrated mode toggle */}
@@ -790,8 +847,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
               onDownloadComplete={checkModelStatus}
+              preferredLanguage={preferredLanguage}
               variant="onboarding"
             />
+
             {shouldShowCudaDownload && (
               <div className="rounded-lg border border-border-subtle bg-surface-1 overflow-hidden">
                 <div className="p-3 border-b border-border-subtle">
@@ -956,9 +1015,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               {/* Hotkey section */}
               <div className="p-4 border-b border-border-subtle">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Hotkey
-                  </span>
+                  <SectionLabel as="span">Hotkey</SectionLabel>
                 </div>
                 <HotkeyInput
                   value={hotkey}
@@ -974,9 +1031,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               {!isUsingGnomeHotkeys && (
                 <div className="p-4 flex items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Style
-                    </span>
+                    <SectionLabel as="span">Style</SectionLabel>
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
                       {activationMode === "tap"
                         ? "Press once to start, press again to stop"
@@ -996,9 +1051,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               {canConfigureAutoStart && (
                 <div className="p-4 border-t border-border-subtle flex items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Startup
-                    </span>
+                    <SectionLabel as="span">Startup</SectionLabel>
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
                       Launch PrivateTranscribe automatically when you start your computer, so your
                       dictation hotkey works right away.
@@ -1019,9 +1072,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {/* Test area - minimal chrome */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Test
-                </span>
+                <SectionLabel as="span">Test</SectionLabel>
                 <span className="text-xs text-muted-foreground/60">
                   {activationMode === "tap" || isUsingGnomeHotkeys
                     ? `${readableHotkey} to start/stop`
@@ -1292,7 +1343,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {currentStep === steps.length - 1 ? (
               <>
                 {onboardingError && (
-                  <div className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <div className="w-full rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {onboardingError}
                   </div>
                 )}

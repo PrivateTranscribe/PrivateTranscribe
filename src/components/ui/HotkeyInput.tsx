@@ -143,6 +143,17 @@ export interface HotkeyInputProps {
   onBlur?: () => void;
   disabled?: boolean;
   autoFocus?: boolean;
+  /**
+   * Whether the captured key becomes the global dictation hotkey.
+   *
+   * Capture mode always unregisters the dictation hotkey so pressing a key here
+   * cannot start a dictation. On exit the main process re-registers it, and it
+   * adopts whatever key this field reports. That is right for the dictation
+   * hotkey field and wrong for every other use: capturing a mute key would
+   * otherwise repoint the dictation listener at it, leaving the user unable to
+   * start dictating at all. Pass false to restore the existing hotkey instead.
+   */
+  appliesToDictationHotkey?: boolean;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -175,7 +186,14 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
 export function mapMouseEventToHotkey(e: MouseEvent): string | null {
   // Browser MouseEvent.button mapping:
   // 0=Left, 1=Middle, 2=Right, 3=Back, 4=Forward
+  //
+  // Middle and the two side buttons are capturable. Left and right are not,
+  // because binding them would make the rest of the interface unusable.
+  // The Mouse3/4/5 names match the numbering Discord shows in its own keybind
+  // list, so a user setting the same physical button in both apps sees the same
+  // label in both places.
   let baseKey: string | null = null;
+  if (e.button === 1) baseKey = "Mouse3";
   if (e.button === 3) baseKey = "Mouse4";
   if (e.button === 4) baseKey = "Mouse5";
   if (!baseKey) return null;
@@ -198,6 +216,7 @@ export function HotkeyInput({
   onBlur,
   disabled = false,
   autoFocus = false,
+  appliesToDictationHotkey = true,
   variant = "default",
 }: HotkeyInputProps & HotkeyInputVariant) {
   const [isCapturing, setIsCapturing] = useState(false);
@@ -305,10 +324,15 @@ export function HotkeyInput({
   const handleBlur = useCallback(() => {
     setIsCapturing(false);
     setActiveModifiers(new Set());
-    window.electronAPI?.setHotkeyListeningMode?.(false, lastCapturedHotkeyRef.current);
+    // Passing null makes the main process restore the hotkey it already had.
+    // Only the dictation hotkey field may hand over the key it just captured.
+    window.electronAPI?.setHotkeyListeningMode?.(
+      false,
+      appliesToDictationHotkey ? lastCapturedHotkeyRef.current : null
+    );
     lastCapturedHotkeyRef.current = null;
     onBlur?.();
-  }, [onBlur]);
+  }, [onBlur, appliesToDictationHotkey]);
 
   useEffect(() => {
     if (autoFocus && containerRef.current) {
@@ -325,8 +349,12 @@ export function HotkeyInput({
   useEffect(() => {
     if (!isCapturing) return;
 
-    // Allow capturing mouse side buttons (Mouse4/Mouse5) while the input is "listening".
-    // Important: preventDefault to avoid browser back/forward navigation.
+    // Allow capturing the middle and side mouse buttons (Mouse3/Mouse4/Mouse5)
+    // while the input is "listening". Voice apps commonly bind push-to-talk and
+    // push-to-mute to these, so a keyboard-only field could not express what the
+    // user already has set up.
+    // Important: preventDefault to avoid browser back/forward navigation and
+    // middle-click autoscroll.
     const onMouseDown = (e: MouseEvent) => {
       if (disabled) return;
       const hotkey = mapMouseEventToHotkey(e);

@@ -37,7 +37,7 @@ describe("token correction learning", () => {
     ]);
   });
 
-  it("applies learned word corrections in future transcripts", () => {
+  it("applies only explicitly confirmed corrections in future transcripts", () => {
     expect(
       snapTranscript({
         transcript: "cloud opened cursor",
@@ -46,7 +46,7 @@ describe("token correction learning", () => {
           { source: "cursor", target: "Cursor", confirmed: true },
         ],
       })
-    ).toBe("Claude opened Cursor");
+    ).toBe("cloud opened Cursor");
   });
 
   it("applies learned phrase corrections before shorter word corrections", () => {
@@ -59,6 +59,7 @@ describe("token correction learning", () => {
             source: "please write a casual intro",
             target: "Hey team, quick update.",
             count: 2,
+            confirmed: true,
           },
         ],
       })

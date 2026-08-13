@@ -258,11 +258,11 @@ const variantConfig = {
   },
   destructive: {
     icon: AlertCircle,
-    containerClass: cn("bg-[#FF6B6B]/10", "border border-[#FF6B6B]/20", "shadow-elevated"),
-    iconClass: "text-[#FF6B6B]",
-    titleClass: "text-[#FF6B6B]",
-    descClass: "text-[#FF6B6B]/80",
-    progressClass: "bg-[#FF6B6B]/40",
+    containerClass: cn("bg-destructive/10", "border border-destructive/20", "shadow-elevated"),
+    iconClass: "text-destructive",
+    titleClass: "text-destructive",
+    descClass: "text-destructive/80",
+    progressClass: "bg-destructive/40",
   },
   success: {
     icon: CheckCircle2,

@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -8,6 +10,17 @@ const {
 } = require("../../../src/helpers/windowsPasteTarget");
 
 const helperPath = process.platform === "win32" ? resolveWindowsFastPasteExecutable() : null;
+const helperSource = readFileSync(
+  path.resolve(process.cwd(), "resources", "windows-fast-paste.cs"),
+  "utf8"
+);
+
+describe("windows-fast-paste source contract", () => {
+  test("requires the same focused automation element before confirming insertion", () => {
+    expect(helperSource).toContain("focused.GetRuntimeId()");
+    expect(helperSource).toContain("SameRuntimeId(textBefore.RuntimeId, textAfter.RuntimeId)");
+  });
+});
 
 // Exercises the compiled helper itself, which unit tests of the JS wrapper
 // cannot cover. --detect-only reports the target without sending any keystroke,
@@ -25,6 +38,7 @@ describe.runIf(helperPath)("windows-fast-paste.exe", () => {
 
     const parsed = parseWindowsFastPasteOutput(result.stdout);
     expect(parsed.pasted).toBe(false);
+    expect(parsed.dispatched).toBe(false);
     expect(typeof parsed.isTerminal).toBe("boolean");
     expect(typeof parsed.windowClass).toBe("string");
   });
@@ -38,6 +52,7 @@ describe.runIf(helperPath)("windows-fast-paste.exe", () => {
 
     expect(Object.keys(JSON.parse(result.stdout.trim())).sort()).toEqual([
       "chord",
+      "dispatched",
       "isTerminal",
       "pasted",
       "processName",

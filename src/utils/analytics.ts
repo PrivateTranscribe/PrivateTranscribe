@@ -64,21 +64,47 @@ function bucketDuration(durationSeconds: unknown) {
   return "301s+";
 }
 
+/**
+ * The language setting, never a detected or inferred one.
+ *
+ * We report what the user configured, so this stays a coarse product setting
+ * rather than a fact derived from the contents of their speech. "auto" is
+ * reported as itself, which is the answer we most need: it is the setting
+ * that costs accuracy, and we cannot tell how many people sit on it
+ * otherwise.
+ */
+function normalizeLanguageSetting(preferredLanguage: unknown) {
+  if (typeof preferredLanguage !== "string") return "unset";
+  const normalized = preferredLanguage.trim().toLowerCase();
+  if (!normalized) return "unset";
+  return normalized;
+}
+
 export function buildTranscriptionAnalyticsProperties({
   source,
   outputAction,
   text,
   durationSeconds,
+  preferredLanguage,
+  model,
 }: {
   source?: unknown;
   outputAction: "paste" | "copy" | "action" | "none";
   text: string;
   durationSeconds?: unknown;
+  preferredLanguage?: unknown;
+  model?: unknown;
 }): AnalyticsProperties {
   return {
     source: typeof source === "string" ? source : "unknown",
     output_action: outputAction,
     word_count_bucket: bucketWordCount(text),
     duration_bucket: bucketDuration(durationSeconds),
+    // Language and model travel together on purpose. Either alone answers
+    // little; together they answer the question that actually drives work,
+    // which is how many people are dictating a non-English language on a
+    // model that handles it badly.
+    language: normalizeLanguageSetting(preferredLanguage),
+    model: typeof model === "string" && model ? model : "unknown",
   };
 }

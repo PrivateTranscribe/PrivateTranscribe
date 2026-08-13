@@ -140,6 +140,8 @@ class WindowsKeyManager extends EventEmitter {
       if (isCurrentProcess) {
         this.process = null;
         this.isReady = false;
+        this.currentKey = null;
+        this.emit("stopped");
       }
 
       const isExpectedStop = signal === "SIGTERM" || signal === "SIGINT";
@@ -159,6 +161,7 @@ class WindowsKeyManager extends EventEmitter {
    * Stop the key listener
    */
   stop() {
+    const wasListening = Boolean(this.process || this.isReady || this.currentKey);
     if (this.process) {
       debugLogger.debug("[WindowsKeyManager] Stopping key listener");
       this.isStopping = true;
@@ -171,6 +174,9 @@ class WindowsKeyManager extends EventEmitter {
     }
     this.isReady = false;
     this.currentKey = null;
+    if (wasListening) {
+      this.emit("stopped");
+    }
   }
 
   /**
@@ -178,6 +184,10 @@ class WindowsKeyManager extends EventEmitter {
    */
   isAvailable() {
     return this.resolveListenerBinary() !== null;
+  }
+
+  isListening() {
+    return Boolean(this.process || this.isReady);
   }
 
   /**

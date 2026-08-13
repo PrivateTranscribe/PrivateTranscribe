@@ -10,6 +10,7 @@ import { Input } from "../ui/input";
 import { useSettings } from "../../hooks/useSettings";
 import { formatHotkeyLabel } from "../../utils/hotkeys";
 import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
+import { SectionLabel } from "../ui/SectionLabel";
 
 // ---------------------------------------------------------------------------
 // Date grouping helpers
@@ -253,9 +254,9 @@ export default function HistoryPage() {
               <div key={group.label}>
                 {/* Group header */}
                 <div className="sticky top-0 z-10 flex items-center gap-3 py-2 mb-1 bg-background/80 backdrop-blur-md">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-primary/80">
+                  <SectionLabel as="span" className="text-primary/80">
                     {group.label}
-                  </span>
+                  </SectionLabel>
                   <div className="flex-1 h-px bg-border-subtle/60" />
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {group.items.length}

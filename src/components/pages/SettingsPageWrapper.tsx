@@ -82,10 +82,12 @@ export default function SettingsPageWrapper({
                   padding: "8px 16px",
                   fontSize: "13px",
                   fontWeight: isActive ? 500 : 400,
-                  color: isActive ? "#70FFBA" : "#6B7370",
+                  color: isActive ? "var(--color-primary)" : "var(--color-muted-foreground)",
                   backgroundColor: "transparent",
                   border: "none",
-                  borderBottom: isActive ? "2px solid #70FFBA" : "2px solid transparent",
+                  borderBottom: isActive
+                    ? "2px solid var(--color-primary)"
+                    : "2px solid transparent",
                   cursor: "pointer",
                   transition: "all 0.15s ease",
                   marginBottom: "-1px",
@@ -93,12 +95,12 @@ export default function SettingsPageWrapper({
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
-                    e.currentTarget.style.color = "#B0B5B2";
+                    e.currentTarget.style.color = "var(--color-foreground-subtle)";
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) {
-                    e.currentTarget.style.color = "#6B7370";
+                    e.currentTarget.style.color = "var(--color-muted-foreground)";
                   }
                 }}
               >

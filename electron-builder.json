@@ -130,6 +130,15 @@
   "win": {
     "target": ["nsis"],
     "signAndEditExecutable": false,
+    "verifyUpdateCodeSignature": true,
+    "azureSignOptions": {
+      "endpoint": "https://neu.codesigning.azure.net/",
+      "codeSigningAccountName": "PrivateTranscribe",
+      "certificateProfileName": "PrivateTranscribe",
+      "publisherName": "Julsgaard Products",
+      "TimestampRfc3161": "http://timestamp.acs.microsoft.com",
+      "TimestampDigest": "SHA256"
+    },
     "icon": "src/assets/icon.ico",
     "executableName": "PrivateTranscribe",
     "extraResources": [
@@ -140,7 +149,12 @@
       {
         "from": "resources/bin/",
         "to": "bin/",
-        "filter": ["*.dll", "windows-fast-paste.exe"]
+        "filter": [
+          "*.dll",
+          "windows-fast-paste.exe",
+          "windows-mic-watch.exe",
+          "windows-hold-key.exe"
+        ]
       }
     ]
   },

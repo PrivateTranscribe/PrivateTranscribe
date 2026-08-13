@@ -167,7 +167,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
               Beta
             </Badge>
             {!isUnlocked && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#A885FF]/10 text-[#A885FF] border border-[#A885FF]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
                 <Lock size={10} /> Approved testers only
               </span>
             )}
@@ -198,7 +198,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
       )}
 
       {isUnlocked && error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -365,7 +365,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                       <button
                         onClick={() => handleDelete(r.source)}
                         disabled={deletingSource === r.source}
-                        className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                        className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
                         title="Remove correction"
                       >
                         <Trash2 size={14} />

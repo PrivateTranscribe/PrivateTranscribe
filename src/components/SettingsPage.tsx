@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { IconTile } from "./ui/IconTile";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Checkbox } from "./ui/checkbox";
+import { Slider } from "./ui/slider";
 import { Badge } from "./ui/badge";
 import {
   RefreshCw,
@@ -55,12 +58,14 @@ import { HotkeyInput } from "./ui/HotkeyInput";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
+import VoiceCallMuteSettings from "./ui/VoiceCallMuteSettings";
 import DeveloperSection from "./DeveloperSection";
 import FeedbackDialog from "./FeedbackDialog";
 import { SettingsRow } from "./ui/SettingsSection";
 import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
+import { SectionLabel } from "./ui/SectionLabel";
 
 export type SettingsSectionType =
   | "general"
@@ -341,15 +346,15 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-muted-foreground">
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <p className="uppercase tracking-wider text-muted-foreground/50 mb-1">Installed</p>
+              <SectionLabel className="mb-1">Installed</SectionLabel>
               <p className="text-foreground font-mono">{currentVersion}</p>
             </div>
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <p className="uppercase tracking-wider text-muted-foreground/50 mb-1">Required</p>
+              <SectionLabel className="mb-1">Required</SectionLabel>
               <p className="text-foreground font-mono">{expectedVersion}</p>
             </div>
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <p className="uppercase tracking-wider text-muted-foreground/50 mb-1">Backend</p>
+              <SectionLabel className="mb-1">Backend</SectionLabel>
               <p className="text-foreground font-mono">
                 {engine === "cuda"
                   ? "cuda active"
@@ -648,9 +653,9 @@ function GpuStatusCard({
   return (
     <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 backdrop-blur-sm shadow-sm overflow-hidden">
       <div className="p-4 flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <IconTile size="md" className="mt-0.5">
           <MonitorSmartphone className="w-4 h-4 text-primary" />
-        </div>
+        </IconTile>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
             <p className="text-sm font-medium text-foreground">Hardware</p>
@@ -696,7 +701,7 @@ function GpuStatusCard({
                   </div>
                 ) : downloadState === "done" ? (
                   <div
-                    className={`flex items-center gap-1.5 text-xs ${cudaEffectiveEngine === "cuda" ? "text-success" : "text-amber-500"}`}
+                    className={`flex items-center gap-1.5 text-xs ${cudaEffectiveEngine === "cuda" ? "text-success" : "text-warning"}`}
                   >
                     {cudaEffectiveEngine === "cuda" ? (
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -728,8 +733,8 @@ function GpuStatusCard({
                     </Button>
                   </div>
                 ) : needsCudaUpdate ? (
-                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
-                    <p className="text-[11px] text-amber-200 leading-relaxed">
+                  <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-2">
+                    <p className="text-[11px] text-warning leading-relaxed">
                       {cudaAutoUpdateFailed
                         ? "GPU engine update failed. Click to retry."
                         : "GPU engine update available. Update it to keep GPU transcription current."}
@@ -766,9 +771,7 @@ function GpuStatusCard({
 
             {/* ═══ HARDWARE ════════════════════════════════════════ */}
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
-                Hardware
-              </p>
+              <SectionLabel className="mb-2">Hardware</SectionLabel>
               {detectState === "detecting" && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -842,9 +845,7 @@ function GpuStatusCard({
 
             {/* ═══ BENCHMARKS ══════════════════════════════════════ */}
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">
-                Benchmarks
-              </p>
+              <SectionLabel className="mb-2">Benchmarks</SectionLabel>
 
               {benchState === "done" && benchResult && (
                 <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
@@ -869,9 +870,9 @@ function GpuStatusCard({
                   {gpuCategory === "nvidia_cuda" &&
                     !activeWhisperForceCpu &&
                     benchResult.realtimeFactor < 2 && (
-                      <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/8 px-2.5 py-2">
-                        <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 shrink-0" />
-                        <p className="text-[10px] text-amber-500 leading-relaxed">
+                      <div className="mt-2 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2">
+                        <AlertCircle className="w-3 h-3 text-warning mt-0.5 shrink-0" />
+                        <p className="text-[10px] text-warning leading-relaxed">
                           GPU acceleration may not be working. Your NVIDIA GPU might not be
                           compatible with the current CUDA binary (RTX 50-series requires a newer
                           build). A Blackwell-compatible update is in progress.
@@ -987,7 +988,7 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           value={raw}
@@ -1004,15 +1005,15 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
               e.currentTarget.blur();
             }
           }}
-          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="w-24 text-right"
           aria-label="History limit"
         />
         <span className="text-xs text-muted-foreground">items</span>
       </div>
 
       {pending !== null && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs space-y-2">
-          <p className="text-amber-700 dark:text-amber-400 font-medium">
+        <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs space-y-2">
+          <p className="text-warning font-medium">
             ⚠️ This will permanently delete history older than{" "}
             {pending === 0
               ? "all entries"
@@ -1020,21 +1021,14 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
             . Records deleted this way cannot be recovered.
           </p>
           <div className="flex gap-2">
-            <button
-              onClick={handleConfirm}
-              disabled={isConfirming}
-              className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
-            >
+            <Button variant="destructive" size="sm" onClick={handleConfirm} disabled={isConfirming}>
               {isConfirming ? "Deleting…" : "Confirm & delete"}
-            </button>
-            <button
-              onClick={handleCancel}
-              className="rounded-md border border-border px-3 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors"
-            >
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleCancel}>
               Cancel
-            </button>
+            </Button>
           </div>
-          {trimError && <p className="text-red-600 dark:text-red-400">{trimError}</p>}
+          {trimError && <p className="text-destructive">{trimError}</p>}
         </div>
       )}
     </div>
@@ -1137,6 +1131,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setShowPanelOnError,
     pauseMediaOnRecord,
     setPauseMediaOnRecord,
+    muteVoiceCallOnRecord,
+    setMuteVoiceCallOnRecord,
+    voiceCallMuteKey,
+    setVoiceCallMuteKey,
     audioFeedback,
     setAudioFeedback,
     errorNotifications,
@@ -1717,6 +1715,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [autoStartLaunchMode, setAutoStartLaunchMode] = useState<AutoStartLaunchMode>("tray");
   const [emailCopied, setEmailCopied] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [autoStartError, setAutoStartError] = useState<string | null>(null);
 
   useEffect(() => {
     if (platform === "linux") {
@@ -1745,12 +1744,17 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     if (window.electronAPI?.setAutoStartEnabled) {
       try {
         setAutoStartLoading(true);
+        setAutoStartError(null);
         const result = await window.electronAPI.setAutoStartEnabled(enabled);
-        if (result.success) {
-          setAutoStartEnabled(enabled);
+        // Trust the verified state the main process read back, never the requested one —
+        // a blocked registry write must not leave the toggle claiming it worked.
+        setAutoStartEnabled(result.enabled ?? (result.success ? enabled : !enabled));
+        if (!result.success) {
+          setAutoStartError(result.error || "Couldn't change the startup setting.");
         }
       } catch (error) {
         console.error("Failed to set auto-start:", error);
+        setAutoStartError("Couldn't change the startup setting.");
       } finally {
         setAutoStartLoading(false);
       }
@@ -2074,9 +2078,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
                   {updateInfo?.releaseNotes && (
                     <div className="mt-4 pt-4 border-t border-border/30">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <SectionLabel className="mb-2">
                         What's new in v{updateInfo.version}
-                      </p>
+                      </SectionLabel>
                       <div className="text-[12px] text-muted-foreground">
                         <MarkdownRenderer content={updateInfo.releaseNotes} />
                       </div>
@@ -2142,6 +2146,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         disabled={autoStartLoading}
                       />
                     </SettingsRow>
+                    {autoStartError && (
+                      <p className="text-[13px] text-destructive mt-2 leading-relaxed">
+                        {autoStartError}
+                      </p>
+                    )}
                   </SettingsPanelRow>
 
                   {autoStartEnabled && (
@@ -2316,7 +2325,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       <p
                         className={
                           correctionCount !== null && correctionCount > 0
-                            ? "text-xs text-green-600 dark:text-green-400"
+                            ? "text-xs text-success"
                             : "text-xs text-muted-foreground"
                         }
                       >
@@ -2415,14 +2424,13 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       description={`Volume is reduced to ${Math.round(musicDuckLevel * 100)}% of your current level while recording`}
                     >
                       <div className="flex items-center gap-3">
-                        <input
-                          type="range"
+                        <Slider
                           min={5}
                           max={80}
                           step={5}
                           value={Math.round(musicDuckLevel * 100)}
                           onChange={(e) => setMusicDuckLevel(parseInt(e.target.value, 10) / 100)}
-                          className="w-28 accent-primary"
+                          className="w-28"
                           aria-label="Duck volume level"
                         />
                         <span className="text-xs tabular-nums text-muted-foreground w-8">
@@ -2450,6 +2458,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     )}
                   </SettingsRow>
                 </SettingsPanelRow>
+                {platform === "win32" && (
+                  <SettingsPanelRow>
+                    <VoiceCallMuteSettings
+                      enabled={muteVoiceCallOnRecord}
+                      onEnabledChange={setMuteVoiceCallOnRecord}
+                      muteKey={voiceCallMuteKey}
+                      onMuteKeyChange={setVoiceCallMuteKey}
+                    />
+                  </SettingsPanelRow>
+                )}
               </SettingsPanel>
             </div>
 
@@ -2712,6 +2730,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               }
               gpuSupported={gpuSupportedForPicker}
               recommendedLocalModel={recommendedWhisperModelForPicker}
+              preferredLanguage={preferredLanguage}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });
@@ -2740,7 +2759,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       description="Stops the local Whisper server after being idle to free memory. GPU mode may also free VRAM. Set to 0 to keep it running."
                     >
                       <div className="flex items-center gap-2">
-                        <input
+                        <Input
                           type="number"
                           min={0}
                           max={240}
@@ -2763,7 +2782,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                               ?.whisperServerSetIdleTimeoutMinutes(next)
                               ?.catch(() => {});
                           }}
-                          className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          className="w-24 text-right"
                           aria-label="Whisper server idle shutdown minutes"
                         />
                         <span className="text-xs text-muted-foreground">min</span>
@@ -2881,9 +2900,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {aiEnhancementUnlocked && (
               <>
                 <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
-                  <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-4">
-                    How it works
-                  </p>
+                  <SectionLabel className="mb-4">How it works</SectionLabel>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <p className="text-[10px] text-muted-foreground/50 mb-2">
@@ -2941,7 +2958,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                         description="Stops the local llama-server after being idle to free RAM/VRAM. Set to 0 to keep it running."
                       >
                         <div className="flex items-center gap-2 shrink-0">
-                          <input
+                          <Input
                             type="number"
                             min={0}
                             max={240}
@@ -2962,7 +2979,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                                 ?.llamaServerSetIdleTimeoutMinutes(next)
                                 ?.catch(() => {});
                             }}
-                            className="flex h-9 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground text-right shadow-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            className="w-24 text-right"
                             aria-label="Llama server idle shutdown minutes"
                           />
                           <span className="text-xs text-muted-foreground">min</span>
@@ -3320,18 +3337,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       <div className="flex flex-col items-end gap-3">
                         <div className="flex flex-col gap-1.5">
                           <label className="flex items-center gap-2 text-xs text-muted-foreground select-none cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="rounded"
+                            <Checkbox
                               checked={includeApiKeysInExport}
                               onChange={(e) => setIncludeApiKeysInExport(e.target.checked)}
                             />
                             Include API keys in export
                           </label>
                           <label className="flex items-center gap-2 text-xs text-muted-foreground select-none cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="rounded"
+                            <Checkbox
                               checked={allowApiKeysOnImport}
                               onChange={(e) => setAllowApiKeysOnImport(e.target.checked)}
                             />

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { IconTile } from "./IconTile";
 import { Button } from "./button";
 import {
   Cpu,
@@ -13,6 +14,7 @@ import {
 import { openExternalLink } from "../../utils/externalLinks";
 import { cn } from "../lib/utils";
 import type { HardwareDetectionResult, LocalTranscriptionProvider } from "../../types/electron";
+import { SectionLabel } from "./SectionLabel";
 
 interface HardwareSetupStepProps {
   stepLabel?: string;
@@ -210,12 +212,10 @@ export default function HardwareSetupStep({
           {/* CPU Card */}
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center">
+              <IconTile>
                 <Cpu className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                CPU
-              </span>
+              </IconTile>
+              <SectionLabel as="span">CPU</SectionLabel>
             </div>
             <p className="text-sm font-medium text-foreground truncate" title={detection.cpu.model}>
               {detection.cpu.model.split("@")[0].trim()}
@@ -258,9 +258,7 @@ export default function HardwareSetupStep({
                   )}
                 />
               </div>
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                GPU
-              </span>
+              <SectionLabel as="span">GPU</SectionLabel>
             </div>
             {detection.gpu.available ? (
               <>
@@ -306,9 +304,9 @@ export default function HardwareSetupStep({
         {detection.recommendations && detection.recommendations.reasoning.length > 0 ? (
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
             <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <IconTile className="mt-0.5">
                 <Check className={cn("w-3.5 h-3.5", applied ? "text-success" : "text-primary")} />
-              </div>
+              </IconTile>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">
                   {applied ? "Settings Applied" : "Recommended Setup"}
@@ -330,9 +328,9 @@ export default function HardwareSetupStep({
         ) : (
           <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
             <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-warning/10 flex items-center justify-center shrink-0 mt-0.5">
+              <IconTile tone="warning" className="mt-0.5">
                 <AlertCircle className="w-3.5 h-3.5 text-warning" />
-              </div>
+              </IconTile>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">
                   {applied ? "Default Settings Applied" : "No Recommendations Available"}
@@ -362,9 +360,9 @@ export default function HardwareSetupStep({
         {isNvidiaNocuda && recoverySteps.length > 0 && (
           <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
             <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-warning/10 flex items-center justify-center shrink-0 mt-0.5">
+              <IconTile tone="warning" className="mt-0.5">
                 <Wrench className="w-3.5 h-3.5 text-warning" />
-              </div>
+              </IconTile>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">To enable GPU acceleration</h4>
                 <ol className="mt-1.5 space-y-1 list-none">

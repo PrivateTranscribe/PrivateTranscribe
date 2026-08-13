@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const { app, screen, powerMonitor, BrowserWindow, dialog } = require("electron");
 const HotkeyManager = require("./hotkeyManager");
-const { normalizeActivationMode } = HotkeyManager;
+const { normalizeActivationMode, shouldUseWindowsNativeListener } = HotkeyManager;
 const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
@@ -879,6 +879,29 @@ class WindowManager {
     };
   }
 
+  async sendToggleDictation() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.isOverlaySuppressed()) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        await this.createMainWindow();
+      }
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("toggle-dictation");
+      }
+      return;
+    }
+
+    const dictationWindow = await this.showDictationPanel();
+    if (!dictationWindow || dictationWindow.isDestroyed()) {
+      return;
+    }
+    dictationWindow.moveTop();
+    dictationWindow.webContents.send("toggle-dictation");
+  }
+
   async sendStartDictation() {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
@@ -1007,16 +1030,14 @@ class WindowManager {
       return result;
     }
 
+    this.hotkeyManager.setWindowsNativeListenerActive(false);
     this._windowsKeyManagerRef.stop();
     if (enabled) {
       const hotkey = this.hotkeyManager.getCurrentHotkey();
       const activationMode = await this.getActivationMode();
-      if (
-        hotkey &&
-        hotkey !== "GLOBE" &&
-        (activationMode !== "tap" || this.hotkeyManager.isNativeListenerHotkey(hotkey))
-      ) {
+      if (shouldUseWindowsNativeListener(hotkey, activationMode)) {
         this._windowsKeyManagerRef.start(hotkey);
+        this.hotkeyManager.setWindowsNativeListenerActive(this._windowsKeyManagerRef.isListening());
       }
     }
 
@@ -1591,6 +1612,10 @@ class WindowManager {
 
   showLoadFailureDialog(windowName, errorCode, errorDescription, validatedURL) {
     if (this.loadErrorShown) {
+      return;
+    }
+    if (this.isQuitting) {
+      // A load aborted by shutdown is expected, not a failure worth a dialog.
       return;
     }
     this.loadErrorShown = true;

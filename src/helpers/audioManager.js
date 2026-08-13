@@ -6,6 +6,8 @@ import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
+import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
+import { getSharedAudioContext } from "../utils/sharedAudioContext";
 import {
   buildDictionaryPrompt,
   getDictionaryRepairTerms,
@@ -35,7 +37,24 @@ const MIN_DICTATION_DURATION_MS = 500;
 const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
 const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
 const LONG_SESSION_SEGMENT_MS = 60 * 1000;
-const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 2;
+// Segments are transcribed independently, so a boundary that lands mid-sentence
+// leaves Whisper decoding an utterance that never finishes. It reacts by
+// inventing a plausible ending. Once the target length is reached, wait for a
+// real pause in speech before rotating, and only cut mid-speech if the speaker
+// never pauses before the hard cap.
+const LONG_SESSION_SEGMENT_MAX_MS = 90 * 1000;
+const LONG_SESSION_SEGMENT_PAUSE_POLL_MS = 100;
+const LONG_SESSION_SEGMENT_PAUSE_HOLD_MS = 300;
+const LONG_SESSION_SEGMENT_PAUSE_RMS = 0.015;
+const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 3;
+// Retrying a failed chunk instantly just re-runs it against whatever broke it.
+// A short pause lets a busy or restarting whisper-server come back first.
+const LONG_SESSION_CHUNK_RETRY_BACKOFF_MS = 500;
+
+// A missing section is invisible in pasted prose: the sentences on either side
+// join up and read as one continuous thought. Mark the gap so the speaker can
+// see where their words went instead of discovering the hole later.
+export const MISSING_SECTION_MARKER = "[... missing section ...]";
 
 const isTranscriptionTextDebugEnabled = () => {
   try {
@@ -47,9 +66,15 @@ const isTranscriptionTextDebugEnabled = () => {
   }
 };
 
+// Keep both ends of a long transcript. Hallucinated endings are the artifact
+// this trace exists to diagnose, and a head-only preview hides them.
 const previewText = (value, limit = 500) => {
   const text = String(value || "");
-  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+  if (text.length <= limit) return text;
+
+  const head = Math.ceil(limit / 2);
+  const tail = limit - head;
+  return `${text.slice(0, head)}...[${text.length - limit} chars omitted]...${text.slice(-tail)}`;
 };
 
 const emitTranscriptionTextTrace = (stage, meta = {}) => {
@@ -226,9 +251,11 @@ class AudioManager {
     this.lastRecorderDataAt = null;
     this.longSessionPromotionMs = LONG_SESSION_PROMOTION_MS;
     this.longSessionChunkTargetMs = LONG_SESSION_CHUNK_TARGET_MS;
+    this.longSessionChunkRetryBackoffMs = LONG_SESSION_CHUNK_RETRY_BACKOFF_MS;
     this.longSession = this.createLongSessionState();
     this.longSessionSegment = null;
     this.longSessionPromotionUnavailable = false;
+    this.segmentLevelAnalyser = null;
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
@@ -398,9 +425,9 @@ class AudioManager {
     try {
       const corrections = await globalThis.electronAPI?.getCorrectionMemory?.(200);
       if (Array.isArray(corrections)) {
-        // Only include corrections used more than once (higher confidence)
+        // Prompt hints can influence transcription, so require explicit approval here too.
         this._cachedCorrectionHints = corrections
-          .filter((r) => r?.target && (r?.count || 0) >= 2)
+          .filter((r) => r?.target && r?.confirmed)
           .map((r) => r.target);
       }
     } catch {
@@ -443,6 +470,11 @@ class AudioManager {
       recordedSeconds: 0,
       transcribedSeconds: 0,
       promotedAt: null,
+      // Set once, from the first segment that comes back with real speech, and
+      // then sent with every later segment of this recording. Scoped to the
+      // session on purpose: it dies with resetLongSessionState(), so switching
+      // language between recordings still works without touching a setting.
+      detectedLanguage: null,
     };
   }
 
@@ -564,6 +596,10 @@ class AudioManager {
     return new Promise((resolve) => setTimeout(resolve, RECORDER_FINAL_DATA_GRACE_MS));
   }
 
+  delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   estimateRecorderChunkDurationMs() {
     const now = Date.now();
     const elapsedMs = this.lastRecorderDataAt
@@ -590,11 +626,13 @@ class AudioManager {
     const durationMs = this.estimateRecorderChunkDurationMs();
 
     if (this.longSession.active) {
-      if (this.longSessionSegment) {
-        return;
-      }
-
-      this.enqueueLongSessionChunk(data, durationMs);
+      // Segment recorders are the only valid source once a long session is
+      // running. The primary recorder emits mid-stream WebM fragments that
+      // carry no EBML header, so FFmpeg rejects them outright ("EBML header
+      // parsing failed"). Enqueuing one costs the whole dictation: the chunk
+      // fails, exhausts its retries, and finalizeLongSessionResult then
+      // discards every chunk that did transcribe. Drop them instead — the
+      // segment recorders already cover this audio.
       return;
     }
 
@@ -702,6 +740,7 @@ class AudioManager {
         chunks: [],
         startedAt: Date.now(),
         rotateTimer: null,
+        pauseHeldMs: 0,
         stopping: false,
         discard: false,
         restartAfterStop: false,
@@ -734,7 +773,8 @@ class AudioManager {
       recorder.start();
       if (!promotionCapture) {
         segment.rotateTimer = setTimeout(() => {
-          void this.rotateLongSessionSegment();
+          segment.rotateTimer = null;
+          this.rotateLongSessionSegmentAtNextPause(segment);
         }, LONG_SESSION_SEGMENT_MS);
       }
       return true;
@@ -765,10 +805,15 @@ class AudioManager {
       segment.restartAfterStop && this.longSession.active && !this.longSession.cancelled;
 
     if (!segment.discard && segment.chunks.length > 0 && this.longSession.active) {
+      // Every chunk is trimmed, not just the last one. A speaker who stops to
+      // think leaves an intermediate chunk ending in a long silence, and
+      // Whisper fills that silence with invented sentences that land in the
+      // middle of the transcript. A chunk cut mid-speech has no trailing
+      // silence, so trimming it is a no-op.
       this.enqueueLongSessionChunk(
         new Blob(segment.chunks, { type: segment.recorder.mimeType || this.recordingMimeType }),
         durationMs,
-        { trimTrailingSilence: !segment.restartAfterStop }
+        { trimTrailingSilence: true }
       );
     }
 
@@ -782,6 +827,141 @@ class AudioManager {
     if (shouldRestart) {
       this.startLongSessionSegmentCapture();
     }
+  }
+
+  /**
+   * Tap the live recording stream so segment rotation can wait for a pause.
+   * Returns null when Web Audio is unavailable or refuses the stream; callers
+   * then fall back to rotating on the wall clock.
+   */
+  ensureSegmentLevelAnalyser() {
+    if (this.segmentLevelAnalyser) {
+      return this.segmentLevelAnalyser;
+    }
+
+    const stream = this.recordingStream;
+    if (!stream) {
+      return null;
+    }
+
+    try {
+      // Must be the shared context. A per-recording AudioContext can get stuck
+      // "suspended" on Windows after sleep/wake and then reports pure silence,
+      // which this detector would read as a pause and cut on immediately.
+      const context = getSharedAudioContext();
+      if (!context) {
+        return null;
+      }
+
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+
+      this.segmentLevelAnalyser = {
+        context,
+        source,
+        analyser,
+        samples: new Float32Array(analyser.fftSize),
+      };
+      return this.segmentLevelAnalyser;
+    } catch (error) {
+      this.segmentLevelAnalyser = null;
+      logger.debug(
+        "Segment pause detection unavailable; rotating on the wall clock",
+        { error: error?.message },
+        "audio"
+      );
+      return null;
+    }
+  }
+
+  disposeSegmentLevelAnalyser() {
+    const node = this.segmentLevelAnalyser;
+    this.segmentLevelAnalyser = null;
+    if (!node) {
+      return;
+    }
+
+    try {
+      // The context is shared across recordings and deliberately not closed.
+      node.source.disconnect();
+      node.analyser.disconnect();
+    } catch {
+      // Ignore teardown errors from an already-disconnected graph.
+    }
+  }
+
+  readSegmentLevelRms() {
+    const node = this.segmentLevelAnalyser;
+    if (!node) {
+      return null;
+    }
+
+    // A suspended context hands back zeros forever. Treating that as a pause
+    // would cut every segment on the wall clock again, silently.
+    if (node.context.state !== "running") {
+      void node.context.resume?.().catch?.(() => {});
+      return null;
+    }
+
+    try {
+      node.analyser.getFloatTimeDomainData(node.samples);
+    } catch {
+      return null;
+    }
+
+    let sumOfSquares = 0;
+    for (let i = 0; i < node.samples.length; i += 1) {
+      sumOfSquares += node.samples[i] * node.samples[i];
+    }
+    const rms = Math.sqrt(sumOfSquares / node.samples.length);
+    return Number.isFinite(rms) ? rms : null;
+  }
+
+  rotateLongSessionSegmentAtNextPause(segment) {
+    if (segment.finished || segment.stopping || this.longSessionSegment !== segment) {
+      return;
+    }
+
+    if (!this.ensureSegmentLevelAnalyser()) {
+      void this.rotateLongSessionSegment();
+      return;
+    }
+
+    segment.pauseHeldMs = 0;
+
+    const poll = () => {
+      segment.rotateTimer = null;
+      if (segment.finished || segment.stopping || this.longSessionSegment !== segment) {
+        return;
+      }
+
+      // A null reading means the level is unmeasurable right now (typically a
+      // context the OS suspended). Never treat that as a pause — unmeasurable
+      // is not silent. Hold the boundary and let the hard cap end the segment
+      // if the reading never comes back.
+      const rms = this.readSegmentLevelRms();
+      if (rms !== null) {
+        segment.pauseHeldMs =
+          rms < LONG_SESSION_SEGMENT_PAUSE_RMS
+            ? segment.pauseHeldMs + LONG_SESSION_SEGMENT_PAUSE_POLL_MS
+            : 0;
+      }
+
+      const elapsedMs = Date.now() - segment.startedAt;
+      if (
+        segment.pauseHeldMs >= LONG_SESSION_SEGMENT_PAUSE_HOLD_MS ||
+        elapsedMs >= LONG_SESSION_SEGMENT_MAX_MS
+      ) {
+        void this.rotateLongSessionSegment();
+        return;
+      }
+
+      segment.rotateTimer = setTimeout(poll, LONG_SESSION_SEGMENT_PAUSE_POLL_MS);
+    };
+
+    segment.rotateTimer = setTimeout(poll, LONG_SESSION_SEGMENT_PAUSE_POLL_MS);
   }
 
   rotateLongSessionSegment() {
@@ -858,7 +1038,22 @@ class AudioManager {
             skipOptimization: true,
             chunkIndex: item.index,
             trimTrailingSilence: item.trimTrailingSilence,
+            lockedLanguage: state.detectedLanguage,
           });
+
+          // Segments are transcribed one at a time, so the language learned
+          // here is already pinned by the time the next one is submitted.
+          if (!state.detectedLanguage) {
+            const detected = result?.result?.detectedLanguage;
+            if (detected) {
+              state.detectedLanguage = detected;
+              logger.info(
+                "Locked auto-detected language for remaining long-session chunks",
+                { language: detected, decidedByChunk: item.index },
+                "transcription"
+              );
+            }
+          }
 
           const text = String(result?.result?.text || "").trim();
           if (text) {
@@ -883,12 +1078,19 @@ class AudioManager {
               },
               "transcription"
             );
+            if (this.longSessionChunkRetryBackoffMs > 0) {
+              await this.delay(this.longSessionChunkRetryBackoffMs);
+            }
             continue;
           }
 
+          // Keep the audio. The queue is still draining behind this chunk, so
+          // whatever broke it may well be gone by the time the recording ends,
+          // and finalizeLongSessionResult gets one more attempt at it.
           state.errors.push({
             index: item.index,
             message: error?.message || "Chunk transcription failed",
+            item,
           });
           logger.warn(
             "Long-session chunk transcription failed",
@@ -925,34 +1127,151 @@ class AudioManager {
     }
   }
 
-  async finalizeLongSessionResult(durationSeconds) {
-    await this.waitForLongSessionQueue();
-
+  // Chunks that exhausted their inline retries kept their audio. By the time
+  // the recording ends the queue has drained and nothing else is competing for
+  // whisper-server, so a transient failure (a busy server, a restart, a
+  // timeout) usually clears. Spend one last attempt here rather than reporting
+  // a gap the user could have had filled.
+  async retryFailedLongSessionChunks() {
     const state = this.longSession;
-    if (state.errors.length > 0) {
-      throw new Error(
-        `Long recording could not be transcribed completely after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
-      );
+    if (!state || state.cancelled || state.errors.length === 0) {
+      return;
     }
 
-    const rawText = [...state.results.entries()]
+    const pending = state.errors.filter((entry) => entry.item?.blob);
+    if (pending.length === 0) {
+      return;
+    }
+
+    state.errors = state.errors.filter((entry) => !entry.item?.blob);
+
+    for (const entry of pending) {
+      const item = entry.item;
+
+      if (state.cancelled) {
+        state.errors.push({ index: entry.index, message: entry.message });
+        continue;
+      }
+
+      try {
+        const result = await this.runTranscription(item.blob, {
+          durationSeconds: item.durationMs / 1000,
+          source: "long-session",
+          skipPostProcessing: true,
+          skipOptimization: true,
+          chunkIndex: item.index,
+          trimTrailingSilence: item.trimTrailingSilence,
+        });
+
+        const text = String(result?.result?.text || "").trim();
+        if (text) {
+          state.results.set(item.index, text);
+        }
+        state.completedChunks += 1;
+        logger.info(
+          "Recovered a failed long-session chunk on the final retry",
+          { chunkIndex: item.index, recoveredCharacters: text.length },
+          "transcription"
+        );
+      } catch (error) {
+        state.errors.push({
+          index: entry.index,
+          message: error?.message || entry.message,
+        });
+      }
+    }
+
+    this.emitStateChange();
+  }
+
+  // Joins the transcribed chunks in order, standing a marker where a chunk is
+  // missing. Silent chunks contribute nothing and are not gaps.
+  buildLongSessionText(state) {
+    const failedIndexes = new Set(state.errors.map((entry) => entry.index));
+    const indexes = [...new Set([...state.results.keys(), ...failedIndexes])].sort(
+      (left, right) => left - right
+    );
+
+    const parts = [];
+    for (const index of indexes) {
+      if (failedIndexes.has(index)) {
+        parts.push(MISSING_SECTION_MARKER);
+        continue;
+      }
+      const text = String(state.results.get(index) || "").trim();
+      if (text) {
+        parts.push(text);
+      }
+    }
+
+    return parts.join(" ").trim();
+  }
+
+  // AI cleanup rewrites the transcript, and a bracketed marker is exactly the
+  // kind of stray text it likes to tidy away. The gap is still real, so put
+  // back any marker the model dropped. Position is lost at that point, so the
+  // recovered markers land at the end rather than not appearing at all.
+  preserveMissingSectionMarkers(text, expectedMarkers) {
+    if (!expectedMarkers) {
+      return text;
+    }
+
+    const present = text.split(MISSING_SECTION_MARKER).length - 1;
+    if (present >= expectedMarkers) {
+      return text;
+    }
+
+    const missing = Array.from({ length: expectedMarkers - present }, () => MISSING_SECTION_MARKER);
+    return `${text} ${missing.join(" ")}`.trim();
+  }
+
+  async finalizeLongSessionResult(durationSeconds) {
+    await this.waitForLongSessionQueue();
+    await this.retryFailedLongSessionChunks();
+
+    const state = this.longSession;
+
+    const transcribedText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, text]) => text)
       .filter(Boolean)
       .join(" ")
       .trim();
 
-    if (!rawText) {
+    // A failed chunk used to discard the whole dictation, so one bad section
+    // out of five cost the speaker every word they said. Keep what did
+    // transcribe and flag it as incomplete; only give up when nothing survived.
+    if (!transcribedText) {
+      if (state.errors.length > 0) {
+        throw new Error(
+          `Long recording could not be transcribed after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
+        );
+      }
       throw new Error("No text transcribed - audio may be silent or unavailable");
     }
 
+    const rawText = this.buildLongSessionText(state);
+
+    if (state.errors.length > 0) {
+      logger.warn(
+        "Returning a partial long-session transcript",
+        {
+          failedChunks: state.errors.length,
+          completedChunks: state.completedChunks,
+          firstError: state.errors[0]?.message,
+        },
+        "transcription"
+      );
+    }
+
     const reasoningStart = performance.now();
-    const text = await this.processTranscription(rawText, "long-session");
+    const reasonedText = await this.processTranscription(rawText, "long-session");
+    const text = this.preserveMissingSectionMarkers(reasonedText || rawText, state.errors.length);
     const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
 
     return {
       success: true,
-      text: text || rawText,
+      text,
       source,
       durationSeconds,
       timings: {
@@ -961,11 +1280,14 @@ class AudioManager {
       longSession: {
         chunks: state.completedChunks,
         failedChunks: state.errors.length,
+        totalChunks: state.completedChunks + state.errors.length,
       },
     };
   }
 
   stopRecordingStream() {
+    this.disposeSegmentLevelAnalyser();
+
     const stream = this.recordingStream || this.mediaRecorder?.stream || null;
     if (!stream) {
       this.recordingStream = null;
@@ -983,6 +1305,7 @@ class AudioManager {
 
   releaseMediaRecorder() {
     this.clearRecorderStopWatchdog();
+    this.disposeSegmentLevelAnalyser();
 
     if (this.mediaRecorder) {
       this.mediaRecorder.ondataavailable = null;
@@ -1519,7 +1842,6 @@ class AudioManager {
       ...metadata,
       processingGeneration,
     };
-
     try {
       const { result, useLocalWhisper, localProvider, activeModel } = await this.runTranscription(
         audioBlob,
@@ -1535,6 +1857,13 @@ class AudioManager {
         result.durationSeconds = metadata.durationSeconds;
       }
       result.processingGeneration = processingGeneration;
+      // Carried so analytics can report which model produced this without
+      // re-deriving the local/cloud choice from localStorage a second time.
+      result.activeModel = activeModel;
+      result.completeness = assessTranscriptionCompleteness({
+        text: result.text,
+        durationSeconds: result.durationSeconds ?? metadata.durationSeconds,
+      });
 
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,
@@ -1583,7 +1912,6 @@ class AudioManager {
       }
 
       const errorAtMs = Math.round(performance.now() - pipelineStart);
-
       logger.error(
         "Pipeline failed",
         {
@@ -1622,6 +1950,22 @@ class AudioManager {
       }
 
       result.processingGeneration = processingGeneration;
+      result.completeness = assessTranscriptionCompleteness({
+        text: result.text,
+        durationSeconds,
+      });
+
+      // A partial transcript reads as a complete one, so it must never paste
+      // silently. Known missing sections outrank the heuristic assessment.
+      if (result.longSession?.failedChunks > 0) {
+        result.completeness = {
+          ...result.completeness,
+          suspicious: true,
+          reason: "failed-chunks",
+          failedChunks: result.longSession.failedChunks,
+          totalChunks: result.longSession.totalChunks,
+        };
+      }
 
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,
@@ -1756,12 +2100,27 @@ class AudioManager {
       if (metadata?.source === "long-session") {
         options.longSessionChunk = true;
         options.trimTrailingSilence = metadata.trimTrailingSilence === true;
+      } else if (!metadata?.fileMode) {
+        // Every dictation ends with silence — the speaker stops talking before
+        // they reach for the hotkey. Whisper fills that silence by inventing a
+        // continuation of the last sentence rather than ending the transcript,
+        // so the recording arrives with text nobody spoke appended to it.
+        // Trimming was previously applied only to long-session chunks, which
+        // left every ordinary dictation exposed.
+        options.trimTrailingSilence = true;
       }
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
+      } else if (metadata?.lockedLanguage) {
+        // Auto-detect is still what the user asked for; we are only stopping
+        // whisper from answering the question differently on every segment.
+        options.language = metadata.lockedLanguage;
       }
       const shouldTranslate = shouldTranslateLocalWhisperToEnglish({
         translateToEnglish,
+        // Deliberately the user's setting, not the locked language. Translation
+        // stays gated on an explicit language choice, so auto-detect can never
+        // start silently translating a recording into English.
         resolvedLanguage,
         model,
       });
@@ -1826,9 +2185,26 @@ class AudioManager {
         "performance"
       );
 
+      // A long-session chunk holding only silence is a normal outcome — the
+      // speaker paused, or the recording ran on after they stopped talking.
+      // It is not a failure: treating it as one exhausts the chunk's retries
+      // and makes finalizeLongSessionResult discard the whole dictation.
+      if (metadata?.source === "long-session" && !result.text) {
+        return { success: true, text: "", source: "local", timings };
+      }
+
       if (result.success && result.text) {
         if (metadata?.skipPostProcessing) {
-          return { success: true, text: result.text, source: "local", timings };
+          // detectedLanguage is only present when the user is on auto-detect
+          // and whisper reported something usable. Long-session chunks are the
+          // consumer: the drain loop pins it for the rest of the recording.
+          return {
+            success: true,
+            text: result.text,
+            source: "local",
+            timings,
+            ...(result.detectedLanguage ? { detectedLanguage: result.detectedLanguage } : {}),
+          };
         }
 
         const reasoningStart = performance.now();
@@ -3108,7 +3484,10 @@ class AudioManager {
 
   async safePaste(text) {
     try {
-      await window.electronAPI.pasteText(text);
+      const result = await window.electronAPI.pasteText(text);
+      if (result?.delivered === false) {
+        return false;
+      }
       return true;
     } catch (error) {
       this.onError?.({
@@ -3121,9 +3500,18 @@ class AudioManager {
 
   async saveTranscription(text, durationSeconds = null) {
     try {
-      await window.electronAPI.saveTranscription(text, durationSeconds);
-      return true;
-    } catch (error) {
+      const result = await window.electronAPI.saveTranscription(text, durationSeconds);
+      return result?.success === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async recordTranscriptionActivity(text, durationSeconds = null) {
+    try {
+      const result = await window.electronAPI.recordTranscriptionActivity?.(text, durationSeconds);
+      return result?.success === true;
+    } catch {
       return false;
     }
   }

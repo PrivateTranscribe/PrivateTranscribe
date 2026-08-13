@@ -1,0 +1,149 @@
+name: Transcription accuracy
+
+# Guards against transcription accuracy regressions, in English and in a
+# non-English language. English alone would not have caught the Danish cliff
+# that shipped: the same models that score 6-12% WER on English score
+# 15-63% on Danish, and nothing in CI was watching.
+#
+# Deliberately not run on every push. A run downloads Whisper models and a
+# FLEURS split, then does real inference on a CPU runner, so it is far too
+# slow to sit in the PR path. It runs weekly and on demand, which is often
+# enough to catch a regression while it is still easy to trace to a change.
+
+on:
+  schedule:
+    # Mondays, early UTC. Results are waiting at the start of the week rather
+    # than competing with weekday CI for runners.
+    - cron: "0 5 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      update_baseline:
+        description: "Re-measure and upload a new baseline instead of failing on drift"
+        type: boolean
+        default: false
+      tolerance:
+        description: "Absolute WER percentage points allowed before failing"
+        required: false
+        default: ""
+
+  # Changes to the gate itself, the benchmark, or the baseline are exactly
+  # when it is worth confirming the gate still works.
+  pull_request:
+    paths:
+      - "scripts/benchmark-transcription-accuracy.js"
+      - "scripts/check-accuracy-regression.js"
+      - "scripts/lib/accuracy-regression.js"
+      - "benchmarks/**"
+      - ".github/workflows/accuracy.yml"
+
+concurrency:
+  group: accuracy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  accuracy:
+    name: WER regression gate
+    runs-on: ubuntu-latest
+    # Model downloads plus CPU inference across four language/model pairs.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Whisper models and the FLEURS split are large and never change, so a
+      # cache miss is the slow path and a hit makes the run mostly inference.
+      #
+      # Restore and save are split deliberately. actions/cache skips its save
+      # step when the job fails, and this job's whole purpose is to fail when
+      # accuracy drops - so the combined action threw away ~1.4 GB of downloads
+      # on exactly the runs we most want to re-run quickly. The saves below are
+      # conditioned on `always()` so a red gate still leaves a warm cache.
+      - name: Restore Whisper models
+        id: cache-models
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/PrivateTranscribe/whisper-models
+          key: whisper-models-${{ hashFiles('benchmarks/accuracy-config.json') }}
+
+      - name: Restore FLEURS benchmark data
+        id: cache-fleurs
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/PrivateTranscribe/benchmarks
+          key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}
+
+      - name: Download whisper.cpp
+        run: npm run download:whisper-cpp
+
+      - name: Download benchmark models
+        run: |
+          node -e "
+          const WhisperManager = require('./src/helpers/whisper.js');
+          const config = require('./benchmarks/accuracy-config.json');
+          const wanted = [...new Set(config.targets.flatMap((t) => t.models))];
+          const manager = new WhisperManager();
+          (async () => {
+            for (const model of wanted) {
+              const status = manager.getModelFileStatus(model);
+              if (status.exists && status.valid) {
+                console.log(model + ': cached');
+                continue;
+              }
+              console.log('downloading ' + model);
+              await manager.downloadWhisperModel(model);
+            }
+          })().catch((error) => { console.error(error.message); process.exit(1); });
+          "
+
+      # Saved before the gate runs, since the models are complete at this point
+      # and their download is the same work whatever the gate decides.
+      - name: Save Whisper models
+        if: always() && steps.cache-models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/PrivateTranscribe/whisper-models
+          key: whisper-models-${{ hashFiles('benchmarks/accuracy-config.json') }}
+
+      - name: Check accuracy against baseline
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.update_baseline }}
+        run: |
+          node scripts/check-accuracy-regression.js \
+            ${{ inputs.tolerance && format('--tolerance {0}', inputs.tolerance) || '' }}
+
+      - name: Re-measure baseline
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baseline }}
+        run: node scripts/check-accuracy-regression.js --update-baseline
+
+      # Uploaded rather than committed. A baseline is a claim about what is
+      # correct, so a human decides when to accept a new one. Kept ahead of the
+      # cache save so housekeeping can never cost us the actual deliverable.
+      - name: Upload baseline for review
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baseline }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: accuracy-baseline
+          path: benchmarks/accuracy-baseline.json
+
+      # FLEURS is fetched inside the steps above rather than by a step of its
+      # own, so this has to come after them. `always()` is the point: a failing
+      # gate is the case where a warm cache matters most.
+      - name: Save FLEURS benchmark data
+        if: always() && steps.cache-fleurs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/PrivateTranscribe/benchmarks
+          key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}

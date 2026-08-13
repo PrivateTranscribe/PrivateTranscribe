@@ -357,6 +357,7 @@ describe("overlay state model — main process owns visibility", () => {
     const idx = windowManager.indexOf("createHotkeyCallback()");
     expect(idx).toBeGreaterThan(-1);
     const block = windowManager.slice(idx, idx + 3000);
+    expect(windowManager).toContain("async sendToggleDictation() {");
     expect(block).toContain("if (this.isOverlaySuppressed())");
     expect(block).toContain('send("toggle-dictation")');
   });
