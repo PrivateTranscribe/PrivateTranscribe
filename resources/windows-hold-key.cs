@@ -407,8 +407,12 @@ internal static class WindowsHoldKey
         }
     }
 
-    /// How often the chord is re-asserted during a hold. See the call site.
-    private const int RepressIntervalMs = 500;
+    /// How often the chord is re-asserted during a hold, or 0 to press once and
+    /// simply keep holding. Off by default: re-pressing means letting go, and
+    /// letting go twice a second is audible. See the call site.
+    private const int DefaultRepressIntervalMs = 0;
+
+    private static int repressIntervalMs = DefaultRepressIntervalMs;
 
     /// Re-asserts the chord without ending the hold, giving the voice app a
     /// fresh key-down edge before it decides the key has gone away.
@@ -521,6 +525,16 @@ internal static class WindowsHoldKey
             }
         }
 
+        string rawRepress = GetOption(args, "--repress-ms=");
+        if (!string.IsNullOrEmpty(rawRepress))
+        {
+            int parsedRepress;
+            if (int.TryParse(rawRepress, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedRepress))
+            {
+                repressIntervalMs = parsedRepress < 0 ? 0 : parsedRepress;
+            }
+        }
+
         heldKeys = keys;
 
         // Diagnostic mode: report what the combination resolved to and send
@@ -598,24 +612,35 @@ internal static class WindowsHoldKey
         reader.IsBackground = true;
         reader.Start();
 
+        // Default: press once and hold, which is what a finger does.
+        //
         // Discord stops honouring a synthesized push-to-mute a few seconds into
-        // a single long press, so re-assert the chord on an interval instead of
-        // pressing once and waiting. Measured on a live call: no re-press held
-        // about 4s, every 2s held about 14s, every 500ms held about 40s. Not a
-        // cure, but it covers any realistic dictation. See
-        // docs/VOICE_CALL_MUTE.md.
-        int remaining = maxHoldMs;
-        while (remaining > 0)
+        // a single long press, and re-asserting the chord on an interval delays
+        // that (no re-press ~4s, every 2s ~14s, every 500ms ~40s). It was the
+        // default for one release and it is not worth it: a re-press is a real
+        // key-up, so Discord unmutes, re-mutes, and plays both sounds every
+        // interval. A beep twice a second for the length of every dictation is
+        // not a fix, it is a different bug. Still available behind
+        // --repress-ms= for measuring. See docs/VOICE_CALL_MUTE.md.
+        if (repressIntervalMs <= 0)
         {
-            int slice = remaining < RepressIntervalMs ? remaining : RepressIntervalMs;
-            if (done.WaitOne(slice))
+            done.WaitOne(maxHoldMs);
+        }
+        else
+        {
+            int remaining = maxHoldMs;
+            while (remaining > 0)
             {
-                break; // released by stdin, an explicit release, or a signal
-            }
-            remaining -= slice;
-            if (remaining > 0)
-            {
-                RepressAll();
+                int slice = remaining < repressIntervalMs ? remaining : repressIntervalMs;
+                if (done.WaitOne(slice))
+                {
+                    break; // released by stdin, an explicit release, or a signal
+                }
+                remaining -= slice;
+                if (remaining > 0)
+                {
+                    RepressAll();
+                }
             }
         }
 
