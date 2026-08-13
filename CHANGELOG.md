@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.14.0 - 2026-08-13
+
+### Added
+
+- Windows installers and the app itself are now code signed, so Windows no longer says the publisher is unknown.
+- Added voice call mute, which holds your voice app's push to mute key while you dictate so nobody on the call hears it. You can use a keyboard key or a mouse button.
+- Added a language step to onboarding, so the app knows what you speak before it recommends a model.
+
+### Changed
+
+- The spoken language is detected once at the start of a recording and kept for the rest of it, instead of being guessed again on every segment.
+- The AI now answers in the language you spoke.
+- Accuracy figures in the model picker follow the language you actually dictate in.
+- Raw dictation audio is no longer kept on disk after transcription.
+- Transcript history limits are enforced strictly, and your streak survives turning history off.
+- Correction memory asks for approval before it changes anything.
+- Long dictations now split at a natural pause instead of on a timer.
+
+### Fixed
+
+- Long dictations no longer lose sections, and one failed chunk no longer takes the rest of the recording with it.
+- Stopped the last half second of speech being cut off.
+- Pasting on Windows now confirms the text actually landed before reporting success, and keeps the clipboard fallback when it cannot.
+- Fixed tap and hold gestures being mistaken for each other.
+- Development runs no longer add themselves to Windows startup.
+- Fixed dropdown, theme and spacing inconsistencies across the app.
+
 ## 0.13.11 - 2026-08-09
 
 ### Fixed
