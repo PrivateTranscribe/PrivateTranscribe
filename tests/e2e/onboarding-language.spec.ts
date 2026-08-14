@@ -68,63 +68,71 @@ test.describe("Onboarding dictation language", () => {
     });
   });
 
-  test("warns when a small model is paired with a non-English language", async ({
-    controlPanel,
-  }) => {
-    // Measured: base scores 62.8% WER on Danish against turbo's 15.4%, while
-    // both stay usable for English. Picking base for Danish is a cliff, and
-    // the hardware step can recommend exactly that on a weak machine.
-    await controlPanel.evaluate(() => {
-      localStorage.setItem("preferredLanguage", "da");
-      localStorage.setItem("useLocalWhisper", "true");
-      localStorage.setItem("whisperModel", "base");
+  // Both specs below pin the selection to Base. The picker drops a model that
+  // is not on disk and snaps to the first downloaded one, so without a seeded
+  // cache these assert against whatever the machine happens to have — they
+  // passed only on a developer box that had Base downloaded.
+  test.describe("with Base downloaded", () => {
+    test.use({ seedWhisperModels: ["base"] });
+
+    test("warns when a small model is paired with a non-English language", async ({
+      controlPanel,
+    }) => {
+      // Measured: base scores 62.8% WER on Danish against turbo's 15.4%, while
+      // both stay usable for English. Picking base for Danish is a cliff, and
+      // the hardware step can recommend exactly that on a weak machine.
+      await controlPanel.evaluate(() => {
+        localStorage.setItem("preferredLanguage", "da");
+        localStorage.setItem("useLocalWhisper", "true");
+        localStorage.setItem("whisperModel", "base");
+      });
+      await openSetupStep(controlPanel);
+
+      const warning = controlPanel.getByTestId("onboarding-language-model-warning");
+      await expect(warning).toBeVisible();
+      await expect(warning).toContainText("Danish");
+      await expect(warning).toContainText("Turbo or Large");
+
+      await warning.scrollIntoViewIfNeeded();
+      await controlPanel.screenshot({
+        path: "test-results/e2e/onboarding-language-warning.png",
+        fullPage: true,
+      });
     });
-    await openSetupStep(controlPanel);
 
-    const warning = controlPanel.getByTestId("onboarding-language-model-warning");
-    await expect(warning).toBeVisible();
-    await expect(warning).toContainText("Danish");
-    await expect(warning).toContainText("Turbo or Large");
+    test("lowers the accuracy meters once a non-English language is set", async ({
+      controlPanel,
+    }) => {
+      // The meters were language-blind, so Base advertised a middling accuracy
+      // bar to a Danish user while getting most of their words wrong.
+      const filledBars = async () =>
+        controlPanel
+          .locator('[title^="Accuracy"]')
+          .first()
+          .evaluate((el) => el.getAttribute("title"));
 
-    await warning.scrollIntoViewIfNeeded();
-    await controlPanel.screenshot({
-      path: "test-results/e2e/onboarding-language-warning.png",
-      fullPage: true,
-    });
-  });
+      await controlPanel.evaluate(() => {
+        localStorage.setItem("preferredLanguage", "en");
+        localStorage.setItem("useLocalWhisper", "true");
+        localStorage.setItem("whisperModel", "base");
+      });
+      await openSetupStep(controlPanel);
+      const englishTitle = await filledBars();
 
-  test("lowers the accuracy meters once a non-English language is set", async ({
-    controlPanel,
-  }) => {
-    // The meters were language-blind, so Base advertised a middling accuracy
-    // bar to a Danish user while getting most of their words wrong.
-    const filledBars = async () =>
-      controlPanel
-        .locator('[title^="Accuracy"]')
-        .first()
-        .evaluate((el) => el.getAttribute("title"));
+      await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "da"));
+      await openSetupStep(controlPanel);
+      const danishTitle = await filledBars();
 
-    await controlPanel.evaluate(() => {
-      localStorage.setItem("preferredLanguage", "en");
-      localStorage.setItem("useLocalWhisper", "true");
-      localStorage.setItem("whisperModel", "base");
-    });
-    await openSetupStep(controlPanel);
-    const englishTitle = await filledBars();
+      expect(englishTitle).not.toBe(danishTitle);
 
-    await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "da"));
-    await openSetupStep(controlPanel);
-    const danishTitle = await filledBars();
+      const englishValue = Number(englishTitle?.match(/(\d)\/5/)?.[1]);
+      const danishValue = Number(danishTitle?.match(/(\d)\/5/)?.[1]);
+      expect(danishValue).toBeLessThan(englishValue);
 
-    expect(englishTitle).not.toBe(danishTitle);
-
-    const englishValue = Number(englishTitle?.match(/(\d)\/5/)?.[1]);
-    const danishValue = Number(danishTitle?.match(/(\d)\/5/)?.[1]);
-    expect(danishValue).toBeLessThan(englishValue);
-
-    await controlPanel.screenshot({
-      path: "test-results/e2e/onboarding-accuracy-meters-danish.png",
-      fullPage: true,
+      await controlPanel.screenshot({
+        path: "test-results/e2e/onboarding-accuracy-meters-danish.png",
+        fullPage: true,
+      });
     });
   });
 
