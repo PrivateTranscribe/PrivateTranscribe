@@ -28,7 +28,7 @@ describe("paid Pro and tester beta access contract", () => {
   });
 
   it("keeps ordinary paid licenses on the default non-tester entitlement", () => {
-    const webhook = readSource("supabase/functions/stripe-webhook/index.ts");
+    const webhook = readSource("supabase/functions/stripe-webhook/handler.ts");
     const manualGenerator = readSource("scripts/generate-license.js");
     expect(webhook).toContain("beta_access: false");
     expect(manualGenerator).toContain("beta_access: false");
