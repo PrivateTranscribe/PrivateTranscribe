@@ -13,11 +13,11 @@ Do **not** assume the CUDA executable is self-contained. Modern `whisper.cpp` bu
 ## Production state
 
 - Latest confirmed working release: `0.8.4`
-- CUDA binary package version: `v0.0.9`
+- CUDA binary package version: `v0.0.10` (first signed engine; `v0.0.9` and earlier are unsigned)
 - Windows CUDA package:
-  - `https://updates.privatetranscribe.com/binaries/v0.0.9/whisper-server-win32-x64-cuda.zip`
+  - `https://updates.privatetranscribe.com/binaries/v0.0.10/whisper-server-win32-x64-cuda.zip`
 - Linux CUDA package:
-  - `https://updates.privatetranscribe.com/binaries/v0.0.9/whisper-server-linux-x64-cuda.zip`
+  - `https://updates.privatetranscribe.com/binaries/v0.0.10/whisper-server-linux-x64-cuda.zip`
 - Confirmed real hardware success:
   - Kristian's RTX 5070 laptop now runs CUDA after the fixes.
 
@@ -102,13 +102,43 @@ keep the first dictation fast without bringing startup pre-warming back:
 
 Each app build pins the engine it installs via `BINARY_VERSION` in `gpuBinaryManager.js`; downloads always come from `binaries/<BINARY_VERSION>/`. A released app therefore shows "Current" even when a newer engine has been uploaded to R2 — the newer engine only becomes _required_ when an app release with the bumped `BINARY_VERSION` ships.
 
-To make that state visible, the `build-cuda-binary.yml` workflow also publishes `binaries/latest-cuda.json` (`{"version":"v0.0.9", ...}`) after both platform packages upload. `GpuBinaryManager.fetchLatestAvailableVersion()` reads it (cached, fail-soft), `get-cuda-binary-status` returns it as `latestAvailableVersion`, and the Settings CUDA card tells the user a newer engine is published and installs with the next app update. The manifest never changes which version gets downloaded.
+To make that state visible, the `build-cuda-binary.yml` workflow also publishes `binaries/latest-cuda.json` (`{"version":"v0.0.10", ...}`) after both platform packages upload. `GpuBinaryManager.fetchLatestAvailableVersion()` reads it (cached, fail-soft), `get-cuda-binary-status` returns it as `latestAvailableVersion`, and the Settings CUDA card tells the user a newer engine is published and installs with the next app update. The manifest never changes which version gets downloaded.
 
 Release checklist for a new engine version:
 
 1. Run the `Build CUDA Binary` workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
 2. Bump `BINARY_VERSION` in `gpuBinaryManager.js` to the same value.
 3. Ship the app release; its CUDA auto-update installs the new engine.
+
+Always publish a _new_ version rather than overwriting an existing one. Installs
+record the engine version in `whisper-server-cuda-version.txt` and compare it
+against `BINARY_VERSION`, so republishing the same version under new bits leaves
+every existing install believing it is current and it never re-downloads.
+
+## Windows Smart App Control blocks unsigned engines
+
+Signing the app does **not** sign the CUDA engine. The engine is a separate
+artifact, built by `build-cuda-binary.yml` and downloaded from R2 at runtime into
+`%APPDATA%\PrivateTranscribe\bin\`. Until `v0.0.10` it shipped entirely unsigned —
+including the NVIDIA runtime DLLs, which come out of the CUDA toolkit unsigned.
+
+On a machine with Smart App Control on (`HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy`
+→ `VerifiedAndReputablePolicyState` = 1), every spawn of the unsigned engine fails
+with "An Application Control policy has blocked this file", Windows shows a "Part
+of this app has been blocked" notification, and the app falls back to CPU
+permanently — the retry backoff re-fails forever because the block never clears.
+SAC has no per-file exceptions, so an affected user's only local remedy is turning
+SAC off, which needs a Windows reset to undo.
+
+The fix is in the workflow: the Windows job signs the exe and every DLL with Azure
+Trusted Signing before zipping, then asserts each file is `Valid`, signed by
+`Julsgaard Products`, and timestamped. Two ordering rules matter — sign before
+`Compress-Archive` (files are signed in place, so zipping first ships the unsigned
+copies), and keep the timestamp assertion (Artifact Signing certificates live only
+days, and an expired signature is worth no more than none to SAC).
+
+Signing strongly improves SAC's verdict but is not a documented guarantee; verify
+a new engine on a machine with SAC actually enabled before calling it fixed.
 
 If both versioned packages already exist but the manifest is missing or stale, run the separate `Publish CUDA Manifest` workflow with the existing engine version. It verifies that both Windows and Linux packages exist in R2 before publishing, then verifies the manifest through the public CDN. Do not rebuild 800 MB packages solely to recover this small metadata file.
 

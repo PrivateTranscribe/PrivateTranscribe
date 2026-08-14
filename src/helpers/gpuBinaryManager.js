@@ -12,7 +12,13 @@ const { downloadFile, createDownloadSignal, isRetryable } = require("./downloadU
 
 // R2 public CDN — binaries served directly (no zip extraction needed)
 const R2_BASE_URL = "https://updates.privatetranscribe.com";
-const BINARY_VERSION = "v0.0.9";
+// v0.0.10 is the first Authenticode-signed engine. v0.0.9 and earlier are
+// unsigned, which Windows Smart App Control blocks outright — the spawn fails
+// on every attempt and the app is stuck in CPU fallback with no way to recover.
+// Bumping (rather than republishing v0.0.9) is what makes existing installs
+// re-download: they record the installed version and would otherwise consider
+// themselves current.
+const BINARY_VERSION = "v0.0.10";
 const USER_AGENT = "PrivateTranscribe/1.0";
 const CUDA_VERSION_FILE = "whisper-server-cuda-version.txt";
 const MIN_CUDA_LAUNCHER_BYTES = 100_000;
