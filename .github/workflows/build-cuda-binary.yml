@@ -63,8 +63,28 @@ jobs:
           fi
           echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
 
-      - name: Set up MSVC + Ninja (Windows)
-        uses: step-security/msvc-dev-cmd@v1
+      # This was ilammy/msvc-dev-cmd until 87644ce swapped in the step-security
+      # fork to escape the Node 20 deprecation. That fork requires a paid
+      # subscription on private repositories, so the job died five minutes in
+      # with "This action requires a StepSecurity subscription". vcvars64.bat is
+      # what those actions ultimately call, so call it directly and depend on
+      # nothing from the marketplace — no runtime deprecation to chase again.
+      - name: Locate MSVC environment (Windows)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+
+          $installPath = & $vswhere -latest -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $installPath) { throw "No Visual Studio install with the C++ toolset was found." }
+
+          $vcvars = Join-Path $installPath "VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found at $vcvars" }
+
+          Write-Host "Using $vcvars"
+          "VCVARS64=$vcvars" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Install Ninja (Windows)
         shell: pwsh
@@ -73,6 +93,7 @@ jobs:
       - name: Configure CMake (Windows)
         shell: cmd
         run: |
+          call "%VCVARS64%" || exit /b 1
           set PATH=%CUDA_PATH%\bin;%PATH%
           cd whisper-src
           cmake -B build ^
@@ -86,6 +107,7 @@ jobs:
       - name: Build whisper-server (Windows)
         shell: cmd
         run: |
+          call "%VCVARS64%" || exit /b 1
           set PATH=%CUDA_PATH%\bin;%PATH%
           cd whisper-src
           cmake --build build --config Release --target whisper-server -j4

@@ -28,11 +28,29 @@ jobs:
       - name: Setup MSVC
         uses: microsoft/setup-msbuild@v3
 
-      - name: Setup MSVC environment
-        uses: step-security/msvc-dev-cmd@v1
+      # step-security/msvc-dev-cmd requires a paid subscription on private
+      # repositories, which fails this job outright. Call vcvars64.bat directly
+      # instead — it is what the action does anyway. See build-cuda-binary.yml.
+      - name: Locate MSVC environment
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+
+          $installPath = & $vswhere -latest -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $installPath) { throw "No Visual Studio install with the C++ toolset was found." }
+
+          $vcvars = Join-Path $installPath "VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found at $vcvars" }
+
+          Write-Host "Using $vcvars"
+          "VCVARS64=$vcvars" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Compile Windows Key Listener
         run: |
+          call "%VCVARS64%" || exit /b 1
           cl /O2 /nologo resources/windows-key-listener.c /Fe:windows-key-listener.exe user32.lib
         shell: cmd
 
