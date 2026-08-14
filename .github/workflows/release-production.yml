@@ -85,27 +85,46 @@ jobs:
         shell: pwsh
         run: |
           $url = 'https://updates.privatetranscribe.com/licensing/activate'
-          $body = '{"key":"PREFLIGHT-CHECK","deviceId":"preflight","deviceName":"ci"}'
-          try {
-            $res = Invoke-WebRequest -Uri $url -Method Post -Body $body `
-              -ContentType 'application/json' -UseBasicParsing -SkipHttpErrorCheck -TimeoutSec 20
-          } catch {
-            throw "Licensing endpoint $url is unreachable: $($_.Exception.Message). Deploy infra/updates-worker before releasing."
+
+          # curl.exe on purpose. The activate function answers a bogus key with
+          # HTTP 404 and a JSON body, and Invoke-WebRequest hides the body of a
+          # non-2xx response unless -SkipHttpErrorCheck is available, which
+          # varies by PowerShell version. curl.exe returns the body either way,
+          # so this check behaves the same on the runner and on a dev machine.
+          #
+          # The body goes via a file because PowerShell mangles the quotes in
+          # inline JSON when handing it to a native executable. That corrupts
+          # the payload, the function throws on req.json(), and the check then
+          # passes against a broken function.
+          $bodyFile = Join-Path ([System.IO.Path]::GetTempPath()) 'licensing-preflight.json'
+          '{"key":"PREFLIGHT-CHECK","deviceId":"preflight","deviceName":"ci"}' |
+            Out-File -FilePath $bodyFile -Encoding ascii -NoNewline
+
+          $out = curl.exe -sS --max-time 20 -X POST $url `
+            -H "Content-Type: application/json" -d "@$bodyFile" 2>&1
+          Remove-Item $bodyFile -ErrorAction SilentlyContinue
+          if ($LASTEXITCODE -ne 0) {
+            throw "Licensing endpoint $url is unreachable (curl exit $LASTEXITCODE): $out. Deploy infra/updates-worker before releasing."
           }
 
-          # A bogus key is expected to be rejected. What matters is that the
-          # worker answered with the function's JSON, not that R2 served a 404.
           try {
-            $parsed = $res.Content | ConvertFrom-Json
+            $parsed = $out | ConvertFrom-Json
           } catch {
-            throw "Licensing endpoint $url did not return JSON (HTTP $($res.StatusCode)). The Cloudflare worker route is probably missing, so R2 is serving this path. Deploy infra/updates-worker."
+            throw "Licensing endpoint $url did not return JSON. The Cloudflare worker route is probably missing, so R2 is serving this path. Deploy infra/updates-worker. Body was: $out"
           }
 
           if ($null -eq $parsed.PSObject.Properties['success']) {
-            throw "Licensing endpoint $url returned JSON without a 'success' field (HTTP $($res.StatusCode)). Check the worker's function allowlist."
+            throw "Licensing endpoint $url returned JSON without a 'success' field. Check the worker's function allowlist. Body was: $out"
           }
 
-          Write-Host "Licensing endpoint answered on the updater hostname (HTTP $($res.StatusCode))."
+          # A well-formed request for a key that does not exist must be rejected
+          # on its merits. "Internal error" means the function itself threw, so
+          # a real activation would fail too - do not ship against that.
+          if ($parsed.error -eq 'Internal error') {
+            throw "Licensing endpoint $url returned an internal error. The function is failing on a well-formed request, so activation would fail for buyers. Body was: $out"
+          }
+
+          Write-Host "Licensing endpoint answered on the updater hostname: $out"
 
       # Fail here rather than 10 minutes later inside electron-builder, where a
       # missing credential surfaces as an opaque Azure auth error.
