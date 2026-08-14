@@ -48,11 +48,23 @@ export type PrivateTranscribeOptions = {
   completeOnboarding: boolean;
   /** Extra environment variables for the launched app (overrides defaults). */
   appEnv: Record<string, string>;
+  /**
+   * Whisper models the app should see as already downloaded, e.g. `["base"]`.
+   *
+   * The model picker drops a selection whose model is not on disk and snaps to
+   * the first downloaded one, so any spec that asserts on a specific model has
+   * to own that state instead of inheriting whatever the developer happens to
+   * have in `~/.cache`. Seeding redirects the cache to a throwaway home
+   * directory holding correctly-sized placeholder files.
+   */
+  seedWhisperModels: string[];
 };
 
 export type PrivateTranscribeFixtures = {
   /** Throwaway Electron userData dir — database, settings, and consent live here. */
   userDataDir: string;
+  /** Throwaway home dir backing `seedWhisperModels`; null when nothing is seeded. */
+  fakeHomeDir: string | null;
   electronApp: ElectronApplication;
   /** The always-on-top dictation overlay (index.html, no query). */
   overlayWindow: Page;
@@ -154,6 +166,44 @@ async function findWindow(
 export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixtures>({
   completeOnboarding: [true, { option: true }],
   appEnv: [{}, { option: true }],
+  seedWhisperModels: [[], { option: true }],
+
+  fakeHomeDir: async ({ seedWhisperModels }, use) => {
+    if (seedWhisperModels.length === 0) {
+      await use(null);
+      return;
+    }
+
+    const registry = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, "src", "models", "modelRegistryData.json"), "utf8")
+    ) as { whisperModels: Record<string, { fileName: string; sizeMb: number }> };
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-home-"));
+    // Mirrors getModelsDirForService("whisper"), which resolves under the
+    // home directory Electron reports.
+    const modelsDir = path.join(dir, ".cache", "PrivateTranscribe", "whisper-models");
+    fs.mkdirSync(modelsDir, { recursive: true });
+
+    for (const model of seedWhisperModels) {
+      const info = registry.whisperModels[model];
+      if (!info) {
+        throw new Error(`seedWhisperModels: "${model}" is not in the whisper model registry`);
+      }
+      // checkModelStatus only reads the file size, so an empty file truncated
+      // to the registry size reads as a complete download without writing
+      // hundreds of megabytes.
+      const handle = fs.openSync(path.join(modelsDir, info.fileName), "w");
+      try {
+        fs.ftruncateSync(handle, info.sizeMb * 1_000_000);
+      } finally {
+        fs.closeSync(handle);
+      }
+    }
+
+    await use(dir);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  },
 
   userDataDir: async ({}, use, testInfo) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-"));
@@ -177,7 +227,7 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
     await use([]);
   },
 
-  electronApp: async ({ userDataDir, appEnv, consoleMessages }, use, testInfo) => {
+  electronApp: async ({ userDataDir, fakeHomeDir, appEnv, consoleMessages }, use, testInfo) => {
     const env: Record<string, string> = { ...process.env } as Record<string, string>;
 
     // Playwright's runner sets this for its own worker process; inheriting it
@@ -208,6 +258,18 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
     });
 
     await silenceWindows(app);
+
+    // The model cache resolves under app.getPath("home"), which Chromium reads
+    // from the OS rather than USERPROFILE/HOME — so redirecting it has to
+    // happen in the main process. getModelsDirForService() resolves per call,
+    // so this takes effect for every later lookup; specs reload the window
+    // they assert on, which re-runs the picker's model query.
+    if (fakeHomeDir) {
+      await app.evaluate(
+        ({ app: electronApp }, dir) => electronApp.setPath("home", dir),
+        fakeHomeDir
+      );
+    }
 
     // Startup is only finished once both windows have loaded. Closing the app
     // before then aborts the in-flight loadFile(), which surfaces in main.js as

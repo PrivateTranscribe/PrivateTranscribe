@@ -4,7 +4,7 @@ import { ConfirmDialog } from "./ui/dialog";
 import ModelCardList, { type ModelCardOption } from "./ui/ModelCardList";
 import { useDialogs } from "../hooks/useDialogs";
 import { useModelDownload } from "../hooks/useModelDownload";
-import { WHISPER_MODEL_INFO } from "../models/ModelRegistry";
+import { compareWhisperModelsForDisplay, WHISPER_MODEL_INFO } from "../models/ModelRegistry";
 import { MODEL_PICKER_COLORS, type ColorScheme } from "../utils/modelPickerStyles";
 import { getProviderIcon } from "../utils/providerIcons";
 
@@ -142,6 +142,12 @@ export default function LocalWhisperPicker({
     );
   }, [downloadingModel, downloadProgress]);
 
+  // Registry key order is historical; show recommended first, then by size.
+  const sortedModels = useMemo(
+    () => [...models].sort((a, b) => compareWhisperModelsForDisplay(a.model, b.model)),
+    [models]
+  );
+
   const whisperIcon = getProviderIcon("whisper");
 
   return (
@@ -152,7 +158,7 @@ export default function LocalWhisperPicker({
         <h5 className={`${styles.header} mb-3`}>Whisper Models</h5>
 
         <ModelCardList
-          models={models.map((model): ModelCardOption => {
+          models={sortedModels.map((model): ModelCardOption => {
             const modelId = model.model;
             const info = WHISPER_MODEL_INFO[modelId] || {
               name: modelId,
