@@ -43,4 +43,25 @@ module.exports = [
       "no-var": "off",
     },
   },
+  // Cloudflare worker (ESM, workerd globals - not Node, not CommonJS).
+  {
+    files: ["infra/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.serviceworker,
+        Response: "readonly",
+        Request: "readonly",
+        Headers: "readonly",
+        URL: "readonly",
+        fetch: "readonly",
+      },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
+    },
+  },
 ];

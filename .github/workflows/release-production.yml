@@ -77,6 +77,36 @@ jobs:
           key: windows-electron-${{ hashFiles('**/package-lock.json') }}
           restore-keys: windows-electron-
 
+      # Licensing moved onto the updater's hostname so that blocking it also
+      # blocks updates. If the Cloudflare worker is not routed, that path 404s
+      # from R2 and every install from this build would be unable to activate
+      # Pro. Fail the release here instead of shipping a build that cannot sell.
+      - name: Verify the licensing endpoint is live
+        shell: pwsh
+        run: |
+          $url = 'https://updates.privatetranscribe.com/licensing/activate'
+          $body = '{"key":"PREFLIGHT-CHECK","deviceId":"preflight","deviceName":"ci"}'
+          try {
+            $res = Invoke-WebRequest -Uri $url -Method Post -Body $body `
+              -ContentType 'application/json' -UseBasicParsing -SkipHttpErrorCheck -TimeoutSec 20
+          } catch {
+            throw "Licensing endpoint $url is unreachable: $($_.Exception.Message). Deploy infra/updates-worker before releasing."
+          }
+
+          # A bogus key is expected to be rejected. What matters is that the
+          # worker answered with the function's JSON, not that R2 served a 404.
+          try {
+            $parsed = $res.Content | ConvertFrom-Json
+          } catch {
+            throw "Licensing endpoint $url did not return JSON (HTTP $($res.StatusCode)). The Cloudflare worker route is probably missing, so R2 is serving this path. Deploy infra/updates-worker."
+          }
+
+          if ($null -eq $parsed.PSObject.Properties['success']) {
+            throw "Licensing endpoint $url returned JSON without a 'success' field (HTTP $($res.StatusCode)). Check the worker's function allowlist."
+          }
+
+          Write-Host "Licensing endpoint answered on the updater hostname (HTTP $($res.StatusCode))."
+
       # Fail here rather than 10 minutes later inside electron-builder, where a
       # missing credential surfaces as an opaque Azure auth error.
       - name: Verify Azure signing credentials are present

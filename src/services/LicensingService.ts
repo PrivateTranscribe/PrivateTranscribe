@@ -5,9 +5,14 @@
  * Privacy-first: device IDs are hashed, minimal data sent to server.
  */
 
+// Licensing deliberately shares a hostname with the auto-updater feed
+// (src/updater.js). Blocking this endpoint to keep a refunded Pro license also
+// blocks every future update, which is the whole point of the shared host - on
+// separate hosts the block was free. Keep these two in sync;
+// tests/unit/services/licensingHost.test.ts fails the build if they drift.
 const LICENSING_BASE_URL =
   import.meta.env.VITE_LICENSING_BASE_URL ||
-  "https://wsfrykhacxjfsgvqnlbq.supabase.co/functions/v1";
+  "https://updates.privatetranscribe.com/licensing";
 
 // Storage keys
 const STORAGE_LICENSE_KEY = "privatetranscribe_license_key";
