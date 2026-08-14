@@ -288,6 +288,33 @@ export function getWhisperModelInfo(modelId: string): WhisperModelInfo | undefin
 
 export const WHISPER_MODEL_INFO = modelData.whisperModels;
 
+/**
+ * Sort order for whisper models in pickers. The registry JSON key order is
+ * historical and reads as random in the UI, so lists sort explicitly:
+ * the recommended model first, then smallest to largest download.
+ */
+export function compareWhisperModelsForDisplay(
+  aId: string,
+  bId: string,
+  recommendedId?: string | null
+): number {
+  const a = modelData.whisperModels[aId];
+  const b = modelData.whisperModels[bId];
+
+  const rank = (id: string, info?: WhisperModelInfo): number => {
+    if (recommendedId) return id === recommendedId ? 0 : 1;
+    return info?.recommended ? 0 : 1;
+  };
+
+  const rankDiff = rank(aId, a) - rank(bId, b);
+  if (rankDiff !== 0) return rankDiff;
+
+  const sizeDiff = (a?.sizeMb ?? Number.MAX_SAFE_INTEGER) - (b?.sizeMb ?? Number.MAX_SAFE_INTEGER);
+  if (sizeDiff !== 0) return sizeDiff;
+
+  return (a?.name ?? aId).localeCompare(b?.name ?? bId);
+}
+
 export function getCloudModel(modelId: string): CloudModelDefinition | undefined {
   for (const provider of modelData.cloudProviders) {
     const model = provider.models.find((m) => m.id === modelId);
