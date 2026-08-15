@@ -356,7 +356,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
     : downloadState === "downloading"
       ? downloadPhase === "installing"
         ? "Installing the CUDA engine. This takes a moment for a package this size."
-        : `Downloading the CUDA engine — ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}. It keeps going if you close Settings.`
+        : `Downloading the CUDA engine — ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}. Quitting PrivateTranscribe pauses it; it resumes from here next launch.`
       : autoUpdateFailed
         ? "Automatic CUDA engine update failed. Retry manually here."
         : needsUpdate
