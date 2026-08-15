@@ -250,6 +250,10 @@ class WhisperServerManager {
     this._cudaDisabledAt = null;
     this._cudaFailureCount = 0;
     this._lastCudaStartupFailure = null;
+    // Set when Windows refused to launch the engine (Smart App Control or
+    // antivirus). Unlike a driver update this never clears on its own, so it
+    // suppresses the retry schedule instead of re-failing forever.
+    this._cudaBlockedByPolicy = false;
     // Optional listener invoked when the GPU→CPU fallback engages or recovers,
     // so the UI can tell the user instead of degrading silently.
     this.onEngineFallbackChanged = null;
@@ -382,6 +386,7 @@ class WhisperServerManager {
       this._cudaDisabledAt = null;
       this._cudaFailureCount = 0;
       this._lastCudaStartupFailure = null;
+      this._cudaBlockedByPolicy = false;
     }
     this.cachedServerBinaryPath = null;
     await this.stop();
@@ -402,6 +407,7 @@ class WhisperServerManager {
     this._cudaDisabledAt = null;
     this._cudaFailureCount = 0;
     this._lastCudaStartupFailure = null;
+    this._cudaBlockedByPolicy = false;
     if (stopRunningServer && this.process) {
       await this.stop();
     }
@@ -414,6 +420,11 @@ class WhisperServerManager {
 
   getNextCudaRetryAt() {
     if (!this.cudaDisabledForSession || this._cudaDisabledAt === null) return null;
+    // An OS-level block does not heal with time; retrying only re-triggers it
+    // (and, with Smart App Control, another system notification each time).
+    // Re-enabling GPU in Settings or installing a new engine clears the flag
+    // and forces a fresh attempt.
+    if (this._cudaBlockedByPolicy) return null;
     return this._cudaDisabledAt + this.getCudaRetryDelayMs();
   }
 
@@ -522,6 +533,41 @@ class WhisperServerManager {
       message.includes(String(WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED)) ||
       /STATUS_DLL_NOT_FOUND/i.test(message)
     );
+  }
+
+  /**
+   * True when Windows refused to start the engine outright, rather than the
+   * engine starting and then failing.
+   *
+   * Smart App Control blocks unsigned executables with "An Application Control
+   * policy has blocked this file", but that text never reaches Node: the spawn
+   * fails with `spawn UNKNOWN` (errno -4094) and no detail. Antivirus
+   * quarantine produces the same shape. What separates it from a missing file
+   * is that the binary is still on disk, and from a missing DLL that the
+   * process never ran at all (a DLL failure has an exit code).
+   *
+   * This matters because such a block is permanent for the session — retrying
+   * re-triggers the OS block every time and can never succeed.
+   */
+  isBlockedByWindowsPolicyFailure(error, serverBinary) {
+    if (process.platform !== "win32") return false;
+    if (this.isMissingDllStartupFailure(error)) return false;
+    // A process that started and then exited is a different failure entirely.
+    if (error?.exitCode !== undefined && error?.exitCode !== null) return false;
+
+    const code = error?.code ? String(error.code).toUpperCase() : "";
+    const message = error?.message || "";
+    const isSpawnRefusal =
+      ["UNKNOWN", "EACCES", "EPERM"].includes(code) ||
+      /\bspawn\s+(UNKNOWN|EACCES|EPERM)\b/i.test(message);
+    if (!isSpawnRefusal) return false;
+
+    // ENOENT-style "file is gone" must not be reported as a policy block.
+    try {
+      return !!serverBinary && fs.existsSync(serverBinary);
+    } catch {
+      return false;
+    }
   }
 
   isRecoverableCudaStartupFailure(error) {
@@ -654,6 +700,7 @@ class WhisperServerManager {
         this._cudaDisabledAt = null;
         this._cudaFailureCount = 0;
         this._lastCudaStartupFailure = null;
+        this._cudaBlockedByPolicy = false;
         if (recovered) {
           this._notifyEngineFallbackChanged({ active: false, recovered: true });
         }
@@ -666,7 +713,18 @@ class WhisperServerManager {
         throw error;
       }
 
-      if (this.isMissingDllStartupFailure(error)) {
+      const blockedByPolicy = this.isBlockedByWindowsPolicyFailure(error, serverBinary);
+
+      if (blockedByPolicy) {
+        debugLogger.warn(
+          "CUDA binary was blocked by Windows (Smart App Control or antivirus), falling back to CPU binary and disabling retries",
+          {
+            cudaPath: serverBinary,
+            error: error.message,
+            code: error.code,
+          }
+        );
+      } else if (this.isMissingDllStartupFailure(error)) {
         debugLogger.warn("CUDA binary failed (missing DLLs), falling back to CPU binary", {
           cudaPath: serverBinary,
           error: error.message,
@@ -683,8 +741,13 @@ class WhisperServerManager {
       this.cudaDisabledForSession = true;
       this._cudaDisabledAt = Date.now();
       this._cudaFailureCount += 1;
+      this._cudaBlockedByPolicy = blockedByPolicy;
       this._lastCudaStartupFailure = {
-        kind: this.isMissingDllStartupFailure(error) ? "missing_dll_or_runtime" : "startup_failure",
+        kind: blockedByPolicy
+          ? "blocked_by_os"
+          : this.isMissingDllStartupFailure(error)
+            ? "missing_dll_or_runtime"
+            : "startup_failure",
         message: error.message || String(error),
         code: error.code || null,
         exitCode: error.exitCode ?? null,

@@ -341,10 +341,14 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onWhisperEngineFallbackChanged?.((_event, data) => {
       if (data?.active) {
+        // A Windows block is permanent until the user acts, so it must not
+        // promise an automatic retry that will never succeed.
+        const blockedByOs = data.kind === "blocked_by_os";
         toast({
-          title: "Transcribing on CPU",
-          description:
-            "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
+          title: blockedByOs ? "Windows blocked the GPU engine" : "Transcribing on CPU",
+          description: blockedByOs
+            ? "Windows stopped the GPU engine from starting — usually Smart App Control or antivirus. Dictation continues on CPU, just slower. Updating PrivateTranscribe, or allowing the engine in your antivirus, restores GPU speed."
+            : "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
           duration: 10000,
         });
       } else if (data?.recovered) {
