@@ -193,7 +193,21 @@ jobs:
           # installer exists would point every auto-updater at a 404.
           aws s3 cp "$INSTALLER" "s3://privatetranscribe-assets/win/$(basename "$INSTALLER")" \
             --endpoint-url "$ENDPOINT" --no-progress
+
+          # electron-updater fetches <installer>.blockmap to download only the
+          # changed bytes. Without it the update still works but every user pays
+          # a full ~130 MB download; 0.14.0 shipped its blockmap, so omitting it
+          # here would be a regression.
+          if [ -f "$INSTALLER.blockmap" ]; then
+            aws s3 cp "$INSTALLER.blockmap" \
+              "s3://privatetranscribe-assets/win/$(basename "$INSTALLER").blockmap" \
+              --endpoint-url "$ENDPOINT" --no-progress
+          else
+            echo "ERROR: $INSTALLER.blockmap is missing; differential updates would fall back to a full download"
+            exit 1
+          fi
+
           aws s3 cp dist/latest.yml "s3://privatetranscribe-assets/win/latest.yml" \
             --endpoint-url "$ENDPOINT" --no-progress
 
-          echo "Published $(basename "$INSTALLER") ($SIZE bytes) and latest.yml"
+          echo "Published $(basename "$INSTALLER") ($SIZE bytes), its blockmap, and latest.yml"
