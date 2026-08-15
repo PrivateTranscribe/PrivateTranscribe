@@ -752,7 +752,7 @@ function GpuStatusCard({
                 ) : (
                   <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-2">
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      GPU · Whisper requires the CUDA engine (~650 MB). Download it once to enable
+                      GPU · Whisper requires the CUDA engine (~750 MB). Download it once to enable
                       GPU-accelerated transcription.
                     </p>
                     <Button

@@ -872,7 +872,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       className="w-full"
                       onClick={() => void handleDownloadCuda()}
                     >
-                      Download GPU Engine (652 MB)
+                      Download GPU Engine (~750 MB)
                     </Button>
                   )}
                   {cudaDownloadState === "downloading" && (
