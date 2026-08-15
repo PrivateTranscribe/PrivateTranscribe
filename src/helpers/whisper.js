@@ -254,6 +254,14 @@ class WhisperManager {
     return this.gpuBinaryManager.downloadCudaBinary(onProgress);
   }
 
+  setCudaDownloadProgressListener(listener) {
+    this.gpuBinaryManager.setDownloadProgressListener(listener);
+  }
+
+  getCudaDownloadState() {
+    return this.gpuBinaryManager.getDownloadState();
+  }
+
   async invalidateServerCache(options = {}) {
     await this.serverManager.invalidateServerCache(options);
     this.currentServerModel = null;

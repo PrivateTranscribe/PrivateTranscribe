@@ -55,6 +55,54 @@ class GpuBinaryManager {
   constructor() {
     this._abortController = null;
     this._latestVersionCache = null;
+    // In-flight download shared by every caller. A download can be started by
+    // the silent startup auto-update, by Settings, or by onboarding; they all
+    // want the same file, so they join one download rather than racing.
+    this._downloadPromise = null;
+    this._downloading = false;
+    this._lastProgress = null;
+    this._progressSubscribers = new Set();
+    this._progressListener = null;
+  }
+
+  /**
+   * Registers the single app-wide progress listener (the IPC layer, which
+   * broadcasts to every window). Progress is emitted for *all* downloads,
+   * including ones no window asked for, so the UI can never show "Update
+   * available" while the update is already running.
+   */
+  setDownloadProgressListener(listener) {
+    this._progressListener = typeof listener === "function" ? listener : null;
+  }
+
+  /**
+   * Snapshot of any download currently running, for windows that opened after
+   * it started and so missed the progress events.
+   */
+  getDownloadState() {
+    if (!this._downloading) return { downloading: false, progress: null };
+    return {
+      downloading: true,
+      progress: this._lastProgress || { phase: "downloading", percent: 0 },
+    };
+  }
+
+  _emitProgress(progress) {
+    this._lastProgress = progress;
+    for (const subscriber of this._progressSubscribers) {
+      try {
+        subscriber(progress);
+      } catch {
+        /* a failing subscriber must never abort the download */
+      }
+    }
+    if (this._progressListener) {
+      try {
+        this._progressListener(progress);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   /**
@@ -410,11 +458,44 @@ class GpuBinaryManager {
       return { success: false, error: `CUDA binary not supported on platform: ${key}` };
     }
 
-    // Prevent concurrent downloads (e.g. auto-update + manual Settings click)
-    if (this._downloading) {
-      return { success: false, error: "CUDA binary download already in progress" };
+    const subscriber = typeof onProgress === "function" ? onProgress : null;
+    if (subscriber) {
+      this._progressSubscribers.add(subscriber);
+      // A caller joining a download already in flight has missed every event so
+      // far; replay the latest so its progress bar starts at the real
+      // percentage instead of 0.
+      if (this._downloading && this._lastProgress) {
+        try {
+          subscriber(this._lastProgress);
+        } catch {
+          /* ignore */
+        }
+      }
     }
-    this._downloading = true;
+
+    try {
+      // Concurrent callers (startup auto-update, Settings, onboarding) all want
+      // the same package, so a second request joins the running download and
+      // gets its result. Returning "already in progress" as an error instead
+      // made the Settings button look broken while the very download it asked
+      // for was running invisibly in the background.
+      if (!this._downloadPromise) {
+        this._downloading = true;
+        this._downloadPromise = this._runCudaDownload(spec).finally(() => {
+          this._downloadPromise = null;
+          this._downloading = false;
+          // Drop the final progress frame so a later status poll cannot report
+          // a stale 100% as if a download were still running.
+          this._lastProgress = null;
+        });
+      }
+      return await this._downloadPromise;
+    } finally {
+      if (subscriber) this._progressSubscribers.delete(subscriber);
+    }
+  }
+
+  async _runCudaDownload(spec) {
     let archivePath = null;
     let binaryPath = null;
 
@@ -438,11 +519,10 @@ class GpuBinaryManager {
         timeout: 600000, // 10 min for large packages
         maxRetries: 2,
         onProgress: (bytesDownloaded, total) => {
-          if (!onProgress) return;
           const effectiveTotal = total || totalBytes;
           const percent =
             effectiveTotal > 0 ? Math.round((bytesDownloaded / effectiveTotal) * 100) : 0;
-          onProgress({
+          this._emitProgress({
             phase: "downloading",
             percent,
             bytesDownloaded,
@@ -455,9 +535,12 @@ class GpuBinaryManager {
         throw Object.assign(new Error("Download cancelled"), { isAbort: true });
       }
 
-      if (onProgress) {
-        onProgress({ phase: "installing", percent: 99, bytesDownloaded: totalBytes, totalBytes });
-      }
+      this._emitProgress({
+        phase: "installing",
+        percent: 99,
+        bytesDownloaded: totalBytes,
+        totalBytes,
+      });
 
       const installed = await this.installCudaPackage(archivePath, spec, binDir);
       binaryPath = installed.binaryPath;
@@ -494,9 +577,7 @@ class GpuBinaryManager {
 
       const versionPath = await this.writeCudaBinaryVersionFile();
 
-      if (onProgress) {
-        onProgress({ phase: "done", percent: 100, bytesDownloaded: totalBytes, totalBytes });
-      }
+      this._emitProgress({ phase: "done", percent: 100, bytesDownloaded: totalBytes, totalBytes });
 
       try {
         if (archivePath && fs.existsSync(archivePath)) fs.unlinkSync(archivePath);
@@ -539,7 +620,6 @@ class GpuBinaryManager {
       debugLogger.error("GpuBinaryManager: download failed", { error: error.message });
       return { success: false, error: error.message };
     } finally {
-      this._downloading = false;
       this._abortController = null;
     }
   }

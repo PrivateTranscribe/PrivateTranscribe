@@ -203,6 +203,13 @@ type CudaBinaryStatus = {
   upToDate?: boolean;
   expectedVersion?: string;
   latestAvailableVersion?: string | null;
+  /** Set when a download is running right now, including one this window never started. */
+  activeDownload?: {
+    phase?: string;
+    percent?: number;
+    bytesDownloaded?: number;
+    totalBytes?: number;
+  } | null;
   engineStatus?: {
     effectiveEngine?: "cuda" | "cpu" | "stopped" | "unknown";
     transition?: string;
@@ -225,11 +232,25 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadBytes, setDownloadBytes] = useState<{ downloaded?: number; total?: number }>({});
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadPhase, setDownloadPhase] = useState<string>("downloading");
 
   const refreshStatus = useCallback(async () => {
     try {
       const status = await window.electronAPI?.getCudaBinaryStatus?.();
-      if (status) setCudaStatus(status as CudaBinaryStatus);
+      if (!status) return;
+      setCudaStatus(status as CudaBinaryStatus);
+
+      // Adopt a download started elsewhere (the silent startup auto-update, or
+      // the other Settings surface) so this card never offers a button for work
+      // already underway.
+      const active = (status as CudaBinaryStatus).activeDownload;
+      if (active) {
+        setDownloadState("downloading");
+        setDownloadPhase(active.phase || "downloading");
+        setDownloadProgress(Math.round(active.percent ?? 0));
+        setDownloadBytes({ downloaded: active.bytesDownloaded, total: active.totalBytes });
+        setDownloadError(null);
+      }
     } catch {
       /* keep current status */
     }
@@ -251,12 +272,25 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
         downloaded: data?.bytesDownloaded ?? data?.downloadedBytes,
         total: data?.totalBytes,
       });
+      // These events are broadcast to every window, so they also arrive for a
+      // download this card did not start. Follow them rather than sitting on a
+      // stale "Update available".
+      const phase = data?.phase || "downloading";
+      setDownloadPhase(phase);
+      if (phase === "done") {
+        setDownloadState("done");
+        refreshStatus();
+      } else {
+        setDownloadState("downloading");
+        setDownloadError(null);
+      }
     });
     return () => cleanup?.();
-  }, []);
+  }, [refreshStatus]);
 
   const handleDownloadCuda = useCallback(async () => {
     setDownloadState("downloading");
+    setDownloadPhase("downloading");
     setDownloadProgress(0);
     setDownloadBytes({});
     setDownloadError(null);
@@ -280,6 +314,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const handleCancelDownload = useCallback(async () => {
     await window.electronAPI?.cancelCudaBinaryDownload?.().catch(() => {});
     setDownloadState("idle");
+    setDownloadPhase("downloading");
     setDownloadProgress(0);
     setDownloadBytes({});
     await refreshStatus();
@@ -307,7 +342,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const badge = !isSupported ? (
     <Badge variant="secondary">Unsupported</Badge>
   ) : downloadState === "downloading" ? (
-    <Badge variant="outline">Downloading</Badge>
+    <Badge variant="outline">{downloadPhase === "installing" ? "Installing" : "Downloading"}</Badge>
   ) : needsUpdate ? (
     <Badge variant="warning">Update available</Badge>
   ) : isUpToDate ? (
@@ -319,7 +354,9 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const description = !isSupported
     ? "CUDA engine downloads are available on Windows/Linux x64 with NVIDIA GPUs."
     : downloadState === "downloading"
-      ? `Downloading CUDA engine… ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}`
+      ? downloadPhase === "installing"
+        ? "Installing the CUDA engine. This takes a moment for a package this size."
+        : `Downloading the CUDA engine — ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}. It keeps going if you close Settings.`
       : autoUpdateFailed
         ? "Automatic CUDA engine update failed. Retry manually here."
         : needsUpdate
@@ -409,6 +446,9 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
+                // Once the archive is extracting there is no transfer left to
+                // stop, and aborting mid-install would leave a partial engine.
+                disabled={downloadPhase === "installing"}
               >
                 Cancel download
               </Button>
@@ -494,34 +534,49 @@ function GpuStatusCard({
     });
   }, []);
 
-  // Fetch CUDA binary status on mount
-  useEffect(() => {
-    window.electronAPI
-      ?.getCudaBinaryStatus?.()
-      .then(setCudaStatus)
-      .catch(() => {});
+  // Fetch CUDA binary status, adopting any download already running so this
+  // card does not offer to start work that is already underway.
+  const refreshCudaStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      if (!status) return;
+      setCudaStatus(status);
+      const active = (status as CudaBinaryStatus).activeDownload;
+      if (active) {
+        setDownloadState("downloading");
+        setDownloadProgress(Math.round(active.percent ?? 0));
+        setDownloadError(null);
+      }
+    } catch {
+      /* keep the last known status */
+    }
   }, []);
+
+  useEffect(() => {
+    refreshCudaStatus();
+  }, [refreshCudaStatus]);
 
   // Refresh CUDA status while Settings is open so async auto-update failures surface.
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const status = await window.electronAPI?.getCudaBinaryStatus?.();
-        if (status) setCudaStatus(status);
-      } catch {
-        /* keep the last known status */
-      }
-    }, 30000);
+    const interval = setInterval(refreshCudaStatus, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshCudaStatus]);
 
-  // Listen for CUDA download progress events
+  // Progress is broadcast to every window, so this also fires for the silent
+  // startup auto-update and for downloads started from the other card.
   useEffect(() => {
     const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
       setDownloadProgress(Math.round(data?.percent ?? data?.progress ?? 0));
+      if (data?.phase === "done") {
+        setDownloadState("done");
+        refreshCudaStatus();
+      } else {
+        setDownloadState("downloading");
+        setDownloadError(null);
+      }
     });
     return () => cleanup?.();
-  }, []);
+  }, [refreshCudaStatus]);
 
   const handleDownloadCuda = async () => {
     setDownloadState("downloading");

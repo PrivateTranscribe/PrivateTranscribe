@@ -244,6 +244,17 @@ class IPCHandlers {
         this.broadcastToWindows("whisper-engine-fallback-changed", payload);
       });
     }
+
+    // The CUDA engine download can start without any window asking for it (the
+    // silent startup auto-update). Broadcasting to every window instead of only
+    // the requester is what keeps Settings honest: it shows the ~750 MB
+    // download that is actually running rather than an "Update available"
+    // button that errors when clicked.
+    if (this.whisperManager?.setCudaDownloadProgressListener) {
+      this.whisperManager.setCudaDownloadProgressListener((progress) => {
+        this.broadcastToWindows("cuda-binary-download-progress", progress);
+      });
+    }
   }
 
   _getDictionarySafe() {
@@ -955,18 +966,23 @@ class IPCHandlers {
           .catch(() => null);
       }
 
+      // A window that opens mid-download missed every progress event, so hand
+      // it the current state instead of letting it render "Update available".
+      const downloadState = this.whisperManager.getCudaDownloadState?.() || null;
+
       return {
         ...cudaStatus,
         latestAvailableVersion,
         cudaAutoUpdateFailed: !!autoUpdateState?.failed,
+        activeDownload: downloadState?.downloading ? downloadState.progress : null,
       };
     });
 
-    ipcMain.handle("download-cuda-binary", async (event) => {
+    ipcMain.handle("download-cuda-binary", async () => {
       try {
-        const result = await this.whisperManager.downloadGpuBinary((progress) => {
-          safeSend(event.sender, "cuda-binary-download-progress", progress);
-        });
+        // Progress reaches every window through the app-wide listener wired in
+        // the constructor, so this does not subscribe per request.
+        const result = await this.whisperManager.downloadGpuBinary();
         if (result?.success) {
           await this.whisperManager.invalidateServerCache({ stopRunningServer: true });
           if (this.clearCudaAutoUpdateFailure) {
