@@ -1,7 +1,38 @@
 import { describe, expect, test } from "vitest";
 import fs from "fs";
 import path from "path";
-import { spawnSync } from "child_process";
+import { execFile, spawnSync } from "child_process";
+
+/**
+ * Ask the helper about many keys at once.
+ *
+ * One spawnSync per key is about 110 sequential process launches, which took
+ * ~5.9s of the 10s testTimeout on an idle machine and intermittently blew
+ * through it when the rest of the suite was competing for cores. The test was
+ * not wrong, just needlessly serial: each key is independent, so the launches
+ * overlap. Concurrency is capped because the point is to stop being slow, not
+ * to fork 110 processes at once.
+ */
+function rejectedKeys(exePath: string, names: string[], concurrency = 8): Promise<string[]> {
+  const rejected: string[] = [];
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < names.length) {
+      const name = names[cursor++];
+      const failed = await new Promise<boolean>((resolve) => {
+        // A non-zero exit surfaces as an error here, which is the same signal
+        // the previous spawnSync(...).status !== 0 check used.
+        execFile(exePath, [`--key=${name}`, "--release-only"], (error) => resolve(Boolean(error)));
+      });
+      if (failed) rejected.push(name);
+    }
+  };
+
+  return Promise.all(
+    Array.from({ length: Math.min(concurrency, names.length) }, worker)
+  ).then(() => rejected.sort());
+}
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const voiceMuter = require("../../../src/helpers/voiceMuter");
@@ -71,7 +102,7 @@ describe("every key the picker can emit is one the helper can press", () => {
   const exePath = path.join(__dirname, "..", "..", "..", "resources", "bin", "windows-hold-key.exe");
   const runnable = process.platform === "win32" && fs.existsSync(exePath);
 
-  test.runIf(runnable)("no picker key name is rejected by the helper", () => {
+  test.runIf(runnable)("no picker key name is rejected by the helper", async () => {
     const source = fs.readFileSync(
       path.join(__dirname, "..", "..", "..", "src", "components", "ui", "HotkeyInput.tsx"),
       "utf8"
@@ -96,9 +127,7 @@ describe("every key the picker can emit is one the helper can press", () => {
 
     // --release-only parses the key and sends the key-up half, which is a no-op
     // for a key that is already up. Exit 3 means the parse failed.
-    const rejected = [...names].filter(
-      (name) => spawnSync(exePath, [`--key=${name}`, "--release-only"]).status !== 0
-    );
+    const rejected = await rejectedKeys(exePath, [...names]);
     expect(rejected).toEqual([]);
   });
 
