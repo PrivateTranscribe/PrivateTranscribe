@@ -66,6 +66,65 @@ function buildAutoStartSetOptions({
   return options;
 }
 
+// Directories the OS is free to delete under us. A dev run started from one of these —
+// an editor scratch copy, an agent session sandbox, an unpacked archive — registers a Run
+// entry whose app path is gone by the next login, and Windows greets the user with
+// Electron's "Unable to find Electron app" dialog on every boot.
+const EPHEMERAL_PATH_SEGMENTS = [
+  "/appdata/local/temp/",
+  "/windows/temp/",
+  "/var/folders/", // macOS per-user temp
+];
+const EPHEMERAL_PATH_ROOTS = ["/tmp/"];
+
+function toComparablePath(value) {
+  const normalized = String(value || "")
+    .replace(/^"|"$/g, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+  return normalized.endsWith("/") ? normalized : `${normalized}/`;
+}
+
+function isEphemeralAppPath(appPath, env = process.env) {
+  const target = toComparablePath(appPath);
+  if (target === "/") {
+    return false;
+  }
+
+  // TEMP/TMP can be the 8.3 short form (KRISTI~1) while appPath is long, or the reverse,
+  // so the literal segments above still have to carry the check on their own.
+  const roots = [env?.TEMP, env?.TMP, env?.TMPDIR]
+    .filter(Boolean)
+    .map(toComparablePath)
+    .filter((root) => root !== "/")
+    .concat(EPHEMERAL_PATH_ROOTS);
+
+  return (
+    roots.some((root) => target.startsWith(root)) ||
+    EPHEMERAL_PATH_SEGMENTS.some((segment) => target.includes(segment))
+  );
+}
+
+/**
+ * Whether it is safe to write a login item for this run.
+ *
+ * Packaged installs always are. A Windows dev run puts the app path in the Run key args
+ * (see buildAutoStartLaunchOptions), so it must refuse when that path is somewhere the OS
+ * will clean up. Other platforms never register the app path, so there is nothing to rot.
+ */
+function canRegisterAutoStart({
+  platform = process.platform,
+  isPackaged = true,
+  appPath = "",
+  env = process.env,
+} = {}) {
+  if (isPackaged || platform !== "win32") {
+    return true;
+  }
+
+  return Boolean(appPath) && !isEphemeralAppPath(appPath, env);
+}
+
 function normalizeExecutablePath(value) {
   return String(value || "")
     .replace(/^"|"$/g, "")
@@ -123,6 +182,8 @@ module.exports = {
   normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  canRegisterAutoStart,
+  isEphemeralAppPath,
   findAutoStartLaunchItem,
   getAutoStartApprovalState,
   resolveAutoStartEnabled,

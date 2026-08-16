@@ -22,6 +22,7 @@ const {
   normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  canRegisterAutoStart,
   resolveAutoStartEnabled,
 } = require("./autoStartLoginItemSettings");
 
@@ -325,6 +326,14 @@ class IPCHandlers {
       execPath: process.execPath,
       appPath: app.getAppPath(),
       launchMode,
+    });
+  }
+
+  _canRegisterAutoStart() {
+    return canRegisterAutoStart({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      appPath: app.getAppPath(),
     });
   }
 
@@ -1358,6 +1367,23 @@ class IPCHandlers {
     ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
       try {
         const launchMode = this._readAutoStartLaunchMode();
+
+        // A dev run registers its app path in the Run key. If that path sits in a temp
+        // directory, Windows keeps launching a checkout the OS has since deleted and the
+        // user gets Electron's "Unable to find Electron app" dialog at every login.
+        // Turning it off stays allowed — that only ever removes an entry.
+        if (enabled && !this._canRegisterAutoStart()) {
+          debugLogger.warn("Refusing to register auto-start from a temporary app path", {
+            appPath: app.getAppPath(),
+          });
+          return {
+            success: false,
+            enabled: false,
+            error:
+              "Start on boot is unavailable in this dev run: the app is running from a temporary folder Windows will delete.",
+          };
+        }
+
         // Explicit user action, so the Windows startup approval follows the toggle:
         // turning it on here also re-enables the entry in Task Manager.
         app.setLoginItemSettings(
@@ -1401,8 +1427,10 @@ class IPCHandlers {
         // Only rewrite the login item while auto-start is actually on. If it is off —
         // including when the user disabled it in Task Manager — the stored mode is
         // enough; touching the registry here would re-register and re-approve the app
-        // behind the user's back.
-        if (wasEnabled) {
+        // behind the user's back. `executableWillLaunchAtLogin` ignores args, so a dev run
+        // reads any existing entry for node_modules' electron.exe as on — rewriting it from
+        // a temp checkout would point the Run key at a directory Windows later deletes.
+        if (wasEnabled && this._canRegisterAutoStart()) {
           app.setLoginItemSettings(this._buildAutoStartSetOptions(true, launchMode, true));
         }
         debugLogger.debug("Auto-start launch mode updated", {

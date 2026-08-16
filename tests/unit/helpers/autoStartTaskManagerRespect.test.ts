@@ -21,8 +21,18 @@ describe("auto-start respects the Windows Task Manager state", () => {
     const source = read("src", "helpers", "ipcHandlers.js");
 
     expect(source).toMatch(
-      /if \(wasEnabled\) \{\s*app\.setLoginItemSettings\(\s*this\._buildAutoStartSetOptions\(true, launchMode, true\)\s*\);/
+      /if \(wasEnabled && this\._canRegisterAutoStart\(\)\) \{\s*app\.setLoginItemSettings\(\s*this\._buildAutoStartSetOptions\(true, launchMode, true\)\s*\);/
     );
+  });
+
+  // A dev run started from a temp copy of the checkout must not write its app path into
+  // the Run key: the directory is gone by the next login and Windows shows Electron's
+  // "Unable to find Electron app" dialog on every boot.
+  it("refuses to register auto-start from a temporary app path", () => {
+    const source = read("src", "helpers", "ipcHandlers.js");
+
+    expect(source).toContain("if (enabled && !this._canRegisterAutoStart()) {");
+    expect(source).toContain("canRegisterAutoStart({");
   });
 
   it("keeps the first-run default from overruling an existing user decision", () => {

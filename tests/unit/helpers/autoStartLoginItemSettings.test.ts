@@ -5,6 +5,8 @@ const require = createRequire(import.meta.url);
 const {
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  canRegisterAutoStart,
+  isEphemeralAppPath,
   findAutoStartLaunchItem,
   getAutoStartApprovalState,
   resolveAutoStartEnabled,
@@ -109,6 +111,76 @@ describe("auto-start login item settings", () => {
     expect(
       buildAutoStartSetOptions({ enabled: true, startupApproved: false, platform: "darwin" })
     ).not.toHaveProperty("enabled");
+  });
+});
+
+describe("temporary app paths", () => {
+  // The real entry this guard exists for: a dev run launched out of an agent session's
+  // scratch copy wrote `electron.exe <temp path> --launch-at-login` into the Run key, and
+  // every login after the temp folder was cleaned up showed Electron's error dialog.
+  const SCRATCH_PATH =
+    "C:\\Users\\KRISTI~1\\AppData\\Local\\Temp\\claude\\c--Projects-PrivateTranscribe\\b58a70dd\\scratchpad";
+
+  it("recognises Windows temp locations in either slash or short-name form", () => {
+    expect(isEphemeralAppPath(SCRATCH_PATH, {})).toBe(true);
+    expect(isEphemeralAppPath("C:/Users/me/AppData/Local/Temp/build/app", {})).toBe(true);
+    expect(isEphemeralAppPath("C:\\Windows\\Temp\\PrivateTranscribe", {})).toBe(true);
+  });
+
+  it("recognises whatever TEMP points at, even outside the known locations", () => {
+    expect(isEphemeralAppPath("D:/scratch/checkout", { TEMP: "D:\\scratch" })).toBe(true);
+    expect(isEphemeralAppPath("D:/projects/checkout", { TEMP: "D:\\scratch" })).toBe(false);
+  });
+
+  it("leaves ordinary checkouts alone", () => {
+    expect(isEphemeralAppPath("C:/Projects/PrivateTranscribe", {})).toBe(false);
+    // "temp" has to be a directory of its own, not a fragment of a longer name.
+    expect(isEphemeralAppPath("C:/Projects/template/app", {})).toBe(false);
+    expect(isEphemeralAppPath("C:/Projects/tmp-tools/app", {})).toBe(false);
+    expect(isEphemeralAppPath("", {})).toBe(false);
+  });
+
+  it("blocks registering a Windows dev run from a temp path", () => {
+    expect(
+      canRegisterAutoStart({
+        platform: "win32",
+        isPackaged: false,
+        appPath: SCRATCH_PATH,
+        env: {},
+      })
+    ).toBe(false);
+  });
+
+  it("still allows packaged installs and normal dev checkouts", () => {
+    // Packaged builds never put the app path in the args, so a temp install directory
+    // cannot rot the Run key the same way.
+    expect(
+      canRegisterAutoStart({
+        platform: "win32",
+        isPackaged: true,
+        appPath: SCRATCH_PATH,
+        env: {},
+      })
+    ).toBe(true);
+    expect(
+      canRegisterAutoStart({
+        platform: "win32",
+        isPackaged: false,
+        appPath: "C:/Projects/PrivateTranscribe",
+        env: {},
+      })
+    ).toBe(true);
+  });
+
+  it("only applies to Windows, the one platform that registers the app path", () => {
+    expect(
+      canRegisterAutoStart({
+        platform: "darwin",
+        isPackaged: false,
+        appPath: "/var/folders/xx/scratch/app",
+        env: {},
+      })
+    ).toBe(true);
   });
 });
 
