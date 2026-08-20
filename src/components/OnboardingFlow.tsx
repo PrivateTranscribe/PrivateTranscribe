@@ -40,9 +40,9 @@ import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
 import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics";
 import { SectionLabel } from "./ui/SectionLabel";
-import LanguageSelector from "./ui/LanguageSelector";
+import SpokenLanguagesSelector from "./ui/SpokenLanguagesSelector";
 import { getLanguageLabel } from "../utils/languages";
-import { isWeakForNonEnglish } from "../utils/modelAccuracy";
+import { isWeakForNonEnglish, resolveRatingLanguage } from "../utils/modelAccuracy";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -91,6 +91,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
     preferredLanguage,
+    spokenLanguages,
+    setSpokenLanguages,
     openaiApiKey,
     groqApiKey,
     customTranscriptionApiKey,
@@ -742,9 +744,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
 
       case 2: // Setup - Choose Mode & Configure
-        const selectedLanguageLabel = getLanguageLabel(preferredLanguage);
+        const ratingLanguage = resolveRatingLanguage(preferredLanguage, spokenLanguages);
+        const selectedLanguageLabel = getLanguageLabel(ratingLanguage || preferredLanguage);
         const showSmallModelLanguageWarning =
-          useLocalWhisper && isWeakForNonEnglish(whisperModel, preferredLanguage);
+          useLocalWhisper && isWeakForNonEnglish(whisperModel, ratingLanguage);
 
         const shouldShowCudaDownload =
           useLocalWhisper &&
@@ -774,27 +777,27 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               className="rounded-lg border border-border-subtle bg-surface-1 p-3 space-y-2"
               data-testid="onboarding-language"
             >
-              <SectionLabel>Dictation language</SectionLabel>
-              <LanguageSelector
-                value={preferredLanguage}
-                onChange={(value) => updateTranscriptionSettings({ preferredLanguage: value })}
-              />
-              {preferredLanguage === "auto" ? (
+              <SectionLabel>Which languages do you speak?</SectionLabel>
+              <SpokenLanguagesSelector value={spokenLanguages} onChange={setSpokenLanguages} />
+              {spokenLanguages.length === 0 ? (
                 <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
-                  Auto-detect guesses from the first seconds of audio, and it mixes up languages
-                  that sound alike, such as Danish, Norwegian and Swedish. Picking your language
-                  stops the guessing.
+                  Without an answer we auto-detect from the first seconds of audio, and that mixes
+                  up languages that sound alike, such as Danish, Norwegian and Swedish. Naming your
+                  languages rules the others out.
+                </p>
+              ) : spokenLanguages.length === 1 ? (
+                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
+                  {getLanguageLabel(spokenLanguages[0])} is now set outright, so there is nothing
+                  left to guess.
+                  {spokenLanguages[0] !== "en" &&
+                    " Accuracy outside English is lower on every model, so expect a few more corrections."}
                 </p>
               ) : (
-                preferredLanguage !== "en" && (
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid="onboarding-language-hint"
-                  >
-                    Accuracy outside English is lower on every model, so expect a few more
-                    corrections. Adding names and jargon to your dictionary later wins some back.
-                  </p>
-                )
+                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
+                  We will detect between these and never pick a language you did not name. Use one
+                  language per dictation — switching mid-sentence is not something Whisper can
+                  follow.
+                </p>
               )}
               {showSmallModelLanguageWarning && (
                 <div
@@ -847,7 +850,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
               onDownloadComplete={checkModelStatus}
-              preferredLanguage={preferredLanguage}
+              preferredLanguage={ratingLanguage}
               variant="onboarding"
             />
 

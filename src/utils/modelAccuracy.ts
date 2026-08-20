@@ -88,6 +88,28 @@ export function getWhisperPerfRating(
 }
 
 /**
+ * The language a model's accuracy should be judged against.
+ *
+ * A user who speaks Danish and English sits on `preferredLanguage: "auto"`,
+ * because there are two languages to detect between. Rating their models as
+ * "unknown language" would hide exactly the warning they need — the Danish
+ * cliff is what decides whether Base is usable for them at all. Their hardest
+ * language is the honest one to rate against, so the first non-English entry
+ * in the spoken set wins.
+ */
+export function resolveRatingLanguage(
+  preferredLanguage: string | null | undefined,
+  spokenLanguages?: string[] | null
+): string | null {
+  if (isKnownNonEnglishLanguage(preferredLanguage)) return preferredLanguage ?? null;
+
+  const nonEnglish = (spokenLanguages ?? []).find((code) => isKnownNonEnglishLanguage(code));
+  if (nonEnglish) return nonEnglish;
+
+  return preferredLanguage ?? null;
+}
+
+/**
  * Models that fall off a cliff outside English, worth warning about when
  * paired with a non-English language. Derived from the same measurements:
  * everything below the turbo/large tier at least doubles the error rate.

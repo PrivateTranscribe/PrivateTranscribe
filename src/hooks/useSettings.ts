@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
+import {
+  SPOKEN_LANGUAGES_KEY,
+  derivePreferredLanguage,
+  normalizeSpokenLanguages,
+} from "../utils/spokenLanguages";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -24,6 +29,8 @@ export interface TranscriptionSettings {
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
   preferredLanguage: string;
+  /** The languages this user speaks. Constrains auto-detect; see spokenLanguages.ts. */
+  spokenLanguages: string[];
   translateToEnglish: string;
   cloudTranscriptionProvider: string;
   cloudTranscriptionModel: string;
@@ -138,6 +145,28 @@ export function useSettings() {
     serialize: String,
     deserialize: String,
   });
+
+  const [spokenLanguagesRaw, setSpokenLanguagesRaw] = useLocalStorage<string[]>(
+    SPOKEN_LANGUAGES_KEY,
+    []
+  );
+  const spokenLanguages = useMemo(
+    () => normalizeSpokenLanguages(spokenLanguagesRaw),
+    [spokenLanguagesRaw]
+  );
+
+  // Changing the spoken set also decides what happens on the next dictation:
+  // one language is pinned outright, several fall back to constrained
+  // auto-detect. Deriving it here keeps the two settings from drifting apart,
+  // which is the only way they can produce a state the user did not ask for.
+  const setSpokenLanguages = useCallback(
+    (languages: string[]) => {
+      const normalized = normalizeSpokenLanguages(languages);
+      setSpokenLanguagesRaw(normalized);
+      setPreferredLanguage((current) => derivePreferredLanguage(normalized, current));
+    },
+    [setSpokenLanguagesRaw, setPreferredLanguage]
+  );
 
   const [translateToEnglish, setTranslateToEnglish] = useLocalStorage("translateToEnglish", "off", {
     serialize: String,
@@ -1031,6 +1060,8 @@ export function useSettings() {
     allowLocalFallback,
     fallbackWhisperModel,
     preferredLanguage,
+    spokenLanguages,
+    setSpokenLanguages,
     translateToEnglish,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,

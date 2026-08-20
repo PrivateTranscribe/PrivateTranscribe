@@ -45,6 +45,9 @@ import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
 import { isFeatureUnlocked } from "../hooks/useProStatus";
+import SpokenLanguagesSelector from "./ui/SpokenLanguagesSelector";
+import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
+import { resolveRatingLanguage } from "../utils/modelAccuracy";
 import { useAgentName } from "../utils/agentName";
 import ProSettingsSection from "./ProSettingsSection";
 import { usePermissions } from "../hooks/usePermissions";
@@ -1157,6 +1160,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     updateTranscriptionSettings,
     updateReasoningSettings,
     preferredLanguage,
+    spokenLanguages,
+    setSpokenLanguages,
     setPreferredLanguage,
     translateToEnglish,
     setTranslateToEnglish,
@@ -1350,6 +1355,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           whisperForceCpu,
           whisperServerIdleTimeoutMinutes,
           preferredLanguage,
+          spokenLanguages,
           translateToEnglish,
           cloudTranscriptionProvider,
           cloudTranscriptionModel,
@@ -1411,6 +1417,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       whisperModel,
       whisperForceCpu,
       preferredLanguage,
+      spokenLanguages,
       translateToEnglish,
       cloudTranscriptionProvider,
       cloudTranscriptionModel,
@@ -1518,6 +1525,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           importedPreferredLanguage = importedLanguage;
         } else {
           skipField("preferredLanguage", "must be a valid BCP-47 language code or null");
+        }
+      }
+
+      // Normalisation is the validation here: unknown codes, duplicates and
+      // anything past the cap are dropped rather than trusted, so a
+      // hand-edited file cannot pin dictation to a language Whisper will
+      // reject.
+      if (s.spokenLanguages !== undefined) {
+        const importedSpokenLanguages = normalizeSpokenLanguages(s.spokenLanguages);
+        if (importedSpokenLanguages.length > 0) {
+          setSpokenLanguages(importedSpokenLanguages);
+        } else {
+          skipField("spokenLanguages", "must be a list of supported language codes");
         }
       }
 
@@ -2277,30 +2297,24 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Spoken language"
-                    description="Set this to the language you actually speak. For Danish dictation, choose Danish instead of Auto for the most stable results."
+                    label="Languages you speak"
+                    description="Naming your languages stops auto-detect from answering with a neighbour you do not speak, such as Norwegian for Danish. One language is set outright; several are detected between."
                   >
-                    <Select
-                      value={preferredLanguage || "auto"}
-                      onValueChange={(val) => {
-                        setPreferredLanguage(val);
-                        // English output is only valid for an explicit non-English speech language.
-                        if (val === "en" || val === "auto") {
-                          setTranslateToEnglish("off");
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {LANGUAGE_OPTIONS.map((lang) => (
-                          <SelectItem key={lang.value} value={lang.value}>
-                            {lang.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="w-[260px]">
+                      <SpokenLanguagesSelector
+                        value={spokenLanguages}
+                        onChange={(next) => {
+                          setSpokenLanguages(next);
+                          // English output is only valid for an explicit
+                          // non-English speech language, and that is exactly
+                          // what a single non-English selection produces.
+                          const derived = derivePreferredLanguage(next, preferredLanguage);
+                          if (derived === "en" || derived === "auto") {
+                            setTranslateToEnglish("off");
+                          }
+                        }}
+                      />
+                    </div>
                   </SettingsRow>
 
                   <SettingsRow label="Output language" description={outputLanguageHelp}>
@@ -2785,7 +2799,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               }
               gpuSupported={gpuSupportedForPicker}
               recommendedLocalModel={recommendedWhisperModelForPicker}
-              preferredLanguage={preferredLanguage}
+              preferredLanguage={resolveRatingLanguage(preferredLanguage, spokenLanguages)}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });

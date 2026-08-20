@@ -9,12 +9,15 @@ describe("Settings language output UX", () => {
   it("uses explicit spoken/output language labels instead of the old ambiguous wording", () => {
     const contents = readSettingsPage();
 
-    expect(contents).toContain('label="Spoken language"');
+    expect(contents).toContain('label="Languages you speak"');
     expect(contents).toContain('label="Output language"');
     expect(contents).toContain("Same as speech");
     expect(contents).toContain("English");
     expect(contents).not.toContain('label="I speak"');
     expect(contents).not.toContain('label="Translate to English"');
+    // Superseded by the multi-select: a single "Spoken language" dropdown
+    // could not express "Danish and English, never Norwegian".
+    expect(contents).not.toContain('label="Spoken language"');
   });
 
   it("disables stale English output unless speech language and model support make it valid", () => {
@@ -31,7 +34,7 @@ describe("Settings language output UX", () => {
   it("explains the Danish launch-critical default clearly", () => {
     const contents = readSettingsPage();
 
-    expect(contents).toContain("For Danish dictation, choose Danish instead of Auto");
+    expect(contents).toContain("such as Norwegian for Danish");
     expect(contents).toContain("Same as speech keeps Danish as Danish");
     expect(contents).toContain("Whisper Turbo does not reliably support translation");
   });
