@@ -5,6 +5,7 @@ import { Badge } from "../ui/badge";
 import PromptStudio from "../ui/PromptStudio";
 import { useAgentName } from "../../utils/agentName";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { BetaBadge } from "../ui/BetaBadge";
 import { useDialogs } from "../../hooks/useDialogs";
 import { AlertDialog } from "../ui/dialog";
 
@@ -43,11 +44,7 @@ export default function VoiceAssistantPage() {
           <Badge variant="warning" className="text-[10px]">
             Beta
           </Badge>
-          {!isUnlocked && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
-              <Lock size={10} /> Tester
-            </span>
-          )}
+          {!isUnlocked && <BetaBadge locked />}
         </div>
         <p className="text-sm text-muted-foreground">
           Personalize your AI companion with a custom name and fine-tune system prompts

@@ -33,6 +33,7 @@ import {
   ConfirmDialog,
 } from "../ui/dialog";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { BetaBadge } from "../ui/BetaBadge";
 import { useActionEngine } from "../../hooks/useActionEngine";
 import { SectionLabel } from "../ui/SectionLabel";
 import type {
@@ -988,11 +989,7 @@ export default function ActionEnginePage() {
             <Badge variant="warning" className="text-[10px]">
               Beta
             </Badge>
-            {!isUnlocked && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
-                <Lock size={10} /> Tester
-              </span>
-            )}
+            {!isUnlocked && <BetaBadge locked />}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Trigger commands, shortcuts, and workflows with your voice.

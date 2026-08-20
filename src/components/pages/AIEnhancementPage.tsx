@@ -7,6 +7,7 @@ import { AlertDialog } from "../ui/dialog";
 import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { BetaBadge } from "../ui/BetaBadge";
 import { SectionLabel } from "../ui/SectionLabel";
 
 export default function AIEnhancementPage() {
@@ -61,11 +62,7 @@ export default function AIEnhancementPage() {
           <Badge variant="warning" className="text-[10px]">
             Beta
           </Badge>
-          {!isUnlocked && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
-              <Lock size={10} /> Tester
-            </span>
-          )}
+          {!isUnlocked && <BetaBadge locked />}
         </div>
         <p className="text-sm text-muted-foreground">
           Automatically polish transcriptions with grammar fixes, formatting, and intelligent

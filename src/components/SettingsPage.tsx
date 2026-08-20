@@ -46,6 +46,7 @@ import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
 import { isFeatureUnlocked } from "../hooks/useProStatus";
 import SpokenLanguagesSelector from "./ui/SpokenLanguagesSelector";
+import { BetaBadge } from "./ui/BetaBadge";
 import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
 import { resolveRatingLanguage } from "../utils/modelAccuracy";
 import { useAgentName } from "../utils/agentName";
@@ -138,10 +139,22 @@ function SettingsPanelRow({
   return <div className={`px-5 py-4 ${className}`}>{children}</div>;
 }
 
-function SectionHeader({ title, description }: { title: string; description?: string }) {
+function SectionHeader({
+  title,
+  description,
+  badge,
+}: {
+  title: string;
+  description?: string;
+  /** Rendered beside the title, e.g. a Beta pill on a tester-only section. */
+  badge?: React.ReactNode;
+}) {
   return (
     <div className="mb-5">
-      <h3 className="text-lg font-semibold text-foreground tracking-tight">{title}</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-foreground tracking-tight">{title}</h3>
+        {badge}
+      </div>
       {description && (
         <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
       )}
@@ -2298,7 +2311,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Languages you speak"
-                    description="Naming your languages stops auto-detect from answering with a neighbour you do not speak, such as Norwegian for Danish. One language is set outright; several are detected between."
+                    description="Stops auto-detect picking a neighbour you do not speak, such as Norwegian for Danish. One language is set outright, several are detected between."
                   >
                     <div className="w-[260px]">
                       <SpokenLanguagesSelector
@@ -2357,6 +2370,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SectionHeader
                 title="Correction Memory"
                 description="Apply your saved corrections and learn new ones from edits"
+                badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -2365,7 +2379,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       correctionMemoryUnlocked
                         ? "Use dictionary entries and approved-tester correction memory while transcribing."
-                        : "Use dictionary entries while transcribing. Correction Memory requires approved tester access."
+                        : "Use dictionary entries while transcribing. The Correction Memory half stays off until tester access is approved."
                     }
                   >
                     <Toggle
@@ -2377,10 +2391,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Auto-learn corrections"
+                    badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
                     description={
                       correctionMemoryUnlocked
                         ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                        : "Beta - approved tester access is required to enable correction learning."
+                        : "Still being built, so it is limited to approved testers for now. Nothing here is running in the background."
                     }
                   >
                     <Toggle
@@ -2669,10 +2684,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Smart Context"
+                    badge={smartContextUnlocked ? undefined : <BetaBadge locked />}
                     description={
                       smartContextUnlocked
                         ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
-                        : "Beta - approved tester access is required to enable Smart Context"
+                        : "Still being built, so it is limited to approved testers for now. Nothing about your screen is being read."
                     }
                   >
                     <Toggle

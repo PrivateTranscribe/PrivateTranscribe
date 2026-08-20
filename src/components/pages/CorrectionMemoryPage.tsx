@@ -6,6 +6,7 @@ import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Toggle } from "../ui/toggle";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { BetaBadge } from "../ui/BetaBadge";
 import { useSettings } from "../../hooks/useSettings";
 
 type CorrectionRow = {
@@ -163,14 +164,9 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                 Correction Memory
               </h1>
             )}
-            <Badge variant="warning" className="text-[10px]">
-              Beta
-            </Badge>
-            {!isUnlocked && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-pro/10 text-pro border border-pro/20">
-                <Lock size={10} /> Approved testers only
-              </span>
-            )}
+            {/* One pill, not two. Locked showed both "Beta" and "Approved
+                testers only", which reads as two separate problems. */}
+            <BetaBadge locked={!isUnlocked} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Add explicit fixes for common mishears, like{" "}

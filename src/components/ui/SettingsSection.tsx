@@ -56,6 +56,8 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
 interface SettingsRowProps {
   label: string;
   description?: string;
+  /** Rendered beside the label, e.g. a Beta pill on a tester-only control. */
+  badge?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -63,13 +65,17 @@ interface SettingsRowProps {
 export const SettingsRow: React.FC<SettingsRowProps> = ({
   label,
   description,
+  badge,
   children,
   className = "",
 }) => {
   return (
     <div className={`flex items-center justify-between gap-4 ${className}`}>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-foreground">{label}</p>
+          {badge}
+        </div>
         {description && (
           <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">{description}</p>
         )}
