@@ -9,7 +9,9 @@ describe("Settings language output UX", () => {
   it("uses explicit spoken/output language labels instead of the old ambiguous wording", () => {
     const contents = readSettingsPage();
 
-    expect(contents).toContain('label="Languages you speak"');
+    // The spoken-language control is stacked, not a SettingsRow: it needs the
+    // panel's full width and its search list expands downward.
+    expect(contents).toContain("Languages you speak");
     expect(contents).toContain('label="Output language"');
     expect(contents).toContain("Same as speech");
     expect(contents).toContain("English");
@@ -34,7 +36,13 @@ describe("Settings language output UX", () => {
   it("explains the Danish launch-critical default clearly", () => {
     const contents = readSettingsPage();
 
-    expect(contents).toContain("such as Norwegian for Danish");
+    // The Danish/Norwegian warning moved into the picker's own status line,
+    // which states what will actually happen on the next dictation.
+    const selector = fs.readFileSync(
+      path.join(process.cwd(), "src", "components", "ui", "SpokenLanguagesSelector.tsx"),
+      "utf8"
+    );
+    expect(selector).toContain("Danish and Norwegian");
     expect(contents).toContain("Same as speech keeps Danish as Danish");
     expect(contents).toContain("Whisper Turbo does not reliably support translation");
   });

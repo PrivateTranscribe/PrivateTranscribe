@@ -45,7 +45,7 @@ import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
 import { isFeatureUnlocked } from "../hooks/useProStatus";
-import SpokenLanguagesSelector from "./ui/SpokenLanguagesSelector";
+import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { BetaBadge } from "./ui/BetaBadge";
 import { BetaAccessLink } from "./ui/BetaAccessLink";
 import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
@@ -2310,27 +2310,37 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               />
               <SettingsPanel>
                 <SettingsPanelRow>
-                  <SettingsRow
-                    label="Languages you speak"
-                    description="Stops auto-detect picking a neighbour you do not speak, such as Norwegian for Danish. One language is set outright, several are detected between."
-                  >
-                    <div className="w-[260px]">
-                      <SpokenLanguagesSelector
-                        value={spokenLanguages}
-                        onChange={(next) => {
-                          setSpokenLanguages(next);
-                          // English output is only valid for an explicit
-                          // non-English speech language, and that is exactly
-                          // what a single non-English selection produces.
-                          const derived = derivePreferredLanguage(next, preferredLanguage);
-                          if (derived === "en" || derived === "auto") {
-                            setTranslateToEnglish("off");
-                          }
-                        }}
-                      />
-                    </div>
-                  </SettingsRow>
+                  {/* Stacked rather than a SettingsRow: the picker needs the
+                      full width of the panel, and its search list expands
+                      downward. Squeezed into the row's narrow right-hand
+                      column it read as a stray chip floating beside the
+                      description. */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Languages you speak</p>
+                    <SpokenLanguagesSelector
+                      value={spokenLanguages}
+                      onChange={(next) => {
+                        setSpokenLanguages(next);
+                        // English output is only valid for an explicit
+                        // non-English speech language, and that is exactly
+                        // what a single non-English selection produces.
+                        const derived = derivePreferredLanguage(next, preferredLanguage);
+                        if (derived === "en" || derived === "auto") {
+                          setTranslateToEnglish("off");
+                        }
+                      }}
+                    />
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      {describeSpokenLanguages(spokenLanguages)}
+                    </p>
+                  </div>
+                </SettingsPanelRow>
 
+                {/* Its own row so the panel's divider separates the two
+                    questions. Sharing one row left the spoken-language status
+                    line touching the Output language label, and they read as
+                    a single paragraph. */}
+                <SettingsPanelRow>
                   <SettingsRow label="Output language" description={outputLanguageHelp}>
                     <div className="flex flex-wrap gap-1.5 justify-end">
                       <button
