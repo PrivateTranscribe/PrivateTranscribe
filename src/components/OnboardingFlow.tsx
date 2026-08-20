@@ -786,12 +786,18 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   languages rules the others out.
                 </p>
               ) : spokenLanguages.length === 1 ? (
-                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
-                  {getLanguageLabel(spokenLanguages[0])} is now set outright, so there is nothing
-                  left to guess.
-                  {spokenLanguages[0] !== "en" &&
-                    " Accuracy outside English is lower on every model, so expect a few more corrections."}
-                </p>
+                // English alone needs no caveat: it is the language every
+                // model is strongest in, and saying so would be noise.
+                spokenLanguages[0] !== "en" && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="onboarding-language-hint"
+                  >
+                    {getLanguageLabel(spokenLanguages[0])} is set outright, so there is nothing left
+                    to guess. Accuracy outside English is lower on every model, so expect a few more
+                    corrections.
+                  </p>
+                )
               ) : (
                 <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
                   We will detect between these and never pick a language you did not name. Use one

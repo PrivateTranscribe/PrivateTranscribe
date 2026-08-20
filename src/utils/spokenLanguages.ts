@@ -103,21 +103,36 @@ export function derivePreferredLanguage(
 }
 
 /**
- * Reads the spoken set from localStorage for the callers that have no hook.
+ * The effective spoken set, given what is stored and the language already in
+ * use.
  *
- * Falls back to the current `preferredLanguage` so an install that predates
- * this setting still behaves as if the user had named that one language,
- * rather than losing the constraint until they revisit onboarding.
+ * An install that predates this setting has an empty set and a
+ * `preferredLanguage` the user chose deliberately. Reading that as "no
+ * languages named" would both drop the constraint and show them an empty
+ * picker for a question they already answered, so the existing choice stands
+ * in as a set of one until they say otherwise.
+ *
+ * Every reader goes through here so the UI and the decoder can never disagree
+ * about which languages are in play.
  */
+export function resolveSpokenLanguages(
+  stored: unknown,
+  preferredLanguage?: string | null
+): string[] {
+  const normalized = normalizeSpokenLanguages(stored);
+  if (normalized.length > 0) return normalized;
+  return isSelectableLanguage(preferredLanguage) ? [preferredLanguage.trim().toLowerCase()] : [];
+}
+
+/** Reads the effective spoken set from localStorage, for callers with no hook. */
 export function readSpokenLanguages(): string[] {
   if (typeof localStorage === "undefined") return [];
 
   try {
-    const stored = normalizeSpokenLanguages(localStorage.getItem(SPOKEN_LANGUAGES_KEY));
-    if (stored.length > 0) return stored;
-
-    const preferred = localStorage.getItem("preferredLanguage");
-    return isSelectableLanguage(preferred) ? [preferred.trim().toLowerCase()] : [];
+    return resolveSpokenLanguages(
+      localStorage.getItem(SPOKEN_LANGUAGES_KEY),
+      localStorage.getItem("preferredLanguage")
+    );
   } catch {
     return [];
   }

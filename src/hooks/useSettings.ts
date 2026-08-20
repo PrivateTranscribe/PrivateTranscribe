@@ -4,6 +4,7 @@ import {
   SPOKEN_LANGUAGES_KEY,
   derivePreferredLanguage,
   normalizeSpokenLanguages,
+  resolveSpokenLanguages,
 } from "../utils/spokenLanguages";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
@@ -151,8 +152,8 @@ export function useSettings() {
     []
   );
   const spokenLanguages = useMemo(
-    () => normalizeSpokenLanguages(spokenLanguagesRaw),
-    [spokenLanguagesRaw]
+    () => resolveSpokenLanguages(spokenLanguagesRaw, preferredLanguage),
+    [spokenLanguagesRaw, preferredLanguage]
   );
 
   // Changing the spoken set also decides what happens on the next dictation:

@@ -6,6 +6,10 @@ import { test, expect } from "./fixtures/electron-app";
  * the opening seconds of audio and confuses languages that sound alike, which
  * is how a Danish recording comes back looking like Norwegian.
  *
+ * It now asks for the languages the user speaks rather than one dictation
+ * language, because a bilingual user answering the old question honestly
+ * ended up right back on unconstrained auto-detect.
+ *
  * These specs drive the real first-run wizard in the packaged renderer.
  */
 test.use({ completeOnboarding: false });
@@ -21,15 +25,16 @@ async function openSetupStep(page: import("@playwright/test").Page) {
 }
 
 test.describe("Onboarding dictation language", () => {
-  test("asks for the dictation language during setup", async ({ controlPanel }) => {
+  test("asks which languages the user speaks during setup", async ({ controlPanel }) => {
     await openSetupStep(controlPanel);
 
     const section = controlPanel.getByTestId("onboarding-language");
-    await expect(section).toContainText("Dictation language");
+    await expect(section).toContainText("Which languages do you speak?");
 
-    // Default is auto-detect, so the user has to be told what that costs.
+    // Nothing named yet means unconstrained auto-detect, so the user has to be
+    // told what that costs.
     const hint = controlPanel.getByTestId("onboarding-language-hint");
-    await expect(hint).toContainText("Auto-detect guesses");
+    await expect(hint).toContainText("auto-detect");
     await expect(hint).toContainText("Danish, Norwegian and Swedish");
 
     // The question is worthless if the user never scrolls to it, so capture
@@ -54,6 +59,12 @@ test.describe("Onboarding dictation language", () => {
     await controlPanel.getByText("Danish", { exact: true }).first().click();
 
     // The picker is only useful if the setting actually survives the step.
+    await expect
+      .poll(async () => controlPanel.evaluate(() => localStorage.getItem("spokenLanguages")))
+      .toBe(JSON.stringify(["da"]));
+
+    // A single language is pinned outright rather than left to detection,
+    // which is the whole accuracy win of asking the question.
     await expect
       .poll(async () => controlPanel.evaluate(() => localStorage.getItem("preferredLanguage")))
       .toBe("da");
@@ -150,6 +161,8 @@ test.describe("Onboarding dictation language", () => {
   test("shows no accuracy caveat for English, which needs none", async ({ controlPanel }) => {
     await openSetupStep(controlPanel);
 
+    // An install that predates the spoken set still counts as having answered:
+    // its existing language stands in as a set of one.
     await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "en"));
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
     await expect(controlPanel.getByTestId("onboarding-language")).toBeVisible();
