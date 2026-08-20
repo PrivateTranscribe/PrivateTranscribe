@@ -34,6 +34,7 @@ import {
 } from "../ui/dialog";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { BetaBadge } from "../ui/BetaBadge";
+import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { useActionEngine } from "../../hooks/useActionEngine";
 import { SectionLabel } from "../ui/SectionLabel";
 import type {
@@ -986,10 +987,9 @@ export default function ActionEnginePage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-semibold text-foreground tracking-tight">Action Engine</h1>
-            <Badge variant="warning" className="text-[10px]">
-              Beta
-            </Badge>
-            {!isUnlocked && <BetaBadge locked />}
+            {/* One pill. The locked variant already says "Beta"; a second
+                warning-coloured one beside it read as two states. */}
+            <BetaBadge locked={!isUnlocked} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Trigger commands, shortcuts, and workflows with your voice.
@@ -1061,6 +1061,7 @@ export default function ActionEnginePage() {
               to any URL - without touching the keyboard. Build a personal command vocabulary that
               works exactly how you think. This beta requires approved tester access.
             </p>
+            <BetaAccessLink className="text-sm" />
           </div>
         </>
       )}

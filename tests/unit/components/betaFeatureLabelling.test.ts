@@ -52,6 +52,34 @@ describe("beta feature labelling", () => {
     expect(readSource("src/components/SettingsPage.tsx")).toContain("badge?: React.ReactNode");
   });
 
+  it("offers a way out of every locked surface", () => {
+    // A locked control with no path forward is worse than a hidden one: it
+    // names what the user is missing and then leaves them nowhere to go.
+    for (const file of BETA_SURFACES) {
+      expect(readSource(file), `${file} should link out`).toContain("<BetaAccessLink");
+    }
+
+    const settings = readSource("src/components/SettingsPage.tsx");
+    // Both locked cards and both locked toggles.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(4);
+  });
+
+  it("keeps the beta destination in one place", () => {
+    const links = readSource("src/utils/externalLinks.ts");
+    expect(links).toContain("BETA_ACCESS_URL");
+
+    // The site has no /beta route, and the footer's own "Tester program" link
+    // points at a #waitlist anchor that is not on the page. Pointing the app
+    // at either would send users somewhere that does not exist.
+    expect(links).not.toContain("privatetranscribe.com/beta");
+    expect(links).toContain("#pricing");
+
+    const component = readSource("src/components/ui/BetaAccessLink.tsx");
+    expect(component).toContain("BETA_ACCESS_URL");
+    // Opens in the system browser, never inside the Electron window.
+    expect(component).toContain("openExternalLink");
+  });
+
   it("still gates on the entitlement rather than on the badge", () => {
     // Labelling must never become the enforcement. Every badged surface reads
     // the same entitlement helper that the runtime paths do.

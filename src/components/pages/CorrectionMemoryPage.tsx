@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Toggle } from "../ui/toggle";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { BetaBadge } from "../ui/BetaBadge";
+import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { useSettings } from "../../hooks/useSettings";
 
 type CorrectionRow = {
@@ -190,6 +191,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
             dictation automatically. The longer you use PrivateTranscribe, the sharper it gets. This
             beta requires approved tester access.
           </p>
+          <BetaAccessLink className="text-sm" />
         </div>
       )}
 

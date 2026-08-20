@@ -8,6 +8,7 @@ import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { BetaBadge } from "../ui/BetaBadge";
+import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { SectionLabel } from "../ui/SectionLabel";
 
 export default function AIEnhancementPage() {
@@ -59,10 +60,9 @@ export default function AIEnhancementPage() {
         <div className="flex items-center gap-3 mb-2">
           <Brain size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">AI Enhancement</h1>
-          <Badge variant="warning" className="text-[10px]">
-            Beta
-          </Badge>
-          {!isUnlocked && <BetaBadge locked />}
+          {/* One pill. The locked variant already says "Beta"; a second
+              warning-coloured one beside it read as two states. */}
+          <BetaBadge locked={!isUnlocked} />
         </div>
         <p className="text-sm text-muted-foreground">
           Automatically polish transcriptions with grammar fixes, formatting, and intelligent
@@ -81,6 +81,7 @@ export default function AIEnhancementPage() {
             and reformatting text before it reaches the clipboard. This beta requires approved
             tester access while it is still being built.
           </p>
+          <BetaAccessLink className="text-sm" />
         </div>
       )}
 

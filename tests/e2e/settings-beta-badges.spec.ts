@@ -25,9 +25,14 @@ test.describe("beta feature labelling", () => {
     // The row says Beta beside the control, not only inside its description.
     await expect(row.getByText("Beta", { exact: true })).toBeVisible();
 
+    // The row also offers the way out, so it holds two buttons now.
+    await expect(row.getByRole("button", { name: /Apply for early access/ })).toBeVisible();
+
     // Labelling is not enforcement: the control is genuinely unavailable too.
-    // The toggle is a bare button, so it is located by position in the row.
-    await expect(row.locator("button")).toBeDisabled();
+    // The toggle is a bare button with no accessible name, so it is the one
+    // that is not the link.
+    const toggle = row.locator("button").filter({ hasNotText: "Apply for early access" });
+    await expect(toggle).toBeDisabled();
 
     // The badge carries the word, so the description explains the state
     // rather than repeating the label.
@@ -48,6 +53,12 @@ test.describe("beta feature labelling", () => {
     // The header pill used to say "Tester" while the sidebar said "Beta".
     await expect(controlPanel.getByText("Tester", { exact: true })).toHaveCount(0);
     await expect(controlPanel.getByText("Approved testers only")).toHaveCount(0);
+
+    // Naming what the user is missing without offering a way to get it is
+    // the worst of both options.
+    await expect(
+      controlPanel.getByRole("button", { name: /Apply for early access/ })
+    ).toBeVisible();
 
     await controlPanel.screenshot({
       path: "test-results/e2e/beta-page-header.png",

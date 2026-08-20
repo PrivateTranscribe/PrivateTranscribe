@@ -40,7 +40,7 @@ describe("Pro branding", () => {
     // The token now lives once inside the shared beta badge, so follow it
     // there rather than asserting on markup that no longer exists.
     for (const file of files) {
-      expect(readSource(file), file).toContain("<BetaBadge locked />");
+      expect(readSource(file), file).toContain("<BetaBadge locked");
     }
     expect(readSource("src/components/ui/BetaBadge.tsx")).toContain('variant={locked ? "pro"');
 

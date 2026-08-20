@@ -55,7 +55,8 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
 
 interface SettingsRowProps {
   label: string;
-  description?: string;
+  /** Node rather than string so a locked row can offer a way out inline. */
+  description?: React.ReactNode;
   /** Rendered beside the label, e.g. a Beta pill on a tester-only control. */
   badge?: React.ReactNode;
   children: React.ReactNode;

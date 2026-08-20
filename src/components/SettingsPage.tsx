@@ -47,6 +47,7 @@ import { useDialogs } from "../hooks/useDialogs";
 import { isFeatureUnlocked } from "../hooks/useProStatus";
 import SpokenLanguagesSelector from "./ui/SpokenLanguagesSelector";
 import { BetaBadge } from "./ui/BetaBadge";
+import { BetaAccessLink } from "./ui/BetaAccessLink";
 import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
 import { resolveRatingLanguage } from "../utils/modelAccuracy";
 import { useAgentName } from "../utils/agentName";
@@ -2393,9 +2394,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Auto-learn corrections"
                     badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
                     description={
-                      correctionMemoryUnlocked
-                        ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                        : "Still being built, so it is limited to approved testers for now. Nothing here is running in the background."
+                      correctionMemoryUnlocked ? (
+                        "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
+                      ) : (
+                        <>
+                          Still being built, so it is limited to approved testers for now. Nothing
+                          here is running in the background. <BetaAccessLink />
+                        </>
+                      )
                     }
                   >
                     <Toggle
@@ -2686,9 +2692,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     label="Smart Context"
                     badge={smartContextUnlocked ? undefined : <BetaBadge locked />}
                     description={
-                      smartContextUnlocked
-                        ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
-                        : "Still being built, so it is limited to approved testers for now. Nothing about your screen is being read."
+                      smartContextUnlocked ? (
+                        "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
+                      ) : (
+                        <>
+                          Still being built, so it is limited to approved testers for now. Nothing
+                          about your screen is being read. <BetaAccessLink />
+                        </>
+                      )
                     }
                   >
                     <Toggle
@@ -2979,6 +2990,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   formatting text, and handling intelligent rewrites. This unfinished beta requires
                   approved tester access.
                 </p>
+                <BetaAccessLink className="text-sm" />
               </div>
             )}
 
@@ -3098,6 +3110,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   for AI-enhanced transcriptions. This unfinished beta requires approved tester
                   access.
                 </p>
+                <BetaAccessLink className="text-sm" />
               </div>
             )}
 
