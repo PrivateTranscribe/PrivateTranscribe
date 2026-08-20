@@ -9,7 +9,7 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
-const { resolveLockableLanguage } = require("./whisperLanguage");
+const { resolveLockableLanguage, resolveAllowedLanguage } = require("./whisperLanguage");
 const GpuBinaryManager = require("./gpuBinaryManager");
 
 const gpuBinaryManager = new GpuBinaryManager();
@@ -1153,6 +1153,7 @@ class WhisperServerManager {
     try {
       const {
         language,
+        allowedLanguages,
         translate,
         initialPrompt,
         inputFileName,
@@ -1272,15 +1273,58 @@ class WhisperServerManager {
           }
         }
         if (!lockedLanguage) {
+          // The speaker told us which languages they speak, so a detection
+          // that lands outside that set is known to be wrong before we look
+          // at the text. whisper.cpp ships the full probability distribution
+          // in the same response, so the corrected answer costs nothing to
+          // work out — only the re-decode below costs anything, and only on
+          // the recordings that would otherwise have come back in the wrong
+          // language.
+          const allowedDecision = resolveAllowedLanguage(result, allowedLanguages);
+          if (allowedDecision?.changed) {
+            debugLogger.info("Detected language is not one the user speaks; re-decoding", {
+              detected: result?.language ?? null,
+              snappedTo: allowedDecision.language,
+              reason: allowedDecision.reason,
+              allowedProbability: allowedDecision.probability ?? null,
+              detectedProbability: allowedDecision.detectedProbability ?? null,
+              chunk: index + 1,
+            });
+            try {
+              result = await this._postInference(chunk.buffer, {
+                language: allowedDecision.language,
+                translate,
+                initialPrompt,
+                chunkIndex: index,
+                chunkCount: chunks.length,
+                durationSeconds: chunk.durationSeconds,
+                fileMode,
+                diarize,
+                tinydiarize: fileMode && speakerDetection,
+                vad,
+                longSessionChunk,
+              });
+            } catch (error) {
+              // The first decode already produced usable text. A failed
+              // re-decode should cost the user the correction, not the
+              // dictation.
+              debugLogger.warn("Re-decode in the user's language failed; keeping first result", {
+                language: allowedDecision.language,
+                error: error.message,
+              });
+            }
+          }
+
           // Only a chunk that actually produced speech gets to decide. A
           // recording that opens with silence, breathing or keyboard noise
           // would otherwise pin the whole session to whatever the detector
           // guessed off that noise.
-          const detected = resolveLockableLanguage(result);
+          const detected = allowedDecision?.language || resolveLockableLanguage(result);
           if (detected) {
             lockedLanguage = detected;
             debugLogger.info("Locked auto-detected language for remaining audio", {
               language: detected,
+              constrainedToSpokenLanguages: !!allowedDecision,
               decidedByChunk: index + 1,
               chunks: chunks.length,
             });

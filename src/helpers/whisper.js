@@ -339,6 +339,12 @@ class WhisperManager {
 
     const model = options.model || "turbo";
     const language = options.language || null;
+    // The languages the speaker actually speaks. Only consulted when no
+    // explicit language was given, since an explicit choice already answers
+    // the question this constrains.
+    const allowedLanguages = Array.isArray(options.allowedLanguages)
+      ? options.allowedLanguages
+      : [];
     const translate = options.translate || false;
     const initialPrompt = options.initialPrompt || null;
     const inputFileName = options.inputFileName || null;
@@ -361,6 +367,7 @@ class WhisperManager {
       inputFileName,
       translate,
       {
+        allowedLanguages,
         fileMode: options.fileMode === true,
         noiseReduction: options.noiseReduction === true,
         speakerDetection: options.speakerDetection === true,

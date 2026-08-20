@@ -5,6 +5,7 @@ import { resolveMicWarmWindowMs } from "../utils/micWarmWindow";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
+import { readSpokenLanguages } from "../utils/spokenLanguages";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import { getSharedAudioContext } from "../utils/sharedAudioContext";
@@ -2115,6 +2116,11 @@ class AudioManager {
         // Auto-detect is still what the user asked for; we are only stopping
         // whisper from answering the question differently on every segment.
         options.language = metadata.lockedLanguage;
+      } else {
+        // Nothing has pinned the language, so this recording will be
+        // auto-detected. Send the languages the user told us they speak so the
+        // detector cannot answer with one of the neighbours they do not.
+        options.allowedLanguages = readSpokenLanguages();
       }
       const shouldTranslate = shouldTranslateLocalWhisperToEnglish({
         translateToEnglish,
@@ -3256,6 +3262,8 @@ class AudioManager {
           };
           if (language && language !== "auto") {
             options.language = language;
+          } else {
+            options.allowedLanguages = readSpokenLanguages();
           }
           if (originalFileName) {
             options.inputFileName = originalFileName;
@@ -3307,7 +3315,11 @@ class AudioManager {
       outputFormat: metadata.outputFormat || "plain",
       inputFileName: metadata.originalFileName,
     };
-    if (resolvedLanguage) options.language = resolvedLanguage;
+    if (resolvedLanguage) {
+      options.language = resolvedLanguage;
+    } else {
+      options.allowedLanguages = readSpokenLanguages();
+    }
     if (
       shouldTranslateLocalWhisperToEnglish({
         translateToEnglish: translateToEnglishSetting,
