@@ -87,6 +87,12 @@ export function normalizeSpokenLanguages(raw: unknown): string[] {
  * Two or more always means "auto", which is now constrained to the set and so
  * can no longer answer with a language the user does not speak.
  *
+ * An empty set means unconstrained auto-detect. Removing the last language is
+ * a deliberate "go back to guessing", so it has to clear the pin: keeping the
+ * old one left resolveSpokenLanguages reading that pin back as a set of one,
+ * which put the chip straight back on screen and made the last language
+ * impossible to delete.
+ *
  * This deliberately does NOT preserve an existing pin that happens to be in
  * the new set. It used to, on the reasoning that a deliberate choice should
  * survive. In practice the pin is not deliberate at all: choosing one language
@@ -104,7 +110,7 @@ export function derivePreferredLanguage(
   currentPreferred?: string | null
 ): string {
   const normalized = normalizeSpokenLanguages(spokenLanguages);
-  if (normalized.length === 0) return currentPreferred || "auto";
+  if (normalized.length === 0) return "auto";
   if (normalized.length === 1) return normalized[0];
   return "auto";
 }

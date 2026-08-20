@@ -5,6 +5,7 @@ import {
   derivePreferredLanguage,
   normalizeSpokenLanguages,
   readSpokenLanguages,
+  resolveSpokenLanguages,
 } from "../../../src/utils/spokenLanguages";
 
 describe("normalizeSpokenLanguages", () => {
@@ -50,9 +51,14 @@ describe("derivePreferredLanguage", () => {
     expect(derivePreferredLanguage(["da", "en"], "no")).toBe("auto");
   });
 
-  it("leaves the current setting alone when nothing was selected", () => {
-    expect(derivePreferredLanguage([], "fr")).toBe("fr");
+  it("returns to auto-detect when the last language is removed", () => {
+    // Removing the last chip has to actually clear the setting. It used to
+    // keep the old pin, and resolveSpokenLanguages then read that pin back as
+    // a set of one, so the chip reappeared and the language could not be
+    // deleted at all.
+    expect(derivePreferredLanguage([], "fr")).toBe("auto");
     expect(derivePreferredLanguage([])).toBe("auto");
+    expect(resolveSpokenLanguages([], derivePreferredLanguage([], "fr"))).toEqual([]);
   });
 });
 

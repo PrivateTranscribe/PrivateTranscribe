@@ -87,6 +87,31 @@ test.describe("spoken language picker", () => {
     await expect(controlPanel.getByText(/Detecting between Danish and English/)).toBeVisible();
   });
 
+  test("removing the last language goes back to auto-detect", async ({ controlPanel }) => {
+    // The chip used to reappear the moment it was removed: clearing the list
+    // left the old pin behind, and the pin was read back as a set of one.
+    await openLanguageSettings(controlPanel, ["da"]);
+
+    await controlPanel.getByRole("button", { name: "Remove Danish" }).click();
+
+    await expect(controlPanel.getByText("Auto-detect", { exact: true })).toBeVisible();
+    await expect(controlPanel.getByText("Danish", { exact: true })).toHaveCount(0);
+    await expect
+      .poll(async () => controlPanel.evaluate(() => localStorage.getItem("preferredLanguage")))
+      .toBe("auto");
+
+    // And it stays gone across a reload rather than being resurrected.
+    await controlPanel.reload({ waitUntil: "domcontentloaded" });
+    await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
+    await controlPanel.getByRole("button", { name: "Preferences", exact: true }).click();
+    await expect(controlPanel.getByText("Auto-detect", { exact: true })).toBeVisible();
+
+    await controlPanel.screenshot({
+      path: "test-results/e2e/language-picker-cleared.png",
+      fullPage: true,
+    });
+  });
+
   test("can still be opened at the cap, so the limit is explained", async ({ controlPanel }) => {
     await openLanguageSettings(controlPanel, ["da", "en", "de", "fr", "es"]);
 
