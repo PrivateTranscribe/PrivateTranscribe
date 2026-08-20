@@ -54,6 +54,39 @@ test.describe("spoken language picker", () => {
     await expect(controlPanel.getByText("Auto-detect", { exact: true })).toHaveCount(0);
   });
 
+  test("stops pinning the first language when a second one is added", async ({ controlPanel }) => {
+    // The bug: picking Danish pins preferredLanguage to "da". Adding English
+    // preserved that pin, so English speech came back transcribed as Danish
+    // while the row claimed it was detecting between the two.
+    await openLanguageSettings(controlPanel, ["da"]);
+    await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "da"));
+
+    await controlPanel.getByRole("button", { name: /Add another/ }).click();
+    await controlPanel.getByRole("option", { name: "English" }).click();
+
+    await expect
+      .poll(async () => controlPanel.evaluate(() => localStorage.getItem("preferredLanguage")))
+      .toBe("auto");
+  });
+
+  test("admits when it is pinned, and offers the way out", async ({ controlPanel }) => {
+    // Reachable legitimately: the overlay's quick-switch menu pins a language.
+    // Settings has to describe that honestly and be able to clear it.
+    await openLanguageSettings(controlPanel, ["da", "en"]);
+    await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "da"));
+    await controlPanel.reload({ waitUntil: "domcontentloaded" });
+    await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
+    await controlPanel.getByRole("button", { name: "Preferences", exact: true }).click();
+
+    await expect(controlPanel.getByText(/Pinned to Danish/)).toBeVisible();
+
+    await controlPanel.getByRole("button", { name: "Switch to automatic" }).click();
+    await expect
+      .poll(async () => controlPanel.evaluate(() => localStorage.getItem("preferredLanguage")))
+      .toBe("auto");
+    await expect(controlPanel.getByText(/Detecting between Danish and English/)).toBeVisible();
+  });
+
   test("can still be opened at the cap, so the limit is explained", async ({ controlPanel }) => {
     await openLanguageSettings(controlPanel, ["da", "en", "de", "fr", "es"]);
 

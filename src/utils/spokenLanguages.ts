@@ -84,12 +84,20 @@ export function normalizeSpokenLanguages(raw: unknown): string[] {
  * that is the single biggest accuracy win available, and it costs the user
  * nothing because they already told us.
  *
- * Two or more falls back to "auto", but auto is now constrained by the set, so
- * it can no longer answer with a language the user does not speak.
+ * Two or more always means "auto", which is now constrained to the set and so
+ * can no longer answer with a language the user does not speak.
  *
- * An existing choice is preserved when it is still one of the spoken
- * languages, so adding a second language does not silently unpin someone who
- * had deliberately fixed their dictation language.
+ * This deliberately does NOT preserve an existing pin that happens to be in
+ * the new set. It used to, on the reasoning that a deliberate choice should
+ * survive. In practice the pin is not deliberate at all: choosing one language
+ * sets it, so the ordinary path of picking Danish and then adding English kept
+ * everything pinned to Danish and transcribed English speech as Danish, while
+ * the screen said it was detecting between the two. Naming a second language
+ * means "detect between them" and nothing else.
+ *
+ * Pinning one of your languages for a single session is still available, from
+ * the overlay's quick-switch menu, where it is an explicit act with a toast
+ * rather than a silent side effect of editing this list.
  */
 export function derivePreferredLanguage(
   spokenLanguages: string[],
@@ -98,7 +106,6 @@ export function derivePreferredLanguage(
   const normalized = normalizeSpokenLanguages(spokenLanguages);
   if (normalized.length === 0) return currentPreferred || "auto";
   if (normalized.length === 1) return normalized[0];
-  if (currentPreferred && normalized.includes(currentPreferred)) return currentPreferred;
   return "auto";
 }
 

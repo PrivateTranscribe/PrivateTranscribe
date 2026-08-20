@@ -37,10 +37,13 @@ describe("derivePreferredLanguage", () => {
     expect(derivePreferredLanguage(["da", "en"])).toBe("auto");
   });
 
-  it("keeps an existing choice that is still one of the spoken languages", () => {
-    // Someone who deliberately pinned Danish and then adds English should not
-    // be silently moved back onto detection.
-    expect(derivePreferredLanguage(["da", "en"], "da")).toBe("da");
+  it("stops pinning the first language once a second one is added", () => {
+    // The bug this replaces: picking Danish pins preferredLanguage to "da",
+    // and adding English preserved that pin. Every dictation was then forced
+    // to Danish, English included, while the UI said it was detecting between
+    // the two. Naming a second language means "detect between them".
+    expect(derivePreferredLanguage(["da", "en"], "da")).toBe("auto");
+    expect(derivePreferredLanguage(["da", "en"], "en")).toBe("auto");
   });
 
   it("abandons a choice the user no longer claims to speak", () => {

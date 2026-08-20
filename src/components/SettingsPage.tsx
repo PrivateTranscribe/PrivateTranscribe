@@ -2331,7 +2331,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       }}
                     />
                     <p className="text-[13px] leading-relaxed text-muted-foreground">
-                      {describeSpokenLanguages(spokenLanguages)}
+                      {describeSpokenLanguages(spokenLanguages, preferredLanguage)}
+                      {/* A pin can be set from the overlay's quick-switch menu,
+                          so Settings has to be able to clear it. Without this
+                          the row could describe a pinned state it gave the
+                          user no way to leave. */}
+                      {spokenLanguages.length > 1 && preferredLanguage !== "auto" && (
+                        <button
+                          type="button"
+                          onClick={() => setPreferredLanguage("auto")}
+                          className="ml-1.5 text-primary underline-offset-2 hover:underline"
+                        >
+                          Switch to automatic
+                        </button>
+                      )}
                     </p>
                   </div>
                 </SettingsPanelRow>
