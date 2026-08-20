@@ -32,10 +32,11 @@ test.describe("Onboarding dictation language", () => {
     await expect(section).toContainText("Which languages do you speak?");
 
     // Nothing named yet means unconstrained auto-detect, so the user has to be
-    // told what that costs.
+    // told what that costs. The wording comes from the shared status line,
+    // which states what the next dictation will actually do.
     const hint = controlPanel.getByTestId("onboarding-language-hint");
-    await expect(hint).toContainText("auto-detect");
-    await expect(hint).toContainText("Danish, Norwegian and Swedish");
+    await expect(hint).toContainText("Auto-detect is on");
+    await expect(hint).toContainText("Danish and Norwegian");
 
     // The question is worthless if the user never scrolls to it, so capture
     // what they actually land on rather than a scrolled-to-element shot.
@@ -167,6 +168,10 @@ test.describe("Onboarding dictation language", () => {
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
     await expect(controlPanel.getByTestId("onboarding-language")).toBeVisible();
 
-    await expect(controlPanel.getByTestId("onboarding-language-hint")).toHaveCount(0);
+    // The hint still states what will happen, because that is useful for every
+    // language. What English does not get is the lower-accuracy caveat.
+    const hint = controlPanel.getByTestId("onboarding-language-hint");
+    await expect(hint).toContainText("Set to English");
+    await expect(hint).not.toContainText("Accuracy outside English is lower");
   });
 });

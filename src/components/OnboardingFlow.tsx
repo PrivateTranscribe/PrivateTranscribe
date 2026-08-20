@@ -40,7 +40,7 @@ import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
 import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics";
 import { SectionLabel } from "./ui/SectionLabel";
-import SpokenLanguagesSelector from "./ui/SpokenLanguagesSelector";
+import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { getLanguageLabel } from "../utils/languages";
 import { isWeakForNonEnglish, resolveRatingLanguage } from "../utils/modelAccuracy";
 
@@ -779,32 +779,29 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             >
               <SectionLabel>Which languages do you speak?</SectionLabel>
               <SpokenLanguagesSelector value={spokenLanguages} onChange={setSpokenLanguages} />
-              {spokenLanguages.length === 0 ? (
-                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
-                  Without an answer we auto-detect from the first seconds of audio, and that mixes
-                  up languages that sound alike, such as Danish, Norwegian and Swedish. Naming your
-                  languages rules the others out.
-                </p>
-              ) : spokenLanguages.length === 1 ? (
-                // English alone needs no caveat: it is the language every
-                // model is strongest in, and saying so would be noise.
-                spokenLanguages[0] !== "en" && (
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid="onboarding-language-hint"
-                  >
-                    {getLanguageLabel(spokenLanguages[0])} is set outright, so there is nothing left
-                    to guess. Accuracy outside English is lower on every model, so expect a few more
+              {/* The same status line Settings uses, for the same reason: it
+                  reads preferredLanguage rather than inferring the state from
+                  the list, so it cannot describe detection that is not going
+                  to happen. Onboarding then adds only what is specific to
+                  setting this up for the first time. */}
+              <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
+                {describeSpokenLanguages(spokenLanguages, preferredLanguage)}
+                {spokenLanguages.length === 1 && spokenLanguages[0] !== "en" && (
+                  <>
+                    {" "}
+                    Accuracy outside English is lower on every model, so expect a few more
                     corrections.
-                  </p>
-                )
-              ) : (
-                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
-                  We will detect between these and never pick a language you did not name. Use one
-                  language per dictation — switching mid-sentence is not something Whisper can
-                  follow.
-                </p>
-              )}
+                  </>
+                )}
+                {spokenLanguages.length > 1 && (
+                  <>
+                    {" "}
+                    Use one language per dictation. Switching mid-sentence is not something Whisper
+                    can follow.
+                  </>
+                )}
+              </p>
+
               {showSmallModelLanguageWarning && (
                 <div
                   className="flex items-start gap-1.5 rounded-md border border-warning/25 bg-warning/8 px-3 py-2"
