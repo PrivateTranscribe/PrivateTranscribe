@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.14.3 - 2026-08-20
+
+### Changed
+
+- The update notice moved from the title bar to the sidebar footer, right above the version marker, so the build you are running and the one waiting for you sit together.
+
+### Fixed
+
+- Start on boot now refuses, and says why, when the app is running from a temporary folder that Windows will clean up. Before this it could leave a startup entry that showed an Electron error on every boot.
+
+## 0.14.2 - 2026-08-15
+
+### Changed
+
+- Updates can now download only the parts that changed instead of the whole installer.
+
+### Fixed
+
+- A CUDA engine download that is already running is now shown as running, instead of offering to start it again.
+- The app now says what happens to a CUDA download if you quit part way through it.
+
+## 0.14.1 - 2026-08-15
+
+### Added
+
+- You can recover a lost license key yourself at privatetranscribe.com/license.
+
+### Changed
+
+- Voice call mute holds your mute key down for the whole dictation instead of pressing it over and over.
+- Whisper models in the picker are sorted by size instead of internal order.
+- A refunded license now loses Pro, as the refund policy always said it would.
+
+### Fixed
+
+- The CUDA engine download showed the wrong size.
+- When Windows blocks the GPU engine the app says so, instead of blaming a driver update.
+
 ## 0.14.0 - 2026-08-13
 
 ### Added
