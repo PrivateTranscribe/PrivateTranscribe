@@ -68,11 +68,11 @@ describe("beta feature labelling", () => {
     const links = readSource("src/utils/externalLinks.ts");
     expect(links).toContain("BETA_ACCESS_URL");
 
-    // The site has no /beta route, and the footer's own "Tester program" link
-    // points at a #waitlist anchor that is not on the page. Pointing the app
-    // at either would send users somewhere that does not exist.
+    // The site has no /beta route. #waitlist is the tester section itself,
+    // rather than #pricing, which drops the user on the purchase cards and
+    // leaves them to find the beta story below.
     expect(links).not.toContain("privatetranscribe.com/beta");
-    expect(links).toContain("#pricing");
+    expect(links).toContain("#waitlist");
 
     const component = readSource("src/components/ui/BetaAccessLink.tsx");
     expect(component).toContain("BETA_ACCESS_URL");

@@ -24,12 +24,12 @@ export function createExternalLinkHandler(url: string) {
 /**
  * Where the app sends someone who wants a locked beta feature.
  *
- * The site has no dedicated /beta route. The "Apply for early Beta access"
- * call to action sits in the pricing section, so that is where this points.
- * The footer's own "Tester program" link targets #waitlist, an anchor that
- * does not exist on the page — do not copy that target here until it does.
+ * The site has no dedicated /beta route. The tester section lives on the
+ * homepage under #waitlist, which holds the "Apply for early Beta access"
+ * button and the signup form, and carries scroll-mt so a deep link lands on
+ * it rather than under the nav. Verified against the live site.
  *
  * Defined once so moving it to a real page later is a one-line change rather
- * than a hunt through four locked cards.
+ * than a hunt through six locked surfaces.
  */
-export const BETA_ACCESS_URL = "https://privatetranscribe.com/#pricing";
+export const BETA_ACCESS_URL = "https://privatetranscribe.com/#waitlist";
