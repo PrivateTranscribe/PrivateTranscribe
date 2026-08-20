@@ -105,7 +105,7 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect((window as any).electronAPI.transcribeLocalWhisper).toHaveBeenCalledTimes(1);
     const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
     expect(options.initialPrompt).toBe(
-      "Use these exact spellings when they appear: PrivateTranscribe, Privoca. App: VS Code, Window: audioManager.js — privoca. Identifiers: processWithLocalWhisper initialPrompt"
+      "PrivateTranscribe, Privoca. App: VS Code, Window: audioManager.js — privoca. Identifiers: processWithLocalWhisper initialPrompt"
     );
   });
 
@@ -139,7 +139,7 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     expect(options.language).toBeUndefined();
     expect(options.translate).toBeUndefined();
     expect(options.initialPrompt).toBe(
-      "Use these exact spellings when they appear: PrivateTranscribe, Privoca. App: VS Code, Window: audioManager.js — privoca. Identifiers: processWithLocalWhisper initialPrompt"
+      "PrivateTranscribe, Privoca. App: VS Code, Window: audioManager.js — privoca. Identifiers: processWithLocalWhisper initialPrompt"
     );
   });
 

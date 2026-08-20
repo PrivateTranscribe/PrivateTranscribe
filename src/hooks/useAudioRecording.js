@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import AudioManager, { MISSING_SECTION_MARKER } from "../helpers/audioManager";
-import { getDictionaryRepairTerms, parseDictionaryEntryModes } from "../utils/dictionaryEntryModes";
 import {
   buildStarterLimitMessage,
   isStarterLimitReached,
@@ -291,14 +290,10 @@ export const useAudioRecording = (toast, options = {}) => {
                 return [];
               }
             })();
-            const snapWords = getDictionaryRepairTerms(
-              dictionaryWords,
-              parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"))
-            );
             const corrections = isBetaFeatureUnlocked("correction-memory")
               ? await window.electronAPI?.getCorrectionMemory?.(200)
               : [];
-            text = snapTranscript({ transcript: rawText, dictionaryWords: snapWords, corrections });
+            text = snapTranscript({ transcript: rawText, dictionaryWords, corrections });
           }
         } catch {
           // Non-fatal: snapping is best-effort.

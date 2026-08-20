@@ -9,11 +9,7 @@ import { readSpokenLanguages } from "../utils/spokenLanguages";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import { getSharedAudioContext } from "../utils/sharedAudioContext";
-import {
-  buildDictionaryPrompt,
-  getDictionaryRepairTerms,
-  parseDictionaryEntryModes,
-} from "../utils/dictionaryEntryModes";
+import { buildDictionaryPrompt } from "../utils/dictionaryPrompt";
 import {
   getContext,
   isSmartContextEnabled,
@@ -398,7 +394,6 @@ class AudioManager {
   getCustomDictionaryPrompt() {
     try {
       const raw = localStorage.getItem("customDictionary");
-      const modes = parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"));
       const words = [];
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -410,8 +405,7 @@ class AudioManager {
       if (this._cachedCorrectionHints && this._cachedCorrectionHints.length > 0) {
         words.push(...this._cachedCorrectionHints);
       }
-      const unique = [...new Set(words.filter(Boolean))];
-      return buildDictionaryPrompt(unique, modes);
+      return buildDictionaryPrompt(words);
     } catch {
       // ignore parse errors
     }
@@ -2607,14 +2601,16 @@ class AudioManager {
   }
 
   /**
-   * Apply custom dictionary word replacements to raw STT output.
-   * Whisper's initialPrompt is a hint, not a guarantee - it can still mis-transcribe
-   * or mis-capitalise custom words. This does a case-insensitive whole-word scan and
-   * replaces any match with the exact casing stored in the dictionary.
+   * Repair casing and accidental splits for custom dictionary terms in raw STT output.
    *
-   * Example: dictionary has "PrivateTranscribe", Whisper outputs "provoca" → fixed to "PrivateTranscribe".
+   * This is a spelling repair, not a mishearing repair. It matches the term
+   * case-insensitively on whole-word boundaries and rewrites it with the casing
+   * stored in the dictionary, so "privatetranscribe" and "OpenC ode" are fixed
+   * but a genuine mishearing like "provoca" is not - the letters have to already
+   * be right. Mishearings are handled by Correction Memory, which stores an
+   * explicit heard-this / write-that pair.
    *
-   * Replacements are whole-word only (word boundaries) so "unprovocative" is untouched.
+   * Runs for every dictionary term. Whole-word only, so "unprovocative" is untouched.
    */
   applyDictionaryReplacements(text) {
     try {
@@ -2622,15 +2618,11 @@ class AudioManager {
       if (!raw) return text;
       const words = JSON.parse(raw);
       if (!Array.isArray(words) || words.length === 0) return text;
-      const repairWords = getDictionaryRepairTerms(
-        words,
-        parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"))
-      );
+      const repairWords = words.filter((word) => typeof word === "string" && word.trim());
       if (repairWords.length === 0) return text;
 
       let result = repairSplitDictionaryTerms(text, repairWords);
       for (const word of repairWords) {
-        if (!word || typeof word !== "string") continue;
         // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const regex = new RegExp(`\\b${escaped}\\b`, "gi");

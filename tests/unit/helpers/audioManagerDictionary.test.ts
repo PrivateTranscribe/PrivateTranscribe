@@ -22,7 +22,7 @@ vi.mock("../../../src/utils/languageCompat", () => ({
 
 import AudioManager from "../../../src/helpers/audioManager";
 
-describe("AudioManager dictionary entry modes", () => {
+describe("AudioManager custom dictionary", () => {
   beforeEach(() => {
     (globalThis as any).localStorage = localStorageMock;
     Object.defineProperty(globalThis, "navigator", {
@@ -33,11 +33,27 @@ describe("AudioManager dictionary entry modes", () => {
     localStorageMock.clear();
   });
 
-  it("turns mixed dictionary modes into explicit Whisper prompt instructions", () => {
+  it("sends the dictionary as a bare term list with no instruction filler", () => {
     localStorageMock.setItem(
       "customDictionary",
       JSON.stringify(["Synty", "PrivateTranscribe", "OpenCode"])
     );
+
+    const manager = new AudioManager();
+
+    expect(manager.getCustomDictionaryPrompt()).toBe("Synty, PrivateTranscribe, OpenCode");
+  });
+
+  it("returns no prompt when the dictionary is empty", () => {
+    localStorageMock.setItem("customDictionary", JSON.stringify([]));
+
+    const manager = new AudioManager();
+
+    expect(manager.getCustomDictionaryPrompt()).toBeNull();
+  });
+
+  it("ignores a leftover dictionaryEntryModes key from older versions", () => {
+    localStorageMock.setItem("customDictionary", JSON.stringify(["Synty", "OpenCode"]));
     localStorageMock.setItem(
       "dictionaryEntryModes",
       JSON.stringify({ Synty: "hint", OpenCode: "priority" })
@@ -45,19 +61,17 @@ describe("AudioManager dictionary entry modes", () => {
 
     const manager = new AudioManager();
 
-    expect(manager.getCustomDictionaryPrompt()).toBe(
-      "Vocabulary hints: Synty. Use these exact spellings when they appear: PrivateTranscribe. Priority exact spellings: OpenCode. Prefer these spellings over similar words: OpenCode"
+    expect(manager.getCustomDictionaryPrompt()).toBe("Synty, OpenCode");
+    // "Synty" was previously mode "hint", which skipped repair. Every term is repaired now.
+    expect(manager.applyDictionaryReplacements("Use synty with opencode.")).toBe(
+      "Use Synty with OpenCode."
     );
   });
 
-  it("repairs exact and priority entries while leaving hint-only entries alone", () => {
+  it("repairs casing and accidental internal splits for every term", () => {
     localStorageMock.setItem(
       "customDictionary",
       JSON.stringify(["Synty", "PrivateTranscribe", "OpenCode"])
-    );
-    localStorageMock.setItem(
-      "dictionaryEntryModes",
-      JSON.stringify({ Synty: "hint", OpenCode: "priority" })
     );
 
     const manager = new AudioManager();
@@ -66,19 +80,25 @@ describe("AudioManager dictionary entry modes", () => {
       manager.applyDictionaryReplacements(
         "Use synty with Pri vate Trans cribe, opencode, and open code."
       )
-    ).toBe("Use synty with PrivateTranscribe, OpenCode, and open code.");
+    ).toBe("Use Synty with PrivateTranscribe, OpenCode, and open code.");
   });
 
-  it("keeps legacy dictionaries exact when no mode map exists", () => {
+  it("leaves a genuine mishearing alone, since repair is spelling only", () => {
     localStorageMock.setItem("customDictionary", JSON.stringify(["PrivateTranscribe"]));
 
     const manager = new AudioManager();
 
-    expect(manager.getCustomDictionaryPrompt()).toBe(
-      "Use these exact spellings when they appear: PrivateTranscribe"
-    );
-    expect(manager.applyDictionaryReplacements("privateTranscribe works")).toBe(
-      "PrivateTranscribe works"
+    // Correction Memory handles this case, not the dictionary.
+    expect(manager.applyDictionaryReplacements("provoca works")).toBe("provoca works");
+  });
+
+  it("does not touch dictionary terms embedded inside a longer word", () => {
+    localStorageMock.setItem("customDictionary", JSON.stringify(["Synty"]));
+
+    const manager = new AudioManager();
+
+    expect(manager.applyDictionaryReplacements("syntyphoid is unrelated")).toBe(
+      "syntyphoid is unrelated"
     );
   });
 });

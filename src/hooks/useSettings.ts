@@ -11,12 +11,6 @@ import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
 import ReasoningService from "../services/ReasoningService";
 import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
-import {
-  isDictionaryEntryMode,
-  pruneDictionaryEntryModes,
-  type DictionaryEntryMode,
-  type DictionaryEntryModeMap,
-} from "../utils/dictionaryEntryModes";
 
 export interface TranscriptionSettings {
   useLocalWhisper: boolean;
@@ -37,7 +31,6 @@ export interface TranscriptionSettings {
   cloudTranscriptionModel: string;
   cloudTranscriptionBaseUrl?: string;
   customDictionary: string[];
-  dictionaryEntryModes: DictionaryEntryModeMap;
 }
 
 export interface ReasoningSettings {
@@ -227,45 +220,15 @@ export function useSettings() {
     }
   );
 
-  const [dictionaryEntryModes, setDictionaryEntryModesRaw] =
-    useLocalStorage<DictionaryEntryModeMap>(
-      "dictionaryEntryModes",
-      {},
-      {
-        serialize: JSON.stringify,
-        deserialize: (value) => {
-          try {
-            const parsed = JSON.parse(value);
-            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-            return Object.fromEntries(
-              Object.entries(parsed).filter((entry): entry is [string, DictionaryEntryMode] =>
-                isDictionaryEntryMode(entry[1])
-              )
-            );
-          } catch {
-            return {};
-          }
-        },
-      }
-    );
-
-  const setDictionaryEntryModes = useCallback(
-    (modes: DictionaryEntryModeMap) => {
-      setDictionaryEntryModesRaw(modes);
-    },
-    [setDictionaryEntryModesRaw]
-  );
-
   // Wrap setter to sync dictionary to SQLite
   const setCustomDictionary = useCallback(
     (words: string[]) => {
       setCustomDictionaryRaw(words);
-      setDictionaryEntryModesRaw(pruneDictionaryEntryModes(dictionaryEntryModes, words));
       window.electronAPI?.setDictionary(words).catch(() => {
         // Silently ignore SQLite sync errors
       });
     },
-    [dictionaryEntryModes, setCustomDictionaryRaw, setDictionaryEntryModesRaw]
+    [setCustomDictionaryRaw]
   );
 
   // One-time sync: reconcile localStorage ↔ SQLite on startup, ensure PrivateTranscribe is included
@@ -1069,7 +1032,6 @@ export function useSettings() {
     cloudTranscriptionBaseUrl,
     cloudReasoningBaseUrl,
     customDictionary,
-    dictionaryEntryModes,
     useReasoningModel,
     reasoningModel,
     reasoningProvider,
@@ -1095,7 +1057,6 @@ export function useSettings() {
     setCloudTranscriptionBaseUrl,
     setCloudReasoningBaseUrl,
     setCustomDictionary,
-    setDictionaryEntryModes,
     setUseReasoningModel,
     setReasoningModel,
     setReasoningProvider,
