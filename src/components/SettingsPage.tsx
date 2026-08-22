@@ -33,6 +33,7 @@ import type {
   ComparisonBenchmarkResult,
 } from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
+import { formatOneMinuteWait } from "../utils/benchmarkWait";
 import { isNewerVersion } from "../utils/versionCompare";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
@@ -935,9 +936,12 @@ function GpuStatusCard({
                       ? ` · ${formatBenchmarkDate(benchResult.createdAt)}`
                       : ""}
                   </p>
-                  <p className="text-[9px] text-muted-foreground mt-1">
-                    Higher = faster. 59x means 60s of audio transcribes in ~1s.
-                  </p>
+                  {formatOneMinuteWait(benchResult.realtimeFactor) && (
+                    <p className="text-[9px] text-muted-foreground mt-1">
+                      At this speed a one-minute dictation is text in{" "}
+                      {formatOneMinuteWait(benchResult.realtimeFactor)}.
+                    </p>
+                  )}
                   {/* Warn if CUDA binary is present but speed is suspiciously low (likely not using GPU) */}
                   {gpuCategory === "nvidia_cuda" &&
                     !activeWhisperForceCpu &&
