@@ -365,6 +365,46 @@ class WhisperServerManager {
    * Update whether to force CPU mode. Clears the binary path cache and stops
    * any running server so the next transcription starts with the correct binary.
    */
+  /**
+   * Build the whisper-server command line.
+   *
+   * Extracted from start() so the flags can be asserted directly in tests -
+   * the engine-mode flags in particular are the kind that fail silently, by
+   * producing a working server that quietly used the wrong backend.
+   */
+  buildServerArgs(modelPath, options = {}) {
+    const args = ["--model", modelPath, "--host", "127.0.0.1", "--port", String(this.port)];
+
+    // Reduce repetition hallucinations: lower entropy threshold triggers
+    // temperature fallback sooner when the decoder enters a loop, and
+    // suppress-nst filters out non-speech tokens that often seed loops.
+    // --no-fallback was tested but had no effect on repeated-word clips -
+    // the slowness is in the first decode pass, not temperature fallback retries.
+    args.push("--entropy-thold", "2.0");
+    args.push("--suppress-nst");
+
+    // CPU mode has to mean "no GPU backend", not merely "a different binary".
+    // ggml loads every ggml-*.dll it finds beside the server executable, so a
+    // stray CUDA or Vulkan backend sitting in that directory gets picked up and
+    // used even though the user asked for CPU. --no-gpu covers every backend,
+    // which also keeps this correct once a Vulkan engine exists.
+    if (this.forceCpu) args.push("--no-gpu");
+
+    if (options.threads) args.push("--threads", String(options.threads));
+    if (options.printRealtime) {
+      args.push("--print-realtime");
+      args.push("--tinydiarize");
+    }
+    // whisper.cpp defaults to English in some server builds when language is omitted.
+    // Pass auto explicitly so multilingual/local-file transcription really auto-detects.
+    args.push(
+      "--language",
+      options.language && options.language !== "auto" ? options.language : "auto"
+    );
+
+    return args;
+  }
+
   async setForceCpu(value) {
     const activeBinaryIsWrongForMode =
       this.process &&
@@ -815,8 +855,6 @@ class WhisperServerManager {
       spawnEnv.LD_LIBRARY_PATH = serverBinaryDir + pathSep + (process.env.LD_LIBRARY_PATH || "");
     }
 
-    const args = ["--model", modelPath, "--host", "127.0.0.1", "--port", String(this.port)];
-
     // FFmpeg is required for pre-converting audio to 16kHz mono WAV
     this.canConvert = !!ffmpegPath;
     if (ffmpegPath) {
@@ -826,25 +864,7 @@ class WhisperServerManager {
       debugLogger.warn("FFmpeg not found - whisper-server will only accept 16kHz mono WAV");
     }
 
-    // Reduce repetition hallucinations: lower entropy threshold triggers
-    // temperature fallback sooner when the decoder enters a loop, and
-    // suppress-nst filters out non-speech tokens that often seed loops.
-    // --no-fallback was tested but had no effect on repeated-word clips —
-    // the slowness is in the first decode pass, not temperature fallback retries.
-    args.push("--entropy-thold", "2.0");
-    args.push("--suppress-nst");
-
-    if (options.threads) args.push("--threads", String(options.threads));
-    if (options.printRealtime) {
-      args.push("--print-realtime");
-      args.push("--tinydiarize");
-    }
-    // whisper.cpp defaults to English in some server builds when language is omitted.
-    // Pass auto explicitly so multilingual/local-file transcription really auto-detects.
-    args.push(
-      "--language",
-      options.language && options.language !== "auto" ? options.language : "auto"
-    );
+    const args = this.buildServerArgs(modelPath, options);
 
     debugLogger.debug("Starting whisper-server", {
       port: this.port,
