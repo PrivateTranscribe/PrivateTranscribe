@@ -24,9 +24,15 @@ const debugLogger = require("./debugLogger");
  *  - Capped, because the curve flattens. Past roughly 16 threads the decode is
  *    memory-bandwidth bound and extra threads mostly add scheduling noise, so
  *    a big workstation gains nothing from handing over all of it.
+ *  - Never below whisper.cpp's own default. Reserving a core on a dual-core
+ *    machine would have handed it 2 threads where it used to get 4, making the
+ *    slowest hardware slower. This change must never be a downgrade for
+ *    anyone, so the old default is the floor.
  */
 
 const MAX_AUTO_THREADS = 16;
+// whisper.cpp's own default is min(4, hardware_concurrency); used as a floor.
+const WHISPER_CPP_DEFAULT_THREADS = 4;
 // At or below this many physical cores, reserving one costs too large a share.
 const SMALL_MACHINE_CORES = 4;
 const PROBE_TIMEOUT_MS = 4000;
@@ -133,7 +139,12 @@ function resolveWhisperThreads(setting, topology = {}) {
   const physical = topology.physicalCores || getPhysicalCoreCount();
   const reserved = physical > SMALL_MACHINE_CORES ? 1 : 0;
   const threads = Math.min(physical - reserved, MAX_AUTO_THREADS);
-  return Math.max(1, Math.min(threads, logical));
+
+  // whisper.cpp would have picked this on its own. Going under it would make
+  // the change a regression on the machines that can least afford one.
+  const floor = Math.min(WHISPER_CPP_DEFAULT_THREADS, logical);
+
+  return Math.max(1, Math.min(Math.max(threads, floor), logical));
 }
 
 /** Test seam: forget the cached probe result. */
@@ -144,6 +155,7 @@ function resetCpuTopologyCache() {
 module.exports = {
   AUTO,
   MAX_AUTO_THREADS,
+  WHISPER_CPP_DEFAULT_THREADS,
   getPhysicalCoreCount,
   logicalCoreCount,
   resetCpuTopologyCache,

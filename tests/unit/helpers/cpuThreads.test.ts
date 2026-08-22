@@ -20,8 +20,9 @@ describe("resolveWhisperThreads", () => {
       [8, 16, 7, "mid laptop keeps one core back"],
       [6, 12, 5, "six cores can still spare one"],
       [4, 8, 4, "four cores are not taxed - a quarter of the machine is too much"],
-      [2, 4, 2, "small machine uses what it has"],
+      [2, 4, 4, "dual core keeps whisper.cpp's old default rather than dropping to 2"],
       [1, 1, 1, "single core never goes below one thread"],
+      [1, 2, 2, "the floor cannot exceed the logical core count"],
       [64, 128, 16, "workstation is capped rather than fully consumed"],
       [24, 24, 16, "no SMT, still capped"],
     ])("%i physical / %i logical -> %i threads (%s)", (physical, logical, expected) => {
@@ -30,6 +31,19 @@ describe("resolveWhisperThreads", () => {
 
     it("beats whisper.cpp's own default of 4 on any machine bigger than a laptop", () => {
       expect(resolveWhisperThreads(0, topology(16, 32))).toBeGreaterThan(4);
+    });
+
+    it("is never a downgrade, whatever the machine looks like", () => {
+      // The reserve-a-core rule on its own would hand a 2-core machine fewer
+      // threads than it had before, which is the opposite of the point.
+      for (let physical = 1; physical <= 64; physical += 1) {
+        for (const logical of [physical, physical * 2]) {
+          const before = Math.min(4, logical);
+          expect(resolveWhisperThreads(0, topology(physical, logical))).toBeGreaterThanOrEqual(
+            before
+          );
+        }
+      }
     });
 
     it("treats an unset or unparseable setting as auto", () => {
