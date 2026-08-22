@@ -33,7 +33,7 @@ import type {
   ComparisonBenchmarkResult,
 } from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
-import { formatOneMinuteWait } from "../utils/benchmarkWait";
+import { formatBenchmarkClip, formatBenchmarkWait } from "../utils/benchmarkWait";
 import { isNewerVersion } from "../utils/versionCompare";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
@@ -922,26 +922,27 @@ function GpuStatusCard({
 
               {benchState === "done" && benchResult && (
                 <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                  {/* The wait leads, not the ratio. "24.4x real-time" is precise
+                      and means nothing to most people; "0.4s for 10 seconds of
+                      audio" is the same measurement stated as the thing the
+                      user was actually wondering. The website quotes this same
+                      pair, so the two never disagree. */}
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-lg font-semibold text-foreground tabular-nums">
-                      {formatRealtimeFactor(benchResult.realtimeFactor)}
+                      {formatBenchmarkWait(benchResult.elapsedMs)}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">real-time</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      for {formatBenchmarkClip(benchResult.audioDurationSec)}
+                    </span>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} (
-                    {benchResult.model}) · {(benchResult.elapsedMs / 1000).toFixed(1)}s for{" "}
-                    {benchResult.audioDurationSec}s audio
+                    {benchResult.model}) · {formatRealtimeFactor(benchResult.realtimeFactor)}{" "}
+                    real-time
                     {benchResult.createdAt
                       ? ` · ${formatBenchmarkDate(benchResult.createdAt)}`
                       : ""}
                   </p>
-                  {formatOneMinuteWait(benchResult.realtimeFactor) && (
-                    <p className="text-[9px] text-muted-foreground mt-1">
-                      At this speed a one-minute dictation is text in{" "}
-                      {formatOneMinuteWait(benchResult.realtimeFactor)}.
-                    </p>
-                  )}
                   {/* Warn if CUDA binary is present but speed is suspiciously low (likely not using GPU) */}
                   {gpuCategory === "nvidia_cuda" &&
                     !activeWhisperForceCpu &&

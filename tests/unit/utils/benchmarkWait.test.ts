@@ -1,31 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { formatOneMinuteWait } from "../../../src/utils/benchmarkWait";
+import { formatBenchmarkClip, formatBenchmarkWait } from "../../../src/utils/benchmarkWait";
 
-describe("formatOneMinuteWait", () => {
+describe("formatBenchmarkWait", () => {
   it.each([
     // The number Kristian's RTX 3090 actually produced on Whisper large.
-    [24.4, "about 2.5 seconds"],
-    // The 1-second boundary: 59x is 1.02s, 60x is exactly 1s, 61x is 0.98s.
-    [59, "about a second"],
-    [60, "about a second"],
-    [61, "under a second"],
-    [120, "under a second"],
-    [1000, "under a second"],
-    // A slow CPU run: minutes of audio per minute of wall clock.
-    [10, "about 6.0 seconds"],
-    [6, "about 10 seconds"],
-    [3, "about 20 seconds"],
-    [1.2, "about 50 seconds"],
-    [1, "about 1.0 minutes"],
-    [0.5, "about 2.0 minutes"],
-  ])("turns %sx real-time into %s", (factor, expected) => {
-    expect(formatOneMinuteWait(factor)).toBe(expected);
+    [410, "0.4s"],
+    [190, "0.2s"],
+    [1000, "1.0s"],
+    [9949, "9.9s"],
+    // Past ten seconds a tenth of a second is noise, so it rounds.
+    [10_000, "10s"],
+    [37_400, "37s"],
+    [59_400, "59s"],
+    // A slow CPU run on a heavy model.
+    [60_000, "1m"],
+    [90_000, "1m 30s"],
+    [120_000, "2m"],
+    [224_000, "3m 44s"],
+  ])("turns %sms into %s", (elapsedMs, expected) => {
+    expect(formatBenchmarkWait(elapsedMs)).toBe(expected);
   });
 
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
     "returns an empty string for %s so the caller can drop the line",
-    (factor) => {
-      expect(formatOneMinuteWait(factor)).toBe("");
+    (elapsedMs) => {
+      expect(formatBenchmarkWait(elapsedMs)).toBe("");
     }
   );
+});
+
+describe("formatBenchmarkClip", () => {
+  it.each([
+    [10, "10 seconds of audio"],
+    [10.0, "10 seconds of audio"],
+    [9.6, "9.6 seconds of audio"],
+    [30, "30 seconds of audio"],
+  ])("describes a %ss clip as %s", (seconds, expected) => {
+    expect(formatBenchmarkClip(seconds)).toBe(expected);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("is empty for %s", (seconds) => {
+    expect(formatBenchmarkClip(seconds)).toBe("");
+  });
 });

@@ -1,24 +1,35 @@
 /**
- * How long a one-minute dictation takes to come back at a given real-time
- * factor.
+ * How long the benchmark actually waited, formatted for display.
  *
- * The real-time factor is the honest measurement, but "24.4x" is not the
- * question anyone actually has. The question is how long you sit there after
- * you stop talking. This turns the factor into that number so the benchmark
- * card can state it directly and leave the factor as the headline above it.
+ * The headline used to be the real-time factor, which is the precise way to say
+ * it and the wrong way to lead: "24.4x" is a ratio nobody has a feel for. The
+ * question after a speed test is how long you sit there, so the wait is the
+ * headline now and the factor moved to the detail line beside it.
  *
- * Returns "" for an unusable factor, so callers can drop the line entirely
- * rather than render a half-finished sentence.
+ * Deliberately reports the clip that was measured rather than scaling up to a
+ * minute. Cost grows markedly slower than clip length - whisper.cpp pads audio
+ * into 30-second windows and a short clip leaves the GPU idle - so multiplying
+ * this out produced a figure roughly four times too pessimistic. The website
+ * states the same measured pair.
  */
-export function formatOneMinuteWait(factor: number): string {
-  if (!Number.isFinite(factor) || factor <= 0) return "";
+export function formatBenchmarkWait(elapsedMs: number): string {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return "";
 
-  const seconds = 60 / factor;
+  const seconds = elapsedMs / 1000;
 
-  if (seconds < 1) return "under a second";
-  // Guard the 1.0 case so it never reads "about 1.0 seconds".
-  if (seconds < 1.05) return "about a second";
-  if (seconds < 10) return `about ${seconds.toFixed(1)} seconds`;
-  if (seconds < 60) return `about ${Math.round(seconds)} seconds`;
-  return `about ${(seconds / 60).toFixed(1)} minutes`;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds - minutes * 60);
+  // 90s reads better as "1m 30s" than "1.5m", and 120s must not become "2m 0s".
+  return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+}
+
+/** "10 seconds of audio", or "" when the duration is unusable. */
+export function formatBenchmarkClip(audioDurationSec: number): string {
+  if (!Number.isFinite(audioDurationSec) || audioDurationSec <= 0) return "";
+  const rounded = Math.round(audioDurationSec * 10) / 10;
+  const value = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${value} seconds of audio`;
 }
