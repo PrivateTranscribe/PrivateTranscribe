@@ -11,6 +11,7 @@ const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
 const { resolveLockableLanguage, resolveAllowedLanguage } = require("./whisperLanguage");
 const GpuBinaryManager = require("./gpuBinaryManager");
+const { resolveWhisperThreads } = require("./cpuThreads");
 
 const gpuBinaryManager = new GpuBinaryManager();
 
@@ -246,6 +247,9 @@ class WhisperServerManager {
 
     // When true, always use the CPU binary even if the CUDA binary is present.
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
+    // 0 means "let cpuThreads decide from this machine's topology". A non-zero
+    // value is the user's explicit override from Settings.
+    this.threadSetting = Number.parseInt(process.env.WHISPER_THREADS, 10) || 0;
     this.cudaDisabledForSession = false;
     this._cudaDisabledAt = null;
     this._cudaFailureCount = 0;
@@ -390,7 +394,9 @@ class WhisperServerManager {
     // which also keeps this correct once a Vulkan engine exists.
     if (this.forceCpu) args.push("--no-gpu");
 
-    if (options.threads) args.push("--threads", String(options.threads));
+    // Always explicit. whisper.cpp's own default is min(4, cores), which left
+    // every user on 4 threads no matter what hardware they had.
+    args.push("--threads", String(options.threads || resolveWhisperThreads(this.threadSetting)));
     if (options.printRealtime) {
       args.push("--print-realtime");
       args.push("--tinydiarize");
@@ -403,6 +409,25 @@ class WhisperServerManager {
     );
 
     return args;
+  }
+
+  /**
+   * Change the CPU thread count. Unlike most tuning this is a server startup
+   * argument, so an already-running server has to be stopped; it restarts with
+   * the new count on the next transcription.
+   *
+   * @param {number} value `0` for auto, or an explicit thread count.
+   */
+  async setThreads(value) {
+    const next = Number.parseInt(value, 10) || 0;
+    if (this.threadSetting === next) return;
+
+    this.threadSetting = next;
+    await this.stop();
+    debugLogger.info("WhisperServer: thread count changed", {
+      setting: next === 0 ? "auto" : next,
+      resolved: resolveWhisperThreads(next),
+    });
   }
 
   async setForceCpu(value) {

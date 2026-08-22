@@ -20,6 +20,8 @@ export interface TranscriptionSettings {
   whisperForceCpu: boolean;
   /** Minutes before whisper-server is auto-stopped to free memory. 0 = never. */
   whisperServerIdleTimeoutMinutes: number;
+  /** `0` = auto (chosen from CPU topology). Anything else is an explicit override. */
+  whisperThreads: number;
   allowOpenAIFallback: boolean;
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
@@ -98,6 +100,14 @@ export function useSettings() {
   const [whisperForceCpu, setWhisperForceCpu] = useLocalStorage("whisperForceCpu", false, {
     serialize: String,
     deserialize: (value) => value === "true",
+  });
+
+  const [whisperThreads, setWhisperThreads] = useLocalStorage("whisperThreads", 0, {
+    serialize: String,
+    deserialize: (value) => {
+      const n = parseInt(value, 10);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    },
   });
 
   const [whisperServerIdleTimeoutMinutes, setWhisperServerIdleTimeoutMinutes] = useLocalStorage(
@@ -788,6 +798,7 @@ export function useSettings() {
       reasoningProvider,
       reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
       whisperForceCpu,
+      whisperThreads,
     };
     const startupPreferencesKey = JSON.stringify(startupPreferences);
     if (startupPreferencesKey === lastSyncedStartupPreferencesKey) return;
@@ -806,6 +817,7 @@ export function useSettings() {
     reasoningProvider,
     reasoningModel,
     whisperForceCpu,
+    whisperThreads,
   ]);
 
   // Apply force-CPU toggle immediately when it changes (no restart needed)
@@ -817,6 +829,17 @@ export function useSettings() {
       }
     });
   }, [whisperForceCpu]);
+
+  // Thread count is a whisper-server startup argument, so main stops the server
+  // and it comes back with the new count on the next dictation.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.electronAPI?.setWhisperThreads?.(whisperThreads)?.then((result) => {
+      if (result && result.success === false) {
+        console.error("Failed to apply Whisper thread count:", result.error);
+      }
+    });
+  }, [whisperThreads]);
 
   // Batch operations
 
@@ -904,6 +927,7 @@ export function useSettings() {
       if (settings.whisperForceCpu !== undefined) setWhisperForceCpu(settings.whisperForceCpu);
       if (settings.whisperServerIdleTimeoutMinutes !== undefined)
         setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
+      if (settings.whisperThreads !== undefined) setWhisperThreads(settings.whisperThreads);
       if (settings.allowOpenAIFallback !== undefined)
         setAllowOpenAIFallback(settings.allowOpenAIFallback);
       if (settings.allowLocalFallback !== undefined)
@@ -969,6 +993,7 @@ export function useSettings() {
       setWhisperModel,
       setLocalTranscriptionProvider,
       setWhisperServerIdleTimeoutMinutes,
+      setWhisperThreads,
       setAllowOpenAIFallback,
       setAllowLocalFallback,
       setFallbackWhisperModel,
@@ -1019,6 +1044,7 @@ export function useSettings() {
     whisperModel,
     localTranscriptionProvider,
     whisperForceCpu,
+    whisperThreads,
     whisperServerIdleTimeoutMinutes,
     allowOpenAIFallback,
     allowLocalFallback,

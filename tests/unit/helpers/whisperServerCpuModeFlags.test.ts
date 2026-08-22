@@ -43,13 +43,22 @@ describe("whisper-server engine-mode flags", () => {
     expect(args[args.indexOf("--port") + 1]).toBe(String(manager.port));
   });
 
-  it("passes --threads only when a thread count is supplied", () => {
+  it("always states a thread count rather than leaning on whisper.cpp's default", () => {
     const manager = new WhisperServerManager();
+    const args = manager.buildServerArgs(modelPath);
 
-    expect(manager.buildServerArgs(modelPath)).not.toContain("--threads");
-    expect(manager.buildServerArgs(modelPath, { threads: 12 })).toEqual(
-      expect.arrayContaining(["--threads", "12"])
-    );
+    // The default is min(4, cores), which is what left every machine on 4.
+    expect(args).toContain("--threads");
+    const resolved = Number(args[args.indexOf("--threads") + 1]);
+    expect(Number.isInteger(resolved)).toBe(true);
+    expect(resolved).toBeGreaterThan(0);
+  });
+
+  it("lets an explicit thread count win", () => {
+    const manager = new WhisperServerManager();
+    const args = manager.buildServerArgs(modelPath, { threads: 12 });
+
+    expect(args[args.indexOf("--threads") + 1]).toBe("12");
   });
 
   it("defaults language to auto and honours an explicit one", () => {

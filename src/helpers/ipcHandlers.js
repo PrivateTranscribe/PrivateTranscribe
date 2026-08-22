@@ -18,6 +18,12 @@ const micWatcher = require("./micWatcher");
 const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
 const {
+  MAX_AUTO_THREADS,
+  getPhysicalCoreCount,
+  logicalCoreCount,
+  resolveWhisperThreads,
+} = require("./cpuThreads");
+const {
   DEFAULT_AUTO_START_LAUNCH_MODE,
   normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
@@ -1024,6 +1030,31 @@ class IPCHandlers {
       }
     });
 
+    ipcMain.handle("set-whisper-threads", async (_event, value) => {
+      try {
+        if (this.whisperManager.isProcessing && this.whisperManager.isProcessing()) {
+          return {
+            success: false,
+            error: "Cannot change thread count while transcription is in progress",
+          };
+        }
+        await this.whisperManager.setThreads(value);
+        return { success: true, resolved: resolveWhisperThreads(value) };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("get-cpu-thread-info", async () => {
+      return {
+        success: true,
+        physicalCores: getPhysicalCoreCount(),
+        logicalCores: logicalCoreCount(),
+        autoThreads: resolveWhisperThreads(0),
+        maxAutoThreads: MAX_AUTO_THREADS,
+      };
+    });
+
     ipcMain.handle("whisper-server-status", async () => {
       return this.whisperManager.getEngineStatus?.() || this.whisperManager.getServerStatus();
     });
@@ -1672,6 +1703,17 @@ class IPCHandlers {
         }
         if (this.whisperManager) {
           this.whisperManager.setForceCpu(prefs.whisperForceCpu).catch(() => {});
+        }
+      }
+
+      if (typeof prefs.whisperThreads === "number") {
+        if (prefs.whisperThreads > 0) {
+          setVars.WHISPER_THREADS = String(prefs.whisperThreads);
+        } else {
+          clearVars.push("WHISPER_THREADS");
+        }
+        if (this.whisperManager) {
+          this.whisperManager.setThreads(prefs.whisperThreads).catch(() => {});
         }
       }
       // Startup no longer pre-warms local transcription servers.

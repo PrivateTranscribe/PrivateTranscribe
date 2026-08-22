@@ -110,6 +110,10 @@ class WhisperManager {
       if (typeof settings.whisperForceCpu === "boolean") {
         await this.serverManager.setForceCpu(settings.whisperForceCpu);
       }
+
+      if (settings.whisperThreads !== undefined) {
+        await this.serverManager.setThreads(settings.whisperThreads);
+      }
     } catch (error) {
       debugLogger.warn("Whisper initialization error", {
         error: error.message,
@@ -273,6 +277,10 @@ class WhisperManager {
 
   async setForceCpu(value) {
     await this.serverManager.setForceCpu(value);
+  }
+
+  async setThreads(value) {
+    await this.serverManager.setThreads(value);
   }
 
   isProcessing() {

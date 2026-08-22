@@ -894,6 +894,17 @@ declare global {
       downloadCudaBinary?: () => Promise<{ success: boolean; error?: string }>;
       cancelCudaBinaryDownload?: () => Promise<{ success: boolean }>;
       setWhisperForceCpu?: (value: boolean) => Promise<{ success: boolean; error?: string }>;
+      /** `0` means auto. Resolved value comes back so the UI can show it. */
+      setWhisperThreads?: (
+        value: number
+      ) => Promise<{ success: boolean; resolved?: number; error?: string }>;
+      getCpuThreadInfo?: () => Promise<{
+        success: boolean;
+        physicalCores: number;
+        logicalCores: number;
+        autoThreads: number;
+        maxAutoThreads: number;
+      }>;
       /** Fired when the GPU→CPU transcription fallback engages (active: true) or recovers. */
       onWhisperEngineFallbackChanged?: (
         callback: (

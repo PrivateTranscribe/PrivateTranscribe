@@ -1154,6 +1154,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperModel,
     whisperForceCpu,
     setWhisperForceCpu,
+    whisperThreads,
     setLocalTranscriptionProvider,
     setWhisperServerIdleTimeoutMinutes,
     setCloudTranscriptionProvider,
@@ -1321,6 +1322,33 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperIdleDraft(String(whisperServerIdleTimeoutMinutes));
   }, [whisperServerIdleTimeoutMinutes]);
 
+  // Thread count. `0` means auto, and the resolved value is fetched from main so
+  // the field can show what auto actually picked on this machine.
+  const [cpuThreadInfo, setCpuThreadInfo] = useState<{
+    physicalCores: number;
+    logicalCores: number;
+    autoThreads: number;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI
+      ?.getCpuThreadInfo?.()
+      ?.then((info) => {
+        if (!cancelled && info?.success) setCpuThreadInfo(info);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [whisperThreadsDraft, setWhisperThreadsDraft] = useState<string>(
+    whisperThreads > 0 ? String(whisperThreads) : ""
+  );
+  useEffect(() => {
+    setWhisperThreadsDraft(whisperThreads > 0 ? String(whisperThreads) : "");
+  }, [whisperThreads]);
+
   const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
     String(llamaServerIdleTimeoutMinutes)
   );
@@ -1371,6 +1399,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           localTranscriptionProvider,
           whisperModel,
           whisperForceCpu,
+          whisperThreads,
           whisperServerIdleTimeoutMinutes,
           preferredLanguage,
           spokenLanguages,
@@ -1434,6 +1463,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       localTranscriptionProvider,
       whisperModel,
       whisperForceCpu,
+      whisperThreads,
       preferredLanguage,
       spokenLanguages,
       translateToEnglish,
@@ -1592,6 +1622,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             : undefined,
         whisperModel: importedWhisperModel,
         whisperForceCpu: typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
+        whisperThreads: typeof s.whisperThreads === "number" ? s.whisperThreads : undefined,
         whisperServerIdleTimeoutMinutes: importedWhisperIdleTimeout,
         preferredLanguage: importedPreferredLanguage,
         translateToEnglish:
@@ -2873,9 +2904,48 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div className="mt-6">
                 <SectionHeader
                   title="Local Whisper performance"
-                  description="Tune how the local whisper-server behaves after you stop dictating"
+                  description="How much of the CPU local Whisper may use, and when it shuts itself down"
                 />
                 <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="CPU threads"
+                      description={
+                        cpuThreadInfo
+                          ? `Auto uses ${cpuThreadInfo.autoThreads} of your ${cpuThreadInfo.logicalCores} threads (${cpuThreadInfo.physicalCores} cores). It holds some back on purpose so the rest of the machine stays responsive while transcribing. Raise it for more speed and less headroom. Leave empty for auto.`
+                          : "How many CPU threads local Whisper may use. Auto holds some back on purpose so the rest of the machine stays responsive while transcribing. Leave empty for auto."
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={cpuThreadInfo?.logicalCores ?? 128}
+                          step={1}
+                          placeholder={
+                            cpuThreadInfo ? `auto (${cpuThreadInfo.autoThreads})` : "auto"
+                          }
+                          value={whisperThreadsDraft}
+                          onChange={(e) => {
+                            setWhisperThreadsDraft(e.target.value);
+                          }}
+                          onBlur={() => {
+                            const raw = parseInt(whisperThreadsDraft, 10);
+                            const max = cpuThreadInfo?.logicalCores ?? 128;
+                            // An empty or unusable field means "go back to auto"
+                            // rather than "keep whatever was there before".
+                            const next = Number.isFinite(raw) ? Math.max(1, Math.min(max, raw)) : 0;
+
+                            setWhisperThreadsDraft(next > 0 ? String(next) : "");
+                            updateTranscriptionSettings({ whisperThreads: next });
+                          }}
+                          className="w-28 text-right"
+                          aria-label="Whisper CPU thread count"
+                        />
+                        <span className="text-xs text-muted-foreground">threads</span>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Idle shutdown (minutes)"
