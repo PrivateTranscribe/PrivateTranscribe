@@ -18,6 +18,7 @@ import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
+import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 
@@ -207,6 +208,34 @@ export default function App() {
   const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
+
+  // Read Aloud lives in the overlay renderer because that is where playback has
+  // to survive the control panel being closed. No UI yet — the player is
+  // mounted headlessly, and only a dev build launched with
+  // PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 gets a way to drive it.
+  useEffect(() => {
+    const player = new ReadAloudPlayer();
+
+    if (!window.electronAPI?.readAloudTestEnabled) {
+      return () => player.dispose();
+    }
+
+    window.__readAloudTest = {
+      speak: (text) => player.speak(text),
+      getState: () => player.getState(),
+      getFirstBufferStats: () => player.getBufferStats(0),
+      clearCache: () => player.clearCache(),
+      pause: () => player.pause(),
+      resume: () => player.resume(),
+      seek: (delta) => player.seek(delta),
+      stop: () => player.stop(),
+    };
+
+    return () => {
+      delete window.__readAloudTest;
+      player.dispose();
+    };
+  }, []);
 
   useEffect(() => {
     window.electronAPI?.notifyDictationOverlayReady?.();

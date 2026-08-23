@@ -160,6 +160,38 @@ export interface ParakeetDiagnosticsResult {
   models: string[];
 }
 
+/** Progress for a Kokoro model download, aggregated across the model's files. */
+export interface KokoroDownloadProgressData {
+  type: string;
+  model: string;
+  percentage?: number;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  error?: string;
+}
+
+export interface KokoroModelStatus {
+  model: string;
+  installed: boolean;
+  /** Registry-relative paths that are absent or truncated. */
+  missingFiles: string[];
+  totalBytes: number;
+  dir: string;
+}
+
+export interface KokoroEngineStatus {
+  loaded: boolean;
+  loading: boolean;
+  coldStartMs: number;
+  error: string | null;
+}
+
+export interface KokoroSynthResult {
+  pcm: Float32Array;
+  sampleRate: number;
+  synthMs: number;
+}
+
 export interface PasteToolsResult {
   platform: "darwin" | "win32" | "linux";
   available: boolean;
@@ -590,6 +622,41 @@ declare global {
         error?: string;
       }>;
       getParakeetDiagnostics: () => Promise<ParakeetDiagnosticsResult>;
+
+      // Read Aloud (Kokoro TTS) — engine runs in the main process, renderer plays PCM
+      readAloudCheckModelStatus: (modelId?: string) => Promise<KokoroModelStatus>;
+      readAloudDownloadModel: (modelId?: string) => Promise<{
+        model: string;
+        downloaded: boolean;
+        path: string;
+        success: boolean;
+      }>;
+      onReadAloudDownloadProgress: (
+        callback: (event: any, data: KokoroDownloadProgressData) => void
+      ) => (() => void) | void;
+      readAloudCancelDownload: () => Promise<{
+        success: boolean;
+        message?: string;
+        error?: string;
+      }>;
+      readAloudDeleteModel: (modelId?: string) => Promise<{
+        model: string;
+        deleted: boolean;
+        freed_bytes?: number;
+        freed_mb?: number;
+        error?: string;
+        success: boolean;
+      }>;
+      readAloudLoadEngine: (modelId?: string) => Promise<KokoroEngineStatus>;
+      readAloudEngineStatus: () => Promise<KokoroEngineStatus>;
+      readAloudSplit: (text: string) => Promise<string[]>;
+      readAloudSynth: (options: {
+        text: string;
+        voice?: string;
+        speed?: number;
+      }) => Promise<KokoroSynthResult>;
+      /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
+      readAloudTestEnabled: boolean;
 
       // Local AI model management
       modelGetAll: () => Promise<any[]>;

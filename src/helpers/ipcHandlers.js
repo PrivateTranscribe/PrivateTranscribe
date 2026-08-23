@@ -231,6 +231,7 @@ class IPCHandlers {
     this.clipboardManager = managers.clipboardManager;
     this.whisperManager = managers.whisperManager;
     this.parakeetManager = managers.parakeetManager;
+    this.kokoroManager = managers.kokoroManager || null;
     this.windowManager = managers.windowManager;
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
@@ -1190,6 +1191,55 @@ class IPCHandlers {
 
     ipcMain.handle("parakeet-server-status", async () => {
       return this.parakeetManager.getServerStatus();
+    });
+
+    // Read Aloud (Kokoro TTS) handlers.
+    //
+    // The engine lives in the main process; the renderer receives raw PCM and
+    // owns playback. `readaloud-load-engine` is deliberately separate from
+    // `readaloud-synth` so a caller can pay the cold-start cost up front rather
+    // than inside the first sentence's latency budget.
+    const requireKokoro = () => {
+      if (!this.kokoroManager) {
+        throw Object.assign(new Error("Read Aloud is unavailable"), {
+          code: "kokoro-unavailable",
+        });
+      }
+      return this.kokoroManager;
+    };
+
+    ipcMain.handle("readaloud-check-model-status", async (_event, modelId) => {
+      return requireKokoro().checkModelStatus(modelId || undefined);
+    });
+
+    ipcMain.handle("readaloud-download-model", async (event, modelId) => {
+      return requireKokoro().downloadKokoroModel(modelId || undefined, (progressData) => {
+        safeSend(event.sender, "readaloud-download-progress", progressData);
+      });
+    });
+
+    ipcMain.handle("readaloud-cancel-download", async () => {
+      return requireKokoro().cancelDownload();
+    });
+
+    ipcMain.handle("readaloud-delete-model", async (_event, modelId) => {
+      return requireKokoro().deleteModel(modelId || undefined);
+    });
+
+    ipcMain.handle("readaloud-load-engine", async (_event, modelId) => {
+      return requireKokoro().loadEngine(modelId || undefined);
+    });
+
+    ipcMain.handle("readaloud-engine-status", async () => {
+      return requireKokoro().getEngineStatus();
+    });
+
+    ipcMain.handle("readaloud-split", async (_event, text) => {
+      return requireKokoro().splitSentences(text);
+    });
+
+    ipcMain.handle("readaloud-synth", async (_event, { text, voice, speed } = {}) => {
+      return requireKokoro().synthesize(text, { voice, speed });
     });
 
     // Utility handlers

@@ -83,6 +83,7 @@ const micWatcher = require("./src/helpers/micWatcher");
 const voiceMuter = require("./src/helpers/voiceMuter");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
+const KokoroManager = require("./src/helpers/kokoro");
 const TrayManager = require("./src/helpers/tray");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
@@ -105,6 +106,7 @@ let databaseManager = null;
 let clipboardManager = null;
 let whisperManager = null;
 let parakeetManager = null;
+let kokoroManager = null;
 let trayManager = null;
 let updateManager = null;
 let globeKeyManager = null;
@@ -164,6 +166,9 @@ async function initializeManagers() {
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
   parakeetManager = new ParakeetManager();
+  // Read Aloud (Kokoro TTS). Constructed only — the model is loaded lazily on
+  // the first synthesis request, and never downloaded implicitly.
+  kokoroManager = new KokoroManager();
   trayManager = new TrayManager();
   updateManager = new UpdateManager();
   updateManager.setBeforeQuitAndInstall(async () => {
@@ -226,6 +231,7 @@ async function initializeManagers() {
     clipboardManager,
     whisperManager,
     parakeetManager,
+    kokoroManager,
     windowManager,
     updateManager,
     windowsKeyManager,

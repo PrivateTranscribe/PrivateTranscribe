@@ -178,6 +178,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
   parakeetServerSetIdleTimeoutMinutes: (minutes) =>
     ipcRenderer.invoke("parakeet-server-set-idle-timeout-minutes", minutes),
 
+  // Read Aloud (Kokoro TTS) functions
+  readAloudCheckModelStatus: (modelId) =>
+    ipcRenderer.invoke("readaloud-check-model-status", modelId),
+  readAloudDownloadModel: (modelId) => ipcRenderer.invoke("readaloud-download-model", modelId),
+  onReadAloudDownloadProgress: registerListener("readaloud-download-progress"),
+  readAloudCancelDownload: () => ipcRenderer.invoke("readaloud-cancel-download"),
+  readAloudDeleteModel: (modelId) => ipcRenderer.invoke("readaloud-delete-model", modelId),
+  readAloudLoadEngine: (modelId) => ipcRenderer.invoke("readaloud-load-engine", modelId),
+  readAloudEngineStatus: () => ipcRenderer.invoke("readaloud-engine-status"),
+  readAloudSplit: (text) => ipcRenderer.invoke("readaloud-split", text),
+  readAloudSynth: (options) => ipcRenderer.invoke("readaloud-synth", options),
+  /**
+   * Dev-only switch for the headless Read Aloud test surface. Off unless the
+   * app was launched with PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1, so a
+   * shipped build never exposes window.__readAloudTest.
+   */
+  readAloudTestEnabled: process.env.PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST === "1",
+
   // Local llama-server functions
   llamaServerSetIdleTimeoutMinutes: (minutes) =>
     ipcRenderer.invoke("llama-server-set-idle-timeout-minutes", minutes),

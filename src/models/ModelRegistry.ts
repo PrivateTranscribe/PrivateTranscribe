@@ -89,8 +89,29 @@ export interface ParakeetModelInfo {
 
 export type ParakeetModelsMap = Record<string, ParakeetModelInfo>;
 
+/** One file of a Kokoro model, laid out under the transformers cache dir. */
+export interface KokoroModelFile {
+  /** Path relative to the repo root inside the cache, e.g. "onnx/model.onnx". */
+  relPath: string;
+  url: string;
+  /** Expected size on disk, used to tell a complete file from a truncated one. */
+  bytes: number;
+}
+
+export interface KokoroModelInfo {
+  name: string;
+  description: string;
+  /** HuggingFace repo id — also the cache subdirectory the engine loads from. */
+  hfRepo: string;
+  sizeMb: number;
+  files: KokoroModelFile[];
+}
+
+export type KokoroModelsMap = Record<string, KokoroModelInfo>;
+
 interface ModelRegistryData {
   parakeetModels: ParakeetModelsMap;
+  kokoroModels: KokoroModelsMap;
   whisperModels: WhisperModelsMap;
   transcriptionProviders: TranscriptionProviderData[];
   cloudProviders: CloudProviderData[];
@@ -332,6 +353,16 @@ export function getParakeetModelInfo(modelId: string): ParakeetModelInfo | undef
 }
 
 export const PARAKEET_MODEL_INFO = modelData.parakeetModels;
+
+export function getKokoroModels(): KokoroModelsMap {
+  return modelData.kokoroModels;
+}
+
+export function getKokoroModelInfo(modelId: string): KokoroModelInfo | undefined {
+  return modelData.kokoroModels[modelId];
+}
+
+export const KOKORO_MODEL_INFO = modelData.kokoroModels;
 
 export function getWhisperModelConfig(modelId: string): WhisperModelConfig | null {
   const modelInfo = modelData.whisperModels[modelId];

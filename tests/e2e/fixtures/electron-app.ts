@@ -40,6 +40,45 @@ const DEFAULT_DIAG_FLAGS: Record<string, string> = {
 
 export type ConsoleEntry = { type: string; text: string };
 
+/** The one Kokoro model in the registry; seeded by `seedKokoroModel`. */
+const KOKORO_MODEL_ID = "kokoro-82m-v1.0-fp32";
+
+type KokoroRegistryEntry = { hfRepo: string; files: { relPath: string }[] };
+
+/** Mirrors getModelsDirForService("kokoro") under an arbitrary home directory. */
+const kokoroCacheRoot = (home: string, hfRepo: string) =>
+  path.join(home, ".cache", "PrivateTranscribe", "kokoro-models", ...hfRepo.split("/"));
+
+/**
+ * Hardlink the machine's real Kokoro model into the fake home so the app loads
+ * it through its normal model-manager path. Copies only if hardlinking fails
+ * (different volume).
+ */
+function seedKokoroModelInto(fakeHome: string, info: KokoroRegistryEntry | undefined): void {
+  if (!info) {
+    throw new Error(`seedKokoroModel: "${KOKORO_MODEL_ID}" is not in the kokoro model registry`);
+  }
+
+  const realRoot = kokoroCacheRoot(os.homedir(), info.hfRepo);
+  const fakeRoot = kokoroCacheRoot(fakeHome, info.hfRepo);
+
+  for (const file of info.files) {
+    const src = path.join(realRoot, ...file.relPath.split("/"));
+    if (!fs.existsSync(src)) {
+      throw new Error(
+        `Kokoro model not installed on this machine — run the download first. Missing: ${src}`
+      );
+    }
+    const dest = path.join(fakeRoot, ...file.relPath.split("/"));
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    try {
+      fs.linkSync(src, dest);
+    } catch {
+      fs.copyFileSync(src, dest);
+    }
+  }
+}
+
 export type PrivateTranscribeOptions = {
   /**
    * Mark onboarding complete before assertions run, so specs land on the real
@@ -68,6 +107,17 @@ export type PrivateTranscribeOptions = {
    * directory holding correctly-sized placeholder files.
    */
   seedWhisperModels: string[];
+  /**
+   * Make the real Kokoro TTS model visible to the app under the throwaway home
+   * directory, and turn on the dev-only Read Aloud test surface.
+   *
+   * Unlike the whisper seeds, this cannot be faked with a truncated file — the
+   * ONNX runtime actually loads the weights. The real model is hardlinked in,
+   * so a run costs no disk and no download. If the model is not on the machine
+   * the fixture throws: the app must never download it implicitly, so a spec
+   * that silently skipped would be hiding exactly the failure that matters.
+   */
+  seedKokoroModel: boolean;
 };
 
 export type PrivateTranscribeFixtures = {
@@ -96,9 +146,13 @@ const isControlPanelUrl = (url: string) => url.includes("panel=true");
  * compositor keeps painting and failure screenshots still show real UI. The
  * setters the app re-asserts during startup are then stubbed out so it cannot
  * undo any of it.
+ *
+ * `muteAudio` additionally mutes every window's output, for specs that play
+ * real audio. Muting only silences the output device — WebAudio's clock keeps
+ * running, so playback state and timing assertions are unaffected.
  */
-async function silenceWindows(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+async function silenceWindows(app: ElectronApplication, muteAudio = false): Promise<void> {
+  await app.evaluate(({ app: electronApp, BrowserWindow }, shouldMute) => {
     const silence = (win: Electron.BrowserWindow) => {
       if (!win || win.isDestroyed()) return;
 
@@ -117,6 +171,7 @@ async function silenceWindows(app: ElectronApplication): Promise<void> {
           real.setSkipTaskbar(true);
           real.setOpacity(0);
           real.setIgnoreMouseEvents(true);
+          if (shouldMute) win.webContents.setAudioMuted(true);
         } catch {
           // Some setters are platform-specific; losing one is not fatal here.
         }
@@ -143,7 +198,7 @@ async function silenceWindows(app: ElectronApplication): Promise<void> {
 
     BrowserWindow.getAllWindows().forEach(silence);
     electronApp.on("browser-window-created", (_event, win) => silence(win));
-  });
+  }, muteAudio);
 }
 
 async function findWindow(
@@ -180,41 +235,53 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
   appEnv: [{}, { option: true }],
   seedConsentFile: ["denied", { option: true }],
   seedWhisperModels: [[], { option: true }],
+  seedKokoroModel: [false, { option: true }],
 
-  fakeHomeDir: async ({ seedWhisperModels }, use) => {
-    if (seedWhisperModels.length === 0) {
+  fakeHomeDir: async ({ seedWhisperModels, seedKokoroModel }, use) => {
+    if (seedWhisperModels.length === 0 && !seedKokoroModel) {
       await use(null);
       return;
     }
 
     const registry = JSON.parse(
       fs.readFileSync(path.join(REPO_ROOT, "src", "models", "modelRegistryData.json"), "utf8")
-    ) as { whisperModels: Record<string, { fileName: string; sizeMb: number }> };
+    ) as {
+      whisperModels: Record<string, { fileName: string; sizeMb: number }>;
+      kokoroModels: Record<string, KokoroRegistryEntry>;
+    };
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-home-"));
-    // Mirrors getModelsDirForService("whisper"), which resolves under the
-    // home directory Electron reports.
-    const modelsDir = path.join(dir, ".cache", "PrivateTranscribe", "whisper-models");
-    fs.mkdirSync(modelsDir, { recursive: true });
 
-    for (const model of seedWhisperModels) {
-      const info = registry.whisperModels[model];
-      if (!info) {
-        throw new Error(`seedWhisperModels: "${model}" is not in the whisper model registry`);
+    if (seedWhisperModels.length > 0) {
+      // Mirrors getModelsDirForService("whisper"), which resolves under the
+      // home directory Electron reports.
+      const modelsDir = path.join(dir, ".cache", "PrivateTranscribe", "whisper-models");
+      fs.mkdirSync(modelsDir, { recursive: true });
+
+      for (const model of seedWhisperModels) {
+        const info = registry.whisperModels[model];
+        if (!info) {
+          throw new Error(`seedWhisperModels: "${model}" is not in the whisper model registry`);
+        }
+        // checkModelStatus only reads the file size, so an empty file truncated
+        // to the registry size reads as a complete download without writing
+        // hundreds of megabytes.
+        const handle = fs.openSync(path.join(modelsDir, info.fileName), "w");
+        try {
+          fs.ftruncateSync(handle, info.sizeMb * 1_000_000);
+        } finally {
+          fs.closeSync(handle);
+        }
       }
-      // checkModelStatus only reads the file size, so an empty file truncated
-      // to the registry size reads as a complete download without writing
-      // hundreds of megabytes.
-      const handle = fs.openSync(path.join(modelsDir, info.fileName), "w");
-      try {
-        fs.ftruncateSync(handle, info.sizeMb * 1_000_000);
-      } finally {
-        fs.closeSync(handle);
-      }
+    }
+
+    if (seedKokoroModel) {
+      seedKokoroModelInto(dir, registry.kokoroModels?.[KOKORO_MODEL_ID]);
     }
 
     await use(dir);
 
+    // Only unlinks the hardlinks — the machine's real model is untouched.
     fs.rmSync(dir, { recursive: true, force: true });
   },
 
@@ -241,7 +308,11 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
     await use([]);
   },
 
-  electronApp: async ({ userDataDir, fakeHomeDir, appEnv, consoleMessages }, use, testInfo) => {
+  electronApp: async (
+    { userDataDir, fakeHomeDir, appEnv, consoleMessages, seedKokoroModel },
+    use,
+    testInfo
+  ) => {
     const env: Record<string, string> = { ...process.env } as Record<string, string>;
 
     // Playwright's runner sets this for its own worker process; inheriting it
@@ -254,7 +325,12 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
     env.PT_LOG_LEVEL = env.PT_LOG_LEVEL || "info";
 
     for (const key of API_KEY_VARS) env[key] = "";
-    Object.assign(env, DEFAULT_DIAG_FLAGS, appEnv);
+    Object.assign(env, DEFAULT_DIAG_FLAGS);
+    if (seedKokoroModel) {
+      // Only a run that seeded the model gets the headless Read Aloud handle.
+      env.PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST = "1";
+    }
+    Object.assign(env, appEnv);
 
     const app = await electron.launch({
       cwd: REPO_ROOT,
@@ -271,7 +347,7 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
       timeout: 60_000,
     });
 
-    await silenceWindows(app);
+    await silenceWindows(app, seedKokoroModel);
 
     // The model cache resolves under app.getPath("home"), which Chromium reads
     // from the OS rather than USERPROFILE/HOME — so redirecting it has to
