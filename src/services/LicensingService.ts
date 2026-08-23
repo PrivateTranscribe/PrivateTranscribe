@@ -11,8 +11,7 @@
 // separate hosts the block was free. Keep these two in sync;
 // tests/unit/services/licensingHost.test.ts fails the build if they drift.
 const LICENSING_BASE_URL =
-  import.meta.env.VITE_LICENSING_BASE_URL ||
-  "https://updates.privatetranscribe.com/licensing";
+  import.meta.env.VITE_LICENSING_BASE_URL || "https://updates.privatetranscribe.com/licensing";
 
 // Storage keys
 const STORAGE_LICENSE_KEY = "privatetranscribe_license_key";
