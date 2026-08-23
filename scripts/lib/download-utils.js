@@ -45,7 +45,9 @@ function fetchJson(url, redirectCount = 0) {
             reject(new Error("Redirect without location header"));
             return;
           }
-          fetchJson(redirectUrl, redirectCount + 1).then(resolve).catch(reject);
+          fetchJson(redirectUrl, redirectCount + 1)
+            .then(resolve)
+            .catch(reject);
           return;
         }
 
@@ -109,6 +111,31 @@ async function fetchLatestRelease(repo, options = {}) {
     return null;
   } catch (error) {
     console.error(`  Failed to fetch latest release for ${repo}: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch one release by its exact tag.
+ *
+ * Separate from fetchLatestRelease because "latest" and "the release we want"
+ * are not the same thing for every project. llama.cpp marks a stub release as
+ * latest and publishes every actual build as a prerelease, so both the /latest
+ * endpoint and a prefix scan over /releases come back without the binaries.
+ * Asking for the tag by name is exact, one request, and immune to how upstream
+ * chooses to flag its releases.
+ *
+ * @param {string} repo - owner/name
+ * @param {string} tag - exact tag, e.g. "b10566"
+ * @returns {Promise<{tag: string, assets: Array, url: string}|null>}
+ */
+async function fetchReleaseByTag(repo, tag) {
+  try {
+    const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/tags/${tag}`);
+    if (!release || !release.tag_name) return null;
+    return formatRelease(release);
+  } catch (error) {
+    console.error(`  Failed to fetch release ${tag} for ${repo}: ${error.message}`);
     return null;
   }
 }
@@ -211,7 +238,8 @@ function downloadFile(url, dest, retryCount = 0) {
 
     request(url);
   }).catch(async (error) => {
-    const isTransient = error.message.includes("timed out") ||
+    const isTransient =
+      error.message.includes("timed out") ||
       error.code === "ECONNRESET" ||
       error.code === "ETIMEDOUT";
 
@@ -288,7 +316,8 @@ function parseArgs() {
     isCurrent: args.includes("--current"),
     isAll: args.includes("--all"),
     isForce: args.includes("--force"),
-    shouldCleanup: args.includes("--clean") ||
+    shouldCleanup:
+      args.includes("--clean") ||
       process.env.CI === "true" ||
       process.env.GITHUB_ACTIONS === "true",
   };
@@ -316,6 +345,7 @@ module.exports = {
   extractArchive,
   extractZip,
   fetchLatestRelease,
+  fetchReleaseByTag,
   findBinaryInDir,
   parseArgs,
   setExecutable,
