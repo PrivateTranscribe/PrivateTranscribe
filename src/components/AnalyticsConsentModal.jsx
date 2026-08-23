@@ -59,9 +59,10 @@ export function AnalyticsConsentModal({ onConsent }) {
             marginBottom: "1.25rem",
           }}
         >
-          Share setup milestones and feature usage counts using a random app ID that is not linked
-          to your email or hardware. PrivateTranscribe never sends audio, transcripts, window
-          titles, filenames, or API keys. You can change this anytime in Settings.
+          Share setup milestones, feature usage, transcription speed, language and model settings,
+          and CPU, GPU, or cloud mode using a random app ID that is not linked to your email or
+          hardware identity. PrivateTranscribe never sends audio, transcripts, window titles,
+          filenames, or API keys. You can change this anytime in Settings.
         </p>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button

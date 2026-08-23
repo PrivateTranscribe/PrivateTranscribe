@@ -111,6 +111,9 @@ internal static class WindowsHoldKey
     [DllImport("user32.dll")]
     private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
     private const uint MapVkToScanCode = 0;
 
     // Keys that live on the extended part of the keyboard and need the
@@ -407,8 +410,12 @@ internal static class WindowsHoldKey
         }
     }
 
-    /// How often the chord is re-asserted during a hold. See the call site.
-    private const int RepressIntervalMs = 500;
+    /// How often the chord is re-asserted during a hold, or 0 to press once and
+    /// simply keep holding. Off by default: re-pressing means letting go, and
+    /// letting go twice a second is audible. See the call site.
+    private const int DefaultRepressIntervalMs = 0;
+
+    private static int repressIntervalMs = DefaultRepressIntervalMs;
 
     /// Re-asserts the chord without ending the hold, giving the voice app a
     /// fresh key-down edge before it decides the key has gone away.
@@ -446,6 +453,50 @@ internal static class WindowsHoldKey
                 SendKeyEvent(heldKeys[i], false);
             }
         }
+    }
+
+    /// Diagnostic: reports every change in what Windows thinks the held keys
+    /// are doing, to stderr, for the length of the hold.
+    ///
+    /// This exists because "our keys stay down, the voice app drops them
+    /// anyway" was written down as established fact with nothing in the repo
+    /// that could reproduce it. A claim about who is at fault is worth very
+    /// little if the next person has to take it on trust. GetAsyncKeyState
+    /// reads global key state, so sampling from this process is as good as
+    /// sampling from another one.
+    private static void StartKeyStateWatch(int intervalMs, ManualResetEvent finished)
+    {
+        var watcher = new Thread(delegate()
+        {
+            var start = System.Diagnostics.Stopwatch.StartNew();
+            var previous = new Dictionary<Keys, bool>();
+
+            while (!finished.WaitOne(0))
+            {
+                for (int i = 0; i < heldKeys.Count; i++)
+                {
+                    HeldInput held = heldKeys[i];
+                    if (held.IsMouse)
+                    {
+                        continue;
+                    }
+
+                    bool down = (GetAsyncKeyState((int)held.Key) & 0x8000) != 0;
+                    bool seen;
+                    if (!previous.TryGetValue(held.Key, out seen) || seen != down)
+                    {
+                        previous[held.Key] = down;
+                        Console.Error.WriteLine(
+                            start.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture) +
+                            "ms " + held.Key.ToString() + " " + (down ? "down" : "UP"));
+                        Console.Error.Flush();
+                    }
+                }
+                Thread.Sleep(intervalMs);
+            }
+        });
+        watcher.IsBackground = true;
+        watcher.Start();
     }
 
     /// Releases in reverse order so modifiers come up last, which is what a
@@ -518,6 +569,16 @@ internal static class WindowsHoldKey
             if (int.TryParse(rawMax, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
             {
                 maxHoldMs = parsed < MinMaxHoldMs ? MinMaxHoldMs : parsed;
+            }
+        }
+
+        string rawRepress = GetOption(args, "--repress-ms=");
+        if (!string.IsNullOrEmpty(rawRepress))
+        {
+            int parsedRepress;
+            if (int.TryParse(rawRepress, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedRepress))
+            {
+                repressIntervalMs = parsedRepress < 0 ? 0 : parsedRepress;
             }
         }
 
@@ -598,24 +659,46 @@ internal static class WindowsHoldKey
         reader.IsBackground = true;
         reader.Start();
 
-        // Discord stops honouring a synthesized push-to-mute a few seconds into
-        // a single long press, so re-assert the chord on an interval instead of
-        // pressing once and waiting. Measured on a live call: no re-press held
-        // about 4s, every 2s held about 14s, every 500ms held about 40s. Not a
-        // cure, but it covers any realistic dictation. See
-        // docs/VOICE_CALL_MUTE.md.
-        int remaining = maxHoldMs;
-        while (remaining > 0)
+        string rawWatch = GetOption(args, "--watch-ms=");
+        if (!string.IsNullOrEmpty(rawWatch))
         {
-            int slice = remaining < RepressIntervalMs ? remaining : RepressIntervalMs;
-            if (done.WaitOne(slice))
+            int parsedWatch;
+            if (int.TryParse(rawWatch, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedWatch) &&
+                parsedWatch > 0)
             {
-                break; // released by stdin, an explicit release, or a signal
+                StartKeyStateWatch(parsedWatch, done);
             }
-            remaining -= slice;
-            if (remaining > 0)
+        }
+
+        // Default: press once and hold, which is what a finger does.
+        //
+        // Discord stops honouring a synthesized push-to-mute a few seconds into
+        // a single long press, and re-asserting the chord on an interval delays
+        // that (no re-press ~4s, every 2s ~14s, every 500ms ~40s). It was the
+        // default for one release and it is not worth it: a re-press is a real
+        // key-up, so Discord unmutes, re-mutes, and plays both sounds every
+        // interval. A beep twice a second for the length of every dictation is
+        // not a fix, it is a different bug. Still available behind
+        // --repress-ms= for measuring. See docs/VOICE_CALL_MUTE.md.
+        if (repressIntervalMs <= 0)
+        {
+            done.WaitOne(maxHoldMs);
+        }
+        else
+        {
+            int remaining = maxHoldMs;
+            while (remaining > 0)
             {
-                RepressAll();
+                int slice = remaining < repressIntervalMs ? remaining : repressIntervalMs;
+                if (done.WaitOne(slice))
+                {
+                    break; // released by stdin, an explicit release, or a signal
+                }
+                remaining -= slice;
+                if (remaining > 0)
+                {
+                    RepressAll();
+                }
             }
         }
 

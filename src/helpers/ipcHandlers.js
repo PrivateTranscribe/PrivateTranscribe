@@ -18,10 +18,17 @@ const micWatcher = require("./micWatcher");
 const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
 const {
+  MAX_AUTO_THREADS,
+  getPhysicalCoreCount,
+  logicalCoreCount,
+  resolveWhisperThreads,
+} = require("./cpuThreads");
+const {
   DEFAULT_AUTO_START_LAUNCH_MODE,
   normalizeAutoStartLaunchMode,
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
+  canRegisterAutoStart,
   resolveAutoStartEnabled,
 } = require("./autoStartLoginItemSettings");
 
@@ -244,6 +251,17 @@ class IPCHandlers {
         this.broadcastToWindows("whisper-engine-fallback-changed", payload);
       });
     }
+
+    // The CUDA engine download can start without any window asking for it (the
+    // silent startup auto-update). Broadcasting to every window instead of only
+    // the requester is what keeps Settings honest: it shows the ~750 MB
+    // download that is actually running rather than an "Update available"
+    // button that errors when clicked.
+    if (this.whisperManager?.setCudaDownloadProgressListener) {
+      this.whisperManager.setCudaDownloadProgressListener((progress) => {
+        this.broadcastToWindows("cuda-binary-download-progress", progress);
+      });
+    }
   }
 
   _getDictionarySafe() {
@@ -314,6 +332,14 @@ class IPCHandlers {
       execPath: process.execPath,
       appPath: app.getAppPath(),
       launchMode,
+    });
+  }
+
+  _canRegisterAutoStart() {
+    return canRegisterAutoStart({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      appPath: app.getAppPath(),
     });
   }
 
@@ -955,18 +981,23 @@ class IPCHandlers {
           .catch(() => null);
       }
 
+      // A window that opens mid-download missed every progress event, so hand
+      // it the current state instead of letting it render "Update available".
+      const downloadState = this.whisperManager.getCudaDownloadState?.() || null;
+
       return {
         ...cudaStatus,
         latestAvailableVersion,
         cudaAutoUpdateFailed: !!autoUpdateState?.failed,
+        activeDownload: downloadState?.downloading ? downloadState.progress : null,
       };
     });
 
-    ipcMain.handle("download-cuda-binary", async (event) => {
+    ipcMain.handle("download-cuda-binary", async () => {
       try {
-        const result = await this.whisperManager.downloadGpuBinary((progress) => {
-          safeSend(event.sender, "cuda-binary-download-progress", progress);
-        });
+        // Progress reaches every window through the app-wide listener wired in
+        // the constructor, so this does not subscribe per request.
+        const result = await this.whisperManager.downloadGpuBinary();
         if (result?.success) {
           await this.whisperManager.invalidateServerCache({ stopRunningServer: true });
           if (this.clearCudaAutoUpdateFailure) {
@@ -997,6 +1028,31 @@ class IPCHandlers {
       } catch (error) {
         return { success: false, error: error.message };
       }
+    });
+
+    ipcMain.handle("set-whisper-threads", async (_event, value) => {
+      try {
+        if (this.whisperManager.isProcessing && this.whisperManager.isProcessing()) {
+          return {
+            success: false,
+            error: "Cannot change thread count while transcription is in progress",
+          };
+        }
+        await this.whisperManager.setThreads(value);
+        return { success: true, resolved: resolveWhisperThreads(value) };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("get-cpu-thread-info", async () => {
+      return {
+        success: true,
+        physicalCores: getPhysicalCoreCount(),
+        logicalCores: logicalCoreCount(),
+        autoThreads: resolveWhisperThreads(0),
+        maxAutoThreads: MAX_AUTO_THREADS,
+      };
     });
 
     ipcMain.handle("whisper-server-status", async () => {
@@ -1342,6 +1398,23 @@ class IPCHandlers {
     ipcMain.handle("set-auto-start-enabled", async (event, enabled) => {
       try {
         const launchMode = this._readAutoStartLaunchMode();
+
+        // A dev run registers its app path in the Run key. If that path sits in a temp
+        // directory, Windows keeps launching a checkout the OS has since deleted and the
+        // user gets Electron's "Unable to find Electron app" dialog at every login.
+        // Turning it off stays allowed — that only ever removes an entry.
+        if (enabled && !this._canRegisterAutoStart()) {
+          debugLogger.warn("Refusing to register auto-start from a temporary app path", {
+            appPath: app.getAppPath(),
+          });
+          return {
+            success: false,
+            enabled: false,
+            error:
+              "Start on boot is unavailable in this dev run: the app is running from a temporary folder Windows will delete.",
+          };
+        }
+
         // Explicit user action, so the Windows startup approval follows the toggle:
         // turning it on here also re-enables the entry in Task Manager.
         app.setLoginItemSettings(
@@ -1385,8 +1458,10 @@ class IPCHandlers {
         // Only rewrite the login item while auto-start is actually on. If it is off —
         // including when the user disabled it in Task Manager — the stored mode is
         // enough; touching the registry here would re-register and re-approve the app
-        // behind the user's back.
-        if (wasEnabled) {
+        // behind the user's back. `executableWillLaunchAtLogin` ignores args, so a dev run
+        // reads any existing entry for node_modules' electron.exe as on — rewriting it from
+        // a temp checkout would point the Run key at a directory Windows later deletes.
+        if (wasEnabled && this._canRegisterAutoStart()) {
           app.setLoginItemSettings(this._buildAutoStartSetOptions(true, launchMode, true));
         }
         debugLogger.debug("Auto-start launch mode updated", {
@@ -1628,6 +1703,17 @@ class IPCHandlers {
         }
         if (this.whisperManager) {
           this.whisperManager.setForceCpu(prefs.whisperForceCpu).catch(() => {});
+        }
+      }
+
+      if (typeof prefs.whisperThreads === "number") {
+        if (prefs.whisperThreads > 0) {
+          setVars.WHISPER_THREADS = String(prefs.whisperThreads);
+        } else {
+          clearVars.push("WHISPER_THREADS");
+        }
+        if (this.whisperManager) {
+          this.whisperManager.setThreads(prefs.whisperThreads).catch(() => {});
         }
       }
       // Startup no longer pre-warms local transcription servers.

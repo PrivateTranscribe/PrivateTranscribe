@@ -40,9 +40,9 @@ import { Toggle } from "./ui/toggle";
 import { useToast } from "./ui/Toast";
 import { trackAnalyticsEvent, trackAnalyticsEventOnce } from "../utils/analytics";
 import { SectionLabel } from "./ui/SectionLabel";
-import LanguageSelector from "./ui/LanguageSelector";
+import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { getLanguageLabel } from "../utils/languages";
-import { isWeakForNonEnglish } from "../utils/modelAccuracy";
+import { isWeakForNonEnglish, resolveRatingLanguage } from "../utils/modelAccuracy";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -91,6 +91,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
     preferredLanguage,
+    spokenLanguages,
+    setSpokenLanguages,
     openaiApiKey,
     groqApiKey,
     customTranscriptionApiKey,
@@ -742,9 +744,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         );
 
       case 2: // Setup - Choose Mode & Configure
-        const selectedLanguageLabel = getLanguageLabel(preferredLanguage);
+        const ratingLanguage = resolveRatingLanguage(preferredLanguage, spokenLanguages);
+        const selectedLanguageLabel = getLanguageLabel(ratingLanguage || preferredLanguage);
         const showSmallModelLanguageWarning =
-          useLocalWhisper && isWeakForNonEnglish(whisperModel, preferredLanguage);
+          useLocalWhisper && isWeakForNonEnglish(whisperModel, ratingLanguage);
 
         const shouldShowCudaDownload =
           useLocalWhisper &&
@@ -774,28 +777,31 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               className="rounded-lg border border-border-subtle bg-surface-1 p-3 space-y-2"
               data-testid="onboarding-language"
             >
-              <SectionLabel>Dictation language</SectionLabel>
-              <LanguageSelector
-                value={preferredLanguage}
-                onChange={(value) => updateTranscriptionSettings({ preferredLanguage: value })}
-              />
-              {preferredLanguage === "auto" ? (
-                <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
-                  Auto-detect guesses from the first seconds of audio, and it mixes up languages
-                  that sound alike, such as Danish, Norwegian and Swedish. Picking your language
-                  stops the guessing.
-                </p>
-              ) : (
-                preferredLanguage !== "en" && (
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid="onboarding-language-hint"
-                  >
+              <SectionLabel>Which languages do you speak?</SectionLabel>
+              <SpokenLanguagesSelector value={spokenLanguages} onChange={setSpokenLanguages} />
+              {/* The same status line Settings uses, for the same reason: it
+                  reads preferredLanguage rather than inferring the state from
+                  the list, so it cannot describe detection that is not going
+                  to happen. Onboarding then adds only what is specific to
+                  setting this up for the first time. */}
+              <p className="text-xs text-muted-foreground" data-testid="onboarding-language-hint">
+                {describeSpokenLanguages(spokenLanguages, preferredLanguage)}
+                {spokenLanguages.length === 1 && spokenLanguages[0] !== "en" && (
+                  <>
+                    {" "}
                     Accuracy outside English is lower on every model, so expect a few more
-                    corrections. Adding names and jargon to your dictionary later wins some back.
-                  </p>
-                )
-              )}
+                    corrections.
+                  </>
+                )}
+                {spokenLanguages.length > 1 && (
+                  <>
+                    {" "}
+                    Use one language per dictation. Switching mid-sentence is not something Whisper
+                    can follow.
+                  </>
+                )}
+              </p>
+
               {showSmallModelLanguageWarning && (
                 <div
                   className="flex items-start gap-1.5 rounded-md border border-warning/25 bg-warning/8 px-3 py-2"
@@ -847,7 +853,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionBaseUrl: url })
               }
               onDownloadComplete={checkModelStatus}
-              preferredLanguage={preferredLanguage}
+              preferredLanguage={ratingLanguage}
               variant="onboarding"
             />
 
@@ -872,7 +878,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       className="w-full"
                       onClick={() => void handleDownloadCuda()}
                     >
-                      Download GPU Engine (652 MB)
+                      Download GPU Engine (~750 MB)
                     </Button>
                   )}
                   {cudaDownloadState === "downloading" && (

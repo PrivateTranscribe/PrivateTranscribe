@@ -33,6 +33,7 @@ import type {
   ComparisonBenchmarkResult,
 } from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
+import { formatBenchmarkClip, formatBenchmarkWait } from "../utils/benchmarkWait";
 import { isNewerVersion } from "../utils/versionCompare";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
@@ -45,6 +46,11 @@ import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
 import { isFeatureUnlocked } from "../hooks/useProStatus";
+import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
+import { BetaBadge } from "./ui/BetaBadge";
+import { BetaAccessLink } from "./ui/BetaAccessLink";
+import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
+import { resolveRatingLanguage } from "../utils/modelAccuracy";
 import { useAgentName } from "../utils/agentName";
 import ProSettingsSection from "./ProSettingsSection";
 import { usePermissions } from "../hooks/usePermissions";
@@ -135,10 +141,22 @@ function SettingsPanelRow({
   return <div className={`px-5 py-4 ${className}`}>{children}</div>;
 }
 
-function SectionHeader({ title, description }: { title: string; description?: string }) {
+function SectionHeader({
+  title,
+  description,
+  badge,
+}: {
+  title: string;
+  description?: string;
+  /** Rendered beside the title, e.g. a Beta pill on a tester-only section. */
+  badge?: React.ReactNode;
+}) {
   return (
     <div className="mb-5">
-      <h3 className="text-lg font-semibold text-foreground tracking-tight">{title}</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-foreground tracking-tight">{title}</h3>
+        {badge}
+      </div>
       {description && (
         <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
       )}
@@ -203,6 +221,13 @@ type CudaBinaryStatus = {
   upToDate?: boolean;
   expectedVersion?: string;
   latestAvailableVersion?: string | null;
+  /** Set when a download is running right now, including one this window never started. */
+  activeDownload?: {
+    phase?: string;
+    percent?: number;
+    bytesDownloaded?: number;
+    totalBytes?: number;
+  } | null;
   engineStatus?: {
     effectiveEngine?: "cuda" | "cpu" | "stopped" | "unknown";
     transition?: string;
@@ -225,11 +250,25 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadBytes, setDownloadBytes] = useState<{ downloaded?: number; total?: number }>({});
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadPhase, setDownloadPhase] = useState<string>("downloading");
 
   const refreshStatus = useCallback(async () => {
     try {
       const status = await window.electronAPI?.getCudaBinaryStatus?.();
-      if (status) setCudaStatus(status as CudaBinaryStatus);
+      if (!status) return;
+      setCudaStatus(status as CudaBinaryStatus);
+
+      // Adopt a download started elsewhere (the silent startup auto-update, or
+      // the other Settings surface) so this card never offers a button for work
+      // already underway.
+      const active = (status as CudaBinaryStatus).activeDownload;
+      if (active) {
+        setDownloadState("downloading");
+        setDownloadPhase(active.phase || "downloading");
+        setDownloadProgress(Math.round(active.percent ?? 0));
+        setDownloadBytes({ downloaded: active.bytesDownloaded, total: active.totalBytes });
+        setDownloadError(null);
+      }
     } catch {
       /* keep current status */
     }
@@ -251,12 +290,25 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
         downloaded: data?.bytesDownloaded ?? data?.downloadedBytes,
         total: data?.totalBytes,
       });
+      // These events are broadcast to every window, so they also arrive for a
+      // download this card did not start. Follow them rather than sitting on a
+      // stale "Update available".
+      const phase = data?.phase || "downloading";
+      setDownloadPhase(phase);
+      if (phase === "done") {
+        setDownloadState("done");
+        refreshStatus();
+      } else {
+        setDownloadState("downloading");
+        setDownloadError(null);
+      }
     });
     return () => cleanup?.();
-  }, []);
+  }, [refreshStatus]);
 
   const handleDownloadCuda = useCallback(async () => {
     setDownloadState("downloading");
+    setDownloadPhase("downloading");
     setDownloadProgress(0);
     setDownloadBytes({});
     setDownloadError(null);
@@ -280,6 +332,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const handleCancelDownload = useCallback(async () => {
     await window.electronAPI?.cancelCudaBinaryDownload?.().catch(() => {});
     setDownloadState("idle");
+    setDownloadPhase("downloading");
     setDownloadProgress(0);
     setDownloadBytes({});
     await refreshStatus();
@@ -307,7 +360,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const badge = !isSupported ? (
     <Badge variant="secondary">Unsupported</Badge>
   ) : downloadState === "downloading" ? (
-    <Badge variant="outline">Downloading</Badge>
+    <Badge variant="outline">{downloadPhase === "installing" ? "Installing" : "Downloading"}</Badge>
   ) : needsUpdate ? (
     <Badge variant="warning">Update available</Badge>
   ) : isUpToDate ? (
@@ -319,7 +372,9 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   const description = !isSupported
     ? "CUDA engine downloads are available on Windows/Linux x64 with NVIDIA GPUs."
     : downloadState === "downloading"
-      ? `Downloading CUDA engine… ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}`
+      ? downloadPhase === "installing"
+        ? "Installing the CUDA engine. This takes a moment for a package this size."
+        : `Downloading the CUDA engine — ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}. Quitting PrivateTranscribe pauses it; it resumes from here next launch.`
       : autoUpdateFailed
         ? "Automatic CUDA engine update failed. Retry manually here."
         : needsUpdate
@@ -409,6 +464,9 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
+                // Once the archive is extracting there is no transfer left to
+                // stop, and aborting mid-install would leave a partial engine.
+                disabled={downloadPhase === "installing"}
               >
                 Cancel download
               </Button>
@@ -494,34 +552,49 @@ function GpuStatusCard({
     });
   }, []);
 
-  // Fetch CUDA binary status on mount
-  useEffect(() => {
-    window.electronAPI
-      ?.getCudaBinaryStatus?.()
-      .then(setCudaStatus)
-      .catch(() => {});
+  // Fetch CUDA binary status, adopting any download already running so this
+  // card does not offer to start work that is already underway.
+  const refreshCudaStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      if (!status) return;
+      setCudaStatus(status);
+      const active = (status as CudaBinaryStatus).activeDownload;
+      if (active) {
+        setDownloadState("downloading");
+        setDownloadProgress(Math.round(active.percent ?? 0));
+        setDownloadError(null);
+      }
+    } catch {
+      /* keep the last known status */
+    }
   }, []);
+
+  useEffect(() => {
+    refreshCudaStatus();
+  }, [refreshCudaStatus]);
 
   // Refresh CUDA status while Settings is open so async auto-update failures surface.
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const status = await window.electronAPI?.getCudaBinaryStatus?.();
-        if (status) setCudaStatus(status);
-      } catch {
-        /* keep the last known status */
-      }
-    }, 30000);
+    const interval = setInterval(refreshCudaStatus, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshCudaStatus]);
 
-  // Listen for CUDA download progress events
+  // Progress is broadcast to every window, so this also fires for the silent
+  // startup auto-update and for downloads started from the other card.
   useEffect(() => {
     const cleanup = window.electronAPI?.onCudaBinaryDownloadProgress?.((_event, data) => {
       setDownloadProgress(Math.round(data?.percent ?? data?.progress ?? 0));
+      if (data?.phase === "done") {
+        setDownloadState("done");
+        refreshCudaStatus();
+      } else {
+        setDownloadState("downloading");
+        setDownloadError(null);
+      }
     });
     return () => cleanup?.();
-  }, []);
+  }, [refreshCudaStatus]);
 
   const handleDownloadCuda = async () => {
     setDownloadState("downloading");
@@ -752,7 +825,7 @@ function GpuStatusCard({
                 ) : (
                   <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-2">
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      GPU · Whisper requires the CUDA engine (~650 MB). Download it once to enable
+                      GPU · Whisper requires the CUDA engine (~750 MB). Download it once to enable
                       GPU-accelerated transcription.
                     </p>
                     <Button
@@ -849,22 +922,26 @@ function GpuStatusCard({
 
               {benchState === "done" && benchResult && (
                 <div className="mb-3 rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3">
+                  {/* The wait leads, not the ratio. "24.4x real-time" is precise
+                      and means nothing to most people; "0.4s for 10 seconds of
+                      audio" is the same measurement stated as the thing the
+                      user was actually wondering. The website quotes this same
+                      pair, so the two never disagree. */}
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-lg font-semibold text-foreground tabular-nums">
-                      {formatRealtimeFactor(benchResult.realtimeFactor)}
+                      {formatBenchmarkWait(benchResult.elapsedMs)}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">real-time</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      for {formatBenchmarkClip(benchResult.audioDurationSec)}
+                    </span>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {benchResult.provider === "nvidia" ? "Parakeet" : "Whisper"} (
-                    {benchResult.model}) · {(benchResult.elapsedMs / 1000).toFixed(1)}s for{" "}
-                    {benchResult.audioDurationSec}s audio
+                    {benchResult.model}) · {formatRealtimeFactor(benchResult.realtimeFactor)}{" "}
+                    real-time
                     {benchResult.createdAt
                       ? ` · ${formatBenchmarkDate(benchResult.createdAt)}`
                       : ""}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground mt-1">
-                    Higher = faster. 59x means 60s of audio transcribes in ~1s.
                   </p>
                   {/* Warn if CUDA binary is present but speed is suspiciously low (likely not using GPU) */}
                   {gpuCategory === "nvidia_cuda" &&
@@ -1078,6 +1155,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperModel,
     whisperForceCpu,
     setWhisperForceCpu,
+    whisperThreads,
     setLocalTranscriptionProvider,
     setWhisperServerIdleTimeoutMinutes,
     setCloudTranscriptionProvider,
@@ -1102,6 +1180,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     updateTranscriptionSettings,
     updateReasoningSettings,
     preferredLanguage,
+    spokenLanguages,
+    setSpokenLanguages,
     setPreferredLanguage,
     translateToEnglish,
     setTranslateToEnglish,
@@ -1243,6 +1323,33 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setWhisperIdleDraft(String(whisperServerIdleTimeoutMinutes));
   }, [whisperServerIdleTimeoutMinutes]);
 
+  // Thread count. `0` means auto, and the resolved value is fetched from main so
+  // the field can show what auto actually picked on this machine.
+  const [cpuThreadInfo, setCpuThreadInfo] = useState<{
+    physicalCores: number;
+    logicalCores: number;
+    autoThreads: number;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI
+      ?.getCpuThreadInfo?.()
+      ?.then((info) => {
+        if (!cancelled && info?.success) setCpuThreadInfo(info);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [whisperThreadsDraft, setWhisperThreadsDraft] = useState<string>(
+    whisperThreads > 0 ? String(whisperThreads) : ""
+  );
+  useEffect(() => {
+    setWhisperThreadsDraft(whisperThreads > 0 ? String(whisperThreads) : "");
+  }, [whisperThreads]);
+
   const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
     String(llamaServerIdleTimeoutMinutes)
   );
@@ -1293,8 +1400,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           localTranscriptionProvider,
           whisperModel,
           whisperForceCpu,
+          whisperThreads,
           whisperServerIdleTimeoutMinutes,
           preferredLanguage,
+          spokenLanguages,
           translateToEnglish,
           cloudTranscriptionProvider,
           cloudTranscriptionModel,
@@ -1355,7 +1464,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       localTranscriptionProvider,
       whisperModel,
       whisperForceCpu,
+      whisperThreads,
       preferredLanguage,
+      spokenLanguages,
       translateToEnglish,
       cloudTranscriptionProvider,
       cloudTranscriptionModel,
@@ -1466,6 +1577,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         }
       }
 
+      // Normalisation is the validation here: unknown codes, duplicates and
+      // anything past the cap are dropped rather than trusted, so a
+      // hand-edited file cannot pin dictation to a language Whisper will
+      // reject.
+      if (s.spokenLanguages !== undefined) {
+        const importedSpokenLanguages = normalizeSpokenLanguages(s.spokenLanguages);
+        if (importedSpokenLanguages.length > 0) {
+          setSpokenLanguages(importedSpokenLanguages);
+        } else {
+          skipField("spokenLanguages", "must be a list of supported language codes");
+        }
+      }
+
       const safeIdentifier = (field: string): string | undefined => {
         const value = s[field];
         if (value === undefined) return undefined;
@@ -1499,6 +1623,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             : undefined,
         whisperModel: importedWhisperModel,
         whisperForceCpu: typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
+        whisperThreads: typeof s.whisperThreads === "number" ? s.whisperThreads : undefined,
         whisperServerIdleTimeoutMinutes: importedWhisperIdleTimeout,
         preferredLanguage: importedPreferredLanguage,
         translateToEnglish:
@@ -2221,33 +2346,50 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               />
               <SettingsPanel>
                 <SettingsPanelRow>
-                  <SettingsRow
-                    label="Spoken language"
-                    description="Set this to the language you actually speak. For Danish dictation, choose Danish instead of Auto for the most stable results."
-                  >
-                    <Select
-                      value={preferredLanguage || "auto"}
-                      onValueChange={(val) => {
-                        setPreferredLanguage(val);
-                        // English output is only valid for an explicit non-English speech language.
-                        if (val === "en" || val === "auto") {
+                  {/* Stacked rather than a SettingsRow: the picker needs the
+                      full width of the panel, and its search list expands
+                      downward. Squeezed into the row's narrow right-hand
+                      column it read as a stray chip floating beside the
+                      description. */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Languages you speak</p>
+                    <SpokenLanguagesSelector
+                      value={spokenLanguages}
+                      onChange={(next) => {
+                        setSpokenLanguages(next);
+                        // English output is only valid for an explicit
+                        // non-English speech language, and that is exactly
+                        // what a single non-English selection produces.
+                        const derived = derivePreferredLanguage(next, preferredLanguage);
+                        if (derived === "en" || derived === "auto") {
                           setTranslateToEnglish("off");
                         }
                       }}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {LANGUAGE_OPTIONS.map((lang) => (
-                          <SelectItem key={lang.value} value={lang.value}>
-                            {lang.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </SettingsRow>
+                    />
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      {describeSpokenLanguages(spokenLanguages, preferredLanguage)}
+                      {/* A pin can be set from the overlay's quick-switch menu,
+                          so Settings has to be able to clear it. Without this
+                          the row could describe a pinned state it gave the
+                          user no way to leave. */}
+                      {spokenLanguages.length > 1 && preferredLanguage !== "auto" && (
+                        <button
+                          type="button"
+                          onClick={() => setPreferredLanguage("auto")}
+                          className="ml-1.5 text-primary underline-offset-2 hover:underline"
+                        >
+                          Switch to automatic
+                        </button>
+                      )}
+                    </p>
+                  </div>
+                </SettingsPanelRow>
 
+                {/* Its own row so the panel's divider separates the two
+                    questions. Sharing one row left the spoken-language status
+                    line touching the Output language label, and they read as
+                    a single paragraph. */}
+                <SettingsPanelRow>
                   <SettingsRow label="Output language" description={outputLanguageHelp}>
                     <div className="flex flex-wrap gap-1.5 justify-end">
                       <button
@@ -2288,6 +2430,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <SectionHeader
                 title="Correction Memory"
                 description="Apply your saved corrections and learn new ones from edits"
+                badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -2296,7 +2439,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     description={
                       correctionMemoryUnlocked
                         ? "Use dictionary entries and approved-tester correction memory while transcribing."
-                        : "Use dictionary entries while transcribing. Correction Memory requires approved tester access."
+                        : "Use dictionary entries while transcribing. The Correction Memory half stays off until tester access is approved."
                     }
                   >
                     <Toggle
@@ -2308,10 +2451,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Auto-learn corrections"
+                    badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
                     description={
-                      correctionMemoryUnlocked
-                        ? "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                        : "Beta - approved tester access is required to enable correction learning."
+                      correctionMemoryUnlocked ? (
+                        "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
+                      ) : (
+                        <>
+                          Still being built, so it is limited to approved testers for now. Nothing
+                          here is running in the background. <BetaAccessLink />
+                        </>
+                      )
                     }
                   >
                     <Toggle
@@ -2582,7 +2731,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Optional product analytics"
-                    description="Share setup milestones and feature usage counts using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
+                    description="Share setup milestones, feature usage, transcription speed, language and model settings, and CPU, GPU, or cloud mode using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
                   >
                     <Toggle checked={analyticsEnabled} onChange={handleAnalyticsEnabledChange} />
                   </SettingsRow>
@@ -2600,10 +2749,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Smart Context"
+                    badge={smartContextUnlocked ? undefined : <BetaBadge locked />}
                     description={
-                      smartContextUnlocked
-                        ? "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
-                        : "Beta - approved tester access is required to enable Smart Context"
+                      smartContextUnlocked ? (
+                        "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
+                      ) : (
+                        <>
+                          Still being built, so it is limited to approved testers for now. Nothing
+                          about your screen is being read. <BetaAccessLink />
+                        </>
+                      )
                     }
                   >
                     <Toggle
@@ -2730,7 +2885,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               }
               gpuSupported={gpuSupportedForPicker}
               recommendedLocalModel={recommendedWhisperModelForPicker}
-              preferredLanguage={preferredLanguage}
+              preferredLanguage={resolveRatingLanguage(preferredLanguage, spokenLanguages)}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });
@@ -2750,9 +2905,48 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div className="mt-6">
                 <SectionHeader
                   title="Local Whisper performance"
-                  description="Tune how the local whisper-server behaves after you stop dictating"
+                  description="How much of the CPU local Whisper may use, and when it shuts itself down"
                 />
                 <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="CPU threads"
+                      description={
+                        cpuThreadInfo
+                          ? `Auto uses ${cpuThreadInfo.autoThreads} of your ${cpuThreadInfo.logicalCores} threads (${cpuThreadInfo.physicalCores} cores). It holds some back on purpose so the rest of the machine stays responsive while transcribing. Raise it for more speed and less headroom. Leave empty for auto.`
+                          : "How many CPU threads local Whisper may use. Auto holds some back on purpose so the rest of the machine stays responsive while transcribing. Leave empty for auto."
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={cpuThreadInfo?.logicalCores ?? 128}
+                          step={1}
+                          placeholder={
+                            cpuThreadInfo ? `auto (${cpuThreadInfo.autoThreads})` : "auto"
+                          }
+                          value={whisperThreadsDraft}
+                          onChange={(e) => {
+                            setWhisperThreadsDraft(e.target.value);
+                          }}
+                          onBlur={() => {
+                            const raw = parseInt(whisperThreadsDraft, 10);
+                            const max = cpuThreadInfo?.logicalCores ?? 128;
+                            // An empty or unusable field means "go back to auto"
+                            // rather than "keep whatever was there before".
+                            const next = Number.isFinite(raw) ? Math.max(1, Math.min(max, raw)) : 0;
+
+                            setWhisperThreadsDraft(next > 0 ? String(next) : "");
+                            updateTranscriptionSettings({ whisperThreads: next });
+                          }}
+                          className="w-28 text-right"
+                          aria-label="Whisper CPU thread count"
+                        />
+                        <span className="text-xs text-muted-foreground">threads</span>
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Idle shutdown (minutes)"
@@ -2894,6 +3088,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   formatting text, and handling intelligent rewrites. This unfinished beta requires
                   approved tester access.
                 </p>
+                <BetaAccessLink className="text-sm" />
               </div>
             )}
 
@@ -3013,6 +3208,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   for AI-enhanced transcriptions. This unfinished beta requires approved tester
                   access.
                 </p>
+                <BetaAccessLink className="text-sm" />
               </div>
             )}
 

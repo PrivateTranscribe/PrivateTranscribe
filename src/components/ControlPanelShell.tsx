@@ -33,6 +33,7 @@ export default function ControlPanelShell() {
     useDialogs();
   const {
     status: updateStatus,
+    info: updateInfo,
     downloadProgress,
     isDownloading,
     isInstalling,
@@ -98,7 +99,7 @@ export default function ControlPanelShell() {
     if (updateStatus.updateDownloaded && !isDownloading) {
       toast({
         title: "Update Ready",
-        description: "Click 'Install Update' to restart and apply the update.",
+        description: 'Choose "Restart and install" at the bottom of the sidebar to apply it.',
         variant: "success",
       });
     }
@@ -118,12 +119,16 @@ export default function ControlPanelShell() {
   // state change is visible from the control panel too.
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onWhisperEngineFallbackChanged?.(
-      (_event: unknown, data: { active?: boolean; recovered?: boolean }) => {
+      (_event: unknown, data: { active?: boolean; recovered?: boolean; kind?: string }) => {
         if (data?.active) {
+          // A Windows block is permanent until the user acts, so it must not
+          // promise an automatic retry that will never succeed.
+          const blockedByOs = data.kind === "blocked_by_os";
           toast({
-            title: "Transcribing on CPU",
-            description:
-              "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
+            title: blockedByOs ? "Windows blocked the GPU engine" : "Transcribing on CPU",
+            description: blockedByOs
+              ? "Windows stopped the GPU engine from starting — usually Smart App Control or antivirus. Dictation continues on CPU, just slower. Updating PrivateTranscribe, or allowing the engine in your antivirus, restores GPU speed."
+              : "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
             variant: "destructive",
             duration: 10000,
           });
@@ -171,40 +176,122 @@ export default function ControlPanelShell() {
     }
   };
 
-  const getUpdateButtonContent = () => {
-    if (isInstalling) {
-      return (
-        <>
-          <Loader2 size={14} className="animate-spin" />
-          <span>Installing...</span>
-        </>
-      );
+  // The update notice lives in the sidebar footer beside the version marker,
+  // so "which build am I running" and "a newer build exists" read as one thing
+  // instead of putting a loud button next to the brand in the title bar.
+  const renderUpdateNotice = () => {
+    const hasUpdate =
+      updateStatus.updateAvailable ||
+      updateStatus.updateDownloaded ||
+      isDownloading ||
+      isInstalling;
+    if (updateStatus.isDevelopment || !hasUpdate) {
+      return null;
     }
-    if (isDownloading) {
-      return (
-        <>
-          <Loader2 size={14} className="animate-spin" />
-          <span>{Math.round(downloadProgress)}%</span>
-        </>
-      );
-    }
-    if (updateStatus.updateDownloaded) {
-      return (
-        <>
-          <RefreshCw size={14} />
-          <span>Install Update</span>
-        </>
-      );
-    }
-    if (updateStatus.updateAvailable) {
-      return (
-        <>
-          <Download size={14} />
-          <span>Update Available</span>
-        </>
-      );
-    }
-    return null;
+
+    const isReady = updateStatus.updateDownloaded;
+    const percent = Math.round(downloadProgress);
+
+    let label = "Update available";
+    if (isInstalling) label = "Restarting to install";
+    else if (isDownloading) label = `Downloading ${percent}%`;
+    else if (isReady) label = "Update ready to install";
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          padding: "10px",
+          borderRadius: "8px",
+          border: `1px solid ${isReady ? "rgba(112,255,186,0.25)" : "var(--color-border)"}`,
+          backgroundColor: isReady ? "rgba(112,255,186,0.06)" : "var(--color-surface-2)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              borderRadius: "999px",
+              flexShrink: 0,
+              backgroundColor: isReady ? "var(--color-primary)" : "var(--color-foreground-muted)",
+            }}
+          />
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: isReady ? "var(--color-primary)" : "var(--color-foreground-muted)",
+            }}
+          >
+            {label}
+          </span>
+          {updateInfo?.version && (
+            <span
+              style={{
+                marginLeft: "auto",
+                fontSize: "10px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "var(--color-foreground-faint)",
+              }}
+            >
+              v{updateInfo.version}
+            </span>
+          )}
+        </div>
+
+        {isDownloading && (
+          <div
+            style={{
+              height: "3px",
+              width: "100%",
+              borderRadius: "999px",
+              overflow: "hidden",
+              backgroundColor: "var(--color-surface-raised)",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(100, Math.max(0, percent))}%`,
+                borderRadius: "999px",
+                backgroundColor: "var(--color-primary)",
+                transition: "width 200ms ease",
+              }}
+            />
+          </div>
+        )}
+
+        {!isDownloading && !isInstalling && (
+          <Button
+            variant={isReady ? "default" : "outline"}
+            size="sm"
+            onClick={handleUpdateClick}
+            className="w-full h-7 gap-1.5 text-[11px]"
+          >
+            {isReady ? <RefreshCw size={13} /> : <Download size={13} />}
+            <span>{isReady ? "Restart and install" : "Download update"}</span>
+          </Button>
+        )}
+
+        {isInstalling && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "11px",
+              color: "var(--color-foreground-faint)",
+            }}
+          >
+            <Loader2 size={12} className="animate-spin" />
+            <span>The app will reopen on its own</span>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderPage = () => {
@@ -259,30 +346,14 @@ export default function ControlPanelShell() {
         onOk={() => {}}
       />
 
-      <TitleBar
-        actions={
-          <>
-            {!updateStatus.isDevelopment &&
-              (updateStatus.updateAvailable ||
-                updateStatus.updateDownloaded ||
-                isDownloading ||
-                isInstalling) && (
-                <Button
-                  variant={updateStatus.updateDownloaded ? "default" : "outline"}
-                  size="sm"
-                  onClick={handleUpdateClick}
-                  disabled={isInstalling || isDownloading}
-                  className="gap-1.5 text-xs"
-                >
-                  {getUpdateButtonContent()}
-                </Button>
-              )}
-          </>
-        }
-      />
+      <TitleBar />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <AppSidebar activePage={activePage} onPageChange={setActivePage} />
+        <AppSidebar
+          activePage={activePage}
+          onPageChange={setActivePage}
+          updateSlot={renderUpdateNotice()}
+        />
 
         <main style={{ flex: 1, overflowY: "auto", scrollbarGutter: "stable" }}>
           {renderPage()}

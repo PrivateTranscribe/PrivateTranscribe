@@ -1,8 +1,10 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: {
     getVersion: () => "0.13.6",
+    getPath: () => "/tmp/private-transcribe-analytics-test",
   },
 }));
 
@@ -12,11 +14,41 @@ async function loadAnalyticsManager() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.resetModules();
 });
 
 describe("analytics manager privacy boundary", () => {
+  it("requires renewed consent when an older grant predates expanded telemetry", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    const readConsent = vi.spyOn(fs, "readFileSync");
+    const manager = await loadAnalyticsManager();
+
+    readConsent.mockReturnValue("granted" as never);
+    expect(manager._loadConsent()).toBeNull();
+
+    readConsent.mockReturnValue("granted:v2" as never);
+    expect(manager._loadConsent()).toBe("granted");
+
+    readConsent.mockReturnValue("denied" as never);
+    expect(manager._loadConsent()).toBe("denied");
+  });
+
+  it("stores the current disclosure version with the consent choice", async () => {
+    const writeConsent = vi.spyOn(fs, "writeFileSync").mockImplementation(() => undefined);
+    const manager = await loadAnalyticsManager();
+    manager._consent = "granted";
+
+    manager.setConsent(true);
+
+    expect(writeConsent).toHaveBeenCalledWith(
+      expect.stringMatching(/analytics-consent\.txt$/),
+      "granted:v2",
+      "utf8"
+    );
+  });
+
   it("does not contact the backend without consent", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

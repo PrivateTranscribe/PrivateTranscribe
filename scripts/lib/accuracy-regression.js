@@ -7,10 +7,26 @@
  * the part that must not be wrong.
  */
 
-/** Key a measurement by what it measured, so entries survive reordering. */
-function entryKey(language, model) {
-  return `${language}/${model}`;
+const DEFAULT_MODE = "pinned";
+
+/**
+ * Key a measurement by what it measured, so entries survive reordering.
+ *
+ * Mode is part of the identity because the same model and language score
+ * differently with the language pinned than with it detected, and treating
+ * those as one number would let a detection regression hide behind a pinned
+ * measurement. Entries written before modes existed carry no mode and are
+ * read as `pinned`, which is what they were.
+ */
+function entryKey(language, model, mode = DEFAULT_MODE) {
+  return `${language}/${model}/${mode || DEFAULT_MODE}`;
 }
+
+const identify = (entry) => ({
+  language: entry.language,
+  model: entry.model,
+  mode: entry.mode || DEFAULT_MODE,
+});
 
 /**
  * Compares a benchmark run against a stored baseline.
@@ -25,18 +41,18 @@ function entryKey(language, model) {
  * success.
  *
  * Results with no baseline entry are reported as `unbaselined`. They do not
- * fail, because a newly added language cannot regress against nothing, but
- * they are surfaced so nobody assumes they are being watched.
+ * fail, because a newly added language or mode cannot regress against
+ * nothing, but they are surfaced so nobody assumes they are being watched.
  */
 function compareToBaseline(results, baseline, { tolerancePoints = 1.5 } = {}) {
   const resultMap = new Map();
   for (const entry of results) {
-    resultMap.set(entryKey(entry.language, entry.model), entry);
+    resultMap.set(entryKey(entry.language, entry.model, entry.mode), entry);
   }
 
   const baselineMap = new Map();
   for (const entry of baseline) {
-    baselineMap.set(entryKey(entry.language, entry.model), entry);
+    baselineMap.set(entryKey(entry.language, entry.model, entry.mode), entry);
   }
 
   const regressions = [];
@@ -47,7 +63,7 @@ function compareToBaseline(results, baseline, { tolerancePoints = 1.5 } = {}) {
   for (const [key, expected] of baselineMap) {
     const actual = resultMap.get(key);
     if (!actual) {
-      missing.push({ language: expected.language, model: expected.model });
+      missing.push(identify(expected));
       continue;
     }
 
@@ -57,16 +73,14 @@ function compareToBaseline(results, baseline, { tolerancePoints = 1.5 } = {}) {
 
     if (deltaPoints > tolerancePoints) {
       regressions.push({
-        language: expected.language,
-        model: expected.model,
+        ...identify(expected),
         baselineWer: expected.wer,
         actualWer: actual.wer,
         deltaPoints,
       });
     } else if (deltaPoints < -tolerancePoints) {
       improvements.push({
-        language: expected.language,
-        model: expected.model,
+        ...identify(expected),
         baselineWer: expected.wer,
         actualWer: actual.wer,
         deltaPoints,
@@ -76,7 +90,7 @@ function compareToBaseline(results, baseline, { tolerancePoints = 1.5 } = {}) {
 
   for (const [key, actual] of resultMap) {
     if (!baselineMap.has(key)) {
-      unbaselined.push({ language: actual.language, model: actual.model, wer: actual.wer });
+      unbaselined.push({ ...identify(actual), wer: actual.wer });
     }
   }
 
@@ -93,30 +107,29 @@ function compareToBaseline(results, baseline, { tolerancePoints = 1.5 } = {}) {
 function formatComparison(comparison, { tolerancePoints = 1.5 } = {}) {
   const lines = [];
   const pct = (wer) => `${(wer * 100).toFixed(1)}%`;
+  const name = (entry) => entryKey(entry.language, entry.model, entry.mode);
 
   for (const entry of comparison.regressions) {
     lines.push(
-      `REGRESSION ${entry.language}/${entry.model}: ${pct(entry.baselineWer)} -> ` +
+      `REGRESSION ${name(entry)}: ${pct(entry.baselineWer)} -> ` +
         `${pct(entry.actualWer)} (+${entry.deltaPoints.toFixed(1)} points, tolerance ${tolerancePoints})`
     );
   }
   for (const entry of comparison.missing) {
-    lines.push(`MISSING ${entry.language}/${entry.model}: baselined but not measured in this run`);
+    lines.push(`MISSING ${name(entry)}: baselined but not measured in this run`);
   }
   for (const entry of comparison.improvements) {
     lines.push(
-      `IMPROVED ${entry.language}/${entry.model}: ${pct(entry.baselineWer)} -> ` +
+      `IMPROVED ${name(entry)}: ${pct(entry.baselineWer)} -> ` +
         `${pct(entry.actualWer)} (${entry.deltaPoints.toFixed(1)} points). Refresh the baseline to lock it in.`
     );
   }
   for (const entry of comparison.unbaselined) {
-    lines.push(
-      `UNBASELINED ${entry.language}/${entry.model}: ${pct(entry.wer)}, not guarded until baselined`
-    );
+    lines.push(`UNBASELINED ${name(entry)}: ${pct(entry.wer)}, not guarded until baselined`);
   }
 
   if (lines.length === 0) lines.push("All measured pairs are within tolerance of the baseline.");
   return lines;
 }
 
-module.exports = { compareToBaseline, formatComparison, entryKey };
+module.exports = { compareToBaseline, formatComparison, entryKey, DEFAULT_MODE };

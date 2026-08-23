@@ -20,11 +20,18 @@ describe("growth analytics funnel wiring", () => {
       "utf8"
     );
     const app = fs.readFileSync(path.join(process.cwd(), "src", "App.jsx"), "utf8");
+    const audioManager = fs.readFileSync(
+      path.join(process.cwd(), "src", "helpers", "audioManager.js"),
+      "utf8"
+    );
 
     expect(recordingHook).toContain('"transcription_started"');
     expect(recordingHook).toContain('"transcription_completed"');
     expect(recordingHook).toContain('"first_transcription_completed"');
     expect(recordingHook).toContain("buildTranscriptionAnalyticsProperties");
+    expect(recordingHook).toContain("transcriptionProcessingDurationMs");
+    expect(recordingHook).toContain("computeMode");
+    expect(audioManager.match(/computeMode: result\.computeMode,/g)).toHaveLength(5);
     expect(app).not.toContain('analyticsTrack?.("transcription_started"');
     expect(app).not.toContain('analyticsTrack?.("transcription_completed"');
     expect(app).not.toContain('analyticsTrack?.("settings_opened"');

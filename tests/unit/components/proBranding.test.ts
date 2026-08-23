@@ -36,9 +36,13 @@ describe("Pro branding", () => {
       "src/components/pages/ActionEnginePage.tsx",
     ];
 
+    // These pages used to spell the purple out in a hand-rolled pill each.
+    // The token now lives once inside the shared beta badge, so follow it
+    // there rather than asserting on markup that no longer exists.
     for (const file of files) {
-      expect(readSource(file), file).toMatch(/\b(bg|text|border)-pro\b/);
+      expect(readSource(file), file).toContain("<BetaBadge locked");
     }
+    expect(readSource("src/components/ui/BetaBadge.tsx")).toContain('variant={locked ? "pro"');
 
     // The sidebar renders its badges through the shared Badge component rather
     // than an inline-styled span, and routes the pro variant to the pro token.

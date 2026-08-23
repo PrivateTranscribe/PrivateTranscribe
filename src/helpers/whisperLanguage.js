@@ -172,7 +172,114 @@ function resolveLockableLanguage(result) {
   return normalizeWhisperLanguage(result?.language ?? result?.detectedLanguage);
 }
 
+/**
+ * How much of the winning language's probability an allowed language has to
+ * hold before we override Whisper's own answer.
+ *
+ * The case this exists for is Danish losing to Norwegian: the two split the
+ * distribution almost evenly, so the allowed one always clears a tenth of the
+ * winner and the snap fires. The case it exists to *prevent* is a user with
+ * Danish and English selected saying one sentence in German — German wins
+ * outright, Danish and English sit near zero, and forcing the audio into a
+ * language nobody spoke would produce word salad. Below the floor we keep
+ * Whisper's answer and let the transcript be honest about what was said.
+ */
+const LANGUAGE_SNAP_MIN_SHARE = 0.1;
+
+/**
+ * Normalises a caller-supplied allowlist into Whisper codes.
+ *
+ * Anything Whisper cannot be asked for is dropped rather than passed through,
+ * so a stale or hand-edited setting degrades to "no constraint" instead of
+ * pinning every recording to a language the decoder will reject.
+ */
+function normalizeAllowedLanguages(allowedLanguages) {
+  if (!Array.isArray(allowedLanguages)) return [];
+
+  const seen = new Set();
+  for (const entry of allowedLanguages) {
+    const code = normalizeWhisperLanguage(entry);
+    if (code) seen.add(code);
+  }
+  return [...seen];
+}
+
+/**
+ * Decides which language a result *should* have been decoded as, given the
+ * languages the speaker actually speaks.
+ *
+ * whisper.cpp returns a full probability distribution alongside its own pick
+ * (`language_probabilities`, keyed by ISO code), so restricting the argmax to
+ * the allowed set needs no second detection pass — the numbers to choose from
+ * are already in the response we have.
+ *
+ * Returns null when there is nothing to do: no allowlist, no usable speech,
+ * Whisper already picked an allowed language, or no allowed language holds
+ * enough probability to justify overruling it. A non-null result carries
+ * `changed`, which tells the caller whether the audio still has to be decoded
+ * again to actually benefit.
+ */
+function resolveAllowedLanguage(result, allowedLanguages) {
+  const allowed = normalizeAllowedLanguages(allowedLanguages);
+  if (allowed.length === 0) return null;
+  if (!hasUsableSpeech(result)) return null;
+
+  const detected = normalizeWhisperLanguage(
+    result?.language ?? result?.detected_language ?? result?.detectedLanguage
+  );
+  if (detected && allowed.includes(detected)) {
+    return { language: detected, changed: false, reason: "detected-allowed" };
+  }
+
+  const probabilities =
+    result && typeof result.language_probabilities === "object" && result.language_probabilities
+      ? result.language_probabilities
+      : null;
+
+  if (!probabilities) {
+    // Older whisper.cpp builds, and the `--no-language-probabilities` server
+    // flag, both leave us with a bare winner. With a single allowed language
+    // there is still only one answer worth giving; with several there is no
+    // basis to choose between them, so leave the detection alone.
+    if (allowed.length === 1) {
+      return { language: allowed[0], changed: true, reason: "single-allowed-no-probabilities" };
+    }
+    return null;
+  }
+
+  let bestAllowed = null;
+  let bestAllowedProbability = 0;
+  let bestOverallProbability = 0;
+
+  for (const [code, probability] of Object.entries(probabilities)) {
+    if (typeof probability !== "number" || !Number.isFinite(probability)) continue;
+    if (probability > bestOverallProbability) bestOverallProbability = probability;
+
+    const normalized = normalizeWhisperLanguage(code);
+    if (!normalized || !allowed.includes(normalized)) continue;
+    if (probability > bestAllowedProbability) {
+      bestAllowedProbability = probability;
+      bestAllowed = normalized;
+    }
+  }
+
+  if (!bestAllowed) return null;
+  if (bestOverallProbability <= 0) return null;
+  if (bestAllowedProbability < bestOverallProbability * LANGUAGE_SNAP_MIN_SHARE) return null;
+
+  return {
+    language: bestAllowed,
+    changed: bestAllowed !== detected,
+    reason: "snapped-to-allowed",
+    probability: bestAllowedProbability,
+    detectedProbability: bestOverallProbability,
+  };
+}
+
 module.exports = {
+  LANGUAGE_SNAP_MIN_SHARE,
+  normalizeAllowedLanguages,
+  resolveAllowedLanguage,
   normalizeWhisperLanguage,
   hasUsableSpeech,
   resolveLockableLanguage,

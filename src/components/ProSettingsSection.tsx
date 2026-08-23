@@ -219,6 +219,23 @@ export default function ProSettingsSection() {
                 <X size={12} /> {status.error}
               </p>
             )}
+
+            {/* This is where someone discovers they cannot find the purchase
+                email, so the self-serve recovery link belongs here rather than
+                only on the website. */}
+            <p className="text-xs text-muted-foreground">
+              Lost your key?{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  window.electronAPI?.openExternal?.("https://privatetranscribe.com/license")
+                }
+                className="text-pro hover:underline"
+              >
+                Have it emailed to you again
+              </button>
+              .
+            </p>
           </div>
         </>
       ) : (
@@ -243,20 +260,17 @@ export default function ProSettingsSection() {
               Get PrivateTranscribe Pro - €29 →
             </Button>
             <p className="text-xs text-muted-foreground">
-              Already have a key?{" "}
-              <a
-                href="mailto:support@privatetranscribe.com"
+              Bought Pro but cannot find the key?{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  window.electronAPI?.openExternal?.("https://privatetranscribe.com/license")
+                }
                 className="text-pro hover:underline"
-                onClick={(e) => {
-                  e.preventDefault();
-                  window.electronAPI?.openExternal?.(
-                    "mailto:support@privatetranscribe.com?subject=PrivateTranscribe%20Pro%20Activation"
-                  );
-                }}
               >
-                Contact support
-              </a>{" "}
-              for activation help.
+                Have it emailed to you again
+              </button>
+              .
             </p>
           </div>
         </>

@@ -10,6 +10,13 @@
  * code path as scripts/benchmark-transcription-accuracy.js, then compares the
  * result against benchmarks/accuracy-baseline.json.
  *
+ * Every pair is measured in each mode the config lists. Pinning the language
+ * measures transcription alone and is blind to language detection by
+ * construction, so the config also asks for the constrained mode the
+ * spoken-languages setting puts users on. Modes are separate baseline entries,
+ * because they answer different questions and averaging them would let one
+ * hide the other.
+ *
  * Usage:
  *   node scripts/check-accuracy-regression.js
  *   node scripts/check-accuracy-regression.js --update-baseline
@@ -76,25 +83,46 @@ async function main() {
 
   const tolerancePoints = args.tolerance ?? config.tolerancePoints ?? 1.5;
 
-  // Measured flat, one entry per language/model pair, so the baseline stays
-  // readable in a diff and a single pair can be added without reshaping it.
+  // Pinned alone is blind to language detection by construction, so the gate
+  // also measures the constrained path the spoken-languages setting puts every
+  // user on. A detection regression shows up there as a WER cliff.
+  const modes = config.modes ?? ["pinned"];
+  const spokenLanguages = config.spokenLanguages ?? [];
+
+  // Measured flat, one entry per language/model/mode, so the baseline stays
+  // readable in a diff and a single entry can be added without reshaping it.
   const results = [];
   for (const target of config.targets) {
-    console.log(`\n=== ${target.language} (${target.models.join(", ")}) ===`);
+    console.log(`\n=== ${target.language} (${target.models.join(", ")}) x ${modes.join(", ")} ===`);
     const run = await runBenchmark({
       language: target.language,
       models: target.models,
       samples: config.samples ?? 50,
+      modes,
+      spokenLanguages,
       quiet: true,
     });
 
     for (const result of run.results) {
-      console.log(`  ${result.model}: ${(result.wer * 100).toFixed(1)}% WER`);
+      // Detection accuracy is logged but not gated: a detection failure always
+      // shows up as a WER cliff, and gating two numbers on one run would make
+      // the failure harder to read, not easier.
+      const detected =
+        result.languageAccuracy === null
+          ? ""
+          : `, language detected on ${(result.languageAccuracy * 100).toFixed(0)}%`;
+      console.log(
+        `  ${result.model} ${result.mode}: ${(result.wer * 100).toFixed(1)}% WER${detected}`
+      );
       results.push({
         language: target.language,
         model: result.model,
+        mode: result.mode,
         wer: Number(result.wer.toFixed(4)),
         utterances: result.utterances,
+        ...(result.languageAccuracy === null
+          ? {}
+          : { languageAccuracy: Number(result.languageAccuracy.toFixed(4)) }),
       });
     }
 
@@ -117,6 +145,7 @@ async function main() {
           // measured somewhere other than where the gate runs.
           measuredOn: { platform: process.platform, arch: process.arch },
           samples: config.samples ?? 50,
+          modes,
           entries: results,
         },
         null,

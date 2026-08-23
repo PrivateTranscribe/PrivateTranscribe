@@ -9,10 +9,43 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
-const { resolveLockableLanguage } = require("./whisperLanguage");
+const { resolveLockableLanguage, resolveAllowedLanguage } = require("./whisperLanguage");
 const GpuBinaryManager = require("./gpuBinaryManager");
+const { resolveWhisperThreads } = require("./cpuThreads");
 
 const gpuBinaryManager = new GpuBinaryManager();
+
+/**
+ * Reads the backend whisper-server says it loaded, rather than guessing from
+ * the binary's filename.
+ *
+ * The filename only records which build was launched, and that is not the same
+ * question. A CPU-named build picks up a CUDA backend if the runtime libraries
+ * happen to sit beside it, and a CUDA-named build falls back to the CPU when
+ * the driver refuses it, having started successfully. Both report a compute
+ * mode that never ran.
+ *
+ * Returns null when the output says nothing either way, so the caller can keep
+ * its own answer instead of being handed a guess dressed up as an observation.
+ */
+function detectServerBackend(output) {
+  if (!output) return null;
+
+  // "whisper_backend_init_gpu: using CUDA0 backend" is the server's own verdict
+  // and outranks everything else it prints.
+  const chosen = output.match(/whisper_backend_init_gpu:\s*using\s+(\S+)\s+backend/i);
+  if (chosen) return /^cuda/i.test(chosen[1]) ? "cuda" : "cpu";
+
+  // Otherwise fall back to where it says it put the weights.
+  const weights = output.match(/whisper_model_load:\s+(\S+)\s+total size/i);
+  if (weights) return /^cuda/i.test(weights[1]) ? "cuda" : "cpu";
+
+  return null;
+}
+
+// whisper.cpp prints its backend lines within the first few hundred bytes of
+// startup, so this only has to be generous, not large.
+const BACKEND_SCAN_LIMIT = 32 * 1024;
 
 const PORT_RANGE_START = 8178;
 const PORT_RANGE_END = 8199;
@@ -241,15 +274,25 @@ class WhisperServerManager {
     this.healthCheckInterval = null;
     this.cachedServerBinaryPath = null;
     this.activeServerBinaryPath = null;
+    // The backend the running server reported at startup, or null when it said
+    // nothing we could read. Never inferred from the binary's name.
+    this.observedBackend = null;
     this.cachedFFmpegPath = null;
     this.canConvert = false;
 
     // When true, always use the CPU binary even if the CUDA binary is present.
     this.forceCpu = process.env.WHISPER_FORCE_CPU === "true";
+    // 0 means "let cpuThreads decide from this machine's topology". A non-zero
+    // value is the user's explicit override from Settings.
+    this.threadSetting = Number.parseInt(process.env.WHISPER_THREADS, 10) || 0;
     this.cudaDisabledForSession = false;
     this._cudaDisabledAt = null;
     this._cudaFailureCount = 0;
     this._lastCudaStartupFailure = null;
+    // Set when Windows refused to launch the engine (Smart App Control or
+    // antivirus). Unlike a driver update this never clears on its own, so it
+    // suppresses the retry schedule instead of re-failing forever.
+    this._cudaBlockedByPolicy = false;
     // Optional listener invoked when the GPU→CPU fallback engages or recovers,
     // so the UI can tell the user instead of degrading silently.
     this.onEngineFallbackChanged = null;
@@ -361,6 +404,67 @@ class WhisperServerManager {
    * Update whether to force CPU mode. Clears the binary path cache and stops
    * any running server so the next transcription starts with the correct binary.
    */
+  /**
+   * Build the whisper-server command line.
+   *
+   * Extracted from start() so the flags can be asserted directly in tests -
+   * the engine-mode flags in particular are the kind that fail silently, by
+   * producing a working server that quietly used the wrong backend.
+   */
+  buildServerArgs(modelPath, options = {}) {
+    const args = ["--model", modelPath, "--host", "127.0.0.1", "--port", String(this.port)];
+
+    // Reduce repetition hallucinations: lower entropy threshold triggers
+    // temperature fallback sooner when the decoder enters a loop, and
+    // suppress-nst filters out non-speech tokens that often seed loops.
+    // --no-fallback was tested but had no effect on repeated-word clips -
+    // the slowness is in the first decode pass, not temperature fallback retries.
+    args.push("--entropy-thold", "2.0");
+    args.push("--suppress-nst");
+
+    // CPU mode has to mean "no GPU backend", not merely "a different binary".
+    // ggml loads every ggml-*.dll it finds beside the server executable, so a
+    // stray CUDA or Vulkan backend sitting in that directory gets picked up and
+    // used even though the user asked for CPU. --no-gpu covers every backend,
+    // which also keeps this correct once a Vulkan engine exists.
+    if (this.forceCpu) args.push("--no-gpu");
+
+    // Always explicit. whisper.cpp's own default is min(4, cores), which left
+    // every user on 4 threads no matter what hardware they had.
+    args.push("--threads", String(options.threads || resolveWhisperThreads(this.threadSetting)));
+    if (options.printRealtime) {
+      args.push("--print-realtime");
+      args.push("--tinydiarize");
+    }
+    // whisper.cpp defaults to English in some server builds when language is omitted.
+    // Pass auto explicitly so multilingual/local-file transcription really auto-detects.
+    args.push(
+      "--language",
+      options.language && options.language !== "auto" ? options.language : "auto"
+    );
+
+    return args;
+  }
+
+  /**
+   * Change the CPU thread count. Unlike most tuning this is a server startup
+   * argument, so an already-running server has to be stopped; it restarts with
+   * the new count on the next transcription.
+   *
+   * @param {number} value `0` for auto, or an explicit thread count.
+   */
+  async setThreads(value) {
+    const next = Number.parseInt(value, 10) || 0;
+    if (this.threadSetting === next) return;
+
+    this.threadSetting = next;
+    await this.stop();
+    debugLogger.info("WhisperServer: thread count changed", {
+      setting: next === 0 ? "auto" : next,
+      resolved: resolveWhisperThreads(next),
+    });
+  }
+
   async setForceCpu(value) {
     const activeBinaryIsWrongForMode =
       this.process &&
@@ -382,6 +486,7 @@ class WhisperServerManager {
       this._cudaDisabledAt = null;
       this._cudaFailureCount = 0;
       this._lastCudaStartupFailure = null;
+      this._cudaBlockedByPolicy = false;
     }
     this.cachedServerBinaryPath = null;
     await this.stop();
@@ -402,6 +507,7 @@ class WhisperServerManager {
     this._cudaDisabledAt = null;
     this._cudaFailureCount = 0;
     this._lastCudaStartupFailure = null;
+    this._cudaBlockedByPolicy = false;
     if (stopRunningServer && this.process) {
       await this.stop();
     }
@@ -414,6 +520,11 @@ class WhisperServerManager {
 
   getNextCudaRetryAt() {
     if (!this.cudaDisabledForSession || this._cudaDisabledAt === null) return null;
+    // An OS-level block does not heal with time; retrying only re-triggers it
+    // (and, with Smart App Control, another system notification each time).
+    // Re-enabling GPU in Settings or installing a new engine clears the flag
+    // and forces a fresh attempt.
+    if (this._cudaBlockedByPolicy) return null;
     return this._cudaDisabledAt + this.getCudaRetryDelayMs();
   }
 
@@ -503,6 +614,36 @@ class WhisperServerManager {
     return null;
   }
 
+  /**
+   * Accumulates startup output until the backend lines can be read out of it.
+   * A single line can arrive split across chunks, so this keeps the head of the
+   * stream rather than testing each chunk on its own; the lines appear within
+   * the first few hundred bytes, so the cap can never cut them off.
+   */
+  scanForBackend(text) {
+    if (this.observedBackend !== null || !text) return;
+    if (this.backendScanBuffer === undefined) this.backendScanBuffer = "";
+    if (this.backendScanBuffer.length < BACKEND_SCAN_LIMIT) {
+      this.backendScanBuffer += text;
+    }
+    const backend = detectServerBackend(this.backendScanBuffer);
+    if (backend) {
+      this.observedBackend = backend;
+      this.backendScanBuffer = "";
+      debugLogger.debug("whisper-server backend detected", { backend });
+    }
+  }
+
+  /**
+   * "cuda" or "cpu" for the running server, preferring what it reported over
+   * what its binary is called. Callers that need "is anything running at all"
+   * check activeServerBinaryPath first.
+   */
+  resolveEffectiveEngine() {
+    if (this.observedBackend) return this.observedBackend;
+    return this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu";
+  }
+
   isCudaServerBinaryPath(serverBinary) {
     return !!serverBinary && /-cuda(?:\.exe)?$/i.test(path.basename(serverBinary));
   }
@@ -522,6 +663,41 @@ class WhisperServerManager {
       message.includes(String(WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED)) ||
       /STATUS_DLL_NOT_FOUND/i.test(message)
     );
+  }
+
+  /**
+   * True when Windows refused to start the engine outright, rather than the
+   * engine starting and then failing.
+   *
+   * Smart App Control blocks unsigned executables with "An Application Control
+   * policy has blocked this file", but that text never reaches Node: the spawn
+   * fails with `spawn UNKNOWN` (errno -4094) and no detail. Antivirus
+   * quarantine produces the same shape. What separates it from a missing file
+   * is that the binary is still on disk, and from a missing DLL that the
+   * process never ran at all (a DLL failure has an exit code).
+   *
+   * This matters because such a block is permanent for the session — retrying
+   * re-triggers the OS block every time and can never succeed.
+   */
+  isBlockedByWindowsPolicyFailure(error, serverBinary) {
+    if (process.platform !== "win32") return false;
+    if (this.isMissingDllStartupFailure(error)) return false;
+    // A process that started and then exited is a different failure entirely.
+    if (error?.exitCode !== undefined && error?.exitCode !== null) return false;
+
+    const code = error?.code ? String(error.code).toUpperCase() : "";
+    const message = error?.message || "";
+    const isSpawnRefusal =
+      ["UNKNOWN", "EACCES", "EPERM"].includes(code) ||
+      /\bspawn\s+(UNKNOWN|EACCES|EPERM)\b/i.test(message);
+    if (!isSpawnRefusal) return false;
+
+    // ENOENT-style "file is gone" must not be reported as a policy block.
+    try {
+      return !!serverBinary && fs.existsSync(serverBinary);
+    } catch {
+      return false;
+    }
   }
 
   isRecoverableCudaStartupFailure(error) {
@@ -654,6 +830,7 @@ class WhisperServerManager {
         this._cudaDisabledAt = null;
         this._cudaFailureCount = 0;
         this._lastCudaStartupFailure = null;
+        this._cudaBlockedByPolicy = false;
         if (recovered) {
           this._notifyEngineFallbackChanged({ active: false, recovered: true });
         }
@@ -666,7 +843,18 @@ class WhisperServerManager {
         throw error;
       }
 
-      if (this.isMissingDllStartupFailure(error)) {
+      const blockedByPolicy = this.isBlockedByWindowsPolicyFailure(error, serverBinary);
+
+      if (blockedByPolicy) {
+        debugLogger.warn(
+          "CUDA binary was blocked by Windows (Smart App Control or antivirus), falling back to CPU binary and disabling retries",
+          {
+            cudaPath: serverBinary,
+            error: error.message,
+            code: error.code,
+          }
+        );
+      } else if (this.isMissingDllStartupFailure(error)) {
         debugLogger.warn("CUDA binary failed (missing DLLs), falling back to CPU binary", {
           cudaPath: serverBinary,
           error: error.message,
@@ -683,8 +871,13 @@ class WhisperServerManager {
       this.cudaDisabledForSession = true;
       this._cudaDisabledAt = Date.now();
       this._cudaFailureCount += 1;
+      this._cudaBlockedByPolicy = blockedByPolicy;
       this._lastCudaStartupFailure = {
-        kind: this.isMissingDllStartupFailure(error) ? "missing_dll_or_runtime" : "startup_failure",
+        kind: blockedByPolicy
+          ? "blocked_by_os"
+          : this.isMissingDllStartupFailure(error)
+            ? "missing_dll_or_runtime"
+            : "startup_failure",
         message: error.message || String(error),
         code: error.code || null,
         exitCode: error.exitCode ?? null,
@@ -752,8 +945,6 @@ class WhisperServerManager {
       spawnEnv.LD_LIBRARY_PATH = serverBinaryDir + pathSep + (process.env.LD_LIBRARY_PATH || "");
     }
 
-    const args = ["--model", modelPath, "--host", "127.0.0.1", "--port", String(this.port)];
-
     // FFmpeg is required for pre-converting audio to 16kHz mono WAV
     this.canConvert = !!ffmpegPath;
     if (ffmpegPath) {
@@ -763,25 +954,7 @@ class WhisperServerManager {
       debugLogger.warn("FFmpeg not found - whisper-server will only accept 16kHz mono WAV");
     }
 
-    // Reduce repetition hallucinations: lower entropy threshold triggers
-    // temperature fallback sooner when the decoder enters a loop, and
-    // suppress-nst filters out non-speech tokens that often seed loops.
-    // --no-fallback was tested but had no effect on repeated-word clips —
-    // the slowness is in the first decode pass, not temperature fallback retries.
-    args.push("--entropy-thold", "2.0");
-    args.push("--suppress-nst");
-
-    if (options.threads) args.push("--threads", String(options.threads));
-    if (options.printRealtime) {
-      args.push("--print-realtime");
-      args.push("--tinydiarize");
-    }
-    // whisper.cpp defaults to English in some server builds when language is omitted.
-    // Pass auto explicitly so multilingual/local-file transcription really auto-detects.
-    args.push(
-      "--language",
-      options.language && options.language !== "auto" ? options.language : "auto"
-    );
+    const args = this.buildServerArgs(modelPath, options);
 
     debugLogger.debug("Starting whisper-server", {
       port: this.port,
@@ -794,6 +967,10 @@ class WhisperServerManager {
     let stderrBuffer = "";
     let exitCode = null;
     let startupError = null;
+    // Belongs to the process about to be spawned, so the previous one's answer
+    // cannot outlive it.
+    this.observedBackend = null;
+    this.backendScanBuffer = "";
 
     try {
       this.process = spawn(serverBinary, args, {
@@ -816,6 +993,7 @@ class WhisperServerManager {
     this.process.stdout.on("data", (data) => {
       const text = data.toString();
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
+      this.scanForBackend(text);
       debugLogger.debug("whisper-server stdout", { data: text.trim() });
     });
 
@@ -823,6 +1001,7 @@ class WhisperServerManager {
       const text = data.toString();
       stderrBuffer = appendBoundedText(stderrBuffer, text);
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
+      this.scanForBackend(text);
       debugLogger.debug("whisper-server stderr", { data: text.trim() });
     });
 
@@ -846,6 +1025,7 @@ class WhisperServerManager {
       this.stdoutCapture = null;
       this.process = null;
       this.activeServerBinaryPath = null;
+      this.observedBackend = null;
       this.loadedModelPath = null;
       this.stopHealthCheck();
       this._clearIdleCheck();
@@ -1090,6 +1270,7 @@ class WhisperServerManager {
     try {
       const {
         language,
+        allowedLanguages,
         translate,
         initialPrompt,
         inputFileName,
@@ -1209,15 +1390,58 @@ class WhisperServerManager {
           }
         }
         if (!lockedLanguage) {
+          // The speaker told us which languages they speak, so a detection
+          // that lands outside that set is known to be wrong before we look
+          // at the text. whisper.cpp ships the full probability distribution
+          // in the same response, so the corrected answer costs nothing to
+          // work out — only the re-decode below costs anything, and only on
+          // the recordings that would otherwise have come back in the wrong
+          // language.
+          const allowedDecision = resolveAllowedLanguage(result, allowedLanguages);
+          if (allowedDecision?.changed) {
+            debugLogger.info("Detected language is not one the user speaks; re-decoding", {
+              detected: result?.language ?? null,
+              snappedTo: allowedDecision.language,
+              reason: allowedDecision.reason,
+              allowedProbability: allowedDecision.probability ?? null,
+              detectedProbability: allowedDecision.detectedProbability ?? null,
+              chunk: index + 1,
+            });
+            try {
+              result = await this._postInference(chunk.buffer, {
+                language: allowedDecision.language,
+                translate,
+                initialPrompt,
+                chunkIndex: index,
+                chunkCount: chunks.length,
+                durationSeconds: chunk.durationSeconds,
+                fileMode,
+                diarize,
+                tinydiarize: fileMode && speakerDetection,
+                vad,
+                longSessionChunk,
+              });
+            } catch (error) {
+              // The first decode already produced usable text. A failed
+              // re-decode should cost the user the correction, not the
+              // dictation.
+              debugLogger.warn("Re-decode in the user's language failed; keeping first result", {
+                language: allowedDecision.language,
+                error: error.message,
+              });
+            }
+          }
+
           // Only a chunk that actually produced speech gets to decide. A
           // recording that opens with silence, breathing or keyboard noise
           // would otherwise pin the whole session to whatever the detector
           // guessed off that noise.
-          const detected = resolveLockableLanguage(result);
+          const detected = allowedDecision?.language || resolveLockableLanguage(result);
           if (detected) {
             lockedLanguage = detected;
             debugLogger.info("Locked auto-detected language for remaining audio", {
               language: detected,
+              constrainedToSpokenLanguages: !!allowedDecision,
               decidedByChunk: index + 1,
               chunks: chunks.length,
             });
@@ -1571,6 +1795,7 @@ class WhisperServerManager {
     this.modelPath = null;
     this.loadedModelPath = null;
     this.activeServerBinaryPath = null;
+    this.observedBackend = null;
     this.lastUsedTime = 0;
   }
 
@@ -1586,8 +1811,10 @@ class WhisperServerManager {
         : null,
       forceCpu: this.forceCpu,
       activeServerBinaryPath: this.activeServerBinaryPath,
+      // Same source of truth as getEngineStatus().effectiveEngine, so the two
+      // cannot tell different stories about the same running process.
       activeEngine: this.activeServerBinaryPath
-        ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
+        ? this.resolveEffectiveEngine() === "cuda"
           ? "gpu"
           : "cpu"
         : null,
@@ -1600,10 +1827,13 @@ class WhisperServerManager {
    */
   getEngineStatus() {
     const base = this.getStatus();
+    // What the server said it loaded beats what the binary is called. The name
+    // records which build was launched, which is a different question, and the
+    // two disagree in both directions: a CPU-named build finds a CUDA runtime
+    // sitting beside it, or a CUDA-named build starts fine and then falls back
+    // to the CPU because the driver refused it.
     const effectiveEngine = this.activeServerBinaryPath
-      ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
-        ? "cuda"
-        : "cpu"
+      ? this.resolveEffectiveEngine()
       : this.ready
         ? "unknown"
         : "stopped";
@@ -1638,3 +1868,6 @@ WhisperServerManager.getTranscriptionAudioFilters = getTranscriptionAudioFilters
 WhisperServerManager.getTrailingSilenceFilters = getTrailingSilenceFilters;
 
 module.exports = WhisperServerManager;
+// Exported for tests: the parser is the whole of the compute-mode claim, so it
+// is pinned against output captured from the real binary.
+module.exports.detectServerBackend = detectServerBackend;

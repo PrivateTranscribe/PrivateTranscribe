@@ -25,10 +25,33 @@ describe("paid Pro and tester beta access contract", () => {
     expect(audioHook).toContain('isBetaFeatureUnlocked("correction-memory")');
     expect(audioManager).toContain('this._checkBetaFeatureAccess("ai-enhancement")');
     expect(contextPipeline).toContain("hasTesterAccess()");
+
+    // The Action Engine matters most here. Its other surfaces need the user to
+    // open a page that is itself gated, but this one fires off the end of every
+    // dictation without anyone visiting it, so losing the check would run voice
+    // commands for people who never had access.
+    expect(audioHook).toContain('isBetaFeatureUnlocked("action-engine")');
+  });
+
+  it("does not pretend the main process can enforce entitlement", () => {
+    // The Action Engine IPC handlers are deliberately not gated in the main
+    // process. Entitlement lives in the renderer — localStorage plus a token
+    // LicensingService verifies — and the main process has no independent copy
+    // of it, so any gate there would have to ask the renderer, which is the
+    // thing a devtools user would be tampering with in the first place. It
+    // would be theatre, and it would cost an offline-first app a round trip.
+    //
+    // The real gates are the renderer paths asserted above. If main-process
+    // enforcement is ever genuinely needed it has to come from server-side
+    // verification at execution time, which is a different design decision and
+    // breaks offline use.
+    const handlers = readSource("src/helpers/ipcHandlers.js");
+    expect(handlers).toContain('ipcMain.handle("action-engine-execute"');
+    expect(handlers).not.toContain("hasTesterAccess");
   });
 
   it("keeps ordinary paid licenses on the default non-tester entitlement", () => {
-    const webhook = readSource("supabase/functions/stripe-webhook/index.ts");
+    const webhook = readSource("supabase/functions/stripe-webhook/handler.ts");
     const manualGenerator = readSource("scripts/generate-license.js");
     expect(webhook).toContain("beta_access: false");
     expect(manualGenerator).toContain("beta_access: false");

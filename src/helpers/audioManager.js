@@ -5,14 +5,11 @@ import { resolveMicWarmWindowMs } from "../utils/micWarmWindow";
 import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
+import { readSpokenLanguages } from "../utils/spokenLanguages";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import { getSharedAudioContext } from "../utils/sharedAudioContext";
-import {
-  buildDictionaryPrompt,
-  getDictionaryRepairTerms,
-  parseDictionaryEntryModes,
-} from "../utils/dictionaryEntryModes";
+import { buildDictionaryPrompt } from "../utils/dictionaryPrompt";
 import {
   getContext,
   isSmartContextEnabled,
@@ -397,7 +394,6 @@ class AudioManager {
   getCustomDictionaryPrompt() {
     try {
       const raw = localStorage.getItem("customDictionary");
-      const modes = parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"));
       const words = [];
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -409,8 +405,7 @@ class AudioManager {
       if (this._cachedCorrectionHints && this._cachedCorrectionHints.length > 0) {
         words.push(...this._cachedCorrectionHints);
       }
-      const unique = [...new Set(words.filter(Boolean))];
-      return buildDictionaryPrompt(unique, modes);
+      return buildDictionaryPrompt(words);
     } catch {
       // ignore parse errors
     }
@@ -460,6 +455,8 @@ class AudioManager {
       cancelled: false,
       queue: [],
       results: new Map(),
+      telemetry: new Map(),
+      performanceTimingComplete: true,
       errors: [],
       processing: false,
       processingPromise: null,
@@ -475,6 +472,79 @@ class AudioManager {
       // session on purpose: it dies with resetLongSessionState(), so switching
       // language between recordings still works without touching a setting.
       detectedLanguage: null,
+    };
+  }
+
+  recordLongSessionChunkTelemetry(state, item, transcription) {
+    if (!state || !item || !transcription) {
+      return;
+    }
+
+    const timings = transcription.result?.timings;
+    // Inference time when the engine reports it, so a cold start's model load
+    // does not get counted as time spent transcribing.
+    const processingDurationMs = Number.isFinite(timings?.transcriptionInferenceDurationMs)
+      ? timings.transcriptionInferenceDurationMs
+      : timings?.transcriptionProcessingDurationMs;
+    const audioDurationMs = item.durationMs;
+    const hasPairedTiming =
+      Number.isFinite(processingDurationMs) &&
+      processingDurationMs > 0 &&
+      Number.isFinite(audioDurationMs) &&
+      audioDurationMs > 0 &&
+      item.attempts === 1;
+
+    if (!hasPairedTiming) {
+      state.performanceTimingComplete = false;
+    }
+
+    state.telemetry.set(item.index, {
+      activeModel: transcription.activeModel || "unknown",
+      computeMode: transcription.computeMode || "unknown",
+      audioDurationMs: hasPairedTiming ? audioDurationMs : null,
+      processingDurationMs: hasPairedTiming ? processingDurationMs : null,
+    });
+  }
+
+  /**
+   * Returns only telemetry. The dictation's own durationSeconds stays the
+   * recorded wall clock, because that is what the history and the words-per-
+   * minute stats are counted against; the summed chunk audio below exists so
+   * the speed metric divides by the audio the model was actually handed.
+   */
+  summarizeLongSessionTelemetry(state) {
+    const entries = [...state.telemetry.values()];
+    const models = new Set(entries.map((entry) => entry.activeModel).filter(Boolean));
+    const computeModes = new Set(entries.map((entry) => entry.computeMode).filter(Boolean));
+    const activeModel = models.size === 1 ? [...models][0] : models.size > 1 ? "mixed" : "unknown";
+    const computeMode =
+      computeModes.size === 1 ? [...computeModes][0] : computeModes.size > 1 ? "mixed" : "unknown";
+    const hasCompleteTiming =
+      state.performanceTimingComplete &&
+      entries.length === state.completedChunks &&
+      entries.length > 0 &&
+      entries.every(
+        (entry) =>
+          Number.isFinite(entry.audioDurationMs) &&
+          entry.audioDurationMs > 0 &&
+          Number.isFinite(entry.processingDurationMs) &&
+          entry.processingDurationMs > 0
+      );
+
+    if (!hasCompleteTiming) {
+      return { activeModel, computeMode };
+    }
+
+    const audioDurationMs = entries.reduce((sum, entry) => sum + entry.audioDurationMs, 0);
+    const processingDurationMs = entries.reduce(
+      (sum, entry) => sum + entry.processingDurationMs,
+      0
+    );
+    return {
+      activeModel,
+      computeMode,
+      transcriptionAudioDurationSeconds: audioDurationMs / 1000,
+      transcriptionProcessingDurationMs: processingDurationMs,
     };
   }
 
@@ -1055,6 +1125,7 @@ class AudioManager {
             }
           }
 
+          this.recordLongSessionChunkTelemetry(state, item, result);
           const text = String(result?.result?.text || "").trim();
           if (text) {
             state.results.set(item.index, text);
@@ -1062,6 +1133,7 @@ class AudioManager {
           state.completedChunks += 1;
           state.transcribedSeconds += item.durationMs / 1000;
         } catch (error) {
+          state.performanceTimingComplete = false;
           if (state.cancelled || error?.name === "AbortError") {
             return;
           }
@@ -1163,6 +1235,7 @@ class AudioManager {
           trimTrailingSilence: item.trimTrailingSilence,
         });
 
+        this.recordLongSessionChunkTelemetry(state, item, result);
         const text = String(result?.result?.text || "").trim();
         if (text) {
           state.results.set(item.index, text);
@@ -1268,13 +1341,25 @@ class AudioManager {
     const reasonedText = await this.processTranscription(rawText, "long-session");
     const text = this.preserveMissingSectionMarkers(reasonedText || rawText, state.errors.length);
     const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
+    const telemetry = this.summarizeLongSessionTelemetry(state);
+    const { transcriptionProcessingDurationMs, transcriptionAudioDurationSeconds } = telemetry;
+    const hasPairedTiming =
+      Number.isFinite(transcriptionProcessingDurationMs) &&
+      Number.isFinite(transcriptionAudioDurationSeconds);
 
     return {
       success: true,
       text,
       source,
       durationSeconds,
+      activeModel: telemetry.activeModel,
+      computeMode: telemetry.computeMode,
       timings: {
+        // Both or neither: a speed built from one chunk's audio and another
+        // chunk's clock would be a number nobody can act on.
+        ...(hasPairedTiming
+          ? { transcriptionProcessingDurationMs, transcriptionAudioDurationSeconds }
+          : {}),
         reasoningProcessingDurationMs: Math.round(performance.now() - reasoningStart),
       },
       longSession: {
@@ -1843,10 +1928,8 @@ class AudioManager {
       processingGeneration,
     };
     try {
-      const { result, useLocalWhisper, localProvider, activeModel } = await this.runTranscription(
-        audioBlob,
-        processingMetadata
-      );
+      const { result, useLocalWhisper, localProvider, activeModel, computeMode } =
+        await this.runTranscription(audioBlob, processingMetadata);
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
         return;
@@ -1860,6 +1943,7 @@ class AudioManager {
       // Carried so analytics can report which model produced this without
       // re-deriving the local/cloud choice from localStorage a second time.
       result.activeModel = activeModel;
+      result.computeMode = computeMode;
       result.completeness = assessTranscriptionCompleteness({
         text: result.text,
         durationSeconds: result.durationSeconds ?? metadata.durationSeconds,
@@ -2050,7 +2134,26 @@ class AudioManager {
       result = await this.processWithOpenAIAPI(audioBlob, metadata);
     }
 
-    return { result, useLocalWhisper, localProvider, activeModel };
+    const source = result?.source || "";
+    if (source.startsWith("openai")) {
+      activeModel = result?.activeModel || this.getTranscriptionModel();
+    } else if (source === "local-fallback") {
+      activeModel =
+        result?.activeModel || this.getTranscriptionSetting("fallbackWhisperModel", "small");
+    } else {
+      activeModel = result?.activeModel || activeModel;
+    }
+
+    // Parakeet is a literal "cpu" because the bundled sherpa-onnx binaries ship
+    // no GPU execution provider. If one is ever added, this has to start
+    // reading the provider instead of asserting it.
+    const computeMode = source.startsWith("openai")
+      ? "cloud"
+      : useLocalWhisper && localProvider === "nvidia"
+        ? "cpu"
+        : result?.computeMode || "unknown";
+
+    return { result, useLocalWhisper, localProvider, activeModel, computeMode };
   }
 
   async processWithLocalWhisper(audioBlob, model = "base", metadata = {}) {
@@ -2115,6 +2218,11 @@ class AudioManager {
         // Auto-detect is still what the user asked for; we are only stopping
         // whisper from answering the question differently on every segment.
         options.language = metadata.lockedLanguage;
+      } else {
+        // Nothing has pinned the language, so this recording will be
+        // auto-detected. Send the languages the user told us they speak so the
+        // detector cannot answer with one of the neighbours they do not.
+        options.allowedLanguages = readSpokenLanguages();
       }
       const shouldTranslate = shouldTranslateLocalWhisperToEnglish({
         translateToEnglish,
@@ -2175,11 +2283,18 @@ class AudioManager {
       timings.transcriptionProcessingDurationMs = Math.round(
         performance.now() - transcriptionStart
       );
+      // What the engine spent decoding, without the model load a cold start
+      // pays for. Kept beside the round trip rather than replacing it, because
+      // the round trip is the wait the user actually sits through.
+      if (Number.isFinite(result?.inferenceDurationMs) && result.inferenceDurationMs > 0) {
+        timings.transcriptionInferenceDurationMs = Math.round(result.inferenceDurationMs);
+      }
 
       logger.debug(
         "Local transcription complete",
         {
           transcriptionProcessingDurationMs: timings.transcriptionProcessingDurationMs,
+          transcriptionInferenceDurationMs: timings.transcriptionInferenceDurationMs ?? null,
           success: result.success,
         },
         "performance"
@@ -2190,7 +2305,13 @@ class AudioManager {
       // It is not a failure: treating it as one exhausts the chunk's retries
       // and makes finalizeLongSessionResult discard the whole dictation.
       if (metadata?.source === "long-session" && !result.text) {
-        return { success: true, text: "", source: "local", timings };
+        return {
+          success: true,
+          text: "",
+          source: "local",
+          timings,
+          computeMode: result.computeMode,
+        };
       }
 
       if (result.success && result.text) {
@@ -2203,6 +2324,7 @@ class AudioManager {
             text: result.text,
             source: "local",
             timings,
+            computeMode: result.computeMode,
             ...(result.detectedLanguage ? { detectedLanguage: result.detectedLanguage } : {}),
           };
         }
@@ -2212,7 +2334,13 @@ class AudioManager {
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
 
         if (text !== null && text !== undefined) {
-          return { success: true, text: text || result.text, source: "local", timings };
+          return {
+            success: true,
+            text: text || result.text,
+            source: "local",
+            timings,
+            computeMode: result.computeMode,
+          };
         } else {
           throw new Error("No text transcribed");
         }
@@ -2601,14 +2729,16 @@ class AudioManager {
   }
 
   /**
-   * Apply custom dictionary word replacements to raw STT output.
-   * Whisper's initialPrompt is a hint, not a guarantee - it can still mis-transcribe
-   * or mis-capitalise custom words. This does a case-insensitive whole-word scan and
-   * replaces any match with the exact casing stored in the dictionary.
+   * Repair casing and accidental splits for custom dictionary terms in raw STT output.
    *
-   * Example: dictionary has "PrivateTranscribe", Whisper outputs "provoca" → fixed to "PrivateTranscribe".
+   * This is a spelling repair, not a mishearing repair. It matches the term
+   * case-insensitively on whole-word boundaries and rewrites it with the casing
+   * stored in the dictionary, so "privatetranscribe" and "OpenC ode" are fixed
+   * but a genuine mishearing like "provoca" is not - the letters have to already
+   * be right. Mishearings are handled by Correction Memory, which stores an
+   * explicit heard-this / write-that pair.
    *
-   * Replacements are whole-word only (word boundaries) so "unprovocative" is untouched.
+   * Runs for every dictionary term. Whole-word only, so "unprovocative" is untouched.
    */
   applyDictionaryReplacements(text) {
     try {
@@ -2616,15 +2746,11 @@ class AudioManager {
       if (!raw) return text;
       const words = JSON.parse(raw);
       if (!Array.isArray(words) || words.length === 0) return text;
-      const repairWords = getDictionaryRepairTerms(
-        words,
-        parseDictionaryEntryModes(localStorage.getItem("dictionaryEntryModes"))
-      );
+      const repairWords = words.filter((word) => typeof word === "string" && word.trim());
       if (repairWords.length === 0) return text;
 
       let result = repairSplitDictionaryTerms(text, repairWords);
       for (const word of repairWords) {
-        if (!word || typeof word !== "string") continue;
         // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const regex = new RegExp(`\\b${escaped}\\b`, "gi");
@@ -3256,21 +3382,42 @@ class AudioManager {
           };
           if (language && language !== "auto") {
             options.language = language;
+          } else {
+            options.allowedLanguages = readSpokenLanguages();
           }
           if (originalFileName) {
             options.inputFileName = originalFileName;
           }
 
+          const localFallbackStart = performance.now();
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
+          timings.transcriptionProcessingDurationMs = Math.round(
+            performance.now() - localFallbackStart
+          );
+          if (Number.isFinite(result?.inferenceDurationMs) && result.inferenceDurationMs > 0) {
+            timings.transcriptionInferenceDurationMs = Math.round(result.inferenceDurationMs);
+          }
 
           if (result.success && result.text) {
             if (metadata?.skipPostProcessing) {
-              return { success: true, text: result.text, source: "local-fallback" };
+              return {
+                success: true,
+                text: result.text,
+                source: "local-fallback",
+                timings,
+                computeMode: result.computeMode,
+              };
             }
 
             const text = await this.processTranscription(result.text, "local-fallback");
             if (text) {
-              return { success: true, text, source: "local-fallback" };
+              return {
+                success: true,
+                text,
+                source: "local-fallback",
+                timings,
+                computeMode: result.computeMode,
+              };
             }
           }
           throw error;
@@ -3307,7 +3454,11 @@ class AudioManager {
       outputFormat: metadata.outputFormat || "plain",
       inputFileName: metadata.originalFileName,
     };
-    if (resolvedLanguage) options.language = resolvedLanguage;
+    if (resolvedLanguage) {
+      options.language = resolvedLanguage;
+    } else {
+      options.allowedLanguages = readSpokenLanguages();
+    }
     if (
       shouldTranslateLocalWhisperToEnglish({
         translateToEnglish: translateToEnglishSetting,

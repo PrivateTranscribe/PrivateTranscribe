@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Clock,
@@ -87,9 +87,15 @@ const navGroups: NavGroup[] = [
 interface AppSidebarProps {
   activePage: PageId;
   onPageChange: (page: PageId) => void;
+  /**
+   * Rendered at the top of the sidebar footer, next to the version marker.
+   * Used for the update notice so it lives with "which build am I running"
+   * instead of competing with the brand in the title bar.
+   */
+  updateSlot?: React.ReactNode;
 }
 
-export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps) {
+export default function AppSidebar({ activePage, onPageChange, updateSlot }: AppSidebarProps) {
   const [hotkey] = useLocalStorage("dictationKey", "", {
     serialize: String,
     deserialize: String,
@@ -293,6 +299,8 @@ export default function AppSidebar({ activePage, onPageChange }: AppSidebarProps
           gap: "8px",
         }}
       >
+        {updateSlot}
+
         {/* Hotkey hint */}
         <p
           style={{

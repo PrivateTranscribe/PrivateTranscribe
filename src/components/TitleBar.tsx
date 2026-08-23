@@ -1,6 +1,5 @@
 import React from "react";
 import WindowControls from "./WindowControls";
-import { Button } from "./ui/button";
 import logoSrc from "../assets/icon.svg";
 
 interface TitleBarProps {
@@ -8,7 +7,6 @@ interface TitleBarProps {
   showTitle?: boolean;
   children?: React.ReactNode;
   className?: string;
-  actions?: React.ReactNode;
 }
 
 export default function TitleBar({
@@ -16,23 +14,11 @@ export default function TitleBar({
   showTitle = false,
   children,
   className = "",
-  actions,
 }: TitleBarProps) {
   const platform =
     typeof window !== "undefined" && window.electronAPI?.getPlatform
       ? window.electronAPI.getPlatform()
       : "darwin";
-
-  const getActionsContent = () => {
-    if (!actions) return null;
-
-    if (platform !== "darwin" && React.isValidElement(actions)) {
-      const childrenArray = React.Children.toArray(actions.props.children);
-      return <>{[...childrenArray].reverse()}</>;
-    }
-
-    return actions;
-  };
 
   return (
     <div className={`bg-background border-b border-border select-none ${className}`}>
@@ -56,26 +42,12 @@ export default function TitleBar({
           >
             PrivateTranscribe
           </span>
-          {platform !== "darwin" ? (
-            <>{getActionsContent()}</>
-          ) : (
-            <>
-              {showTitle && title && (
-                <h1 className="text-sm font-semibold text-foreground">{title}</h1>
-              )}
-              {children}
-            </>
-          )}
+          {showTitle && title && <h1 className="text-sm font-semibold text-foreground">{title}</h1>}
+          {children}
         </div>
 
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" }}>
-          {platform !== "darwin" ? (
-            <>
-              <WindowControls />
-            </>
-          ) : (
-            <>{actions}</>
-          )}
+          {platform !== "darwin" && <WindowControls />}
         </div>
       </div>
     </div>

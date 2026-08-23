@@ -19,6 +19,7 @@ import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
+import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -188,6 +189,7 @@ export default function App() {
   // Active dictation mode set by an Action Engine "dictation-mode" action.
   // null means default (no override active).
   const [activeDictationMode, setActiveDictationMode] = useState(null);
+  const [spokenLanguagesRevision, setSpokenLanguagesRevision] = useState(0);
   const [selectedLanguage, setSelectedLanguage] = useState(
     () => localStorage.getItem("preferredLanguage") || "en"
   );
@@ -341,10 +343,14 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onWhisperEngineFallbackChanged?.((_event, data) => {
       if (data?.active) {
+        // A Windows block is permanent until the user acts, so it must not
+        // promise an automatic retry that will never succeed.
+        const blockedByOs = data.kind === "blocked_by_os";
         toast({
-          title: "Transcribing on CPU",
-          description:
-            "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
+          title: blockedByOs ? "Windows blocked the GPU engine" : "Transcribing on CPU",
+          description: blockedByOs
+            ? "Windows stopped the GPU engine from starting — usually Smart App Control or antivirus. Dictation continues on CPU, just slower. Updating PrivateTranscribe, or allowing the engine in your antivirus, restores GPU speed."
+            : "The GPU engine could not start — this can happen during a graphics driver update. Dictation still works, just slower. The GPU will be retried automatically.",
           duration: 10000,
         });
       } else if (data?.recovered) {
@@ -518,6 +524,10 @@ export default function App() {
   useEffect(() => {
     const syncLanguage = () => {
       setSelectedLanguage(localStorage.getItem("preferredLanguage") || "en");
+      // The spoken set is read straight from localStorage rather than held in
+      // state, so the quick-switch submenu needs a nudge to rebuild after the
+      // control panel changes it.
+      setSpokenLanguagesRevision((revision) => revision + 1);
     };
 
     window.addEventListener("focus", syncLanguage);
@@ -529,16 +539,27 @@ export default function App() {
   }, []);
 
   const quickLanguages = useMemo(() => {
-    const preferred = ["auto", "en", "es", "fr", "de", "pt", "ja"];
-    const languageCodes = [selectedLanguage, ...preferred];
+    // The languages the user told us they speak, not a fixed list of the
+    // world's most common ones. A Danish/English speaker used to be shown
+    // Spanish, French, Portuguese and Japanese, and reached their own second
+    // language through Settings.
+    const spoken = readSpokenLanguages();
+    const codes =
+      spoken.length > 0
+        ? buildQuickLanguageCodes(spoken, selectedLanguage)
+        : // Nothing selected yet (an install that predates the question).
+          // Keep the old worldwide shortlist rather than an empty submenu.
+          [selectedLanguage, "auto", "en", "es", "fr", "de", "pt", "ja"];
     // Cap at 7 unique entries so the language submenu never overflows the WITH_MENU
-    // window height (360 px).  The selected language always appears first; if it is
-    // already in the preferred list it merely moves to the top and the count stays ≤ 7.
-    const uniqueCodes = [...new Set(languageCodes)].slice(0, 7);
+    // window height (360 px).
+    const uniqueCodes = [...new Set(codes)].slice(0, 7);
     return uniqueCodes
       .map((code) => LANGUAGE_OPTIONS.find((option) => option.value === code))
       .filter(Boolean);
-  }, [selectedLanguage]);
+    // spokenLanguagesRevision is a deliberate cache-buster, not a value this
+    // memo reads: the spoken set lives in localStorage rather than state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLanguage, spokenLanguagesRevision]);
 
   const handleSnoozeOverlay = useCallback(() => {
     closeContextMenu();

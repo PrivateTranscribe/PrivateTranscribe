@@ -10,7 +10,7 @@ on:
       engine_version:
         description: "CUDA engine version to publish (must match BINARY_VERSION in gpuBinaryManager.js for the app release that will require it)"
         required: true
-        default: "v0.0.9"
+        default: "v0.0.10"
       whisper_tag:
         description: "whisper.cpp git tag/branch to build (empty = latest)"
         required: false
@@ -63,8 +63,28 @@ jobs:
           fi
           echo "whisper.cpp commit: $(git -C whisper-src rev-parse --short HEAD)"
 
-      - name: Set up MSVC + Ninja (Windows)
-        uses: step-security/msvc-dev-cmd@v1
+      # This was ilammy/msvc-dev-cmd until 87644ce swapped in the step-security
+      # fork to escape the Node 20 deprecation. That fork requires a paid
+      # subscription on private repositories, so the job died five minutes in
+      # with "This action requires a StepSecurity subscription". vcvars64.bat is
+      # what those actions ultimately call, so call it directly and depend on
+      # nothing from the marketplace — no runtime deprecation to chase again.
+      - name: Locate MSVC environment (Windows)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+
+          $installPath = & $vswhere -latest -products '*' `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $installPath) { throw "No Visual Studio install with the C++ toolset was found." }
+
+          $vcvars = Join-Path $installPath "VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found at $vcvars" }
+
+          Write-Host "Using $vcvars"
+          "VCVARS64=$vcvars" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Install Ninja (Windows)
         shell: pwsh
@@ -73,6 +93,7 @@ jobs:
       - name: Configure CMake (Windows)
         shell: cmd
         run: |
+          call "%VCVARS64%" || exit /b 1
           set PATH=%CUDA_PATH%\bin;%PATH%
           cd whisper-src
           cmake -B build ^
@@ -86,6 +107,7 @@ jobs:
       - name: Build whisper-server (Windows)
         shell: cmd
         run: |
+          call "%VCVARS64%" || exit /b 1
           set PATH=%CUDA_PATH%\bin;%PATH%
           cd whisper-src
           cmake --build build --config Release --target whisper-server -j4
@@ -121,6 +143,90 @@ jobs:
             Copy-Item $source "$packageDir/$dll" -Force
           }
 
+          Get-ChildItem $packageDir
+
+      # Fail before the signing action so a missing credential surfaces here
+      # rather than as an opaque Azure auth error inside the action.
+      - name: Verify Azure signing credentials are present
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          $missing = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET') |
+            Where-Object { -not (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value }
+
+          if ($missing) {
+            throw "The CUDA engine must be signed. Missing secrets: $($missing -join ', '). The client secret expires; if it was working and now is not, renew it on the PrivateTranscribe-Signing-CI app registration."
+          }
+
+      # Windows Smart App Control blocks unsigned executables outright ("An
+      # Application Control policy has blocked this file"), and the app has no
+      # way to recover: every spawn fails, so it falls back to CPU forever. The
+      # installer being signed does not help — this package is downloaded from
+      # R2 at runtime and is a separate artifact. Sign the whole package,
+      # including the NVIDIA runtime DLLs, which ship unsigned from the CUDA
+      # toolkit. Signing must happen before the zip is created.
+      - name: Sign CUDA package (exe + DLLs)
+        uses: azure/trusted-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://neu.codesigning.azure.net/
+          trusted-signing-account-name: PrivateTranscribe
+          certificate-profile-name: PrivateTranscribe
+          files-folder: ${{ github.workspace }}\cuda-package-win32-x64
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: PrivateTranscribe CUDA transcription engine
+          description-url: https://privatetranscribe.com
+
+      - name: Verify CUDA package signatures
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: Julsgaard Products
+        run: |
+          $packageDir = "cuda-package-win32-x64"
+          $artifacts = Get-ChildItem -Path $packageDir -File |
+            Where-Object { $_.Extension -in @('.exe', '.dll') }
+
+          if ($artifacts.Count -eq 0) {
+            throw "No CUDA package executables found to verify."
+          }
+
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid Authenticode signature for $($artifact.Name): $($signature.StatusMessage)"
+            }
+
+            $subject = $signature.SignerCertificate.Subject
+            if ($subject -notlike "*CN=$env:EXPECTED_PUBLISHER*") {
+              throw "Unexpected signing publisher for $($artifact.Name): $subject"
+            }
+
+            # Artifact Signing certificates are valid for only a few days, so an
+            # untimestamped signature stops verifying almost immediately after
+            # publish — and an expired signature is no better than none for
+            # Smart App Control.
+            if (-not $signature.TimeStamperCertificate) {
+              throw "No timestamp on $($artifact.Name). The signature would expire with the certificate within days."
+            }
+          }
+
+          Write-Host "Verified $($artifacts.Count) signed file(s) as '$env:EXPECTED_PUBLISHER', all timestamped."
+
+      # Zip only after signing — files are signed in place, so archiving first
+      # would ship the unsigned copies.
+      - name: Package CUDA zip
+        shell: pwsh
+        run: |
+          $packageDir = "cuda-package-win32-x64"
           Compress-Archive -Path "$packageDir/*" -DestinationPath whisper-server-win32-x64-cuda.zip -Force
           $packageSize = (Get-Item whisper-server-win32-x64-cuda.zip).Length
           if ($packageSize -lt 10000000) {

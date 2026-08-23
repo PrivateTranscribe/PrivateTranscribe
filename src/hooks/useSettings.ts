@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
+import {
+  SPOKEN_LANGUAGES_KEY,
+  derivePreferredLanguage,
+  normalizeSpokenLanguages,
+  resolveSpokenLanguages,
+} from "../utils/spokenLanguages";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
 import ReasoningService from "../services/ReasoningService";
 import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
-import {
-  isDictionaryEntryMode,
-  pruneDictionaryEntryModes,
-  type DictionaryEntryMode,
-  type DictionaryEntryModeMap,
-} from "../utils/dictionaryEntryModes";
 
 export interface TranscriptionSettings {
   useLocalWhisper: boolean;
@@ -20,16 +20,19 @@ export interface TranscriptionSettings {
   whisperForceCpu: boolean;
   /** Minutes before whisper-server is auto-stopped to free memory. 0 = never. */
   whisperServerIdleTimeoutMinutes: number;
+  /** `0` = auto (chosen from CPU topology). Anything else is an explicit override. */
+  whisperThreads: number;
   allowOpenAIFallback: boolean;
   allowLocalFallback: boolean;
   fallbackWhisperModel: string;
   preferredLanguage: string;
+  /** The languages this user speaks. Constrains auto-detect; see spokenLanguages.ts. */
+  spokenLanguages: string[];
   translateToEnglish: string;
   cloudTranscriptionProvider: string;
   cloudTranscriptionModel: string;
   cloudTranscriptionBaseUrl?: string;
   customDictionary: string[];
-  dictionaryEntryModes: DictionaryEntryModeMap;
 }
 
 export interface ReasoningSettings {
@@ -99,6 +102,14 @@ export function useSettings() {
     deserialize: (value) => value === "true",
   });
 
+  const [whisperThreads, setWhisperThreads] = useLocalStorage("whisperThreads", 0, {
+    serialize: String,
+    deserialize: (value) => {
+      const n = parseInt(value, 10);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    },
+  });
+
   const [whisperServerIdleTimeoutMinutes, setWhisperServerIdleTimeoutMinutes] = useLocalStorage(
     "whisperServerIdleTimeoutMinutes",
     30,
@@ -138,6 +149,28 @@ export function useSettings() {
     serialize: String,
     deserialize: String,
   });
+
+  const [spokenLanguagesRaw, setSpokenLanguagesRaw] = useLocalStorage<string[]>(
+    SPOKEN_LANGUAGES_KEY,
+    []
+  );
+  const spokenLanguages = useMemo(
+    () => resolveSpokenLanguages(spokenLanguagesRaw, preferredLanguage),
+    [spokenLanguagesRaw, preferredLanguage]
+  );
+
+  // Changing the spoken set also decides what happens on the next dictation:
+  // one language is pinned outright, several fall back to constrained
+  // auto-detect. Deriving it here keeps the two settings from drifting apart,
+  // which is the only way they can produce a state the user did not ask for.
+  const setSpokenLanguages = useCallback(
+    (languages: string[]) => {
+      const normalized = normalizeSpokenLanguages(languages);
+      setSpokenLanguagesRaw(normalized);
+      setPreferredLanguage((current) => derivePreferredLanguage(normalized, current));
+    },
+    [setSpokenLanguagesRaw, setPreferredLanguage]
+  );
 
   const [translateToEnglish, setTranslateToEnglish] = useLocalStorage("translateToEnglish", "off", {
     serialize: String,
@@ -197,45 +230,15 @@ export function useSettings() {
     }
   );
 
-  const [dictionaryEntryModes, setDictionaryEntryModesRaw] =
-    useLocalStorage<DictionaryEntryModeMap>(
-      "dictionaryEntryModes",
-      {},
-      {
-        serialize: JSON.stringify,
-        deserialize: (value) => {
-          try {
-            const parsed = JSON.parse(value);
-            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-            return Object.fromEntries(
-              Object.entries(parsed).filter((entry): entry is [string, DictionaryEntryMode] =>
-                isDictionaryEntryMode(entry[1])
-              )
-            );
-          } catch {
-            return {};
-          }
-        },
-      }
-    );
-
-  const setDictionaryEntryModes = useCallback(
-    (modes: DictionaryEntryModeMap) => {
-      setDictionaryEntryModesRaw(modes);
-    },
-    [setDictionaryEntryModesRaw]
-  );
-
   // Wrap setter to sync dictionary to SQLite
   const setCustomDictionary = useCallback(
     (words: string[]) => {
       setCustomDictionaryRaw(words);
-      setDictionaryEntryModesRaw(pruneDictionaryEntryModes(dictionaryEntryModes, words));
       window.electronAPI?.setDictionary(words).catch(() => {
         // Silently ignore SQLite sync errors
       });
     },
-    [dictionaryEntryModes, setCustomDictionaryRaw, setDictionaryEntryModesRaw]
+    [setCustomDictionaryRaw]
   );
 
   // One-time sync: reconcile localStorage ↔ SQLite on startup, ensure PrivateTranscribe is included
@@ -795,6 +798,7 @@ export function useSettings() {
       reasoningProvider,
       reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
       whisperForceCpu,
+      whisperThreads,
     };
     const startupPreferencesKey = JSON.stringify(startupPreferences);
     if (startupPreferencesKey === lastSyncedStartupPreferencesKey) return;
@@ -813,6 +817,7 @@ export function useSettings() {
     reasoningProvider,
     reasoningModel,
     whisperForceCpu,
+    whisperThreads,
   ]);
 
   // Apply force-CPU toggle immediately when it changes (no restart needed)
@@ -824,6 +829,17 @@ export function useSettings() {
       }
     });
   }, [whisperForceCpu]);
+
+  // Thread count is a whisper-server startup argument, so main stops the server
+  // and it comes back with the new count on the next dictation.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.electronAPI?.setWhisperThreads?.(whisperThreads)?.then((result) => {
+      if (result && result.success === false) {
+        console.error("Failed to apply Whisper thread count:", result.error);
+      }
+    });
+  }, [whisperThreads]);
 
   // Batch operations
 
@@ -911,6 +927,7 @@ export function useSettings() {
       if (settings.whisperForceCpu !== undefined) setWhisperForceCpu(settings.whisperForceCpu);
       if (settings.whisperServerIdleTimeoutMinutes !== undefined)
         setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
+      if (settings.whisperThreads !== undefined) setWhisperThreads(settings.whisperThreads);
       if (settings.allowOpenAIFallback !== undefined)
         setAllowOpenAIFallback(settings.allowOpenAIFallback);
       if (settings.allowLocalFallback !== undefined)
@@ -976,6 +993,7 @@ export function useSettings() {
       setWhisperModel,
       setLocalTranscriptionProvider,
       setWhisperServerIdleTimeoutMinutes,
+      setWhisperThreads,
       setAllowOpenAIFallback,
       setAllowLocalFallback,
       setFallbackWhisperModel,
@@ -1026,18 +1044,20 @@ export function useSettings() {
     whisperModel,
     localTranscriptionProvider,
     whisperForceCpu,
+    whisperThreads,
     whisperServerIdleTimeoutMinutes,
     allowOpenAIFallback,
     allowLocalFallback,
     fallbackWhisperModel,
     preferredLanguage,
+    spokenLanguages,
+    setSpokenLanguages,
     translateToEnglish,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
     cloudTranscriptionBaseUrl,
     cloudReasoningBaseUrl,
     customDictionary,
-    dictionaryEntryModes,
     useReasoningModel,
     reasoningModel,
     reasoningProvider,
@@ -1063,7 +1083,6 @@ export function useSettings() {
     setCloudTranscriptionBaseUrl,
     setCloudReasoningBaseUrl,
     setCustomDictionary,
-    setDictionaryEntryModes,
     setUseReasoningModel,
     setReasoningModel,
     setReasoningProvider,

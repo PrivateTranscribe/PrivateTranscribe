@@ -510,6 +510,227 @@ describe("AudioManager recorder lifecycle", () => {
     expect(manager.getState().longSession.active).toBe(false);
   });
 
+  it("preserves long-session model and compute metadata and aggregates paired timings", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 48;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: { transcriptionProcessingDurationMs: metadata.chunkIndex === 0 ? 1000 : 2000 },
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cuda",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 30_000);
+    await manager.waitForLongSessionQueue();
+
+    await expect(manager.finalizeLongSessionResult(90)).resolves.toMatchObject({
+      activeModel: "turbo",
+      computeMode: "cuda",
+      durationSeconds: 90,
+      timings: {
+        transcriptionProcessingDurationMs: 3000,
+      },
+    });
+  });
+
+  // The dictation's own durationSeconds feeds history and the words-per-minute
+  // stats, so it has to stay the recorded wall clock. Chunk audio is a separate
+  // number that exists only so the speed divides by what the model was handed.
+  it("keeps the recorded duration for stats and reports chunk audio separately", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 51;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: { transcriptionProcessingDurationMs: 1000 },
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cpu",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 30_000);
+    await manager.waitForLongSessionQueue();
+
+    const result = await manager.finalizeLongSessionResult(140);
+
+    expect(result.durationSeconds).toBe(140);
+    expect(result.timings).toMatchObject({
+      transcriptionAudioDurationSeconds: 90,
+      transcriptionProcessingDurationMs: 2000,
+    });
+  });
+
+  it("prefers the engine decode time over the round trip for long-session chunks", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 52;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: {
+          // A cold start: the round trip carries the model load, the decode
+          // figure does not.
+          transcriptionProcessingDurationMs: 9000,
+          transcriptionInferenceDurationMs: 1500,
+        },
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cpu",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["only"]), 60_000);
+    await manager.waitForLongSessionQueue();
+
+    const result = await manager.finalizeLongSessionResult(60);
+
+    expect(result.timings.transcriptionProcessingDurationMs).toBe(1500);
+  });
+
+  it("omits both speed inputs when a chunk timing is missing", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 53;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: metadata.chunkIndex === 0 ? { transcriptionProcessingDurationMs: 1000 } : {},
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cpu",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+    await manager.waitForLongSessionQueue();
+
+    const result = await manager.finalizeLongSessionResult(120);
+
+    expect(result.durationSeconds).toBe(120);
+    expect(result.timings.transcriptionAudioDurationSeconds).toBeUndefined();
+    expect(result.timings.transcriptionProcessingDurationMs).toBeUndefined();
+  });
+
+  it("uses controlled mixed categories when long-session chunks use different engines", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 49;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: metadata.chunkIndex === 0 ? "local" : "openai-fallback",
+        timings: { transcriptionProcessingDurationMs: 1000 },
+      },
+      useLocalWhisper: metadata.chunkIndex === 0,
+      localProvider: "whisper",
+      activeModel: metadata.chunkIndex === 0 ? "turbo" : "gpt-transcribe",
+      computeMode: metadata.chunkIndex === 0 ? "cuda" : "cloud",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+    await manager.waitForLongSessionQueue();
+
+    await expect(manager.finalizeLongSessionResult(120)).resolves.toMatchObject({
+      activeModel: "mixed",
+      computeMode: "mixed",
+      durationSeconds: 120,
+      timings: { transcriptionProcessingDurationMs: 2000 },
+    });
+  });
+
+  it("reports the model and compute path that actually succeeded after fallback", async () => {
+    const localManager = new AudioManager();
+    vi.spyOn(localManager, "getTranscriptionSetting").mockImplementation((key, fallback) => {
+      const values: Record<string, string> = {
+        useLocalWhisper: "true",
+        localTranscriptionProvider: "whisper",
+        whisperModel: "turbo",
+        parakeetModel: "parakeet-tdt-0.6b-v3",
+      };
+      return values[key] ?? fallback;
+    });
+    vi.spyOn(localManager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
+    vi.spyOn(localManager, "processWithLocalWhisper").mockResolvedValue({
+      success: true,
+      text: "cloud fallback",
+      source: "openai-fallback",
+      timings: { transcriptionProcessingDurationMs: 1000 },
+    } as never);
+
+    await expect(localManager.runTranscription(new Blob(["audio"]))).resolves.toMatchObject({
+      activeModel: "gpt-transcribe",
+      computeMode: "cloud",
+    });
+
+    const cloudManager = new AudioManager();
+    vi.spyOn(cloudManager, "getTranscriptionSetting").mockImplementation((key, fallback) => {
+      const values: Record<string, string> = {
+        useLocalWhisper: "false",
+        localTranscriptionProvider: "whisper",
+        whisperModel: "turbo",
+        parakeetModel: "parakeet-tdt-0.6b-v3",
+        fallbackWhisperModel: "small",
+      };
+      return values[key] ?? fallback;
+    });
+    vi.spyOn(cloudManager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
+    vi.spyOn(cloudManager, "processWithOpenAIAPI").mockResolvedValue({
+      success: true,
+      text: "local fallback",
+      source: "local-fallback",
+      timings: { transcriptionProcessingDurationMs: 1000 },
+      computeMode: "cuda",
+    } as never);
+
+    await expect(cloudManager.runTranscription(new Blob(["audio"]))).resolves.toMatchObject({
+      activeModel: "small",
+      computeMode: "cuda",
+    });
+  });
+
   it("retries a failed long-session chunk and preserves its text", async () => {
     const manager = new AudioManager();
     // Fake timers are global here, so the real backoff would never elapse.
@@ -527,10 +748,16 @@ describe("AudioManager recorder lifecycle", () => {
         throw new Error("temporary provider failure");
       }
       return {
-        result: { success: true, text: `chunk-${metadata.chunkIndex}`, source: "openai" },
+        result: {
+          success: true,
+          text: `chunk-${metadata.chunkIndex}`,
+          source: "openai",
+          timings: { transcriptionProcessingDurationMs: 1000 },
+        },
         useLocalWhisper: false,
         localProvider: "whisper",
         activeModel: "gpt-transcribe",
+        computeMode: "cloud",
       } as never;
     });
     vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text);
@@ -539,11 +766,13 @@ describe("AudioManager recorder lifecycle", () => {
     manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
 
     await manager.waitForLongSessionQueue();
-    await expect(manager.finalizeLongSessionResult(120)).resolves.toMatchObject({
+    const result = await manager.finalizeLongSessionResult(120);
+    expect(result).toMatchObject({
       success: true,
       text: "chunk-0 chunk-1",
       longSession: { chunks: 2, failedChunks: 0 },
     });
+    expect(result.timings).not.toHaveProperty("transcriptionProcessingDurationMs");
     expect(attempts.get(1)).toBe(2);
   });
 

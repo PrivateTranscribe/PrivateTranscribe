@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button } from "./button";
 import { Copy, Trash2, ChevronDown, ChevronUp, Check } from "lucide-react";
@@ -38,7 +38,18 @@ export function highlightText(text: string, query: string): ReactNode {
   return parts.length ? <>{parts}</> : text;
 }
 
-const TEXT_PREVIEW_LENGTH = 280;
+/**
+ * How much of a transcript the list shows before offering "Show More".
+ *
+ * Line-based rather than character-based on purpose. A character cap and a CSS
+ * clamp were both applied, so whichever hit first won and the result was
+ * unpredictable: at 280 characters the text was sliced mid-word ("bec…") well
+ * before three lines were full on a wide window. Clamping alone breaks at a
+ * line boundary, and shows more text when there is more room for it.
+ *
+ * Six lines is roughly a spoken paragraph, which is what most dictations are.
+ */
+const TEXT_PREVIEW_LINES = 6;
 
 export default function TranscriptionItem({
   item,
@@ -49,7 +60,9 @@ export default function TranscriptionItem({
   onDelete,
 }: TranscriptionItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const textRef = useRef<HTMLParagraphElement>(null);
   const [isCopied, setIsCopied] = useState(false);
 
   const timestampSource = item.timestamp.endsWith("Z") ? item.timestamp : `${item.timestamp}Z`;
@@ -63,11 +76,33 @@ export default function TranscriptionItem({
         minute: "2-digit",
       });
 
-  const isLongText = item.text.length > TEXT_PREVIEW_LENGTH;
-  // When a search is active, show full text so the highlighted match is always visible.
-  const showFullText = isExpanded || !isLongText || !!searchQuery;
-  const displayText = showFullText ? item.text : `${item.text.slice(0, TEXT_PREVIEW_LENGTH)}…`;
-  const renderedText = highlightText(displayText, searchQuery);
+  // When a search is active, show full text so the highlighted match is always
+  // visible. The transcript is never sliced now; the clamp decides what fits.
+  const isClamped = !isExpanded && !searchQuery;
+  const renderedText = highlightText(item.text, searchQuery);
+
+  // Whether the clamp is actually hiding anything, measured rather than guessed
+  // from a character count, so the button matches what is on screen at this
+  // window width.
+  const measureOverflow = useCallback(() => {
+    const el = textRef.current;
+    if (!el || !isClamped) return;
+    setIsOverflowing(el.scrollHeight - el.clientHeight > 1);
+  }, [isClamped]);
+
+  useLayoutEffect(measureOverflow, [measureOverflow, item.text, searchQuery]);
+
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureOverflow);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureOverflow]);
+
+  // Expanding removes the overflow that justified the button, so the toggle
+  // has to survive on its own once it is open.
+  const canToggle = (isOverflowing || isExpanded) && !searchQuery;
 
   return (
     <div
@@ -87,10 +122,18 @@ export default function TranscriptionItem({
         <div className="flex-1 min-w-0">
           {/* Text */}
           <p
-            className={cn(
-              "text-foreground text-[15px] leading-relaxed break-words",
-              !isExpanded && isLongText && !searchQuery && "line-clamp-3"
-            )}
+            ref={textRef}
+            className="text-foreground text-[15px] leading-relaxed break-words"
+            style={
+              isClamped
+                ? {
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: TEXT_PREVIEW_LINES,
+                    overflow: "hidden",
+                  }
+                : undefined
+            }
           >
             {renderedText}
           </p>
@@ -98,7 +141,7 @@ export default function TranscriptionItem({
           {/* Metadata row */}
           <div className="flex items-center gap-3 mt-2.5">
             <span className="text-xs text-muted-foreground tabular-nums">{formattedTimestamp}</span>
-            {isLongText && !searchQuery && (
+            {canToggle && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="inline-flex items-center gap-1 text-xs text-primary/80 hover:text-primary transition-colors duration-200"

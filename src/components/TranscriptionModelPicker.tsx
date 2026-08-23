@@ -11,6 +11,7 @@ import { ConfirmDialog } from "./ui/dialog";
 import { useDialogs } from "../hooks/useDialogs";
 import { useModelDownload } from "../hooks/useModelDownload";
 import {
+  compareWhisperModelsForDisplay,
   getTranscriptionProviders,
   TranscriptionProviderData,
   WHISPER_MODEL_INFO,
@@ -717,20 +718,16 @@ export default function TranscriptionModelPicker({
       const turboEntry = allModelEntries.find((model) => model.model === "turbo");
       return turboEntry ? [turboEntry] : allModelEntries.slice(0, 1);
     };
-    const displayedModelEntries = isOnboarding
-      ? (showAllLocalModels ? allModelEntries : getOnboardingCollapsedModelEntries()).sort(
-          (a, b) => {
-            const rank = (model: LocalModel): number => {
-              if (model.model === recommendedLocalModel) return 0;
-              if (model.model === selectedLocalModel) return 1;
-              if (model.model === "turbo") return 2;
-              if (model.downloaded) return 3;
-              return 9;
-            };
-            return rank(a) - rank(b);
-          }
-        )
-      : allModelEntries;
+    // Registry key order is historical, so always sort explicitly: recommended
+    // model first, then smallest to largest download.
+    const sortForDisplay = (entries: LocalModel[]): LocalModel[] =>
+      [...entries].sort((a, b) =>
+        compareWhisperModelsForDisplay(a.model, b.model, recommendedLocalModel)
+      );
+
+    const displayedModelEntries = sortForDisplay(
+      isOnboarding && !showAllLocalModels ? getOnboardingCollapsedModelEntries() : allModelEntries
+    );
 
     return (
       <div className="space-y-1">

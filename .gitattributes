@@ -1,0 +1,33 @@
+# Line endings are decided here, not by whoever happens to commit.
+#
+# The repo had no rule and core.autocrlf=false, so whatever bytes an editor or
+# script wrote went straight in. A third of the tracked text files had drifted
+# to CRLF while .prettierrc asks for LF, which meant `format:check` and the
+# committed bytes disagreed and one-line edits showed up as whole-file diffs.
+* text=auto eol=lf
+
+# Binaries must never be touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.node binary
+*.bin binary
+*.wav binary
+*.mp3 binary
+*.m4a binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+
+# Windows-only scripts break if the shell sees LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -10,6 +10,7 @@ const SUPABASE_URL = "https://wsfrykhacxjfsgvqnlbq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_QN2jW34xQsNcVBT9Q76HNw_Yyo8gnao";
 const DEVICE_ID_FILE = "device-id.txt";
 const CONSENT_FILE = "analytics-consent.txt";
+const CONSENT_VERSION = 2;
 
 class AnalyticsManager {
   constructor() {
@@ -136,7 +137,16 @@ class AnalyticsManager {
       const userDataPath = app?.getPath?.("userData") || "";
       const consentFile = path.join(userDataPath, CONSENT_FILE);
       if (fs.existsSync(consentFile)) {
-        return fs.readFileSync(consentFile, "utf8").trim();
+        const storedConsent = fs.readFileSync(consentFile, "utf8").trim();
+        if (storedConsent === `granted:v${CONSENT_VERSION}`) {
+          return "granted";
+        }
+        if (storedConsent === `denied:v${CONSENT_VERSION}` || storedConsent === "denied") {
+          return "denied";
+        }
+        // A previous grant covered fewer telemetry dimensions. Pause analytics
+        // until the expanded disclosure has been shown and accepted.
+        return null;
       }
     } catch {}
     return null;
@@ -146,7 +156,7 @@ class AnalyticsManager {
     try {
       const userDataPath = app?.getPath?.("userData") || "";
       const consentFile = path.join(userDataPath, CONSENT_FILE);
-      fs.writeFileSync(consentFile, value, "utf8");
+      fs.writeFileSync(consentFile, `${value}:v${CONSENT_VERSION}`, "utf8");
     } catch {}
   }
 }

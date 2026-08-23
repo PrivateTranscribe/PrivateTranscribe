@@ -5,6 +5,12 @@ name: Transcription accuracy
 # that shipped: the same models that score 6-12% WER on English score
 # 15-63% on Danish, and nothing in CI was watching.
 #
+# Each pair is measured with the language pinned and again with detection
+# constrained to the user's spoken languages. Pinned is blind to detection by
+# construction, so it alone would not have watched the path 0.15.0 put every
+# user on. New modes start unbaselined and are reported without failing until
+# a dispatch with update_baseline records them here.
+#
 # Deliberately not run on every push. A run downloads Whisper models and a
 # FLEURS split, then does real inference on a CPU runner, so it is far too
 # slow to sit in the PR path. It runs weekly and on demand, which is often
@@ -48,8 +54,10 @@ jobs:
   accuracy:
     name: WER regression gate
     runs-on: ubuntu-latest
-    # Model downloads plus CPU inference across four language/model pairs.
-    timeout-minutes: 90
+    # Model downloads plus CPU inference across four language/model pairs, in
+    # each mode the config lists. Two modes is twice the inference, so this is
+    # sized for that rather than for the pinned-only run it used to be.
+    timeout-minutes: 180
 
     steps:
       - name: Checkout code

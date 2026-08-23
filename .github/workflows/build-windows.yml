@@ -149,13 +149,65 @@ jobs:
           path: dist/latest.yml
           retention-days: 7
 
-      # Optional: upload to Cloudflare R2
-      # Uncomment when R2 bucket and credentials are configured
-      # - name: Upload to R2
-      #   if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true'
-      #   uses: cloudflare/wrangler-action@v3
-      #   with:
-      #     command: r2 object put privatetranscribe-assets/updates/win/latest.yml --file dist/latest.yml
-      #   env:
-      #     CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Publishing is what makes a release reach existing users: electron-updater
+      # reads https://updates.privatetranscribe.com/win/latest.yml (see
+      # UPDATE_FEED_URL in src/updater.js and `publish` in electron-builder.json).
+      # That host serves the bucket root, so the feed lives at `win/` — the
+      # previous placeholder here targeted `updates/win/`, which would have been
+      # served at /updates/win/ and never read by anyone.
+      #
+      # Uses the same S3-style R2 credentials as build-cuda-binary.yml, which are
+      # already configured; the old wrangler placeholder needed CLOUDFLARE_* tokens
+      # that do not exist.
+      - name: Upload to R2 (publish update)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true' }}
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          INSTALLER=$(ls dist/PrivateTranscribe\ Setup\ *.exe 2>/dev/null | head -1)
+          if [ -z "$INSTALLER" ]; then
+            echo "ERROR: no NSIS installer found in dist/"
+            exit 1
+          fi
+          if [ ! -f dist/latest.yml ]; then
+            echo "ERROR: dist/latest.yml is missing; electron-updater would have nothing to read"
+            exit 1
+          fi
+
+          SIZE=$(stat -c%s "$INSTALLER")
+          if [ "$SIZE" -lt 50000000 ]; then
+            echo "ERROR: refusing to publish — installer is only $SIZE bytes"
+            exit 1
+          fi
+
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          # Order matters: latest.yml is the trigger. Publishing it before the
+          # installer exists would point every auto-updater at a 404.
+          aws s3 cp "$INSTALLER" "s3://privatetranscribe-assets/win/$(basename "$INSTALLER")" \
+            --endpoint-url "$ENDPOINT" --no-progress
+
+          # electron-updater fetches <installer>.blockmap to download only the
+          # changed bytes. Without it the update still works but every user pays
+          # a full ~130 MB download; 0.14.0 shipped its blockmap, so omitting it
+          # here would be a regression.
+          if [ -f "$INSTALLER.blockmap" ]; then
+            aws s3 cp "$INSTALLER.blockmap" \
+              "s3://privatetranscribe-assets/win/$(basename "$INSTALLER").blockmap" \
+              --endpoint-url "$ENDPOINT" --no-progress
+          else
+            echo "ERROR: $INSTALLER.blockmap is missing; differential updates would fall back to a full download"
+            exit 1
+          fi
+
+          aws s3 cp dist/latest.yml "s3://privatetranscribe-assets/win/latest.yml" \
+            --endpoint-url "$ENDPOINT" --no-progress
+
+          echo "Published $(basename "$INSTALLER") ($SIZE bytes), its blockmap, and latest.yml"

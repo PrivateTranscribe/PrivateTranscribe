@@ -103,6 +103,48 @@ describe("Whisper parsing utilities", () => {
       });
     });
 
+    it.each(["cpu", "cuda"])(
+      "reports the effective %s engine without exposing hardware identity",
+      async (effectiveEngine) => {
+        const manager = new WhisperManager();
+        manager.serverManager.ready = true;
+        manager.serverManager.stoppedDueToIdle = false;
+        manager.currentServerModel = "base";
+        vi.spyOn(manager.serverManager, "transcribe").mockResolvedValue({ text: "hello" });
+        vi.spyOn(manager.serverManager, "getEngineStatus").mockReturnValue({ effectiveEngine });
+
+        const result = await manager.transcribeViaServer(Buffer.from("audio"), "base", "en");
+
+        expect(result).toMatchObject({
+          success: true,
+          text: "hello",
+          computeMode: effectiveEngine,
+        });
+        expect(result).not.toHaveProperty("hardware");
+      }
+    );
+
+    // The caller's own stopwatch spans the IPC round trip and, on the first
+    // dictation of a session, the model load with it. Scoring a machine on that
+    // reports it as several times slower than it is.
+    it("reports the decode time alone, without the server start it may have waited on", async () => {
+      const manager = new WhisperManager();
+      manager.serverManager.ready = true;
+      manager.serverManager.stoppedDueToIdle = false;
+      manager.currentServerModel = "base";
+      vi.spyOn(manager.serverManager, "getEngineStatus").mockReturnValue({
+        effectiveEngine: "cpu",
+      });
+      vi.spyOn(manager.serverManager, "transcribe").mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ text: "hello" }), 30))
+      );
+
+      const result = await manager.transcribeViaServer(Buffer.from("audio"), "base", "en");
+
+      expect(result.inferenceDurationMs).toBeGreaterThan(0);
+      expect(result.inferenceDurationMs).toBeLessThan(5000);
+    });
+
     it("normalizes spaces before punctuation in server text", () => {
       const manager = new WhisperManager();
 

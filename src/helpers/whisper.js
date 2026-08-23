@@ -110,6 +110,10 @@ class WhisperManager {
       if (typeof settings.whisperForceCpu === "boolean") {
         await this.serverManager.setForceCpu(settings.whisperForceCpu);
       }
+
+      if (settings.whisperThreads !== undefined) {
+        await this.serverManager.setThreads(settings.whisperThreads);
+      }
     } catch (error) {
       debugLogger.warn("Whisper initialization error", {
         error: error.message,
@@ -254,6 +258,14 @@ class WhisperManager {
     return this.gpuBinaryManager.downloadCudaBinary(onProgress);
   }
 
+  setCudaDownloadProgressListener(listener) {
+    this.gpuBinaryManager.setDownloadProgressListener(listener);
+  }
+
+  getCudaDownloadState() {
+    return this.gpuBinaryManager.getDownloadState();
+  }
+
   async invalidateServerCache(options = {}) {
     await this.serverManager.invalidateServerCache(options);
     this.currentServerModel = null;
@@ -265,6 +277,10 @@ class WhisperManager {
 
   async setForceCpu(value) {
     await this.serverManager.setForceCpu(value);
+  }
+
+  async setThreads(value) {
+    await this.serverManager.setThreads(value);
   }
 
   isProcessing() {
@@ -331,6 +347,12 @@ class WhisperManager {
 
     const model = options.model || "turbo";
     const language = options.language || null;
+    // The languages the speaker actually speaks. Only consulted when no
+    // explicit language was given, since an explicit choice already answers
+    // the question this constrains.
+    const allowedLanguages = Array.isArray(options.allowedLanguages)
+      ? options.allowedLanguages
+      : [];
     const translate = options.translate || false;
     const initialPrompt = options.initialPrompt || null;
     const inputFileName = options.inputFileName || null;
@@ -353,6 +375,7 @@ class WhisperManager {
       inputFileName,
       translate,
       {
+        allowedLanguages,
         fileMode: options.fileMode === true,
         noiseReduction: options.noiseReduction === true,
         speakerDetection: options.speakerDetection === true,
@@ -457,15 +480,30 @@ class WhisperManager {
       typeof result?.detectedLanguage === "string" ? result.detectedLanguage : null;
 
     const parsed = this.parseWhisperResult(result);
+    const effectiveEngine = this.serverManager.getEngineStatus?.().effectiveEngine;
+    const computeMode =
+      effectiveEngine === "cuda" || effectiveEngine === "cpu" ? effectiveEngine : "unknown";
+    // The request alone, with the server already up and the model already
+    // loaded. The caller's own stopwatch spans the IPC round trip and, on the
+    // first dictation of a session, the model load with it - which would report
+    // a machine as several times slower than it is.
+    const inferenceDurationMs = elapsed;
     if (requestOptions.fileMode && parsed.success) {
       return {
         ...parsed,
         raw: result,
         segments: result?.segments || [],
+        computeMode,
+        inferenceDurationMs,
         ...(detectedLanguage ? { detectedLanguage } : {}),
       };
     }
-    return detectedLanguage ? { ...parsed, detectedLanguage } : parsed;
+    return {
+      ...parsed,
+      computeMode,
+      inferenceDurationMs,
+      ...(detectedLanguage ? { detectedLanguage } : {}),
+    };
   }
 
   async audioBlobToBuffer(audioBlob) {

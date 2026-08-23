@@ -151,6 +151,10 @@
         "to": "bin/",
         "filter": [
           "*.dll",
+          "!ggml-cuda.dll",
+          "!ggml-vulkan.dll",
+          "!cublas*.dll",
+          "!cudart*.dll",
           "windows-fast-paste.exe",
           "windows-mic-watch.exe",
           "windows-hold-key.exe"
