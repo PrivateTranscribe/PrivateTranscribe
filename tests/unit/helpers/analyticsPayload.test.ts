@@ -107,7 +107,7 @@ describe("analytics payload privacy", () => {
         language: "secret-project",
         model: "acme-private-model-v7",
       })
-    ).toEqual({ source: "unknown", language: "unset", model: "custom" });
+    ).toEqual({ source: "unknown", language: "custom", model: "custom" });
   });
 
   it("keeps semantic analytics enums aligned with selectable settings", async () => {

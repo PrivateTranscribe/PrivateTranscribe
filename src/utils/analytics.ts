@@ -75,6 +75,7 @@ function bucketDuration(durationSeconds: unknown) {
  */
 export const ALLOWED_TRANSCRIPTION_ANALYTICS_LANGUAGES = new Set([
   "unset",
+  "custom",
   "auto",
   "af",
   "ar",
@@ -152,7 +153,10 @@ export const ALLOWED_TRANSCRIPTION_ANALYTICS_SOURCES = new Set([
 function normalizeLanguageSetting(preferredLanguage: unknown) {
   if (typeof preferredLanguage !== "string") return "unset";
   const normalized = preferredLanguage.trim().toLowerCase();
-  return ALLOWED_TRANSCRIPTION_ANALYTICS_LANGUAGES.has(normalized) ? normalized : "unset";
+  if (!normalized) return "unset";
+  // A language we do not recognise still means somebody picked one. Folding it
+  // into "unset" would count them as auto-detect and hide the choice.
+  return ALLOWED_TRANSCRIPTION_ANALYTICS_LANGUAGES.has(normalized) ? normalized : "custom";
 }
 
 function normalizeSource(source: unknown) {

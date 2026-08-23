@@ -41,6 +41,7 @@ const STRING_ENUMS = {
 
 const ALLOWED_ANALYTICS_LANGUAGES = new Set([
   "unset",
+  "custom",
   "auto",
   "af",
   "ar",
@@ -161,7 +162,9 @@ function sanitizeAnalyticsProperties(properties) {
     }
 
     if (key === "language" && typeof value === "string") {
-      safe[key] = ALLOWED_ANALYTICS_LANGUAGES.has(value) ? value : "unset";
+      // "custom" rather than "unset": an unrecognised code still means the user
+      // chose a language, and counting that as auto-detect would hide it.
+      safe[key] = ALLOWED_ANALYTICS_LANGUAGES.has(value) ? value : "custom";
       continue;
     }
 

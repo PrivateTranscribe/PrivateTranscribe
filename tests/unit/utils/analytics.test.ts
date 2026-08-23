@@ -75,7 +75,16 @@ describe("transcription analytics properties", () => {
       preferredLanguage: "secret-project-codename",
     });
 
-    expect(properties).toMatchObject({ source: "unknown", language: "unset" });
+    // "custom", not "unset": the code is unrecognised, but a choice was still
+    // made, and "unset" would count them among the auto-detect users.
+    expect(properties).toMatchObject({ source: "unknown", language: "custom" });
+    expect(
+      buildTranscriptionAnalyticsProperties({
+        outputAction: "paste",
+        text: "hello",
+        preferredLanguage: "   ",
+      }).language
+    ).toBe("unset");
     expect(
       buildTranscriptionAnalyticsProperties({
         source: "openai-reasoned",
