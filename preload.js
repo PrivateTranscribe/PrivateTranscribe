@@ -189,6 +189,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAloudEngineStatus: () => ipcRenderer.invoke("readaloud-engine-status"),
   readAloudSplit: (text) => ipcRenderer.invoke("readaloud-split", text),
   readAloudSynth: (options) => ipcRenderer.invoke("readaloud-synth", options),
+  readAloudReadSelection: () => ipcRenderer.invoke("readaloud-read-selection"),
+  onReadAloudSpeak: registerListener("readaloud-speak"),
   /**
    * Dev-only switch for the headless Read Aloud test surface. Off unless the
    * app was launched with PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1, so a

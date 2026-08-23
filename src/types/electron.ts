@@ -192,6 +192,23 @@ export interface KokoroSynthResult {
   synthMs: number;
 }
 
+/** Outcome of copying the foreground app's selection. See selectionCapture.js. */
+export interface SelectionCaptureResult {
+  text: string;
+  /**
+   * `selection` - Ctrl+C actually produced new text.
+   * `clipboard` - the copy produced nothing, so the pre-existing clipboard was
+   *   used instead.
+   * `none` - nothing to read.
+   * `unsupported` - not Windows, or the capture worker is unavailable.
+   */
+  source: "selection" | "clipboard" | "none" | "unsupported";
+  /** How long the worker waited for the trigger modifiers to be released. */
+  waitedMs: number | null;
+  /** Raw worker reply, e.g. "OK waited=120ms" or "ERR timeout". */
+  detail: string;
+}
+
 export interface PasteToolsResult {
   platform: "darwin" | "win32" | "linux";
   available: boolean;
@@ -655,6 +672,15 @@ declare global {
         voice?: string;
         speed?: number;
       }) => Promise<KokoroSynthResult>;
+      /**
+       * Copy the foreground app's selection and push it to the overlay to speak.
+       * The result describes the capture itself; the speaking happens over the
+       * `readaloud-speak` event.
+       */
+      readAloudReadSelection: () => Promise<SelectionCaptureResult>;
+      onReadAloudSpeak: (
+        callback: (event: any, data: { text: string }) => void
+      ) => (() => void) | void;
       /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
       readAloudTestEnabled: boolean;
 

@@ -232,6 +232,7 @@ class IPCHandlers {
     this.whisperManager = managers.whisperManager;
     this.parakeetManager = managers.parakeetManager;
     this.kokoroManager = managers.kokoroManager || null;
+    this.selectionCapture = managers.selectionCapture || null;
     this.windowManager = managers.windowManager;
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
@@ -1240,6 +1241,39 @@ class IPCHandlers {
 
     ipcMain.handle("readaloud-synth", async (_event, { text, voice, speed } = {}) => {
       return requireKokoro().synthesize(text, { voice, speed });
+    });
+
+    /**
+     * Read whatever the user has selected in the foreground app and hand it to
+     * the overlay to speak.
+     *
+     * The overlay owns playback (it survives the control panel closing), so the
+     * text is pushed there as an event rather than returned to whoever asked.
+     * The full capture result still comes back to the caller, because how the
+     * capture went - selection vs clipboard fallback vs nothing, and how long
+     * the worker waited for the trigger modifiers - is the only visibility
+     * anything else has into a keystroke injected into another process.
+     */
+    ipcMain.handle("readaloud-read-selection", async () => {
+      if (!this.selectionCapture) {
+        return {
+          text: "",
+          source: "unsupported",
+          waitedMs: null,
+          detail: "ERR selection capture unavailable",
+        };
+      }
+
+      const result = await this.selectionCapture.captureSelection();
+
+      if (result.text) {
+        const overlay = this.windowManager?.mainWindow;
+        if (overlay && !overlay.isDestroyed()) {
+          safeSend(overlay.webContents, "readaloud-speak", { text: result.text });
+        }
+      }
+
+      return result;
     });
 
     // Utility handlers

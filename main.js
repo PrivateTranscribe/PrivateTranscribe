@@ -84,6 +84,7 @@ const voiceMuter = require("./src/helpers/voiceMuter");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
 const KokoroManager = require("./src/helpers/kokoro");
+const SelectionCapture = require("./src/helpers/selectionCapture");
 const TrayManager = require("./src/helpers/tray");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
@@ -107,6 +108,7 @@ let clipboardManager = null;
 let whisperManager = null;
 let parakeetManager = null;
 let kokoroManager = null;
+let selectionCapture = null;
 let trayManager = null;
 let updateManager = null;
 let globeKeyManager = null;
@@ -169,6 +171,11 @@ async function initializeManagers() {
   // Read Aloud (Kokoro TTS). Constructed only — the model is loaded lazily on
   // the first synthesis request, and never downloaded implicitly.
   kokoroManager = new KokoroManager();
+  // Reads the foreground app's selection for Read Aloud. The PowerShell worker
+  // is started eagerly because its ~300ms startup would otherwise land inside
+  // the first read's latency budget.
+  selectionCapture = new SelectionCapture();
+  selectionCapture.start();
   trayManager = new TrayManager();
   updateManager = new UpdateManager();
   updateManager.setBeforeQuitAndInstall(async () => {
@@ -232,6 +239,7 @@ async function initializeManagers() {
     whisperManager,
     parakeetManager,
     kokoroManager,
+    selectionCapture,
     windowManager,
     updateManager,
     windowsKeyManager,
@@ -937,6 +945,9 @@ if (gotSingleInstanceLock) {
     }
     if (windowsKeyManager) {
       windowsKeyManager.stop();
+    }
+    if (selectionCapture) {
+      selectionCapture.stop();
     }
     if (updateManager) {
       updateManager.cleanup();

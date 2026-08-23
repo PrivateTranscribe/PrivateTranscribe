@@ -216,8 +216,23 @@ export default function App() {
   useEffect(() => {
     const player = new ReadAloudPlayer();
 
+    // The real feature path: the main process captures the foreground app's
+    // selection and pushes the text here. Not gated on the test flag - this is
+    // what a user's read hotkey ends up calling.
+    const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
+      const text = data?.text;
+      if (typeof text === "string" && text.trim()) {
+        player.speak(text);
+      }
+    });
+
+    const teardown = () => {
+      if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
+      player.dispose();
+    };
+
     if (!window.electronAPI?.readAloudTestEnabled) {
-      return () => player.dispose();
+      return teardown;
     }
 
     window.__readAloudTest = {
@@ -233,7 +248,7 @@ export default function App() {
 
     return () => {
       delete window.__readAloudTest;
-      player.dispose();
+      teardown();
     };
   }, []);
 
