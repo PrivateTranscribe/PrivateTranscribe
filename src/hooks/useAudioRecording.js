@@ -452,7 +452,12 @@ export const useAudioRecording = (toast, options = {}) => {
           preferredLanguage: localStorage.getItem("preferredLanguage"),
           model: result.activeModel,
           computeMode: result.computeMode,
-          transcriptionProcessingDurationMs: result.timings?.transcriptionProcessingDurationMs,
+          transcriptionAudioDurationSeconds: result.timings?.transcriptionAudioDurationSeconds,
+          // Inference time when the engine reported it, so the first dictation
+          // after launch is not scored on its model load.
+          transcriptionProcessingDurationMs:
+            result.timings?.transcriptionInferenceDurationMs ??
+            result.timings?.transcriptionProcessingDurationMs,
         });
         void trackAnalyticsEvent("transcription_completed", analyticsProperties);
         void trackAnalyticsEventOnce("first_transcription_completed", analyticsProperties);

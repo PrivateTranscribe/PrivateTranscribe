@@ -227,6 +227,7 @@ export function buildTranscriptionAnalyticsProperties({
   preferredLanguage,
   model,
   computeMode,
+  transcriptionAudioDurationSeconds,
   transcriptionProcessingDurationMs,
 }: {
   source?: unknown;
@@ -236,10 +237,16 @@ export function buildTranscriptionAnalyticsProperties({
   preferredLanguage?: unknown;
   model?: unknown;
   computeMode?: unknown;
+  transcriptionAudioDurationSeconds?: unknown;
   transcriptionProcessingDurationMs?: unknown;
 }): AnalyticsProperties {
+  // The speed divides the audio the model was handed by the time it took. A
+  // long session hands over chunks that do not add up to the wall clock, so it
+  // passes its own figure; everything else records straight through.
   const realtimeFactorX100 = computeRealtimeFactorX100(
-    durationSeconds,
+    typeof transcriptionAudioDurationSeconds === "number"
+      ? transcriptionAudioDurationSeconds
+      : durationSeconds,
     transcriptionProcessingDurationMs
   );
 

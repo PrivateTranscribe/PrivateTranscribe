@@ -545,6 +545,109 @@ describe("AudioManager recorder lifecycle", () => {
     });
   });
 
+  // The dictation's own durationSeconds feeds history and the words-per-minute
+  // stats, so it has to stay the recorded wall clock. Chunk audio is a separate
+  // number that exists only so the speed divides by what the model was handed.
+  it("keeps the recorded duration for stats and reports chunk audio separately", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 51;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: { transcriptionProcessingDurationMs: 1000 },
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cpu",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 30_000);
+    await manager.waitForLongSessionQueue();
+
+    const result = await manager.finalizeLongSessionResult(140);
+
+    expect(result.durationSeconds).toBe(140);
+    expect(result.timings).toMatchObject({
+      transcriptionAudioDurationSeconds: 90,
+      transcriptionProcessingDurationMs: 2000,
+    });
+  });
+
+  it("prefers the engine decode time over the round trip for long-session chunks", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 52;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: {
+          // A cold start: the round trip carries the model load, the decode
+          // figure does not.
+          transcriptionProcessingDurationMs: 9000,
+          transcriptionInferenceDurationMs: 1500,
+        },
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cpu",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["only"]), 60_000);
+    await manager.waitForLongSessionQueue();
+
+    const result = await manager.finalizeLongSessionResult(60);
+
+    expect(result.timings.transcriptionProcessingDurationMs).toBe(1500);
+  });
+
+  it("omits both speed inputs when a chunk timing is missing", async () => {
+    const manager = new AudioManager();
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 53;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: {
+        success: true,
+        text: `chunk-${metadata.chunkIndex}`,
+        source: "local",
+        timings: metadata.chunkIndex === 0 ? { transcriptionProcessingDurationMs: 1000 } : {},
+      },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "turbo",
+      computeMode: "cpu",
+    }));
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text as never);
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+    await manager.waitForLongSessionQueue();
+
+    const result = await manager.finalizeLongSessionResult(120);
+
+    expect(result.durationSeconds).toBe(120);
+    expect(result.timings.transcriptionAudioDurationSeconds).toBeUndefined();
+    expect(result.timings.transcriptionProcessingDurationMs).toBeUndefined();
+  });
+
   it("uses controlled mixed categories when long-session chunks use different engines", async () => {
     const manager = new AudioManager();
     const state = manager.createLongSessionState();

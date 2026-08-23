@@ -480,7 +480,12 @@ class AudioManager {
       return;
     }
 
-    const processingDurationMs = transcription.result?.timings?.transcriptionProcessingDurationMs;
+    const timings = transcription.result?.timings;
+    // Inference time when the engine reports it, so a cold start's model load
+    // does not get counted as time spent transcribing.
+    const processingDurationMs = Number.isFinite(timings?.transcriptionInferenceDurationMs)
+      ? timings.transcriptionInferenceDurationMs
+      : timings?.transcriptionProcessingDurationMs;
     const audioDurationMs = item.durationMs;
     const hasPairedTiming =
       Number.isFinite(processingDurationMs) &&
@@ -501,7 +506,13 @@ class AudioManager {
     });
   }
 
-  summarizeLongSessionTelemetry(state, fallbackDurationSeconds) {
+  /**
+   * Returns only telemetry. The dictation's own durationSeconds stays the
+   * recorded wall clock, because that is what the history and the words-per-
+   * minute stats are counted against; the summed chunk audio below exists so
+   * the speed metric divides by the audio the model was actually handed.
+   */
+  summarizeLongSessionTelemetry(state) {
     const entries = [...state.telemetry.values()];
     const models = new Set(entries.map((entry) => entry.activeModel).filter(Boolean));
     const computeModes = new Set(entries.map((entry) => entry.computeMode).filter(Boolean));
@@ -521,7 +532,7 @@ class AudioManager {
       );
 
     if (!hasCompleteTiming) {
-      return { activeModel, computeMode, durationSeconds: fallbackDurationSeconds };
+      return { activeModel, computeMode };
     }
 
     const audioDurationMs = entries.reduce((sum, entry) => sum + entry.audioDurationMs, 0);
@@ -532,7 +543,7 @@ class AudioManager {
     return {
       activeModel,
       computeMode,
-      durationSeconds: audioDurationMs / 1000,
+      transcriptionAudioDurationSeconds: audioDurationMs / 1000,
       transcriptionProcessingDurationMs: processingDurationMs,
     };
   }
@@ -1330,19 +1341,24 @@ class AudioManager {
     const reasonedText = await this.processTranscription(rawText, "long-session");
     const text = this.preserveMissingSectionMarkers(reasonedText || rawText, state.errors.length);
     const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
-    const telemetry = this.summarizeLongSessionTelemetry(state, durationSeconds);
-    const transcriptionProcessingDurationMs = telemetry.transcriptionProcessingDurationMs;
+    const telemetry = this.summarizeLongSessionTelemetry(state);
+    const { transcriptionProcessingDurationMs, transcriptionAudioDurationSeconds } = telemetry;
+    const hasPairedTiming =
+      Number.isFinite(transcriptionProcessingDurationMs) &&
+      Number.isFinite(transcriptionAudioDurationSeconds);
 
     return {
       success: true,
       text,
       source,
-      durationSeconds: telemetry.durationSeconds,
+      durationSeconds,
       activeModel: telemetry.activeModel,
       computeMode: telemetry.computeMode,
       timings: {
-        ...(Number.isFinite(transcriptionProcessingDurationMs)
-          ? { transcriptionProcessingDurationMs }
+        // Both or neither: a speed built from one chunk's audio and another
+        // chunk's clock would be a number nobody can act on.
+        ...(hasPairedTiming
+          ? { transcriptionProcessingDurationMs, transcriptionAudioDurationSeconds }
           : {}),
         reasoningProcessingDurationMs: Math.round(performance.now() - reasoningStart),
       },
@@ -2128,6 +2144,9 @@ class AudioManager {
       activeModel = result?.activeModel || activeModel;
     }
 
+    // Parakeet is a literal "cpu" because the bundled sherpa-onnx binaries ship
+    // no GPU execution provider. If one is ever added, this has to start
+    // reading the provider instead of asserting it.
     const computeMode = source.startsWith("openai")
       ? "cloud"
       : useLocalWhisper && localProvider === "nvidia"
@@ -2264,11 +2283,18 @@ class AudioManager {
       timings.transcriptionProcessingDurationMs = Math.round(
         performance.now() - transcriptionStart
       );
+      // What the engine spent decoding, without the model load a cold start
+      // pays for. Kept beside the round trip rather than replacing it, because
+      // the round trip is the wait the user actually sits through.
+      if (Number.isFinite(result?.inferenceDurationMs) && result.inferenceDurationMs > 0) {
+        timings.transcriptionInferenceDurationMs = Math.round(result.inferenceDurationMs);
+      }
 
       logger.debug(
         "Local transcription complete",
         {
           transcriptionProcessingDurationMs: timings.transcriptionProcessingDurationMs,
+          transcriptionInferenceDurationMs: timings.transcriptionInferenceDurationMs ?? null,
           success: result.success,
         },
         "performance"
@@ -3368,6 +3394,9 @@ class AudioManager {
           timings.transcriptionProcessingDurationMs = Math.round(
             performance.now() - localFallbackStart
           );
+          if (Number.isFinite(result?.inferenceDurationMs) && result.inferenceDurationMs > 0) {
+            timings.transcriptionInferenceDurationMs = Math.round(result.inferenceDurationMs);
+          }
 
           if (result.success && result.text) {
             if (metadata?.skipPostProcessing) {

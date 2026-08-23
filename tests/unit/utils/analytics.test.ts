@@ -85,6 +85,25 @@ describe("transcription analytics properties", () => {
     ).toBe("openai-reasoned");
   });
 
+  it("divides by the audio handed to the model, and buckets what was recorded", () => {
+    // A long session hands over chunks that do not add up to the wall clock.
+    // Mixing the two would report a speed nobody can reproduce, and moving the
+    // bucket off the recording would misreport how long people dictate for.
+    const properties = buildTranscriptionAnalyticsProperties({
+      source: "long-session",
+      outputAction: "paste",
+      text: "hello",
+      durationSeconds: 140,
+      transcriptionAudioDurationSeconds: 90,
+      transcriptionProcessingDurationMs: 3000,
+    });
+
+    expect(properties).toMatchObject({
+      duration_bucket: "61-300s",
+      realtime_factor_x100: 3000,
+    });
+  });
+
   it("distinguishes auto-detect from an explicit choice", () => {
     // Auto is the answer that matters most: it is the setting that costs
     // accuracy, and there is no other way to see how many people sit on it.

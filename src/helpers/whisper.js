@@ -483,18 +483,25 @@ class WhisperManager {
     const effectiveEngine = this.serverManager.getEngineStatus?.().effectiveEngine;
     const computeMode =
       effectiveEngine === "cuda" || effectiveEngine === "cpu" ? effectiveEngine : "unknown";
+    // The request alone, with the server already up and the model already
+    // loaded. The caller's own stopwatch spans the IPC round trip and, on the
+    // first dictation of a session, the model load with it - which would report
+    // a machine as several times slower than it is.
+    const inferenceDurationMs = elapsed;
     if (requestOptions.fileMode && parsed.success) {
       return {
         ...parsed,
         raw: result,
         segments: result?.segments || [],
         computeMode,
+        inferenceDurationMs,
         ...(detectedLanguage ? { detectedLanguage } : {}),
       };
     }
     return {
       ...parsed,
       computeMode,
+      inferenceDurationMs,
       ...(detectedLanguage ? { detectedLanguage } : {}),
     };
   }
