@@ -15,6 +15,38 @@ const { resolveWhisperThreads } = require("./cpuThreads");
 
 const gpuBinaryManager = new GpuBinaryManager();
 
+/**
+ * Reads the backend whisper-server says it loaded, rather than guessing from
+ * the binary's filename.
+ *
+ * The filename only records which build was launched, and that is not the same
+ * question. A CPU-named build picks up a CUDA backend if the runtime libraries
+ * happen to sit beside it, and a CUDA-named build falls back to the CPU when
+ * the driver refuses it, having started successfully. Both report a compute
+ * mode that never ran.
+ *
+ * Returns null when the output says nothing either way, so the caller can keep
+ * its own answer instead of being handed a guess dressed up as an observation.
+ */
+function detectServerBackend(output) {
+  if (!output) return null;
+
+  // "whisper_backend_init_gpu: using CUDA0 backend" is the server's own verdict
+  // and outranks everything else it prints.
+  const chosen = output.match(/whisper_backend_init_gpu:\s*using\s+(\S+)\s+backend/i);
+  if (chosen) return /^cuda/i.test(chosen[1]) ? "cuda" : "cpu";
+
+  // Otherwise fall back to where it says it put the weights.
+  const weights = output.match(/whisper_model_load:\s+(\S+)\s+total size/i);
+  if (weights) return /^cuda/i.test(weights[1]) ? "cuda" : "cpu";
+
+  return null;
+}
+
+// whisper.cpp prints its backend lines within the first few hundred bytes of
+// startup, so this only has to be generous, not large.
+const BACKEND_SCAN_LIMIT = 32 * 1024;
+
 const PORT_RANGE_START = 8178;
 const PORT_RANGE_END = 8199;
 // Cold starts must cover reading a multi-GB model from disk and uploading it
@@ -242,6 +274,9 @@ class WhisperServerManager {
     this.healthCheckInterval = null;
     this.cachedServerBinaryPath = null;
     this.activeServerBinaryPath = null;
+    // The backend the running server reported at startup, or null when it said
+    // nothing we could read. Never inferred from the binary's name.
+    this.observedBackend = null;
     this.cachedFFmpegPath = null;
     this.canConvert = false;
 
@@ -579,6 +614,26 @@ class WhisperServerManager {
     return null;
   }
 
+  /**
+   * Accumulates startup output until the backend lines can be read out of it.
+   * A single line can arrive split across chunks, so this keeps the head of the
+   * stream rather than testing each chunk on its own; the lines appear within
+   * the first few hundred bytes, so the cap can never cut them off.
+   */
+  scanForBackend(text) {
+    if (this.observedBackend !== null || !text) return;
+    if (this.backendScanBuffer === undefined) this.backendScanBuffer = "";
+    if (this.backendScanBuffer.length < BACKEND_SCAN_LIMIT) {
+      this.backendScanBuffer += text;
+    }
+    const backend = detectServerBackend(this.backendScanBuffer);
+    if (backend) {
+      this.observedBackend = backend;
+      this.backendScanBuffer = "";
+      debugLogger.debug("whisper-server backend detected", { backend });
+    }
+  }
+
   isCudaServerBinaryPath(serverBinary) {
     return !!serverBinary && /-cuda(?:\.exe)?$/i.test(path.basename(serverBinary));
   }
@@ -902,6 +957,10 @@ class WhisperServerManager {
     let stderrBuffer = "";
     let exitCode = null;
     let startupError = null;
+    // Belongs to the process about to be spawned, so the previous one's answer
+    // cannot outlive it.
+    this.observedBackend = null;
+    this.backendScanBuffer = "";
 
     try {
       this.process = spawn(serverBinary, args, {
@@ -924,6 +983,7 @@ class WhisperServerManager {
     this.process.stdout.on("data", (data) => {
       const text = data.toString();
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
+      this.scanForBackend(text);
       debugLogger.debug("whisper-server stdout", { data: text.trim() });
     });
 
@@ -931,6 +991,7 @@ class WhisperServerManager {
       const text = data.toString();
       stderrBuffer = appendBoundedText(stderrBuffer, text);
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
+      this.scanForBackend(text);
       debugLogger.debug("whisper-server stderr", { data: text.trim() });
     });
 
@@ -954,6 +1015,7 @@ class WhisperServerManager {
       this.stdoutCapture = null;
       this.process = null;
       this.activeServerBinaryPath = null;
+      this.observedBackend = null;
       this.loadedModelPath = null;
       this.stopHealthCheck();
       this._clearIdleCheck();
@@ -1723,6 +1785,7 @@ class WhisperServerManager {
     this.modelPath = null;
     this.loadedModelPath = null;
     this.activeServerBinaryPath = null;
+    this.observedBackend = null;
     this.lastUsedTime = 0;
   }
 
@@ -1752,10 +1815,14 @@ class WhisperServerManager {
    */
   getEngineStatus() {
     const base = this.getStatus();
+    // What the server said it loaded beats what the binary is called. The name
+    // records which build was launched, which is a different question, and the
+    // two disagree in both directions: a CPU-named build finds a CUDA runtime
+    // sitting beside it, or a CUDA-named build starts fine and then falls back
+    // to the CPU because the driver refused it.
     const effectiveEngine = this.activeServerBinaryPath
-      ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
-        ? "cuda"
-        : "cpu"
+      ? this.observedBackend ||
+        (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
       : this.ready
         ? "unknown"
         : "stopped";
@@ -1790,3 +1857,6 @@ WhisperServerManager.getTranscriptionAudioFilters = getTranscriptionAudioFilters
 WhisperServerManager.getTrailingSilenceFilters = getTrailingSilenceFilters;
 
 module.exports = WhisperServerManager;
+// Exported for tests: the parser is the whole of the compute-mode claim, so it
+// is pinned against output captured from the real binary.
+module.exports.detectServerBackend = detectServerBackend;

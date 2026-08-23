@@ -201,6 +201,12 @@ function normalizeModelSetting(model: unknown) {
  * and Supabase can validate it without accepting arbitrary floating-point data.
  * 3000 means 30.00x real-time. This reuses timings already measured by the
  * transcription pipeline and performs no benchmark, hardware probe, or I/O.
+ *
+ * Read it within a duration_bucket, never across. Each request carries a fixed
+ * cost that does not scale with the audio - measured at roughly 380ms for
+ * large-v3 on a CUDA machine, against 36ms per second of audio - so the same
+ * hardware reports about 6.5x on a 3 second clip and about 19x on a 23 second
+ * one. Averaging across buckets measures who dictates in longer sentences.
  */
 export function computeRealtimeFactorX100(
   durationSeconds: unknown,
