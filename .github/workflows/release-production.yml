@@ -30,9 +30,16 @@ jobs:
           fi
           echo "Version bumped: $PREVIOUS -> $CURRENT"
 
+      # A block scalar, so nothing needs escaping. The one-line form used
+      # backslash-escaped quotes, which bash reads as literal quote characters
+      # and then chokes on the unquoted paren in require(...). That syntax
+      # error failed every manual dispatch this workflow ever had, including
+      # the run that added the trigger.
       - name: Confirm manually dispatched version
         if: github.event_name == 'workflow_dispatch'
-        run: echo "Manual production release for version $(node -p \"require('./package.json').version\")"
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Manual production release for version $VERSION"
 
   build-windows:
     runs-on: windows-latest
