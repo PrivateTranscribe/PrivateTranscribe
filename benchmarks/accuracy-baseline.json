@@ -4,30 +4,67 @@
     "arch": "x64"
   },
   "samples": 40,
+  "modes": ["pinned", "constrained"],
   "entries": [
     {
       "language": "en",
       "model": "base",
+      "mode": "pinned",
       "wer": 0.1348,
       "utterances": 40
     },
     {
       "language": "en",
+      "model": "base",
+      "mode": "constrained",
+      "wer": 0.1348,
+      "utterances": 40,
+      "languageAccuracy": 1
+    },
+    {
+      "language": "en",
       "model": "small",
+      "mode": "pinned",
       "wer": 0.0933,
       "utterances": 40
     },
     {
+      "language": "en",
+      "model": "small",
+      "mode": "constrained",
+      "wer": 0.0933,
+      "utterances": 40,
+      "languageAccuracy": 1
+    },
+    {
       "language": "da",
       "model": "base",
+      "mode": "pinned",
       "wer": 0.6733,
       "utterances": 40
     },
     {
       "language": "da",
+      "model": "base",
+      "mode": "constrained",
+      "wer": 0.6733,
+      "utterances": 40,
+      "languageAccuracy": 0.975
+    },
+    {
+      "language": "da",
       "model": "small",
+      "mode": "pinned",
       "wer": 0.4219,
       "utterances": 40
+    },
+    {
+      "language": "da",
+      "model": "small",
+      "mode": "constrained",
+      "wer": 0.4219,
+      "utterances": 40,
+      "languageAccuracy": 1
     }
   ]
 }
