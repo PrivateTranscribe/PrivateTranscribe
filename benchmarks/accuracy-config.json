@@ -1,5 +1,8 @@
 {
   "_comment": "Language/model pairs guarded by the accuracy gate. English alone would not have caught the Danish cliff, so a non-English language is deliberately included. Models are kept small enough that CI can download them in reasonable time; the gate watches for regressions, it does not rank models. Full comparisons live in docs/TRANSCRIPTION_ACCURACY.md.",
+  "_modesComment": "pinned measures transcription quality with the language forced, which is the ceiling and cannot see a detection change at all. constrained measures the path the spoken-languages setting puts users on, where detection is restricted to spokenLanguages. auto is deliberately left out: it is no longer what the app does, and a third mode would push the run past the runner timeout for a number nobody acts on.",
+  "modes": ["pinned", "constrained"],
+  "spokenLanguages": ["en", "da"],
   "samples": 40,
   "tolerancePoints": 1.5,
   "targets": [

@@ -25,10 +25,20 @@
  *                       reported and skipped rather than silently ignored.
  *   --samples <n>       Utterances to score (default: 50, 0 = the whole set)
  *   --json <path>       Also write raw per-utterance results here
+ *   --modes <list>      pinned, auto, constrained (default: pinned)
+ *   --spoken <list>     Languages the user speaks, for constrained mode
  *
- * The language is always pinned when transcribing. This measures transcription
- * quality, not language detection — those are separate failures and mixing
- * them is how you end up blaming the wrong component.
+ * Modes decide what is being measured, and they are not interchangeable:
+ *
+ *   pinned       Language forced on every request. Measures transcription
+ *                quality alone — the ceiling, and the only mode where a
+ *                detection change is invisible by design.
+ *   auto         Detection unconstrained, which is what shipped before 0.15.0.
+ *   constrained  Detection restricted to --spoken, which is what the
+ *                spoken-languages setting does. Scoring worse than auto here
+ *                means the constraint is hurting.
+ *
+ * Comparing WER across modes is the point; comparing it across machines is not.
  */
 
 const fs = require("fs");
@@ -78,7 +88,14 @@ const cacheRoot = () =>
   path.join(os.homedir(), ".cache", "PrivateTranscribe", "benchmarks", "fleurs");
 
 function parseArgs(argv) {
-  const args = { language: "da", models: null, samples: 50, json: null };
+  const args = {
+    language: "da",
+    models: null,
+    samples: 50,
+    json: null,
+    modes: ["pinned"],
+    spoken: [],
+  };
   for (let i = 2; i < argv.length; i += 1) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -86,6 +103,8 @@ function parseArgs(argv) {
     else if (flag === "--models") ((args.models = value.split(",").map((m) => m.trim())), (i += 1));
     else if (flag === "--samples") ((args.samples = Number(value)), (i += 1));
     else if (flag === "--json") ((args.json = value), (i += 1));
+    else if (flag === "--modes") ((args.modes = value.split(",").map((m) => m.trim())), (i += 1));
+    else if (flag === "--spoken") ((args.spoken = value.split(",").map((m) => m.trim())), (i += 1));
     else if (flag === "--help") args.help = true;
   }
   return args;
@@ -254,10 +273,41 @@ function resolveModels(manager, requested) {
   return { available, missing, registry };
 }
 
-async function scoreModel(manager, model, samples, language) {
+/**
+ * Builds the request options for one measurement mode.
+ *
+ * "pinned" is the ceiling and the historical measurement: the language is
+ * given, so this scores transcription alone. The other two go through
+ * detection, which is what most dictations actually do, and which the pinned
+ * mode is structurally blind to - a change that breaks detection cannot move
+ * a pinned number at all.
+ */
+function requestOptionsForMode(mode, model, language, spokenLanguages) {
+  const options = { model };
+  if (mode === "pinned") {
+    options.language = language;
+  } else if (mode === "constrained") {
+    options.allowedLanguages = spokenLanguages;
+  } else if (mode !== "auto") {
+    throw new Error(`Unknown benchmark mode "${mode}"`);
+  }
+  return options;
+}
+
+async function scoreModel(
+  manager,
+  model,
+  samples,
+  language,
+  mode = "pinned",
+  spokenLanguages = []
+) {
   const perUtterance = [];
   let totalErrors = 0;
   let totalWords = 0;
+  // Only meaningful when detection ran; pinned mode reports null rather than a
+  // vacuous 100%.
+  let detectedCorrectly = 0;
   const started = Date.now();
 
   for (let i = 0; i < samples.length; i += 1) {
@@ -266,12 +316,14 @@ async function scoreModel(manager, model, samples, language) {
 
     let hypothesis = "";
     try {
-      const result = await manager.transcribeLocalWhisper(audio, {
-        model,
-        // Pinned on purpose: this measures transcription, not detection.
-        language,
-      });
+      const result = await manager.transcribeLocalWhisper(
+        audio,
+        requestOptionsForMode(mode, model, language, spokenLanguages)
+      );
       hypothesis = result?.text || "";
+      if (mode !== "pinned" && result?.detectedLanguage === language) {
+        detectedCorrectly += 1;
+      }
     } catch (error) {
       // A failed utterance counts as fully wrong rather than being dropped;
       // silently skipping failures flatters a model that crashes.
@@ -304,10 +356,12 @@ async function scoreModel(manager, model, samples, language) {
 
   return {
     model,
+    mode,
     wer: totalWords ? totalErrors / totalWords : 0,
     totalErrors,
     totalWords,
     utterances: samples.length,
+    languageAccuracy: mode === "pinned" ? null : detectedCorrectly / samples.length,
     elapsedMs: Date.now() - started,
     perUtterance,
   };
@@ -326,11 +380,27 @@ async function scoreModel(manager, model, samples, language) {
  * Throws rather than exiting, so a caller can decide what a missing model or
  * an empty dataset means for it.
  */
-async function runBenchmark({ language, models = null, samples: sampleLimit = 50, quiet = false }) {
+async function runBenchmark({
+  language,
+  models = null,
+  samples: sampleLimit = 50,
+  modes = ["pinned"],
+  spokenLanguages = [],
+  quiet = false,
+}) {
   const locale = FLEURS_LOCALES[language];
   if (!locale) {
     throw new Error(
       `No FLEURS split mapped for "${language}". Available: ${Object.keys(FLEURS_LOCALES).join(", ")}`
+    );
+  }
+
+  // Constraining detection to a list that excludes the language being spoken
+  // measures the constraint refusing the right answer, not the feature.
+  if (modes.includes("constrained") && !spokenLanguages.includes(language)) {
+    throw new Error(
+      `Constrained mode needs "${language}" in the spoken languages ` +
+        `(got: ${spokenLanguages.join(",") || "none"}).`
     );
   }
 
@@ -361,14 +431,16 @@ async function runBenchmark({ language, models = null, samples: sampleLimit = 50
 
   if (!quiet) {
     console.log(
-      `\nFLEURS ${locale} — ${samples.length} utterances, language pinned to "${language}"`
+      `\nFLEURS ${locale} — ${samples.length} utterances in "${language}", modes: ${modes.join(", ")}`
     );
     console.log(`Models: ${available.join(", ")}\n`);
   }
 
   const results = [];
   for (const model of available) {
-    results.push(await scoreModel(manager, model, samples, language));
+    for (const mode of modes) {
+      results.push(await scoreModel(manager, model, samples, language, mode, spokenLanguages));
+    }
   }
 
   try {
@@ -392,25 +464,56 @@ async function main() {
     language: args.language,
     models: args.models,
     samples: args.samples,
+    modes: args.modes,
+    spokenLanguages: args.spoken,
   });
 
-  results.sort((a, b) => a.wer - b.wer);
+  // Grouped by mode, best first inside each, because a WER from one mode and a
+  // WER from another answer different questions and should not be ranked together.
+  results.sort((a, b) => a.mode.localeCompare(b.mode) || a.wer - b.wer);
 
   console.log(`\nResults — lower WER is better\n`);
-  console.log("| Model | WER | Word errors | Ref words | Time |");
-  console.log("| --- | --- | --- | --- | --- |");
+  console.log("| Model | Mode | WER | Language detected | Word errors | Ref words | Time |");
+  console.log("| --- | --- | --- | --- | --- | --- | --- |");
   for (const result of results) {
+    const detected =
+      result.languageAccuracy === null
+        ? "pinned"
+        : `${(result.languageAccuracy * 100).toFixed(0)}%`;
     console.log(
-      `| ${result.model} | ${(result.wer * 100).toFixed(1)}% | ${result.totalErrors} | ${result.totalWords} | ${Math.round(result.elapsedMs / 1000)}s |`
+      `| ${result.model} | ${result.mode} | ${(result.wer * 100).toFixed(1)}% | ${detected} | ${result.totalErrors} | ${result.totalWords} | ${Math.round(result.elapsedMs / 1000)}s |`
     );
   }
 
-  const best = results[0];
-  for (const result of results.slice(1)) {
-    const delta = (result.wer - best.wer) * 100;
+  const byMode = new Map();
+  for (const result of results) {
+    if (!byMode.has(result.mode)) byMode.set(result.mode, []);
+    byMode.get(result.mode).push(result);
+  }
+
+  for (const [mode, modeResults] of byMode) {
+    const best = modeResults[0];
+    for (const result of modeResults.slice(1)) {
+      const delta = (result.wer - best.wer) * 100;
+      console.log(
+        `\n${mode}: ${result.model} is ${delta.toFixed(1)} points worse than ${best.model} ` +
+          `(${(result.wer * 100).toFixed(1)}% vs ${(best.wer * 100).toFixed(1)}%)`
+      );
+    }
+  }
+
+  // The comparison the modes exist for: what detection costs against the ceiling.
+  const pinnedByModel = new Map(
+    results.filter((r) => r.mode === "pinned").map((r) => [r.model, r])
+  );
+  for (const result of results) {
+    const reference = pinnedByModel.get(result.model);
+    if (result.mode === "pinned" || !reference) continue;
+    const delta = (result.wer - reference.wer) * 100;
     console.log(
-      `\n${result.model} is ${delta.toFixed(1)} points worse than ${best.model} ` +
-        `(${(result.wer * 100).toFixed(1)}% vs ${(best.wer * 100).toFixed(1)}%)`
+      `\n${result.model} ${result.mode}: ${delta >= 0 ? "+" : ""}${delta.toFixed(1)} points vs pinned ` +
+        `(${(result.wer * 100).toFixed(1)}% vs ${(reference.wer * 100).toFixed(1)}%), correct ` +
+        `language on ${(result.languageAccuracy * 100).toFixed(0)}% of utterances`
     );
   }
 
