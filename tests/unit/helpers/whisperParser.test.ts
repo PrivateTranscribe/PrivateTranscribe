@@ -103,6 +103,27 @@ describe("Whisper parsing utilities", () => {
       });
     });
 
+    it.each(["cpu", "cuda"])(
+      "reports the effective %s engine without exposing hardware identity",
+      async (effectiveEngine) => {
+        const manager = new WhisperManager();
+        manager.serverManager.ready = true;
+        manager.serverManager.stoppedDueToIdle = false;
+        manager.currentServerModel = "base";
+        vi.spyOn(manager.serverManager, "transcribe").mockResolvedValue({ text: "hello" });
+        vi.spyOn(manager.serverManager, "getEngineStatus").mockReturnValue({ effectiveEngine });
+
+        const result = await manager.transcribeViaServer(Buffer.from("audio"), "base", "en");
+
+        expect(result).toMatchObject({
+          success: true,
+          text: "hello",
+          computeMode: effectiveEngine,
+        });
+        expect(result).not.toHaveProperty("hardware");
+      }
+    );
+
     it("normalizes spaces before punctuation in server text", () => {
       const manager = new WhisperManager();
 

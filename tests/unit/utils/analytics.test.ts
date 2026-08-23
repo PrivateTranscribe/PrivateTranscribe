@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildTranscriptionAnalyticsProperties } from "../../../src/utils/analytics";
+import {
+  buildTranscriptionAnalyticsProperties,
+  computeRealtimeFactorX100,
+} from "../../../src/utils/analytics";
 
 describe("transcription analytics properties", () => {
-  it("returns broad usage buckets without transcript content", () => {
+  it("returns privacy-safe usage and exact performance properties without transcript content", () => {
     const privateText = "Discuss the confidential acquisition timeline with the legal team";
     const properties = buildTranscriptionAnalyticsProperties({
       source: "local",
@@ -11,6 +14,8 @@ describe("transcription analytics properties", () => {
       durationSeconds: 12,
       preferredLanguage: "da",
       model: "turbo",
+      computeMode: "cuda",
+      transcriptionProcessingDurationMs: 400,
     });
 
     // Exhaustive on purpose: every field leaving the device is listed here, so
@@ -22,9 +27,31 @@ describe("transcription analytics properties", () => {
       duration_bucket: "6-15s",
       language: "da",
       model: "turbo",
+      compute_mode: "cuda",
+      realtime_factor_x100: 3000,
     });
     expect(JSON.stringify(properties)).not.toContain(privateText);
     expect(properties).not.toHaveProperty("text");
+    expect(properties).not.toHaveProperty("processing_ms");
+  });
+
+  it("reports exact hundredths of real-time speed rather than a bucket", () => {
+    expect(computeRealtimeFactorX100(12, 400)).toBe(3000);
+    expect(computeRealtimeFactorX100(10, 333)).toBe(3003);
+    expect(computeRealtimeFactorX100(0, 400)).toBeNull();
+    expect(computeRealtimeFactorX100(12, Number.NaN)).toBeNull();
+  });
+
+  it("omits speed when timing is unavailable and normalizes compute mode", () => {
+    const properties = buildTranscriptionAnalyticsProperties({
+      outputAction: "paste",
+      text: "hej",
+      durationSeconds: 12,
+      computeMode: "unexpected-engine",
+    });
+
+    expect(properties.compute_mode).toBe("unknown");
+    expect(properties).not.toHaveProperty("realtime_factor_x100");
   });
 
   it("reports the configured language rather than anything derived from speech", () => {
@@ -38,6 +65,24 @@ describe("transcription analytics properties", () => {
         preferredLanguage: "  DA  ",
       }).language
     ).toBe("da");
+  });
+
+  it("categorizes arbitrary source and language strings before analytics IPC", () => {
+    const properties = buildTranscriptionAnalyticsProperties({
+      source: "confidential-client-42",
+      outputAction: "paste",
+      text: "hello",
+      preferredLanguage: "secret-project-codename",
+    });
+
+    expect(properties).toMatchObject({ source: "unknown", language: "unset" });
+    expect(
+      buildTranscriptionAnalyticsProperties({
+        source: "openai-reasoned",
+        outputAction: "paste",
+        text: "hello",
+      }).source
+    ).toBe("openai-reasoned");
   });
 
   it("distinguishes auto-detect from an explicit choice", () => {
@@ -67,10 +112,31 @@ describe("transcription analytics properties", () => {
     expect(properties).toMatchObject({ language: "da", model: "base" });
   });
 
+  it("does not expose arbitrary custom model identifiers", () => {
+    const properties = buildTranscriptionAnalyticsProperties({
+      outputAction: "paste",
+      text: "hello",
+      model: "acme-private-model-v7",
+    });
+
+    expect(properties.model).toBe("custom");
+  });
+
   it("falls back to unknown rather than dropping the model field", () => {
     expect(
       buildTranscriptionAnalyticsProperties({ outputAction: "paste", text: "hej" }).model
     ).toBe("unknown");
+  });
+
+  it("keeps controlled mixed categories for long-session fallback combinations", () => {
+    const properties = buildTranscriptionAnalyticsProperties({
+      outputAction: "paste",
+      text: "combined long session",
+      model: "mixed",
+      computeMode: "mixed",
+    });
+
+    expect(properties).toMatchObject({ model: "mixed", compute_mode: "mixed" });
   });
 
   it("handles long and unknown-duration dictations", () => {

@@ -480,15 +480,23 @@ class WhisperManager {
       typeof result?.detectedLanguage === "string" ? result.detectedLanguage : null;
 
     const parsed = this.parseWhisperResult(result);
+    const effectiveEngine = this.serverManager.getEngineStatus?.().effectiveEngine;
+    const computeMode =
+      effectiveEngine === "cuda" || effectiveEngine === "cpu" ? effectiveEngine : "unknown";
     if (requestOptions.fileMode && parsed.success) {
       return {
         ...parsed,
         raw: result,
         segments: result?.segments || [],
+        computeMode,
         ...(detectedLanguage ? { detectedLanguage } : {}),
       };
     }
-    return detectedLanguage ? { ...parsed, detectedLanguage } : parsed;
+    return {
+      ...parsed,
+      computeMode,
+      ...(detectedLanguage ? { detectedLanguage } : {}),
+    };
   }
 
   async audioBlobToBuffer(audioBlob) {

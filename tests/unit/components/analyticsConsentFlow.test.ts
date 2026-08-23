@@ -26,7 +26,11 @@ describe("Analytics consent flow regression checks", () => {
     expect(contents).toContain("onConsent(granted)");
     expect(contents).toContain("never sends");
     expect(contents).toContain("audio, transcripts, window");
-    expect(contents).toContain("titles, filenames, or API keys");
+    expect(contents).toMatch(/window\s+titles,\s+filenames, or\s+API keys/);
+    expect(contents).toContain("transcription speed");
+    expect(contents).toContain("language and model settings");
+    expect(contents).toContain("CPU, GPU, or cloud");
+    expect(contents).toContain("mode using a random app ID");
   });
 
   it("preload and ipc handlers expose the analytics consent bridge", () => {
@@ -50,11 +54,24 @@ describe("Analytics consent flow regression checks", () => {
     expect(ipcHandlers).toContain('ipcMain.handle("analytics-set-consent"');
   });
 
+  it("keeps the privacy policy current with the disclosed performance fields", () => {
+    const privacyPath = path.join(process.cwd(), "legal", "PRIVACY.md");
+    const contents = fs.readFileSync(privacyPath, "utf8");
+
+    expect(contents).toContain("**Last updated:** August 23, 2026");
+    expect(contents).toContain("exact real-time transcription speed");
+    expect(contents).toContain(
+      "They do not run a benchmark, hardware scan, or additional transcription"
+    );
+  });
+
   it("lets users withdraw or restore analytics consent from Privacy settings", () => {
     const settingsPath = path.join(process.cwd(), "src", "components", "SettingsPage.tsx");
     const contents = fs.readFileSync(settingsPath, "utf8");
 
     expect(contents).toContain("Optional product analytics");
+    expect(contents).toContain("transcription speed, language and model settings");
+    expect(contents).toContain("CPU, GPU, or cloud");
     expect(contents).toContain("analyticsGetConsent");
     expect(contents).toContain("handleAnalyticsEnabledChange");
     expect(contents).toContain("analyticsSetConsent");

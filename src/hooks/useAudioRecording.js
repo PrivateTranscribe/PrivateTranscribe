@@ -451,6 +451,8 @@ export const useAudioRecording = (toast, options = {}) => {
           // affects a handful of users or most of them.
           preferredLanguage: localStorage.getItem("preferredLanguage"),
           model: result.activeModel,
+          computeMode: result.computeMode,
+          transcriptionProcessingDurationMs: result.timings?.transcriptionProcessingDurationMs,
         });
         void trackAnalyticsEvent("transcription_completed", analyticsProperties);
         void trackAnalyticsEventOnce("first_transcription_completed", analyticsProperties);

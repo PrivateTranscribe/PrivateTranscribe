@@ -455,6 +455,8 @@ class AudioManager {
       cancelled: false,
       queue: [],
       results: new Map(),
+      telemetry: new Map(),
+      performanceTimingComplete: true,
       errors: [],
       processing: false,
       processingPromise: null,
@@ -470,6 +472,68 @@ class AudioManager {
       // session on purpose: it dies with resetLongSessionState(), so switching
       // language between recordings still works without touching a setting.
       detectedLanguage: null,
+    };
+  }
+
+  recordLongSessionChunkTelemetry(state, item, transcription) {
+    if (!state || !item || !transcription) {
+      return;
+    }
+
+    const processingDurationMs = transcription.result?.timings?.transcriptionProcessingDurationMs;
+    const audioDurationMs = item.durationMs;
+    const hasPairedTiming =
+      Number.isFinite(processingDurationMs) &&
+      processingDurationMs > 0 &&
+      Number.isFinite(audioDurationMs) &&
+      audioDurationMs > 0 &&
+      item.attempts === 1;
+
+    if (!hasPairedTiming) {
+      state.performanceTimingComplete = false;
+    }
+
+    state.telemetry.set(item.index, {
+      activeModel: transcription.activeModel || "unknown",
+      computeMode: transcription.computeMode || "unknown",
+      audioDurationMs: hasPairedTiming ? audioDurationMs : null,
+      processingDurationMs: hasPairedTiming ? processingDurationMs : null,
+    });
+  }
+
+  summarizeLongSessionTelemetry(state, fallbackDurationSeconds) {
+    const entries = [...state.telemetry.values()];
+    const models = new Set(entries.map((entry) => entry.activeModel).filter(Boolean));
+    const computeModes = new Set(entries.map((entry) => entry.computeMode).filter(Boolean));
+    const activeModel = models.size === 1 ? [...models][0] : models.size > 1 ? "mixed" : "unknown";
+    const computeMode =
+      computeModes.size === 1 ? [...computeModes][0] : computeModes.size > 1 ? "mixed" : "unknown";
+    const hasCompleteTiming =
+      state.performanceTimingComplete &&
+      entries.length === state.completedChunks &&
+      entries.length > 0 &&
+      entries.every(
+        (entry) =>
+          Number.isFinite(entry.audioDurationMs) &&
+          entry.audioDurationMs > 0 &&
+          Number.isFinite(entry.processingDurationMs) &&
+          entry.processingDurationMs > 0
+      );
+
+    if (!hasCompleteTiming) {
+      return { activeModel, computeMode, durationSeconds: fallbackDurationSeconds };
+    }
+
+    const audioDurationMs = entries.reduce((sum, entry) => sum + entry.audioDurationMs, 0);
+    const processingDurationMs = entries.reduce(
+      (sum, entry) => sum + entry.processingDurationMs,
+      0
+    );
+    return {
+      activeModel,
+      computeMode,
+      durationSeconds: audioDurationMs / 1000,
+      transcriptionProcessingDurationMs: processingDurationMs,
     };
   }
 
@@ -1050,6 +1114,7 @@ class AudioManager {
             }
           }
 
+          this.recordLongSessionChunkTelemetry(state, item, result);
           const text = String(result?.result?.text || "").trim();
           if (text) {
             state.results.set(item.index, text);
@@ -1057,6 +1122,7 @@ class AudioManager {
           state.completedChunks += 1;
           state.transcribedSeconds += item.durationMs / 1000;
         } catch (error) {
+          state.performanceTimingComplete = false;
           if (state.cancelled || error?.name === "AbortError") {
             return;
           }
@@ -1158,6 +1224,7 @@ class AudioManager {
           trimTrailingSilence: item.trimTrailingSilence,
         });
 
+        this.recordLongSessionChunkTelemetry(state, item, result);
         const text = String(result?.result?.text || "").trim();
         if (text) {
           state.results.set(item.index, text);
@@ -1263,13 +1330,20 @@ class AudioManager {
     const reasonedText = await this.processTranscription(rawText, "long-session");
     const text = this.preserveMissingSectionMarkers(reasonedText || rawText, state.errors.length);
     const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
+    const telemetry = this.summarizeLongSessionTelemetry(state, durationSeconds);
+    const transcriptionProcessingDurationMs = telemetry.transcriptionProcessingDurationMs;
 
     return {
       success: true,
       text,
       source,
-      durationSeconds,
+      durationSeconds: telemetry.durationSeconds,
+      activeModel: telemetry.activeModel,
+      computeMode: telemetry.computeMode,
       timings: {
+        ...(Number.isFinite(transcriptionProcessingDurationMs)
+          ? { transcriptionProcessingDurationMs }
+          : {}),
         reasoningProcessingDurationMs: Math.round(performance.now() - reasoningStart),
       },
       longSession: {
@@ -1838,10 +1912,8 @@ class AudioManager {
       processingGeneration,
     };
     try {
-      const { result, useLocalWhisper, localProvider, activeModel } = await this.runTranscription(
-        audioBlob,
-        processingMetadata
-      );
+      const { result, useLocalWhisper, localProvider, activeModel, computeMode } =
+        await this.runTranscription(audioBlob, processingMetadata);
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
         return;
@@ -1855,6 +1927,7 @@ class AudioManager {
       // Carried so analytics can report which model produced this without
       // re-deriving the local/cloud choice from localStorage a second time.
       result.activeModel = activeModel;
+      result.computeMode = computeMode;
       result.completeness = assessTranscriptionCompleteness({
         text: result.text,
         durationSeconds: result.durationSeconds ?? metadata.durationSeconds,
@@ -2045,7 +2118,23 @@ class AudioManager {
       result = await this.processWithOpenAIAPI(audioBlob, metadata);
     }
 
-    return { result, useLocalWhisper, localProvider, activeModel };
+    const source = result?.source || "";
+    if (source.startsWith("openai")) {
+      activeModel = result?.activeModel || this.getTranscriptionModel();
+    } else if (source === "local-fallback") {
+      activeModel =
+        result?.activeModel || this.getTranscriptionSetting("fallbackWhisperModel", "small");
+    } else {
+      activeModel = result?.activeModel || activeModel;
+    }
+
+    const computeMode = source.startsWith("openai")
+      ? "cloud"
+      : useLocalWhisper && localProvider === "nvidia"
+        ? "cpu"
+        : result?.computeMode || "unknown";
+
+    return { result, useLocalWhisper, localProvider, activeModel, computeMode };
   }
 
   async processWithLocalWhisper(audioBlob, model = "base", metadata = {}) {
@@ -2190,7 +2279,13 @@ class AudioManager {
       // It is not a failure: treating it as one exhausts the chunk's retries
       // and makes finalizeLongSessionResult discard the whole dictation.
       if (metadata?.source === "long-session" && !result.text) {
-        return { success: true, text: "", source: "local", timings };
+        return {
+          success: true,
+          text: "",
+          source: "local",
+          timings,
+          computeMode: result.computeMode,
+        };
       }
 
       if (result.success && result.text) {
@@ -2203,6 +2298,7 @@ class AudioManager {
             text: result.text,
             source: "local",
             timings,
+            computeMode: result.computeMode,
             ...(result.detectedLanguage ? { detectedLanguage: result.detectedLanguage } : {}),
           };
         }
@@ -2212,7 +2308,13 @@ class AudioManager {
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
 
         if (text !== null && text !== undefined) {
-          return { success: true, text: text || result.text, source: "local", timings };
+          return {
+            success: true,
+            text: text || result.text,
+            source: "local",
+            timings,
+            computeMode: result.computeMode,
+          };
         } else {
           throw new Error("No text transcribed");
         }
@@ -3261,16 +3363,32 @@ class AudioManager {
             options.inputFileName = originalFileName;
           }
 
+          const localFallbackStart = performance.now();
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
+          timings.transcriptionProcessingDurationMs = Math.round(
+            performance.now() - localFallbackStart
+          );
 
           if (result.success && result.text) {
             if (metadata?.skipPostProcessing) {
-              return { success: true, text: result.text, source: "local-fallback" };
+              return {
+                success: true,
+                text: result.text,
+                source: "local-fallback",
+                timings,
+                computeMode: result.computeMode,
+              };
             }
 
             const text = await this.processTranscription(result.text, "local-fallback");
             if (text) {
-              return { success: true, text, source: "local-fallback" };
+              return {
+                success: true,
+                text,
+                source: "local-fallback",
+                timings,
+                computeMode: result.computeMode,
+              };
             }
           }
           throw error;

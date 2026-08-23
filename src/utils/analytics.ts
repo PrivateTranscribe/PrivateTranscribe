@@ -73,11 +73,150 @@ function bucketDuration(durationSeconds: unknown) {
  * that costs accuracy, and we cannot tell how many people sit on it
  * otherwise.
  */
+export const ALLOWED_TRANSCRIPTION_ANALYTICS_LANGUAGES = new Set([
+  "unset",
+  "auto",
+  "af",
+  "ar",
+  "hy",
+  "az",
+  "be",
+  "bs",
+  "bg",
+  "ca",
+  "zh",
+  "hr",
+  "cs",
+  "da",
+  "nl",
+  "en",
+  "et",
+  "fi",
+  "fr",
+  "gl",
+  "de",
+  "el",
+  "he",
+  "hi",
+  "hu",
+  "is",
+  "id",
+  "it",
+  "ja",
+  "kn",
+  "kk",
+  "ko",
+  "lv",
+  "lt",
+  "mk",
+  "ms",
+  "mr",
+  "mi",
+  "ne",
+  "no",
+  "fa",
+  "pl",
+  "pt",
+  "ro",
+  "ru",
+  "sr",
+  "sk",
+  "sl",
+  "es",
+  "sw",
+  "sv",
+  "tl",
+  "ta",
+  "th",
+  "tr",
+  "uk",
+  "ur",
+  "vi",
+  "cy",
+]);
+
+export const ALLOWED_TRANSCRIPTION_ANALYTICS_SOURCES = new Set([
+  "unknown",
+  "local",
+  "local-parakeet",
+  "openai",
+  "openai-reasoned",
+  "openai-fallback",
+  "local-fallback",
+  "local-file-v2",
+  "long-session",
+  "long-session-reasoned",
+  "file-transcription",
+]);
+
 function normalizeLanguageSetting(preferredLanguage: unknown) {
   if (typeof preferredLanguage !== "string") return "unset";
   const normalized = preferredLanguage.trim().toLowerCase();
-  if (!normalized) return "unset";
-  return normalized;
+  return ALLOWED_TRANSCRIPTION_ANALYTICS_LANGUAGES.has(normalized) ? normalized : "unset";
+}
+
+function normalizeSource(source: unknown) {
+  return typeof source === "string" && ALLOWED_TRANSCRIPTION_ANALYTICS_SOURCES.has(source)
+    ? source
+    : "unknown";
+}
+
+const COMPUTE_MODES = new Set(["cpu", "cuda", "cloud", "mixed", "unknown"]);
+const KNOWN_TRANSCRIPTION_MODELS = new Set([
+  "tiny",
+  "base",
+  "small",
+  "small-en-tdrz",
+  "medium",
+  "large",
+  "turbo",
+  "parakeet-tdt-0.6b-v3",
+  "gpt-transcribe",
+  "gpt-4o-mini-transcribe",
+  "gpt-4o-transcribe",
+  "gpt-4o-transcribe-diarize",
+  "whisper-1",
+  "whisper-large-v3-turbo",
+  "mixed",
+]);
+
+function normalizeComputeMode(computeMode: unknown) {
+  return typeof computeMode === "string" && COMPUTE_MODES.has(computeMode)
+    ? computeMode
+    : "unknown";
+}
+
+function normalizeModelSetting(model: unknown) {
+  if (typeof model !== "string" || !model.trim()) return "unknown";
+  const normalized = model.trim().toLowerCase();
+  return KNOWN_TRANSCRIPTION_MODELS.has(normalized) ? normalized : "custom";
+}
+
+/**
+ * Exact speed to two decimal places, encoded as an integer so both the renderer
+ * and Supabase can validate it without accepting arbitrary floating-point data.
+ * 3000 means 30.00x real-time. This reuses timings already measured by the
+ * transcription pipeline and performs no benchmark, hardware probe, or I/O.
+ */
+export function computeRealtimeFactorX100(
+  durationSeconds: unknown,
+  transcriptionProcessingDurationMs: unknown
+): number | null {
+  if (
+    typeof durationSeconds !== "number" ||
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds <= 0 ||
+    typeof transcriptionProcessingDurationMs !== "number" ||
+    !Number.isFinite(transcriptionProcessingDurationMs) ||
+    transcriptionProcessingDurationMs <= 0
+  ) {
+    return null;
+  }
+
+  const factorX100 = Math.round(
+    (durationSeconds / (transcriptionProcessingDurationMs / 1000)) * 100
+  );
+  return Number.isSafeInteger(factorX100) && factorX100 > 0 ? factorX100 : null;
 }
 
 export function buildTranscriptionAnalyticsProperties({
@@ -87,6 +226,8 @@ export function buildTranscriptionAnalyticsProperties({
   durationSeconds,
   preferredLanguage,
   model,
+  computeMode,
+  transcriptionProcessingDurationMs,
 }: {
   source?: unknown;
   outputAction: "paste" | "copy" | "action" | "none";
@@ -94,9 +235,16 @@ export function buildTranscriptionAnalyticsProperties({
   durationSeconds?: unknown;
   preferredLanguage?: unknown;
   model?: unknown;
+  computeMode?: unknown;
+  transcriptionProcessingDurationMs?: unknown;
 }): AnalyticsProperties {
+  const realtimeFactorX100 = computeRealtimeFactorX100(
+    durationSeconds,
+    transcriptionProcessingDurationMs
+  );
+
   return {
-    source: typeof source === "string" ? source : "unknown",
+    source: normalizeSource(source),
     output_action: outputAction,
     word_count_bucket: bucketWordCount(text),
     duration_bucket: bucketDuration(durationSeconds),
@@ -105,6 +253,8 @@ export function buildTranscriptionAnalyticsProperties({
     // which is how many people are dictating a non-English language on a
     // model that handles it badly.
     language: normalizeLanguageSetting(preferredLanguage),
-    model: typeof model === "string" && model ? model : "unknown",
+    model: normalizeModelSetting(model),
+    compute_mode: normalizeComputeMode(computeMode),
+    ...(realtimeFactorX100 === null ? {} : { realtime_factor_x100: realtimeFactorX100 }),
   };
 }
