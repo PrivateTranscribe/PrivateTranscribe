@@ -1,13 +1,27 @@
 # Changelog
 
-## 0.14.3 - 2026-08-20
+## 0.15.0 - 2026-08-23
+
+### Added
+
+- You can now name every language you speak, instead of picking one. Whisper is held to that set, so a Danish sentence with English words in it stops being guessed as a different language halfway through.
+- Local transcription now lets you choose how many CPU cores it uses, in Settings. It previously took four regardless of how many the machine had.
+- The speed test now says how long a one-minute dictation actually takes, rather than only a multiplier.
+- Prices are shown and charged in your own currency where Stripe supports it.
 
 ### Changed
 
+- The custom dictionary is one flat list of terms. The three modes it had before did the same job three ways.
+- Optional analytics now also cover transcription speed, the compute mode, and the configured language and model. Nobody is opted in by this: the disclosure changed, so everyone is asked again, and a previous "no" stays no. No audio, transcript text, filenames, window titles, or API keys are ever sent.
+- CPU mode now really does keep the GPU out of it.
+- Every locked beta feature says so once, on the control that is locked, and links to how to get access.
 - The update notice moved from the title bar to the sidebar footer, right above the version marker, so the build you are running and the one waiting for you sit together.
 
 ### Fixed
 
+- The spoken-language picker no longer clips its list, hides its control, or leaves you unable to remove the last language.
+- Your first language is no longer forced onto every later dictation.
+- History entries stop being cut mid-word long before the preview is full.
 - Start on boot now refuses, and says why, when the app is running from a temporary folder that Windows will clean up. Before this it could leave a startup entry that showed an Electron error on every boot.
 
 ## 0.14.2 - 2026-08-15
