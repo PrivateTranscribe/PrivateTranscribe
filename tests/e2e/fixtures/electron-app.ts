@@ -49,6 +49,16 @@ export type PrivateTranscribeOptions = {
   /** Extra environment variables for the launched app (overrides defaults). */
   appEnv: Record<string, string>;
   /**
+   * Exact contents to write to `analytics-consent.txt` before launch.
+   *
+   * The consent file is versioned, and an upgrade is the only way to reach the
+   * migration branch: a developer's own machine has already been rewritten to
+   * the current version by the build they are running, so nothing they do
+   * locally exercises what every existing user will hit. Defaults to "denied",
+   * which keeps ordinary specs off the network and out of the modal.
+   */
+  seedConsentFile: string;
+  /**
    * Whisper models the app should see as already downloaded, e.g. `["base"]`.
    *
    * The model picker drops a selection whose model is not on disk and snaps to
@@ -156,16 +166,19 @@ async function findWindow(
         .join(", ");
       throw new Error(`Timed out waiting for the ${label} window. Open windows: [${seen}]`);
     }
-    await app.waitForEvent("window", { timeout: Math.max(250, deadline - Date.now()) }).catch(() => {
-      // Fall through and re-check the window list; a window may have opened
-      // between our snapshot and the listener being attached.
-    });
+    await app
+      .waitForEvent("window", { timeout: Math.max(250, deadline - Date.now()) })
+      .catch(() => {
+        // Fall through and re-check the window list; a window may have opened
+        // between our snapshot and the listener being attached.
+      });
   }
 }
 
 export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixtures>({
   completeOnboarding: [true, { option: true }],
   appEnv: [{}, { option: true }],
+  seedConsentFile: ["denied", { option: true }],
   seedWhisperModels: [[], { option: true }],
 
   fakeHomeDir: async ({ seedWhisperModels }, use) => {
@@ -205,12 +218,13 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
     fs.rmSync(dir, { recursive: true, force: true });
   },
 
-  userDataDir: async ({}, use, testInfo) => {
+  userDataDir: async ({ seedConsentFile }, use, testInfo) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-"));
 
     // Pre-deny analytics so no run phones home and the consent modal never
-    // covers the UI a spec is asserting against.
-    fs.writeFileSync(path.join(dir, "analytics-consent.txt"), "denied", "utf8");
+    // covers the UI a spec is asserting against. Specs that test the consent
+    // migration itself override this with seedConsentFile.
+    fs.writeFileSync(path.join(dir, "analytics-consent.txt"), seedConsentFile, "utf8");
 
     await use(dir);
 
