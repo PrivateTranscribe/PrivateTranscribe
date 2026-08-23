@@ -634,6 +634,16 @@ class WhisperServerManager {
     }
   }
 
+  /**
+   * "cuda" or "cpu" for the running server, preferring what it reported over
+   * what its binary is called. Callers that need "is anything running at all"
+   * check activeServerBinaryPath first.
+   */
+  resolveEffectiveEngine() {
+    if (this.observedBackend) return this.observedBackend;
+    return this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu";
+  }
+
   isCudaServerBinaryPath(serverBinary) {
     return !!serverBinary && /-cuda(?:\.exe)?$/i.test(path.basename(serverBinary));
   }
@@ -1801,8 +1811,10 @@ class WhisperServerManager {
         : null,
       forceCpu: this.forceCpu,
       activeServerBinaryPath: this.activeServerBinaryPath,
+      // Same source of truth as getEngineStatus().effectiveEngine, so the two
+      // cannot tell different stories about the same running process.
       activeEngine: this.activeServerBinaryPath
-        ? this.isCudaServerBinaryPath(this.activeServerBinaryPath)
+        ? this.resolveEffectiveEngine() === "cuda"
           ? "gpu"
           : "cpu"
         : null,
@@ -1821,8 +1833,7 @@ class WhisperServerManager {
     // sitting beside it, or a CUDA-named build starts fine and then falls back
     // to the CPU because the driver refused it.
     const effectiveEngine = this.activeServerBinaryPath
-      ? this.observedBackend ||
-        (this.isCudaServerBinaryPath(this.activeServerBinaryPath) ? "cuda" : "cpu")
+      ? this.resolveEffectiveEngine()
       : this.ready
         ? "unknown"
         : "stopped";

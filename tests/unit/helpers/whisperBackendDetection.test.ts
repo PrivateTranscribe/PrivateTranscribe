@@ -11,6 +11,7 @@ const WhisperServerManager = require("../../../src/helpers/whisperServer.js") as
     activeServerBinaryPath: string | null;
     ready: boolean;
     getEngineStatus: () => { effectiveEngine: string };
+    getStatus: () => { activeEngine: string | null };
   };
 };
 const { detectServerBackend } = WhisperServerManager;
@@ -85,6 +86,20 @@ describe("whisper-server backend detection", () => {
     expect(manager.getEngineStatus().effectiveEngine).toBe("cpu");
 
     manager.scanForBackend(CUDA_STARTUP);
+    expect(manager.getEngineStatus().effectiveEngine).toBe("cuda");
+  });
+
+  // Two fields describing one process must not disagree, or whoever reads the
+  // other one next inherits the bug this replaced.
+  it("keeps the status field in step with the engine status", () => {
+    const manager = new WhisperServerManager();
+    manager.ready = true;
+    manager.activeServerBinaryPath = "C:\\repo\\resources\\bin\\whisper-server-win32-x64.exe";
+
+    expect(manager.getStatus().activeEngine).toBe("cpu");
+
+    manager.scanForBackend(CUDA_STARTUP);
+    expect(manager.getStatus().activeEngine).toBe("gpu");
     expect(manager.getEngineStatus().effectiveEngine).toBe("cuda");
   });
 
