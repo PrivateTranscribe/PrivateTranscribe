@@ -4,17 +4,35 @@ const path = require("path");
 const {
   downloadFile,
   extractArchive,
-  fetchLatestRelease,
+  fetchReleaseByTag,
   findBinaryInDir,
   parseArgs,
   setExecutable,
   cleanupFiles,
 } = require("./lib/download-utils");
 
-const LLAMA_CPP_REPO = "ggerganov/llama.cpp";
+const LLAMA_CPP_REPO = "ggml-org/llama.cpp";
 
-// Version can be pinned via environment variable for reproducible builds
-const VERSION_OVERRIDE = process.env.LLAMA_CPP_VERSION || null;
+/**
+ * The llama.cpp build this product ships.
+ *
+ * Pinned, not tracked. Following "latest" broke the 0.15.0 release outright:
+ * llama.cpp now marks a stub release (v0.2.0, one text file, no binaries) as
+ * latest and publishes every real build as a b-numbered prerelease, so the
+ * /latest endpoint returned a release with no llama-server in it and the
+ * signed Windows build failed before it started. A pin also means a release
+ * build is reproducible, and a new upstream binary lands in a signed installer
+ * by decision rather than by timing.
+ *
+ * To bump: pick a tag from https://github.com/ggml-org/llama.cpp/releases,
+ * confirm it carries the bin assets for every platform in BINARIES below, and
+ * change this line. b10566 is what upstream's own nightly pointer named at the
+ * time of pinning.
+ */
+const PINNED_VERSION = "b10566";
+
+// Overridable so a different build can be tried without editing the pin.
+const VERSION = process.env.LLAMA_CPP_VERSION || PINNED_VERSION;
 
 // Asset name patterns to match in the release (version-independent)
 const BINARIES = {
@@ -51,12 +69,7 @@ let cachedRelease = null;
 
 async function getRelease() {
   if (cachedRelease) return cachedRelease;
-
-  if (VERSION_OVERRIDE) {
-    cachedRelease = await fetchLatestRelease(LLAMA_CPP_REPO, { tagPrefix: VERSION_OVERRIDE });
-  } else {
-    cachedRelease = await fetchLatestRelease(LLAMA_CPP_REPO);
-  }
+  cachedRelease = await fetchReleaseByTag(LLAMA_CPP_REPO, VERSION);
   return cachedRelease;
 }
 
@@ -170,16 +183,13 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
 }
 
 async function main() {
-  if (VERSION_OVERRIDE) {
-    console.log(`\n[llama-server] Using pinned version: ${VERSION_OVERRIDE}`);
-  } else {
-    console.log("\n[llama-server] Fetching latest release...");
-  }
+  console.log(`\n[llama-server] Using pinned version: ${VERSION}`);
   const release = await getRelease();
 
   if (!release) {
-    console.error(`[llama-server] Could not fetch release from ${LLAMA_CPP_REPO}`);
-    console.log(`\nMake sure release exists: https://github.com/${LLAMA_CPP_REPO}/releases`);
+    console.error(`[llama-server] No release tagged ${VERSION} in ${LLAMA_CPP_REPO}`);
+    console.error("Upstream removes old build tags. Pick a current one and update PINNED_VERSION:");
+    console.error(`  https://github.com/${LLAMA_CPP_REPO}/releases`);
     process.exitCode = 1;
     return;
   }
@@ -198,7 +208,12 @@ async function main() {
     }
 
     console.log(`Downloading for target platform (${args.platformArch}):`);
-    const ok = await downloadBinary(args.platformArch, BINARIES[args.platformArch], release, args.isForce);
+    const ok = await downloadBinary(
+      args.platformArch,
+      BINARIES[args.platformArch],
+      release,
+      args.isForce
+    );
     if (!ok) {
       console.error(`Failed to download binaries for ${args.platformArch}`);
       process.exitCode = 1;
