@@ -128,6 +128,21 @@ export type PrivateTranscribeOptions = {
    * that has the model.
    */
   useThrowawayHome: boolean;
+  /**
+   * Absolute path to a PCM WAV that Chromium plays back in place of the real
+   * microphone, for specs that dictate through the app's own audio pipeline.
+   *
+   * This is the only honest way to test dictation end to end without opening
+   * the machine's microphone: `--use-fake-device-for-media-stream` swaps the
+   * capture device, `--use-file-for-fake-audio-capture` gives that device this
+   * file to play (on a loop), and `--use-fake-ui-for-media-stream`
+   * auto-accepts the permission prompt. getUserMedia, MediaRecorder and
+   * everything downstream of them run exactly as they do for a user.
+   *
+   * Empty (the default) leaves the launch arguments untouched, so no other spec
+   * changes behaviour.
+   */
+  fakeAudioCaptureFile: string;
 };
 
 /**
@@ -278,6 +293,7 @@ type LaunchInputs = {
   fakeHomeDir: string | null;
   consoleMessages: ConsoleEntry[];
   muteAudio: boolean;
+  fakeAudioCaptureFile: string;
 };
 
 /**
@@ -287,20 +303,35 @@ type LaunchInputs = {
  * cannot drift apart.
  */
 async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
-  const { env, userDataDir, fakeHomeDir, consoleMessages, muteAudio } = inputs;
+  const { env, userDataDir, fakeHomeDir, consoleMessages, muteAudio, fakeAudioCaptureFile } =
+    inputs;
+
+  const args = [
+    `--user-data-dir=${userDataDir}`,
+    // The windows are made invisible below; without these, Chromium treats
+    // them as occluded and throttles rendering and timers.
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-background-timer-throttling",
+  ];
+
+  if (fakeAudioCaptureFile) {
+    if (!fs.existsSync(fakeAudioCaptureFile)) {
+      throw new Error(`fakeAudioCaptureFile does not exist: ${fakeAudioCaptureFile}`);
+    }
+    args.push(
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+      `--use-file-for-fake-audio-capture=${fakeAudioCaptureFile}`
+    );
+  }
+
+  args.push(".");
 
   const app = await electron.launch({
     cwd: REPO_ROOT,
     env,
-    args: [
-      `--user-data-dir=${userDataDir}`,
-      // The windows are made invisible below; without these, Chromium treats
-      // them as occluded and throttles rendering and timers.
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-      "--disable-background-timer-throttling",
-      ".",
-    ],
+    args,
     timeout: 60_000,
   });
 
@@ -409,6 +440,7 @@ export const test = base.extend<
   seedWhisperModels: [[], { option: true }],
   seedKokoroModel: [false, { option: true }],
   useThrowawayHome: [false, { option: true }],
+  fakeAudioCaptureFile: ["", { option: true }],
 
   fakeHomeDir: async ({ seedWhisperModels, seedKokoroModel, useThrowawayHome }, use) => {
     if (seedWhisperModels.length === 0 && !seedKokoroModel && !useThrowawayHome) {
@@ -482,7 +514,15 @@ export const test = base.extend<
   },
 
   appController: async (
-    { userDataDir, fakeHomeDir, appEnv, consoleMessages, seedKokoroModel, completeOnboarding },
+    {
+      userDataDir,
+      fakeHomeDir,
+      appEnv,
+      consoleMessages,
+      seedKokoroModel,
+      completeOnboarding,
+      fakeAudioCaptureFile,
+    },
     use,
     testInfo
   ) => {
@@ -511,6 +551,7 @@ export const test = base.extend<
       fakeHomeDir,
       consoleMessages,
       muteAudio: seedKokoroModel,
+      fakeAudioCaptureFile,
     };
 
     let app = await launchApp(inputs);
