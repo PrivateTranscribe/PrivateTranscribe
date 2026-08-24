@@ -18,7 +18,7 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
  *      them.
  *   3. The `readaloud-control` events do the same thing. That is the whole
  *      keybinding path except the OS hook itself: the main process turns a
- *      press of Ctrl+Alt+Shift+Space / Left / Right into exactly one of these
+ *      press of Ctrl+Alt+Space / Left / Right into exactly one of these
  *      events, and the accelerators themselves are never registered in a test
  *      run (the fixture sets PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT, on
  *      purpose — a run must never bind a machine-global key).
@@ -188,14 +188,14 @@ test.describe("read aloud playback controls", () => {
     const sentenceLine = overlayWindow.getByTestId("readaloud-current-sentence");
     await expect(sentenceLine).toContainText(MARKERS[0]);
 
-    // Exactly what a press of Ctrl+Alt+Shift+Right sends.
+    // Exactly what a press of Ctrl+Alt+Right sends.
     await sendToOverlay(electronApp, "readaloud-control", { op: "forward" });
     const forward = await waitForState(overlayWindow, { index: 1, playing: true });
     expect(forward.index, "forward op did not advance the cursor").toBe(1);
     expect(forward.playing, "forward op stopped playback").toBe(true);
     await expect(sentenceLine).toContainText(MARKERS[1]);
 
-    // And what Ctrl+Alt+Shift+Space sends.
+    // And what Ctrl+Alt+Space sends.
     await sendToOverlay(electronApp, "readaloud-control", { op: "toggle" });
     const toggled = await waitForState(overlayWindow, { index: 1, playing: false });
     expect(toggled.playing, "toggle op did not pause playback").toBe(false);
@@ -214,8 +214,8 @@ test.describe("read aloud playback controls", () => {
     // the actual accelerators, not gesture at "playback controls".
     const help = controlPanel.getByText(/While a read is playing/);
     await expect(help).toBeVisible();
-    await expect(help).toContainText("Ctrl+Alt+Shift+Space");
-    await expect(help).toContainText("Ctrl+Alt+Shift+←/→");
+    await expect(help).toContainText("Ctrl+Alt+Space");
+    await expect(help).toContainText("Ctrl+Alt+←/→");
 
     fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
     const filePath = path.join(EVIDENCE_DIR, "readaloud-playback-keys-help.png");

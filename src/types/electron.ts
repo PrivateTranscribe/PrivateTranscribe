@@ -796,7 +796,7 @@ declare global {
       /**
        * Report whether a read is currently on screen. While it is, the main
        * process holds the transient playback shortcuts
-       * (Ctrl+Alt+Shift+Space / Left / Right); when it is not, nothing is bound.
+       * (Ctrl+Alt+Space / Left / Right); when it is not, nothing is bound.
        */
       readAloudSetPlaybackActive: (active: boolean) => Promise<{
         active: boolean;

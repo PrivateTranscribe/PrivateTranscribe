@@ -8,12 +8,16 @@
  * the time. The overlay tells the main process when a read starts and ends
  * (`readaloud-playback-active`), which is the only thing that turns them on.
  *
- * Accelerator choice follows the same rule readAloudHotkey.js settled on:
- * AltGr is Ctrl+Alt on every European layout, so `Ctrl+Alt+<key>` is somebody's
- * way of typing a character. AltGr cannot synthesize Shift, so
- * `Ctrl+Alt+Shift+<key>` is the one class no layout can produce while typing.
- * Escape is deliberately not used - a global Escape would swallow the key in
- * every other app on the machine.
+ * Accelerator choice: Ctrl+Alt plus Space or an arrow. The AltGr hazard that
+ * forced Shift into the trigger hotkey (AltGr = Ctrl+Alt, so Ctrl+Alt+<char>
+ * is somebody typing) applies to CHARACTER keys only — Space and the arrows
+ * produce nothing under AltGr on any layout, so these stay two-modifier and
+ * rememberable, which was Kristian's complaint about the original
+ * Ctrl+Alt+Shift set. Known conflict, accepted: legacy Intel graphics drivers
+ * bound Ctrl+Alt+arrows to screen rotation (off by default on anything
+ * modern), and these keys exist only while a read is playing. Escape is
+ * deliberately not used - a global Escape would swallow the key in every
+ * other app on the machine.
  *
  * Failing to register is not fatal: the overlay's own buttons do the same three
  * jobs, so a conflict is logged and playback carries on.
@@ -29,9 +33,9 @@ const debugLogger = require("./debugLogger");
 
 /** Accelerator -> the op sent to the overlay when it fires. */
 const PLAYBACK_ACCELERATORS = Object.freeze({
-  "Ctrl+Alt+Shift+Space": "toggle",
-  "Ctrl+Alt+Shift+Left": "back",
-  "Ctrl+Alt+Shift+Right": "forward",
+  "Ctrl+Alt+Space": "toggle",
+  "Ctrl+Alt+Left": "back",
+  "Ctrl+Alt+Right": "forward",
 });
 
 const isDiagFlagEnabled = (name) => {

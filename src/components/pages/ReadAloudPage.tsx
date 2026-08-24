@@ -647,9 +647,8 @@ export default function ReadAloudPage() {
                   their own next to keys that are always live. */}
               {installed && (
                 <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
-                  While a read is playing, Ctrl+Alt+Shift+Space pauses and
-                  Ctrl+Alt+Shift+&larr;/&rarr; skip a sentence. Nothing is bound the rest of the
-                  time.
+                  While a read is playing, Ctrl+Alt+Space pauses and Ctrl+Alt+&larr;/&rarr; skip a
+                  sentence. Nothing is bound the rest of the time.
                 </p>
               )}
             </PanelRow>

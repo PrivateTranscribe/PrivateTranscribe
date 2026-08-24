@@ -1375,7 +1375,7 @@ class IPCHandlers {
      *
      * This is what makes the playback keys transient: they are bound while
      * something is being read and released the moment the pill goes away, so
-     * Ctrl+Alt+Shift+Space is only taken from the rest of the machine for the
+     * Ctrl+Alt+Space is only taken from the rest of the machine for the
      * length of a read. The overlay fires this on transitions only, not on
      * every poll tick.
      */

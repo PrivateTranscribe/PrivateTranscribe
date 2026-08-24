@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * The pause/skip keys are the only shortcuts in the app that are supposed to
  * come and go. What matters is therefore not that they can be registered, but
  * that they are released again — a read that ends while
- * Ctrl+Alt+Shift+Space is still bound would quietly take the combination from
+ * Ctrl+Alt+Space is still bound would quietly take the combination from
  * every other app on the machine forever.
  *
  * Dependencies are injected rather than vi.mock'd: `require("electron")` inside
@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * helper a fake globalShortcut is what makes the registration itself provable.
  */
 
-const ACCELERATORS = ["Ctrl+Alt+Shift+Space", "Ctrl+Alt+Shift+Left", "Ctrl+Alt+Shift+Right"];
+const ACCELERATORS = ["Ctrl+Alt+Space", "Ctrl+Alt+Left", "Ctrl+Alt+Right"];
 
 let register: ReturnType<typeof vi.fn>;
 let unregister: ReturnType<typeof vi.fn>;
@@ -96,7 +96,7 @@ describe("ReadAloudPlaybackKeys", () => {
     const ReadAloudPlaybackKeys = await loadPlaybackKeys();
     const deps = makeDeps();
     register.mockImplementation((accelerator: string) => {
-      if (accelerator === "Ctrl+Alt+Shift+Left") throw new Error("taken by the OS");
+      if (accelerator === "Ctrl+Alt+Left") throw new Error("taken by the OS");
       return true;
     });
     const keys = new ReadAloudPlaybackKeys(() => {}, deps);
@@ -104,10 +104,12 @@ describe("ReadAloudPlaybackKeys", () => {
     const result = keys.apply({ active: true });
 
     expect(result.active).toBe(true);
-    expect(result.registered).toEqual(["Ctrl+Alt+Shift+Space", "Ctrl+Alt+Shift+Right"]);
+    expect(result.registered).toEqual(["Ctrl+Alt+Space", "Ctrl+Alt+Right"]);
     expect(warn).toHaveBeenCalledWith(
-      '[ReadAloud] Playback key "Ctrl+Alt+Shift+Left" failed to register',
-      { error: "taken by the OS" }
+      '[ReadAloud] Playback key "Ctrl+Alt+Left" failed to register',
+      {
+        error: "taken by the OS",
+      }
     );
   });
 
