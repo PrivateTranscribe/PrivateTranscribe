@@ -130,10 +130,16 @@ export type PrivateTranscribeOptions = {
   useThrowawayHome: boolean;
 };
 
-/** A freshly launched app and its two windows, handed back by a relaunch. */
+/**
+ * A freshly launched app and its windows, handed back by a relaunch.
+ *
+ * `overlayWindow` is null when the spec launched with
+ * PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW — there is no window to hand
+ * back, and waiting for one would hang the relaunch.
+ */
 export type RelaunchResult = {
   electronApp: ElectronApplication;
-  overlayWindow: Page;
+  overlayWindow: Page | null;
   controlPanel: Page;
 };
 
@@ -522,7 +528,9 @@ export const test = base.extend<
 
         app = await launchApp(inputs);
         const controlPanel = await ensureOnboarded(app, completeOnboarding);
-        const overlayWindow = await findWindow(app, (w) => isOverlayUrl(w.url()), "overlay");
+        const overlayWindow = isFlagOn(env.PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW)
+          ? null
+          : await findWindow(app, (w) => isOverlayUrl(w.url()), "overlay");
         return { electronApp: app, overlayWindow, controlPanel };
       },
     };

@@ -2,12 +2,17 @@ import { useState, useEffect } from "react";
 import { getProStatus, _verifyToken } from "../services/LicensingService";
 
 // Unfinished workflow features that require approved tester access.
+//
+// There is no "voice-assistant" entry any more: the assistant name and Prompt
+// Studio moved into the AI Enhancement page, so they gate on "ai-enhancement".
+// Nothing per-feature is persisted — every id here resolves through the one
+// `hasTesterAccess()` entitlement — so an existing tester keeps exactly the
+// access they had.
 const BETA_FEATURES = new Set([
   "correction-memory",
   "smart-context",
   "action-engine",
   "ai-enhancement",
-  "voice-assistant",
   "converse",
   // Read Aloud lives in Settings, not the sidebar, so it is deliberately absent
   // from SIDEBAR_BETA_ITEMS below — its section header carries the badge.
@@ -18,7 +23,6 @@ const BETA_FEATURES = new Set([
 const SIDEBAR_BETA_ITEMS = new Set([
   "correction-memory",
   "ai-enhancement",
-  "voice-assistant",
   "converse",
   "action-engine",
 ]);

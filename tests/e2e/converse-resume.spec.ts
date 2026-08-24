@@ -173,6 +173,8 @@ test.describe("converse session resume across an app restart", () => {
     // ---------------------------------------------------------------- the restart
 
     const relaunched = await relaunchElectronApp();
+    // Only a spec that disables the overlay gets null back, and this one needs it.
+    if (!relaunched.overlayWindow) throw new Error("the relaunched app has no overlay window");
     const second = driver(relaunched.overlayWindow);
     await second.ready();
 

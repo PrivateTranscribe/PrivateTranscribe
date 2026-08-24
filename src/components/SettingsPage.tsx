@@ -20,8 +20,6 @@ import {
   Timer,
   ArrowRight,
   Lock,
-  MessageSquare,
-  Sparkles,
   BookOpen,
   CheckCircle2,
   XCircle,
@@ -52,13 +50,11 @@ import { BetaBadge } from "./ui/BetaBadge";
 import { BetaAccessLink } from "./ui/BetaAccessLink";
 import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
 import { resolveRatingLanguage } from "../utils/modelAccuracy";
-import { useAgentName } from "../utils/agentName";
 import ProSettingsSection from "./ProSettingsSection";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 
-import PromptStudio from "./ui/PromptStudio";
 import ReasoningModelSelector from "./ReasoningModelSelector";
 
 import { HotkeyInput } from "./ui/HotkeyInput";
@@ -84,8 +80,6 @@ export type SettingsSectionType =
   | "readAloud"
   | "dictionary"
   | "aiModels"
-  | "agentConfig"
-  | "prompts"
   | "permissions"
   | "help"
   | "developer"
@@ -1471,7 +1465,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
   const aiEnhancementUnlocked = isFeatureUnlocked("ai-enhancement");
-  const voiceAssistantUnlocked = isFeatureUnlocked("voice-assistant");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -2001,7 +1994,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const permissionsHook = usePermissions(showAlertDialog, { checkPasteToolsOnMount: false });
   const { checkPasteToolsAvailability } = permissionsHook;
   useClipboard(showAlertDialog);
-  const { agentName, setAgentName } = useAgentName();
   const installTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
@@ -3432,158 +3424,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   </SettingsPanel>
                 )}
               </>
-            )}
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // AGENT CONFIG
-      // ───────────────────────────────────────────────────
-      case "agentConfig":
-        return (
-          <div className="space-y-8">
-            <SectionHeader
-              title="Voice Assistant"
-              description="Configure your AI agent's name and behavior"
-            />
-
-            {!voiceAssistantUnlocked && (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
-                <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  Customize your voice assistant with a personal name and fine-tuned system prompts
-                  for AI-enhanced transcriptions. This unfinished beta requires approved tester
-                  access.
-                </p>
-                <BetaAccessLink className="text-sm" />
-              </div>
-            )}
-
-            {voiceAssistantUnlocked && (
-              <>
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Agent name"
-                      description="Pick something short and natural to say aloud."
-                    >
-                      <div className="flex gap-2 w-full max-w-sm">
-                        <Input
-                          placeholder="e.g. Jarvis, Nova, Atlas..."
-                          value={agentName}
-                          onChange={(e) => setAgentName(e.target.value)}
-                          className="flex-1 text-center text-base font-mono"
-                        />
-                        <Button
-                          onClick={() => {
-                            setAgentName(agentName.trim());
-                            showAlertDialog({
-                              title: "Agent Name Updated",
-                              description: `Your agent is now named "${agentName.trim()}". Address it by saying "Hey ${agentName.trim()}" followed by your instructions.`,
-                            });
-                          }}
-                          disabled={!agentName.trim()}
-                          size="sm"
-                        >
-                          Save
-                        </Button>
-                      </div>
-                    </SettingsRow>
-                  </SettingsPanelRow>
-                </SettingsPanel>
-
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4 text-primary" />
-                        <p className="text-sm font-medium text-foreground">
-                          How instruction mode works
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        When you say{" "}
-                        <span className="font-medium text-foreground">
-                          &quot;Hey {agentName}&quot;
-                        </span>{" "}
-                        followed by an instruction, PrivateTranscribe switches from cleanup mode to
-                        assistant mode. Without the trigger phrase, it simply polishes your
-                        dictation.
-                      </p>
-                    </div>
-                  </SettingsPanelRow>
-                  <SettingsPanelRow>
-                    <div className="space-y-2.5">
-                      {[
-                        `Hey ${agentName}, write a formal email about the budget`,
-                        `Hey ${agentName}, make this more professional`,
-                        `Hey ${agentName}, convert this to bullet points`,
-                      ].map((example) => (
-                        <div key={example} className="flex items-start gap-3">
-                          <span className="shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded bg-primary/15 text-primary">
-                            Instruction
-                          </span>
-                          <p className="text-[12px] text-muted-foreground leading-relaxed">
-                            &quot;{example}&quot;
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </SettingsPanelRow>
-                </SettingsPanel>
-              </>
-            )}
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // PROMPTS
-      // ───────────────────────────────────────────────────
-      case "prompts":
-        return (
-          <div className="space-y-8">
-            <SectionHeader
-              title="System Prompts"
-              description="Shape how PrivateTranscribe interprets instructions, formats output, and responds to your voice assistant workflows."
-            />
-
-            {voiceAssistantUnlocked ? (
-              <PromptStudio />
-            ) : (
-              <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 shadow-[0_0_40px_rgba(112,255,186,0.08)] overflow-hidden relative">
-                <div className="absolute top-4 right-4">
-                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">
-                    Pro
-                  </Badge>
-                </div>
-                <div className="max-w-2xl space-y-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center shadow-[0_0_24px_rgba(112,255,186,0.12)]">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Your prompt workspace</h3>
-                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      The control room for system instructions - tune tone, cleanup rules, command
-                      behavior, and reusable prompt presets with full precision.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {[
-                      "Preset prompt profiles for different workflows",
-                      "Fine-grained instruction layers for cleanup vs assistant mode",
-                      "Safe testing before prompts affect live dictation",
-                    ].map((item) => (
-                      <div
-                        key={item}
-                        className="rounded-xl border border-border-subtle/50 bg-surface-raised/40 px-4 py-3 text-sm text-muted-foreground"
-                      >
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         );

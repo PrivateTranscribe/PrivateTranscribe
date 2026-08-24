@@ -22,7 +22,6 @@ export type PageId =
   | "transcribe"
   | "dictionary"
   | "ai-enhancement"
-  | "voice-assistant"
   | "converse"
   | "correction-memory"
   | "action-engine"
@@ -60,13 +59,6 @@ const navGroups: NavGroup[] = [
         id: "ai-enhancement",
         label: "AI Enhancement",
         icon: Brain,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
-      {
-        id: "voice-assistant",
-        label: "Voice Assistant",
-        icon: MessageSquare,
         badge: "Beta",
         badgeVariant: "pro",
       },

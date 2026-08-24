@@ -30,9 +30,10 @@ describe("Pro branding", () => {
   });
 
   it("keeps page and sidebar Pro badges purple", () => {
+    // VoiceAssistantPage was merged into AIEnhancementPage, so the badge it
+    // used to carry is now the one on the merged page.
     const files = [
       "src/components/pages/AIEnhancementPage.tsx",
-      "src/components/pages/VoiceAssistantPage.tsx",
       "src/components/pages/ActionEnginePage.tsx",
     ];
 
@@ -57,7 +58,6 @@ describe("Pro branding", () => {
       "src/components/AppSidebar.tsx",
       "src/components/ProSettingsSection.tsx",
       "src/components/pages/AIEnhancementPage.tsx",
-      "src/components/pages/VoiceAssistantPage.tsx",
       "src/components/pages/ActionEnginePage.tsx",
     ];
 

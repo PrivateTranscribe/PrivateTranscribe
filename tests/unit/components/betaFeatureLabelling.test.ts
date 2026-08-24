@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 const readSource = (relativePath: string): string =>
   fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
+// VoiceAssistantPage is deliberately absent: it was merged into
+// AIEnhancementPage, which now carries the one badge and the one way out for
+// both the model settings and the assistant name / prompt controls.
 const BETA_SURFACES = [
   "src/components/pages/CorrectionMemoryPage.tsx",
-  "src/components/pages/VoiceAssistantPage.tsx",
   "src/components/pages/AIEnhancementPage.tsx",
   "src/components/pages/ActionEnginePage.tsx",
 ];
@@ -60,8 +62,11 @@ describe("beta feature labelling", () => {
     }
 
     const settings = readSource("src/components/SettingsPage.tsx");
-    // Both locked cards, both locked toggles, and the locked Read Aloud row.
-    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(5);
+    // One locked card, both locked toggles, and the locked Read Aloud row. The
+    // fifth used to be the unreachable "Agent config" settings section — a
+    // second copy of the Voice Assistant page that no tab ever routed to. It
+    // went away with the merge rather than being left to drift.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(4);
   });
 
   it("keeps the beta destination in one place", () => {

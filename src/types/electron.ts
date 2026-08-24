@@ -471,7 +471,6 @@ export type ControlPanelPage =
   | "transcribe"
   | "dictionary"
   | "ai-enhancement"
-  | "voice-assistant"
   | "correction-memory"
   | "action-engine"
   | "settings";
