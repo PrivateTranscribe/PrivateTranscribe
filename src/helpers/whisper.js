@@ -1039,6 +1039,8 @@ class WhisperManager {
       isPackaged: !!process.resourcesPath && !process.resourcesPath.includes("node_modules"),
       ffmpeg: { available: false, path: null, error: null },
       whisperServer: { available: false, path: null },
+      lastSpawn: null,
+      recentInferenceRequests: [],
       modelsDir: this.getModelsDir(),
       models: [],
     };
@@ -1063,6 +1065,11 @@ class WhisperManager {
         available: this.serverManager.isAvailable(),
         path: serverPath || null,
       };
+      // What the engine was told, as opposed to what the renderer meant to tell
+      // it. Both records are written where the instruction leaves this process,
+      // so they stay honest even if a UI setting never reaches the pipeline.
+      diagnostics.lastSpawn = this.serverManager.getLastSpawn?.() || null;
+      diagnostics.recentInferenceRequests = this.serverManager.getRecentInferenceRequests?.() || [];
     }
 
     // Check downloaded models

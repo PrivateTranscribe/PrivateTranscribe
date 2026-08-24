@@ -263,6 +263,10 @@ function mergeVerboseJsonResults(results) {
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
+// How many /inference requests to keep in the diagnostic tail. A chunked file
+// transcription issues one per chunk, so this holds a whole run plus context.
+const INFERENCE_REQUEST_LOG_LIMIT = 20;
+
 class WhisperServerManager {
   constructor() {
     this.process = null;
@@ -296,6 +300,17 @@ class WhisperServerManager {
     // Optional listener invoked when the GPU→CPU fallback engages or recovers,
     // so the UI can tell the user instead of degrading silently.
     this.onEngineFallbackChanged = null;
+
+    // What the engine was actually told, recorded at the moment it was told.
+    //
+    // Two separate records because whisper-server takes its instructions in two
+    // places: the command line it was launched with, and the multipart body of
+    // each /inference request. Language in particular travels on the request,
+    // not the command line — so neither record alone answers "what language did
+    // this decode run in". Both are captured verbatim rather than re-derived,
+    // so a diagnostic can never echo back what a caller believed it asked for.
+    this.lastSpawn = null;
+    this.recentInferenceRequests = [];
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -990,6 +1005,16 @@ class WhisperServerManager {
       throw error;
     }
 
+    // The argv this process was handed, taken from the same array that was
+    // passed to spawn() rather than rebuilt afterwards.
+    this.lastSpawn = {
+      binary: serverBinary,
+      args: [...args],
+      pid: this.process?.pid ?? null,
+      forceCpu: this.forceCpu,
+      startedAt: Date.now(),
+    };
+
     this.process.stdout.on("data", (data) => {
       const text = data.toString();
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
@@ -1549,7 +1574,10 @@ class WhisperServerManager {
 
     form.append("file", wavBuffer, { filename: fileName, contentType: "audio/wav" });
 
-    if (language && language !== "auto") form.append("language", language);
+    // One value for both the wire and the diagnostic record below, so the
+    // record cannot drift from what was actually sent.
+    const wireLanguage = language && language !== "auto" ? language : null;
+    if (wireLanguage) form.append("language", wireLanguage);
     if (translate) form.append("translate", "true");
     if (initialPrompt) {
       form.append("prompt", initialPrompt);
@@ -1560,7 +1588,8 @@ class WhisperServerManager {
     // whisper.cpp builds — plain json has returned it inconsistently. Ask for
     // the richer format solely while we still need to learn the language, so
     // requests that already know it keep the cheaper response.
-    form.append("response_format", fileMode || detectLanguage ? "verbose_json" : "json");
+    const responseFormat = fileMode || detectLanguage ? "verbose_json" : "json";
+    form.append("response_format", responseFormat);
 
     if (fileMode || longSessionChunk) {
       // Long-form audio is especially prone to Whisper repeating stale context
@@ -1576,6 +1605,22 @@ class WhisperServerManager {
     for (const [name, enabled] of Object.entries({ diarize, tinydiarize, vad })) {
       if (enabled) form.append(name, "true");
     }
+
+    // Recorded from the same values that were just put on the wire. `language`
+    // is null exactly when the field was omitted, which is what auto-detect
+    // looks like on this endpoint — the absence is the instruction.
+    this._recordInferenceRequest({
+      language: wireLanguage,
+      detectLanguage: !!detectLanguage,
+      translate: !!translate,
+      responseFormat,
+      fileMode: !!fileMode,
+      chunkIndex,
+      chunkCount,
+      port: this.port,
+      pid: this.process?.pid ?? null,
+      at: Date.now(),
+    });
 
     const timeoutMs = getWhisperRequestTimeoutMs(durationSeconds);
 
@@ -1806,6 +1851,36 @@ class WhisperServerManager {
     this.activeServerBinaryPath = null;
     this.observedBackend = null;
     this.lastUsedTime = 0;
+  }
+
+  /** Keep a bounded tail of what was asked of the engine, newest last. */
+  _recordInferenceRequest(entry) {
+    this.recentInferenceRequests.push(entry);
+    if (this.recentInferenceRequests.length > INFERENCE_REQUEST_LOG_LIMIT) {
+      this.recentInferenceRequests.splice(
+        0,
+        this.recentInferenceRequests.length - INFERENCE_REQUEST_LOG_LIMIT
+      );
+    }
+  }
+
+  /**
+   * The command line the current (or most recent) whisper-server was launched
+   * with, copied so a caller cannot edit the record.
+   *
+   * Note what this does NOT answer: the `--language` flag here is the server's
+   * startup default and stays fixed for the life of the process. The language a
+   * given decode ran in travels on the /inference request instead — read
+   * getRecentInferenceRequests() for that.
+   */
+  getLastSpawn() {
+    if (!this.lastSpawn) return null;
+    return { ...this.lastSpawn, args: [...this.lastSpawn.args] };
+  }
+
+  /** The tail of the /inference requests actually sent, oldest first. */
+  getRecentInferenceRequests() {
+    return this.recentInferenceRequests.map((entry) => ({ ...entry }));
   }
 
   getStatus() {
