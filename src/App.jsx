@@ -109,6 +109,105 @@ const CONVERSE_STATUS_LABELS = {
   listening: "Listening",
 };
 
+/**
+ * ── The overlay's geometry, in one place ───────────────────────────────────
+ *
+ * The overlay used to be three unrelated artifacts sharing a window: a round
+ * button, a wide floating capsule for Read Aloud, and a Converse pill, each
+ * with its own width, its own corner radius and its own gap. On screen they
+ * read as three windows stacked on one another rather than as one control.
+ *
+ * There is one rule now, and everything below is derived from it:
+ *
+ *   The dictation button is the anchor. Every surface the overlay shows is a
+ *   row in a single fixed-width column that is docked to the top of that
+ *   button, and every corner in the overlay is drawn with the button's own
+ *   radius.
+ *
+ * Fixed width, not shrink-to-fit, because the rows change content constantly -
+ * "Reading aloud" becomes "Paused", a sentence gets longer, a counter reaches
+ * two digits - and a column that resized on each of those would be a fidget
+ * sitting on top of the thing the user is dictating into. The slot is the same
+ * size in every state, so state changes happen inside it instead of moving it.
+ */
+
+/** Every overlay row is this wide. 400px window, 24px of air on each side. */
+const OVERLAY_COLUMN_W = 352;
+
+/**
+ * The dictation button's radius, and therefore every radius in the overlay.
+ * CSS clamps a corner to half the box, so one number gives a 44px button a
+ * circle, a 32px status row a pill, and the taller player panel corners that
+ * are exactly the button's arc. One rule, the whole family.
+ */
+const OVERLAY_RADIUS = 22;
+
+/** Between stacked rows. Small enough to read as one column, not two cards. */
+const OVERLAY_ROW_GAP = 6;
+
+/**
+ * The button's top edge, measured up from the window's bottom. The button sits
+ * at bottom:42 inside a 16px hover buffer and is 44px tall: 42 + 16 + 44.
+ */
+const OVERLAY_BUTTON_TOP = 102;
+
+/**
+ * How far the button's cap sits *inside* the bottom row. Tangent shapes touch
+ * at a point and still read as two; an overlap makes the button emerge from
+ * the column as one silhouette. The button paints over the column (z-index
+ * below), so nothing of it is ever covered.
+ */
+const OVERLAY_DOCK_OVERLAP = 10;
+
+const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP - OVERLAY_DOCK_OVERLAP;
+
+/**
+ * Extra bottom padding on whichever row is docked, so its content stops above
+ * the button's cap instead of being bitten into by it.
+ */
+const OVERLAY_DOCK_PAD = 20;
+
+/**
+ * The one material. `--color-muted` at 96%, a hairline white border, the same
+ * blur and the same shadow - used by the button, every row, and the command
+ * menu, so they are recognisably the same surface caught in different states.
+ */
+// Exactly what Tailwind compiles `bg-muted/96` to, so the button's inline fill
+// and the rows' class fill are the same value from the same token.
+const OVERLAY_SURFACE_BG = "color-mix(in oklab, var(--color-muted) 96%, transparent)";
+const OVERLAY_SURFACE_BORDER = "rgba(255, 255, 255, 0.12)";
+const OVERLAY_SURFACE_SHADOW = "0 12px 30px rgba(0, 0, 0, 0.38)";
+/** Matches Tailwind's `backdrop-blur-xl`, which the rows use. */
+const OVERLAY_SURFACE_BLUR = "blur(24px)";
+
+/** The class half of the same material, for the rows and the menu. */
+const OVERLAY_SURFACE_CLASS =
+  "border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl";
+
+/**
+ * One entrance for every surface, growing from the anchor. Rows and the menu
+ * both use it, so opening the menu and starting a read are the same gesture.
+ */
+const OVERLAY_SURFACE_ANIMATION = "overlay-surface-in 180ms cubic-bezier(0.22, 1, 0.36, 1)";
+
+/** Shared trailing-control button: same target, same feedback, every row. */
+const OVERLAY_CONTROL_CLASS =
+  "rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6";
+
+/**
+ * The style a row carries. `docked` is true for the bottom row only - the one
+ * the button is actually attached to.
+ */
+function overlayRowStyle({ docked, interactive }) {
+  return {
+    borderRadius: OVERLAY_RADIUS,
+    paddingBottom: docked ? OVERLAY_DOCK_PAD : undefined,
+    transformOrigin: "bottom center",
+    animation: OVERLAY_SURFACE_ANIMATION,
+    pointerEvents: interactive ? "auto" : "none",
+  };
+}
+
 const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
   return (
     <div className="flex items-center justify-center gap-[3px]">
@@ -1040,9 +1139,13 @@ export default function App() {
 
   const micState = getMicState();
 
+  // The anchor of the column, and made of the same material as it: the same
+  // fill, the same hairline border, the same blur and the same shadow, with
+  // OVERLAY_RADIUS resolving to a circle at 44px. Only the fill moves between
+  // states, because only the fill is carrying state.
   const getMicButtonStyles = () => {
     const base = {
-      borderRadius: 999,
+      borderRadius: OVERLAY_RADIUS,
       width: 44,
       height: 44,
       display: "flex",
@@ -1052,37 +1155,36 @@ export default function App() {
       overflow: "hidden",
       transition:
         "background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease, transform 180ms ease",
-      backdropFilter: "blur(12px)",
+      backdropFilter: OVERLAY_SURFACE_BLUR,
+      boxShadow: OVERLAY_SURFACE_SHADOW,
     };
 
     switch (micState) {
       case "idle":
         return {
           ...base,
-          backgroundColor: "rgba(8, 9, 8, 0.72)",
-          border: "1.5px solid var(--color-border)",
-          boxShadow: "none",
+          backgroundColor: OVERLAY_SURFACE_BG,
+          border: `1px solid ${OVERLAY_SURFACE_BORDER}`,
         };
       case "hover":
         return {
           ...base,
-          backgroundColor: "rgba(8, 9, 8, 0.82)",
-          border: "1.5px solid rgba(112, 255, 186, 0.28)",
-          boxShadow: "none",
+          backgroundColor: OVERLAY_SURFACE_BG,
+          border: "1px solid rgba(112, 255, 186, 0.28)",
         };
       case "recording":
         return {
           ...base,
           backgroundColor: "var(--color-primary)",
-          border: "1.5px solid rgba(112, 255, 186, 0.5)",
-          boxShadow: "0 0 18px rgba(112, 255, 186, 0.24)",
+          border: "1px solid rgba(112, 255, 186, 0.5)",
+          // The shared shadow, plus the glow that says it is listening.
+          boxShadow: `${OVERLAY_SURFACE_SHADOW}, 0 0 18px rgba(112, 255, 186, 0.24)`,
         };
       case "processing":
         return {
           ...base,
           backgroundColor: "var(--color-surface-3)",
-          border: "1.5px solid rgba(112, 255, 186, 0.16)",
-          boxShadow: "none",
+          border: "1px solid rgba(112, 255, 186, 0.16)",
         };
       default:
         return base;
@@ -1107,7 +1209,9 @@ export default function App() {
     const menuWidth = 248;
     // Conservative estimate of the tallest menu state (root + audio submenu)
     const MENU_EST_HEIGHT = 320;
-    const GAP = 12; // gap between button edge and menu
+    // Negative: the menu docks to the button the same way the status column
+    // does, overlapping its cap rather than floating a gap away from it.
+    const GAP = -OVERLAY_DOCK_OVERLAP;
 
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
@@ -1129,6 +1233,10 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         bottom: clampedBottom,
+        // Keeps the last row clear of the button's cap, the same way the
+        // docked status row does.
+        paddingBottom: OVERLAY_DOCK_PAD,
+        transformOrigin: "bottom center",
         pointerEvents: "auto",
       };
     } else {
@@ -1139,6 +1247,8 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         top: clampedTop,
+        paddingTop: OVERLAY_DOCK_PAD,
+        transformOrigin: "top center",
         pointerEvents: "auto",
       };
     }
@@ -1189,7 +1299,11 @@ export default function App() {
       : [];
 
     void window.electronAPI?.setMainWindowInteractiveRegions?.("converse-player", regions);
-  }, [converseState]);
+    // The Read Aloud state is a dependency even though it is not read here: the
+    // Converse row sits above the Read Aloud row in the same column, so a read
+    // starting or ending moves it. Without this the region would only catch up
+    // on the next Converse poll, leaving Interrupt briefly unclickable.
+  }, [converseState, readAloudState, readAloudNotice]);
 
   useEffect(() => {
     return () => {
@@ -1221,13 +1335,25 @@ export default function App() {
     };
   }, []);
 
+  // Which row the button is actually attached to. The column is built top-down,
+  // so this is whichever row renders last, and it is the only one that carries
+  // the dock padding.
+  const noticeRowVisible = Boolean(!readAloudState && readAloudNotice);
+  const dockedRow = readAloudState
+    ? "player"
+    : noticeRowVisible
+      ? "notice"
+      : converseState
+        ? "converse"
+        : null;
+
   return (
     <div className="dictation-window">
       <style>{`
-        @keyframes overlay-menu-in {
+        @keyframes overlay-surface-in {
           from {
             opacity: 0;
-            transform: translateY(8px) scale(0.98);
+            transform: translateY(6px) scale(0.98);
           }
           to {
             opacity: 1;
@@ -1259,6 +1385,10 @@ export default function App() {
             alignItems: "center",
             gap: 8,
             pointerEvents: "none",
+            // Above the column, so the button's cap paints over the row it is
+            // docked to instead of being clipped by it - and so the row's dock
+            // padding never swallows a click meant for the button.
+            zIndex: 2,
           }}
         >
           {/* Wrapper needed for MicHalo to sit outside the overflow:hidden button */}
@@ -1379,8 +1509,8 @@ export default function App() {
           {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (
             <div
-              className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/10 text-white/55 border border-white/8 whitespace-nowrap"
-              style={{ pointerEvents: "none", flexShrink: 0 }}
+              className={`px-2 py-1 text-[10px] font-medium text-white/55 whitespace-nowrap ${OVERLAY_SURFACE_CLASS}`}
+              style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
               title={`Active dictation mode: ${activeDictationMode}`}
             >
               {activeDictationMode}
@@ -1389,185 +1519,177 @@ export default function App() {
         </div>
 
         {/*
-          Read Aloud player: sits above the dictation button rather than beside
-          it, so the button never moves when a read starts. Same surface, border
-          and blur as the context menu — it is the same overlay, in a different
-          state, not a second visual language.
+          The overlay column. One fixed-width stack, docked to the top of the
+          dictation button, holding every surface the overlay has to show.
+          Converse sits above Read Aloud when both are running, so the order on
+          screen is stable and the button never moves.
+
+          The column itself is click-through; each row opts back in only if it
+          has something to press.
         */}
-        {readAloudState && (
+        {(readAloudState || noticeRowVisible || converseState) && (
           <div
             style={{
               position: "absolute",
-              bottom: 112,
+              bottom: OVERLAY_STACK_BOTTOM,
               left: "50%",
               transform: "translateX(-50%)",
-              pointerEvents: "auto",
+              width: OVERLAY_COLUMN_W,
+              display: "flex",
+              flexDirection: "column",
+              gap: OVERLAY_ROW_GAP,
+              pointerEvents: "none",
+              zIndex: 1,
             }}
           >
-            <div
-              ref={readAloudPillRef}
-              data-testid="readaloud-overlay-player"
-              className={
-                readAloudSentence
-                  ? "flex flex-col gap-1.5 rounded-2xl border border-white/12 bg-muted/96 px-3 py-2 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
-                  : "flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
-              }
-            >
-              <div className="flex items-center gap-2">
-                <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
+            {converseState && (
+              <div
+                ref={conversePillRef}
+                data-testid="converse-overlay-state"
+                data-state={converseState.state}
+                className={`flex items-center gap-2 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({
+                  docked: dockedRow === "converse",
+                  interactive: true,
+                })}
+              >
+                <MessagesSquare size={14} className="text-primary shrink-0" aria-hidden />
                 <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
-                  {readAloudLabel}
+                  Claude Code
+                </span>
+                <span className="text-[11px] leading-none text-white/45 whitespace-nowrap">
+                  {CONVERSE_STATUS_LABELS[converseState.state] || converseState.state}
                 </span>
 
-                {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
+                {converseState.state === "speaking" && converseState.total > 0 && (
                   <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
-                    {readAloudState.index + 1} / {readAloudState.sentenceCount}
+                    {Math.min(converseState.playIndex + 1, converseState.total)} /{" "}
+                    {converseState.total}
                   </span>
                 )}
 
-                {/* ml-auto pins the controls to the right edge of the capsule.
-                    Without it they sit against the status label and slide
-                    sideways every time it changes width — "Reading aloud" to
-                    "Paused" would move the pause button out from under the
-                    cursor that just pressed it. */}
-                <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
-
-                {readAloudState.status !== "error" && (
+                {/* Trailing controls sit against the column's right edge in
+                    every row, so a control is always in the same place
+                    regardless of how long the status text in front of it is. */}
+                {converseState.state === "speaking" && (
                   <>
+                    <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
                     <button
-                      aria-label="Previous sentence"
-                      onClick={handleReadAloudBack}
-                      className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                      aria-label="Interrupt Claude Code"
+                      onClick={handleConverseInterrupt}
+                      className={OVERLAY_CONTROL_CLASS}
                     >
-                      <SkipBack size={13} />
-                    </button>
-
-                    <button
-                      aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
-                      onClick={handleReadAloudToggle}
-                      className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
-                    >
-                      {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
-                    </button>
-
-                    <button
-                      aria-label="Next sentence"
-                      onClick={handleReadAloudForward}
-                      className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
-                    >
-                      <SkipForward size={13} />
+                      <Square size={13} fill="currentColor" />
                     </button>
                   </>
                 )}
-
-                <button
-                  aria-label="Stop reading"
-                  onClick={handleReadAloudStop}
-                  className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
-                >
-                  {/* Filled: an outlined square reads as a checkbox, not stop. */}
-                  <Square size={13} fill="currentColor" />
-                </button>
               </div>
+            )}
 
-              {/*
-                Fixed width rather than shrink-to-fit: the sentence changes every
-                few seconds, and a capsule that resized with each one would be a
-                fidget on top of the dictation button.
-              */}
-              {readAloudSentence && (
-                <span
-                  data-testid="readaloud-current-sentence"
-                  className="w-[340px] truncate text-[11px] leading-snug text-white/60"
-                  title={readAloudSentence}
-                >
-                  {readAloudSentence}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+            {readAloudState && (
+              <div
+                ref={readAloudPillRef}
+                data-testid="readaloud-overlay-player"
+                className={`flex flex-col gap-1.5 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ docked: dockedRow === "player", interactive: true })}
+              >
+                <div className="flex items-center gap-2">
+                  <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
+                  <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                    {readAloudLabel}
+                  </span>
 
-        {/*
-          Read Aloud notice: the same pill, in the state a read reaches when
-          there was nothing to read. It carries no controls - there is nothing
-          to pause - so it stays click-through and disappears on its own, and it
-          never renders while a real read owns the pill.
-        */}
-        {!readAloudState && readAloudNotice && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 112,
-              left: "50%",
-              transform: "translateX(-50%)",
-              pointerEvents: "none",
-            }}
-          >
-            <div
-              data-testid="readaloud-overlay-notice"
-              data-reason={readAloudNotice}
-              className="flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
-            >
-              <AudioLines size={14} className="text-white/40 shrink-0" aria-hidden />
-              <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
-                {readAloudNotice === "non-english"
-                  ? nonEnglishNoticeLabel(readAloudNoticeLanguage)
-                  : READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
-              </span>
-            </div>
-          </div>
-        )}
+                  {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
+                    <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
+                      {readAloudState.index + 1} / {readAloudState.sentenceCount}
+                    </span>
+                  )}
 
-        {/*
-          Converse state: the same pill language as the Read Aloud player, one
-          row higher when both are on screen, so neither ever covers or moves
-          the dictation button.
-        */}
-        {converseState && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: readAloudState || readAloudNotice ? 158 : 112,
-              left: "50%",
-              transform: "translateX(-50%)",
-              pointerEvents: "auto",
-            }}
-          >
-            <div
-              ref={conversePillRef}
-              data-testid="converse-overlay-state"
-              data-state={converseState.state}
-              className="flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
-            >
-              <MessagesSquare size={14} className="text-primary shrink-0" aria-hidden />
-              <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
-                Claude Code
-              </span>
-              <span className="text-[11px] leading-none text-white/45 whitespace-nowrap">
-                {CONVERSE_STATUS_LABELS[converseState.state] || converseState.state}
-              </span>
+                  {/* ml-auto pins the controls to the column's right edge.
+                      Without it they sit against the status label and slide
+                      sideways every time it changes width — "Reading aloud" to
+                      "Paused" would move the pause button out from under the
+                      cursor that just pressed it. */}
+                  <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
 
-              {converseState.state === "speaking" && converseState.total > 0 && (
-                <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
-                  {Math.min(converseState.playIndex + 1, converseState.total)} /{" "}
-                  {converseState.total}
-                </span>
-              )}
+                  {readAloudState.status !== "error" && (
+                    <>
+                      <button
+                        aria-label="Previous sentence"
+                        onClick={handleReadAloudBack}
+                        className={OVERLAY_CONTROL_CLASS}
+                      >
+                        <SkipBack size={13} />
+                      </button>
 
-              {converseState.state === "speaking" && (
-                <>
-                  <div className="h-3.5 w-px bg-white/12" aria-hidden />
+                      <button
+                        aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
+                        onClick={handleReadAloudToggle}
+                        className={OVERLAY_CONTROL_CLASS}
+                      >
+                        {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
+                      </button>
+
+                      <button
+                        aria-label="Next sentence"
+                        onClick={handleReadAloudForward}
+                        className={OVERLAY_CONTROL_CLASS}
+                      >
+                        <SkipForward size={13} />
+                      </button>
+                    </>
+                  )}
+
                   <button
-                    aria-label="Interrupt Claude Code"
-                    onClick={handleConverseInterrupt}
-                    className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                    aria-label="Stop reading"
+                    onClick={handleReadAloudStop}
+                    className={OVERLAY_CONTROL_CLASS}
                   >
+                    {/* Filled: an outlined square reads as a checkbox, not stop. */}
                     <Square size={13} fill="currentColor" />
                   </button>
-                </>
-              )}
-            </div>
+                </div>
+
+                {/*
+                  The sentence takes the column's width rather than its own: it
+                  changes every few seconds, and a row that resized with each
+                  one would be a fidget on top of the dictation button.
+                */}
+                {readAloudSentence && (
+                  <span
+                    data-testid="readaloud-current-sentence"
+                    className="block w-full truncate text-[11px] leading-snug text-white/60"
+                    title={readAloudSentence}
+                  >
+                    {readAloudSentence}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/*
+              The same row, in the state a read reaches when there was nothing
+              to read. It carries no controls - there is nothing to pause - so
+              it stays click-through and disappears on its own, and it never
+              renders while a real read owns the slot.
+            */}
+            {noticeRowVisible && (
+              <div
+                data-testid="readaloud-overlay-notice"
+                data-reason={readAloudNotice}
+                className={`flex items-center gap-2 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ docked: dockedRow === "notice", interactive: false })}
+              >
+                <AudioLines size={14} className="text-white/40 shrink-0" aria-hidden />
+                {/* Wraps rather than overflows: a long language name would push
+                    "Read Aloud speaks English only" past the column edge. */}
+                <span className="text-[12px] font-medium leading-snug text-white/90">
+                  {readAloudNotice === "non-english"
+                    ? nonEnglishNoticeLabel(readAloudNoticeLanguage)
+                    : READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1575,9 +1697,14 @@ export default function App() {
         {isCommandMenuOpen && menuStyle && (
           <div
             ref={commandMenuRef}
-            className="w-[248px] rounded-xl border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
+            className={`w-[248px] p-1.5 ${OVERLAY_SURFACE_CLASS}`}
             style={{
-              animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+              // Same material, same radius, same entrance as the status rows —
+              // the menu is this overlay in another state, not another window.
+              borderRadius: OVERLAY_RADIUS,
+              animation: OVERLAY_SURFACE_ANIMATION,
+              // menuStyle carries the transform-origin, because only it knows
+              // whether the menu grew up out of the button or down out of it.
               ...menuStyle,
             }}
             onMouseEnter={() => setWindowInteractivity(true)}
