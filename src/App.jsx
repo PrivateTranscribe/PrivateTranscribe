@@ -58,6 +58,19 @@ const READ_ALOUD_STATUS_LABELS = {
   error: "Could not read that",
 };
 
+/**
+ * What the pill says when a read hotkey captured nothing. Without this the
+ * press is completely silent, and an empty selection is indistinguishable from
+ * a shortcut that never fired.
+ */
+const READ_ALOUD_NOTICE_LABELS = {
+  "empty-selection": "Nothing selected",
+  unsupported: "Cannot read selections here",
+};
+
+/** Long enough to read, short enough to never sit in front of the next dictation. */
+const READ_ALOUD_NOTICE_MS = 2500;
+
 /** Matches the readAloudHotkey default in useSettings.ts. */
 const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
@@ -253,6 +266,10 @@ export default function App() {
   // { player, sync } — the sync call re-samples the player into React state.
   const readAloudRef = useRef(null);
   const [readAloudState, setReadAloudState] = useState(null);
+  // Where the text being read came from, so a clipboard fallback can say so.
+  const [readAloudSource, setReadAloudSource] = useState(null);
+  // "empty-selection" | "unsupported" while the transient notice pill is up.
+  const [readAloudNotice, setReadAloudNotice] = useState(null);
   // { state, playIndex, total } while a Converse session is running, else null.
   const [converseState, setConverseState] = useState(null);
   const { toast } = useToast();
@@ -278,7 +295,12 @@ export default function App() {
       const state = player.getState();
       const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
       setReadAloudState(visible ? state : null);
-      if (!visible) stopPolling();
+      // The source belongs to the read that is on screen. Dropping it with the
+      // pill keeps a finished clipboard read from labelling the next one.
+      if (!visible) {
+        setReadAloudSource(null);
+        stopPolling();
+      }
       return state;
     };
     const startPolling = () => {
@@ -288,15 +310,40 @@ export default function App() {
 
     readAloudRef.current = { player, sync: startPolling };
 
+    let noticeTimer = null;
+    const clearNotice = () => {
+      if (noticeTimer) {
+        clearTimeout(noticeTimer);
+        noticeTimer = null;
+      }
+      setReadAloudNotice(null);
+    };
+
     // The real feature path: the main process captures the foreground app's
     // selection and pushes the text here. Not gated on the test flag - this is
     // what a user's read hotkey ends up calling.
     const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
       const text = data?.text;
       if (typeof text === "string" && text.trim()) {
+        // A real read supersedes whatever the last press had to say.
+        clearNotice();
+        setReadAloudSource(data?.source ?? null);
         player.speak(text);
         startPolling();
       }
+    });
+
+    // The other half of "the hotkey always answers": a capture with nothing to
+    // read still puts the pill on screen, briefly, so the press is visible.
+    const unsubscribeNotice = window.electronAPI?.onReadAloudNotice?.((_event, data) => {
+      const reason = data?.reason;
+      if (!READ_ALOUD_NOTICE_LABELS[reason]) return;
+      if (noticeTimer) clearTimeout(noticeTimer);
+      setReadAloudNotice(reason);
+      noticeTimer = setTimeout(() => {
+        noticeTimer = null;
+        setReadAloudNotice(null);
+      }, READ_ALOUD_NOTICE_MS);
     });
 
     // The overlay is the one window that is always running, so it is what tells
@@ -309,8 +356,10 @@ export default function App() {
 
     const teardown = () => {
       stopPolling();
+      clearNotice();
       readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
+      if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       player.dispose();
     };
 
@@ -320,6 +369,8 @@ export default function App() {
 
     window.__readAloudTest = {
       speak: (text) => {
+        // No capture happened, so there is no source to attribute this to.
+        setReadAloudSource(null);
         const result = player.speak(text);
         startPolling();
         return result;
@@ -438,6 +489,15 @@ export default function App() {
   }, []);
 
   const readAloudPlaying = readAloudState?.playing === true;
+
+  // A clipboard fallback is still worth reading, but it is not what the user
+  // highlighted, so the pill names it rather than passing it off as the
+  // selection. Only while it is actually being read - "Preparing" and "Paused"
+  // are about the player, not about where the text came from.
+  const readAloudLabel =
+    readAloudSource === "clipboard" && readAloudState?.status === "playing"
+      ? "Reading clipboard"
+      : READ_ALOUD_STATUS_LABELS[readAloudState?.status] || "Reading aloud";
 
   const handleReadAloudToggle = useCallback(() => {
     const handle = readAloudRef.current;
@@ -1239,7 +1299,7 @@ export default function App() {
             >
               <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
               <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
-                {READ_ALOUD_STATUS_LABELS[readAloudState.status] || "Reading aloud"}
+                {readAloudLabel}
               </span>
 
               {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
@@ -1273,6 +1333,35 @@ export default function App() {
         )}
 
         {/*
+          Read Aloud notice: the same pill, in the state a read reaches when
+          there was nothing to read. It carries no controls - there is nothing
+          to pause - so it stays click-through and disappears on its own, and it
+          never renders while a real read owns the pill.
+        */}
+        {!readAloudState && readAloudNotice && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 112,
+              left: "50%",
+              transform: "translateX(-50%)",
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              data-testid="readaloud-overlay-notice"
+              data-reason={readAloudNotice}
+              className="flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+            >
+              <AudioLines size={14} className="text-white/40 shrink-0" aria-hidden />
+              <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                {READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/*
           Converse state: the same pill language as the Read Aloud player, one
           row higher when both are on screen, so neither ever covers or moves
           the dictation button.
@@ -1281,7 +1370,7 @@ export default function App() {
           <div
             style={{
               position: "absolute",
-              bottom: readAloudState ? 158 : 112,
+              bottom: readAloudState || readAloudNotice ? 158 : 112,
               left: "50%",
               transform: "translateX(-50%)",
               pointerEvents: "auto",

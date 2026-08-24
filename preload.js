@@ -192,6 +192,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAloudReadSelection: () => ipcRenderer.invoke("readaloud-read-selection"),
   readAloudSyncHotkey: (settings) => ipcRenderer.invoke("readaloud-sync-hotkey", settings),
   onReadAloudSpeak: registerListener("readaloud-speak"),
+  /** Fired instead of `readaloud-speak` when a capture produced nothing to read. */
+  onReadAloudNotice: registerListener("readaloud-notice"),
   /**
    * Dev-only switch for the headless Read Aloud test surface. Off unless the
    * app was launched with PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1, so a

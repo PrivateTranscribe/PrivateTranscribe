@@ -2716,23 +2716,35 @@ class IPCHandlers {
    *
    * Shared by the `readaloud-read-selection` IPC and the global shortcut, so
    * the hotkey cannot drift into a second, differently-behaving capture path.
+   *
+   * The hotkey always answers. A capture that produced no text used to send
+   * nothing at all, which made an empty selection indistinguishable from a dead
+   * shortcut, so the overlay now gets a `readaloud-notice` instead. And a read
+   * that fell back to the pre-existing clipboard carries its `source` on the
+   * speak event, because hearing old clipboard content with no explanation is
+   * its own kind of silent failure.
    */
   async readSelectionAndSpeak() {
-    if (!this.selectionCapture) {
-      return {
-        text: "",
-        source: "unsupported",
-        waitedMs: null,
-        detail: "ERR selection capture unavailable",
-      };
-    }
+    const result = this.selectionCapture
+      ? await this.selectionCapture.captureSelection()
+      : {
+          text: "",
+          source: "unsupported",
+          waitedMs: null,
+          detail: "ERR selection capture unavailable",
+        };
 
-    const result = await this.selectionCapture.captureSelection();
-
-    if (result.text) {
-      const overlay = this.windowManager?.mainWindow;
-      if (overlay && !overlay.isDestroyed()) {
-        safeSend(overlay.webContents, "readaloud-speak", { text: result.text });
+    const overlay = this.windowManager?.mainWindow;
+    if (overlay && !overlay.isDestroyed()) {
+      if (result.text) {
+        safeSend(overlay.webContents, "readaloud-speak", {
+          text: result.text,
+          source: result.source,
+        });
+      } else {
+        safeSend(overlay.webContents, "readaloud-notice", {
+          reason: readAloudNoticeReason(result.source),
+        });
       }
     }
 
@@ -2765,5 +2777,19 @@ function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
   return currentHotkey;
 }
 
+/**
+ * Which notice the overlay should show for a capture that produced no text.
+ *
+ * Only two things can be said honestly here. Either the machine cannot capture
+ * selections at all (`unsupported` - not Windows, or the copy worker never
+ * started), or the capture ran and came back with nothing to read. `none` is
+ * the ordinary case; anything unexpected is treated as the ordinary case too,
+ * because telling a Windows user their platform is unsupported would be a lie.
+ */
+function readAloudNoticeReason(source) {
+  return source === "unsupported" ? "unsupported" : "empty-selection";
+}
+
 module.exports = IPCHandlers;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
+module.exports.readAloudNoticeReason = readAloudNoticeReason;

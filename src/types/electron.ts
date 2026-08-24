@@ -750,8 +750,24 @@ declare global {
         hotkey: string;
         reason?: string;
       }>;
+      /**
+       * Text captured from the foreground app, for the overlay to speak.
+       * `source` mirrors SelectionCaptureResult: a `clipboard` read is the
+       * pre-existing clipboard rather than the selection, and the overlay says
+       * so instead of passing it off as what the user highlighted.
+       */
       onReadAloudSpeak: (
-        callback: (event: any, data: { text: string }) => void
+        callback: (
+          event: any,
+          data: { text: string; source?: SelectionCaptureResult["source"] }
+        ) => void
+      ) => (() => void) | void;
+      /**
+       * Sent instead of `readaloud-speak` when a capture produced no text, so
+       * the hotkey always answers with something the user can see.
+       */
+      onReadAloudNotice: (
+        callback: (event: any, data: { reason: "empty-selection" | "unsupported" }) => void
       ) => (() => void) | void;
       /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
       readAloudTestEnabled: boolean;
