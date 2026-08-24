@@ -5,12 +5,20 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
 /**
- * Ledger gate `readaloud-settings-ui`: the Read Aloud section exists, is beta
- * gated, downloads its voice model through the real model manager, and says
- * out loud that it only speaks English.
+ * Ledger gate `readaloud-sidebar-page`: Read Aloud is a sidebar page, not a
+ * settings tab nobody found. It is beta gated, downloads its voice model
+ * through the real model manager, and says out loud that it only speaks
+ * English.
+ *
+ * This replaces readaloud-settings.spec.ts. Every assertion that spec made is
+ * still here — locked, no model, downloading, ready, the enable toggle
+ * persisting, and real synthesis through the overlay — because moving a
+ * feature is only safe if the behaviour is proven at the new address. What is
+ * added is the move itself: the sidebar carries the entry, Settings no longer
+ * offers the tab.
  *
  * Screenshots land in docs/goal-evidence/ because a design critic reads them
- * afterwards; every state the section can be in gets one, since a state with
+ * afterwards; every state the page can be in gets one, since a state with
  * no picture is a state nobody judged.
  *
  * The download test spends real bandwidth on Hugging Face — a few megabytes,
@@ -45,15 +53,54 @@ async function captureEvidence(page: Page, fileName: string, minBytes = MIN_SCRE
   return filePath;
 }
 
-async function openReadAloudSettings(controlPanel: Page) {
-  await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-  await controlPanel.getByRole("button", { name: "Read Aloud", exact: true }).click();
+/**
+ * The sidebar clipped the same way as readaloud-sidebar-before.png, so the
+ * pair can be laid side by side. The sidebar is a fixed 220px column; 240
+ * catches its right border.
+ */
+async function captureSidebar(page: Page, fileName: string) {
+  fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
+  const filePath = path.join(EVIDENCE_DIR, fileName);
+  // The pointer stays where the last click left it, so without this the
+  // evidence shows a hover state the design never asked for.
+  await page.mouse.move(1180, 500);
+  const height = await page.evaluate(() => window.innerHeight);
+  await page.screenshot({ path: filePath, clip: { x: 0, y: 0, width: 240, height } });
+
+  const bytes = fs.statSync(filePath).size;
+  expect(bytes, `${fileName} is too small to show anything (${bytes} bytes)`).toBeGreaterThan(5_000);
+}
+
+/** The sidebar entry drops its "Beta" badge once tester access is active. */
+async function openReadAloudPage(controlPanel: Page) {
+  await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
   await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
 }
 
-test.describe("read aloud settings", () => {
+test.describe("read aloud page", () => {
+  test("is in the sidebar with a Beta badge, and no longer a settings tab", async ({
+    controlPanel,
+  }) => {
+    // The whole point of the move: it is visible without opening Settings.
+    const entry = controlPanel.getByRole("button", { name: "Read Aloud Beta" });
+    await expect(entry).toBeVisible();
+    await expect(entry.getByText("Beta", { exact: true })).toBeVisible();
+
+    // It sits in SPEECH, beside Dictionary, not off in some unrelated group.
+    await expect(controlPanel.getByRole("button", { name: "Dictionary", exact: true })).toBeVisible();
+
+    await captureSidebar(controlPanel, "readaloud-sidebar-after.png");
+
+    // Settings must not keep a second copy — one home, not two.
+    await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(controlPanel.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(controlPanel.getByRole("button", { name: "Read Aloud", exact: true })).toHaveCount(
+      0
+    );
+  });
+
   test("shows the locked beta state with a way out", async ({ controlPanel }) => {
-    await openReadAloudSettings(controlPanel);
+    await openReadAloudPage(controlPanel);
 
     await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
     await expect(
@@ -64,7 +111,7 @@ test.describe("read aloud settings", () => {
     // Locked means locked: no download button is reachable from here.
     await expect(controlPanel.getByRole("button", { name: /Download voice model/ })).toHaveCount(0);
 
-    await captureEvidence(controlPanel, "readaloud-settings-locked.png");
+    await captureEvidence(controlPanel, "readaloud-page-locked.png");
   });
 
   test.describe("with tester access and no model on disk", () => {
@@ -72,7 +119,7 @@ test.describe("read aloud settings", () => {
 
     test("offers the download and never starts one by itself", async ({ controlPanel }) => {
       await unlockTesterAccess(controlPanel);
-      await openReadAloudSettings(controlPanel);
+      await openReadAloudPage(controlPanel);
 
       const status = controlPanel.getByTestId("readaloud-model-status");
       await expect(status).toContainText("is not on this machine");
@@ -93,7 +140,7 @@ test.describe("read aloud settings", () => {
       );
       expect(modelStatus.installed, "the app downloaded the model unprompted").toBe(false);
 
-      await captureEvidence(controlPanel, "readaloud-settings-no-model.png");
+      await captureEvidence(controlPanel, "readaloud-page-no-model.png");
     });
 
     test("downloads through the model manager and cancels cleanly", async ({ controlPanel }) => {
@@ -101,7 +148,7 @@ test.describe("read aloud settings", () => {
       test.setTimeout(120_000);
 
       await unlockTesterAccess(controlPanel);
-      await openReadAloudSettings(controlPanel);
+      await openReadAloudPage(controlPanel);
 
       const modelDir = (
         await controlPanel.evaluate(
@@ -121,7 +168,7 @@ test.describe("read aloud settings", () => {
       // first proof that bytes are arriving rather than a bar being rendered.
       await expect(progress).toContainText(/[1-9]\d*%/, { timeout: 15_000 });
 
-      await captureEvidence(controlPanel, "readaloud-settings-downloading.png");
+      await captureEvidence(controlPanel, "readaloud-page-downloading.png");
 
       await controlPanel.getByRole("button", { name: /Cancel download/ }).click();
 
@@ -148,7 +195,7 @@ test.describe("read aloud settings", () => {
 
     test("shows the size on disk and lets the feature be turned on", async ({ controlPanel }) => {
       await unlockTesterAccess(controlPanel);
-      await openReadAloudSettings(controlPanel);
+      await openReadAloudPage(controlPanel);
 
       const modelStatus = await controlPanel.evaluate(
         async () => await window.electronAPI.readAloudCheckModelStatus()
@@ -165,7 +212,7 @@ test.describe("read aloud settings", () => {
       await expect(status).toContainText("MB");
       await expect(controlPanel.getByText("English only for now.")).toBeVisible();
 
-      // The enable toggle is the last control in the section; it is the one
+      // The enable toggle is the last control on the page; it is the one
       // that binds the global shortcut, so it must be reachable now.
       const toggleRow = controlPanel
         .getByText("Read the selected text out loud", { exact: true })
@@ -179,8 +226,14 @@ test.describe("read aloud settings", () => {
       );
       // The screenshot is the evidence, so the toggle has to *look* on in it.
       await expect(toggle).toHaveClass(/bg-primary/);
+      // The class lands instantly; the knob slides over 150ms of CSS
+      // transition, which is not a Web Animation and so cannot be waited on.
+      // The previous evidence was shot mid-slide and showed an "on" toggle
+      // with its knob still on the left.
+      await controlPanel.waitForTimeout(500);
+      await expect(toggle.locator("span")).toHaveClass(/translate-x-3\.5/);
 
-      await captureEvidence(controlPanel, "readaloud-settings-ready.png");
+      await captureEvidence(controlPanel, "readaloud-page-ready.png");
     });
 
     test("shows a player on the overlay while it reads", async ({ overlayWindow }) => {

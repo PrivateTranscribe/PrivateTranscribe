@@ -13,6 +13,7 @@ import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
 import TranscribePage from "./pages/TranscribePage";
 import DictionaryPage from "./pages/DictionaryPage";
+import ReadAloudPage from "./pages/ReadAloudPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
 import ConversePage from "./pages/ConversePage";
 import ActionEnginePage from "./pages/ActionEnginePage";
@@ -53,6 +54,7 @@ export default function ControlPanelShell() {
       "history",
       "transcribe",
       "dictionary",
+      "read-aloud",
       "ai-enhancement",
       "converse",
       "correction-memory",
@@ -304,6 +306,8 @@ export default function ControlPanelShell() {
         return <TranscribePage />;
       case "dictionary":
         return <DictionaryPage />;
+      case "read-aloud":
+        return <ReadAloudPage />;
       case "ai-enhancement":
         return <AIEnhancementPage />;
       case "converse":

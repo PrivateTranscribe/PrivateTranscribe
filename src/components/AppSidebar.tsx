@@ -7,6 +7,7 @@ import {
   Brain,
   MessageSquare,
   MessagesSquare,
+  AudioLines,
   Zap,
   Settings,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export type PageId =
   | "history"
   | "transcribe"
   | "dictionary"
+  | "read-aloud"
   | "ai-enhancement"
   | "converse"
   | "correction-memory"
@@ -50,7 +52,16 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "SPEECH",
-    items: [{ id: "dictionary", label: "Dictionary", icon: BookOpen }],
+    items: [
+      { id: "dictionary", label: "Dictionary", icon: BookOpen },
+      {
+        id: "read-aloud",
+        label: "Read Aloud",
+        icon: AudioLines,
+        badge: "Beta",
+        badgeVariant: "pro",
+      },
+    ],
   },
   {
     label: "INTELLIGENCE",

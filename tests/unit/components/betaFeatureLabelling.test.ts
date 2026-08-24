@@ -12,6 +12,9 @@ const BETA_SURFACES = [
   "src/components/pages/CorrectionMemoryPage.tsx",
   "src/components/pages/AIEnhancementPage.tsx",
   "src/components/pages/ActionEnginePage.tsx",
+  // Read Aloud was a Settings tab until it became a sidebar page; it is a
+  // badged beta surface like the rest now, so it is held to the same rules.
+  "src/components/pages/ReadAloudPage.tsx",
 ];
 
 /**
@@ -62,11 +65,10 @@ describe("beta feature labelling", () => {
     }
 
     const settings = readSource("src/components/SettingsPage.tsx");
-    // One locked card, both locked toggles, and the locked Read Aloud row. The
-    // fifth used to be the unreachable "Agent config" settings section — a
-    // second copy of the Voice Assistant page that no tab ever routed to. It
-    // went away with the merge rather than being left to drift.
-    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(4);
+    // One locked card and both locked toggles. It was four until Read Aloud
+    // left Settings for its own sidebar page — that row's way out moved with
+    // it rather than being deleted, and ReadAloudPage.tsx is checked above.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(3);
   });
 
   it("keeps the beta destination in one place", () => {

@@ -14,8 +14,6 @@ const BETA_FEATURES = new Set([
   "action-engine",
   "ai-enhancement",
   "converse",
-  // Read Aloud lives in Settings, not the sidebar, so it is deliberately absent
-  // from SIDEBAR_BETA_ITEMS below — its section header carries the badge.
   "read-aloud",
 ]);
 
@@ -25,6 +23,9 @@ const SIDEBAR_BETA_ITEMS = new Set([
   "ai-enhancement",
   "converse",
   "action-engine",
+  // Read Aloud used to be a Settings tab, where nobody found it. It is a
+  // sidebar page now, so it carries the same badge as every other beta item.
+  "read-aloud",
 ]);
 
 // localStorage key and custom event used by the temporary preview toggle

@@ -470,6 +470,7 @@ export type ControlPanelPage =
   | "history"
   | "transcribe"
   | "dictionary"
+  | "read-aloud"
   | "ai-enhancement"
   | "correction-memory"
   | "action-engine"

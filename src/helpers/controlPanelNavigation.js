@@ -3,6 +3,7 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "history",
   "transcribe",
   "dictionary",
+  "read-aloud",
   "ai-enhancement",
   "correction-memory",
   "action-engine",
