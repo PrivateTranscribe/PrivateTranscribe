@@ -215,6 +215,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
    * shipped build never exposes window.__readAloudTest.
    */
   readAloudTestEnabled: process.env.PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST === "1",
+  /**
+   * Diagnostic switch that makes the first press synthesize the whole first
+   * sentence again, the way it did before first-chunk playback. It exists so
+   * the first-audio harness can measure the baseline and the chunked path in
+   * one run, differing only in this flag.
+   */
+  readAloudFirstChunkDisabled: process.env.PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_CHUNK === "1",
 
   // Converse (voice loop): a persistent `claude` process whose reply is spoken
   // sentence by sentence through the Read Aloud engine.

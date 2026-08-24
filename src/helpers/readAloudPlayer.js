@@ -14,16 +14,37 @@
  */
 
 import { getSharedAudioContext, waitForAudioContextRunning } from "../utils/sharedAudioContext";
+import { splitFirstChunk } from "./readAloudFirstChunk";
 
 /** Sentences to synthesize ahead of the one playing, so seams stay gapless. */
 const LOOKAHEAD = 2;
 const DEFAULT_VOICE = "af_heart";
 
 export class ReadAloudPlayer {
-  constructor({ api = null, voice = DEFAULT_VOICE, speed = 1.0 } = {}) {
+  constructor({ api = null, voice = DEFAULT_VOICE, speed = 1.0, disableFirstChunk } = {}) {
     this.api = api || (typeof window === "undefined" ? null : window.electronAPI);
     this.voice = voice;
     this.speed = speed;
+    /**
+     * The A/B switch the first-audio harness needs: with chunking off, a press
+     * pays for the whole first sentence again, which is the baseline the gate
+     * is measured against. Set from the launch env via preload so the two
+     * conditions differ only in this flag.
+     */
+    this.disableFirstChunk = Boolean(
+      disableFirstChunk ?? this.api?.readAloudFirstChunkDisabled ?? false
+    );
+
+    /**
+     * Head/tail of sentence 0 for the current press, or null when the sentence
+     * is spoken whole. Deliberately not visible in getState(): the counter, the
+     * sentence line and seek all stay sentence-based.
+     */
+    this.firstChunks = null;
+    this.chunkCache = new Map();
+    this.chunkInflight = new Map();
+    /** Chunk B, scheduled ahead on the audio timeline while chunk A plays. */
+    this.pendingSource = null;
 
     this.sentences = [];
     this.cache = new Map();
@@ -88,16 +109,34 @@ export class ReadAloudPlayer {
    */
   getBufferStats(i = 0) {
     const entry = this.cache.get(i);
-    if (!entry) return null;
+    // When the first sentence was chunked there is no sentence-0 buffer to
+    // report, so the stats cover the chunks decoded so far instead. That is
+    // still the real audio played for sentence 0, just possibly only its head
+    // if the tail has not landed yet.
+    const buffers =
+      entry === undefined && i === 0 && this.firstChunks
+        ? ["head", "tail"].map((key) => this.chunkCache.get(key)).filter(Boolean)
+        : entry
+          ? [entry]
+          : [];
+    if (!buffers.length) return null;
 
-    const data = entry.buffer.getChannelData(0);
     let sumSquares = 0;
-    for (let n = 0; n < data.length; n++) sumSquares += data[n] * data[n];
+    let sampleCount = 0;
+    let durationSec = 0;
+    let synthMs = 0;
+    for (const part of buffers) {
+      const data = part.buffer.getChannelData(0);
+      for (let n = 0; n < data.length; n++) sumSquares += data[n] * data[n];
+      sampleCount += data.length;
+      durationSec += part.buffer.duration;
+      synthMs += part.synthMs || 0;
+    }
 
     return {
-      durationSec: entry.buffer.duration,
-      rms: data.length ? Math.sqrt(sumSquares / data.length) : 0,
-      synthMs: entry.synthMs,
+      durationSec,
+      rms: sampleCount ? Math.sqrt(sumSquares / sampleCount) : 0,
+      synthMs,
     };
   }
 
@@ -182,6 +221,51 @@ export class ReadAloudPlayer {
     return job;
   }
 
+  /**
+   * Synthesize one half of the chunked first sentence. Deliberately a sibling
+   * of ensure() rather than a special index inside it: nothing that walks
+   * `sentences` — the counter, seek, prefetch — must ever see a chunk.
+   *
+   * The recordTimings guard is the same one ensure() uses and means the same
+   * thing. Chunk A is what TTFA measures, so its synthesis time is the honest
+   * value for lastSynthMs; by the time chunk B starts, first audio has already
+   * cleared ttfaMark, so B cannot overwrite it.
+   */
+  async ensureChunk(key, text) {
+    if (this.chunkCache.has(key)) return this.chunkCache.get(key);
+    if (this.chunkInflight.has(key)) return this.chunkInflight.get(key);
+
+    const epoch = this.epoch;
+    const recordTimings = this.ttfaMark !== 0;
+    const engineWaitStarted = Date.now();
+    const job = this.ensureEngine()
+      .then(() => {
+        if (recordTimings) this.lastEngineWaitMs = Date.now() - engineWaitStarted;
+        return this.api.readAloudSynth({ text, voice: this.voice, speed: this.speed });
+      })
+      .then(({ pcm, sampleRate, synthMs }) => {
+        const ctx = this.getContext();
+        if (!ctx) throw new Error("No AudioContext available");
+
+        const samples = pcm instanceof Float32Array ? pcm : new Float32Array(pcm);
+        const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+        buffer.copyToChannel(samples, 0);
+
+        const entry = { buffer, synthMs, seconds: samples.length / sampleRate };
+        if (epoch === this.epoch) this.chunkCache.set(key, entry);
+        this.chunkInflight.delete(key);
+        if (recordTimings) this.lastSynthMs = synthMs;
+        return entry;
+      })
+      .catch((err) => {
+        this.chunkInflight.delete(key);
+        throw err;
+      });
+
+    this.chunkInflight.set(key, job);
+    return job;
+  }
+
   prefetch() {
     for (let k = 1; k <= LOOKAHEAD; k++) {
       this.ensure(this.index + k)?.catch?.(() => {
@@ -193,14 +277,19 @@ export class ReadAloudPlayer {
   // --------------------------------------------------------------- playback
 
   stopSource() {
-    if (this.source) {
-      this.source._cancelled = true;
+    // Chunk B may already be scheduled on the timeline while chunk A is still
+    // audible. Stopping only the audible one would let the remainder of the
+    // first sentence play on after a pause, seek, or stop.
+    for (const key of ["source", "pendingSource"]) {
+      const src = this[key];
+      if (!src) continue;
+      src._cancelled = true;
       try {
-        this.source.stop();
+        src.stop();
       } catch {
-        // Already stopped.
+        // Already stopped, or scheduled and never started.
       }
-      this.source = null;
+      this[key] = null;
     }
   }
 
@@ -211,7 +300,80 @@ export class ReadAloudPlayer {
       : this.offset;
   }
 
-  async playFrom(i, off = 0) {
+  /**
+   * Speak sentence 0 as head-then-tail on one audio timeline.
+   *
+   * Returns true when it took ownership of playback (including when a newer
+   * generation superseded it mid-flight, in which case nothing must start).
+   * Returns false only when the head could not be synthesized, so playFrom()
+   * can fall back to the whole sentence.
+   */
+  async playFirstChunks(gen, ctx) {
+    const chunks = this.firstChunks;
+    let head;
+    try {
+      head = await this.ensureChunk("head", chunks.head);
+    } catch {
+      // A failed head is not fatal: the full sentence is still a valid read.
+      return false;
+    }
+    if (gen !== this.generation) return true;
+    if (!head) return false;
+
+    const src = ctx.createBufferSource();
+    src.buffer = head.buffer;
+    src.connect(ctx.destination);
+    // The tail owns the continuation to sentence 1; the head ends into it.
+    src.onended = () => {};
+    src.start(0);
+
+    this.source = src;
+    // Both chunks share this anchor with offset 0, so elapsed() keeps reading
+    // as time into sentence 0 straight across the seam. Nothing re-anchors when
+    // the tail starts, which is also why pause() lands on the right offset.
+    this.startedAt = ctx.currentTime;
+    this.offset = 0;
+    this.playing = true;
+    this.status = "playing";
+
+    if (this.ttfaMark) {
+      this.ttfaMs = Date.now() - this.ttfaMark;
+      this.ttfaMark = 0;
+    }
+
+    // Only now, with ttfaMark cleared, does anything else get to synthesize:
+    // the tail's and the prefetch's timings cannot pollute the press numbers.
+    const tailStartsAt = this.startedAt + head.buffer.duration;
+    this.ensureChunk("tail", chunks.tail)
+      .then((tail) => {
+        if (gen !== this.generation || !tail) return;
+
+        const tailSrc = ctx.createBufferSource();
+        tailSrc.buffer = tail.buffer;
+        tailSrc.connect(ctx.destination);
+        tailSrc.onended = () => {
+          if (tailSrc._cancelled || gen !== this.generation) return;
+          this.playFrom(this.index + 1, 0);
+        };
+        // Sample-accurate on the shared context's own clock: no onended
+        // round-trip, so the seam is a continuation rather than a click.
+        // Math.max only matters if synthesis overran the head, which is the
+        // one case a gap is unavoidable.
+        tailSrc.start(Math.max(ctx.currentTime, tailStartsAt));
+        this.pendingSource = tailSrc;
+      })
+      .catch((err) => {
+        if (gen !== this.generation) return;
+        this.error = String(err?.message || err);
+        this.status = "error";
+        this.playing = false;
+      });
+
+    this.prefetch();
+    return true;
+  }
+
+  async playFrom(i, off = 0, { useFirstChunks = false } = {}) {
     this.done = false;
     const gen = ++this.generation;
     this.stopSource();
@@ -240,6 +402,16 @@ export class ReadAloudPlayer {
     if (gen !== this.generation) return;
 
     if (!this.cache.has(this.index)) this.status = "synthesizing";
+
+    // Chunking exists for the first press only. A seek or a resume back into
+    // sentence 0 arrives without this flag and speaks the whole sentence, so
+    // the seam can never appear anywhere the listener navigated to by hand.
+    if (useFirstChunks && this.firstChunks && this.index === 0 && this.offset === 0) {
+      if (await this.playFirstChunks(gen, ctx)) return;
+      if (gen !== this.generation) return;
+      // The head failed; fall through and read sentence 0 whole.
+      this.firstChunks = null;
+    }
 
     let entry;
     try {
@@ -283,6 +455,9 @@ export class ReadAloudPlayer {
     this.playing = false;
     this.cache.clear();
     this.inflight.clear();
+    this.firstChunks = null;
+    this.chunkCache.clear();
+    this.chunkInflight.clear();
     this.error = null;
 
     this.status = "splitting";
@@ -299,7 +474,11 @@ export class ReadAloudPlayer {
     this.offset = 0;
     this.splitMs = Date.now() - this.ttfaMark;
 
-    await this.playFrom(0, 0);
+    if (!this.disableFirstChunk) {
+      this.firstChunks = splitFirstChunk(this.sentences[0]);
+    }
+
+    await this.playFrom(0, 0, { useFirstChunks: true });
   }
 
   pause() {
@@ -355,6 +534,9 @@ export class ReadAloudPlayer {
     this.epoch++;
     this.cache.clear();
     this.inflight.clear();
+    this.firstChunks = null;
+    this.chunkCache.clear();
+    this.chunkInflight.clear();
   }
 
   dispose() {

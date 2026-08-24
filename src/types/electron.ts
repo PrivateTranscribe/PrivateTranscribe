@@ -831,6 +831,12 @@ declare global {
       ) => (() => void) | void;
       /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
       readAloudTestEnabled: boolean;
+      /**
+       * True only when PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_CHUNK=1 at launch:
+       * the first press synthesizes the whole first sentence, which is the
+       * baseline the first-audio gate measures against.
+       */
+      readAloudFirstChunkDisabled: boolean;
 
       // Converse (voice loop) — one persistent `claude` process per session,
       // its reply spoken sentence by sentence through the Read Aloud engine.
