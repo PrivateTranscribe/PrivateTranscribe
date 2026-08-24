@@ -29,7 +29,37 @@ const DEFAULT_KOKORO_MODEL = "kokoro-82m-v1.0-fp32";
 const DEFAULT_KOKORO_VOICE = "af_heart";
 /** Measured: fp32 beats q8 by ~5x on CPU. See docs/GOALS.md. */
 const KOKORO_DTYPE = "fp32";
+/**
+ * CPU on purpose. DirectML was measured 2026-08-24 and fails outright on this
+ * model: onnxruntime's DML execution provider rejects Kokoro's ConvTranspose
+ * nodes ("The parameter is incorrect"), so there is no GPU path with the
+ * runtime this stack ships. See docs/GOALS.md readaloud-gpu-synthesis.
+ */
 const KOKORO_DEVICE = "cpu";
+
+/**
+ * Cap the ONNX intra-op threadpool on big machines. Measured on the 32-logical
+ * dev machine (fixture sentence, warm, medians of 5):
+ *
+ *   threads   wall(79ch)  wall(26ch)  CPU burned  system busy
+ *   16 (def)     511ms       227ms       7.5s        ~55%     ← "lags the PC"
+ *   12           521ms       222ms       5.6s        ~44%     ← shipped
+ *    8           603ms       271ms       4.2s        ~37%
+ *    4           815ms       374ms       3.1s        ~19%
+ *
+ * 12 threads is free on this machine — synthesis speed is unchanged while a
+ * quarter of the CPU burn and ~11 points of system pressure disappear, so the
+ * first-audio gate's 350ms bar is untouched. 8 would buy more machine-freedom
+ * for +40ms on the first chunk; that trade is Kristian's if he wants it.
+ * Only machines big enough to be measured (>= 24 logical cores) are capped;
+ * everything else keeps onnxruntime's default of one thread per physical core,
+ * because a cap tuned on 32 cores is a guess everywhere else.
+ */
+function kokoroIntraOpThreads() {
+  const logical = require("os").cpus().length;
+  if (logical < 24) return 0; // 0 = leave onnxruntime's default (physical cores)
+  return 12;
+}
 /** Below this, a file is small enough that "non-empty" is the only useful check. */
 const EXACT_SIZE_THRESHOLD_BYTES = 1_000_000;
 const SIZE_TOLERANCE = 0.01;
@@ -317,23 +347,44 @@ class KokoroManager {
     const { KokoroTTS } = await import("kokoro-js");
 
     const started = Date.now();
+    const threads = kokoroIntraOpThreads();
+
+    // kokoro-js's own from_pretrained destructures only {dtype, device,
+    // progress_callback} and silently drops session_options, so the thread cap
+    // has to go around it: load the model and tokenizer through transformers
+    // directly (exactly what kokoro-js does inside) and use KokoroTTS's
+    // (model, tokenizer) constructor. If kokoro-js ever changes that shape,
+    // loadDefault below still works — uncapped is degraded, not broken.
+    const loadCapped = async () => {
+      const { StyleTextToSpeech2Model, AutoTokenizer } = await import("@huggingface/transformers");
+      const [model, tokenizer] = await Promise.all([
+        StyleTextToSpeech2Model.from_pretrained(info.hfRepo, {
+          dtype: KOKORO_DTYPE,
+          device: KOKORO_DEVICE,
+          session_options: { intraOpNumThreads: threads, interOpNumThreads: 1 },
+        }),
+        AutoTokenizer.from_pretrained(info.hfRepo, {}),
+      ]);
+      return new KokoroTTS(model, tokenizer);
+    };
+    const loadDefault = () =>
+      KokoroTTS.from_pretrained(info.hfRepo, {
+        dtype: KOKORO_DTYPE,
+        device: KOKORO_DEVICE,
+      });
+
     // Measured on this machine: the very first load after a fresh download once
     // failed with "failed:system error number 13" and succeeded on an immediate
     // retry. One retry, then the error is real.
     let tts;
     try {
-      tts = await KokoroTTS.from_pretrained(info.hfRepo, {
-        dtype: KOKORO_DTYPE,
-        device: KOKORO_DEVICE,
-      });
+      tts = threads > 0 ? await loadCapped() : await loadDefault();
     } catch (firstError) {
       debugLogger.warn("Kokoro engine load failed, retrying once", {
         error: firstError?.message,
+        threads,
       });
-      tts = await KokoroTTS.from_pretrained(info.hfRepo, {
-        dtype: KOKORO_DTYPE,
-        device: KOKORO_DEVICE,
-      });
+      tts = await loadDefault();
     }
 
     this.tts = tts;
@@ -345,6 +396,7 @@ class KokoroManager {
       coldStartMs: this.coldStartMs,
       dtype: KOKORO_DTYPE,
       device: KOKORO_DEVICE,
+      intraOpThreads: threads || "default",
     });
 
     return this.getEngineStatus();
