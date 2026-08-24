@@ -1338,7 +1338,15 @@ class IPCHandlers {
         },
       });
 
-      return this.converseSession.start();
+      try {
+        return await this.converseSession.start();
+      } catch (err) {
+        // A session that failed to start is not a session: drop it so the next
+        // converse-start (or a converse-get-state poll in the meantime) does
+        // not see a stale, never-usable session as still running.
+        this.converseSession = null;
+        throw err;
+      }
     });
 
     ipcMain.handle("converse-send-utterance", async (_event, text) => {

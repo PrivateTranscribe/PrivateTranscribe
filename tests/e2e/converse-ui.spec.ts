@@ -307,4 +307,67 @@ test.describe("converse ui", () => {
       fs.rmSync(projectDir, { recursive: true, force: true });
     });
   });
+
+  test.describe("with a project folder and a missing claude binary", () => {
+    // Ledger gate `converse-binary-preflight`: ConverseAgent.start() used to
+    // mark itself ready synchronously right after spawn(), so a missing
+    // `claude` binary only ever surfaced as an async ENOENT after the fact —
+    // converseStart had already resolved, the page had already said "Session
+    // ready", and the user only learned the truth once a typed message came
+    // back refused. This binary genuinely does not exist anywhere, so it
+    // exercises the real preflight check rather than a stub standing in for
+    // failure.
+    const MISSING_BIN = path.join(
+      os.tmpdir(),
+      "pt-converse-preflight-missing-claude-binary-that-does-not-exist.exe"
+    );
+
+    test.use({
+      seedKokoroModel: true,
+      appEnv: {
+        PT_CONVERSE_CLAUDE_BIN: MISSING_BIN,
+      },
+    });
+
+    test("fails before any turn can be sent, naming the binary it tried", async ({
+      controlPanel,
+    }) => {
+      const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-converse-project-"));
+      await controlPanel.evaluate(
+        (dir) =>
+          localStorage.setItem(
+            "converseProjects",
+            JSON.stringify([{ path: dir, lastUsedAt: Date.now() }])
+          ),
+        projectDir
+      );
+
+      await unlockTesterAccess(controlPanel);
+      await openConversePage(controlPanel);
+
+      await controlPanel.getByTestId("converse-recent-project").first().click();
+      await expect(controlPanel.getByTestId("converse-project-path")).toHaveText(projectDir);
+
+      await controlPanel.getByRole("button", { name: "Start session" }).click();
+
+      // The error must appear on this same screen, before the session UI
+      // (transcript + input box) ever renders — the old bug let the input box
+      // appear and only failed once something was typed into it.
+      await expect(controlPanel.getByText(/Claude Code CLI not found/)).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(controlPanel.getByText(MISSING_BIN)).toBeVisible();
+      await expect(controlPanel.getByTestId("converse-input")).toHaveCount(0);
+      await expect(controlPanel.getByRole("button", { name: "Start session" })).toBeVisible();
+
+      const state = await controlPanel.evaluate(
+        async () => await (window as any).electronAPI.converseGetState()
+      );
+      expect(state.running, "a failed start must not leave a session running").toBe(false);
+
+      await captureEvidence(controlPanel, "converse-page-start-error.png");
+
+      fs.rmSync(projectDir, { recursive: true, force: true });
+    });
+  });
 });

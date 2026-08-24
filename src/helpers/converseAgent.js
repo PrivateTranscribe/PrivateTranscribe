@@ -79,6 +79,79 @@ function log(...args) {
   console.log("[converse-agent]", ...args);
 }
 
+/** How long a `where`/`which` PATH lookup gets before it counts as not found. */
+const PREFLIGHT_TIMEOUT_MS = 3000;
+
+/** True when `bin` names a specific location rather than a bare command name. */
+function hasPathComponents(bin) {
+  return path.basename(bin) !== bin;
+}
+
+/**
+ * Resolve whether `claudeBin` will actually spawn, before the real spawn runs.
+ *
+ * Two cases, because `spawn()` resolves a bare name against PATH itself:
+ *   - a path (absolute, relative, or the per-user install path already
+ *     verified once by resolveClaudeBin) — checked with fs.existsSync, which
+ *     is instant and cannot hang.
+ *   - a bare command name (the production default: "claude"/"claude.exe") —
+ *     resolved with `where`/`which`, the same PATH scan a user gets by typing
+ *     that command in a terminal. This is what the failure copy tells them to
+ *     do, so the check and the instruction agree. Actually spawning `claude
+ *     --version` was rejected: real CLI startup costs ~2-4s (see the module
+ *     doc comment above), which would make every session start pay for it,
+ *     and a hung/misbehaving install could block start() far longer than a
+ *     PATH lookup ever can.
+ */
+function probeClaudeBin(bin) {
+  return new Promise((resolve) => {
+    if (hasPathComponents(bin)) {
+      let exists = false;
+      try {
+        exists = fs.existsSync(bin);
+      } catch {
+        exists = false;
+      }
+      resolve(exists);
+      return;
+    }
+
+    const finder = process.platform === "win32" ? "where" : "which";
+    let child;
+    try {
+      child = spawn(finder, [bin], { stdio: "ignore", windowsHide: true });
+    } catch {
+      resolve(false);
+      return;
+    }
+
+    let settled = false;
+    const finish = (found) => {
+      if (settled) return;
+      settled = true;
+      resolve(found);
+    };
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // Already gone.
+      }
+      finish(false);
+    }, PREFLIGHT_TIMEOUT_MS);
+
+    child.on("error", () => {
+      clearTimeout(timer);
+      finish(false);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      finish(code === 0);
+    });
+  });
+}
+
 class ConverseAgent {
   /**
    * @param {object} opts
@@ -149,6 +222,21 @@ class ConverseAgent {
       this.ready = true;
       this.startupMs = Date.now() - started;
       return this.startupMs;
+    }
+
+    // The old bug: spawn() was trusted optimistically and `ready` was set
+    // synchronously right after the call, so a missing binary only surfaced
+    // later as an async ENOENT on the child's `error` event — by which point
+    // converse-start had already resolved, the page had already shown "Session
+    // ready", and the user only learned the truth after typing a message that
+    // came back refused. Checking first means a bad binary fails start()
+    // itself, before anything downstream believes the session is usable.
+    const found = await probeClaudeBin(this.claudeBin);
+    if (!found) {
+      const message = `Claude Code CLI not found (tried "${this.claudeBin}"). Check that the claude command runs in a terminal.`;
+      this.lastError = message;
+      this.ready = false;
+      throw Object.assign(new Error(message), { code: "claude-bin-not-found" });
     }
 
     const args = [
@@ -484,5 +572,7 @@ module.exports = {
   VOICE_SYSTEM_PROMPT,
   resolveClaudeBin,
   resolveClaudeArgPrefix,
+  probeClaudeBin,
+  hasPathComponents,
   MOCK_REPLY: MOCK_REPLY_PARTS.join(""),
 };

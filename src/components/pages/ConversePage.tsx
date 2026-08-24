@@ -538,9 +538,13 @@ export default function ConversePage() {
               {startError && (
                 <InfoBox variant="warning" className="p-4">
                   <p className="text-[13px] text-foreground leading-relaxed">{startError}</p>
-                  <p className="text-[12px] text-muted-foreground mt-1">
-                    The voice model is downloaded in Settings, under Read Aloud.
-                  </p>
+                  {/* This hint only applies to the voice-model-missing failure; a
+                      Claude Code CLI problem needs no mention of Settings. */}
+                  {startError.startsWith("The voice model is not installed") && (
+                    <p className="text-[12px] text-muted-foreground mt-1">
+                      The voice model is downloaded in Settings, under Read Aloud.
+                    </p>
+                  )}
                 </InfoBox>
               )}
 

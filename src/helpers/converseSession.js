@@ -119,7 +119,18 @@ class ConverseSession {
         this.lastAgentError = err;
       },
     });
-    await this.agent.start();
+
+    try {
+      await this.agent.start();
+    } catch (err) {
+      // A preflight failure (missing binary, etc.) must not leave the relay
+      // listening with nothing left to answer its questions.
+      if (this.relay) {
+        this.relay.stop();
+        this.relay = null;
+      }
+      throw err;
+    }
     return this.getState();
   }
 
