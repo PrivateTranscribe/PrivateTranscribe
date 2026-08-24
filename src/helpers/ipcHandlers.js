@@ -1311,6 +1311,14 @@ class IPCHandlers {
     // readSelectionAndSpeak().
     ipcMain.handle("readaloud-read-selection", async () => this.readSelectionAndSpeak());
 
+    // Prices the persistent copy worker's round-trip for the trigger-lag
+    // harness. Injects no keystrokes and never touches the clipboard.
+    ipcMain.handle("readaloud-capture-probe", async () =>
+      this.selectionCapture
+        ? this.selectionCapture.pingWorker()
+        : { ok: false, rttMs: null, detail: "selection capture unavailable" }
+    );
+
     /**
      * Bring the Read Aloud global shortcut in line with the renderer's saved
      * settings. Called on overlay startup and whenever the toggle or the
@@ -1332,6 +1340,19 @@ class IPCHandlers {
       if (enabled && !modelInstalled) {
         this.readAloudHotkey.apply({ enabled: false, hotkey });
         return { registered: false, hotkey, reason: "model-not-installed" };
+      }
+
+      if (enabled && modelInstalled) {
+        // Pre-warm the engine off the press path. Loading 326MB of weights was
+        // the dominant cost of the first press of a session (the "pressing the
+        // hotkey lags the computer" report); paying it here, in the background,
+        // at the moment Read Aloud becomes armed, means the press itself only
+        // ever pays capture + synthesis. loadEngine() dedups concurrent calls
+        // and is a no-op once warm, so re-syncs cost nothing. Deliberately not
+        // awaited: hotkey registration must not wait out a model load.
+        this.kokoroManager.loadEngine().catch((error) => {
+          debugLogger.warn("Read Aloud engine pre-warm failed", { error: error?.message });
+        });
       }
 
       return this.readAloudHotkey.apply({ enabled, hotkey });

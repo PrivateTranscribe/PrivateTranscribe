@@ -284,6 +284,8 @@ export interface SelectionCaptureResult {
   source: "selection" | "clipboard" | "none" | "unsupported";
   /** How long the worker waited for the trigger modifiers to be released. */
   waitedMs: number | null;
+  /** Wall time of the whole capture, for the trigger-lag timing harness. */
+  elapsedMs?: number;
   /** Raw worker reply, e.g. "OK waited=120ms" or "ERR timeout". */
   detail: string;
 }
@@ -760,6 +762,16 @@ declare global {
        * `readaloud-speak` event.
        */
       readAloudReadSelection: () => Promise<SelectionCaptureResult>;
+      /**
+       * Round-trip cost of the copy worker's line protocol. Injects no
+       * keystrokes and never touches the clipboard; exists for the
+       * trigger-lag timing harness.
+       */
+      readAloudCaptureProbe: () => Promise<{
+        ok: boolean;
+        rttMs: number | null;
+        detail: string;
+      }>;
       /**
        * Register or unregister the Read Aloud global shortcut to match the
        * renderer's saved settings. The main process refuses to register while

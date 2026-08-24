@@ -42,6 +42,11 @@ export class ReadAloudPlayer {
     this.ttfaMark = 0;
     this.ttfaMs = null;
     this.lastSynthMs = null;
+    // Stage timings for the most recent speak(), so the trigger-lag harness can
+    // split "waiting for the engine" from "synthesizing" from "everything else".
+    this.splitMs = null;
+    this.lastEngineWaitMs = null;
+    this.lastCtxWaitMs = null;
 
     this.engineLoaded = false;
     this.enginePromise = null;
@@ -60,6 +65,10 @@ export class ReadAloudPlayer {
       playing: this.playing,
       ttfaMs: this.ttfaMs,
       lastSynthMs: this.lastSynthMs,
+      splitMs: this.splitMs,
+      lastEngineWaitMs: this.lastEngineWaitMs,
+      lastCtxWaitMs: this.lastCtxWaitMs,
+      lastEngineLoadReply: this.lastEngineLoadReply ?? null,
       engineLoaded: this.engineLoaded,
       error: this.error,
     };
@@ -97,6 +106,9 @@ export class ReadAloudPlayer {
     this.status = "loading-engine";
     this.enginePromise = Promise.resolve(this.api?.readAloudLoadEngine?.())
       .then((status) => {
+        // Kept verbatim for the trigger-lag harness: a load that resolves
+        // suspiciously fast shows its answer here instead of being guessed at.
+        this.lastEngineLoadReply = status === undefined ? "undefined" : JSON.stringify(status);
         this.engineLoaded = Boolean(status?.loaded ?? true);
         this.enginePromise = null;
       })
@@ -118,14 +130,24 @@ export class ReadAloudPlayer {
     if (this.inflight.has(i)) return this.inflight.get(i);
 
     const epoch = this.epoch;
+    // Stage timings are only recorded for the sentence TTFA measures - the one
+    // in flight while ttfaMark is armed. Without this guard, prefetch()'s
+    // warm-engine ensure() calls land right after first audio and overwrite
+    // the numbers with zeros before anyone reads them.
+    const recordTimings = this.ttfaMark !== 0;
+    const engineWaitStarted = Date.now();
     const job = this.ensureEngine()
-      .then(() =>
-        this.api.readAloudSynth({
+      .then(() => {
+        // How long this sentence sat waiting for the engine. ~0 once the engine
+        // is warm, the whole 326MB load when it is not - which is the number
+        // the trigger-lag gate exists to drive down.
+        if (recordTimings) this.lastEngineWaitMs = Date.now() - engineWaitStarted;
+        return this.api.readAloudSynth({
           text: this.sentences[i],
           voice: this.voice,
           speed: this.speed,
-        })
-      )
+        });
+      })
       .then(({ pcm, sampleRate, synthMs }) => {
         const ctx = this.getContext();
         if (!ctx) throw new Error("No AudioContext available");
@@ -138,7 +160,7 @@ export class ReadAloudPlayer {
         // A synth started before the cache was invalidated must not repopulate it.
         if (epoch === this.epoch) this.cache.set(i, entry);
         this.inflight.delete(i);
-        this.lastSynthMs = synthMs;
+        if (recordTimings) this.lastSynthMs = synthMs;
         return entry;
       })
       .catch((err) => {
@@ -200,7 +222,13 @@ export class ReadAloudPlayer {
       this.status = "error";
       return;
     }
-    if (ctx.state === "suspended") await waitForAudioContextRunning(ctx);
+    if (ctx.state === "suspended") {
+      // On a cold overlay the shared context can take visible time to start;
+      // timing it keeps the trigger-lag decomposition honest.
+      const ctxWaitStarted = Date.now();
+      await waitForAudioContextRunning(ctx);
+      this.lastCtxWaitMs = Date.now() - ctxWaitStarted;
+    }
     if (gen !== this.generation) return;
 
     if (!this.cache.has(this.index)) this.status = "synthesizing";
@@ -238,6 +266,9 @@ export class ReadAloudPlayer {
   async speak(text) {
     this.ttfaMark = Date.now();
     this.ttfaMs = null;
+    this.splitMs = null;
+    this.lastEngineWaitMs = null;
+    this.lastCtxWaitMs = null;
     this.generation++;
     this.epoch++;
     this.stopSource();
@@ -258,6 +289,7 @@ export class ReadAloudPlayer {
     }
     this.index = 0;
     this.offset = 0;
+    this.splitMs = Date.now() - this.ttfaMark;
 
     await this.playFrom(0, 0);
   }

@@ -10,6 +10,8 @@
 #   <- READY               once, at startup
 #   -> copy                send Ctrl+C to whatever has focus
 #   <- OK waited=NNNms     copy sent, after waiting NNN ms for modifier release
+#   -> ping                measure the round-trip; injects nothing, waits for
+#   <- PONG                nothing - it prices the line protocol itself
 #   <- ERR <message>       something threw
 #
 # The process is long-lived because PowerShell startup is ~300ms and the read
@@ -37,5 +39,8 @@ while ($true) {
   if ($line.Trim() -eq "copy") {
     try { $w = Send-CopyKeystroke; Write-Output "OK waited=${w}ms" }
     catch { Write-Output ("ERR " + $_.Exception.Message) }
+  }
+  elseif ($line.Trim() -eq "ping") {
+    Write-Output "PONG"
   }
 }

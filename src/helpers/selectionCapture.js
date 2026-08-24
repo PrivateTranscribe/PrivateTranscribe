@@ -217,19 +217,75 @@ class SelectionCapture {
   }
 
   /**
+   * Price the worker round-trip without touching the keyboard or clipboard.
+   *
+   * A "ping" goes through the same stdin/stdout line protocol as "copy" but the
+   * worker answers immediately, so the number is the fixed per-press transport
+   * cost - the part of capture latency that is not modifier-wait, settle, or
+   * clipboard polling. The trigger-lag ledger gate reads this.
+   *
+   * @returns {Promise<{ok: boolean, rttMs: number|null, detail: string}>}
+   */
+  async pingWorker() {
+    if (!this.isSupported) return { ok: false, rttMs: null, detail: "non-windows platform" };
+    if (!this.worker) this.start();
+    await this.waitForReady();
+    if (!this.worker || !this.workerReady) {
+      return { ok: false, rttMs: null, detail: "worker not ready" };
+    }
+
+    const started = Date.now();
+    const line = await new Promise((resolve) => {
+      let settled = false;
+      const once = (reply) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(reply);
+      };
+      this.pending.push(once);
+      const timer = setTimeout(() => {
+        const index = this.pending.indexOf(once);
+        if (index >= 0) this.pending.splice(index, 1);
+        once("ERR timeout");
+      }, COMMAND_TIMEOUT_MS);
+
+      try {
+        this.worker.stdin.write("ping\n");
+      } catch (error) {
+        const index = this.pending.indexOf(once);
+        if (index >= 0) this.pending.splice(index, 1);
+        once(`ERR ${error.message}`);
+      }
+    });
+
+    const rttMs = Date.now() - started;
+    if (line === "PONG") return { ok: true, rttMs, detail: line };
+    return { ok: false, rttMs: null, detail: line };
+  }
+
+  /**
    * Capture the foreground app's current selection.
    *
    * @returns {Promise<{text: string, source: "selection"|"clipboard"|"none"|"unsupported",
-   *                    waitedMs: number|null, detail: string}>}
+   *                    waitedMs: number|null, elapsedMs: number, detail: string}>}
    *   `source` says where the text came from: an actual copy, the clipboard we
    *   were about to overwrite, or nothing. `waitedMs` is how long the worker
    *   spent waiting for the trigger modifiers to be released, and is null when
-   *   the worker reported an error.
+   *   the worker reported an error. `elapsedMs` is the whole capture's wall
+   *   time, so a real press's cost shows up in the debug log.
    */
   async captureSelection() {
     if (!this.isSupported) {
-      return { text: "", source: "unsupported", waitedMs: null, detail: "non-windows platform" };
+      return {
+        text: "",
+        source: "unsupported",
+        waitedMs: null,
+        elapsedMs: 0,
+        detail: "non-windows platform",
+      };
     }
+    const captureStarted = Date.now();
 
     if (!this.worker) this.start();
     await this.waitForReady();
@@ -261,17 +317,19 @@ class SelectionCapture {
     }
 
     const waitedMs = parseWaitedMs(detail);
+    const elapsedMs = Date.now() - captureStarted;
+    debugLogger.debug("[SelectionCapture] Capture timing", { elapsedMs, waitedMs, detail });
 
     if (grabbed && grabbed.trim()) {
-      return { text: grabbed, source: "selection", waitedMs, detail };
+      return { text: grabbed, source: "selection", waitedMs, elapsedMs, detail };
     }
     // The copy produced nothing. Some apps refuse Ctrl+C, and some windows are
     // not the foreground window by the time we inject. Rather than doing
     // nothing, fall back to whatever was already on the clipboard and say so.
     if (previous && previous.trim()) {
-      return { text: previous, source: "clipboard", waitedMs, detail };
+      return { text: previous, source: "clipboard", waitedMs, elapsedMs, detail };
     }
-    return { text: "", source: "none", waitedMs, detail };
+    return { text: "", source: "none", waitedMs, elapsedMs, detail };
   }
 }
 
