@@ -39,6 +39,11 @@ class ConverseSession {
    * @param {boolean} [opts.resume] continue the last `claude` session recorded
    *   for this cwd instead of starting a fresh conversation
    * @param {string}  [opts.sessionStorePath] override the mapping file (tests)
+   * @param {boolean} [opts.permissionRelay] carry the CLI's own permission
+   *   questions to the user (ignored in mock mode, which spawns no CLI)
+   * @param {boolean} [opts.strictMcpConfig] also pass `--strict-mcp-config`,
+   *   which suppresses the user's own project MCP servers. Off by default; see
+   *   ConverseAgent for why a real session must never turn it on.
    */
   constructor({
     send,
@@ -49,6 +54,7 @@ class ConverseSession {
     resume = false,
     sessionStorePath,
     permissionRelay = false,
+    strictMcpConfig = false,
     settingsFile = null,
   } = {}) {
     this.send = typeof send === "function" ? send : () => {};
@@ -80,13 +86,14 @@ class ConverseSession {
     // The agent is constructed in start(): with the permission relay on, its
     // spawn args need the relay's port, which only exists once it listens.
     this.agent = null;
-    this._agentOpts = { model, claudeBin, mock, permissionRelay, settingsFile };
+    this._agentOpts = { model, claudeBin, mock, permissionRelay, strictMcpConfig, settingsFile };
     this.relay = null;
     this.lastAgentError = null;
   }
 
   async start() {
-    const { model, claudeBin, mock, permissionRelay, settingsFile } = this._agentOpts;
+    const { model, claudeBin, mock, permissionRelay, strictMcpConfig, settingsFile } =
+      this._agentOpts;
 
     let relayInfo = null;
     if (permissionRelay && !mock) {
@@ -99,6 +106,11 @@ class ConverseSession {
             tool_name: entry.tool_name,
             input: entry.input,
             at: entry.at,
+            // Carried so the prompt counts down to the relay's real deadline
+            // instead of starting its own timer when the event happens to
+            // arrive. The relay is the clock; the countdown only reads it.
+            deadline: entry.deadline,
+            timeoutMs: entry.timeoutMs,
           }),
       });
       relayInfo = await this.relay.start();
@@ -111,6 +123,7 @@ class ConverseSession {
       mock,
       resumeSessionId: this.resumedFrom,
       permissionRelay: relayInfo,
+      strictMcpConfig,
       settingsFile: settingsFile || null,
       onSessionId: (id) => this._rememberSessionId(id),
       onDelta: (text) => this._onDelta(text),
@@ -188,6 +201,12 @@ class ConverseSession {
       // session is about to build against the wrapper the agent actually
       // receives on its stdin.
       pendingInterrupt: this.pendingInterrupt,
+      /**
+       * Whether the CLI's own permission questions can reach the user at all.
+       * False means no `--permission-prompt-tool` was passed, so a tool the
+       * user's settings do not already allow is simply refused with no prompt.
+       */
+      permissionRelay: Boolean(this.relay),
       /** Every permission question the harness has asked, and how it was answered. */
       permissionLog: this.relay ? this.relay.getLog() : this._finalPermissionLog || [],
       running: !this.stopped,

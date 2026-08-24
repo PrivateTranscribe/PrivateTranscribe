@@ -182,6 +182,7 @@ class ConverseAgent {
     resumeSessionId = null,
     sessionPersistence = true,
     permissionRelay = null,
+    strictMcpConfig = false,
     settingsFile = null,
   } = {}) {
     this.onDelta = onDelta || (() => {});
@@ -196,6 +197,17 @@ class ConverseAgent {
     this.sessionPersistence = sessionPersistence !== false;
     /** { port, token } of the app's permission relay, or null for none. */
     this.permissionRelay = permissionRelay || null;
+    /**
+     * Whether to pass `--strict-mcp-config` alongside the relay's own
+     * `--mcp-config`. Default OFF, and it must stay off for real sessions:
+     * strict mode makes the CLI ignore every MCP server the user configured for
+     * that project and use ONLY the one the app passes. Converse is a voice
+     * front-end onto the user's own Claude Code, not a replacement for it —
+     * silently amputating their MCP servers the moment they talk instead of
+     * type would make the app degrade their setup. Only a test that wants a
+     * hermetic CLI (converse-permission.live.ts) turns it on.
+     */
+    this.strictMcpConfig = Boolean(strictMcpConfig);
     /** Path to a --settings file (tests use it to force an empty allowlist). */
     this.settingsFile = settingsFile || null;
 
@@ -290,9 +302,11 @@ class ConverseAgent {
         "--permission-prompt-tool",
         "mcp__pt-permissions__approve",
         "--mcp-config",
-        mcpConfigPath,
-        "--strict-mcp-config"
+        mcpConfigPath
       );
+      // See this.strictMcpConfig: off for real sessions on purpose, so the
+      // user's own project MCP servers keep loading.
+      if (this.strictMcpConfig) args.push("--strict-mcp-config");
     }
 
     this.proc = spawn(this.claudeBin, [...this.claudeArgPrefix, ...args], {

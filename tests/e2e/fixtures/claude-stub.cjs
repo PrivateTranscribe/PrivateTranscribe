@@ -40,6 +40,20 @@
  *                            process can answer from a file the previous
  *                            process wrote. Unset means no memory at all.
  *
+ * Permission questions (see "asking permission" below):
+ *   CLAUDE_STUB_PERMISSION_MARKER  substring of a prompt that makes the stub
+ *                                  ask for permission before answering
+ *                                  (default "ask permission").
+ *   CLAUDE_STUB_PERMISSION_TOOL    tool name to ask about (default "Write").
+ *   CLAUDE_STUB_PERMISSION_INPUT   JSON object used as the tool input.
+ *   CLAUDE_STUB_PERMISSION_COUNT   how many questions to ask at once
+ *                                  (default 1). More than one is how a queue
+ *                                  of pending prompts gets tested.
+ *   CLAUDE_STUB_PERMISSION_RESULT  file the decisions are written to as JSON.
+ *                                  This is the evidence: it is what the relay
+ *                                  actually resolved the MCP call with, not
+ *                                  what any UI claims happened.
+ *
  * Session identity: the stub announces a fresh uuid in its init line, unless it
  * was started with `--resume <id>`, in which case it adopts that id and loads
  * the memory filed under it. The remembered word is whatever the caller asked
@@ -47,6 +61,7 @@
  * only in the test.
  */
 
+const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -196,9 +211,162 @@ function sentencesFor(prompt) {
   return SHORT_SENTENCES;
 }
 
+// ------------------------------------------------------- asking permission
+//
+// The real CLI does not decide permissions itself: when it is started with
+// `--permission-prompt-tool mcp__pt-permissions__approve --mcp-config <file>`
+// it spawns the server named in that file and calls the tool. This stub does
+// exactly that — reads the config the app wrote, spawns the app's REAL
+// conversePermissionMcp.cjs with the port and token the app put there, and
+// speaks MCP JSON-RPC to it. Nothing about the relay, the transport, or the
+// fail-closed contract is stubbed; only the model is.
+
+const PERMISSION_MARKER = process.env.CLAUDE_STUB_PERMISSION_MARKER || "ask permission";
+const PERMISSION_TOOL = process.env.CLAUDE_STUB_PERMISSION_TOOL || "Write";
+const PERMISSION_COUNT = Math.max(1, Number(process.env.CLAUDE_STUB_PERMISSION_COUNT) || 1);
+const PERMISSION_RESULT = process.env.CLAUDE_STUB_PERMISSION_RESULT || "";
+
+function permissionInput(index) {
+  let base = { file_path: "notes/config.json", content: "hello from the stub" };
+  if (process.env.CLAUDE_STUB_PERMISSION_INPUT) {
+    try {
+      base = JSON.parse(process.env.CLAUDE_STUB_PERMISSION_INPUT);
+    } catch {
+      // Keep the default rather than failing the spawn; the assertion on the
+      // rendered input will say what went wrong.
+    }
+  }
+  if (PERMISSION_COUNT === 1) return base;
+  // Distinct inputs so a queue of prompts is distinguishable on screen.
+  const suffixed = { ...base };
+  if (typeof suffixed.file_path === "string") {
+    suffixed.file_path = suffixed.file_path.replace(/(\.[^.]+)?$/, `-${index + 1}$1`);
+  }
+  return suffixed;
+}
+
+/** `--mcp-config <path>` as converseAgent.js passes it. */
+function mcpConfigFromArgv(argv) {
+  const at = argv.indexOf("--mcp-config");
+  const file = at >= 0 ? argv[at + 1] : null;
+  if (!file) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** The permission MCP server, spawned the way the CLI would spawn it. */
+function startPermissionMcp() {
+  const config = mcpConfigFromArgv(process.argv.slice(2));
+  const server = config && config.mcpServers && config.mcpServers["pt-permissions"];
+  if (!server) return null;
+
+  const child = spawn(server.command, server.args || [], {
+    stdio: ["pipe", "pipe", "ignore"],
+    env: { ...process.env, ...(server.env || {}) },
+  });
+
+  const pending = new Map();
+  let buf = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    buf += chunk;
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let msg;
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const resolve = pending.get(msg.id);
+      if (resolve) {
+        pending.delete(msg.id);
+        resolve(msg);
+      }
+    }
+  });
+
+  let nextId = 1;
+  const request = (method, params) =>
+    new Promise((resolve) => {
+      const id = nextId++;
+      pending.set(id, resolve);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+    });
+
+  return {
+    child,
+    request,
+    notify: (method) => child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method })}\n`),
+  };
+}
+
+/** The decision the MCP reply carries, in the CLI's own result shape. */
+function decisionOf(reply) {
+  try {
+    return JSON.parse(reply.result.content[0].text);
+  } catch {
+    return { behavior: "deny", message: "unreadable MCP reply" };
+  }
+}
+
+async function askPermissions() {
+  const mcp = startPermissionMcp();
+  if (!mcp) return [{ behavior: "deny", message: "no permission MCP server configured" }];
+
+  try {
+    await mcp.request("initialize", { protocolVersion: "2024-11-05" });
+    mcp.notify("notifications/initialized");
+
+    // All of them in flight at once, so the app really does have to hold more
+    // than one question open at a time.
+    const replies = await Promise.all(
+      Array.from({ length: PERMISSION_COUNT }, (_, index) =>
+        mcp.request("tools/call", {
+          name: "approve",
+          arguments: {
+            tool_name: PERMISSION_TOOL,
+            input: permissionInput(index),
+            tool_use_id: `stub_tu_${index + 1}`,
+          },
+        })
+      )
+    );
+    return replies.map(decisionOf);
+  } finally {
+    mcp.child.kill();
+  }
+}
+
 function reply(prompt) {
   state.texts.push(prompt);
-  const sentences = sentencesFor(prompt);
+
+  if (prompt.includes(PERMISSION_MARKER)) {
+    askPermissions().then((decisions) => {
+      if (PERMISSION_RESULT) {
+        try {
+          fs.writeFileSync(PERMISSION_RESULT, JSON.stringify(decisions, null, 2), "utf8");
+        } catch {
+          // The spoken sentences below still carry the decision.
+        }
+      }
+      streamSentences(
+        decisions.map((decision, index) => `Permission ${index + 1} came back ${decision.behavior}.`)
+      );
+    });
+    return;
+  }
+
+  streamSentences(sentencesFor(prompt));
+}
+
+function streamSentences(sentences) {
   saveState(state);
   const startedAt = Date.now();
 

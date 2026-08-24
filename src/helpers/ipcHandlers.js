@@ -1299,9 +1299,20 @@ class IPCHandlers {
         cwd,
         mock = false,
         resume = false,
-        permissionRelay = false,
+        permissionRelay,
+        strictMcpConfig = false,
         settingsFile = null,
       } = options || {};
+
+      // Default ON for every real session. The relay was proven fail-closed
+      // before anything could reach it: with it off, the CLI has no
+      // `--permission-prompt-tool` at all, so a tool the user's own settings do
+      // not already allow is simply refused with no way to say yes. On, the
+      // question reaches the Converse page and the user answers it — and an
+      // unanswered one still denies itself. Callers can still pass it
+      // explicitly (the live spec does); mock mode spawns no CLI, so the
+      // session ignores it there.
+      const relayEnabled = permissionRelay === undefined ? true : Boolean(permissionRelay);
 
       // Refuse early rather than failing on the first sentence: without the
       // voice model there is nothing to speak the reply with.
@@ -1328,12 +1339,24 @@ class IPCHandlers {
         // Relay the harness's own permission questions to the user. The app
         // adds no rules of its own and never bypasses the CLI's permission
         // model; unanswered questions deny themselves (fail closed).
-        permissionRelay: Boolean(permissionRelay),
+        permissionRelay: relayEnabled,
+        strictMcpConfig: Boolean(strictMcpConfig),
         settingsFile: settingsFile || null,
         send: (channel, payload) => {
           const overlay = this.windowManager?.mainWindow;
           if (overlay && !overlay.isDestroyed()) {
             safeSend(overlay.webContents, channel, payload);
+          }
+          // Permission questions are the one session event the control panel
+          // has to see: the prompt the user answers lives on the Converse
+          // page, not on the overlay. Everything else stays overlay-only,
+          // because the overlay owns playback and a second listener would mean
+          // a second voice.
+          if (channel === "converse-permission-request") {
+            const panel = this.windowManager?.controlPanelWindow;
+            if (panel && !panel.isDestroyed()) {
+              safeSend(panel.webContents, channel, payload);
+            }
           }
         },
       });

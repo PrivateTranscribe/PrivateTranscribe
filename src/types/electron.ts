@@ -242,16 +242,33 @@ export interface ConverseState {
   lastUtterance?: { text: string; at: number; gen: number } | null;
   lastResponse?: { text: string; sentences: string[]; at?: number } | null;
   lastInterrupt?: Record<string, unknown> | null;
+  /** Whether the CLI's own permission questions can reach the user at all. */
+  permissionRelay?: boolean;
   /** Every permission question the harness asked, with how each was answered. */
-  permissionLog?: {
-    id: number;
-    at: number;
-    tool_name: string;
-    input: unknown;
-    tool_use_id: string | null;
-    answeredWith: "allow" | "deny" | null;
-    answeredAt: number | null;
-  }[];
+  permissionLog?: ConversePermissionEntry[];
+}
+
+/**
+ * One permission question the `claude` process asked, as the relay recorded it.
+ *
+ * This log is the truth the Converse page renders from: an entry with
+ * `answeredWith === null` is still waiting on the user, and everything else is
+ * settled. The page never decides an outcome itself — not even when its own
+ * countdown reaches zero.
+ */
+export interface ConversePermissionEntry {
+  id: number;
+  at: number;
+  tool_name: string;
+  input: unknown;
+  tool_use_id: string | null;
+  answeredWith: "allow" | "deny" | null;
+  answeredAt: number | null;
+  /** Who decided: the user, a standing answer, the deny timeout, or a stop. */
+  answeredBy?: "user" | "auto" | "timeout" | "session-stopped" | null;
+  /** When this question denies itself, absolute. The countdown reads this. */
+  deadline?: number;
+  timeoutMs?: number;
 }
 
 /** Outcome of copying the foreground app's selection. See selectionCapture.js. */
@@ -794,6 +811,12 @@ declare global {
          * adds no rules; unanswered questions deny themselves.
          */
         permissionRelay?: boolean;
+        /**
+         * Also pass `--strict-mcp-config`, which makes the CLI ignore the
+         * user's own project MCP servers. Off for real sessions; only a
+         * hermetic test turns it on.
+         */
+        strictMcpConfig?: boolean;
         /** Path to a `--settings` file for the spawned CLI (tests only). */
         settingsFile?: string | null;
       }) => Promise<ConverseState>;
@@ -822,7 +845,14 @@ declare global {
       onConversePermissionRequest: (
         callback: (
           event: any,
-          data: { id: number; tool_name: string; input: unknown; at: number }
+          data: {
+            id: number;
+            tool_name: string;
+            input: unknown;
+            at: number;
+            deadline?: number;
+            timeoutMs?: number;
+          }
         ) => void
       ) => (() => void) | void;
       onConverseSentence: (

@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessagesSquare, Lock, FolderOpen, Headphones, Square, Send, X } from "lucide-react";
+import {
+  MessagesSquare,
+  Lock,
+  FolderOpen,
+  Headphones,
+  Square,
+  Send,
+  X,
+  KeyRound,
+  Check,
+} from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Toggle } from "../ui/toggle";
@@ -10,7 +20,7 @@ import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import type { ConverseState } from "../../types/electron";
+import type { ConversePermissionEntry, ConverseState } from "../../types/electron";
 
 /**
  * Converse: talk to Claude Code about one project folder and hear the reply
@@ -43,7 +53,83 @@ type TranscriptTurn =
       sentences: string[];
       /** Sentence that was playing when the user interrupted; null if it ran to the end. */
       cutIndex: number | null;
-    };
+    }
+  /**
+   * A permission question, held by id only. Its live content is looked up in
+   * the relay's own log on every poll, so a question can never be shown as
+   * pending after the relay has already settled it.
+   */
+  | { kind: "permission"; id: number };
+
+/** Longest a single tool-input value is shown before it is cut. */
+const MAX_INPUT_VALUE_CHARS = 160;
+/** Longest the one-line summary on a settled record gets. */
+const MAX_SUMMARY_CHARS = 72;
+/** Tool inputs can be large; more rows than this is noise, not information. */
+const MAX_INPUT_ROWS = 4;
+
+/** Keys worth leading with, in the order a person would look for them. */
+const SUMMARY_KEYS = ["file_path", "command", "path", "pattern", "url", "notebook_path", "prompt"];
+
+function truncate(value: string, max: number): string {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+function stringifyValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/** The tool input as readable rows: what the tool would touch, in its own words. */
+function inputRows(input: unknown): { key: string; value: string }[] {
+  if (input === null || input === undefined) return [];
+  if (typeof input !== "object") {
+    return [{ key: "", value: truncate(stringifyValue(input), MAX_INPUT_VALUE_CHARS) }];
+  }
+  const entries = Object.entries(input as Record<string, unknown>);
+  const ordered = [
+    ...entries.filter(([key]) => SUMMARY_KEYS.includes(key)),
+    ...entries.filter(([key]) => !SUMMARY_KEYS.includes(key)),
+  ];
+  return ordered.slice(0, MAX_INPUT_ROWS).map(([key, value]) => ({
+    key,
+    value: truncate(stringifyValue(value), MAX_INPUT_VALUE_CHARS),
+  }));
+}
+
+/** The single most telling value, for the one-line record after it is settled. */
+function inputSummary(input: unknown): string {
+  const rows = inputRows(input);
+  if (rows.length === 0) return "";
+  const lead = rows.find((row) => SUMMARY_KEYS.includes(row.key)) ?? rows[0];
+  return truncate(lead.value, MAX_SUMMARY_CHARS);
+}
+
+/**
+ * What the relay recorded, in the user's words. Only `answeredWith` decides
+ * allow vs deny; `answeredBy` only ever changes the explanation after it.
+ */
+function permissionVerdict(entry: ConversePermissionEntry): {
+  verdict: string;
+  note: string;
+  allowed: boolean;
+} {
+  const allowed = entry.answeredWith === "allow";
+  if (allowed) return { verdict: "Allowed", note: "", allowed };
+  if (entry.answeredBy === "timeout") {
+    return { verdict: "Denied", note: "denied automatically, no answer", allowed };
+  }
+  if (entry.answeredBy === "session-stopped") {
+    return { verdict: "Denied", note: "session stopped before you answered", allowed };
+  }
+  return { verdict: "Denied", note: "", allowed };
+}
 
 /** The shape of `lastInterrupt` this page reads; the session records more. */
 type InterruptRecord = {
@@ -129,6 +215,134 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
   return <div className="px-5 py-4">{children}</div>;
 }
 
+/**
+ * One unanswered permission question, in the conversation where it happened.
+ *
+ * The countdown is cosmetic and says so by only ever counting down: the relay
+ * owns the deadline and records the outcome, and this card disappears when the
+ * log says the question is settled — not when the number reaches zero.
+ */
+function PermissionCard({
+  entry,
+  nowMs,
+  busy,
+  position,
+  total,
+  onAnswer,
+}: {
+  entry: ConversePermissionEntry;
+  nowMs: number;
+  busy: boolean;
+  position: number;
+  total: number;
+  onAnswer: (id: number, behavior: "allow" | "deny") => void;
+}) {
+  const rows = inputRows(entry.input);
+  const secondsLeft =
+    typeof entry.deadline === "number"
+      ? Math.max(0, Math.ceil((entry.deadline - nowMs) / 1000))
+      : null;
+
+  // Neutral frame on purpose: the pending card must not borrow the affirmative
+  // green and lean the eye toward Allow before the question has been read.
+  return (
+    <div
+      data-testid="converse-permission-card"
+      data-permission-id={entry.id}
+      className="rounded-lg border border-border bg-surface-raised/40 px-4 py-3.5 space-y-3"
+    >
+      <div className="flex items-start gap-2.5">
+        <KeyRound size={15} className="mt-0.5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[13px] text-muted-foreground">Claude Code wants to use</span>
+            <span
+              data-testid="converse-permission-tool"
+              className="text-sm font-semibold text-foreground"
+            >
+              {entry.tool_name || "an unnamed tool"}
+            </span>
+            {total > 1 && (
+              <span
+                data-testid="converse-permission-queue"
+                className="text-[11px] text-muted-foreground"
+              >
+                Question {position} of {total}
+              </span>
+            )}
+          </div>
+
+          {rows.length > 0 && (
+            <div data-testid="converse-permission-input" className="space-y-1">
+              {rows.map((row) => (
+                <div key={row.key} className="flex gap-2 text-[12px] leading-relaxed">
+                  {row.key && (
+                    <span className="shrink-0 text-muted-foreground/70 font-mono">{row.key}</span>
+                  )}
+                  <span className="min-w-0 break-all font-mono text-foreground">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 pl-[26px]">
+        <span
+          data-testid="converse-permission-countdown"
+          className="text-[12px] font-medium text-foreground/80"
+        >
+          {secondsLeft === null
+            ? "Denies itself if you do not answer."
+            : secondsLeft > 0
+              ? `Denies itself in ${secondsLeft}s`
+              : "Denying now"}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => onAnswer(entry.id, "deny")}
+          >
+            Deny
+          </Button>
+          <Button size="sm" disabled={busy} onClick={() => onAnswer(entry.id, "allow")}>
+            Allow
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A settled question, collapsed to the one line it is worth afterwards. */
+function PermissionRecord({ entry }: { entry: ConversePermissionEntry }) {
+  const { verdict, note, allowed } = permissionVerdict(entry);
+  const summary = inputSummary(entry.input);
+
+  return (
+    <div
+      data-testid="converse-permission-record"
+      data-permission-id={entry.id}
+      data-behavior={entry.answeredWith}
+      data-answered-by={entry.answeredBy || "user"}
+      className="flex items-center gap-2 text-[12px] text-muted-foreground"
+    >
+      {allowed ? (
+        <Check size={13} className="shrink-0 text-success" aria-hidden />
+      ) : (
+        <X size={13} className="shrink-0 text-muted-foreground" aria-hidden />
+      )}
+      <span className="text-foreground">
+        {verdict} {entry.tool_name || "a tool"}
+      </span>
+      {summary && <span className="min-w-0 truncate font-mono">· {summary}</span>}
+      {note && <span className="shrink-0">· {note}</span>}
+    </div>
+  );
+}
+
 export default function ConversePage() {
   const isUnlocked = isFeatureUnlocked("converse");
 
@@ -147,8 +361,21 @@ export default function ConversePage() {
   const [startError, setStartError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  /**
+   * The relay's permission log, mirrored verbatim from the last poll. It is the
+   * only source of truth for what is pending and what was decided — the page
+   * never settles a question on its own.
+   */
+  const [permissions, setPermissions] = useState<ConversePermissionEntry[]>([]);
+  /** Ids whose answer has been sent but not yet seen in the log. */
+  const [answering, setAnswering] = useState<number[]>([]);
+  /** Re-render clock for the countdown; only ticks while something is pending. */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
   const lastInterruptAtRef = useRef(0);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  /** Set by the poll effect so an incoming question can pull the next poll in. */
+  const refreshRef = useRef<() => void>(() => {});
 
   const state = liveState?.state ?? "stopped";
   const isSpeaking = sessionActive && state === "speaking";
@@ -194,6 +421,16 @@ export default function ConversePage() {
     }
     const cutMark = mark;
 
+    // Mirrored, never merged: an answered question stops being pending because
+    // the relay says so, not because this page sent an answer.
+    const permissionLog = next.permissionLog ?? [];
+    setPermissions(permissionLog);
+    setAnswering((current) =>
+      current.filter((id) =>
+        permissionLog.some((entry) => entry.id === id && entry.answeredWith === null)
+      )
+    );
+
     setTranscript((current) => {
       let updated = current;
 
@@ -236,6 +473,16 @@ export default function ConversePage() {
         }
       }
 
+      // Appended after this poll's turns, which is where they belong in time:
+      // the harness only asks once it is already working on the last message.
+      const known = new Set(
+        updated.filter((turn) => turn.kind === "permission").map((turn) => turn.id)
+      );
+      const added = permissionLog
+        .filter((entry) => !known.has(entry.id))
+        .map((entry) => ({ kind: "permission", id: entry.id }) as TranscriptTurn);
+      if (added.length > 0) updated = [...updated, ...added];
+
       return updated;
     });
   }, []);
@@ -277,17 +524,58 @@ export default function ConversePage() {
       }
     };
 
+    refreshRef.current = () => void tick();
     void tick();
     const timer = window.setInterval(tick, POLL_MS);
     return () => {
       cancelled = true;
+      refreshRef.current = () => {};
       window.clearInterval(timer);
     };
   }, [sessionActive, applyState]);
 
+  // The question is already in the session state the poll reads, so this only
+  // buys back the poll interval — the prompt appears the moment the harness
+  // asks instead of up to POLL_MS later. The event is a nudge, never the truth.
+  useEffect(() => {
+    const off = window.electronAPI?.onConversePermissionRequest?.(() => refreshRef.current());
+    return typeof off === "function" ? off : undefined;
+  }, []);
+
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end" });
   }, [transcript]);
+
+  const permissionsById = useMemo(() => {
+    const map = new Map<number, ConversePermissionEntry>();
+    for (const entry of permissions) map.set(entry.id, entry);
+    return map;
+  }, [permissions]);
+
+  const pendingPermissions = useMemo(
+    () => permissions.filter((entry) => entry.answeredWith === null),
+    [permissions]
+  );
+
+  // Only runs while something is actually waiting, so an idle session does no
+  // work per second.
+  useEffect(() => {
+    if (pendingPermissions.length === 0) return undefined;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [pendingPermissions.length]);
+
+  const answerPermission = useCallback(async (id: number, behavior: "allow" | "deny") => {
+    setAnswering((current) => (current.includes(id) ? current : [...current, id]));
+    try {
+      await window.electronAPI.conversePermissionAnswer(id, behavior);
+    } catch {
+      // The relay is the record. If this never landed, the next poll still
+      // shows the question as pending and the deny timeout still protects it.
+    }
+    refreshRef.current();
+  }, []);
 
   const handleChooseFolder = useCallback(async () => {
     const result = await window.electronAPI?.showOpenDialog?.({
@@ -309,6 +597,8 @@ export default function ConversePage() {
       const started = await window.electronAPI.converseStart({ cwd: projectPath });
       lastInterruptAtRef.current = 0;
       setTranscript([]);
+      setPermissions([]);
+      setAnswering([]);
       setLiveState(started);
       setSessionActive(true);
       rememberProject(projectPath);
@@ -368,6 +658,8 @@ export default function ConversePage() {
     setSessionActive(false);
     setLiveState(null);
     setTranscript([]);
+    setPermissions([]);
+    setAnswering([]);
     lastInterruptAtRef.current = 0;
   }, []);
 
@@ -384,7 +676,21 @@ export default function ConversePage() {
     return `${Math.min(spoken, player.total)} of ${player.total}`;
   }, [liveState]);
 
+  /**
+   * A pending question is not the agent thinking — it is the agent stopped,
+   * waiting on this window. The state machine has no word for that (nothing
+   * about the turn has changed), so the label says it instead of `data-state`,
+   * which stays the session's own state and nothing else.
+   */
+  const waitingOnUser = sessionActive && pendingPermissions.length > 0;
+
   const statusHelp = (() => {
+    if (waitingOnUser) {
+      const first = pendingPermissions[0];
+      const more = pendingPermissions.length - 1;
+      const tail = more > 0 ? ` ${more} more after this one.` : "";
+      return `Claude Code needs your answer before it can use ${first.tool_name || "a tool"}.${tail}`;
+    }
     switch (state) {
       case "idle":
         return "Session ready. Send the first message.";
@@ -574,13 +880,16 @@ export default function ConversePage() {
                 <span
                   data-testid="converse-status"
                   data-state={state}
+                  data-waiting={waitingOnUser ? "permission" : undefined}
                   className="inline-flex items-center gap-2 text-sm font-medium text-foreground"
                 >
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${STATE_DOT[state] || "bg-muted-foreground/50"}`}
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      waitingOnUser ? "bg-primary" : STATE_DOT[state] || "bg-muted-foreground/50"
+                    }`}
                     aria-hidden
                   />
-                  {STATE_LABELS[state] || state}
+                  {waitingOnUser ? "Waiting for you" : STATE_LABELS[state] || state}
                 </span>
                 <span className="text-[12px] text-muted-foreground truncate">{statusHelp}</span>
               </div>
@@ -623,8 +932,29 @@ export default function ConversePage() {
               </p>
             ) : (
               <div className="space-y-5">
-                {transcript.map((turn) =>
-                  turn.kind === "user" ? (
+                {transcript.map((turn) => {
+                  if (turn.kind === "permission") {
+                    const entry = permissionsById.get(turn.id);
+                    // The log is capped, so a very long session can forget the
+                    // oldest questions. Nothing honest is left to show.
+                    if (!entry) return null;
+                    if (entry.answeredWith !== null) {
+                      return <PermissionRecord key={`permission-${turn.id}`} entry={entry} />;
+                    }
+                    return (
+                      <PermissionCard
+                        key={`permission-${turn.id}`}
+                        entry={entry}
+                        nowMs={nowMs}
+                        busy={answering.includes(entry.id)}
+                        position={pendingPermissions.findIndex((p) => p.id === entry.id) + 1}
+                        total={pendingPermissions.length}
+                        onAnswer={(id, behavior) => void answerPermission(id, behavior)}
+                      />
+                    );
+                  }
+
+                  return turn.kind === "user" ? (
                     <div key={`user-${turn.gen}`} className="space-y-1">
                       <SectionLabel as="span" className="block">
                         You
@@ -666,8 +996,8 @@ export default function ConversePage() {
                         </p>
                       )}
                     </div>
-                  )
-                )}
+                  );
+                })}
                 <div ref={transcriptEndRef} />
               </div>
             )}

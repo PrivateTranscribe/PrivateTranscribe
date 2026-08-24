@@ -63,7 +63,12 @@ test.describe("converse permission relay (live)", () => {
 
         const started = await overlayWindow.evaluate(
           async (opts) => await (window as any).electronAPI.converseStart(opts),
-          { model: "haiku", cwd: workDir, permissionRelay: true, settingsFile }
+          // strictMcpConfig is NOT the product default (a real session must not
+          // suppress the user's own project MCP servers). This spec asks for it
+          // deliberately: the only server that may answer here is the app's own
+          // relay, so whatever the machine has configured cannot influence the
+          // decision this test measures.
+          { model: "haiku", cwd: workDir, permissionRelay: true, strictMcpConfig: true, settingsFile }
         );
         expect(started.agentMode, "session must run live").toBe("live");
 
