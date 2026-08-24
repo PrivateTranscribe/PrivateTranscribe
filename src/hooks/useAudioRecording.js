@@ -28,6 +28,34 @@ export const shouldWarnAboutFailedMute = (result) => {
   return result.reason === "hold-failed" || result.reason === "error";
 };
 
+/**
+ * The toast to show when the clipboard changed after a dictation but auto-learn
+ * refused the correction, or null to stay silent.
+ *
+ * Same principle as the mute warning above. The user copies things during the 30s
+ * poll window that have nothing to do with correcting the dictation, and answering
+ * every one of them trains people to ignore the toast that matters.
+ *
+ * Only "token-count-changed" earns a reply. That is a real correction attempt that
+ * missed by a word, the user gets nothing back today, and there is a specific setting
+ * that would have learned it. Everything else stays silent:
+ *
+ * - "too-different" / "mostly-deleted": ordinary clipboard use, or a cleared field.
+ * - "no-learnable-span": phrase learning is already on, so there is nothing to suggest.
+ * - "too-long": a 30+ word edit is not a word fix anyone is waiting on.
+ * - "no-change": nothing actually changed.
+ */
+export const getCorrectionRejectionNotice = (reason) => {
+  if (reason !== "token-count-changed") return null;
+  return {
+    title: "Couldn't learn that correction",
+    description:
+      'That edit adds or removes words, and auto-learn only handles word-for-word fixes. Turn on "Learn phrase and sentence rewrites" under Correction Memory on the Dictionary page to learn bigger edits.',
+    variant: "default",
+    duration: 8000,
+  };
+};
+
 export const useAudioRecording = (toast, options = {}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -475,12 +503,16 @@ export const useAudioRecording = (toast, options = {}) => {
             window.electronAPI?.readClipboard &&
             window.electronAPI?.confirmCorrection
           ) {
-            const { inferCorrectionPairs } = await import("../utils/tokenSnapper");
+            const { inferCorrectionPairs, explainCorrectionRejection } =
+              await import("../utils/tokenSnapper");
             const insertedText = text;
             const startedAt = Date.now();
             const timeoutMs = 30000;
             let lastClipboard = await window.electronAPI.readClipboard();
             let prompted = false;
+            // At most one "couldn't learn that" toast per dictation cycle, even though the
+            // poll keeps running so a later word-for-word copy can still be learned.
+            let explainedRejection = false;
 
             const intervalId = setInterval(async () => {
               if (!canCommit()) {
@@ -503,7 +535,24 @@ export const useAudioRecording = (toast, options = {}) => {
               const pairs = inferCorrectionPairs(insertedText, current, {
                 allowPhraseLearning,
               });
-              if (pairs.length === 0) return;
+              if (pairs.length === 0) {
+                // The clipboard did change, so the user made an edit and got nothing back.
+                // Only answer the near-miss: a genuine word-level correction that added or
+                // removed a word. "too-different" and "mostly-deleted" are ordinary clipboard
+                // use (copying something unrelated, clearing a field), and "no-learnable-span"
+                // means phrase learning is already on, so nagging there would fire on every
+                // copy the user makes in the 30s window. Those stay silent by design.
+                if (!explainedRejection) {
+                  const notice = getCorrectionRejectionNotice(
+                    explainCorrectionRejection(insertedText, current, { allowPhraseLearning })
+                  );
+                  if (notice) {
+                    explainedRejection = true;
+                    toastRef.current?.(notice);
+                  }
+                }
+                return;
+              }
               prompted = true;
               clearCorrectionInterval(intervalId);
 
