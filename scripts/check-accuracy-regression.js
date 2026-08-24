@@ -110,7 +110,8 @@ async function main() {
       const detected =
         result.languageAccuracy === null
           ? ""
-          : `, language detected on ${(result.languageAccuracy * 100).toFixed(0)}%`;
+          : `, correct language on ${(result.languageAccuracy * 100).toFixed(0)}% of ` +
+            `${result.detectionsReported} reported detections`;
       console.log(
         `  ${result.model} ${result.mode}: ${(result.wer * 100).toFixed(1)}% WER${detected}`
       );
@@ -122,7 +123,10 @@ async function main() {
         utterances: result.utterances,
         ...(result.languageAccuracy === null
           ? {}
-          : { languageAccuracy: Number(result.languageAccuracy.toFixed(4)) }),
+          : {
+              languageAccuracy: Number(result.languageAccuracy.toFixed(4)),
+              detectionsReported: result.detectionsReported,
+            }),
       });
     }
 
