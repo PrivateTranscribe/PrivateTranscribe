@@ -68,6 +68,7 @@ import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
 import { SectionLabel } from "./ui/SectionLabel";
+import { setAgentName as persistAgentName } from "../utils/agentName";
 
 export type SettingsSectionType =
   | "general"
@@ -84,6 +85,10 @@ const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
 const WHISPER_IDLE_TIMEOUT_MIN = 1;
 const WHISPER_IDLE_TIMEOUT_MAX = 1440;
+const AGENT_NAME_MAX_LENGTH = 100;
+const CUSTOM_PROMPT_MAX_LENGTH = 20000;
+const AGENT_NAME_STORAGE_KEY = "agentName";
+const CUSTOM_PROMPT_STORAGE_KEY = "customUnifiedPrompt";
 type AutoStartLaunchMode = "tray" | "minimized" | "window";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -102,6 +107,21 @@ const isValidImportedLanguage = (value: unknown): value is string =>
   (value === "auto" ||
     LANGUAGE_OPTIONS.some((language) => language.value === value) ||
     /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(value));
+
+// customUnifiedPrompt is stored JSON.stringify()'d (see PromptStudio.tsx) so a
+// plain string can hold quotes/newlines safely. Decode it the same way
+// PromptStudio's getCurrentPrompt() does, and treat anything unparsable as
+// absent rather than exporting corrupt data.
+const readStoredCustomPrompt = (): string | undefined => {
+  const raw = localStorage.getItem(CUSTOM_PROMPT_STORAGE_KEY);
+  if (raw === null) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -1441,6 +1461,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         },
       };
 
+      // agentName and customUnifiedPrompt live outside useSettings (in raw
+      // localStorage), so they're read directly here rather than from React
+      // state. Export the raw stored value, not the default — omit the key
+      // entirely when unset so importing this file on another machine
+      // doesn't stamp a default name/prompt over whatever is already there.
+      const rawAgentName = localStorage.getItem(AGENT_NAME_STORAGE_KEY);
+      if (rawAgentName !== null) {
+        payload.settings.agentName = rawAgentName;
+      }
+      const storedCustomPrompt = readStoredCustomPrompt();
+      if (storedCustomPrompt !== undefined) {
+        payload.settings.customUnifiedPrompt = storedCustomPrompt;
+      }
+
       if (includeApiKeys) {
         payload.settings.apiKeys = {
           openaiApiKey,
@@ -1701,6 +1735,41 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         }
       }
 
+      // agentName and customUnifiedPrompt are absent from older export files
+      // (they weren't captured before this gate) — that must import cleanly
+      // with no behavior change, so both blocks are no-ops when the key is
+      // missing rather than clearing the existing value.
+      if (s.agentName !== undefined) {
+        const trimmedAgentName = typeof s.agentName === "string" ? s.agentName.trim() : "";
+        if (
+          isSafeImportedIdentifier(trimmedAgentName) &&
+          trimmedAgentName.length <= AGENT_NAME_MAX_LENGTH
+        ) {
+          persistAgentName(trimmedAgentName);
+        } else {
+          skipField(
+            "agentName",
+            `must be a non-empty name under ${AGENT_NAME_MAX_LENGTH} characters`
+          );
+        }
+      }
+
+      if (s.customUnifiedPrompt !== undefined) {
+        if (
+          typeof s.customUnifiedPrompt === "string" &&
+          s.customUnifiedPrompt.length <= CUSTOM_PROMPT_MAX_LENGTH
+        ) {
+          // Written the same way PromptStudio.savePrompt() writes it, so it
+          // reads back correctly via PromptStudio's getCurrentPrompt().
+          localStorage.setItem(CUSTOM_PROMPT_STORAGE_KEY, JSON.stringify(s.customUnifiedPrompt));
+        } else {
+          skipField(
+            "customUnifiedPrompt",
+            `must be a string under ${CUSTOM_PROMPT_MAX_LENGTH} characters`
+          );
+        }
+      }
+
       if (allowApiKeysOnImport) {
         const keys = s.apiKeys || {};
         if (typeof keys.openaiApiKey === "string") setOpenaiApiKey(keys.openaiApiKey);
@@ -1735,6 +1804,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setPauseMediaOnRecord,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,
+      persistAgentName,
       setOpenaiApiKey,
       setAnthropicApiKey,
       setGeminiApiKey,
