@@ -13,6 +13,7 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
+const ReadAloudPlaybackKeys = require("./readAloudPlaybackKeys");
 const { checkReadAloudLanguage } = require("./readAloudLanguageGuard");
 const { ConverseSession } = require("./converseSession");
 const audioDuckingManager = require("./audioDuckingManager");
@@ -249,6 +250,9 @@ class IPCHandlers {
     // (readaloud-sync-hotkey) because the toggle and the accelerator live in
     // localStorage, which the main process cannot read.
     this.readAloudHotkey = new ReadAloudHotkey(() => this.readSelectionAndSpeak());
+    // Pause and skip, held only while a read is on screen. The overlay owns
+    // playback, so a press is forwarded to it rather than acted on here.
+    this.readAloudPlaybackKeys = new ReadAloudPlaybackKeys((op) => this.sendReadAloudControl(op));
     // The live Converse session, created by `converse-start`. One at a time:
     // it owns a persistent `claude` child process.
     this.converseSession = null;
@@ -1366,6 +1370,19 @@ class IPCHandlers {
       return this.readAloudHotkey.apply({ enabled, hotkey });
     });
 
+    /**
+     * The overlay reporting whether a read is on screen right now.
+     *
+     * This is what makes the playback keys transient: they are bound while
+     * something is being read and released the moment the pill goes away, so
+     * Ctrl+Alt+Shift+Space is only taken from the rest of the machine for the
+     * length of a read. The overlay fires this on transitions only, not on
+     * every poll tick.
+     */
+    ipcMain.handle("readaloud-playback-active", async (_event, active) => {
+      return this.readAloudPlaybackKeys.apply({ active: Boolean(active) });
+    });
+
     // Converse (voice loop) handlers.
     //
     // A Converse session is one persistent `claude` process plus the state
@@ -1516,6 +1533,14 @@ class IPCHandlers {
         // Nothing useful to do while the app is going down.
       }
       this.converseSession = null;
+
+      // The playback keys are only ever released by the overlay saying a read
+      // ended. A quit mid-read never sends that, so release them here too.
+      try {
+        this.readAloudPlaybackKeys.apply({ active: false });
+      } catch {
+        // Shutting down; globalShortcut may already be torn down.
+      }
     });
 
     // Utility handlers
@@ -2884,6 +2909,20 @@ class IPCHandlers {
       return { ...result, blockedLanguage: languageGuard.languageName };
     }
     return result;
+  }
+
+  /**
+   * Forward one playback key press to the overlay, which owns the player.
+   *
+   * Nothing is done here beyond delivery: the main process has no idea which
+   * sentence is playing, and duplicating that state so a shortcut could act on
+   * it is exactly how the two would drift apart.
+   */
+  sendReadAloudControl(op) {
+    const overlay = this.windowManager?.mainWindow;
+    if (!overlay || overlay.isDestroyed()) return false;
+    safeSend(overlay.webContents, "readaloud-control", { op });
+    return true;
   }
 
   broadcastToWindows(channel, payload) {

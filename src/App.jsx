@@ -16,6 +16,8 @@ import {
   Play,
   Pause,
   Square,
+  SkipBack,
+  SkipForward,
 } from "lucide-react";
 import { useToast } from "./components/ui/Toast";
 import { useWindowDrag } from "./hooks/useWindowDrag";
@@ -286,6 +288,10 @@ export default function App() {
   const conversePillRef = useRef(null);
   // { player, sync } — the sync call re-samples the player into React state.
   const readAloudRef = useRef(null);
+  // Whether the main process is currently holding the transient playback
+  // shortcuts. The player is sampled four times a second; without this the
+  // renderer would re-ask for the same registration on every tick.
+  const readAloudKeysActiveRef = useRef(false);
   const [readAloudState, setReadAloudState] = useState(null);
   // Where the text being read came from, so a clipboard fallback can say so.
   const [readAloudSource, setReadAloudSource] = useState(null);
@@ -315,10 +321,22 @@ export default function App() {
         pollTimer = null;
       }
     };
+    // The pause/skip shortcuts exist only while a read does. This is the one
+    // place that knows when that starts and stops, so it is what tells the main
+    // process — and only on the edges, never on the poll tick in between.
+    const syncPlaybackKeys = (active) => {
+      if (readAloudKeysActiveRef.current === active) return;
+      readAloudKeysActiveRef.current = active;
+      void window.electronAPI?.readAloudSetPlaybackActive?.(active);
+    };
+
     const sync = () => {
       const state = player.getState();
       const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
       setReadAloudState(visible ? state : null);
+      // An errored read has controls to press but nothing to control, so the
+      // shortcuts go back to the rest of the machine along with the buttons.
+      syncPlaybackKeys(visible && state.status !== "error");
       // The source belongs to the read that is on screen. Dropping it with the
       // pill keeps a finished clipboard read from labelling the next one.
       if (!visible) {
@@ -377,6 +395,17 @@ export default function App() {
       }
     });
 
+    // The transient playback shortcuts. The main process holds the keys; the
+    // player lives here, so a press arrives as an op rather than as state.
+    const unsubscribeControl = window.electronAPI?.onReadAloudControl?.((_event, data) => {
+      const op = data?.op;
+      if (op === "toggle") player.toggle();
+      else if (op === "back") player.seek(-1);
+      else if (op === "forward") player.seek(1);
+      else return;
+      startPolling();
+    });
+
     // The other half of "the hotkey always answers": a capture with nothing to
     // read still puts the pill on screen, briefly, so the press is visible.
     const unsubscribeNotice = window.electronAPI?.onReadAloudNotice?.((_event, data) => {
@@ -403,9 +432,11 @@ export default function App() {
     const teardown = () => {
       stopPolling();
       clearNotice();
+      syncPlaybackKeys(false);
       readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
+      if (typeof unsubscribeControl === "function") unsubscribeControl();
       player.dispose();
     };
 
@@ -546,10 +577,38 @@ export default function App() {
       ? "Reading clipboard"
       : READ_ALOUD_STATUS_LABELS[readAloudState?.status] || "Reading aloud";
 
+  // The sentence being spoken, shown under the controls so a read has a place
+  // in the text and not just a count. Only once there is one to show: while the
+  // player is still splitting or loading the engine there is no sentence yet,
+  // and an empty second line would just make the pill twitch.
+  const readAloudSentence =
+    (readAloudState?.status === "playing" || readAloudState?.status === "paused") &&
+    typeof readAloudState?.currentSentence === "string" &&
+    readAloudState.currentSentence.trim()
+      ? readAloudState.currentSentence.trim()
+      : null;
+
   const handleReadAloudToggle = useCallback(() => {
     const handle = readAloudRef.current;
     if (!handle) return;
     handle.player.toggle();
+    handle.sync();
+  }, []);
+
+  // Skipping clamps inside the player, so the first and last sentence make
+  // these no-ops rather than disabled buttons. A control that greys itself out
+  // twice a read is more movement than the read is worth.
+  const handleReadAloudBack = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.seek(-1);
+    handle.sync();
+  }, []);
+
+  const handleReadAloudForward = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.seek(1);
     handle.sync();
   }, []);
 
@@ -1342,39 +1401,83 @@ export default function App() {
             <div
               ref={readAloudPillRef}
               data-testid="readaloud-overlay-player"
-              className="flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+              className={
+                readAloudSentence
+                  ? "flex flex-col gap-1.5 rounded-2xl border border-white/12 bg-muted/96 px-3 py-2 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+                  : "flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+              }
             >
-              <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
-              <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
-                {readAloudLabel}
-              </span>
-
-              {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
-                <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
-                  {readAloudState.index + 1} / {readAloudState.sentenceCount}
+              <div className="flex items-center gap-2">
+                <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
+                <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                  {readAloudLabel}
                 </span>
-              )}
 
-              <div className="h-3.5 w-px bg-white/12" aria-hidden />
+                {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
+                  <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
+                    {readAloudState.index + 1} / {readAloudState.sentenceCount}
+                  </span>
+                )}
 
-              {readAloudState.status !== "error" && (
+                {/* ml-auto pins the controls to the right edge of the capsule.
+                    Without it they sit against the status label and slide
+                    sideways every time it changes width — "Reading aloud" to
+                    "Paused" would move the pause button out from under the
+                    cursor that just pressed it. */}
+                <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
+
+                {readAloudState.status !== "error" && (
+                  <>
+                    <button
+                      aria-label="Previous sentence"
+                      onClick={handleReadAloudBack}
+                      className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                    >
+                      <SkipBack size={13} />
+                    </button>
+
+                    <button
+                      aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
+                      onClick={handleReadAloudToggle}
+                      className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                    >
+                      {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
+                    </button>
+
+                    <button
+                      aria-label="Next sentence"
+                      onClick={handleReadAloudForward}
+                      className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                    >
+                      <SkipForward size={13} />
+                    </button>
+                  </>
+                )}
+
                 <button
-                  aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
-                  onClick={handleReadAloudToggle}
+                  aria-label="Stop reading"
+                  onClick={handleReadAloudStop}
                   className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
                 >
-                  {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
+                  {/* Filled: an outlined square reads as a checkbox, not stop. */}
+                  <Square size={13} fill="currentColor" />
                 </button>
-              )}
+              </div>
 
-              <button
-                aria-label="Stop reading"
-                onClick={handleReadAloudStop}
-                className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
-              >
-                {/* Filled: an outlined square reads as a checkbox, not stop. */}
-                <Square size={13} fill="currentColor" />
-              </button>
+              {/*
+                Fixed width rather than shrink-to-fit: the sentence changes every
+                few seconds, and a capsule that resized with each one would be a
+                fidget on top of the dictation button.
+              */}
+              {readAloudSentence && (
+                <span
+                  data-testid="readaloud-current-sentence"
+                  className="w-[340px] truncate text-[11px] leading-snug text-white/60"
+                  title={readAloudSentence}
+                >
+                  {readAloudSentence}
+                </span>
+              )}
             </div>
           </div>
         )}

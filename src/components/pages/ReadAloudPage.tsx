@@ -641,6 +641,17 @@ export default function ReadAloudPage() {
                   onClear={() => setReadAloudHotkey(DEFAULT_READ_ALOUD_HOTKEY)}
                 />
               </SettingsRow>
+
+              {/* The playback keys are bound only while something is being
+                  read, so they are documented here rather than given a row of
+                  their own next to keys that are always live. */}
+              {installed && (
+                <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
+                  While a read is playing, Ctrl+Alt+Shift+Space pauses and
+                  Ctrl+Alt+Shift+&larr;/&rarr; skip a sentence. Nothing is bound the rest of the
+                  time.
+                </p>
+              )}
             </PanelRow>
 
             {/* Same gate as the hotkey: nothing here can make a sound without

@@ -794,6 +794,16 @@ declare global {
         reason?: string;
       }>;
       /**
+       * Report whether a read is currently on screen. While it is, the main
+       * process holds the transient playback shortcuts
+       * (Ctrl+Alt+Shift+Space / Left / Right); when it is not, nothing is bound.
+       */
+      readAloudSetPlaybackActive: (active: boolean) => Promise<{
+        active: boolean;
+        registered: string[];
+        reason?: string;
+      }>;
+      /**
        * Text captured from the foreground app, for the overlay to speak.
        * `source` mirrors SelectionCaptureResult: a `clipboard` read is the
        * pre-existing clipboard rather than the selection, and the overlay says
@@ -811,6 +821,13 @@ declare global {
        */
       onReadAloudNotice: (
         callback: (event: any, data: { reason: "empty-selection" | "unsupported" }) => void
+      ) => (() => void) | void;
+      /**
+       * One press of a transient playback shortcut, forwarded from the main
+       * process because the overlay is where the player lives.
+       */
+      onReadAloudControl: (
+        callback: (event: any, data: { op: "toggle" | "back" | "forward" }) => void
       ) => (() => void) | void;
       /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
       readAloudTestEnabled: boolean;

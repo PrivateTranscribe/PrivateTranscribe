@@ -65,6 +65,10 @@ export class ReadAloudPlayer {
       voice: this.voice,
       sentenceCount: this.sentences.length,
       index: this.index,
+      // The sentence the listener is hearing right now. The overlay shows it so
+      // a read has a visible place in the text rather than only a counter;
+      // null before a split has produced anything to say.
+      currentSentence: this.sentences[this.index] ?? null,
       offset: this.offset,
       playing: this.playing,
       ttfaMs: this.ttfaMs,

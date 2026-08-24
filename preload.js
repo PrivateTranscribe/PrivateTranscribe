@@ -198,9 +198,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Round-trip cost of the copy worker's line protocol; injects nothing. */
   readAloudCaptureProbe: () => ipcRenderer.invoke("readaloud-capture-probe"),
   readAloudSyncHotkey: (settings) => ipcRenderer.invoke("readaloud-sync-hotkey", settings),
+  /**
+   * Tell the main process whether a read is on screen, so the transient
+   * pause/skip shortcuts are held only for the length of it.
+   */
+  readAloudSetPlaybackActive: (active) =>
+    ipcRenderer.invoke("readaloud-playback-active", Boolean(active)),
   onReadAloudSpeak: registerListener("readaloud-speak"),
   /** Fired instead of `readaloud-speak` when a capture produced nothing to read. */
   onReadAloudNotice: registerListener("readaloud-notice"),
+  /** One press of a transient playback shortcut: pause/resume, or skip a sentence. */
+  onReadAloudControl: registerListener("readaloud-control"),
   /**
    * Dev-only switch for the headless Read Aloud test surface. Off unless the
    * app was launched with PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1, so a
