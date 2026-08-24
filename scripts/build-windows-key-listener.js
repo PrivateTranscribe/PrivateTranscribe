@@ -4,8 +4,10 @@
  *
  * Strategy:
  * 1. If binary exists and is up-to-date, do nothing
- * 2. Try to download prebuilt binary from GitHub releases
- * 3. Fall back to local compilation if download fails
+ * 2. If the local C source is present, compile it first, then fall back to the
+ *    prebuilt download. Downloading first would fetch the OLD released binary and
+ *    freshen its mtime, silently masking any fix made to the source.
+ * 3. With no local source, download the prebuilt binary.
  *
  * This allows developers without a C compiler to still build the app.
  */
@@ -179,21 +181,26 @@ async function main() {
     return;
   }
 
-  // Try download first, then compile
-  const downloaded = await tryDownload();
-  if (downloaded) {
-    return;
-  }
+  // With a local C source present the binary is stale relative to that source, so
+  // compiling is the only thing that can pick the change up. Downloading first
+  // would replace it with the older released build and mark it fresh.
+  const hasLocalSource = fs.existsSync(cSource);
+  const steps = hasLocalSource ? [tryCompile, tryDownload] : [tryDownload, tryCompile];
 
-  const compiled = tryCompile();
-  if (compiled) {
-    return;
+  for (const step of steps) {
+    // eslint-disable-next-line no-await-in-loop
+    const ok = await step();
+    if (ok) {
+      return;
+    }
   }
 
   // Neither worked - warn but don't fail
   console.warn("[windows-key-listener] Could not obtain Windows key listener binary.");
   console.warn("[windows-key-listener] Push-to-Talk on Windows will use fallback mode.");
-  console.warn("[windows-key-listener] To compile locally, install Visual Studio Build Tools or MinGW-w64.");
+  console.warn(
+    "[windows-key-listener] To compile locally, install Visual Studio Build Tools or MinGW-w64."
+  );
 }
 
 main().catch((error) => {
