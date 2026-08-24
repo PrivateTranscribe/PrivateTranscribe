@@ -200,10 +200,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAloudSyncHotkey: (settings) => ipcRenderer.invoke("readaloud-sync-hotkey", settings),
   /**
    * Tell the main process whether a read is on screen, so the transient
-   * pause/skip shortcuts are held only for the length of it.
+   * pause/skip shortcuts are held only for the length of it — and so every
+   * other app is quieted for exactly that long.
+   *
+   * `duckOthers` rides along because it lives in localStorage, which the main
+   * process cannot read; omitting it means on, matching the toggle's default.
    */
-  readAloudSetPlaybackActive: (active) =>
-    ipcRenderer.invoke("readaloud-playback-active", Boolean(active)),
+  readAloudSetPlaybackActive: (active, options = {}) =>
+    ipcRenderer.invoke("readaloud-playback-active", Boolean(active), {
+      duckOthers: options?.duckOthers !== false,
+    }),
   onReadAloudSpeak: registerListener("readaloud-speak"),
   /** Fired instead of `readaloud-speak` when a capture produced nothing to read. */
   onReadAloudNotice: registerListener("readaloud-notice"),

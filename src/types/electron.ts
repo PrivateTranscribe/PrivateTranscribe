@@ -798,10 +798,25 @@ declare global {
        * process holds the transient playback shortcuts
        * (Ctrl+Alt+Space / Left / Right); when it is not, nothing is bound.
        */
-      readAloudSetPlaybackActive: (active: boolean) => Promise<{
+      readAloudSetPlaybackActive: (
+        active: boolean,
+        options?: { duckOthers?: boolean }
+      ) => Promise<{
         active: boolean;
         registered: string[];
         reason?: string;
+        /** Per-app ducking counters, so a test can prove the wiring without audio. */
+        ducking?: {
+          supported: boolean;
+          ducked: boolean;
+          sessions: number;
+          duckRequests: number;
+          restoreRequests: number;
+          duckCalls: number;
+          restoreCalls: number;
+          repairs: number;
+          lastReason: string | null;
+        };
       }>;
       /**
        * Text captured from the foreground app, for the overlay to speak.

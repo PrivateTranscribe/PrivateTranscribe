@@ -899,6 +899,16 @@ export function useSettings() {
       deserialize: String,
     }
   );
+  // On by default: a read you asked for is the thing you want to hear, and the
+  // alternative to quieting the other apps is nothing — Windows session volume
+  // is a multiplier UNDER the master, so PrivateTranscribe cannot be made
+  // louder than everything else. Read raw from localStorage by the overlay on
+  // every playback edge, so it is stored as plain "true"/"false".
+  const [readAloudDuckOthers, setReadAloudDuckOthers] = useLocalStorage(
+    "readAloudDuckOthers",
+    true,
+    boolSerializer
+  );
   // Stored raw for the same reason readAloudHotkey is: the overlay reads this
   // key straight out of localStorage right before it speaks, so a JSON-quoted
   // copy would reach Kokoro as `"af_heart"` and be rejected as an unknown voice.
@@ -1187,6 +1197,8 @@ export function useSettings() {
     setAudioFeedback,
     readAloudEnabled,
     setReadAloudEnabled,
+    readAloudDuckOthers,
+    setReadAloudDuckOthers,
     readAloudHotkey,
     setReadAloudHotkey,
     readAloudVoice,

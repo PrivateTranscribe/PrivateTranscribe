@@ -432,6 +432,8 @@ export default function ReadAloudPage() {
   const {
     readAloudEnabled,
     setReadAloudEnabled,
+    readAloudDuckOthers,
+    setReadAloudDuckOthers,
     readAloudHotkey,
     setReadAloudHotkey,
     readAloudVoice,
@@ -618,6 +620,24 @@ export default function ReadAloudPage() {
                   disabled={!installed}
                 />
               </SettingsRow>
+            </PanelRow>
+            <PanelRow>
+              <div data-testid="readaloud-duck-others-row">
+                <SettingsRow
+                  label="Quiet other apps while reading"
+                  description={
+                    installed
+                      ? "Music and video drop to 30% for the length of the read, then go back to the volume they were at. The reading voice is not touched. Apps that start playing part-way through a read are left where they are."
+                      : "Available once the voice model is on this machine."
+                  }
+                >
+                  <Toggle
+                    checked={readAloudDuckOthers}
+                    onChange={setReadAloudDuckOthers}
+                    disabled={!installed}
+                  />
+                </SettingsRow>
+              </div>
             </PanelRow>
             <PanelRow>
               <SettingsRow

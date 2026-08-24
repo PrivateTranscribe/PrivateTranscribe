@@ -36,6 +36,12 @@ const DEFAULT_DIAG_FLAGS: Record<string, string> = {
   PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT: "1",
   PRIVATETRANSCRIBE_DIAG_DISABLE_WINDOWS_KEY_LISTENER: "1",
   PRIVATETRANSCRIBE_DIAG_DISABLE_TRAY: "1",
+  // Read Aloud quiets every other app's audio session while it reads. A test
+  // run must never do that to the machine it is running on — it would move the
+  // volume of whatever the developer is listening to. The wiring is still
+  // exercised: the module counts the calls it would have made and reports them
+  // through the playback-active reply.
+  PRIVATETRANSCRIBE_DIAG_DISABLE_AUDIO_DUCKING: "1",
 };
 
 export type ConsoleEntry = { type: string; text: string };

@@ -181,31 +181,63 @@ const linux = {
 // For duck(): a single PS invocation reads the current state (to stdout) AND
 // applies the duck level. This halves the number of PS process launches.
 
+/** PowerShell single-quoted literal: only ' needs escaping. */
+function psQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/**
+ * The body of the Windows duck script, as an array of lines.
+ *
+ * Extracted so a unit test can assert the one thing that makes this
+ * crash-safe: the line that writes the state file comes BEFORE the line that
+ * moves the volume. Doing the write inside the same PowerShell process is what
+ * removes the window entirely — the alternative (read in one call, write, set
+ * in a second call) would pay a second Add-Type compile on every recording.
+ */
+function buildWindowsDuckScriptLines({ mode, duckLevel, statePath }) {
+  const lines = [
+    "$vol = [Audio]::GetVolume()",
+    "$mute = [Audio]::GetMute()",
+    "Write-Output ($vol.ToString('F4', [System.Globalization.CultureInfo]::InvariantCulture) + '|' + $mute.ToString())",
+  ];
+
+  const duckLevelPs = `[float]::Parse('${duckLevel.toFixed(4)}', [System.Globalization.CultureInfo]::InvariantCulture)`;
+  lines.push(
+    mode === "mute" ? "$target = $vol" : `$target = [Math]::Max(0.01, $vol * ${duckLevelPs})`
+  );
+
+  if (statePath) {
+    lines.push(
+      `$state = '{"version":1,"mode":"${mode === "mute" ? "mute" : "duck"}","volume":' + ` +
+        "$vol.ToString('F4', [System.Globalization.CultureInfo]::InvariantCulture) + " +
+        "',\"muted\":' + $mute.ToString().ToLower() + ',\"duckTarget\":' + " +
+        "$target.ToString('F4', [System.Globalization.CultureInfo]::InvariantCulture) + " +
+        `',"timestamp":"' + [DateTime]::UtcNow.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture) + '"}'`
+    );
+    lines.push(
+      `[System.IO.File]::WriteAllText(${psQuote(statePath)}, $state, (New-Object System.Text.UTF8Encoding($false)))`
+    );
+  }
+
+  lines.push(mode === "mute" ? "[Audio]::SetMute($true)" : "[Audio]::SetVolume($target)");
+  return lines;
+}
+
 const windows = {
   /**
    * Duck in one PowerShell call:
    *   - Outputs "volume,muted" to stdout (the current state to save)
+   *   - Writes the crash-safe state file
    *   - Then applies the new level/mute
    * @returns {Promise<{ volume: number, muted: boolean }>} the state BEFORE ducking
    */
-  async duckAndSave({ mode, duckLevel }) {
+  async duckAndSave({ mode, duckLevel, statePath = null }) {
     // duckLevel is a multiplier (e.g. 0.5 = half of current volume).
     // The PS script reads current volume, multiplies by duckLevel, then sets.
-    const setLine =
-      mode === "mute"
-        ? "[Audio]::SetMute($true)"
-        : `$target = [Math]::Max(0.01, $vol * [float]::Parse('${duckLevel.toFixed(4)}', [System.Globalization.CultureInfo]::InvariantCulture))
-[Audio]::SetVolume($target)`;
-
-    const scriptBody = [
-      // Output current state with invariant culture so no locale surprises
-      "$vol = [Audio]::GetVolume()",
-      "$mute = [Audio]::GetMute()",
-      "Write-Output ($vol.ToString('F4', [System.Globalization.CultureInfo]::InvariantCulture) + '|' + $mute.ToString())",
-      setLine,
-    ].join("\n");
-
-    const stdout = await runPs(scriptBody);
+    const stdout = await runPs(
+      buildWindowsDuckScriptLines({ mode, duckLevel, statePath }).join("\n")
+    );
     // stdout = "0.8000|False" (pipe separator, invariant decimal)
     const firstLine = stdout.split(/\r?\n/)[0].trim();
     const pipeIdx = firstLine.indexOf("|");
@@ -214,6 +246,28 @@ const windows = {
     return {
       volume: parseFloat(volStr) || 1,
       muted: muteStr.toLowerCase() === "true",
+    };
+  },
+
+  /** Read-only, for the startup repair's "does this still look ducked?" test. */
+  async getState() {
+    const stdout = await runPs(
+      [
+        "$vol = [Audio]::GetVolume()",
+        "$mute = [Audio]::GetMute()",
+        "Write-Output ($vol.ToString('F4', [System.Globalization.CultureInfo]::InvariantCulture) + '|' + $mute.ToString())",
+      ].join("\n")
+    );
+    const firstLine = stdout.split(/\r?\n/)[0].trim();
+    const pipeIdx = firstLine.indexOf("|");
+    return {
+      volume: pipeIdx >= 0 ? parseFloat(firstLine.slice(0, pipeIdx)) || 0 : 1,
+      muted:
+        pipeIdx >= 0 &&
+        firstLine
+          .slice(pipeIdx + 1)
+          .trim()
+          .toLowerCase() === "true",
     };
   },
 
@@ -238,14 +292,159 @@ const windows = {
 
 // ─── AudioDuckingManager ─────────────────────────────────────────────────────
 
+/**
+ * Name of the crash-safe state file, inside Electron's userData dir.
+ *
+ * Kristian's report: transcription ducking sometimes never restores — an error
+ * path, or the app closed mid-duck — and his master volume stays lowered until
+ * he fixes it by hand. The fix is this file: written before the volume moves,
+ * deleted on a successful restore, and repaired from on the next start.
+ */
+const STATE_FILE_NAME = "audio-ducking-state.json";
+
+/**
+ * How far above the ducked target the master volume can sit and still count as
+ * "still ducked". Wide enough for float rounding through PowerShell, narrow
+ * enough that a user who has already dragged the slider back up is not yanked.
+ */
+const STILL_DUCKED_EPSILON = 0.02;
+
+/**
+ * Should a leftover state file be acted on?
+ *
+ * Only when the system still LOOKS ducked. If the user already fixed the
+ * volume by hand, the honest thing is to leave it where they put it and just
+ * drop the file — restoring would move their slider out from under them.
+ */
+function shouldRepairFromState(state, current) {
+  if (!state || !current) return false;
+  if (state.mode === "mute") return Boolean(current.muted);
+  const target = Number(state.duckTarget);
+  if (!Number.isFinite(target)) return false;
+  return Number(current.volume) <= target + STILL_DUCKED_EPSILON;
+}
+
 class AudioDuckingManager {
-  constructor() {
+  /**
+   * Dependencies are injectable for the same reason they are in
+   * readAloudPlaybackKeys: vitest cannot mock `require("electron")` inside
+   * src/helpers, so a unit test hands in a temp path and fake platform APIs
+   * rather than replacing the module.
+   */
+  constructor({
+    platform = process.platform,
+    fs: fsModule = fs,
+    logger = debugLogger,
+    stateFilePath = null,
+    platformApis = { win32: windows, darwin: macos, linux },
+  } = {}) {
     /** @type {{ volume: number, muted: boolean } | null} */
     this._savedState = null;
     this._isDucked = false;
     /** @type {Promise<void> | null} */
     this._duckInFlight = null;
     this._pendingRestore = false;
+    this._platform = platform;
+    this._fs = fsModule;
+    this._logger = logger;
+    this._stateFilePath = stateFilePath;
+    this._apis = platformApis;
+  }
+
+  /** Late-bind the userData dir, which only main.js knows. */
+  configure({ userDataPath, stateFilePath } = {}) {
+    if (stateFilePath) this._stateFilePath = stateFilePath;
+    else if (userDataPath) this._stateFilePath = path.join(userDataPath, STATE_FILE_NAME);
+    return this._stateFilePath;
+  }
+
+  /** @private */
+  _writeState(state) {
+    if (!this._stateFilePath) return;
+    try {
+      // Synchronous on purpose: this has to be on disk before the volume moves,
+      // which is the entire reason the file exists.
+      this._fs.writeFileSync(this._stateFilePath, JSON.stringify(state), "utf8");
+    } catch (error) {
+      this._logger.warn("[AudioDucking] Could not write state file:", error?.message);
+    }
+  }
+
+  /** @private */
+  _clearState() {
+    if (!this._stateFilePath) return;
+    try {
+      if (this._fs.existsSync(this._stateFilePath)) this._fs.unlinkSync(this._stateFilePath);
+    } catch (error) {
+      this._logger.warn("[AudioDucking] Could not delete state file:", error?.message);
+    }
+  }
+
+  /** @private */
+  _readState() {
+    if (!this._stateFilePath) return null;
+    try {
+      if (!this._fs.existsSync(this._stateFilePath)) return null;
+      return JSON.parse(this._fs.readFileSync(this._stateFilePath, "utf8"));
+    } catch (error) {
+      this._logger.warn("[AudioDucking] Unreadable state file:", error?.message);
+      return null;
+    }
+  }
+
+  /**
+   * Put the master volume back if a previous run died mid-duck. Called once at
+   * startup, before anything else can duck.
+   */
+  async repairFromDisk() {
+    const state = this._readState();
+    if (!state) return { repaired: false, reason: "no-state-file" };
+
+    const api = this._apis[this._platform];
+    if (!api) {
+      this._clearState();
+      return { repaired: false, reason: "unsupported-platform" };
+    }
+
+    try {
+      const current = await api.getState();
+      if (!shouldRepairFromState(state, current)) {
+        // The user already sorted it out. Their slider, their call.
+        this._clearState();
+        this._logger.info(
+          "[AudioDucking] Found a stale duck state but the volume is already back up " +
+            `(now ${current.volume}, ducked target ${state.duckTarget}) - leaving it alone`
+        );
+        return { repaired: false, reason: "already-restored", current };
+      }
+
+      await this._applyState({ volume: state.volume, muted: Boolean(state.muted) });
+      this._clearState();
+      this._logger.info(
+        `[AudioDucking] Repaired a stranded duck from a previous run: ${current.volume} -> ${state.volume}`
+      );
+      return { repaired: true, from: current, to: state };
+    } catch (error) {
+      this._logger.error("[AudioDucking] Startup repair failed:", error?.message);
+      // Keep the file so the next start can try again.
+      return { repaired: false, reason: "error", error: error?.message };
+    }
+  }
+
+  /** @private Put the platform back into `saved`. */
+  async _applyState(saved) {
+    const api = this._apis[this._platform];
+    if (!api) return;
+    if (this._platform === "win32") {
+      await api.restore(saved);
+      return;
+    }
+    if (saved.muted) {
+      await api.setMuted(true);
+      return;
+    }
+    await api.setVolume(saved.volume);
+    await api.setMuted(false);
   }
 
   /**
@@ -254,7 +453,7 @@ class AudioDuckingManager {
    */
   async duck({ mode, duckLevel = 0.2 }) {
     if (this._isDucked) {
-      debugLogger.debug("[AudioDucking] Already ducked - skipping");
+      this._logger.debug("[AudioDucking] Already ducked - skipping");
       return;
     }
 
@@ -279,40 +478,56 @@ class AudioDuckingManager {
   /** @private */
   async _doDuck({ mode, duckLevel }) {
     try {
-      if (process.platform === "win32") {
-        // duckLevel is a multiplier - Windows duckAndSave reads current volume
-        // and computes the target inside the PS script (currentVol * duckLevel)
-        this._savedState = await windows.duckAndSave({ mode, duckLevel });
-        this._isDucked = true;
-        debugLogger.debug("[AudioDucking] Ducked (Windows). Saved state:", this._savedState);
-      } else if (process.platform === "darwin") {
-        this._savedState = await macos.getState();
-        if (mode === "mute") {
-          await macos.setMuted(true);
-        } else if (!this._savedState.muted) {
-          // duckLevel is a multiplier: 0.5 = half of current volume
-          const targetVolume = Math.max(0.01, this._savedState.volume * duckLevel);
-          await macos.setVolume(targetVolume);
-        }
-        this._isDucked = true;
-        debugLogger.debug("[AudioDucking] Ducked (macOS). Saved state:", this._savedState);
-      } else if (process.platform === "linux") {
-        this._savedState = await linux.getState();
-        if (mode === "mute") {
-          await linux.setMuted(true);
-        } else if (!this._savedState.muted) {
-          // duckLevel is a multiplier: 0.5 = half of current volume
-          const targetVolume = Math.max(0.01, this._savedState.volume * duckLevel);
-          await linux.setVolume(targetVolume);
-        }
-        this._isDucked = true;
-        debugLogger.debug("[AudioDucking] Ducked (Linux). Saved state:", this._savedState);
-      } else {
-        debugLogger.debug("[AudioDucking] Unsupported platform:", process.platform);
+      const api = this._apis[this._platform];
+      if (!api) {
+        this._logger.debug("[AudioDucking] Unsupported platform:", this._platform);
+        return;
       }
+
+      if (this._platform === "win32") {
+        // duckLevel is a multiplier - Windows duckAndSave reads current volume
+        // and computes the target inside the PS script (currentVol * duckLevel).
+        // That same script writes the crash-safe state file BEFORE it moves the
+        // volume, so there is no window where the volume is down and nothing on
+        // disk says what it was.
+        this._savedState = await api.duckAndSave({
+          mode,
+          duckLevel,
+          statePath: this._stateFilePath,
+        });
+        this._isDucked = true;
+        this._logger.debug("[AudioDucking] Ducked (Windows). Saved state:", this._savedState);
+        return;
+      }
+
+      // macOS and Linux read first, so the file is written here — still before
+      // anything moves.
+      this._savedState = await api.getState();
+      const targetVolume = Math.max(0.01, this._savedState.volume * duckLevel);
+      this._writeState({
+        version: 1,
+        mode: mode === "mute" ? "mute" : "duck",
+        volume: this._savedState.volume,
+        muted: this._savedState.muted,
+        duckTarget: mode === "mute" ? this._savedState.volume : targetVolume,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (mode === "mute") {
+        await api.setMuted(true);
+      } else if (!this._savedState.muted) {
+        await api.setVolume(targetVolume);
+      }
+      this._isDucked = true;
+      this._logger.debug(
+        `[AudioDucking] Ducked (${this._platform}). Saved state:`,
+        this._savedState
+      );
     } catch (err) {
-      // Don't let audio ducking failures crash the recording flow
-      debugLogger.error("[AudioDucking] duck() failed:", err.message, err.stack);
+      // Don't let audio ducking failures crash the recording flow. The state
+      // file is deliberately NOT deleted here: this is exactly the error path
+      // that used to strand the volume, and the next start repairs from it.
+      this._logger.error("[AudioDucking] duck() failed:", err.message, err.stack);
       console.error("[AudioDucking] duck() failed:", err.message);
     }
   }
@@ -323,7 +538,7 @@ class AudioDuckingManager {
   async restore() {
     // If a duck is still in flight, defer the restore
     if (this._duckInFlight) {
-      debugLogger.debug("[AudioDucking] Duck in flight - deferring restore");
+      this._logger.debug("[AudioDucking] Duck in flight - deferring restore");
       this._pendingRestore = true;
       return;
     }
@@ -335,31 +550,21 @@ class AudioDuckingManager {
     this._savedState = null;
 
     try {
-      if (process.platform === "win32") {
-        await windows.restore(saved);
-        debugLogger.debug("[AudioDucking] Restored (Windows) to:", saved);
-      } else if (process.platform === "darwin") {
-        if (saved.muted) {
-          await macos.setMuted(true);
-        } else {
-          await macos.setVolume(saved.volume);
-          await macos.setMuted(false);
-        }
-        debugLogger.debug("[AudioDucking] Restored (macOS) to:", saved);
-      } else if (process.platform === "linux") {
-        if (saved.muted) {
-          await linux.setMuted(true);
-        } else {
-          await linux.setVolume(saved.volume);
-          await linux.setMuted(false);
-        }
-        debugLogger.debug("[AudioDucking] Restored (Linux) to:", saved);
-      }
+      await this._applyState(saved);
+      this._logger.debug(`[AudioDucking] Restored (${this._platform}) to:`, saved);
+      // Only once the volume is actually back. A restore that throws leaves the
+      // file behind on purpose, so the next start finishes the job.
+      this._clearState();
     } catch (err) {
-      debugLogger.error("[AudioDucking] restore() failed:", err.message, err.stack);
+      this._logger.error("[AudioDucking] restore() failed:", err.message, err.stack);
       console.error("[AudioDucking] restore() failed:", err.message);
     }
   }
 }
 
 module.exports = new AudioDuckingManager();
+module.exports.AudioDuckingManager = AudioDuckingManager;
+module.exports.buildWindowsDuckScriptLines = buildWindowsDuckScriptLines;
+module.exports.shouldRepairFromState = shouldRepairFromState;
+module.exports.STATE_FILE_NAME = STATE_FILE_NAME;
+module.exports.STILL_DUCKED_EPSILON = STILL_DUCKED_EPSILON;

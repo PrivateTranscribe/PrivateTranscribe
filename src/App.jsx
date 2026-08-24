@@ -327,7 +327,13 @@ export default function App() {
     const syncPlaybackKeys = (active) => {
       if (readAloudKeysActiveRef.current === active) return;
       readAloudKeysActiveRef.current = active;
-      void window.electronAPI?.readAloudSetPlaybackActive?.(active);
+      void window.electronAPI?.readAloudSetPlaybackActive?.(active, {
+        // Read fresh on every edge rather than captured once: the toggle lives
+        // in the control panel's localStorage and the overlay is long-lived, so
+        // a value read at mount would be stale for the rest of the session.
+        // Only an explicit "false" turns it off, so the default is on.
+        duckOthers: localStorage.getItem("readAloudDuckOthers") !== "false",
+      });
     };
 
     const sync = () => {

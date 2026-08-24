@@ -14,6 +14,8 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
 const ReadAloudPlaybackKeys = require("./readAloudPlaybackKeys");
+const ReadAloudDucking = require("./readAloudDucking");
+const { buildExcludedPids } = require("./readAloudDucking");
 const { checkReadAloudLanguage } = require("./readAloudLanguageGuard");
 const { ConverseSession } = require("./converseSession");
 const audioDuckingManager = require("./audioDuckingManager");
@@ -229,6 +231,22 @@ function findFileInHome(filename, dir, maxDepth) {
   return null;
 }
 
+/**
+ * Every process this app owns, for the Read Aloud duck's exclusion list.
+ *
+ * Our playback session belongs to Chromium's audio service, not to the main
+ * process, so process.pid alone is not enough — ducking "everything else" would
+ * otherwise quiet our own voice, which is the exact bug this feature exists to
+ * avoid. Wrapped because getAppMetrics() can throw before the app is ready.
+ */
+function safeAppMetrics() {
+  try {
+    return app.getAppMetrics() || [];
+  } catch {
+    return [];
+  }
+}
+
 class IPCHandlers {
   constructor(managers) {
     this.environmentManager = managers.environmentManager;
@@ -253,6 +271,22 @@ class IPCHandlers {
     // Pause and skip, held only while a read is on screen. The overlay owns
     // playback, so a press is forwarded to it rather than acted on here.
     this.readAloudPlaybackKeys = new ReadAloudPlaybackKeys((op) => this.sendReadAloudControl(op));
+    // Quiet every OTHER app while a read is on screen. Deliberately NOT
+    // audioDuckingManager: that one moves the master volume, which sits above
+    // our own playback and would quiet the voice along with everything else.
+    this.readAloudDucking = new ReadAloudDucking({
+      // Evaluated at duck time, not here: the renderer and the Chromium audio
+      // service that actually owns our playback session may not exist yet when
+      // IPCHandlers is constructed.
+      getExcludedPids: () => buildExcludedPids(process.pid, safeAppMetrics()),
+    });
+    try {
+      this.readAloudDucking.configure({ userDataPath: app.getPath("userData") });
+    } catch (error) {
+      debugLogger.warn("[ReadAloudDucking] No userData path; crash repair disabled", {
+        error: error?.message,
+      });
+    }
     // The live Converse session, created by `converse-start`. One at a time:
     // it owns a persistent `claude` child process.
     this.converseSession = null;
@@ -283,6 +317,39 @@ class IPCHandlers {
       this.whisperManager.setCudaDownloadProgressListener((progress) => {
         this.broadcastToWindows("cuda-binary-download-progress", progress);
       });
+    }
+
+    void this.repairStrandedVolumes();
+  }
+
+  /**
+   * Undo a duck that a previous run never finished.
+   *
+   * Kristian's report: transcription ducking sometimes never restores — an
+   * error path, or the app closed mid-duck — and the master volume stays down
+   * until he fixes it by hand. Both duckers now write what they changed to disk
+   * before they change it; this is the other half. The master-volume repair
+   * only fires when the system STILL looks ducked, so a user who already
+   * dragged the slider back up does not get it yanked a second time.
+   */
+  async repairStrandedVolumes() {
+    try {
+      audioDuckingManager.configure({ userDataPath: app.getPath("userData") });
+    } catch (error) {
+      debugLogger.warn("[AudioDucking] No userData path; crash repair disabled", {
+        error: error?.message,
+      });
+      return;
+    }
+    try {
+      await audioDuckingManager.repairFromDisk();
+    } catch (error) {
+      debugLogger.warn("[AudioDucking] Startup repair threw", { error: error?.message });
+    }
+    try {
+      await this.readAloudDucking.repairFromDisk();
+    } catch (error) {
+      debugLogger.warn("[ReadAloudDucking] Startup repair threw", { error: error?.message });
     }
   }
 
@@ -1379,8 +1446,26 @@ class IPCHandlers {
      * length of a read. The overlay fires this on transitions only, not on
      * every poll tick.
      */
-    ipcMain.handle("readaloud-playback-active", async (_event, active) => {
-      return this.readAloudPlaybackKeys.apply({ active: Boolean(active) });
+    ipcMain.handle("readaloud-playback-active", async (_event, active, options = {}) => {
+      const isActive = Boolean(active);
+      const result = this.readAloudPlaybackKeys.apply({ active: isActive });
+
+      // The "Quiet other apps while reading" toggle lives in localStorage, so
+      // the renderer carries its value in on the same edge that starts and ends
+      // the read — the same shape readaloud-sync-hotkey uses for the enable
+      // toggle. Missing means on, so an older renderer still gets the default.
+      const duckOthers = options?.duckOthers !== false;
+
+      // Not awaited: a PowerShell round trip must never sit in front of the
+      // first word being spoken. Restore IS awaited, so a read that ends is
+      // never reported finished while somebody's music is still at 30%.
+      if (isActive && duckOthers) {
+        void this.readAloudDucking.duckOthers();
+      } else if (!isActive) {
+        await this.readAloudDucking.restore();
+      }
+
+      return { ...result, ducking: this.readAloudDucking.getStatus() };
     });
 
     // Converse (voice loop) handlers.
@@ -1540,6 +1625,22 @@ class IPCHandlers {
         this.readAloudPlaybackKeys.apply({ active: false });
       } catch {
         // Shutting down; globalShortcut may already be torn down.
+      }
+
+      // Same reasoning, with teeth: quitting mid-read or mid-recording used to
+      // leave volumes lowered until Kristian fixed them by hand. These are
+      // fire-and-forget because before-quit cannot be awaited — the on-disk
+      // state files are what actually guarantee recovery, and the next start
+      // repairs from them if the process dies before PowerShell returns.
+      try {
+        void this.readAloudDucking.restore();
+      } catch {
+        // Shutting down.
+      }
+      try {
+        void audioDuckingManager.restore();
+      } catch {
+        // Shutting down.
       }
     });
 
