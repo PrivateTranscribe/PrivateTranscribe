@@ -1294,7 +1294,14 @@ class IPCHandlers {
     // out, no microphone involved. The future mic path transcribes first and
     // calls exactly this, so a headless test exercises the real loop.
     ipcMain.handle("converse-start", async (_event, options = {}) => {
-      const { model, cwd, mock = false, resume = false } = options || {};
+      const {
+        model,
+        cwd,
+        mock = false,
+        resume = false,
+        permissionRelay = false,
+        settingsFile = null,
+      } = options || {};
 
       // Refuse early rather than failing on the first sentence: without the
       // voice model there is nothing to speak the reply with.
@@ -1318,6 +1325,11 @@ class IPCHandlers {
         // a resumed conversation carries yesterday's context, which is only
         // ever what the caller asked for on purpose.
         resume: Boolean(resume),
+        // Relay the harness's own permission questions to the user. The app
+        // adds no rules of its own and never bypasses the CLI's permission
+        // model; unanswered questions deny themselves (fail closed).
+        permissionRelay: Boolean(permissionRelay),
+        settingsFile: settingsFile || null,
         send: (channel, payload) => {
           const overlay = this.windowManager?.mainWindow;
           if (overlay && !overlay.isDestroyed()) {
@@ -1355,6 +1367,23 @@ class IPCHandlers {
       const state = this.converseSession.stop();
       this.converseSession = null;
       return state;
+    });
+
+    // The user's standing or per-question answer to the harness's permission
+    // questions. Tonight the caller is the e2e spec (and later the voice/UI
+    // prompt); the relay itself denies anything left unanswered.
+    ipcMain.handle("converse-permission-auto-answer", async (_event, behavior) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.setPermissionAutoAnswer(behavior);
+    });
+
+    ipcMain.handle("converse-permission-answer", async (_event, id, behavior) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.answerPermission(id, behavior);
     });
 
     // Renderer -> main: where playback actually is. This is the only thing that

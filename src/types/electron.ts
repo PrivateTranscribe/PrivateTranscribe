@@ -242,6 +242,16 @@ export interface ConverseState {
   lastUtterance?: { text: string; at: number; gen: number } | null;
   lastResponse?: { text: string; sentences: string[]; at?: number } | null;
   lastInterrupt?: Record<string, unknown> | null;
+  /** Every permission question the harness asked, with how each was answered. */
+  permissionLog?: {
+    id: number;
+    at: number;
+    tool_name: string;
+    input: unknown;
+    tool_use_id: string | null;
+    answeredWith: "allow" | "deny" | null;
+    answeredAt: number | null;
+  }[];
 }
 
 /** Outcome of copying the foreground app's selection. See selectionCapture.js. */
@@ -763,6 +773,13 @@ declare global {
          * state reports it back as `resumedFrom`.
          */
         resume?: boolean;
+        /**
+         * Relay the harness's own permission questions to the app. The app
+         * adds no rules; unanswered questions deny themselves.
+         */
+        permissionRelay?: boolean;
+        /** Path to a `--settings` file for the spawned CLI (tests only). */
+        settingsFile?: string | null;
       }) => Promise<ConverseState>;
       /** Inject a user turn as text. The microphone path will call this too. */
       converseSendUtterance: (text: string) => Promise<{
@@ -779,6 +796,19 @@ declare global {
         state: string;
       }>;
       converseStop: () => Promise<ConverseState>;
+      conversePermissionAutoAnswer: (
+        behavior: "allow" | "deny" | null
+      ) => Promise<{ armed: "allow" | "deny" | null; reason?: string }>;
+      conversePermissionAnswer: (
+        id: number,
+        behavior: "allow" | "deny"
+      ) => Promise<{ answered: boolean; reason?: string }>;
+      onConversePermissionRequest: (
+        callback: (
+          event: any,
+          data: { id: number; tool_name: string; input: unknown; at: number }
+        ) => void
+      ) => (() => void) | void;
       onConverseSentence: (
         callback: (event: any, data: { gen: number; index: number; text: string }) => void
       ) => (() => void) | void;

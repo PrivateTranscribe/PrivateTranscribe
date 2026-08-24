@@ -108,6 +108,8 @@ class ConverseAgent {
     mock = false,
     resumeSessionId = null,
     sessionPersistence = true,
+    permissionRelay = null,
+    settingsFile = null,
   } = {}) {
     this.onDelta = onDelta || (() => {});
     this.onTurnEnd = onTurnEnd || (() => {});
@@ -119,6 +121,10 @@ class ConverseAgent {
     this.claudeArgPrefix = resolveClaudeArgPrefix();
     this.resumeSessionId = resumeSessionId || null;
     this.sessionPersistence = sessionPersistence !== false;
+    /** { port, token } of the app's permission relay, or null for none. */
+    this.permissionRelay = permissionRelay || null;
+    /** Path to a --settings file (tests use it to force an empty allowlist). */
+    this.settingsFile = settingsFile || null;
 
     /** "live" while the real CLI is answering; "mock" once it cannot. */
     this.agentMode = mock ? "mock" : "live";
@@ -165,6 +171,41 @@ class ConverseAgent {
     // remember the flags the original session was started with, so every flag
     // above is re-passed here rather than assumed.
     if (this.resumeSessionId) args.push("--resume", this.resumeSessionId);
+
+    if (this.settingsFile) args.push("--settings", this.settingsFile);
+
+    // Relay the harness's own permission questions to the app. The MCP server
+    // is spawned by the CLI itself with a bare node (process.execPath would be
+    // electron.exe here, which cannot run a plain script), and reaches the app
+    // back over loopback HTTP. Never any bypass flag — the CLI's own
+    // permission model stays in charge; the app only answers its questions.
+    if (this.permissionRelay) {
+      const mcpConfig = {
+        mcpServers: {
+          "pt-permissions": {
+            command: process.env.PT_CONVERSE_NODE_BIN || "node",
+            args: [path.join(__dirname, "conversePermissionMcp.cjs")],
+            env: {
+              PT_PERMISSION_RELAY_PORT: String(this.permissionRelay.port),
+              PT_PERMISSION_RELAY_TOKEN: this.permissionRelay.token,
+            },
+          },
+        },
+      };
+      const mcpConfigPath = path.join(
+        os.tmpdir(),
+        `pt-converse-mcp-${process.pid}-${Date.now()}.json`
+      );
+      fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig));
+      this.mcpConfigPath = mcpConfigPath;
+      args.push(
+        "--permission-prompt-tool",
+        "mcp__pt-permissions__approve",
+        "--mcp-config",
+        mcpConfigPath,
+        "--strict-mcp-config"
+      );
+    }
 
     this.proc = spawn(this.claudeBin, [...this.claudeArgPrefix, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -396,6 +437,15 @@ class ConverseAgent {
     this.mockTimers.clear();
     this.turn = null;
     this.ready = false;
+
+    if (this.mcpConfigPath) {
+      try {
+        fs.unlinkSync(this.mcpConfigPath);
+      } catch {
+        // Already gone.
+      }
+      this.mcpConfigPath = null;
+    }
 
     if (!this.proc) return;
     try {

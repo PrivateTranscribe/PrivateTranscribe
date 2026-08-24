@@ -21,6 +21,7 @@
 const os = require("node:os");
 
 const { ConverseAgent } = require("./converseAgent");
+const { ConversePermissionRelay } = require("./conversePermissionRelay");
 const { SentenceStream } = require("./converseSentences");
 const { readSessionId, writeSessionId } = require("./converseSessionStore");
 
@@ -47,6 +48,8 @@ class ConverseSession {
     mock = false,
     resume = false,
     sessionStorePath,
+    permissionRelay = false,
+    settingsFile = null,
   } = {}) {
     this.send = typeof send === "function" ? send : () => {};
     this.state = "idle";
@@ -74,12 +77,41 @@ class ConverseSession {
     this.resumedFrom = resume && !mock ? readSessionId(this.cwd, this.sessionStorePath) : null;
     this.sessionId = this.resumedFrom;
 
+    // The agent is constructed in start(): with the permission relay on, its
+    // spawn args need the relay's port, which only exists once it listens.
+    this.agent = null;
+    this._agentOpts = { model, claudeBin, mock, permissionRelay, settingsFile };
+    this.relay = null;
+    this.lastAgentError = null;
+  }
+
+  async start() {
+    const { model, claudeBin, mock, permissionRelay, settingsFile } = this._agentOpts;
+
+    let relayInfo = null;
+    if (permissionRelay && !mock) {
+      // The app adds no permission rules of its own: the relay only carries
+      // the harness's own question to the user and their answer back.
+      this.relay = new ConversePermissionRelay({
+        onRequest: (entry) =>
+          this.send("converse-permission-request", {
+            id: entry.id,
+            tool_name: entry.tool_name,
+            input: entry.input,
+            at: entry.at,
+          }),
+      });
+      relayInfo = await this.relay.start();
+    }
+
     this.agent = new ConverseAgent({
       model,
       cwd: this.cwd,
       claudeBin,
       mock,
       resumeSessionId: this.resumedFrom,
+      permissionRelay: relayInfo,
+      settingsFile: settingsFile || null,
       onSessionId: (id) => this._rememberSessionId(id),
       onDelta: (text) => this._onDelta(text),
       onTurnEnd: (info) => this._onTurnEnd(info),
@@ -87,10 +119,6 @@ class ConverseSession {
         this.lastAgentError = err;
       },
     });
-    this.lastAgentError = null;
-  }
-
-  async start() {
     await this.agent.start();
     return this.getState();
   }
@@ -121,7 +149,9 @@ class ConverseSession {
   }
 
   getState() {
-    const status = this.agent.status();
+    const status = this.agent
+      ? this.agent.status()
+      : { agentMode: this._agentOpts.mock ? "mock" : "live", model: this._agentOpts.model };
     return {
       state: this.state,
       stateForMs: Date.now() - this.stateSince,
@@ -147,8 +177,22 @@ class ConverseSession {
       // session is about to build against the wrapper the agent actually
       // receives on its stdin.
       pendingInterrupt: this.pendingInterrupt,
+      /** Every permission question the harness has asked, and how it was answered. */
+      permissionLog: this.relay ? this.relay.getLog() : this._finalPermissionLog || [],
       running: !this.stopped,
     };
+  }
+
+  /** Arm a standing answer for permission questions ("allow" | "deny" | null). */
+  setPermissionAutoAnswer(behavior) {
+    if (!this.relay) return { armed: null, reason: "relay-not-active" };
+    return { armed: this.relay.setAutoAnswer(behavior) };
+  }
+
+  /** Answer one pending permission question by id. */
+  answerPermission(id, behavior) {
+    if (!this.relay) return { answered: false, reason: "relay-not-active" };
+    return { answered: this.relay.answer(id, { behavior }) };
   }
 
   // ------------------------------------------------------------- turn loop
@@ -165,6 +209,9 @@ class ConverseSession {
     }
     if (this.stopped) {
       return { accepted: false, reason: "session-stopped", state: this.state };
+    }
+    if (!this.agent) {
+      return { accepted: false, reason: "not-started", state: this.state };
     }
     if (this.state === "thinking" || this.state === "speaking") {
       // Barge-in is a separate gate; until then a mid-turn utterance is refused
@@ -298,7 +345,13 @@ class ConverseSession {
     if (this.stopped) return this.getState();
     this.stopped = true;
     this.turnGen += 1;
-    this.agent.stop();
+    if (this.agent) this.agent.stop();
+    if (this.relay) {
+      const finalState = this.getState();
+      this.relay.stop();
+      this.relay = null;
+      this._finalPermissionLog = finalState.permissionLog;
+    }
     this.send("converse-interrupt", { gen: this.turnGen, reason });
     this.setState("idle", reason);
     return this.getState();

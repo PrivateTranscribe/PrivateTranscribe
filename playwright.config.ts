@@ -12,6 +12,9 @@ import { defineConfig } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Only *.spec.ts files run in the default suite. Live specs that spend real
+  // Claude prompts are named *.live.ts and run only through
+  // playwright-live.config.ts, so `npm run test:e2e` can never spend money.
   testMatch: /.*\.spec\.ts$/,
 
   // Electron takes a single-instance lock per user-data dir, binds a fixed Vite

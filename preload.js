@@ -206,6 +206,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   converseGetState: () => ipcRenderer.invoke("converse-get-state"),
   converseInterrupt: (reason) => ipcRenderer.invoke("converse-interrupt-turn", reason),
   converseStop: () => ipcRenderer.invoke("converse-stop"),
+  conversePermissionAutoAnswer: (behavior) =>
+    ipcRenderer.invoke("converse-permission-auto-answer", behavior),
+  conversePermissionAnswer: (id, behavior) =>
+    ipcRenderer.invoke("converse-permission-answer", id, behavior),
+  onConversePermissionRequest: registerListener("converse-permission-request"),
   onConverseSentence: registerListener("converse-sentence"),
   onConverseTurnEnd: registerListener("converse-turn-end"),
   onConverseInterrupt: registerListener("converse-interrupt"),
