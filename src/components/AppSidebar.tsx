@@ -131,11 +131,6 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
     getVersion();
   }, []);
 
-  const formatHotkey = (key: string) => {
-    if (!key) return "...";
-    return formatHotkeyLabel(key);
-  };
-
   return (
     <div
       style={{
@@ -330,7 +325,7 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
               fontWeight: 500,
             }}
           >
-            {formatHotkey(hotkey)}
+            {formatHotkeyLabel(hotkey)}
           </span>{" "}
           to dictate
         </p>

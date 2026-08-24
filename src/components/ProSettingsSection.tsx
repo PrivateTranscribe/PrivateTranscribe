@@ -29,6 +29,14 @@ const PRO_FEATURES_AVAILABLE = [
     name: "Action Engine",
     desc: "Trigger custom voice commands to launch apps, run scripts, and automate workflows",
   },
+  {
+    name: "Read Aloud",
+    desc: "Select text anywhere and hit the hotkey to hear it read back in a local voice",
+  },
+  {
+    name: "Converse",
+    desc: "Talk to Claude Code about a project folder and hear its replies spoken back to you",
+  },
 ];
 
 const PRO_FEATURES_COMING = [

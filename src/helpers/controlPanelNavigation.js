@@ -5,6 +5,7 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "dictionary",
   "read-aloud",
   "ai-enhancement",
+  "converse",
   "correction-memory",
   "action-engine",
   "settings",

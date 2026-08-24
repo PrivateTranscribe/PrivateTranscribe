@@ -18,8 +18,11 @@ const BETA_FEATURES = new Set([
 ]);
 
 // Subset of beta features that carry a visible badge in sidebar/page headers.
+// "correction-memory" is deliberately absent: it has no sidebar item of its
+// own (its page renders embedded inside Dictionary, which carries no badge),
+// so there is nothing for shouldShowProBadge("correction-memory") to badge.
+// It stays in BETA_FEATURES above because the feature gate itself is alive.
 const SIDEBAR_BETA_ITEMS = new Set([
-  "correction-memory",
   "ai-enhancement",
   "converse",
   "action-engine",
