@@ -22,6 +22,7 @@ import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
 import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
+import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 
@@ -331,6 +332,24 @@ export default function App() {
     return () => {
       delete window.__readAloudTest;
       teardown();
+    };
+  }, []);
+
+  // Converse playback lives in the overlay for the same reason Read Aloud does:
+  // it has to survive the control panel closing. It is headless — the visible
+  // Converse UI is a later change — so there is no React state mirroring here,
+  // only the queue player and the main process it reports to.
+  useEffect(() => {
+    const player = new ConversePlayer();
+    player.connect();
+
+    if (window.electronAPI?.readAloudTestEnabled) {
+      window.__converseTest = { getPlayerState: () => player.getState() };
+    }
+
+    return () => {
+      delete window.__converseTest;
+      player.dispose();
     };
   }, []);
 

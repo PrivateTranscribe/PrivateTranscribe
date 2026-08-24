@@ -199,6 +199,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   readAloudTestEnabled: process.env.PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST === "1",
 
+  // Converse (voice loop): a persistent `claude` process whose reply is spoken
+  // sentence by sentence through the Read Aloud engine.
+  converseStart: (options) => ipcRenderer.invoke("converse-start", options),
+  converseSendUtterance: (text) => ipcRenderer.invoke("converse-send-utterance", text),
+  converseGetState: () => ipcRenderer.invoke("converse-get-state"),
+  converseInterrupt: (reason) => ipcRenderer.invoke("converse-interrupt-turn", reason),
+  converseStop: () => ipcRenderer.invoke("converse-stop"),
+  onConverseSentence: registerListener("converse-sentence"),
+  onConverseTurnEnd: registerListener("converse-turn-end"),
+  onConverseInterrupt: registerListener("converse-interrupt"),
+  /** Renderer -> main: where playback actually is. Fire-and-forget, not a request. */
+  converseReportPlayerState: (state) => ipcRenderer.send("converse-player-state", state),
+
   // Local llama-server functions
   llamaServerSetIdleTimeoutMinutes: (minutes) =>
     ipcRenderer.invoke("llama-server-set-idle-timeout-minutes", minutes),

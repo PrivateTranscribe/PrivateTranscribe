@@ -192,6 +192,52 @@ export interface KokoroSynthResult {
   synthMs: number;
 }
 
+/**
+ * Which agent answered a Converse turn. "mock" means the deterministic canned
+ * reply — either asked for, or fallen back to after the live CLI returned an
+ * API error. A mock run can never be mistaken for a live one.
+ */
+export type ConverseAgentMode = "live" | "mock";
+
+export type ConverseSessionState = "idle" | "thinking" | "speaking" | "listening" | "stopped";
+
+/** One entry of the Converse state log; `at` is a Date.now() timestamp. */
+export interface ConverseTransition {
+  state: ConverseSessionState;
+  at: number;
+  reason: string;
+}
+
+/** Renderer -> main playback report; the session's only evidence audio played. */
+export interface ConversePlayerReport {
+  gen: number;
+  playing: boolean;
+  playIndex: number;
+  known: number;
+  total: number | null;
+  cached: number;
+  drained: boolean;
+  lastSynthMs: number | null;
+  error: string | null;
+}
+
+export interface ConverseState {
+  state: ConverseSessionState;
+  running: boolean;
+  stateForMs?: number;
+  agentMode?: ConverseAgentMode;
+  model?: string;
+  /** Raw error text from the agent, kept verbatim (e.g. a rate-limit message). */
+  lastError?: string | null;
+  turnGen?: number;
+  stateLog?: ConverseTransition[];
+  player?: ConversePlayerReport | null;
+  agent?: Record<string, unknown>;
+  lastUtterance?: { text: string; at: number; gen: number } | null;
+  lastResponse?: { text: string; sentences: string[]; at?: number } | null;
+  lastInterrupt?: Record<string, unknown> | null;
+}
+
 /** Outcome of copying the foreground app's selection. See selectionCapture.js. */
 export interface SelectionCaptureResult {
   text: string;
@@ -693,6 +739,44 @@ declare global {
       ) => (() => void) | void;
       /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
       readAloudTestEnabled: boolean;
+
+      // Converse (voice loop) — one persistent `claude` process per session,
+      // its reply spoken sentence by sentence through the Read Aloud engine.
+      /**
+       * Start a session. `mock: true` replaces the CLI with a deterministic
+       * canned reply; the mode is reported back as `agentMode` so a run can
+       * never be mistaken for a live one.
+       */
+      converseStart: (options?: {
+        model?: string;
+        cwd?: string;
+        mock?: boolean;
+      }) => Promise<ConverseState>;
+      /** Inject a user turn as text. The microphone path will call this too. */
+      converseSendUtterance: (text: string) => Promise<{
+        accepted: boolean;
+        reason?: string;
+        state: string;
+        turnGen?: number;
+        agentMode?: ConverseAgentMode;
+      }>;
+      converseGetState: () => Promise<ConverseState>;
+      converseInterrupt: (reason?: string) => Promise<{
+        turnGen: number;
+        from: string;
+        state: string;
+      }>;
+      converseStop: () => Promise<ConverseState>;
+      onConverseSentence: (
+        callback: (event: any, data: { gen: number; index: number; text: string }) => void
+      ) => (() => void) | void;
+      onConverseTurnEnd: (
+        callback: (event: any, data: { gen: number; total: number }) => void
+      ) => (() => void) | void;
+      onConverseInterrupt: (
+        callback: (event: any, data: { gen: number; reason: string }) => void
+      ) => (() => void) | void;
+      converseReportPlayerState: (state: ConversePlayerReport) => void;
 
       // Local AI model management
       modelGetAll: () => Promise<any[]>;

@@ -13,6 +13,7 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
+const { ConverseSession } = require("./converseSession");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const micWatcher = require("./micWatcher");
@@ -246,6 +247,9 @@ class IPCHandlers {
     // (readaloud-sync-hotkey) because the toggle and the accelerator live in
     // localStorage, which the main process cannot read.
     this.readAloudHotkey = new ReadAloudHotkey(() => this.readSelectionAndSpeak());
+    // The live Converse session, created by `converse-start`. One at a time:
+    // it owns a persistent `claude` child process.
+    this.converseSession = null;
     // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
@@ -1276,6 +1280,94 @@ class IPCHandlers {
       }
 
       return this.readAloudHotkey.apply({ enabled, hotkey });
+    });
+
+    // Converse (voice loop) handlers.
+    //
+    // A Converse session is one persistent `claude` process plus the state
+    // machine that turns its streamed reply into spoken sentences. Synthesis
+    // reuses the Read Aloud Kokoro engine above — there is no second TTS path —
+    // and playback lives in the overlay renderer so it survives the control
+    // panel closing.
+    //
+    // `converse-send-utterance` is the injection surface: text in, spoken reply
+    // out, no microphone involved. The future mic path transcribes first and
+    // calls exactly this, so a headless test exercises the real loop.
+    ipcMain.handle("converse-start", async (_event, options = {}) => {
+      const { model, cwd, mock = false } = options || {};
+
+      // Refuse early rather than failing on the first sentence: without the
+      // voice model there is nothing to speak the reply with.
+      const status = await requireKokoro().checkModelStatus();
+      if (!status.installed) {
+        throw Object.assign(
+          new Error(
+            `The voice model is not installed (missing: ${status.missingFiles.join(", ") || "everything"}). Download it before starting Converse.`
+          ),
+          { code: "model-not-installed" }
+        );
+      }
+
+      if (this.converseSession) this.converseSession.stop("restarted");
+
+      this.converseSession = new ConverseSession({
+        model: model || undefined,
+        cwd: cwd || undefined,
+        mock: Boolean(mock),
+        send: (channel, payload) => {
+          const overlay = this.windowManager?.mainWindow;
+          if (overlay && !overlay.isDestroyed()) {
+            safeSend(overlay.webContents, channel, payload);
+          }
+        },
+      });
+
+      return this.converseSession.start();
+    });
+
+    ipcMain.handle("converse-send-utterance", async (_event, text) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.sendUtterance(text);
+    });
+
+    ipcMain.handle("converse-get-state", async () => {
+      if (!this.converseSession) return { state: "stopped", running: false };
+      return this.converseSession.getState();
+    });
+
+    // Named apart from the `converse-interrupt` event the session pushes to the
+    // renderer, so one channel name never means two directions.
+    ipcMain.handle("converse-interrupt-turn", async (_event, reason) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.interrupt(reason || "manual");
+    });
+
+    ipcMain.handle("converse-stop", async () => {
+      if (!this.converseSession) return { state: "stopped", running: false };
+      const state = this.converseSession.stop();
+      this.converseSession = null;
+      return state;
+    });
+
+    // Renderer -> main: where playback actually is. This is the only thing that
+    // moves the session into `speaking` and out of it, so the state machine can
+    // never claim audio played when it did not.
+    ipcMain.on("converse-player-state", (_event, report) => {
+      this.converseSession?.onPlayerState(report);
+    });
+
+    // The persistent `claude` process must not outlive the app.
+    app.on("before-quit", () => {
+      try {
+        this.converseSession?.stop("app quitting");
+      } catch {
+        // Nothing useful to do while the app is going down.
+      }
+      this.converseSession = null;
     });
 
     // Utility handlers
