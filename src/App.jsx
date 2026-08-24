@@ -64,11 +64,33 @@ const READ_ALOUD_STATUS_LABELS = {
  * What the pill says when a read hotkey captured nothing. Without this the
  * press is completely silent, and an empty selection is indistinguishable from
  * a shortcut that never fired.
+ *
+ * "non-english" is deliberately not in this table: its wording depends on the
+ * detected language name carried on the event, so it is built where it is
+ * rendered instead of contorting this fixed-string table to hold a template.
  */
 const READ_ALOUD_NOTICE_LABELS = {
   "empty-selection": "Nothing selected",
   unsupported: "Cannot read selections here",
 };
+
+/** Recognised reasons - anything else is silently ignored, see the handler below. */
+const READ_ALOUD_KNOWN_NOTICE_REASONS = new Set([
+  ...Object.keys(READ_ALOUD_NOTICE_LABELS),
+  "non-english",
+]);
+
+/**
+ * The bundled Read Aloud voices only speak English phonemes, so confidently
+ * non-English text is blocked before synthesis rather than mispronounced.
+ * `languageName` is missing only if the main process's guard somehow blocked
+ * without naming a language - the sentence still has to make sense then.
+ */
+function nonEnglishNoticeLabel(languageName) {
+  return languageName
+    ? `Looks like ${languageName}, Read Aloud speaks English only`
+    : "Read Aloud speaks English only";
+}
 
 /** Long enough to read, short enough to never sit in front of the next dictation. */
 const READ_ALOUD_NOTICE_MS = 2500;
@@ -267,8 +289,11 @@ export default function App() {
   const [readAloudState, setReadAloudState] = useState(null);
   // Where the text being read came from, so a clipboard fallback can say so.
   const [readAloudSource, setReadAloudSource] = useState(null);
-  // "empty-selection" | "unsupported" while the transient notice pill is up.
+  // "empty-selection" | "unsupported" | "non-english" while the transient
+  // notice pill is up.
   const [readAloudNotice, setReadAloudNotice] = useState(null);
+  // The detected language name for a "non-english" notice; unused otherwise.
+  const [readAloudNoticeLanguage, setReadAloudNoticeLanguage] = useState(null);
   // { state, playIndex, total } while a Converse session is running, else null.
   const [converseState, setConverseState] = useState(null);
   const { toast } = useToast();
@@ -334,6 +359,7 @@ export default function App() {
         noticeTimer = null;
       }
       setReadAloudNotice(null);
+      setReadAloudNoticeLanguage(null);
     };
 
     // The real feature path: the main process captures the foreground app's
@@ -355,12 +381,14 @@ export default function App() {
     // read still puts the pill on screen, briefly, so the press is visible.
     const unsubscribeNotice = window.electronAPI?.onReadAloudNotice?.((_event, data) => {
       const reason = data?.reason;
-      if (!READ_ALOUD_NOTICE_LABELS[reason]) return;
+      if (!READ_ALOUD_KNOWN_NOTICE_REASONS.has(reason)) return;
       if (noticeTimer) clearTimeout(noticeTimer);
       setReadAloudNotice(reason);
+      setReadAloudNoticeLanguage(reason === "non-english" ? (data?.languageName ?? null) : null);
       noticeTimer = setTimeout(() => {
         noticeTimer = null;
         setReadAloudNotice(null);
+        setReadAloudNoticeLanguage(null);
       }, READ_ALOUD_NOTICE_MS);
     });
 
@@ -1374,7 +1402,9 @@ export default function App() {
             >
               <AudioLines size={14} className="text-white/40 shrink-0" aria-hidden />
               <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
-                {READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
+                {readAloudNotice === "non-english"
+                  ? nonEnglishNoticeLabel(readAloudNoticeLanguage)
+                  : READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
               </span>
             </div>
           </div>

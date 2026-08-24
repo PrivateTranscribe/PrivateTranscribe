@@ -64,7 +64,8 @@ function EnglishOnlyNotice() {
     <InfoBox variant="muted" className="text-[13px] leading-relaxed text-muted-foreground">
       <span className="font-medium text-foreground">English only.</span> All 28 voices are English.
       The pronunciation engine that ships with the model knows no other language, so Danish and
-      other non-English text comes out mispronounced.
+      other non-English text would come out garbled. Text that looks like another language is
+      skipped with a note instead of being mispronounced.
     </InfoBox>
   );
 }

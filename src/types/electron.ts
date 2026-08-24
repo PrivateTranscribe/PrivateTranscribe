@@ -763,6 +763,17 @@ declare global {
        */
       readAloudReadSelection: () => Promise<SelectionCaptureResult>;
       /**
+       * Real main-process decision on whether `text` is confidently
+       * non-English and should be blocked from synthesis. Exists so tests can
+       * exercise the actual guard (dynamic `tinyld` import and all) without
+       * desktop selection capture.
+       */
+      readAloudLanguageCheck: (text: string) => Promise<{
+        block: boolean;
+        language?: string;
+        languageName?: string;
+      }>;
+      /**
        * Round-trip cost of the copy worker's line protocol. Injects no
        * keystrokes and never touches the clipboard; exists for the
        * trigger-lag timing harness.

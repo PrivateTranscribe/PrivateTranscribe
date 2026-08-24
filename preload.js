@@ -193,6 +193,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAloudSplit: (text) => ipcRenderer.invoke("readaloud-split", text),
   readAloudSynth: (options) => ipcRenderer.invoke("readaloud-synth", options),
   readAloudReadSelection: () => ipcRenderer.invoke("readaloud-read-selection"),
+  /** Exists so tests can exercise the real non-English guard without desktop capture. */
+  readAloudLanguageCheck: (text) => ipcRenderer.invoke("readaloud-language-check", text),
   /** Round-trip cost of the copy worker's line protocol; injects nothing. */
   readAloudCaptureProbe: () => ipcRenderer.invoke("readaloud-capture-probe"),
   readAloudSyncHotkey: (settings) => ipcRenderer.invoke("readaloud-sync-hotkey", settings),

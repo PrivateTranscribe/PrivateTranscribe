@@ -13,6 +13,7 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
+const { checkReadAloudLanguage } = require("./readAloudLanguageGuard");
 const { ConverseSession } = require("./converseSession");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
@@ -1310,6 +1311,13 @@ class IPCHandlers {
     // Capture path shared with the Read Aloud global shortcut; see
     // readSelectionAndSpeak().
     ipcMain.handle("readaloud-read-selection", async () => this.readSelectionAndSpeak());
+
+    // Exposes the real non-English guard on its own, so tests can exercise the
+    // actual main-process decision (dynamic import and all) without desktop
+    // selection capture.
+    ipcMain.handle("readaloud-language-check", async (_event, text) =>
+      checkReadAloudLanguage(text)
+    );
 
     // Prices the persistent copy worker's round-trip for the trigger-lag
     // harness. Injects no keystrokes and never touches the clipboard.
@@ -2830,6 +2838,13 @@ class IPCHandlers {
    * that fell back to the pre-existing clipboard carries its `source` on the
    * speak event, because hearing old clipboard content with no explanation is
    * its own kind of silent failure.
+   *
+   * A capture that did produce text still has to clear the language guard
+   * before it reaches synthesis: the bundled Kokoro voices are English-phoneme
+   * only, and speaking confidently non-English text through them produces
+   * garbled nonsense rather than failing loudly. A blocked read gets the same
+   * `readaloud-notice` treatment as an empty capture, naming the language
+   * instead of leaving the press looking like it did nothing.
    */
   async readSelectionAndSpeak() {
     const result = this.selectionCapture
@@ -2842,11 +2857,21 @@ class IPCHandlers {
         };
 
     const overlay = this.windowManager?.mainWindow;
+    let languageGuard = null;
+    if (result.text) {
+      languageGuard = await checkReadAloudLanguage(result.text);
+    }
+
     if (overlay && !overlay.isDestroyed()) {
-      if (result.text) {
+      if (result.text && !languageGuard?.block) {
         safeSend(overlay.webContents, "readaloud-speak", {
           text: result.text,
           source: result.source,
+        });
+      } else if (languageGuard?.block) {
+        safeSend(overlay.webContents, "readaloud-notice", {
+          reason: "non-english",
+          languageName: languageGuard.languageName,
         });
       } else {
         safeSend(overlay.webContents, "readaloud-notice", {
@@ -2855,6 +2880,9 @@ class IPCHandlers {
       }
     }
 
+    if (languageGuard?.block) {
+      return { ...result, blockedLanguage: languageGuard.languageName };
+    }
     return result;
   }
 
