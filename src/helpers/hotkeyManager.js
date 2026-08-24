@@ -163,8 +163,8 @@ const VALID_ELECTRON_KEYS = new Set([
   "End",
   "PageUp",
   "PageDown",
-  "Escape",
-  "Esc",
+  // Escape is deliberately absent: it is the universal cancel key, so binding
+  // it globally takes "get me out of here" away from every other app.
   "VolumeUp",
   "VolumeDown",
   "VolumeMute",

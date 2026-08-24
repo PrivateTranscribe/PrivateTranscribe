@@ -11,6 +11,7 @@ import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { useModelDownload } from "../../hooks/useModelDownload";
 import { useSettings } from "../../hooks/useSettings";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { DEFAULT_READ_ALOUD_HOTKEY } from "../../utils/hotkeys";
 import type { KokoroModelStatus } from "../../types/electron";
 
 /** The one Kokoro model in the registry. */
@@ -58,8 +59,15 @@ function EnglishOnlyNotice() {
  */
 export default function ReadAloudPage() {
   const isUnlocked = isFeatureUnlocked("read-aloud");
-  const { readAloudEnabled, setReadAloudEnabled, readAloudHotkey, setReadAloudHotkey } =
-    useSettings();
+  const {
+    readAloudEnabled,
+    setReadAloudEnabled,
+    readAloudHotkey,
+    setReadAloudHotkey,
+    // Only read, to refuse a key one of these already owns.
+    dictationKey,
+    voiceCallMuteKey,
+  } = useSettings();
 
   const [modelStatus, setModelStatus] = useState<KokoroModelStatus | null>(null);
   const [statusChecked, setStatusChecked] = useState(false);
@@ -253,6 +261,12 @@ export default function ReadAloudPage() {
                   onChange={setReadAloudHotkey}
                   disabled={!installed}
                   appliesToDictationHotkey={false}
+                  ariaLabel="Read Aloud hotkey"
+                  conflicts={[
+                    { label: "Dictation", hotkey: dictationKey },
+                    { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+                  ]}
+                  onClear={() => setReadAloudHotkey(DEFAULT_READ_ALOUD_HOTKEY)}
                 />
               </SettingsRow>
             </PanelRow>

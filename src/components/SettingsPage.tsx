@@ -57,6 +57,7 @@ import { useUpdater } from "../hooks/useUpdater";
 import ReasoningModelSelector from "./ReasoningModelSelector";
 
 import { HotkeyInput } from "./ui/HotkeyInput";
+import { getDefaultHotkey } from "../utils/hotkeys";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
@@ -2318,6 +2319,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       await registerHotkey(newHotkey);
                     }}
                     disabled={isHotkeyRegistering}
+                    ariaLabel="Dictation hotkey"
+                    conflicts={[
+                      { label: "Read Aloud", hotkey: readAloudHotkey },
+                      { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+                    ]}
+                    onClear={() => {
+                      void registerHotkey(getDefaultHotkey());
+                    }}
                   />
                 </SettingsPanelRow>
 
@@ -2694,6 +2703,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       onEnabledChange={setMuteVoiceCallOnRecord}
                       muteKey={voiceCallMuteKey}
                       onMuteKeyChange={setVoiceCallMuteKey}
+                      conflicts={[
+                        { label: "Dictation", hotkey: dictationKey },
+                        { label: "Read Aloud", hotkey: readAloudHotkey },
+                      ]}
                     />
                   </SettingsPanelRow>
                 )}

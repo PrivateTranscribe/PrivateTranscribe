@@ -26,6 +26,7 @@ import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
+import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -70,9 +71,6 @@ const READ_ALOUD_NOTICE_LABELS = {
 
 /** Long enough to read, short enough to never sit in front of the next dictation. */
 const READ_ALOUD_NOTICE_MS = 2500;
-
-/** Matches the readAloudHotkey default in useSettings.ts. */
-const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
 /**
  * The Converse state machine's own word for what is happening, capitalized.

@@ -6,6 +6,7 @@ import {
   normalizeSpokenLanguages,
   resolveSpokenLanguages,
 } from "../utils/spokenLanguages";
+import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -883,11 +884,16 @@ export function useSettings() {
     boolSerializer
   );
   // Stored raw like dictationKey, so the main process reads the accelerator
-  // rather than a JSON-quoted copy of it.
-  const [readAloudHotkey, setReadAloudHotkey] = useLocalStorage("readAloudHotkey", "Ctrl+Alt+R", {
-    serialize: String,
-    deserialize: String,
-  });
+  // rather than a JSON-quoted copy of it. The default and the reasoning behind
+  // it live in src/helpers/readAloudHotkey.js.
+  const [readAloudHotkey, setReadAloudHotkey] = useLocalStorage(
+    "readAloudHotkey",
+    DEFAULT_READ_ALOUD_HOTKEY,
+    {
+      serialize: String,
+      deserialize: String,
+    }
+  );
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
     true,
