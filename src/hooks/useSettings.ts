@@ -875,6 +875,19 @@ export function useSettings() {
     deserialize: String,
   });
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
+  // Read Aloud. Off by default: it binds a global shortcut and needs a 326MB
+  // voice model, neither of which should happen to a user who never asked.
+  const [readAloudEnabled, setReadAloudEnabled] = useLocalStorage(
+    "readAloudEnabled",
+    false,
+    boolSerializer
+  );
+  // Stored raw like dictationKey, so the main process reads the accelerator
+  // rather than a JSON-quoted copy of it.
+  const [readAloudHotkey, setReadAloudHotkey] = useLocalStorage("readAloudHotkey", "Ctrl+Alt+R", {
+    serialize: String,
+    deserialize: String,
+  });
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
     true,
@@ -1150,6 +1163,10 @@ export function useSettings() {
     setVoiceCallMuteKey,
     audioFeedback,
     setAudioFeedback,
+    readAloudEnabled,
+    setReadAloudEnabled,
+    readAloudHotkey,
+    setReadAloudHotkey,
     errorNotifications,
     setErrorNotifications,
     successConfirmation,

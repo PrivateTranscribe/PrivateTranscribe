@@ -12,6 +12,7 @@ const debugLogger = require("./debugLogger");
 const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
+const ReadAloudHotkey = require("./readAloudHotkey");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const micWatcher = require("./micWatcher");
@@ -241,6 +242,10 @@ class IPCHandlers {
     this.getCudaAutoUpdateState = managers.getCudaAutoUpdateState || null;
     this.clearCudaAutoUpdateFailure = managers.clearCudaAutoUpdateFailure || null;
     this.hardwareDetector = new HardwareDetector();
+    // The Read Aloud global shortcut. Registration is driven by the renderer
+    // (readaloud-sync-hotkey) because the toggle and the accelerator live in
+    // localStorage, which the main process cannot read.
+    this.readAloudHotkey = new ReadAloudHotkey(() => this.readSelectionAndSpeak());
     // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
@@ -1243,37 +1248,34 @@ class IPCHandlers {
       return requireKokoro().synthesize(text, { voice, speed });
     });
 
+    // Capture path shared with the Read Aloud global shortcut; see
+    // readSelectionAndSpeak().
+    ipcMain.handle("readaloud-read-selection", async () => this.readSelectionAndSpeak());
+
     /**
-     * Read whatever the user has selected in the foreground app and hand it to
-     * the overlay to speak.
+     * Bring the Read Aloud global shortcut in line with the renderer's saved
+     * settings. Called on overlay startup and whenever the toggle or the
+     * accelerator changes, because both live in localStorage.
      *
-     * The overlay owns playback (it survives the control panel closing), so the
-     * text is pushed there as an event rather than returned to whoever asked.
-     * The full capture result still comes back to the caller, because how the
-     * capture went - selection vs clipboard fallback vs nothing, and how long
-     * the worker waited for the trigger modifiers - is the only visibility
-     * anything else has into a keystroke injected into another process.
+     * The model check happens here rather than in the renderer so a hotkey can
+     * never be bound to a feature that would fail the moment it is pressed.
      */
-    ipcMain.handle("readaloud-read-selection", async () => {
-      if (!this.selectionCapture) {
-        return {
-          text: "",
-          source: "unsupported",
-          waitedMs: null,
-          detail: "ERR selection capture unavailable",
-        };
-      }
-
-      const result = await this.selectionCapture.captureSelection();
-
-      if (result.text) {
-        const overlay = this.windowManager?.mainWindow;
-        if (overlay && !overlay.isDestroyed()) {
-          safeSend(overlay.webContents, "readaloud-speak", { text: result.text });
+    ipcMain.handle("readaloud-sync-hotkey", async (_event, { enabled, hotkey } = {}) => {
+      let modelInstalled = false;
+      if (enabled && this.kokoroManager) {
+        try {
+          modelInstalled = (await this.kokoroManager.checkModelStatus()).installed;
+        } catch {
+          modelInstalled = false;
         }
       }
 
-      return result;
+      if (enabled && !modelInstalled) {
+        this.readAloudHotkey.apply({ enabled: false, hotkey });
+        return { registered: false, hotkey, reason: "model-not-installed" };
+      }
+
+      return this.readAloudHotkey.apply({ enabled, hotkey });
     });
 
     // Utility handlers
@@ -1289,7 +1291,12 @@ class IPCHandlers {
     });
 
     ipcMain.handle("update-hotkey", async (event, hotkey) => {
-      return await this.windowManager.updateHotkey(hotkey);
+      const result = await this.windowManager.updateHotkey(hotkey);
+      // Re-registering the dictation hotkey can clear every global shortcut in
+      // the process, so Read Aloud has to be put back or it dies silently the
+      // first time the user edits their dictation key.
+      this.readAloudHotkey.reapply();
+      return result;
     });
 
     ipcMain.handle("set-hotkey-listening-mode", async (event, enabled, newHotkey = null) => {
@@ -2569,6 +2576,42 @@ class IPCHandlers {
         return { success: false, error: err.message, apps: [] };
       }
     });
+  }
+
+  /**
+   * Read whatever the user has selected in the foreground app and hand it to
+   * the overlay to speak.
+   *
+   * The overlay owns playback (it survives the control panel closing), so the
+   * text is pushed there as an event rather than returned to whoever asked.
+   * The full capture result still comes back to the caller, because how the
+   * capture went - selection vs clipboard fallback vs nothing, and how long
+   * the worker waited for the trigger modifiers - is the only visibility
+   * anything else has into a keystroke injected into another process.
+   *
+   * Shared by the `readaloud-read-selection` IPC and the global shortcut, so
+   * the hotkey cannot drift into a second, differently-behaving capture path.
+   */
+  async readSelectionAndSpeak() {
+    if (!this.selectionCapture) {
+      return {
+        text: "",
+        source: "unsupported",
+        waitedMs: null,
+        detail: "ERR selection capture unavailable",
+      };
+    }
+
+    const result = await this.selectionCapture.captureSelection();
+
+    if (result.text) {
+      const overlay = this.windowManager?.mainWindow;
+      if (overlay && !overlay.isDestroyed()) {
+        safeSend(overlay.webContents, "readaloud-speak", { text: result.text });
+      }
+    }
+
+    return result;
   }
 
   broadcastToWindows(channel, payload) {

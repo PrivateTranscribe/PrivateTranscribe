@@ -31,6 +31,7 @@ import type {
   HardwareGpuCategory,
   BenchmarkResult,
   ComparisonBenchmarkResult,
+  KokoroModelStatus,
 } from "../types/electron";
 import { openExternalLink } from "../utils/externalLinks";
 import { formatBenchmarkClip, formatBenchmarkWait } from "../utils/benchmarkWait";
@@ -72,11 +73,15 @@ import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
 import { SectionLabel } from "./ui/SectionLabel";
+import { useModelDownload } from "../hooks/useModelDownload";
+import { DownloadProgressBar } from "./ui/DownloadProgressBar";
+import { formatBytes } from "../utils/formatBytes";
 
 export type SettingsSectionType =
   | "general"
   | "preferences"
   | "transcription"
+  | "readAloud"
   | "dictionary"
   | "aiModels"
   | "agentConfig"
@@ -159,6 +164,217 @@ function SectionHeader({
       </div>
       {description && (
         <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Read Aloud - shown in its own settings section ─────────────────────
+
+/** The one Kokoro model in the registry. */
+const READ_ALOUD_MODEL_ID = "kokoro-82m-v1.0-fp32";
+const READ_ALOUD_MODEL_LABEL = "Kokoro 82M";
+/** Registry total, stated up front so the download is never a surprise. */
+const READ_ALOUD_DOWNLOAD_LABEL = "326 MB";
+
+/**
+ * Read Aloud settings: the voice model, the global shortcut, and the honest
+ * limits of both.
+ *
+ * Every state this section can be in is a state the user can be stuck in, so
+ * each one says what is true right now and what the next action is: not
+ * checked yet, model missing, downloading, or ready. The model is never
+ * fetched without a click — a 326MB background download on a privacy tool
+ * would be exactly the kind of surprise this product exists to avoid.
+ */
+function ReadAloudSection({
+  unlocked,
+  enabled,
+  onEnabledChange,
+  hotkey,
+  onHotkeyChange,
+}: {
+  unlocked: boolean;
+  enabled: boolean;
+  onEnabledChange: (value: boolean) => void;
+  hotkey: string;
+  onHotkeyChange: (value: string) => void;
+}) {
+  const [modelStatus, setModelStatus] = useState<KokoroModelStatus | null>(null);
+  const [statusChecked, setStatusChecked] = useState(false);
+
+  const refreshModelStatus = useCallback(async () => {
+    try {
+      const status = await window.electronAPI?.readAloudCheckModelStatus?.(READ_ALOUD_MODEL_ID);
+      if (status) setModelStatus(status);
+    } catch {
+      // A failed status read means "not installed" as far as this screen is
+      // concerned; the download button stays the next action either way.
+      setModelStatus(null);
+    } finally {
+      setStatusChecked(true);
+    }
+  }, []);
+
+  const {
+    downloadProgress,
+    isDownloading,
+    isInstalling,
+    isCancelling,
+    downloadModel,
+    deleteModel,
+    cancelDownload,
+  } = useModelDownload({
+    modelType: "kokoro",
+    onDownloadComplete: refreshModelStatus,
+  });
+
+  useEffect(() => {
+    if (!unlocked) return;
+    void refreshModelStatus();
+  }, [unlocked, refreshModelStatus]);
+
+  const installed = Boolean(modelStatus?.installed);
+
+  // The main process owns the global shortcut and refuses to bind it while the
+  // model is missing, so every input to that decision re-syncs here.
+  useEffect(() => {
+    if (!unlocked) return;
+    void window.electronAPI?.readAloudSyncHotkey?.({ enabled: enabled && installed, hotkey });
+  }, [unlocked, enabled, installed, hotkey]);
+
+  const modelDescription = () => {
+    if (isDownloading) {
+      return "Downloading from Hugging Face. Nothing is spoken until it finishes.";
+    }
+    if (!statusChecked) {
+      return "Checking this machine for the voice model.";
+    }
+    if (installed) {
+      return `${READ_ALOUD_MODEL_LABEL}, ${formatBytes(modelStatus?.totalBytes ?? 0)} on this machine. Runs on your CPU, offline.`;
+    }
+    return `${READ_ALOUD_MODEL_LABEL} is not on this machine. One ${READ_ALOUD_DOWNLOAD_LABEL} download, then Read Aloud works offline.`;
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="Read Aloud"
+        badge={<BetaBadge locked={!unlocked} />}
+        description="Select text in any app, press the Read Aloud hotkey, and PrivateTranscribe speaks it back. The voice runs on this machine, so the text never leaves your PC."
+      />
+
+      {!unlocked ? (
+        <SettingsPanel>
+          <SettingsPanelRow>
+            <SettingsRow
+              label="Read the selected text out loud"
+              badge={<BetaBadge locked />}
+              description={
+                <>
+                  Still being built, so it is limited to approved testers for now. Nothing is
+                  downloaded and nothing is spoken until it is unlocked. <BetaAccessLink />
+                </>
+              }
+            >
+              <Toggle checked={false} onChange={() => {}} disabled />
+            </SettingsRow>
+          </SettingsPanelRow>
+          <SettingsPanelRow>
+            <InfoBox variant="muted" className="text-[13px] leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">English only for now.</span> The Kokoro
+              voice ships no Danish, so Read Aloud speaks English text and mispronounces the rest.
+            </InfoBox>
+          </SettingsPanelRow>
+        </SettingsPanel>
+      ) : (
+        <>
+          <SettingsPanel>
+            <SettingsPanelRow>
+              <SettingsRow
+                label="Voice model"
+                description={<span data-testid="readaloud-model-status">{modelDescription()}</span>}
+              >
+                {isDownloading ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isCancelling}
+                    onClick={() => void cancelDownload()}
+                  >
+                    {isCancelling ? "Cancelling" : "Cancel download"}
+                  </Button>
+                ) : installed ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void deleteModel(READ_ALOUD_MODEL_ID, refreshModelStatus)}
+                  >
+                    Delete model
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    disabled={!statusChecked}
+                    onClick={() => void downloadModel(READ_ALOUD_MODEL_ID)}
+                  >
+                    <Download size={14} aria-hidden />
+                    Download voice model ({READ_ALOUD_DOWNLOAD_LABEL})
+                  </Button>
+                )}
+              </SettingsRow>
+            </SettingsPanelRow>
+
+            {isDownloading && (
+              <div data-testid="readaloud-download-progress">
+                <DownloadProgressBar
+                  modelName={READ_ALOUD_MODEL_LABEL}
+                  progress={downloadProgress}
+                  isInstalling={isInstalling}
+                />
+              </div>
+            )}
+
+            <SettingsPanelRow>
+              <InfoBox
+                variant="muted"
+                className="text-[13px] leading-relaxed text-muted-foreground"
+              >
+                <span className="font-medium text-foreground">English only for now.</span> The
+                Kokoro voice ships no Danish, so Read Aloud speaks English text and mispronounces
+                the rest.
+              </InfoBox>
+            </SettingsPanelRow>
+          </SettingsPanel>
+
+          <SettingsPanel>
+            <SettingsPanelRow>
+              <SettingsRow
+                label="Read the selected text out loud"
+                description={
+                  installed
+                    ? "Binds the hotkey below across every app. Playback controls appear on the dictation overlay while it reads."
+                    : "Available once the voice model is on this machine."
+                }
+              >
+                <Toggle checked={enabled} onChange={onEnabledChange} disabled={!installed} />
+              </SettingsRow>
+            </SettingsPanelRow>
+            <SettingsPanelRow>
+              <SettingsRow
+                label="Read Aloud hotkey"
+                description="Press this while text is selected in any app to start reading it."
+              >
+                <HotkeyInput
+                  value={hotkey}
+                  onChange={onHotkeyChange}
+                  disabled={!installed}
+                  appliesToDictationHotkey={false}
+                />
+              </SettingsRow>
+            </SettingsPanelRow>
+          </SettingsPanel>
+        </>
       )}
     </div>
   );
@@ -1223,6 +1439,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setSuccessConfirmation,
     overlaySnapToTaskbar,
     setOverlaySnapToTaskbar,
+    readAloudEnabled,
+    setReadAloudEnabled,
+    readAloudHotkey,
+    setReadAloudHotkey,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
@@ -1433,6 +1653,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           errorNotifications,
           successConfirmation,
           overlaySnapToTaskbar,
+          // Read Aloud
+          readAloudEnabled,
+          readAloudHotkey,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1492,6 +1715,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       errorNotifications,
       successConfirmation,
       overlaySnapToTaskbar,
+      readAloudEnabled,
+      readAloudHotkey,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1679,6 +1904,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       if (typeof s.overlaySnapToTaskbar === "boolean") {
         setOverlaySnapToTaskbar(s.overlaySnapToTaskbar);
         window.electronAPI?.setOverlaySnapToTaskbar?.(s.overlaySnapToTaskbar).catch(() => {});
+      }
+
+      if (typeof s.readAloudEnabled === "boolean") setReadAloudEnabled(s.readAloudEnabled);
+      if (s.readAloudHotkey !== undefined) {
+        if (isSafeImportedIdentifier(s.readAloudHotkey)) {
+          setReadAloudHotkey(s.readAloudHotkey);
+        } else {
+          skipField("readAloudHotkey", "contains unsafe path-like content");
+        }
       }
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
@@ -3001,6 +3235,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </div>
             )}
           </div>
+        );
+
+      // ───────────────────────────────────────────────────
+      // READ ALOUD
+      // ───────────────────────────────────────────────────
+      case "readAloud":
+        return (
+          <ReadAloudSection
+            unlocked={isFeatureUnlocked("read-aloud")}
+            enabled={readAloudEnabled}
+            onEnabledChange={setReadAloudEnabled}
+            hotkey={readAloudHotkey}
+            onHotkeyChange={setReadAloudHotkey}
+          />
         );
 
       // ───────────────────────────────────────────────────

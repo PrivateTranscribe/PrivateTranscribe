@@ -14,7 +14,7 @@ export interface DownloadProgress {
   eta?: number;
 }
 
-export type ModelType = "whisper" | "llm" | "parakeet";
+export type ModelType = "whisper" | "llm" | "parakeet" | "kokoro";
 
 interface UseModelDownloadOptions {
   modelType: ModelType;
@@ -127,6 +127,9 @@ export function useModelDownload({
       dispose = window.electronAPI?.onWhisperDownloadProgress(handleWhisperProgress);
     } else if (modelType === "parakeet") {
       dispose = window.electronAPI?.onParakeetDownloadProgress(handleWhisperProgress);
+    } else if (modelType === "kokoro") {
+      // Kokoro emits the same progress/installing/complete shape as whisper.
+      dispose = window.electronAPI?.onReadAloudDownloadProgress(handleWhisperProgress);
     } else {
       dispose = window.electronAPI?.onModelDownloadProgress(handleLLMProgress);
     }
@@ -174,6 +177,9 @@ export function useModelDownload({
           } else {
             success = result?.success ?? false;
           }
+        } else if (modelType === "kokoro") {
+          const result = await window.electronAPI?.readAloudDownloadModel(modelId);
+          success = result?.success ?? false;
         } else {
           const result = (await window.electronAPI?.modelDownload?.(modelId)) as
             | { success: boolean; error?: string }
@@ -249,6 +255,14 @@ export function useModelDownload({
               description: `Model deleted successfully! Freed ${result.freed_mb}MB of disk space.`,
             });
           }
+        } else if (modelType === "kokoro") {
+          const result = await window.electronAPI?.readAloudDeleteModel(modelId);
+          if (result?.success) {
+            toast({
+              title: "Voice model deleted",
+              description: `Freed ${result.freed_mb}MB of disk space.`,
+            });
+          }
         } else {
           const result = await window.electronAPI?.modelDelete?.(modelId);
           if (result?.success !== false) {
@@ -282,6 +296,8 @@ export function useModelDownload({
         await window.electronAPI?.cancelWhisperDownload();
       } else if (modelType === "parakeet") {
         await window.electronAPI?.cancelParakeetDownload();
+      } else if (modelType === "kokoro") {
+        await window.electronAPI?.readAloudCancelDownload();
       } else {
         await window.electronAPI?.modelCancelDownload?.(downloadingModel);
       }

@@ -118,6 +118,16 @@ export type PrivateTranscribeOptions = {
    * that silently skipped would be hiding exactly the failure that matters.
    */
   seedKokoroModel: boolean;
+  /**
+   * Point the app's home directory at an empty throwaway dir without seeding
+   * anything into it.
+   *
+   * A spec that asserts on a *missing* model has the same problem as one that
+   * asserts on a present one: the developer's real `~/.cache` decides the
+   * result. This is how a "not downloaded yet" state is tested on a machine
+   * that has the model.
+   */
+  useThrowawayHome: boolean;
 };
 
 export type PrivateTranscribeFixtures = {
@@ -236,9 +246,10 @@ export const test = base.extend<PrivateTranscribeOptions & PrivateTranscribeFixt
   seedConsentFile: ["denied", { option: true }],
   seedWhisperModels: [[], { option: true }],
   seedKokoroModel: [false, { option: true }],
+  useThrowawayHome: [false, { option: true }],
 
-  fakeHomeDir: async ({ seedWhisperModels, seedKokoroModel }, use) => {
-    if (seedWhisperModels.length === 0 && !seedKokoroModel) {
+  fakeHomeDir: async ({ seedWhisperModels, seedKokoroModel, useThrowawayHome }, use) => {
+    if (seedWhisperModels.length === 0 && !seedKokoroModel && !useThrowawayHome) {
       await use(null);
       return;
     }

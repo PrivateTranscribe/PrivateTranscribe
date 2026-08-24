@@ -12,6 +12,9 @@ import {
   History,
   Clipboard,
   AudioLines,
+  Play,
+  Pause,
+  Square,
 } from "lucide-react";
 import { useToast } from "./components/ui/Toast";
 import { useWindowDrag } from "./hooks/useWindowDrag";
@@ -29,6 +32,32 @@ const OVERLAY_HIDE_TOAST_MS = 1800;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
+
+/**
+ * Player states the overlay shows a pill for. Everything else - idle, stopped,
+ * finished - means there is nothing being read, and the overlay goes back to
+ * being just the dictation button.
+ */
+const READ_ALOUD_VISIBLE_STATUSES = new Set([
+  "splitting",
+  "loading-engine",
+  "synthesizing",
+  "playing",
+  "paused",
+  "error",
+]);
+
+const READ_ALOUD_STATUS_LABELS = {
+  splitting: "Preparing",
+  "loading-engine": "Preparing",
+  synthesizing: "Preparing",
+  playing: "Reading aloud",
+  paused: "Paused",
+  error: "Could not read that",
+};
+
+/** Matches the readAloudHotkey default in useSettings.ts. */
+const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
 const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
   return (
@@ -205,16 +234,42 @@ export default function App() {
 
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
+  const readAloudPillRef = useRef(null);
+  // { player, sync } — the sync call re-samples the player into React state.
+  const readAloudRef = useRef(null);
+  const [readAloudState, setReadAloudState] = useState(null);
   const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
 
   // Read Aloud lives in the overlay renderer because that is where playback has
-  // to survive the control panel being closed. No UI yet — the player is
-  // mounted headlessly, and only a dev build launched with
-  // PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 gets a way to drive it.
+  // to survive the control panel being closed. The player mutates its own state
+  // from audio callbacks and IPC continuations, outside React, so the pill
+  // mirrors it by sampling — and the sampling interval only exists between a
+  // speak() and the end of playback, never while the overlay is idle.
   useEffect(() => {
     const player = new ReadAloudPlayer();
+
+    let pollTimer = null;
+    const stopPolling = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+    const sync = () => {
+      const state = player.getState();
+      const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
+      setReadAloudState(visible ? state : null);
+      if (!visible) stopPolling();
+      return state;
+    };
+    const startPolling = () => {
+      sync();
+      if (!pollTimer) pollTimer = setInterval(sync, 250);
+    };
+
+    readAloudRef.current = { player, sync: startPolling };
 
     // The real feature path: the main process captures the foreground app's
     // selection and pushes the text here. Not gated on the test flag - this is
@@ -223,10 +278,21 @@ export default function App() {
       const text = data?.text;
       if (typeof text === "string" && text.trim()) {
         player.speak(text);
+        startPolling();
       }
     });
 
+    // The overlay is the one window that is always running, so it is what tells
+    // the main process whether to hold the Read Aloud shortcut. Settings does
+    // the same on change; this covers a cold start.
+    void window.electronAPI?.readAloudSyncHotkey?.({
+      enabled: localStorage.getItem("readAloudEnabled") === "true",
+      hotkey: localStorage.getItem("readAloudHotkey") || DEFAULT_READ_ALOUD_HOTKEY,
+    });
+
     const teardown = () => {
+      stopPolling();
+      readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
       player.dispose();
     };
@@ -236,20 +302,52 @@ export default function App() {
     }
 
     window.__readAloudTest = {
-      speak: (text) => player.speak(text),
+      speak: (text) => {
+        const result = player.speak(text);
+        startPolling();
+        return result;
+      },
       getState: () => player.getState(),
       getFirstBufferStats: () => player.getBufferStats(0),
       clearCache: () => player.clearCache(),
-      pause: () => player.pause(),
-      resume: () => player.resume(),
-      seek: (delta) => player.seek(delta),
-      stop: () => player.stop(),
+      pause: () => {
+        player.pause();
+        sync();
+      },
+      resume: () => {
+        player.resume();
+        startPolling();
+      },
+      seek: (delta) => {
+        player.seek(delta);
+        sync();
+      },
+      stop: () => {
+        player.stop();
+        sync();
+      },
     };
 
     return () => {
       delete window.__readAloudTest;
       teardown();
     };
+  }, []);
+
+  const readAloudPlaying = readAloudState?.playing === true;
+
+  const handleReadAloudToggle = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.toggle();
+    handle.sync();
+  }, []);
+
+  const handleReadAloudStop = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.stop();
+    handle.sync();
   }, []);
 
   useEffect(() => {
@@ -771,6 +869,33 @@ export default function App() {
     }
   })();
 
+  // The overlay window is click-through except where it declares an interactive
+  // region, so the player's own buttons have to publish their rectangle the way
+  // the context menu does. Without this the pill is visible and unclickable.
+  useLayoutEffect(() => {
+    const pill = readAloudState ? readAloudPillRef.current : null;
+    const padding = 8;
+    const rect = pill?.getBoundingClientRect();
+    const regions = rect
+      ? [
+          {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+          },
+        ]
+      : [];
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("readaloud-player", regions);
+  }, [readAloudState]);
+
+  useEffect(() => {
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("readaloud-player", []);
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const menu = isCommandMenuOpen ? commandMenuRef.current : null;
     const padding = 12;
@@ -961,6 +1086,61 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/*
+          Read Aloud player: sits above the dictation button rather than beside
+          it, so the button never moves when a read starts. Same surface, border
+          and blur as the context menu — it is the same overlay, in a different
+          state, not a second visual language.
+        */}
+        {readAloudState && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 112,
+              left: "50%",
+              transform: "translateX(-50%)",
+              pointerEvents: "auto",
+            }}
+          >
+            <div
+              ref={readAloudPillRef}
+              data-testid="readaloud-overlay-player"
+              className="flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+            >
+              <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
+              <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                {READ_ALOUD_STATUS_LABELS[readAloudState.status] || "Reading aloud"}
+              </span>
+
+              {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
+                <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
+                  {readAloudState.index + 1} / {readAloudState.sentenceCount}
+                </span>
+              )}
+
+              <div className="h-3.5 w-px bg-white/12" aria-hidden />
+
+              {readAloudState.status !== "error" && (
+                <button
+                  aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
+                  onClick={handleReadAloudToggle}
+                  className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                >
+                  {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
+                </button>
+              )}
+
+              <button
+                aria-label="Stop reading"
+                onClick={handleReadAloudStop}
+                className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+              >
+                <Square size={13} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Context menu: positioned relative to full window, clamped to stay in bounds */}
         {isCommandMenuOpen && menuStyle && (

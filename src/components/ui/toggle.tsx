@@ -9,7 +9,9 @@ interface ToggleProps {
 export const Toggle = ({ checked, onChange, disabled = false }: ToggleProps) => {
   const getTrackClasses = () => {
     if (disabled) {
-      return checked ? "bg-primary/40" : "bg-muted";
+      // bg-muted matches the settings panel surface, which left disabled
+      // unchecked toggles rendering as a bare dot with no visible track.
+      return checked ? "bg-primary/40" : "bg-surface-raised";
     }
     return checked ? "bg-primary hover:bg-primary/90" : "bg-surface-raised hover:bg-surface-3";
   };

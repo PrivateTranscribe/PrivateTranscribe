@@ -60,8 +60,8 @@ describe("beta feature labelling", () => {
     }
 
     const settings = readSource("src/components/SettingsPage.tsx");
-    // Both locked cards and both locked toggles.
-    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(4);
+    // Both locked cards, both locked toggles, and the locked Read Aloud row.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(5);
   });
 
   it("keeps the beta destination in one place", () => {

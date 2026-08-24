@@ -678,6 +678,16 @@ declare global {
        * `readaloud-speak` event.
        */
       readAloudReadSelection: () => Promise<SelectionCaptureResult>;
+      /**
+       * Register or unregister the Read Aloud global shortcut to match the
+       * renderer's saved settings. The main process refuses to register while
+       * the voice model is missing, and reports that as `reason`.
+       */
+      readAloudSyncHotkey: (settings: { enabled: boolean; hotkey: string }) => Promise<{
+        registered: boolean;
+        hotkey: string;
+        reason?: string;
+      }>;
       onReadAloudSpeak: (
         callback: (event: any, data: { text: string }) => void
       ) => (() => void) | void;
