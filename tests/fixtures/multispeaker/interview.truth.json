@@ -1,0 +1,178 @@
+{
+  "clip": "interview",
+  "sampleRate": 16000,
+  "totalSec": 96.2,
+  "totalSamples": 1539200,
+  "utterances": [
+    {
+      "index": 0,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "Thanks for joining me. I want to hear how you both actually take notes in lectures.",
+      "startSample": 0,
+      "endSample": 84800,
+      "startSec": 0,
+      "endSec": 5.3
+    },
+    {
+      "index": 1,
+      "speaker": "GUEST_A",
+      "voice": "am_michael",
+      "text": "Happy to be here. It started because my handwriting is slow and my professor talks fast.",
+      "startSample": 92000,
+      "endSample": 195600,
+      "startSec": 5.75,
+      "endSec": 12.225
+    },
+    {
+      "index": 2,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "So you record the whole lecture?",
+      "startSample": 206000,
+      "endSample": 241600,
+      "startSec": 12.875,
+      "endSec": 15.1
+    },
+    {
+      "index": 3,
+      "speaker": "GUEST_A",
+      "voice": "am_michael",
+      "text": "Not the whole thing. I keep the microphone off until something lands that I know I will forget.",
+      "startSample": 248800,
+      "endSample": 357200,
+      "startSec": 15.55,
+      "endSec": 22.325
+    },
+    {
+      "index": 4,
+      "speaker": "GUEST_B",
+      "voice": "bf_emma",
+      "text": "That is the opposite of what I do. I record everything and sort it out afterwards.",
+      "startSample": 367600,
+      "endSample": 454000,
+      "startSec": 22.975,
+      "endSec": 28.375
+    },
+    {
+      "index": 5,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "Does that not leave you with hours of audio to wade through?",
+      "startSample": 461200,
+      "endSample": 520400,
+      "startSec": 28.825,
+      "endSec": 32.525
+    },
+    {
+      "index": 6,
+      "speaker": "GUEST_B",
+      "voice": "bf_emma",
+      "text": "It would, if I left it as audio. The transcript is searchable, so I jump straight to the part I need.",
+      "startSample": 530800,
+      "endSample": 635200,
+      "startSec": 33.175,
+      "endSec": 39.7
+    },
+    {
+      "index": 7,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "Why does it matter that it runs on your own machine?",
+      "startSample": 642400,
+      "endSample": 692800,
+      "startSec": 40.15,
+      "endSec": 43.3
+    },
+    {
+      "index": 8,
+      "speaker": "GUEST_A",
+      "voice": "am_michael",
+      "text": "The lecture hall has terrible signal, and I did not want my own voice sitting on a server I have never heard of.",
+      "startSample": 703200,
+      "endSample": 828800,
+      "startSec": 43.95,
+      "endSec": 51.8
+    },
+    {
+      "index": 9,
+      "speaker": "GUEST_B",
+      "voice": "bf_emma",
+      "text": "Half of my reading list is unpublished work, and I am not allowed to send it anywhere.",
+      "startSample": 836000,
+      "endSample": 926400,
+      "startSec": 52.25,
+      "endSec": 57.9
+    },
+    {
+      "index": 10,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "How accurate is it with a strong accent?",
+      "startSample": 936800,
+      "endSample": 980400,
+      "startSec": 58.55,
+      "endSec": 61.275
+    },
+    {
+      "index": 11,
+      "speaker": "GUEST_A",
+      "voice": "am_michael",
+      "text": "Better than I expected, though it still trips over names. I keep a list of terms from my field.",
+      "startSample": 987600,
+      "endSample": 1095600,
+      "startSec": 61.725,
+      "endSec": 68.475
+    },
+    {
+      "index": 12,
+      "speaker": "GUEST_B",
+      "voice": "bf_emma",
+      "text": "The first week was rough. Then I taught it the words it kept getting wrong, and it settled down.",
+      "startSample": 1106000,
+      "endSample": 1197200,
+      "startSec": 69.125,
+      "endSec": 74.825
+    },
+    {
+      "index": 13,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "Is there anything you would still like it to do?",
+      "startSample": 1204400,
+      "endSample": 1250000,
+      "startSec": 75.275,
+      "endSec": 78.125
+    },
+    {
+      "index": 14,
+      "speaker": "GUEST_A",
+      "voice": "am_michael",
+      "text": "I would like it to tell me who was speaking. In a seminar the transcript reads like one long paragraph.",
+      "startSample": 1260400,
+      "endSample": 1379600,
+      "startSec": 78.775,
+      "endSec": 86.225
+    },
+    {
+      "index": 15,
+      "speaker": "GUEST_B",
+      "voice": "bf_emma",
+      "text": "And quicker on a laptop with no graphics card, because that is what most students carry.",
+      "startSample": 1386800,
+      "endSample": 1477200,
+      "startSec": 86.675,
+      "endSec": 92.325
+    },
+    {
+      "index": 16,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "That is a fair place to stop. Thank you both.",
+      "startSample": 1487600,
+      "endSample": 1539200,
+      "startSec": 92.975,
+      "endSec": 96.2
+    }
+  ]
+}
