@@ -79,30 +79,96 @@ describe("F1 — a running file transcription can be stopped (FIXED)", () => {
   });
 });
 
-describe("F7 — the missing-model error offers the wrong way out", () => {
+describe("F6 — a run with no measurable progress says so honestly (FIXED)", () => {
+  /**
+   * Below the 20-minute chunking threshold a file is one /inference request,
+   * and whisper-server reports a request only when it has finished it. The page
+   * still rendered a progress bar whenever percentage > 0, so the bar appeared
+   * for an instant at 100% at the very end and a 19-minute file showed nothing
+   * but a spinner for the whole run.
+   *
+   * The fix does not invent a percentage. The bar is now drawn only where a
+   * percentage is measured — one completed chunk is one real step — and the
+   * single-pass case shows the two numbers that are true: how long the run has
+   * taken, and how much audio it covers.
+   */
+  it("draws the progress bar only when chunks make the percentage real", () => {
+    const branch = processingBranch(transcribePage());
+
+    expect(branch).toContain("chunkProgress");
+    expect(branch).toMatch(/chunk \$\{chunkProgress\.chunksCompleted\} of/);
+    // The old condition rendered the bar for any non-zero percentage, which on
+    // a single-request run means "finished".
+    expect(branch).not.toContain("transcriptionProgress.percentage > 0");
+  });
+
+  it("reports elapsed time and the length of the audio instead", () => {
+    const branch = processingBranch(transcribePage());
+
+    expect(branch).toContain("elapsedLabel");
+    expect(branch).toContain("audioLengthLabel");
+    expect(branch).toMatch(/no percentage to show/i);
+  });
+
+  it("carries the audio length from the engine to the page", () => {
+    // The number is the pipeline's, not the page's: it is the duration of the
+    // WAV the decode is about to run on.
+    expect(read("src", "helpers", "whisperServer.js")).toContain("audioSeconds");
+    expect(transcribePage()).toContain("audioSeconds");
+  });
+});
+
+describe("F7 — the missing-model error offers a way to get the model (FIXED)", () => {
   /**
    * Observed by driving the real pipeline against an empty home directory:
    *
    *   Whisper model "base" not downloaded. Please download it from Settings.
    *
-   * That message reaches the page unchanged and is shown under a heading of
+   * That message reaches the page unchanged and was shown under a heading of
    * "Transcription failed", with a single button: "Try another file". Another
    * file cannot help — no file will transcribe until the model is on disk. The
    * page's own Settings panel has Language, Noise reduction and Speaker
    * labels, and no model picker, so following the message's advice inside this
-   * page leads nowhere either.
+   * page led nowhere either.
+   *
+   * Fixed by classifying that one failure and offering the screen that can
+   * actually end it: Settings → Transcription, where local models are chosen
+   * and downloaded. Every other failure still offers another file, because for
+   * every other failure another file is a reasonable thing to try.
    */
-  it("confirms the only offered recovery is to pick a different file", () => {
+  it("still offers another file for failures another file could fix", () => {
     const branch = errorBranch(transcribePage());
 
     expect(branch).toContain("Transcription failed");
     expect(branch).toContain("Try another file");
   });
 
-  it.fails("offers a way to get the missing model when that is what failed", () => {
+  it("offers a way to get the missing model when that is what failed", () => {
     const branch = errorBranch(transcribePage());
 
     expect(branch).toMatch(/model/i);
+    expect(branch).toContain("openModelSettings");
+  });
+
+  it("recognises the engine's own missing-model wording", () => {
+    const source = transcribePage();
+
+    expect(source).toContain("isMissingModelError");
+    // The same two words the main process classifies on, so the page cannot
+    // start disagreeing with it about what a missing model looks like.
+    expect(source).toMatch(/includes\("model"\)/);
+    expect(source).toMatch(/includes\("not downloaded"\)/);
+  });
+
+  it("points at the settings section that installs local models", () => {
+    const source = transcribePage();
+
+    expect(source).toContain("onOpenModelSettings");
+    expect(source).toContain('settingsTab: "transcription"');
+    // The shell supplies the in-app route rather than reopening a window.
+    expect(read("src", "components", "ControlPanelShell.tsx")).toContain(
+      'onOpenModelSettings={() => openSettingsSection("transcription")}'
+    );
   });
 });
 
@@ -125,14 +191,27 @@ describe("F8 — speaker labels that find nothing still claim one speaker", () =
    * gate. What the page should show when detection runs and finds nothing is a
    * product decision either way.
    */
-  it("confirms the page reads speakerCount and ignores speakerDetectionActive", () => {
+  it("reads whether detection ran, not only what it counted", () => {
     const source = transcribePage();
 
     expect(source).toContain("setSpeakerCount(Number(result?.speakerCount) || 0)");
-    expect(source).not.toContain("speakerDetectionActive");
+    expect(source).toContain("setSpeakerDetectionActive(result?.speakerDetectionActive === true)");
   });
 
-  it.fails("warns when speaker detection ran but produced no speaker turns", () => {
-    expect(transcribePage()).toContain("speakerDetectionActive");
+  it("says nothing about speakers when detection never ran", () => {
+    const source = transcribePage();
+
+    // The badge is built from one value, and that value is empty unless
+    // detection was active — so the "1 speaker" that used to appear on runs
+    // with speaker labels switched off cannot come back.
+    expect(source).toMatch(/if \(!speakerDetectionActive\) return "";/);
+    expect(source).not.toMatch(/\{speakerCount\} speaker\{/);
+  });
+
+  it("says what was found instead of claiming a count it did not measure", () => {
+    const source = transcribePage();
+
+    expect(source).toContain("No speaker turns found");
+    expect(source).toContain("`${speakerCount} speakers`");
   });
 });

@@ -45,6 +45,46 @@ function removeRepetitions(text) {
   return cleaned;
 }
 
+/**
+ * Minimum length for a cue whose own timestamps say it takes no time at all.
+ *
+ * SRT resolves to a millisecond, but the stamps are rendered by truncating a
+ * float, so extending a cue by exactly one millisecond can render as no
+ * extension at all (1260.559 truncates to ,558). Ten milliseconds survives that
+ * rounding and is still shorter than any cue a listener could perceive.
+ */
+const MIN_CUE_SECONDS = 0.01;
+
+/**
+ * Make a segment timeline strictly forward-moving.
+ *
+ * Long audio is decoded in 60-second chunks and each chunk's segments are
+ * offset by that chunk's start. whisper.cpp's last segment in a chunk can end
+ * past the chunk's nominal length, so the overrun lands on top of the next
+ * chunk's first segment: on the measured 32:04 file that produced 13
+ * overlapping cues, 5 of zero or negative length, and 2 that ran backwards
+ * (1260.559s -> 1260.000s, 1560.039s -> 1560.000s — both exactly on chunk
+ * boundaries). Strict SRT validators and some editors reject that file.
+ *
+ * The repair keeps transcript order — sorting by start would reorder the words
+ * themselves — and only ever moves a boundary forward: a cue that starts before
+ * the previous one ended is pushed to that end, and a cue with no length gets
+ * the smallest length SRT can carry. Nothing is moved earlier, no text changes,
+ * and the shift is bounded by the overrun itself (under a second at a 60-second
+ * boundary).
+ */
+function makeTimelineForwardMoving(segments) {
+  let previousEnd = null;
+  return segments.map((segment) => {
+    let start = segment.start;
+    let end = segment.end;
+    if (previousEnd !== null && start < previousEnd) start = previousEnd;
+    if (!(end > start)) end = start + MIN_CUE_SECONDS;
+    previousEnd = end;
+    return start === segment.start && end === segment.end ? segment : { ...segment, start, end };
+  });
+}
+
 function normalizeSegments(verboseJson = {}) {
   const rawSegments = Array.isArray(verboseJson.segments)
     ? verboseJson.segments
@@ -100,7 +140,10 @@ function mergeTurns(segments) {
 }
 
 function buildAnalysis(verboseJson) {
-  const segments = normalizeSegments(verboseJson);
+  // Chunked decodes hand back segments whose timestamps overlap at the chunk
+  // seams, so the timeline is repaired once here — every format below reads
+  // these segments, and a cue that runs backwards is invalid in all of them.
+  const segments = makeTimelineForwardMoving(normalizeSegments(verboseJson));
   const speakers = Array.from(new Set(segments.map((segment) => segment.speaker)));
   return { speakerCount: speakers.length, speakers, segments };
 }

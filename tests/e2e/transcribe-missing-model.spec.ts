@@ -44,38 +44,49 @@ test.describe("Transcribe page with no model installed", () => {
       controlPanel.getByText(/Whisper model "base" not downloaded/).first()
     ).toBeVisible();
 
-    // The one action on offer, and it cannot help: no file transcribes until
-    // the model is on disk. F7 in the audit.
+    // "Try another file" used to be the only thing on offer here, and it cannot
+    // help: no file transcribes until the model is on disk. F7 in the audit.
     await expect(
       controlPanel.getByRole("button", { name: "Try another file", exact: true })
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     await controlPanel.screenshot({
       path: "test-results/e2e/transcribe-missing-model.png",
       fullPage: true,
     });
+    await controlPanel.screenshot({
+      path: "docs/goal-evidence/transcribe-missing-model-cta.png",
+      fullPage: true,
+    });
   });
 
   /**
-   * The page's answer to a missing model is a button reading "Try another
-   * file". No other file will transcribe either, and the page's own Settings
-   * panel holds no model picker, so the offered action cannot lead anywhere.
-   *
-   * Expected-failure: this documents the gap without breaking the suite. When
-   * it starts failing the gap is closed — remove `test.fail()`, not the
-   * assertion.
+   * The offered recovery has to be the one that can end this failure. Models
+   * are installed from Settings → Transcription, which is a different page —
+   * so the assertion follows the button there and checks the model picker is
+   * really on screen, rather than trusting a label.
    */
   test("offers a way to install the missing model", async ({ controlPanel }) => {
-    test.fail();
     await uploadControlWav(controlPanel);
 
-    await expect(
-      controlPanel.getByRole("heading", { name: "Transcription failed" })
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(controlPanel.getByRole("heading", { name: "Transcription failed" })).toBeVisible({
+      timeout: 30_000,
+    });
     // A real <button>, not the dropzone container — that div also carries
     // role="button", and the failure text inside it contains the word "model".
-    await expect(controlPanel.locator("button").filter({ hasText: /model/i })).toBeVisible({
-      timeout: 5_000,
+    const modelButton = controlPanel.locator("button").filter({ hasText: /model/i });
+    await expect(modelButton).toBeVisible({ timeout: 5_000 });
+
+    await modelButton.click();
+
+    await expect(controlPanel.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(controlPanel.getByText("Speech Recognition")).toBeVisible();
+    // The picker that can put the model on disk, on the tab the button chose.
+    await expect(controlPanel.getByText(/Local|Whisper/).first()).toBeVisible();
+
+    await controlPanel.screenshot({
+      path: "docs/goal-evidence/transcribe-missing-model-destination.png",
+      fullPage: true,
     });
   });
 });

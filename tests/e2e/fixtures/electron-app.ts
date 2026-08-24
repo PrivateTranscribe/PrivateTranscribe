@@ -108,6 +108,17 @@ export type PrivateTranscribeOptions = {
    */
   seedWhisperModels: string[];
   /**
+   * Whisper models the app should be able to actually DECODE with, e.g.
+   * `["small-en-tdrz"]`.
+   *
+   * The truncated placeholders above are enough to satisfy a status check and
+   * useless to whisper.cpp. This hardlinks the machine's own model file into the
+   * throwaway home instead, so a spec can control which models exist while still
+   * running a real decode. Throws when the model is not on the machine — a spec
+   * that silently skipped would be hiding the failure that matters.
+   */
+  seedRealWhisperModels: string[];
+  /**
    * Make the real Kokoro TTS model visible to the app under the throwaway home
    * directory, and turn on the dev-only Read Aloud test surface.
    *
@@ -438,12 +449,21 @@ export const test = base.extend<
   appEnv: [{}, { option: true }],
   seedConsentFile: ["denied", { option: true }],
   seedWhisperModels: [[], { option: true }],
+  seedRealWhisperModels: [[], { option: true }],
   seedKokoroModel: [false, { option: true }],
   useThrowawayHome: [false, { option: true }],
   fakeAudioCaptureFile: ["", { option: true }],
 
-  fakeHomeDir: async ({ seedWhisperModels, seedKokoroModel, useThrowawayHome }, use) => {
-    if (seedWhisperModels.length === 0 && !seedKokoroModel && !useThrowawayHome) {
+  fakeHomeDir: async (
+    { seedWhisperModels, seedRealWhisperModels, seedKokoroModel, useThrowawayHome },
+    use
+  ) => {
+    if (
+      seedWhisperModels.length === 0 &&
+      seedRealWhisperModels.length === 0 &&
+      !seedKokoroModel &&
+      !useThrowawayHome
+    ) {
       await use(null);
       return;
     }
@@ -476,6 +496,30 @@ export const test = base.extend<
           fs.ftruncateSync(handle, info.sizeMb * 1_000_000);
         } finally {
           fs.closeSync(handle);
+        }
+      }
+    }
+
+    if (seedRealWhisperModels.length > 0) {
+      const modelsDir = path.join(dir, ".cache", "PrivateTranscribe", "whisper-models");
+      const realModelsDir = path.join(os.homedir(), ".cache", "PrivateTranscribe", "whisper-models");
+      fs.mkdirSync(modelsDir, { recursive: true });
+
+      for (const model of seedRealWhisperModels) {
+        const info = registry.whisperModels[model];
+        if (!info) {
+          throw new Error(`seedRealWhisperModels: "${model}" is not in the whisper model registry`);
+        }
+        const src = path.join(realModelsDir, info.fileName);
+        if (!fs.existsSync(src)) {
+          throw new Error(
+            `Whisper model "${model}" is not installed on this machine — download it first. Missing: ${src}`
+          );
+        }
+        try {
+          fs.linkSync(src, path.join(modelsDir, info.fileName));
+        } catch {
+          fs.copyFileSync(src, path.join(modelsDir, info.fileName));
         }
       }
     }

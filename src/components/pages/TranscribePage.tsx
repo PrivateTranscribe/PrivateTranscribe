@@ -77,6 +77,24 @@ function readStoredFileLanguage(): string {
   return LANGUAGE_OPTIONS.some((option) => option.value === stored) ? stored : "auto";
 }
 
+/**
+ * Whether a failure is "the model is not on disk" rather than something about
+ * the file. Same test the main process uses to classify its own dictation
+ * errors (ipcHandlers, transcribe-audio), so the two cannot drift apart.
+ */
+function isMissingModelError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("model") && lower.includes("not downloaded");
+}
+
+/** "1m 05s" / "42s" — used for both elapsed time and audio length. */
+function formatClockDuration(totalSeconds: number): string {
+  const safe = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
 function getFileExtension(fileName: string): string {
   const parts = fileName.split(".");
   if (parts.length < 2) return "";
@@ -88,7 +106,16 @@ function toErrorMessage(error: unknown): string {
   return "Failed to transcribe this file. Please try again.";
 }
 
-export default function TranscribePage() {
+type TranscribePageProps = {
+  /**
+   * Take the user to where local models are installed. Supplied by the control
+   * panel shell; the missing-model error is useless without it, because nothing
+   * on this page can put a model on disk.
+   */
+  onOpenModelSettings?: () => void;
+};
+
+export default function TranscribePage({ onOpenModelSettings }: TranscribePageProps = {}) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioManagerRef = useRef<AudioManager | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
@@ -97,6 +124,10 @@ export default function TranscribePage() {
   const [transcript, setTranscript] = useState("");
   const [srt, setSrt] = useState("");
   const [speakerCount, setSpeakerCount] = useState(0);
+  // Whether speaker detection actually ran. Without it a count of 1 is
+  // ambiguous: it is what the placeholder label says when detection was off,
+  // and it is also what a detector that found no speaker change reports.
+  const [speakerDetectionActive, setSpeakerDetectionActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
@@ -117,6 +148,7 @@ export default function TranscribePage() {
     percentage: number;
     chunksTotal?: number;
     chunksCompleted?: number;
+    audioSeconds?: number;
   } | null>(null);
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [diarizationReady, setDiarizationReady] = useState(false);
@@ -204,11 +236,63 @@ export default function TranscribePage() {
     return "Uploading for cloud transcription.";
   }, [speakerLabelsEnabled, isUsingLocalDiarization, useLocalWhisper]);
 
-  const elapsedLabel = useMemo(() => {
-    const minutes = Math.floor(processingElapsedSeconds / 60);
-    const seconds = processingElapsedSeconds % 60;
-    return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
-  }, [processingElapsedSeconds]);
+  const elapsedLabel = useMemo(
+    () => formatClockDuration(processingElapsedSeconds),
+    [processingElapsedSeconds]
+  );
+
+  /**
+   * The only progress that is really progress.
+   *
+   * whisper-server answers a request when the whole request is done and says
+   * nothing while it works, so the percentage means something exactly when the
+   * audio was split into chunks — one completed chunk is one real step. Below
+   * the 20-minute chunking threshold the run is a single request, and the bar
+   * this page used to render sat at 0 until it flashed 100 at the very end.
+   * Rather than animate a number nobody measured, that case now shows what is
+   * actually known: how long the run has taken, and how much audio it covers.
+   */
+  const chunkProgress = useMemo(() => {
+    if (!transcriptionProgress || transcriptionProgress.stage !== "transcribing") return null;
+    return (transcriptionProgress.chunksTotal ?? 0) > 1 ? transcriptionProgress : null;
+  }, [transcriptionProgress]);
+
+  const audioLengthLabel = useMemo(() => {
+    const seconds = transcriptionProgress?.audioSeconds;
+    return typeof seconds === "number" && seconds > 0 ? formatClockDuration(seconds) : "";
+  }, [transcriptionProgress]);
+
+  /**
+   * What the run measured about speakers, or nothing.
+   *
+   * Detection off means there is nothing to report: every segment carries the
+   * same placeholder label, so the "1 speaker" this page used to show was the
+   * placeholder talking, not a measurement. Detection on with no second speaker
+   * means the detector ran and found no speaker change — on the committed
+   * three-voice fixture it finds none at all — so it says that instead of
+   * claiming a count it never measured.
+   */
+  const speakerSummary = useMemo(() => {
+    if (!speakerDetectionActive) return "";
+    if (speakerCount > 1) return `${speakerCount} speakers`;
+    return "No speaker turns found";
+  }, [speakerDetectionActive, speakerCount]);
+
+  const missingModel = status === "error" && isMissingModelError(errorMessage);
+
+  /**
+   * Local models are installed from Settings → Transcription, which is not on
+   * this page and never was. The shell hands down the route; the main process
+   * knows it too, so the button still works if this page is ever rendered
+   * without the prop.
+   */
+  const openModelSettings = () => {
+    if (onOpenModelSettings) {
+      onOpenModelSettings();
+      return;
+    }
+    void window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "transcription" });
+  };
 
   useEffect(() => {
     const mgr = new AudioManager();
@@ -417,6 +501,7 @@ export default function TranscribePage() {
     setTranscript("");
     setSrt("");
     setSpeakerCount(0);
+    setSpeakerDetectionActive(false);
     setErrorMessage("");
     setCopied(false);
     setTranscriptionProgress(null);
@@ -467,6 +552,7 @@ export default function TranscribePage() {
     setTranscriptionProgress(null);
     setErrorMessage("");
     setTranscript("");
+    setSpeakerDetectionActive(false);
     setCopied(false);
     setSelectedFileName(file.name);
     setSelectedFileSize(file.size);
@@ -551,6 +637,7 @@ export default function TranscribePage() {
       setTranscript(text);
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
+      setSpeakerDetectionActive(result?.speakerDetectionActive === true);
       setLanguageNotice(
         buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
       );
@@ -930,29 +1017,39 @@ export default function TranscribePage() {
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <p className="max-w-md text-xs text-muted-foreground mb-3">{processingHint}</p>
 
-            {/* Progress bar */}
-            {transcriptionProgress && transcriptionProgress.percentage > 0 && (
+            {/* A bar only where there is something to fill it: one completed
+                chunk is one measured step. Everything else says elapsed time. */}
+            {chunkProgress && (
               <div className="w-full max-w-xs mb-3">
                 <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
                   <div
                     className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
-                    style={{ width: `${Math.min(100, transcriptionProgress.percentage)}%` }}
+                    style={{ width: `${Math.min(100, chunkProgress.percentage)}%` }}
                   />
                 </div>
                 <p className="mt-1.5 text-[11px] text-muted-foreground tabular-nums text-center">
-                  {transcriptionProgress.stage === "transcribing" &&
-                  transcriptionProgress.chunksTotal &&
-                  transcriptionProgress.chunksTotal > 1
-                    ? `${transcriptionProgress.percentage}% - chunk ${transcriptionProgress.chunksCompleted} of ${transcriptionProgress.chunksTotal}`
-                    : `${transcriptionProgress.percentage}%`}
+                  {`${chunkProgress.percentage}% · chunk ${chunkProgress.chunksCompleted} of ${chunkProgress.chunksTotal}`}
                 </p>
               </div>
             )}
 
             <div className="flex items-center gap-2 rounded-full border border-border-subtle bg-surface-raised/60 px-3 py-1 text-[11px] text-muted-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-              <span className="tabular-nums">{elapsedLabel}</span>
+              <span className="tabular-nums">{elapsedLabel} elapsed</span>
+              {audioLengthLabel && (
+                <>
+                  <span className="text-muted-foreground/35">·</span>
+                  <span className="tabular-nums">{audioLengthLabel} of audio</span>
+                </>
+              )}
             </div>
+
+            {!chunkProgress && (
+              <p className="mt-2 max-w-sm text-[11px] leading-relaxed text-muted-foreground">
+                Whisper decodes this file in one pass and reports when it is finished, so there is
+                no percentage to show along the way.
+              </p>
+            )}
 
             <Button
               size="sm"
@@ -972,9 +1069,19 @@ export default function TranscribePage() {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Transcription failed</h3>
             <p className="text-sm text-muted-foreground mb-5 max-w-2xl">{errorMessage}</p>
-            <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
-              Try another file
-            </Button>
+            {/* A missing model is the one failure another file cannot fix: no
+                file will transcribe until the model is on disk, and this page
+                holds no model picker. Offer the screen that does. */}
+            {missingModel ? (
+              <Button size="sm" onClick={openModelSettings} data-prevent-browse="true">
+                <Download size={14} />
+                Open model settings
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
+                Try another file
+              </Button>
+            )}
           </>
         ) : status === "success" ? (
           <>
@@ -985,9 +1092,12 @@ export default function TranscribePage() {
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground/70">
               <span className="tabular-nums">{formatBytes(selectedFileSize)}</span>
-              {speakerCount > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {speakerCount} speaker{speakerCount === 1 ? "" : "s"}
+              {speakerSummary && (
+                // A count is a finding and reads as one; "nothing found" is a
+                // note and should not shout louder than the result it sits next
+                // to.
+                <Badge variant={speakerCount > 1 ? "secondary" : "outline"} className="text-[10px]">
+                  {speakerSummary}
                 </Badge>
               )}
             </div>
@@ -1050,12 +1160,10 @@ export default function TranscribePage() {
                 <span>{transcriptStats.words.toLocaleString()} words</span>
                 <span className="text-muted-foreground/35">·</span>
                 <span>{transcriptStats.lines.toLocaleString()} lines</span>
-                {speakerCount > 0 && (
+                {speakerSummary && (
                   <>
                     <span className="text-muted-foreground/35">·</span>
-                    <span>
-                      {speakerCount} speaker{speakerCount === 1 ? "" : "s"}
-                    </span>
+                    <span>{speakerSummary}</span>
                   </>
                 )}
               </div>

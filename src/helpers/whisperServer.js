@@ -1395,12 +1395,21 @@ class WhisperServerManager {
         });
       }
 
+      // How much audio this run is about to decode. It is the only quantity the
+      // pipeline actually knows in advance: whisper-server reports a request
+      // when it finishes and nothing before that, so a single-chunk run has no
+      // percentage to give and the page must not invent one. Sent so the page
+      // can say what the wait is for ("18m 42s of audio") instead of animating
+      // a bar that is not measuring anything.
+      const audioSeconds = chunks.reduce((sum, chunk) => sum + (chunk.durationSeconds || 0), 0);
+
       if (typeof onProgress === "function") {
         onProgress({
           stage: "transcribing",
           percentage: 0,
           chunksTotal: chunks.length,
           chunksCompleted: 0,
+          audioSeconds,
         });
       }
 
@@ -1545,6 +1554,7 @@ class WhisperServerManager {
             percentage,
             chunksTotal: chunks.length,
             chunksCompleted: index + 1,
+            audioSeconds,
           });
         }
       }

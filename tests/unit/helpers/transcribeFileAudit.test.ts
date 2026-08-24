@@ -270,25 +270,37 @@ describe("F3 — an unknown language code no longer reaches whisper-server (FIXE
   });
 });
 
-describe("F6 — nothing moves the progress bar below 20 minutes", () => {
+describe("F6 — a run with no measurable progress says so honestly (FIXED)", () => {
   /**
-   * Chunking, and therefore every intermediate progress event, only starts
-   * above WHISPER_LONG_AUDIO_THRESHOLD_SECONDS (20 minutes). Below it the run
-   * is a single chunk, so onProgress emits transcribing 0% and then 100% with
-   * nothing in between — and the page only renders its progress bar while
-   * percentage > 0. A 19-minute file therefore shows a spinner and an elapsed
-   * counter for the entire run.
+   * Chunking, and with it every intermediate progress event, only starts above
+   * WHISPER_LONG_AUDIO_THRESHOLD_SECONDS (20 minutes). Below it the run is a
+   * single /inference request: whisper-server answers when the whole request is
+   * done and reports nothing while it works, so onProgress fired `transcribing
+   * 0%` and then `transcribing 100%` with nothing in between — and the page
+   * rendered its bar only while percentage > 0, so the bar appeared for an
+   * instant at the end and a 19-minute file showed a spinner for the whole run.
    *
-   * Blocking question for the fix: intermediate progress needs either a
-   * smaller chunk size (which changes decode context, and so accuracy) or
-   * progress read from whisper-server's realtime stdout. That is a design
-   * choice, not a patch.
+   * The blocking question was where intermediate progress could come from. Both
+   * answers were rejected on their own costs, openly:
+   *
+   *   - Chunking shorter files would produce real per-chunk steps, but it
+   *     changes the decode and charges ~383ms of fixed per-request overhead per
+   *     chunk (19 chunks on a 19-minute file against a ~29s decode). Paying a
+   *     quarter of the runtime for a nicer-looking bar is a bad trade.
+   *   - whisper-server does emit realtime segment lines, but only when it was
+   *     started with --print-realtime, which this app passes solely for
+   *     tinydiarize. Turning it on generally means restarting the server that
+   *     dictation shares, or restarting it on every switch between the two.
+   *
+   * So a single-pass run has no honest percentage, and the fix is to stop
+   * pretending otherwise: no bar where nothing is measured, and the two numbers
+   * that ARE real — elapsed time, and how much audio the pass covers.
    */
-  it.fails("splits a 19-minute file into more than one progress step", () => {
+  it("still decodes a 19-minute file in one pass, unchanged", () => {
     const manager: any = new WhisperServerManager();
     const chunks = manager._splitWavIntoTranscriptionChunks(makeWav(19 * 60));
 
-    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks).toHaveLength(1);
   });
 
   it("does split a file over the 20-minute threshold", () => {
@@ -297,9 +309,64 @@ describe("F6 — nothing moves the progress bar below 20 minutes", () => {
 
     expect(chunks.length).toBeGreaterThan(1);
   });
+
+  /** A manager wired to decode without a server: conversion and inference stubbed. */
+  function stubbedManager(): any {
+    const manager: any = new WhisperServerManager();
+    manager.ready = true;
+    manager.process = { pid: 1 };
+    manager.canConvert = true;
+    manager._scheduleIdleCheck = () => {};
+    manager._convertToWav = async (buffer: Buffer) => buffer;
+    manager._postInference = async () => ({ text: "decoded", segments: [] });
+    return manager;
+  }
+
+  it("tells the page how much audio a single-pass run covers", async () => {
+    const manager = stubbedManager();
+    const events: any[] = [];
+
+    await manager.transcribe(makeWav(19 * 60), {
+      language: "en",
+      fileMode: true,
+      onProgress: (event: any) => events.push(event),
+    });
+
+    const transcribing = events.filter((event) => event.stage === "transcribing");
+    // Two events, both honest: the run started, the run finished. Nothing in
+    // between is claimed, because nothing in between is known.
+    expect(transcribing.map((event) => event.percentage)).toEqual([0, 100]);
+    for (const event of transcribing) {
+      expect(event.chunksTotal).toBe(1);
+      expect(event.audioSeconds).toBeCloseTo(19 * 60, 1);
+    }
+  });
+
+  it("keeps the real per-chunk steps on a file long enough to have them", async () => {
+    const manager = stubbedManager();
+    const events: any[] = [];
+
+    await manager.transcribe(makeWav(21 * 60), {
+      language: "en",
+      fileMode: true,
+      onProgress: (event: any) => events.push(event),
+    });
+
+    const transcribing = events.filter((event) => event.stage === "transcribing");
+    const percentages = transcribing.map((event) => event.percentage);
+
+    expect(percentages.length).toBeGreaterThan(2);
+    expect(percentages).toEqual([...percentages].sort((a, b) => a - b));
+    expect(transcribing[transcribing.length - 1]).toMatchObject({
+      percentage: 100,
+      chunksTotal: 21,
+      chunksCompleted: 21,
+    });
+    expect(transcribing[0].audioSeconds).toBeCloseTo(21 * 60, 1);
+  });
 });
 
-describe("F9 — chunk boundaries leave overlapping SRT cues", () => {
+describe("F9 — chunk boundaries no longer leave overlapping SRT cues (FIXED)", () => {
   /**
    * whisper.cpp's last segment in a chunk can end past the chunk's nominal
    * length. Each chunk's segments are offset by the chunk's start and then
@@ -310,6 +377,13 @@ describe("F9 — chunk boundaries leave overlapping SRT cues", () => {
    * negative length, and 2 that ran backwards — at 1260.559s -> 1260.000s and
    * 1560.039s -> 1560.000s, both exactly on 60-second chunk boundaries. The
    * shape below is that measurement.
+   *
+   * The blocking question was whether to clamp segments to the chunk length or
+   * nudge overlaps apart, since either edits timestamps that are otherwise
+   * honest. Answered by moving as little as possible and only forwards: a cue
+   * that starts before the previous one ended is pushed to that end, a cue with
+   * no length is given the shortest one SRT can render, and nothing is ever
+   * moved earlier or reordered — sorting by start would rearrange the words.
    */
   const chunkBoundaryOverrun = {
     segments: [
@@ -319,7 +393,7 @@ describe("F9 — chunk boundaries leave overlapping SRT cues", () => {
     ],
   };
 
-  it.fails("emits SRT cues that never run backwards", () => {
+  it("emits SRT cues that never run backwards", () => {
     const cues = parseSrtCues(
       formatTranscript(chunkBoundaryOverrun, "srt", { includeSpeakers: false }).text
     );
@@ -328,13 +402,46 @@ describe("F9 — chunk boundaries leave overlapping SRT cues", () => {
     expect(backwards).toEqual([]);
   });
 
-  it.fails("emits SRT cues that never overlap the previous cue", () => {
+  it("emits SRT cues that never overlap the previous cue", () => {
     const cues = parseSrtCues(
       formatTranscript(chunkBoundaryOverrun, "srt", { includeSpeakers: false }).text
     );
 
     const overlapping = cues.filter((cue, i) => i > 0 && cue.start < cues[i - 1].end);
     expect(overlapping).toEqual([]);
+  });
+
+  it("emits no cue of zero or negative length", () => {
+    const cues = parseSrtCues(
+      formatTranscript(chunkBoundaryOverrun, "srt", { includeSpeakers: false }).text
+    );
+
+    expect(cues).toHaveLength(3);
+    expect(cues.filter((cue) => cue.end <= cue.start)).toEqual([]);
+  });
+
+  it("keeps the words in the order they were spoken", () => {
+    // The cheap repair is to sort by start time. It would also swap the last
+    // two lines of this transcript, because the overrunning cue starts later
+    // than the cue that follows it.
+    const text = formatTranscript(chunkBoundaryOverrun, "srt", { includeSpeakers: false }).text;
+
+    expect(text.indexOf("good.")).toBeLessThan(text.indexOf("slow and my professor"));
+  });
+
+  it("leaves a timeline that was already in order untouched", () => {
+    const clean = {
+      segments: [
+        { start: 0, end: 2.5, text: "First line." },
+        { start: 2.5, end: 5, text: "Second line." },
+      ],
+    };
+    const cues = parseSrtCues(formatTranscript(clean, "srt", { includeSpeakers: false }).text);
+
+    expect(cues.map((cue) => [cue.start, cue.end])).toEqual([
+      [0, 2.5],
+      [2.5, 5],
+    ]);
   });
 });
 
