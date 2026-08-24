@@ -68,7 +68,6 @@ import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
 import { SectionLabel } from "./ui/SectionLabel";
-import { formatBytes } from "../utils/formatBytes";
 
 export type SettingsSectionType =
   | "general"
