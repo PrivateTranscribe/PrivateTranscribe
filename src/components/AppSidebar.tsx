@@ -6,6 +6,7 @@ import {
   BookOpen,
   Brain,
   MessageSquare,
+  MessagesSquare,
   Zap,
   Settings,
 } from "lucide-react";
@@ -22,6 +23,7 @@ export type PageId =
   | "dictionary"
   | "ai-enhancement"
   | "voice-assistant"
+  | "converse"
   | "correction-memory"
   | "action-engine"
   | "settings";
@@ -65,6 +67,13 @@ const navGroups: NavGroup[] = [
         id: "voice-assistant",
         label: "Voice Assistant",
         icon: MessageSquare,
+        badge: "Beta",
+        badgeVariant: "pro",
+      },
+      {
+        id: "converse",
+        label: "Converse",
+        icon: MessagesSquare,
         badge: "Beta",
         badgeVariant: "pro",
       },

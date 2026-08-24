@@ -15,6 +15,7 @@ import TranscribePage from "./pages/TranscribePage";
 import DictionaryPage from "./pages/DictionaryPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
 import VoiceAssistantPage from "./pages/VoiceAssistantPage";
+import ConversePage from "./pages/ConversePage";
 import ActionEnginePage from "./pages/ActionEnginePage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 import type { SettingsSectionType } from "./SettingsPage";
@@ -55,6 +56,7 @@ export default function ControlPanelShell() {
       "dictionary",
       "ai-enhancement",
       "voice-assistant",
+      "converse",
       "correction-memory",
       "action-engine",
       "settings",
@@ -308,6 +310,8 @@ export default function ControlPanelShell() {
         return <AIEnhancementPage />;
       case "voice-assistant":
         return <VoiceAssistantPage />;
+      case "converse":
+        return <ConversePage />;
       case "correction-memory":
         return <DictionaryPage />;
       case "action-engine":

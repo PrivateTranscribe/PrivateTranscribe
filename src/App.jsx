@@ -12,6 +12,7 @@ import {
   History,
   Clipboard,
   AudioLines,
+  MessagesSquare,
   Play,
   Pause,
   Square,
@@ -59,6 +60,18 @@ const READ_ALOUD_STATUS_LABELS = {
 
 /** Matches the readAloudHotkey default in useSettings.ts. */
 const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
+
+/**
+ * The Converse state machine's own word for what is happening, capitalized.
+ * The overlay says the state rather than interpreting it; the Converse page
+ * carries the sentence that explains what each state means.
+ */
+const CONVERSE_STATUS_LABELS = {
+  idle: "Idle",
+  thinking: "Thinking",
+  speaking: "Speaking",
+  listening: "Listening",
+};
 
 const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
   return (
@@ -236,9 +249,12 @@ export default function App() {
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
   const readAloudPillRef = useRef(null);
+  const conversePillRef = useRef(null);
   // { player, sync } — the sync call re-samples the player into React state.
   const readAloudRef = useRef(null);
   const [readAloudState, setReadAloudState] = useState(null);
+  // { state, playIndex, total } while a Converse session is running, else null.
+  const [converseState, setConverseState] = useState(null);
   const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
@@ -336,21 +352,89 @@ export default function App() {
   }, []);
 
   // Converse playback lives in the overlay for the same reason Read Aloud does:
-  // it has to survive the control panel closing. It is headless — the visible
-  // Converse UI is a later change — so there is no React state mirroring here,
-  // only the queue player and the main process it reports to.
+  // it has to survive the control panel closing.
+  //
+  // The pill above the dictation button mirrors the main-process session, which
+  // owns the state machine. The overlay learns a conversation exists from the
+  // session's own events (a sentence, a turn ending, an interrupt) and only
+  // then starts sampling — an overlay that polled on the chance a session might
+  // one day start would poll forever for every user who never opens Converse.
+  // Sampling backs off to once a second whenever nothing is being spoken.
   useEffect(() => {
     const player = new ConversePlayer();
     player.connect();
+
+    let cancelled = false;
+    let pollTimer = null;
+
+    const stopPolling = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const sample = async () => {
+      try {
+        const state = await window.electronAPI?.converseGetState?.();
+        if (cancelled) return null;
+        if (!state || state.running === false || state.state === "stopped") {
+          setConverseState(null);
+          return null;
+        }
+        const report = state.player || null;
+        const next = {
+          state: state.state,
+          playIndex: report?.playIndex ?? 0,
+          // Only the count the session has finished counting. While the answer
+          // is still being written, `known` grows, and a "2 / 5" that turns
+          // into "2 / 8" a second later is worse than no number.
+          total: report?.total ?? null,
+        };
+        setConverseState(next);
+        return next;
+      } catch {
+        // A dropped sample leaves the pill as it was; the next tick corrects it.
+        return null;
+      }
+    };
+
+    const loop = async () => {
+      pollTimer = null;
+      const next = await sample();
+      if (cancelled || !next) return;
+      const busy = next.state === "speaking" || next.state === "thinking";
+      pollTimer = setTimeout(loop, busy ? 250 : 1000);
+    };
+
+    const wake = () => {
+      if (cancelled || pollTimer) return;
+      void loop();
+    };
+
+    const unsubscribes = [
+      window.electronAPI?.onConverseSentence?.(wake),
+      window.electronAPI?.onConverseTurnEnd?.(wake),
+      window.electronAPI?.onConverseInterrupt?.(wake),
+    ];
 
     if (window.electronAPI?.readAloudTestEnabled) {
       window.__converseTest = { getPlayerState: () => player.getState() };
     }
 
     return () => {
+      cancelled = true;
+      stopPolling();
+      for (const off of unsubscribes) {
+        if (typeof off === "function") off();
+      }
       delete window.__converseTest;
       player.dispose();
     };
+  }, []);
+
+  const handleConverseInterrupt = useCallback(() => {
+    void window.electronAPI?.converseInterrupt?.("interrupted from the overlay");
   }, []);
 
   const readAloudPlaying = readAloudState?.playing === true;
@@ -915,6 +999,32 @@ export default function App() {
     };
   }, []);
 
+  // Same contract for the Converse pill: its Interrupt button is only clickable
+  // where the overlay has declared the region.
+  useLayoutEffect(() => {
+    const pill = converseState ? conversePillRef.current : null;
+    const padding = 8;
+    const rect = pill?.getBoundingClientRect();
+    const regions = rect
+      ? [
+          {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+          },
+        ]
+      : [];
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("converse-player", regions);
+  }, [converseState]);
+
+  useEffect(() => {
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("converse-player", []);
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const menu = isCommandMenuOpen ? commandMenuRef.current : null;
     const padding = 12;
@@ -1155,8 +1265,61 @@ export default function App() {
                 onClick={handleReadAloudStop}
                 className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
               >
-                <Square size={13} />
+                {/* Filled: an outlined square reads as a checkbox, not stop. */}
+                <Square size={13} fill="currentColor" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/*
+          Converse state: the same pill language as the Read Aloud player, one
+          row higher when both are on screen, so neither ever covers or moves
+          the dictation button.
+        */}
+        {converseState && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: readAloudState ? 158 : 112,
+              left: "50%",
+              transform: "translateX(-50%)",
+              pointerEvents: "auto",
+            }}
+          >
+            <div
+              ref={conversePillRef}
+              data-testid="converse-overlay-state"
+              data-state={converseState.state}
+              className="flex items-center gap-2 rounded-full border border-white/12 bg-muted/96 px-3 py-1.5 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+            >
+              <MessagesSquare size={14} className="text-primary shrink-0" aria-hidden />
+              <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                Claude Code
+              </span>
+              <span className="text-[11px] leading-none text-white/45 whitespace-nowrap">
+                {CONVERSE_STATUS_LABELS[converseState.state] || converseState.state}
+              </span>
+
+              {converseState.state === "speaking" && converseState.total > 0 && (
+                <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
+                  {Math.min(converseState.playIndex + 1, converseState.total)} /{" "}
+                  {converseState.total}
+                </span>
+              )}
+
+              {converseState.state === "speaking" && (
+                <>
+                  <div className="h-3.5 w-px bg-white/12" aria-hidden />
+                  <button
+                    aria-label="Interrupt Claude Code"
+                    onClick={handleConverseInterrupt}
+                    className="rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6"
+                  >
+                    <Square size={13} fill="currentColor" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { unlockTesterAccess } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
 /**
@@ -48,41 +49,6 @@ async function openReadAloudSettings(controlPanel: Page) {
   await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
   await controlPanel.getByRole("button", { name: "Read Aloud", exact: true }).click();
   await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
-}
-
-/**
- * Take the app through its real activation path with a stubbed licensing
- * server, because tester access is deliberately session-only: it is set by a
- * successful server response and never restored from localStorage, so there is
- * no key a spec could write to fake it.
- */
-async function unlockTesterAccess(controlPanel: Page) {
-  await controlPanel.evaluate(() => {
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/licensing/activate")) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            entitlement: { token: "e2e-token", expiresAt: null, betaAccess: true },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      return realFetch(input, init);
-    };
-  });
-
-  await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-  await controlPanel.getByRole("button", { name: "PrivateTranscribe Pro", exact: true }).click();
-  await controlPanel.getByPlaceholder("XXXX-XXXX-XXXX-XXXX").fill("E2EETEST00000000");
-  await controlPanel.getByRole("button", { name: "Activate", exact: true }).click();
-
-  await expect(controlPanel.getByText("PrivateTranscribe Pro - Active")).toBeVisible();
-  // The activation toast covers the top-right of the window for 4s; a
-  // screenshot taken under it would be judged with a toast in it.
-  await expect(controlPanel.getByText("License activated!")).toHaveCount(0, { timeout: 10_000 });
 }
 
 test.describe("read aloud settings", () => {

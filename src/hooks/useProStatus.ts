@@ -8,6 +8,7 @@ const BETA_FEATURES = new Set([
   "action-engine",
   "ai-enhancement",
   "voice-assistant",
+  "converse",
   // Read Aloud lives in Settings, not the sidebar, so it is deliberately absent
   // from SIDEBAR_BETA_ITEMS below — its section header carries the badge.
   "read-aloud",
@@ -18,6 +19,7 @@ const SIDEBAR_BETA_ITEMS = new Set([
   "correction-memory",
   "ai-enhancement",
   "voice-assistant",
+  "converse",
   "action-engine",
 ]);
 

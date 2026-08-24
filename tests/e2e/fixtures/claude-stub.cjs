@@ -24,6 +24,16 @@
  *                            app actually sent, not what the app says it sent.
  *   CLAUDE_STUB_LONG_MARKER  substring that selects the long answer
  *                            (default "everything").
+ *   CLAUDE_STUB_DELAY_MS     milliseconds to wait before the FIRST delta of a
+ *                            reply (default 0, i.e. unchanged). A real model
+ *                            thinks for a second or two before it says
+ *                            anything; with the default the app leaves
+ *                            "thinking" almost immediately, which is too fast
+ *                            to photograph. Only the first delta is delayed —
+ *                            streaming speed afterwards is untouched.
+ *   CLAUDE_STUB_DELTA_GAP_MS gap between text deltas (default 5). Raising it
+ *                            makes the answer arrive slowly enough that a UI
+ *                            can be caught rendering a half-finished reply.
  *   CLAUDE_STUB_STATE        directory holding one JSON file per session id.
  *                            This is the stub's memory: it is what makes
  *                            `--resume <id>` observable, because a resumed
@@ -44,6 +54,7 @@ const path = require("node:path");
 const LOG_PATH = process.env.CLAUDE_STUB_LOG || "";
 const LONG_MARKER = process.env.CLAUDE_STUB_LONG_MARKER || "everything";
 const STATE_DIR = process.env.CLAUDE_STUB_STATE || "";
+const FIRST_DELTA_DELAY_MS = Math.max(0, Number(process.env.CLAUDE_STUB_DELAY_MS) || 0);
 
 /** `--resume <id>` anywhere in argv, mirroring how the CLI accepts it. */
 function resumeIdFromArgv(argv) {
@@ -107,10 +118,12 @@ const LONG_SENTENCES = [
 /** Anything that is not a request for the long answer gets one sentence. */
 const SHORT_SENTENCES = ["Stub short acknowledgement only."];
 
-/** Gap between text deltas. Small on purpose: the answer should be fully
- * streamed long before playback catches up, so the interrupt lands mid-speech
- * rather than mid-generation. */
-const DELTA_GAP_MS = 5;
+/** Gap between text deltas. Small by default on purpose: the answer should be
+ * fully streamed long before playback catches up, so the interrupt lands
+ * mid-speech rather than mid-generation. CLAUDE_STUB_DELTA_GAP_MS slows it
+ * down for the one case that needs the opposite — proving a UI renders the
+ * reply while it is still arriving, which is unobservable at 5ms. */
+const DELTA_GAP_MS = Math.max(0, Number(process.env.CLAUDE_STUB_DELTA_GAP_MS) || 5);
 
 function emit(event) {
   process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -217,7 +230,11 @@ function reply(prompt) {
       session_id: SESSION_ID,
     });
   };
-  step();
+
+  // The pause is before the first delta only, so a spec can catch "thinking"
+  // on screen without changing how the answer streams once it starts.
+  if (FIRST_DELTA_DELAY_MS > 0) setTimeout(step, FIRST_DELTA_DELAY_MS);
+  else step();
 }
 
 // Same shape as the real CLI's init line: a top-level `session_id` on a
