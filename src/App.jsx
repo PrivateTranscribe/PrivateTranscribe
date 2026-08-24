@@ -27,6 +27,7 @@ import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
+import { READ_ALOUD_VOICE_STORAGE_KEY, resolveVoiceId } from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -308,6 +309,24 @@ export default function App() {
 
     readAloudRef.current = { player, sync: startPolling };
 
+    // The picker lives in the control panel, which may not even be open. Rather
+    // than plumbing a cross-window event for a value that is only needed at one
+    // instant, the voice is re-read from localStorage immediately before every
+    // speak() — so the next read always uses the current choice, and a stale or
+    // hand-edited value falls back to the default instead of throwing inside
+    // Kokoro. speak() clears the buffer cache anyway, so switching mid-session
+    // can never replay the old voice.
+    const applyStoredVoice = () => {
+      let stored = null;
+      try {
+        stored = localStorage.getItem(READ_ALOUD_VOICE_STORAGE_KEY);
+      } catch {
+        // Storage unavailable; resolveVoiceId falls back to the default.
+      }
+      player.voice = resolveVoiceId(stored);
+    };
+    applyStoredVoice();
+
     let noticeTimer = null;
     const clearNotice = () => {
       if (noticeTimer) {
@@ -326,6 +345,7 @@ export default function App() {
         // A real read supersedes whatever the last press had to say.
         clearNotice();
         setReadAloudSource(data?.source ?? null);
+        applyStoredVoice();
         player.speak(text);
         startPolling();
       }
@@ -369,6 +389,7 @@ export default function App() {
       speak: (text) => {
         // No capture happened, so there is no source to attribute this to.
         setReadAloudSource(null);
+        applyStoredVoice();
         const result = player.speak(text);
         startPolling();
         return result;

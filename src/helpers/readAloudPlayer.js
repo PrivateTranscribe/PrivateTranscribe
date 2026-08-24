@@ -59,6 +59,10 @@ export class ReadAloudPlayer {
   getState() {
     return {
       status: this.status,
+      // The voice this player will speak with right now. The overlay rewrites
+      // it from localStorage before every speak(), so this is the only place
+      // that can prove the picker's choice actually reached playback.
+      voice: this.voice,
       sentenceCount: this.sentences.length,
       index: this.index,
       offset: this.offset,
