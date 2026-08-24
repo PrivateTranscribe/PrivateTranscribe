@@ -14,7 +14,13 @@
  */
 
 import { getSharedAudioContext, waitForAudioContextRunning } from "../utils/sharedAudioContext";
-import { splitFirstChunk } from "./readAloudFirstChunk";
+import {
+  splitFirstChunk,
+  trimSilence,
+  HEAD_KEEP_LEAD_MS,
+  HEAD_KEEP_TRAIL_MS,
+  TAIL_KEEP_LEAD_MS,
+} from "./readAloudFirstChunk";
 
 /** Sentences to synthesize ahead of the one playing, so seams stay gapless. */
 const LOOKAHEAD = 2;
@@ -247,7 +253,21 @@ export class ReadAloudPlayer {
         const ctx = this.getContext();
         if (!ctx) throw new Error("No AudioContext available");
 
-        const samples = pcm instanceof Float32Array ? pcm : new Float32Array(pcm);
+        const raw = pcm instanceof Float32Array ? pcm : new Float32Array(pcm);
+        // Kokoro pads each utterance with hundreds of ms of silence; played
+        // back-to-back that padding is an audible hole in the middle of the
+        // sentence. The head loses most of its lead (the press should be
+        // answered by sound) and its trail; the tail loses most of its lead.
+        // The tail's trailing padding stays — it is the pause before the next
+        // sentence. Constants and the measurements behind them live in
+        // readAloudFirstChunk.js.
+        const samples =
+          key === "head"
+            ? trimSilence(raw, sampleRate, {
+                keepLeadMs: HEAD_KEEP_LEAD_MS,
+                keepTrailMs: HEAD_KEEP_TRAIL_MS,
+              })
+            : trimSilence(raw, sampleRate, { keepLeadMs: TAIL_KEEP_LEAD_MS, keepTrailMs: null });
         const buffer = ctx.createBuffer(1, samples.length, sampleRate);
         buffer.copyToChannel(samples, 0);
 

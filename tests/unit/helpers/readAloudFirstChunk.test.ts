@@ -6,6 +6,7 @@ import {
   FIRST_CHUNK_MIN_SENTENCE_CHARS,
   FIRST_CHUNK_TARGET_MAX_CHARS,
   splitFirstChunk,
+  trimSilence,
 } from "../../../src/helpers/readAloudFirstChunk.js";
 
 /**
@@ -129,5 +130,52 @@ describe("splitFirstChunk", () => {
       expect(sentence[split!.head.length], sentence).toMatch(/\s/);
       expect(reassemble(sentence), sentence).toBe(sentence);
     }
+  });
+});
+
+/**
+ * Kokoro pads each utterance with hundreds of ms of silence, so chunked
+ * playback concatenates ~770ms of dead air at the seam — Kristian heard it
+ * as "it pauses in the middle of the text". trimSilence removes the padding
+ * while keeping a stated breath; these tests pin the arithmetic.
+ */
+describe("trimSilence", () => {
+  const RATE = 1000; // 1 sample per ms keeps the arithmetic readable
+
+  function pcm(leadMs: number, bodyMs: number, trailMs: number) {
+    const arr = new Float32Array(leadMs + bodyMs + trailMs);
+    for (let i = 0; i < bodyMs; i++) arr[leadMs + i] = 0.5;
+    return arr;
+  }
+
+  it("trims lead and trail down to the kept breath", () => {
+    const out = trimSilence(pcm(300, 100, 450), RATE, { keepLeadMs: 40, keepTrailMs: 60 });
+    expect(out.length).toBe(40 + 100 + 60);
+    // The kept window still starts in silence and contains the whole body.
+    expect(out[0]).toBe(0);
+    expect(out[40]).toBe(0.5);
+    expect(out[40 + 99]).toBe(0.5);
+  });
+
+  it("leaves an end alone when its keep value is null", () => {
+    const out = trimSilence(pcm(300, 100, 450), RATE, { keepLeadMs: 60, keepTrailMs: null });
+    expect(out.length).toBe(60 + 100 + 450);
+  });
+
+  it("keeps a shorter-than-breath padding as is", () => {
+    const out = trimSilence(pcm(10, 100, 20), RATE, { keepLeadMs: 40, keepTrailMs: 60 });
+    expect(out.length).toBe(10 + 100 + 20);
+  });
+
+  it("returns all-silence audio whole rather than trimming it to nothing", () => {
+    const silent = new Float32Array(500);
+    const out = trimSilence(silent, RATE, { keepLeadMs: 40, keepTrailMs: 60 });
+    expect(out.length).toBe(500);
+  });
+
+  it("passes empty or missing input through", () => {
+    const empty = new Float32Array(0);
+    expect(trimSilence(empty, RATE, { keepLeadMs: 40, keepTrailMs: 60 }).length).toBe(0);
+    expect(trimSilence(null as unknown as Float32Array, RATE, { keepLeadMs: 40 })).toBeNull();
   });
 });

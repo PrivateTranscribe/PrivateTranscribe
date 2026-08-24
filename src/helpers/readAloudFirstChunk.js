@@ -109,4 +109,55 @@ export function splitFirstChunk(sentence) {
   return { head: chosen.head, tail: chosen.tail, punctuated: chosen.punctuated };
 }
 
+/**
+ * How the seam between the two chunks is kept from sounding like a hole.
+ *
+ * Kokoro pads every utterance with silence: measured on the fixture split,
+ * 448ms trails the head and 324ms leads the tail — 772ms of dead air at the
+ * join, which Kristian heard immediately ("it pauses in the middle of the
+ * text"). The padding is per-utterance framing, not prosody, so it is trimmed
+ * at the seam: the head keeps a short trail and the tail a short lead, adding
+ * up to roughly the gap the model itself puts between words. The head's lead
+ * is trimmed too — the press is answered by sound, not by 300ms of silence
+ * being "played". Tail-end padding is left alone; it is the pause before the
+ * next sentence.
+ */
+export const SILENCE_THRESHOLD = 0.005;
+export const HEAD_KEEP_LEAD_MS = 40;
+export const HEAD_KEEP_TRAIL_MS = 60;
+export const TAIL_KEEP_LEAD_MS = 60;
+
+/**
+ * Trim leading/trailing silence from PCM, keeping `keepLeadMs`/`keepTrailMs`
+ * of it. Pass null to leave that end untouched. Returns a subarray view (no
+ * copy), or the input untouched when trimming would leave nothing.
+ *
+ * @param {Float32Array} pcm
+ * @param {number} sampleRate
+ * @param {{ keepLeadMs?: number | null, keepTrailMs?: number | null }} opts
+ * @returns {Float32Array}
+ */
+export function trimSilence(pcm, sampleRate, { keepLeadMs = null, keepTrailMs = null } = {}) {
+  if (!pcm || !pcm.length || !sampleRate) return pcm;
+
+  let start = 0;
+  if (keepLeadMs !== null) {
+    let lead = 0;
+    while (lead < pcm.length && Math.abs(pcm[lead]) < SILENCE_THRESHOLD) lead++;
+    start = Math.max(0, lead - Math.round((keepLeadMs / 1000) * sampleRate));
+  }
+
+  let end = pcm.length;
+  if (keepTrailMs !== null) {
+    let trail = 0;
+    while (trail < pcm.length && Math.abs(pcm[pcm.length - 1 - trail]) < SILENCE_THRESHOLD) trail++;
+    end = Math.min(pcm.length, pcm.length - trail + Math.round((keepTrailMs / 1000) * sampleRate));
+  }
+
+  // An all-silence buffer (or a degenerate window) is returned whole rather
+  // than trimmed into nothing: silence that plays is better than a crash.
+  if (end - start <= 0) return pcm;
+  return pcm.subarray(start, end);
+}
+
 export default splitFirstChunk;
