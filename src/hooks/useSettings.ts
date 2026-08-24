@@ -849,9 +849,13 @@ export function useSettings() {
   const boolSerializer = { serialize: String, deserialize: (v: string) => v === "true" };
 
   const [autoPaste, setAutoPaste] = useLocalStorage("autoPaste", true, boolSerializer);
+  // Off by default (Kristian, 2026-08-24): pasting is the delivery, and a
+  // fresh install should not silently overwrite the clipboard on every
+  // transcription. A FAILED paste still falls back to the clipboard no matter
+  // what this says — see dictationDelivery.js.
   const [copyToClipboard, setCopyToClipboard] = useLocalStorage(
     "copyToClipboard",
-    true,
+    false,
     boolSerializer
   );
   const [showPanelOnError, setShowPanelOnError] = useLocalStorage(

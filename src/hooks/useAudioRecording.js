@@ -425,7 +425,10 @@ export const useAudioRecording = (toast, options = {}) => {
 
         // Respect behavior settings
         const shouldPaste = (localStorage.getItem("autoPaste") ?? "true") !== "false";
-        const shouldCopy = (localStorage.getItem("copyToClipboard") ?? "true") !== "false";
+        // Default false, matching useSettings: a fresh install pastes without
+        // also overwriting the clipboard. Paste failure still copies (fallback
+        // in deliverDictation is unconditional).
+        const shouldCopy = localStorage.getItem("copyToClipboard") === "true";
 
         const historyLimitRaw = localStorage.getItem("historyLimit");
         const historyLimit = historyLimitRaw !== null ? parseInt(historyLimitRaw, 10) : 50;
