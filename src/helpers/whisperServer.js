@@ -1644,6 +1644,15 @@ class WhisperServerManager {
 
       req.on("error", (error) => {
         if (tinydiarize) this._endStdoutCapture();
+        // Our own local server refusing or resetting the connection means it is
+        // not serving any more, whatever `ready` still says. The "close" handler
+        // that clears the flag is asynchronous, so without this the very next
+        // request is handed to the dead server too and fails for a reason that
+        // has nothing to do with it — costing the user a second, valid
+        // transcription before the restart path is ever reached.
+        if (error.code === "ECONNREFUSED" || error.code === "ECONNRESET") {
+          this.ready = false;
+        }
         reject(new Error(`whisper-server request failed: ${error.message}`));
       });
       req.on("timeout", () => {

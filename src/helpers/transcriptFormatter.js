@@ -137,8 +137,16 @@ function deduplicateConsecutiveTurns(turns) {
 
 function formatTranscript(verboseJson, format = "plain", options = {}) {
   const analysis = buildAnalysis(verboseJson);
-  const turns = options.mergeTurns === false ? analysis.segments : mergeTurns(analysis.segments);
   const withSpeakers = format === "speakers" || options.includeSpeakers !== false;
+  // Turns are merged by speaker. With speaker labels off, every segment carries
+  // the same placeholder speaker, so merging folds the entire file into one
+  // turn — and a timestamped transcript of one turn is a single line stamped
+  // [00:00:00], whatever its length. Timestamped output without speakers
+  // therefore keeps the segments it is supposed to be stamping.
+  const turns =
+    options.mergeTurns === false || (format === "timestamped" && !withSpeakers)
+      ? analysis.segments
+      : mergeTurns(analysis.segments);
 
   // Clean hallucination artifacts from each turn's text
   for (const turn of turns) {
