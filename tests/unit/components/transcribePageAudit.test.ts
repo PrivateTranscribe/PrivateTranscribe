@@ -36,41 +36,46 @@ function errorBranch(source: string): string {
   return source.slice(start, end);
 }
 
-describe("F1 — a running file transcription cannot be stopped", () => {
+describe("F1 — a running file transcription can be stopped (FIXED)", () => {
   /**
-   * Observed by driving the page: once a file is dropped the dropzone turns
-   * cursor-wait, every click handler returns early on status === "processing",
-   * and the only thing that moves is an elapsed-time counter. There is no stop
-   * control, and no IPC channel behind one either — the pipeline threads no
-   * AbortSignal from the renderer to whisper-server.
+   * Observed before the fix, by driving the page: once a file was dropped the
+   * dropzone turned cursor-wait, every click handler returned early on
+   * status === "processing", and the only thing that moved was an elapsed-time
+   * counter. There was no stop control, and no IPC channel behind one either —
+   * the pipeline threaded no AbortSignal from the renderer to whisper-server.
+   * Force-quitting the app was the only exit, and it cost the whole transcript.
    *
-   * Force-quitting the app is the only exit, and it costs the whole transcript.
-   * (Measured separately: a force-quit at chunk 11 of 33 left zero orphaned
-   * whisper-server processes and zero temp files, so quitting is at least
-   * clean — see F12.)
-   *
-   * Blocking question for the fix: cancellation has to reach an in-flight
-   * http.request inside a chunk loop in the main process, which means a
-   * request-scoped id, a cancel channel, and an abort check between chunks.
-   * That is a feature, not a patch.
+   * Fixed by carrying a job id from the page to the main process, aborting the
+   * in-flight /inference request, and rendering the outcome as its own calm
+   * state instead of a failure. Measured on the real engine: the abort settles
+   * in ~1ms and the NEXT transcription on the same warm server costs 610-620ms
+   * against a 593-604ms baseline, so the server is neither restarted nor
+   * blocked.
    */
-  it("confirms the processing view offers nothing but a spinner and a clock", () => {
+  it("offers a cancel control while a file is transcribing", () => {
     const branch = processingBranch(transcribePage());
 
     expect(branch).toContain("Transcribing…");
     expect(branch).toContain("elapsedLabel");
-    expect(branch).not.toContain("<Button");
-  });
-
-  it.fails("exposes a cancel control while a file is transcribing", () => {
-    const branch = processingBranch(transcribePage());
-
     expect(branch).toMatch(/Cancel|Stop/);
   });
 
-  it.fails("exposes an IPC channel that can cancel a running file transcription", () => {
+  it("exposes an IPC channel that can cancel a running file transcription", () => {
     expect(preload()).toMatch(/cancelFileTranscription|cancel-file-transcription/);
     expect(ipcHandlers()).toMatch(/cancel-file-transcription/);
+  });
+
+  /**
+   * A cancel is a user decision, so the page must not report it the way it
+   * reports a crash. "cancelled" is its own status, distinct from "error".
+   */
+  it("returns to a calm cancelled state rather than an error state", () => {
+    const source = transcribePage();
+
+    expect(source).toContain('status === "cancelled"');
+    expect(source).toContain("Cancelled");
+    // The main process is told, rather than the page merely forgetting the run.
+    expect(source).toContain("cancelFileTranscription");
   });
 });
 

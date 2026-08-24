@@ -646,6 +646,9 @@ declare global {
       // Whisper operations (whisper.cpp)
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       transcribeFileV2: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
+      cancelFileTranscription: (
+        jobId?: string | null
+      ) => Promise<{ success: boolean; cancelled: boolean; jobs: number }>;
       onFileTranscriptionProgress: (
         callback: (
           event: any,

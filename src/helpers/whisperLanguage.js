@@ -147,6 +147,23 @@ function normalizeWhisperLanguage(value) {
 }
 
 /**
+ * True when whisper.cpp would accept this string as a `language` value.
+ *
+ * The set is Whisper's own ~99 languages, not the 58-entry UI picker. Rejecting
+ * everything the picker omits would refuse languages the engine really handles;
+ * rejecting nothing lets a stale or hand-edited code reach the engine, and an
+ * unknown code kills whisper-server outright (audit F3). "auto" counts as known
+ * because it is how every caller spells "do not pin a language".
+ */
+function isKnownWhisperLanguage(value) {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "auto") return true;
+  return WHISPER_CODES.has(normalized) || normalized in WHISPER_NAME_TO_CODE;
+}
+
+/**
  * True when a transcription result carries real speech.
  *
  * Language detection on a segment of silence or noise is a coin flip, and a
@@ -281,6 +298,7 @@ module.exports = {
   normalizeAllowedLanguages,
   resolveAllowedLanguage,
   normalizeWhisperLanguage,
+  isKnownWhisperLanguage,
   hasUsableSpeech,
   resolveLockableLanguage,
   WHISPER_NAME_TO_CODE,

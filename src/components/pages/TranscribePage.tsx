@@ -22,6 +22,8 @@ import {
   X,
   Users,
   Info,
+  Languages,
+  CircleSlash,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProStatus";
@@ -34,7 +36,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { useToast } from "../ui/Toast";
 import { useSettings } from "../../hooks/useSettings";
 import { formatBytes } from "../../utils/formatBytes";
-import { getLanguageLabel } from "../../utils/languages";
+import { LANGUAGE_OPTIONS } from "../../utils/languages";
+import {
+  buildLanguageMismatchNotice,
+  type LanguageMismatchNotice,
+} from "../../utils/languageMismatch";
 import { buildStarterLimitMessage, recordStarterWords } from "../../utils/starterUsage";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
@@ -56,7 +62,20 @@ const SPEAKER_COUNT_OPTIONS = [
 ] as const;
 type OutputFormat = "plain" | "timestamped" | "speakers";
 
-type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
+type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error" | "cancelled";
+
+/**
+ * The stored language, only if it is still one the picker offers.
+ *
+ * The page used to hand this value straight to the engine. An unknown code kills
+ * whisper-server outright (audit F3), and localStorage is editable, survives
+ * downgrades, and outlives any list this app ships.
+ */
+function readStoredFileLanguage(): string {
+  if (typeof window === "undefined") return "auto";
+  const stored = window.localStorage?.getItem("fileTranscriptionLanguage") || "auto";
+  return LANGUAGE_OPTIONS.some((option) => option.value === stored) ? stored : "auto";
+}
 
 function getFileExtension(fileName: string): string {
   const parts = fileName.split(".");
@@ -81,10 +100,16 @@ export default function TranscribePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const [fileLanguage, setFileLanguageState] = useState(() => {
-    if (typeof window === "undefined") return "auto";
-    return window.localStorage?.getItem("fileTranscriptionLanguage") || "auto";
-  });
+  const [fileLanguage, setFileLanguageState] = useState(readStoredFileLanguage);
+  // The file of the current run, kept so "Transcribe again in <language>" can
+  // re-decode the same audio without asking the user to find it again.
+  const lastFileRef = useRef<File | null>(null);
+  // The id the main process knows this run by. Cleared the moment a run stops
+  // being the current one, so a late result from a cancelled run is discarded
+  // instead of overwriting the page.
+  const activeJobIdRef = useRef<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [languageNotice, setLanguageNotice] = useState<LanguageMismatchNotice | null>(null);
   const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
   const [transcriptionProgress, setTranscriptionProgress] = useState<{
@@ -191,6 +216,13 @@ export default function TranscribePage() {
     mgr._checkBetaFeatureAccess = (featureId: string) => isFeatureUnlocked(featureId);
     audioManagerRef.current = mgr;
     return () => {
+      // Leaving the page used to leave the decode running in the main process
+      // with nowhere to deliver its result — CPU spent on a transcript nobody
+      // would ever see. cleanup() never covered it: it aborts the cloud
+      // request controller, which the local file path does not register.
+      const jobId = activeJobIdRef.current;
+      activeJobIdRef.current = null;
+      if (jobId) window.electronAPI?.cancelFileTranscription?.(jobId);
       audioManagerRef.current?.cleanup();
       audioManagerRef.current = null;
     };
@@ -377,6 +409,8 @@ export default function TranscribePage() {
   };
 
   const resetState = () => {
+    activeJobIdRef.current = null;
+    lastFileRef.current = null;
     setStatus("idle");
     setSelectedFileName("");
     setSelectedFileSize(0);
@@ -386,12 +420,47 @@ export default function TranscribePage() {
     setErrorMessage("");
     setCopied(false);
     setTranscriptionProgress(null);
+    setLanguageNotice(null);
+    setCancelling(false);
   };
 
-  const processFile = async (file: File) => {
+  /**
+   * Stop the running decode.
+   *
+   * The id goes with the request so a Cancel that arrives after the run already
+   * ended cannot stop the next one. The page drops its claim on the run
+   * immediately, which is what makes a result that is already on its way back
+   * land nowhere instead of on screen.
+   */
+  const cancelTranscription = async () => {
+    const jobId = activeJobIdRef.current;
+    if (!jobId) return;
+    activeJobIdRef.current = null;
+    setCancelling(true);
+    try {
+      await window.electronAPI?.cancelFileTranscription?.(jobId);
+    } catch {
+      // The run is already disowned above; a failed cancel call cannot make the
+      // page lie about it.
+    }
+    setCancelling(false);
+    setStatus("cancelled");
+    setTranscriptionProgress(null);
+    setProcessingStartedAt(null);
+  };
+
+  const processFile = async (file: File, languageOverride?: string) => {
     const manager = audioManagerRef.current;
     if (!manager) return;
 
+    const jobId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    activeJobIdRef.current = jobId;
+    lastFileRef.current = file;
+    const isCurrentJob = () => activeJobIdRef.current === jobId;
+    const requestedLanguage = languageOverride || fileLanguage;
+
+    setLanguageNotice(null);
+    setCancelling(false);
     setStatus("processing");
     setProcessingStartedAt(Date.now());
     setProcessingElapsedSeconds(0);
@@ -428,11 +497,24 @@ export default function TranscribePage() {
           speakerDetectionMode: resolvedDiarizationMode,
           expectedSpeakers: resolvedExpectedSpeakers,
           outputFormat,
-          language: fileLanguage,
+          language: requestedLanguage,
           translate: translateToEnglish === "on",
+          jobId,
         });
       } else {
         result = await manager.processWithOpenAIAPI(file, metadata);
+      }
+
+      // The run was cancelled or replaced while the engine was working. Its
+      // result belongs to nobody: showing it would contradict the page.
+      if (!isCurrentJob()) return;
+
+      if (result?.cancelled) {
+        activeJobIdRef.current = null;
+        setStatus("cancelled");
+        setTranscriptionProgress(null);
+        setProcessingStartedAt(null);
+        return;
       }
 
       const text = result?.text?.trim();
@@ -469,7 +551,11 @@ export default function TranscribePage() {
       setTranscript(text);
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
+      setLanguageNotice(
+        buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
+      );
       setStatus("success");
+      activeJobIdRef.current = null;
       setProcessingStartedAt(null);
       toast({
         title: "Transcription complete",
@@ -477,7 +563,9 @@ export default function TranscribePage() {
         variant: "success",
       });
     } catch (error) {
+      if (!isCurrentJob()) return;
       const message = toErrorMessage(error);
+      activeJobIdRef.current = null;
       setErrorMessage(message);
       setStatus("error");
       setProcessingStartedAt(null);
@@ -487,6 +575,20 @@ export default function TranscribePage() {
         variant: "destructive",
       });
     }
+  };
+
+  /**
+   * Re-decode the same audio in the language the engine says it heard.
+   *
+   * The picker moves with it: this is the user choosing that language, so the
+   * page must not keep claiming the old one.
+   */
+  const transcribeAgainInDetectedLanguage = () => {
+    const notice = languageNotice;
+    const file = lastFileRef.current;
+    if (!notice || !file) return;
+    setFileLanguage(notice.detected);
+    processFile(file, notice.detected);
   };
 
   const downloadText = (content: string, extension: "txt" | "srt") => {
@@ -851,6 +953,17 @@ export default function TranscribePage() {
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
               <span className="tabular-nums">{elapsedLabel}</span>
             </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-4"
+              onClick={cancelTranscription}
+              disabled={cancelling}
+              data-prevent-browse="true"
+            >
+              {cancelling ? "Stopping…" : "Cancel"}
+            </Button>
           </>
         ) : status === "error" ? (
           <>
@@ -878,6 +991,22 @@ export default function TranscribePage() {
                 </Badge>
               )}
             </div>
+          </>
+        ) : status === "cancelled" ? (
+          <>
+            <div className="w-16 h-16 rounded-2xl bg-surface-raised flex items-center justify-center mb-5 shadow-lg">
+              <CircleSlash size={28} className="text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-1">Cancelled</h3>
+            <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
+            <p className="mb-5 max-w-md text-xs text-muted-foreground">
+              {processingElapsedSeconds > 0
+                ? `Stopped after ${elapsedLabel}. Nothing was transcribed and nothing was saved.`
+                : "Stopped before the transcript was finished. Nothing was saved."}
+            </p>
+            <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
+              Choose a file
+            </Button>
           </>
         ) : (
           <>
@@ -967,6 +1096,42 @@ export default function TranscribePage() {
               </Button>
             </div>
           </div>
+
+          {/* whisper-server reports what it heard on every response, including
+              the ones it was ordered to decode as something else. Shown, not
+              acted on: the language the user picked stays picked until they
+              press the button. */}
+          {languageNotice && (
+            <div
+              className="flex flex-col gap-3 border-b border-border-subtle/60 bg-warning/5 px-5 py-4 sm:flex-row sm:items-start sm:justify-between"
+              data-prevent-browse="true"
+            >
+              <div className="flex gap-2.5">
+                <Languages size={15} className="mt-0.5 shrink-0 text-warning" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    This audio sounds like {languageNotice.detectedLabel}, not{" "}
+                    {languageNotice.forcedLabel}
+                  </p>
+                  <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                    Whisper detected {languageNotice.detectedLabel} with{" "}
+                    {languageNotice.probabilityPercent}% confidence, then transcribed the file as{" "}
+                    {languageNotice.forcedLabel} because that is the language selected here. Forcing
+                    the wrong language returns fluent text that is not what was said.
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={transcribeAgainInDetectedLanguage}
+                data-prevent-browse="true"
+              >
+                Transcribe again in {languageNotice.detectedLabel}
+              </Button>
+            </div>
+          )}
 
           <textarea
             readOnly

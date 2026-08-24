@@ -135,6 +135,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
   transcribeFileV2: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  // Stops a running file transcription. Pass the jobId the same call was started
+  // with; omit it to stop whatever is running.
+  cancelFileTranscription: (jobId) => ipcRenderer.invoke("cancel-file-transcription", jobId),
   onFileTranscriptionProgress: registerListener("file-transcription-progress"),
   checkDiarizationModelStatus: () => ipcRenderer.invoke("check-diarization-model-status"),
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),

@@ -17,6 +17,8 @@ import http from "http";
 import WhisperServerManager from "../../../src/helpers/whisperServer";
 import { formatTranscript } from "../../../src/helpers/transcriptFormatter";
 import { resolveTranscriptionLanguage } from "../../../src/utils/languageCompat";
+import { buildLanguageMismatchNotice } from "../../../src/utils/languageMismatch";
+import { LANGUAGE_OPTIONS } from "../../../src/utils/languages";
 
 vi.mock("electron", () => ({
   app: { getPath: () => tmpdir(), isReady: () => false },
@@ -145,30 +147,126 @@ describe("F4 — a dead whisper-server is not handed the next request (FIXED)", 
   });
 });
 
-describe("F3 — an unknown language code reaches whisper-server unvalidated", () => {
+describe("F1 — an in-flight decode can be cancelled (FIXED)", () => {
   /**
-   * getModelSupportedLanguages("whisper") returns null, meaning "no
-   * restriction", so isLanguageSupported accepts ANY string and
-   * resolveTranscriptionLanguage passes it straight through.
+   * Before the fix nothing threaded an AbortSignal from the renderer to the
+   * http.request inside the decode loop, so a running transcription could only
+   * be escaped by force-quitting the app.
    *
-   * Observed: posting language="zz" to the real whisper-server killed the
-   * process — ECONNRESET on that request, ECONNREFUSED on the retry. The
-   * Transcribe page reads its language from localStorage
-   * ("fileTranscriptionLanguage") without validating it, so a stale or
-   * corrupted value is enough to take the engine down.
-   *
-   * Blocking question for the fix: whisper supports ~99 languages while the
-   * app's picker lists 58, so rejecting everything outside the picker would
-   * refuse 41 languages whisper handles. The allowed set has to be decided
-   * before this can be closed.
+   * The property that matters beyond "it stops": the warm server is SHARED with
+   * dictation, so a cancel must not mark it dead. Our own abort surfaces as
+   * ECONNRESET, which is exactly the code the F4 fix treats as "the server is
+   * gone" — so the abort has to be recognised as ours before that check runs.
    */
-  it.fails("falls back to auto-detect instead of forwarding an unknown code", () => {
+  it("rejects as cancelled and leaves the warm server usable", async () => {
+    // Accepts the connection and never answers, the way a long decode looks.
+    const server = http.createServer(() => {});
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Failed to start test server");
+
+    const manager: any = new WhisperServerManager();
+    manager.port = address.port;
+    manager.ready = true;
+
+    const controller = new AbortController();
+    const pending = manager._postInference(makeWav(1), {
+      language: "en",
+      durationSeconds: 600,
+      signal: controller.signal,
+    });
+    setTimeout(() => controller.abort(), 50);
+
+    await expect(pending).rejects.toMatchObject({ cancelled: true });
+    // Not ECONNRESET-shaped collateral: the next dictation reuses this server.
+    expect(manager.ready).toBe(true);
+
+    server.closeAllConnections?.();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("does not even send a request when the signal is already aborted", async () => {
+    const manager: any = new WhisperServerManager();
+    manager.port = 1;
+    manager.ready = true;
+
+    await expect(
+      manager._postInference(makeWav(1), {
+        durationSeconds: 1,
+        signal: AbortSignal.abort(),
+      })
+    ).rejects.toMatchObject({ cancelled: true });
+    expect(manager.getRecentInferenceRequests()).toHaveLength(0);
+  });
+});
+
+describe("F3 — an unknown language code no longer reaches whisper-server (FIXED)", () => {
+  /**
+   * Observed before the fix: posting language="zz" to the real whisper-server
+   * killed the process — ECONNRESET on that request, ECONNREFUSED on the retry.
+   * getModelSupportedLanguages("whisper") returned null, meaning "no
+   * restriction", so isLanguageSupported accepted ANY string and
+   * resolveTranscriptionLanguage passed it straight through. The Transcribe
+   * page reads its language from localStorage ("fileTranscriptionLanguage"),
+   * so a stale or hand-edited value was enough to take the engine down.
+   *
+   * The blocking question was which set to validate against: the app's picker
+   * lists 58 languages, whisper.cpp accepts ~99, and refusing the 41 in between
+   * would break languages the engine really handles. Answered by validating
+   * against whisper's own set (src/utils/whisperLanguageCodes.ts, pinned to the
+   * main process's table) — it refuses nothing that can be decoded.
+   */
+  it("falls back to auto-detect instead of forwarding an unknown code", () => {
     expect(resolveTranscriptionLanguage("zz", "whisper", "base")).toBeNull();
   });
 
   it("still forwards codes the picker really offers", () => {
     expect(resolveTranscriptionLanguage("da", "whisper", "base")).toBe("da");
     expect(resolveTranscriptionLanguage("auto", "whisper", "base")).toBeNull();
+  });
+
+  it("still forwards the languages whisper has but the picker does not", () => {
+    // Refusing these would have been the easy fix and the wrong one.
+    expect(resolveTranscriptionLanguage("yue", "whisper", "base")).toBe("yue");
+    expect(resolveTranscriptionLanguage("haw", "whisper", "base")).toBe("haw");
+    expect(LANGUAGE_OPTIONS.some((option) => option.value === "yue")).toBe(false);
+  });
+
+  /**
+   * The wire is the boundary that matters: whisper-server does not answer an
+   * unknown code with an error, it dies on the request. So the check has to sit
+   * in front of the POST, not only in the renderer helper above.
+   */
+  it("refuses an unknown code at the request boundary, without sending it", async () => {
+    const manager: any = new WhisperServerManager();
+    manager.port = 1; // never contacted — the guard rejects first
+    manager.ready = true;
+
+    await expect(
+      manager._postInference(Buffer.from("not really a wav"), {
+        language: "zz",
+        durationSeconds: 1,
+      })
+    ).rejects.toThrow(/not a language this transcription engine knows/i);
+
+    // Nothing was sent, so nothing was recorded, and the server is untouched.
+    expect(manager.getRecentInferenceRequests()).toHaveLength(0);
+    expect(manager.ready).toBe(true);
+  });
+
+  it("accepts a language whisper knows at the same boundary", async () => {
+    const manager: any = new WhisperServerManager();
+    manager.port = 1;
+    manager.ready = true;
+
+    // Rejects on the connection, not on validation — proof the guard let it by.
+    await expect(
+      manager._postInference(Buffer.from("not really a wav"), {
+        language: "da",
+        durationSeconds: 1,
+      })
+    ).rejects.toThrow(/whisper-server request failed/);
+    expect(manager.getRecentInferenceRequests()).toHaveLength(1);
   });
 });
 
@@ -240,7 +338,7 @@ describe("F9 — chunk boundaries leave overlapping SRT cues", () => {
   });
 });
 
-describe("F5 — a forced wrong language is reported as success", () => {
+describe("F5 — a forced wrong language is surfaced, not swallowed (FIXED)", () => {
   /**
    * Driving the real pipeline on the English control fixture:
    *
@@ -260,11 +358,13 @@ describe("F5 — a forced wrong language is reported as success", () => {
    * detected language when the caller did NOT pin one, so the mismatch is
    * discarded every time.
    *
-   * Blocking question for the fix: carrying a distinct mismatch field through
-   * is a few lines, but what the user should SEE — a warning, a blocked
-   * result, an offer to re-run on auto-detect — is a product decision that has
-   * not been made. Overloading the existing `detectedLanguage` field would be
-   * wrong: its contract is "we worked this out ourselves".
+   * The blocking question was what the user should SEE. Answered by
+   * surfacing rather than overriding: the result carries the server's own
+   * verdict, and the page shows a notice with a one-click re-run when a FORCED
+   * language disagrees with a detection at 0.9 or better. The user's explicit
+   * choice still stands until they press the button, and auto-detect runs are
+   * untouched. The existing `detectedLanguage` field keeps its contract ("we
+   * worked this out ourselves"); this travels separately.
    */
   /** A real whisper-server verbose_json response to language=da on English audio. */
   const forcedDanishOnEnglishAudio = {
@@ -283,14 +383,56 @@ describe("F5 — a forced wrong language is reported as success", () => {
     expect(forcedDanishOnEnglishAudio.detected_language_probability).toBeGreaterThan(0.99);
   });
 
-  it.fails("keeps the detected language when narrowing the server response", () => {
+  it("keeps the detected language when narrowing the server response", () => {
     const manager: any = new WhisperManager();
     const parsed = manager.parseWhisperResult(forcedDanishOnEnglishAudio);
 
-    // parseWhisperResult is the step that throws the evidence away: it returns
-    // {success, text} and nothing else, so no caller above it can tell that
+    // parseWhisperResult was the step that threw the evidence away: it returned
+    // {success, text} and nothing else, so no caller above it could tell that
     // whisper was 99.6% sure the audio was not the language it was told to use.
     expect(parsed.success).toBe(true);
     expect(parsed).toHaveProperty("detectedLanguage", "english");
+    expect(parsed.detectedLanguageProbability).toBeGreaterThan(0.99);
+  });
+
+  it("turns that evidence into a notice on the measured fixture", () => {
+    const manager: any = new WhisperManager();
+    const parsed = manager.parseWhisperResult(forcedDanishOnEnglishAudio);
+
+    // The shape the renderer receives, built the way transcribeViaServer builds
+    // it: the server's verdict normalised to a code, paired with what the
+    // caller forced.
+    const notice = buildLanguageMismatchNotice(
+      {
+        detected: "en",
+        detectedName: parsed.detectedLanguage,
+        probability: parsed.detectedLanguageProbability,
+        requested: "da",
+        mismatch: true,
+      },
+      "da"
+    );
+
+    expect(notice).not.toBeNull();
+    expect(notice?.detectedLabel).toBe("English");
+    expect(notice?.forcedLabel).toBe("Danish");
+    expect(notice?.probabilityPercent).toBe("99.6");
+  });
+
+  it("stays quiet on an auto-detect run, however sure the engine was", () => {
+    // Nothing was forced, so there is no disagreement to report — the detection
+    // IS the answer.
+    expect(
+      buildLanguageMismatchNotice({ detected: "en", probability: 0.9965, requested: null }, "auto")
+    ).toBeNull();
+  });
+
+  it("stays quiet when the engine is not sure", () => {
+    expect(
+      buildLanguageMismatchNotice(
+        { detected: "en", probability: 0.62, requested: "da", mismatch: true },
+        "da"
+      )
+    ).toBeNull();
   });
 });

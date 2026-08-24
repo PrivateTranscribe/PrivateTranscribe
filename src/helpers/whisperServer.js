@@ -9,7 +9,11 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
-const { resolveLockableLanguage, resolveAllowedLanguage } = require("./whisperLanguage");
+const {
+  resolveLockableLanguage,
+  resolveAllowedLanguage,
+  isKnownWhisperLanguage,
+} = require("./whisperLanguage");
 const GpuBinaryManager = require("./gpuBinaryManager");
 const { resolveWhisperThreads } = require("./cpuThreads");
 
@@ -258,6 +262,45 @@ function mergeVerboseJsonResults(results) {
     .filter(Boolean)
     .join(" ");
   return { ...results[0], text, segments, chunks: results.length };
+}
+
+/**
+ * The error every cancelled transcription rejects with.
+ *
+ * Carries a flag rather than relying on the message, so the IPC layer can tell
+ * "the user pressed Cancel" apart from "the engine failed" without matching
+ * text — the difference between a calm idle state and a red error banner.
+ */
+function createCancelledError() {
+  const error = new Error("Transcription cancelled");
+  error.cancelled = true;
+  error.code = "TRANSCRIPTION_CANCELLED";
+  return error;
+}
+
+function isCancelledError(error) {
+  return error?.cancelled === true || error?.code === "TRANSCRIPTION_CANCELLED";
+}
+
+function throwIfCancelled(signal) {
+  if (signal?.aborted) throw createCancelledError();
+}
+
+/**
+ * Refuse a language whisper.cpp does not know, before it reaches the wire.
+ *
+ * whisper-server does not answer an unknown code with an error — it dies on the
+ * request (audit F3), taking the warm server and the next queued request with
+ * it. The check costs a set lookup; not doing it costs the process.
+ */
+function assertKnownWhisperLanguage(language) {
+  if (!language || language === "auto") return;
+  if (isKnownWhisperLanguage(language)) return;
+  const error = new Error(
+    `"${language}" is not a language this transcription engine knows. Pick a language from the list, or use Auto-detect.`
+  );
+  error.code = "UNKNOWN_TRANSCRIPTION_LANGUAGE";
+  throw error;
 }
 
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
@@ -1307,7 +1350,13 @@ class WhisperServerManager {
         longSessionChunk = false,
         trimTrailingSilence = false,
         onProgress,
+        signal,
       } = options;
+
+      // Checked before anything expensive happens, so a bad code costs a fast
+      // error instead of a conversion, a decode, and the server's life.
+      assertKnownWhisperLanguage(language);
+      throwIfCancelled(signal);
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
@@ -1327,6 +1376,10 @@ class WhisperServerManager {
         trimTrailingSilence,
         dropSilentResult: longSessionChunk,
       });
+
+      // FFmpeg cannot be interrupted usefully, but a cancel that landed during
+      // the conversion must not go on to spend the decode.
+      throwIfCancelled(signal);
 
       if (longSessionChunk && (parseWavPcmInfo(finalBuffer)?.dataSize ?? 0) === 0) {
         debugLogger.info("Long-session chunk held no speech after trimming; skipping inference");
@@ -1362,6 +1415,7 @@ class WhisperServerManager {
 
       const results = [];
       for (let index = 0; index < chunks.length; index += 1) {
+        throwIfCancelled(signal);
         const chunk = chunks[index];
         debugLogger.debug("Submitting whisper-server chunk", {
           chunk: index + 1,
@@ -1385,8 +1439,12 @@ class WhisperServerManager {
             tinydiarize: fileMode && speakerDetection,
             vad,
             longSessionChunk,
+            signal,
           });
         } catch (error) {
+          // A cancel is not a decode failure — retrying it would restart the
+          // work the user just stopped.
+          if (isCancelledError(error)) throw error;
           if (!fileMode) throw error;
           debugLogger.warn(
             "verbose_json file transcription failed; retrying with json compatibility fallback",
@@ -1405,6 +1463,7 @@ class WhisperServerManager {
             chunkCount: chunks.length,
             durationSeconds: chunk.durationSeconds,
             fileMode: false,
+            signal,
           });
           if (!Array.isArray(result?.segments) && result?.text) {
             result = {
@@ -1445,8 +1504,10 @@ class WhisperServerManager {
                 tinydiarize: fileMode && speakerDetection,
                 vad,
                 longSessionChunk,
+                signal,
               });
             } catch (error) {
+              if (isCancelledError(error)) throw error;
               // The first decode already produced usable text. A failed
               // re-decode should cost the user the correction, not the
               // dictation.
@@ -1568,7 +1629,18 @@ class WhisperServerManager {
       vad = false,
       longSessionChunk = false,
       detectLanguage = false,
+      signal,
     } = options;
+
+    // The last gate before the wire. Everything above this is convenience; an
+    // unknown code that gets past here kills the server process itself.
+    try {
+      assertKnownWhisperLanguage(language);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (signal?.aborted) return Promise.reject(createCancelledError());
+
     const form = new FormData();
     const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
 
@@ -1628,6 +1700,19 @@ class WhisperServerManager {
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
+      // Set before the socket is torn down, so the "error" handler below can
+      // tell our own abort apart from the server dying under us. Without it a
+      // cancel looks exactly like ECONNRESET and would mark the warm server
+      // dead, costing the next dictation a cold start it did not need.
+      let cancelled = false;
+      let detachAbortListener = () => {};
+
+      const settle = (fn) => (value) => {
+        detachAbortListener();
+        fn(value);
+      };
+      const finishWith = settle(resolve);
+      const failWith = settle(reject);
 
       const req = http.request(
         {
@@ -1655,7 +1740,7 @@ class WhisperServerManager {
             });
 
             if (res.statusCode !== 200) {
-              reject(new Error(`whisper-server returned status ${res.statusCode}: ${data}`));
+              failWith(new Error(`whisper-server returned status ${res.statusCode}: ${data}`));
               return;
             }
 
@@ -1671,7 +1756,7 @@ class WhisperServerManager {
                 this.stoppedDueToIdle = false;
                 this._scheduleIdleCheck();
 
-                resolve(parsed);
+                finishWith(parsed);
               };
 
               // whisper.cpp writes tinydiarize speaker-turn markers to realtime stdout,
@@ -1681,7 +1766,7 @@ class WhisperServerManager {
               else finish();
             } catch (e) {
               if (tinydiarize) this._endStdoutCapture();
-              reject(new Error(`Failed to parse whisper-server response: ${e.message}`));
+              failWith(new Error(`Failed to parse whisper-server response: ${e.message}`));
             }
           });
         }
@@ -1689,6 +1774,12 @@ class WhisperServerManager {
 
       req.on("error", (error) => {
         if (tinydiarize) this._endStdoutCapture();
+        if (cancelled) {
+          // We tore this socket down ourselves. Nothing is wrong with the
+          // server, so `ready` stays as it was and the next request reuses it.
+          failWith(createCancelledError());
+          return;
+        }
         // Our own local server refusing or resetting the connection means it is
         // not serving any more, whatever `ready` still says. The "close" handler
         // that clears the flag is asynchronous, so without this the very next
@@ -1698,17 +1789,42 @@ class WhisperServerManager {
         if (error.code === "ECONNREFUSED" || error.code === "ECONNRESET") {
           this.ready = false;
         }
-        reject(new Error(`whisper-server request failed: ${error.message}`));
+        failWith(new Error(`whisper-server request failed: ${error.message}`));
       });
       req.on("timeout", () => {
         if (tinydiarize) this._endStdoutCapture();
         req.destroy();
-        reject(
+        failWith(
           new Error(
             `whisper-server request timed out after ${Math.round(timeoutMs / 1000)}s while processing ${Math.round(durationSeconds || 0)}s of audio`
           )
         );
       });
+
+      if (signal) {
+        // Destroying the request mid-upload makes the multipart stream fail its
+        // next write. That is the intended outcome, but an unhandled "error" on
+        // it would take the process down, so it is absorbed here.
+        form.on("error", () => {});
+
+        const onAbort = () => {
+          cancelled = true;
+          if (tinydiarize) this._endStdoutCapture();
+          // Stop uploading as well as downloading: on a large file the request
+          // body can still be streaming when the user gives up.
+          try {
+            form.pause();
+          } catch {
+            // CombinedStream is always pausable; ignore if a future version is not.
+          }
+          req.destroy();
+          // destroy() usually surfaces through the "error" handler above, but a
+          // request that has not reached the socket yet emits nothing at all.
+          failWith(createCancelledError());
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        detachAbortListener = () => signal.removeEventListener("abort", onAbort);
+      }
 
       form.pipe(req);
     });
@@ -1955,3 +2071,7 @@ module.exports = WhisperServerManager;
 // Exported for tests: the parser is the whole of the compute-mode claim, so it
 // is pinned against output captured from the real binary.
 module.exports.detectServerBackend = detectServerBackend;
+// Cancellation is a contract between three layers (server manager, whisper
+// manager, IPC), so the predicate that identifies it lives in one place.
+module.exports.isCancelledError = isCancelledError;
+module.exports.createCancelledError = createCancelledError;

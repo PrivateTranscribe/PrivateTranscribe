@@ -19,6 +19,7 @@ const mediaController = require("./mediaController");
 const micWatcher = require("./micWatcher");
 const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
+const { isCancelledError } = require("./whisperServer");
 const {
   MAX_AUTO_THREADS,
   getPhysicalCoreCount,
@@ -253,6 +254,11 @@ class IPCHandlers {
     // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
+    // In-flight file transcriptions, by job id, so `cancel-file-transcription`
+    // can reach the http.request inside the decode loop. The page starts one at
+    // a time, but keying by id means a stale Cancel from an abandoned run can
+    // never stop the run that replaced it.
+    this.fileTranscriptionJobs = new Map();
     this.setupHandlers();
 
     // Surface GPU→CPU fallback transitions to every window so the user gets
@@ -864,6 +870,16 @@ class IPCHandlers {
         options,
       });
 
+      // The id the renderer will quote when it cancels. Generated here when the
+      // caller did not supply one, so an older client cannot end up with a job
+      // nothing can stop.
+      const jobId =
+        typeof options.jobId === "string" && options.jobId
+          ? options.jobId
+          : `file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const controller = new AbortController();
+      this.fileTranscriptionJobs.set(jobId, controller);
+
       try {
         const onProgress = (progress) => {
           try {
@@ -877,8 +893,9 @@ class IPCHandlers {
           ...options,
           fileMode: true,
           onProgress,
+          signal: controller.signal,
         });
-        if (!result.success) return result;
+        if (!result.success) return { ...result, jobId };
 
         const speakerDetectionMode =
           result.speakerDetectionMode ||
@@ -894,6 +911,7 @@ class IPCHandlers {
 
         return {
           success: true,
+          jobId,
           text: formatted.text || result.text,
           srt: formatted.srt,
           speakerCount: formatted.speakerCount,
@@ -905,11 +923,48 @@ class IPCHandlers {
           speakerDetectionMode,
           diarizationEngine: result.diarizationEngine,
           diarization: result.diarization,
+          // What the engine itself heard, and what it was told to hear. The
+          // page shows a notice when the two disagree; it never overrides the
+          // user's choice on their behalf.
+          requestedLanguage: options.language || null,
+          languageDetection: result.languageDetection || null,
         };
       } catch (error) {
+        // A cancel is a user decision, not a failure. Reported as its own
+        // outcome so the page can go quiet instead of showing a red banner.
+        if (isCancelledError(error)) {
+          debugLogger.info("File transcription cancelled", { jobId });
+          return { success: false, cancelled: true, jobId };
+        }
         debugLogger.error("File transcription v2 error", error);
-        return { success: false, error: error.message || "File transcription failed" };
+        return { success: false, jobId, error: error.message || "File transcription failed" };
+      } finally {
+        this.fileTranscriptionJobs.delete(jobId);
       }
+    });
+
+    ipcMain.handle("cancel-file-transcription", async (_event, jobId = null) => {
+      const jobs = this.fileTranscriptionJobs;
+      const targets =
+        typeof jobId === "string" && jobId
+          ? jobs.has(jobId)
+            ? [[jobId, jobs.get(jobId)]]
+            : []
+          : [...jobs.entries()];
+
+      for (const [id, controller] of targets) {
+        debugLogger.info("Cancelling file transcription", { jobId: id });
+        try {
+          controller.abort();
+        } catch (error) {
+          debugLogger.warn("File transcription abort threw", { jobId: id, error: error.message });
+        }
+      }
+
+      // `cancelled: false` is the honest answer when the run had already
+      // finished — the renderer keeps whatever result arrived rather than
+      // claiming it stopped something.
+      return { success: true, cancelled: targets.length > 0, jobs: targets.length };
     });
 
     ipcMain.handle("check-diarization-model-status", async () => {

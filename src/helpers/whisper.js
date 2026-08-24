@@ -9,6 +9,9 @@ const { getModelsDirForService } = require("./modelDirUtils");
 const { DiarizationManager } = require("./diarizationManager");
 const { assignSpeakersToSegments } = require("./diarizationMerge");
 const { normalizeTranscriptText } = require("../utils/textNormalization");
+const { normalizeWhisperLanguage } = require("./whisperLanguage");
+// Attached to the server manager's module export; see whisperServer.js.
+const { createCancelledError } = WhisperServerManager;
 
 const modelRegistryData = require("../models/modelRegistryData.json");
 
@@ -35,6 +38,34 @@ function getMinimumValidModelBytes(modelName) {
   return modelConfig?.size
     ? Math.floor(modelConfig.size * MIN_EXPECTED_MODEL_RATIO)
     : MIN_VALID_MODEL_BYTES;
+}
+
+/**
+ * Pairs whisper-server's own language verdict with the language it was told to
+ * use, so a caller can see the two disagree without re-deriving either.
+ *
+ * `mismatch` is a fact about the response, not a judgement: what a mismatch is
+ * worth (a notice, a re-run, nothing) is decided further up, where the user's
+ * explicit choice is known. Returns null when the server said nothing readable,
+ * so absence never reads as agreement.
+ */
+function buildLanguageDetection(reportedName, probability, requestedLanguage) {
+  const detected = normalizeWhisperLanguage(reportedName);
+  if (!detected) return null;
+
+  const requested =
+    requestedLanguage && requestedLanguage !== "auto"
+      ? normalizeWhisperLanguage(requestedLanguage)
+      : null;
+  const numericProbability = Number(probability);
+
+  return {
+    detected,
+    detectedName: typeof reportedName === "string" ? reportedName.trim().toLowerCase() : null,
+    probability: Number.isFinite(numericProbability) ? numericProbability : null,
+    requested,
+    mismatch: !!requested && requested !== detected,
+  };
 }
 
 function getInvalidModelMessage(modelName, actualBytes) {
@@ -385,6 +416,7 @@ class WhisperManager {
         longSessionChunk: options.longSessionChunk === true,
         trimTrailingSilence: options.trimTrailingSilence === true,
         onProgress: options.onProgress,
+        signal: options.signal,
       }
     );
   }
@@ -473,13 +505,30 @@ class WhisperManager {
       resultKeys: Object.keys(result),
     });
 
-    // parseWhisperResult intentionally narrows the server payload to
-    // {success, text}. The detected language has to be carried across
-    // explicitly or the caller cannot pin it for the next chunk.
+    // The language the pipeline worked out for itself, present only when the
+    // caller left the choice to us. Its contract is "we detected this", so it
+    // must not be confused with the server's own opinion below.
     const detectedLanguage =
       typeof result?.detectedLanguage === "string" ? result.detectedLanguage : null;
 
     const parsed = this.parseWhisperResult(result);
+
+    // whisper-server reports what it *heard* on every response, including the
+    // ones where it was ordered to decode something else. Before this the
+    // parser dropped it, so a wrong forced language came back as a confident
+    // success with the contradicting evidence thrown away (audit F5). Kept
+    // under its own name: the caller decides what to do about a disagreement,
+    // and the user's explicit choice is never overridden here.
+    const {
+      detectedLanguage: reportedLanguage,
+      detectedLanguageProbability: reportedProbability,
+      ...transcript
+    } = parsed;
+    const languageDetection = buildLanguageDetection(
+      reportedLanguage,
+      reportedProbability,
+      language
+    );
     const effectiveEngine = this.serverManager.getEngineStatus?.().effectiveEngine;
     const computeMode =
       effectiveEngine === "cuda" || effectiveEngine === "cpu" ? effectiveEngine : "unknown";
@@ -490,19 +539,21 @@ class WhisperManager {
     const inferenceDurationMs = elapsed;
     if (requestOptions.fileMode && parsed.success) {
       return {
-        ...parsed,
+        ...transcript,
         raw: result,
         segments: result?.segments || [],
         computeMode,
         inferenceDurationMs,
         ...(detectedLanguage ? { detectedLanguage } : {}),
+        ...(languageDetection ? { languageDetection } : {}),
       };
     }
     return {
-      ...parsed,
+      ...transcript,
       computeMode,
       inferenceDurationMs,
       ...(detectedLanguage ? { detectedLanguage } : {}),
+      ...(languageDetection ? { languageDetection } : {}),
     };
   }
 
@@ -578,6 +629,10 @@ class WhisperManager {
       vad: options.vad === true,
       onProgress,
     });
+
+    // Diarization is a second pass over the same audio. A cancel that landed
+    // while the decode was finishing must not buy the user another minute of it.
+    if (options.signal?.aborted) throw createCancelledError();
 
     if (requestedLocalDiarization && result?.success && Array.isArray(result.segments)) {
       if (typeof onProgress === "function") {
@@ -676,6 +731,32 @@ class WhisperManager {
     return cleaned;
   }
 
+  /**
+   * whisper-server's own verdict on what language it heard, lifted out of the
+   * response before the payload is narrowed.
+   *
+   * `detected_language` is the field to read, not `language`: on a forced
+   * decode `language` echoes the instruction back ("danish") while
+   * `detected_language` still says what the audio was ("english"). Builds that
+   * omit the field fall back to `language`, which can only ever agree with the
+   * instruction — so a missing field produces no false alarm.
+   */
+  extractDetectedLanguage(result) {
+    const reported =
+      typeof result?.detected_language === "string"
+        ? result.detected_language
+        : typeof result?.language === "string"
+          ? result.language
+          : null;
+    if (!reported) return {};
+
+    const probability = Number(result?.detected_language_probability);
+    return {
+      detectedLanguage: reported,
+      ...(Number.isFinite(probability) ? { detectedLanguageProbability: probability } : {}),
+    };
+  }
+
   parseWhisperResult(output) {
     // Handle both string (from CLI) and object (from server) inputs
     let result;
@@ -709,7 +790,7 @@ class WhisperManager {
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
       }
-      return { success: true, text };
+      return { success: true, text, ...this.extractDetectedLanguage(result) };
     }
 
     // Handle whisper-server format (has "text" field directly)
@@ -720,7 +801,7 @@ class WhisperManager {
       if (!text || this.isBlankAudioMarker(text)) {
         return { success: false, message: "No audio detected" };
       }
-      return { success: true, text };
+      return { success: true, text, ...this.extractDetectedLanguage(result) };
     }
 
     return { success: false, message: "No audio detected" };
