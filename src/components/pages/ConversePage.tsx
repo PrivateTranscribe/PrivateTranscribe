@@ -313,7 +313,11 @@ export default function ConversePage() {
       setSessionActive(true);
       rememberProject(projectPath);
     } catch (error) {
-      setStartError(error instanceof Error ? error.message : String(error));
+      // Electron wraps invoke rejections as "Error invoking remote method
+      // 'converse-start': Error: <real message>" — strip the plumbing so the
+      // user reads only the sentence written for them.
+      const raw = error instanceof Error ? error.message : String(error);
+      setStartError(raw.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, ""));
     } finally {
       setStarting(false);
     }
