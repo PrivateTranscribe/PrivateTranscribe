@@ -31,11 +31,13 @@ async function openProSettings(controlPanel: Page): Promise<void> {
  * Take the app through its real activation path with a stubbed licensing
  * server.
  *
- * Tester access is deliberately session-only: it is set by a successful server
- * response and never restored from localStorage, so there is no key a spec
- * could write to fake it. Every spec that needs a beta feature unlocked has to
- * go through the activation UI, which is why this lives in fixtures/ rather
- * than in one spec file.
+ * Tester access is only ever granted by a successful server response. It is
+ * cached afterwards — the sealed entitlement carries `betaAccess`, which is what
+ * keeps an offline tester unlocked (see tests/e2e/beta-offline.spec.ts) — but
+ * the seal is computed over the licence key and the exact entitlement string, so
+ * a spec cannot fake the cache by writing localStorage. Going through the
+ * activation UI is still the only way in, which is why this lives in fixtures/
+ * rather than in one spec file.
  */
 export async function unlockTesterAccess(controlPanel: Page): Promise<void> {
   await stubLicensingServer(controlPanel);
@@ -62,11 +64,12 @@ const LICENSE_STORAGE_KEYS = [
 /**
  * Unlock tester access again after an app restart.
  *
- * The beta flag is session-only, so a restarted app is locked even though the
- * cached license is still on disk — and the Pro screen is then a race: it shows
- * the active banner until start-up revalidation against the real licensing
- * server finishes, and the activation form afterwards. A spec that guessed
- * either way would be flaky.
+ * A restarted app starts from the cached entitlement a previous spec step
+ * activated with a fake key, and start-up revalidation posts that key to the
+ * REAL licensing server, which does not know it. So the Pro screen is a race:
+ * the active banner until that round-trip lands, the activation form afterwards,
+ * and the cached tester flag disappears with it. A spec that guessed either way
+ * would be flaky.
  *
  * Dropping the cached license first removes the race entirely: with no key
  * stored, revalidation returns without making a request and the activation form
