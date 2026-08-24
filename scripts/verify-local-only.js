@@ -420,21 +420,18 @@ This samples the connection table, it does not intercept packets. A connection
 opened and closed entirely within one sampling gap would not appear. The gap
 distribution above is published so that hole can be judged rather than assumed.
 
-The conclusive companion test blocks the app outbound at the firewall and
-confirms local transcription still completes. That needs an elevated prompt, so
-run it by hand:
+The conclusive companion test is to remove the network entirely and confirm
+local transcription still completes. Turn off Wi-Fi or unplug the cable, then
+dictate with a local Whisper model selected. It needs no elevation.
 
-\`\`\`powershell
-# Elevated PowerShell.
-New-NetFirewallRule -DisplayName "PT local-only test" -Direction Outbound \`
-  -Program "C:\\Program Files\\PrivateTranscribe\\PrivateTranscribe.exe" -Action Block
+Do not reach for a per-application firewall rule instead. Transcription runs in
+a separate executable, \`whisper-server\`, so a rule naming only
+\`PrivateTranscribe.exe\` leaves the engine's network access open, and the test
+passes while proving far less than it appears to. Covering it properly needs one
+rule per executable under \`resources/bin\`. Disconnecting covers all of them at
+once.
 
-# Dictate normally with a local Whisper model. It should still work.
-
-Remove-NetFirewallRule -DisplayName "PT local-only test"
-\`\`\`
-
-A run that transcribes correctly with outbound blocked is not a sampled
+A run that transcribes correctly with no network at all is not a sampled
 observation. It is a demonstration that the network is not on the path.
 `
   );
