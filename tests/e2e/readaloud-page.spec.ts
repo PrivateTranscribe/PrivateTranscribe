@@ -106,7 +106,7 @@ test.describe("read aloud page", () => {
     await expect(
       controlPanel.getByRole("button", { name: /Apply for early access/ })
     ).toBeVisible();
-    await expect(controlPanel.getByText("English only for now.")).toBeVisible();
+    await expect(controlPanel.getByText("English only.")).toBeVisible();
 
     // Locked means locked: no download button is reachable from here.
     await expect(controlPanel.getByRole("button", { name: /Download voice model/ })).toHaveCount(0);
@@ -123,7 +123,7 @@ test.describe("read aloud page", () => {
 
       const status = controlPanel.getByTestId("readaloud-model-status");
       await expect(status).toContainText("is not on this machine");
-      await expect(controlPanel.getByText("English only for now.")).toBeVisible();
+      await expect(controlPanel.getByText("English only.")).toBeVisible();
 
       const downloadButton = controlPanel.getByRole("button", { name: /Download voice model/ });
       await expect(downloadButton).toBeVisible();
@@ -210,7 +210,7 @@ test.describe("read aloud page", () => {
       const status = controlPanel.getByTestId("readaloud-model-status");
       await expect(status).toContainText("on this machine");
       await expect(status).toContainText("MB");
-      await expect(controlPanel.getByText("English only for now.")).toBeVisible();
+      await expect(controlPanel.getByText("English only.")).toBeVisible();
 
       // The enable toggle is the last control on the page; it is the one
       // that binds the global shortcut, so it must be reachable now.
