@@ -18,8 +18,11 @@
  * `speaking` and out of it — the main process never guesses that audio played.
  */
 
+const os = require("node:os");
+
 const { ConverseAgent } = require("./converseAgent");
 const { SentenceStream } = require("./converseSentences");
+const { readSessionId, writeSessionId } = require("./converseSessionStore");
 
 /** Keeps the log bounded on a long session without losing the recent shape. */
 const STATE_LOG_LIMIT = 200;
@@ -32,8 +35,19 @@ class ConverseSession {
    * @param {string}  [opts.cwd]
    * @param {string}  [opts.claudeBin]
    * @param {boolean} [opts.mock]
+   * @param {boolean} [opts.resume] continue the last `claude` session recorded
+   *   for this cwd instead of starting a fresh conversation
+   * @param {string}  [opts.sessionStorePath] override the mapping file (tests)
    */
-  constructor({ send, model = "haiku", cwd, claudeBin, mock = false } = {}) {
+  constructor({
+    send,
+    model = "haiku",
+    cwd,
+    claudeBin,
+    mock = false,
+    resume = false,
+    sessionStorePath,
+  } = {}) {
     this.send = typeof send === "function" ? send : () => {};
     this.state = "idle";
     this.stateSince = Date.now();
@@ -50,11 +64,23 @@ class ConverseSession {
     this.player = null;
     this.stopped = false;
 
+    // Resolved here rather than left to the agent's default, because the same
+    // directory is also the key the session id is remembered under: the two
+    // must not be able to disagree.
+    this.cwd = cwd || os.tmpdir();
+    this.sessionStorePath = sessionStorePath || null;
+
+    // Mock mode never spawns a CLI, so there is no session to continue.
+    this.resumedFrom = resume && !mock ? readSessionId(this.cwd, this.sessionStorePath) : null;
+    this.sessionId = this.resumedFrom;
+
     this.agent = new ConverseAgent({
       model,
-      cwd,
+      cwd: this.cwd,
       claudeBin,
       mock,
+      resumeSessionId: this.resumedFrom,
+      onSessionId: (id) => this._rememberSessionId(id),
       onDelta: (text) => this._onDelta(text),
       onTurnEnd: (info) => this._onTurnEnd(info),
       onError: (err) => {
@@ -67,6 +93,20 @@ class ConverseSession {
   async start() {
     await this.agent.start();
     return this.getState();
+  }
+
+  /**
+   * Persist the id the CLI just announced, so the next app run can resume it.
+   * Best effort by design — a mapping that fails to save costs a resume, never
+   * the conversation in progress.
+   */
+  _rememberSessionId(id) {
+    this.sessionId = id;
+    if (writeSessionId(this.cwd, id, this.sessionStorePath)) {
+      console.log(`[converse] session ${id} recorded for ${this.cwd}`);
+    } else {
+      console.log(`[converse] could not record session ${id} for ${this.cwd}`);
+    }
   }
 
   // ------------------------------------------------------------------ state
@@ -88,6 +128,11 @@ class ConverseSession {
       agentMode: status.agentMode,
       model: status.model,
       lastError: status.lastError,
+      cwd: this.cwd,
+      /** The CLI session this conversation is in, once the CLI has named it. */
+      sessionId: status.sessionId || this.sessionId,
+      /** The id this session was started with `--resume`, or null for a fresh one. */
+      resumedFrom: this.resumedFrom,
       turnGen: this.turnGen,
       stateLog: this.stateLog.slice(),
       player: this.player,

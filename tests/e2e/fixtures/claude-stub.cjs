@@ -24,12 +24,69 @@
  *                            app actually sent, not what the app says it sent.
  *   CLAUDE_STUB_LONG_MARKER  substring that selects the long answer
  *                            (default "everything").
+ *   CLAUDE_STUB_STATE        directory holding one JSON file per session id.
+ *                            This is the stub's memory: it is what makes
+ *                            `--resume <id>` observable, because a resumed
+ *                            process can answer from a file the previous
+ *                            process wrote. Unset means no memory at all.
+ *
+ * Session identity: the stub announces a fresh uuid in its init line, unless it
+ * was started with `--resume <id>`, in which case it adopts that id and loads
+ * the memory filed under it. The remembered word is whatever the caller asked
+ * it to remember — the stub knows no specific word, so a test's nonce lives
+ * only in the test.
  */
 
+const crypto = require("node:crypto");
 const fs = require("node:fs");
+const path = require("node:path");
 
 const LOG_PATH = process.env.CLAUDE_STUB_LOG || "";
 const LONG_MARKER = process.env.CLAUDE_STUB_LONG_MARKER || "everything";
+const STATE_DIR = process.env.CLAUDE_STUB_STATE || "";
+
+/** `--resume <id>` anywhere in argv, mirroring how the CLI accepts it. */
+function resumeIdFromArgv(argv) {
+  const at = argv.indexOf("--resume");
+  if (at >= 0 && argv[at + 1] && !argv[at + 1].startsWith("--")) return argv[at + 1];
+  const inline = argv.find((arg) => arg.startsWith("--resume="));
+  return inline ? inline.slice("--resume=".length) : null;
+}
+
+const RESUMED_FROM = resumeIdFromArgv(process.argv.slice(2));
+const SESSION_ID = RESUMED_FROM || crypto.randomUUID();
+
+const statePath = () => (STATE_DIR ? path.join(STATE_DIR, `${SESSION_ID}.json`) : "");
+
+/** Everything this session has been told, as of the last write. */
+function loadState() {
+  const file = statePath();
+  if (!file) return { sessionId: SESSION_ID, texts: [], word: null };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    return {
+      sessionId: SESSION_ID,
+      texts: Array.isArray(parsed.texts) ? parsed.texts : [],
+      word: typeof parsed.word === "string" ? parsed.word : null,
+    };
+  } catch {
+    return { sessionId: SESSION_ID, texts: [], word: null };
+  }
+}
+
+function saveState(state) {
+  const file = statePath();
+  if (!file) return;
+  try {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(state, null, 2), "utf8");
+  } catch {
+    // A stub that cannot remember still has to answer; the assertion will fail
+    // loudly on the reply rather than quietly here.
+  }
+}
+
+const state = loadState();
 
 /**
  * Eight sentences, each ending in a period followed by a space, so the app's
@@ -100,8 +157,36 @@ function userText(message) {
     .join(" ");
 }
 
+/** "remember the word grobblewurst" -> "grobblewurst". Generic on purpose. */
+const REMEMBER_RE = /remember the word[:\s]+["'`]?([\p{L}\p{N}][\p{L}\p{N}'-]*)/iu;
+
+/**
+ * What this session says back. Memory beats nothing, but the long-answer marker
+ * still wins outright, so the barge-in spec's eight sentences are unaffected.
+ */
+function sentencesFor(prompt) {
+  if (prompt.includes(LONG_MARKER)) return LONG_SENTENCES;
+
+  const remember = prompt.match(REMEMBER_RE);
+  if (remember) {
+    state.word = remember[1];
+    saveState(state);
+    return [`Noted. I will remember the word ${state.word}.`];
+  }
+
+  if (/\bthe word\b/i.test(prompt)) {
+    return state.word
+      ? [`The word you asked me to remember is ${state.word}.`]
+      : ["I do not know the word."];
+  }
+
+  return SHORT_SENTENCES;
+}
+
 function reply(prompt) {
-  const sentences = prompt.includes(LONG_MARKER) ? LONG_SENTENCES : SHORT_SENTENCES;
+  state.texts.push(prompt);
+  const sentences = sentencesFor(prompt);
+  saveState(state);
   const startedAt = Date.now();
 
   // Two deltas per sentence, so the splitter has to accumulate rather than
@@ -129,17 +214,20 @@ function reply(prompt) {
       is_error: false,
       duration_ms: Date.now() - startedAt,
       result: sentences.join(" "),
-      session_id: "stub-session",
+      session_id: SESSION_ID,
     });
   };
   step();
 }
 
+// Same shape as the real CLI's init line: a top-level `session_id` on a
+// `system`/`init` event. The app reads the id off this line.
 emit({
   type: "system",
   subtype: "init",
-  session_id: "stub-session",
+  session_id: SESSION_ID,
   model: "claude-stub",
+  resumed_from: RESUMED_FROM,
 });
 
 let buf = "";

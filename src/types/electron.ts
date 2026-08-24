@@ -230,6 +230,12 @@ export interface ConverseState {
   /** Raw error text from the agent, kept verbatim (e.g. a rate-limit message). */
   lastError?: string | null;
   turnGen?: number;
+  /** Project directory the session runs in; the key its session id is stored under. */
+  cwd?: string;
+  /** The `claude` session this conversation is in, once the CLI has named it. */
+  sessionId?: string | null;
+  /** The id passed to `--resume` at start, or null for a fresh conversation. */
+  resumedFrom?: string | null;
   stateLog?: ConverseTransition[];
   player?: ConversePlayerReport | null;
   agent?: Record<string, unknown>;
@@ -751,6 +757,12 @@ declare global {
         model?: string;
         cwd?: string;
         mock?: boolean;
+        /**
+         * Continue the last `claude` session recorded for this cwd instead of
+         * starting a fresh conversation. The id survives an app restart; the
+         * state reports it back as `resumedFrom`.
+         */
+        resume?: boolean;
       }) => Promise<ConverseState>;
       /** Inject a user turn as text. The microphone path will call this too. */
       converseSendUtterance: (text: string) => Promise<{

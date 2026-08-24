@@ -89,23 +89,36 @@ class ConverseAgent {
    * @param {string}  [opts.cwd]
    * @param {string}  [opts.claudeBin]
    * @param {boolean} [opts.mock] start in mock mode instead of spawning the CLI
+   * @param {(id:string)=>void} [opts.onSessionId] fired the first time the CLI
+   *   announces its session id (and again if it ever changes)
+   * @param {string|null} [opts.resumeSessionId] continue this CLI session
+   *   instead of starting a fresh one
+   * @param {boolean} [opts.sessionPersistence] when false, pass
+   *   `--no-session-persistence`. Defaults to true, because a session the CLI
+   *   never writes to disk can never be resumed.
    */
   constructor({
     onDelta,
     onTurnEnd,
     onError,
+    onSessionId,
     model = "haiku",
     cwd = os.tmpdir(),
     claudeBin,
     mock = false,
+    resumeSessionId = null,
+    sessionPersistence = true,
   } = {}) {
     this.onDelta = onDelta || (() => {});
     this.onTurnEnd = onTurnEnd || (() => {});
     this.onError = onError || (() => {});
+    this.onSessionId = onSessionId || (() => {});
     this.model = model;
     this.cwd = cwd;
     this.claudeBin = resolveClaudeBin(claudeBin);
     this.claudeArgPrefix = resolveClaudeArgPrefix();
+    this.resumeSessionId = resumeSessionId || null;
+    this.sessionPersistence = sessionPersistence !== false;
 
     /** "live" while the real CLI is answering; "mock" once it cannot. */
     this.agentMode = mock ? "mock" : "live";
@@ -140,12 +153,18 @@ class ConverseAgent {
       "--output-format",
       "stream-json",
       "--include-partial-messages",
-      "--no-session-persistence",
-      "--model",
-      this.model,
-      "--system-prompt",
-      VOICE_SYSTEM_PROMPT,
     ];
+
+    // Persistence is ON by default: `--resume` can only reach a session the CLI
+    // actually wrote to disk, so suppressing it would make resume impossible.
+    if (!this.sessionPersistence) args.push("--no-session-persistence");
+
+    args.push("--model", this.model, "--system-prompt", VOICE_SYSTEM_PROMPT);
+
+    // Resuming restores the conversation, not the invocation: the CLI does not
+    // remember the flags the original session was started with, so every flag
+    // above is re-passed here rather than assumed.
+    if (this.resumeSessionId) args.push("--resume", this.resumeSessionId);
 
     this.proc = spawn(this.claudeBin, [...this.claudeArgPrefix, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -200,7 +219,20 @@ class ConverseAgent {
   }
 
   _onEvent(evt) {
-    if (evt.session_id) this.sessionId = evt.session_id;
+    // Every stream-json line the CLI writes carries the session id at the top
+    // level — `{"type":"system","subtype":"init",...,"session_id":"<uuid>"}` is
+    // the documented one, but on this machine the earliest carrier is a
+    // `system/hook_started` line emitted at spawn time (v2.1.224). Reading the
+    // field off any line, rather than off `init` specifically, means the id is
+    // known as early as the CLI is willing to say it.
+    if (evt.session_id && evt.session_id !== this.sessionId) {
+      this.sessionId = evt.session_id;
+      try {
+        this.onSessionId(this.sessionId);
+      } catch (err) {
+        log("onSessionId threw", err.message);
+      }
+    }
 
     // Partial text as it is generated.
     if (evt.type === "stream_event" && evt.event) {
@@ -234,6 +266,17 @@ class ConverseAgent {
     }
 
     if (evt.type === "result") {
+      // A result with no turn in flight means the CLI failed before any
+      // utterance was sent — the shape a stale `--resume <id>` takes, where the
+      // CLI writes "No conversation found with session ID: <id>" to stderr and
+      // exits. Keep it as lastError instead of dropping it on the floor.
+      if (!this.turn) {
+        if (evt.is_error) {
+          this.lastError = String(evt.result || evt.subtype || "agent failed at startup");
+          this.onError({ where: "startup", message: this.lastError });
+        }
+        return;
+      }
       this._finishTurn({
         reason: evt.subtype || "result",
         isError: Boolean(evt.is_error),
@@ -378,6 +421,8 @@ class ConverseAgent {
       turns: this.turns,
       busy: Boolean(this.turn),
       sessionId: this.sessionId,
+      resumedFrom: this.resumeSessionId,
+      sessionPersistence: this.sessionPersistence,
       lastError: this.lastError,
       fellBackAt: this.fellBackAt,
     };

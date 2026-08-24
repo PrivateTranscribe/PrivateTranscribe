@@ -1294,7 +1294,7 @@ class IPCHandlers {
     // out, no microphone involved. The future mic path transcribes first and
     // calls exactly this, so a headless test exercises the real loop.
     ipcMain.handle("converse-start", async (_event, options = {}) => {
-      const { model, cwd, mock = false } = options || {};
+      const { model, cwd, mock = false, resume = false } = options || {};
 
       // Refuse early rather than failing on the first sentence: without the
       // voice model there is nothing to speak the reply with.
@@ -1314,6 +1314,10 @@ class IPCHandlers {
         model: model || undefined,
         cwd: cwd || undefined,
         mock: Boolean(mock),
+        // Continue the last CLI session recorded for this cwd. Off by default:
+        // a resumed conversation carries yesterday's context, which is only
+        // ever what the caller asked for on purpose.
+        resume: Boolean(resume),
         send: (channel, payload) => {
           const overlay = this.windowManager?.mainWindow;
           if (overlay && !overlay.isDestroyed()) {
