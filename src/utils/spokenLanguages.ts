@@ -116,6 +116,33 @@ export function derivePreferredLanguage(
 }
 
 /**
+ * The Transcribe (file upload) page's language default.
+ *
+ * `stored` is whatever localStorage holds for `fileTranscriptionLanguage`,
+ * `null`/`undefined` when the user has never touched that page's own
+ * selector. A stored value — including a stored `"auto"`, which is a
+ * deliberate "detect" choice and not the absence of one — always wins, so a
+ * user who overrides the page never has that choice quietly reclaimed by a
+ * later edit to Settings' spoken languages. Only when there is nothing
+ * stored (or the stored value is not one the picker still offers) does the
+ * default fall back to `derivePreferredLanguage`, which keeps the page's
+ * default following Settings for as long as the user leaves it alone.
+ *
+ * Note this checks against the full `LANGUAGE_OPTIONS` list (so `"auto"`
+ * counts as valid), unlike `isSelectableLanguage`, which excludes it because
+ * "auto" is a mode rather than a language to speak.
+ */
+export function deriveFileLanguageDefault(
+  stored: string | null | undefined,
+  spokenLanguages: string[]
+): string {
+  if (stored != null && LANGUAGE_OPTIONS.some((option) => option.value === stored)) {
+    return stored;
+  }
+  return derivePreferredLanguage(spokenLanguages);
+}
+
+/**
  * The effective spoken set, given what is stored and the language already in
  * use.
  *

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, Search, X, Check } from "lucide-react";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "../../utils/languages";
 import { selectTriggerClass, selectContentClass, selectItemClass } from "./selectStyles";
@@ -8,12 +8,23 @@ interface LanguageSelectorProps {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  /**
+   * Codes to float to the top of the list, in this order, ahead of the
+   * remaining options (which keep their normal alphabetical order). Meant for
+   * a caller that knows which languages this particular user is likely to
+   * want — e.g. the ones named in Settings — so they are not buried behind
+   * fifty alphabetical entries. Unknown codes and duplicates are dropped
+   * silently; omit the prop (or pass an empty list) for the plain, unordered
+   * picker.
+   */
+  priorityCodes?: string[];
 }
 
 export default function LanguageSelector({
   value,
   onChange,
   className = "",
+  priorityCodes,
 }: LanguageSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,7 +32,21 @@ export default function LanguageSelector({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredLanguages = LANGUAGE_OPTIONS.filter(
+  const orderedLanguages = useMemo(() => {
+    if (!priorityCodes || priorityCodes.length === 0) return LANGUAGE_OPTIONS;
+    const seen = new Set<string>();
+    const hoisted: typeof LANGUAGE_OPTIONS = [];
+    for (const code of priorityCodes) {
+      const option = LANGUAGE_OPTIONS.find((candidate) => candidate.value === code);
+      if (!option || seen.has(option.value)) continue;
+      seen.add(option.value);
+      hoisted.push(option);
+    }
+    if (hoisted.length === 0) return LANGUAGE_OPTIONS;
+    return [...hoisted, ...LANGUAGE_OPTIONS.filter((option) => !seen.has(option.value))];
+  }, [priorityCodes]);
+
+  const filteredLanguages = orderedLanguages.filter(
     (lang) =>
       lang.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lang.value.toLowerCase().includes(searchQuery.toLowerCase())

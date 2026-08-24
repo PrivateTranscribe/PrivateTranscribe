@@ -42,6 +42,12 @@ import {
   type LanguageMismatchNotice,
 } from "../../utils/languageMismatch";
 import { buildStarterLimitMessage, recordStarterWords } from "../../utils/starterUsage";
+import {
+  buildQuickLanguageCodes,
+  deriveFileLanguageDefault,
+  derivePreferredLanguage,
+  readSpokenLanguages,
+} from "../../utils/spokenLanguages";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
 const VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "mkv", "avi", "webm"] as const;
@@ -64,17 +70,31 @@ type OutputFormat = "plain" | "timestamped" | "speakers";
 
 type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error" | "cancelled";
 
+/** The raw `fileTranscriptionLanguage` value, or null when nothing is stored. */
+function readRawStoredFileLanguage(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage?.getItem("fileTranscriptionLanguage") ?? null;
+}
+
 /**
- * The stored language, only if it is still one the picker offers.
+ * This page's language default: the user's own stored choice if it is still
+ * one the picker offers, otherwise derived from what Settings says the user
+ * speaks (see `deriveFileLanguageDefault`).
  *
- * The page used to hand this value straight to the engine. An unknown code kills
- * whisper-server outright (audit F3), and localStorage is editable, survives
- * downgrades, and outlives any list this app ships.
+ * The page used to hand a raw stored value straight to the engine. An unknown
+ * code kills whisper-server outright (audit F3), and localStorage is
+ * editable, survives downgrades, and outlives any list this app ships — so a
+ * value that doesn't validate is treated the same as no value at all.
+ *
+ * The "no value stored" state is sacred: it is what lets the default keep
+ * following Settings' spoken-language choice. Nothing may write to
+ * `fileTranscriptionLanguage` except the user (or the language-mismatch
+ * auto-correction) picking something on THIS page — see `setFileLanguage`.
+ * A mount-time write here would destroy that state for every user on their
+ * very first visit.
  */
 function readStoredFileLanguage(): string {
-  if (typeof window === "undefined") return "auto";
-  const stored = window.localStorage?.getItem("fileTranscriptionLanguage") || "auto";
-  return LANGUAGE_OPTIONS.some((option) => option.value === stored) ? stored : "auto";
+  return deriveFileLanguageDefault(readRawStoredFileLanguage(), readSpokenLanguages());
 }
 
 /**
@@ -132,6 +152,14 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [fileLanguage, setFileLanguageState] = useState(readStoredFileLanguage);
+  // Whether fileTranscriptionLanguage has ever been written on this page (by
+  // the user, or by the language-mismatch auto-correction). While false, the
+  // derived-default effect below keeps fileLanguage following Settings'
+  // spoken-language choice; once true, that choice is the user's and nothing
+  // here may override it again.
+  const hasStoredFileLanguageRef = useRef(
+    LANGUAGE_OPTIONS.some((option) => option.value === readRawStoredFileLanguage())
+  );
   // The file of the current run, kept so "Transcribe again in <language>" can
   // re-decode the same audio without asking the user to find it again.
   const lastFileRef = useRef<File | null>(null);
@@ -173,7 +201,18 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setFileTranscriptionSpeakerDetectionMode: setSpeakerDetectionMode,
     fileTranscriptionExpectedSpeakers: expectedSpeakers,
     setFileTranscriptionExpectedSpeakers: setExpectedSpeakers,
+    spokenLanguages,
   } = useSettings();
+
+  // Re-derive the default whenever Settings' spoken languages change while
+  // this page stays mounted, so a Settings edit is not stuck behind a
+  // navigate-away-and-back. Cheap because `spokenLanguages` already comes out
+  // of useSettings' own localStorage subscription — no new subscription is
+  // added here. Skipped entirely once the page has its own stored value.
+  useEffect(() => {
+    if (hasStoredFileLanguageRef.current) return;
+    setFileLanguageState(derivePreferredLanguage(spokenLanguages));
+  }, [spokenLanguages]);
 
   // Determine the best diarization engine automatically based on available models and language.
   // Multilingual (sherpa-onnx) is preferred when available; TinyDiarize is a fallback for English-only.
@@ -197,6 +236,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
 
   const setFileLanguage = (language: string) => {
     const next = language || "auto";
+    hasStoredFileLanguageRef.current = true;
     setFileLanguageState(next);
     window.localStorage?.setItem("fileTranscriptionLanguage", next);
   };
@@ -901,6 +941,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
                 value={fileLanguage || "auto"}
                 onChange={setFileLanguage}
                 className="min-w-[200px]"
+                priorityCodes={buildQuickLanguageCodes(spokenLanguages, fileLanguage)}
               />
             </div>
 
