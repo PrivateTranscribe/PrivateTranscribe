@@ -99,12 +99,14 @@ test.describe("read aloud voice picker", () => {
     );
 
     expect(rendered).toHaveLength(28);
-    // The rendered order IS sortVoices' order, compared against the function
-    // rather than a copied-out list, so the two cannot drift.
+    // The rendered order IS the module's order, compared against the export
+    // rather than a copied-out list, so the two cannot drift. Since 2026-08-24
+    // that order is kokoro-js's original table order — Kristian rejected
+    // grade-sorting as subjective.
     expect(rendered.map((row) => row.id)).toEqual(SORTED_KOKORO_VOICES.map((v) => v.id));
 
-    // Best-first is the whole point of the ordering; assert the top row earns it.
-    expect(SORTED_KOKORO_VOICES[0].grade).toBe("A");
+    // The original table happens to lead with the default voice.
+    expect(SORTED_KOKORO_VOICES[0].id).toBe("af_heart");
     const firstRow = picker.locator("[data-voice-id]").first();
     await expect(firstRow).toHaveAttribute("data-voice-id", SORTED_KOKORO_VOICES[0].id);
     await expect(firstRow).toContainText(SORTED_KOKORO_VOICES[0].name);

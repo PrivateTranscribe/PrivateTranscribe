@@ -94,7 +94,14 @@ export function gradeRank(grade: string): number {
 }
 
 /**
- * The order the picker shows voices in: best grade first, American before
+ * NO LONGER the picker's order — kept only because the grade badge still
+ * renders and other code may want to reason about grades. Kristian rejected
+ * grade-sorting on 2026-08-24 ("I don't really like your ranking of the
+ * voices… it's very subjective. Just put it in the order that it was in
+ * originally"), so the picker now shows KOKORO_VOICES in kokoro-js's own
+ * table order.
+ *
+ * Original rationale, for the record: best grade first, American before
  * British inside a grade, then name A-Z.
  *
  * Grade leads because the user is choosing by ear and has no other way to
@@ -118,8 +125,12 @@ export function sortVoices(voices: KokoroVoice[]): KokoroVoice[] {
   });
 }
 
-/** The picker's list, computed once — the table never changes at runtime. */
-export const SORTED_KOKORO_VOICES: KokoroVoice[] = sortVoices(KOKORO_VOICES);
+/**
+ * The picker's list: kokoro-js's original table order, verbatim. The package
+ * author's order (Heart, Alloy, Aoede… then the British voices) is the one
+ * every Kokoro user sees elsewhere, and Kristian asked for exactly it.
+ */
+export const SORTED_KOKORO_VOICES: KokoroVoice[] = [...KOKORO_VOICES];
 
 export function findVoice(id: string | null | undefined): KokoroVoice | undefined {
   return KOKORO_VOICES.find((voice) => voice.id === id);

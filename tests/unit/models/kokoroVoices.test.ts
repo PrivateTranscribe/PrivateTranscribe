@@ -138,20 +138,20 @@ describe("sortVoices", () => {
     expect(input.map((v) => v.name)).toEqual(["Zoe", "Amy"]);
   });
 
-  it("leads the real table with the grade-A voice", () => {
-    const first = SORTED_KOKORO_VOICES[0];
-    expect(first.grade).toBe("A");
-    expect(first.id).toBe("af_heart");
+  // The picker itself no longer uses sortVoices: Kristian rejected the
+  // grade ordering as subjective and asked for kokoro-js's original table
+  // order, so SORTED_KOKORO_VOICES is the table verbatim.
+  it("is NOT the picker order — the picker shows the original table", () => {
+    expect(SORTED_KOKORO_VOICES.map((v) => v.id)).toEqual(KOKORO_VOICES.map((v) => v.id));
+  });
+
+  it("keeps the default voice at the top of the original order", () => {
+    expect(SORTED_KOKORO_VOICES[0].id).toBe("af_heart");
   });
 
   it("returns every voice exactly once", () => {
     expect(SORTED_KOKORO_VOICES).toHaveLength(KOKORO_VOICES.length);
     expect(new Set(SORTED_KOKORO_VOICES.map((v) => v.id)).size).toBe(KOKORO_VOICES.length);
-  });
-
-  it("never lets a worse grade appear above a better one", () => {
-    const ranks = SORTED_KOKORO_VOICES.map((v) => gradeRank(v.grade));
-    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
   });
 });
 

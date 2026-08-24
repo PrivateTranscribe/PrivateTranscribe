@@ -376,8 +376,8 @@ function VoicePicker({
       <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
         The hotkey reads with {selected.name}, {selected.accent === "American" ? "an" : "a"}{" "}
         {selected.accent} {selected.gender.toLowerCase()} voice. Grades are the voice author&apos;s
-        own listening scores, best first. Previews are synthesized on this machine, so the first one
-        for each voice takes a moment.
+        own listening scores. Previews are synthesized on this machine, so the first one for each
+        voice takes a moment.
       </p>
 
       <div
