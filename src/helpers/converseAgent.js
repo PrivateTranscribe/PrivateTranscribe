@@ -53,6 +53,28 @@ function resolveClaudeBin(explicit) {
   return exe;
 }
 
+/**
+ * Extra arguments placed BEFORE the CLI flags, from PT_CONVERSE_CLAUDE_ARGS
+ * (a JSON array of strings). Empty unless the variable is set, so the real
+ * spawn is byte-identical to what it was.
+ *
+ * This exists for one reason: on Windows, Node refuses to spawn a `.cmd`
+ * without a shell, so a test cannot point PT_CONVERSE_CLAUDE_BIN at a batch
+ * shim. Instead it points the binary at `node` and passes the stub script
+ * through here — `node <stub.cjs> --print --verbose ...` — which keeps the
+ * production path free of `shell: true`.
+ */
+function resolveClaudeArgPrefix() {
+  const raw = process.env.PT_CONVERSE_CLAUDE_ARGS;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 function log(...args) {
   console.log("[converse-agent]", ...args);
 }
@@ -83,6 +105,7 @@ class ConverseAgent {
     this.model = model;
     this.cwd = cwd;
     this.claudeBin = resolveClaudeBin(claudeBin);
+    this.claudeArgPrefix = resolveClaudeArgPrefix();
 
     /** "live" while the real CLI is answering; "mock" once it cannot. */
     this.agentMode = mock ? "mock" : "live";
@@ -124,7 +147,7 @@ class ConverseAgent {
       VOICE_SYSTEM_PROMPT,
     ];
 
-    this.proc = spawn(this.claudeBin, args, {
+    this.proc = spawn(this.claudeBin, [...this.claudeArgPrefix, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       cwd: this.cwd,
@@ -365,5 +388,6 @@ module.exports = {
   ConverseAgent,
   VOICE_SYSTEM_PROMPT,
   resolveClaudeBin,
+  resolveClaudeArgPrefix,
   MOCK_REPLY: MOCK_REPLY_PARTS.join(""),
 };

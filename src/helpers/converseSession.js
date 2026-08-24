@@ -40,6 +40,7 @@ class ConverseSession {
     this.stateLog = [{ state: "idle", at: Date.now(), reason: "session created" }];
 
     this.turnGen = 0;
+    this.activeTurnGen = 0;
     this.sentenceStream = new SentenceStream();
     this.sentenceIndex = 0;
     this.lastResponse = { text: "", sentences: [] };
@@ -94,6 +95,13 @@ class ConverseSession {
       lastUtterance: this.lastUtterance,
       lastResponse: this.lastResponse,
       lastInterrupt: this.lastInterrupt,
+      // What the NEXT outbound utterance will be wrapped with: which sentences
+      // the user heard, which one was cut mid-word, and which were never
+      // spoken. Read-only — reading it does not consume it (only
+      // withInterruptContext() does), so a test can check the wrapper the
+      // session is about to build against the wrapper the agent actually
+      // receives on its stdin.
+      pendingInterrupt: this.pendingInterrupt,
       running: !this.stopped,
     };
   }
@@ -121,6 +129,11 @@ class ConverseSession {
 
     this.turnGen += 1;
     const gen = this.turnGen;
+    // Deltas are stamped with the generation of the turn that produced them,
+    // not the generation current when they arrive: an interrupt bumps turnGen
+    // while the agent is still streaming, and stamping at arrival time would
+    // let the dead turn's tail re-enter as if it belonged to the new one.
+    this.activeTurnGen = gen;
     this.sentenceStream = new SentenceStream();
     this.sentenceIndex = 0;
     this.lastResponse = { text: "", sentences: [], at: Date.now() };
@@ -137,7 +150,7 @@ class ConverseSession {
   }
 
   _onDelta(text) {
-    const gen = this.turnGen;
+    const gen = this.activeTurnGen;
     for (const sentence of this.sentenceStream.push(text)) this._emitSentence(gen, sentence);
   }
 
@@ -150,7 +163,7 @@ class ConverseSession {
   }
 
   _onTurnEnd(info) {
-    const gen = this.turnGen;
+    const gen = this.activeTurnGen;
     for (const sentence of this.sentenceStream.flush()) this._emitSentence(gen, sentence);
     if (gen !== this.turnGen) return;
 
