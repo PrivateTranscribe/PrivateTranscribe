@@ -393,6 +393,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   onWindowsPushToTalkUnavailable: registerListener("windows-ptt-unavailable"),
 
+  // Fired once, after React has committed its first real screen and the
+  // compositor has drawn it. The main process holds the window back until this
+  // arrives, so a window is never shown while it is still an empty root.
+  notifyRendererPainted: () => ipcRenderer.send("renderer-painted"),
+
   // Notify main process of activation mode changes (for Windows Push-to-Talk)
   notifyActivationModeChanged: (mode) => ipcRenderer.send("activation-mode-changed", mode),
   notifyHotkeyChanged: (hotkey) => ipcRenderer.send("hotkey-changed", hotkey),

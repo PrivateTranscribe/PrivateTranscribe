@@ -33,6 +33,10 @@ const {
 
 const BUTTON_HIT_TEST_PADDING = 4;
 const BUTTON_HOVER_POLL_MS = 50;
+// How long to wait for the renderer to report its first real paint before
+// showing the window regardless. Generous enough for a cold start on a slow
+// disk, short enough that a broken renderer is never an invisible app.
+const CONTROL_PANEL_PAINT_TIMEOUT_MS = 5000;
 
 class WindowManager {
   constructor() {
@@ -1085,34 +1089,32 @@ class WindowManager {
 
     this._guardWindowNavigation(this.controlPanelWindow, "control panel");
 
-    const visibilityTimer = this._controlPanelStartHidden
-      ? null
-      : setTimeout(() => {
-          if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
-            return;
-          }
-          if (!this.controlPanelWindow.isVisible()) {
-            console.warn("Control panel did not become visible in time; forcing show");
-            this.controlPanelWindow.show();
-            this.controlPanelWindow.focus();
-          }
-        }, 10000);
-
+    // Reveal the window on the renderer's own "I have drawn a real screen"
+    // signal rather than on `ready-to-show`, which fires at the first composited
+    // frame — an empty <div id="root"> while the bundle is still parsing. Better
+    // a slightly later window than a blank one.
+    let visibilityTimer = null;
     const clearVisibilityTimer = () => {
       if (visibilityTimer) {
         clearTimeout(visibilityTimer);
+        visibilityTimer = null;
       }
     };
 
-    this.controlPanelWindow.once("ready-to-show", () => {
+    let controlPanelRevealed = false;
+    const revealControlPanel = () => {
+      if (controlPanelRevealed) return;
+      if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) return;
+      controlPanelRevealed = true;
       clearVisibilityTimer();
+
       // Show dock icon on macOS when control panel opens
       if (process.platform === "darwin" && app.dock) {
         app.dock.show();
       }
       if (this._controlPanelStartHidden) {
         debugLogger.debug(
-          "[Window] Control panel ready but startup mode is tray-only, keeping hidden"
+          "[Window] Control panel painted but startup mode is tray-only, keeping hidden"
         );
       } else if (this._controlPanelStartMinimized) {
         // Show minimized to taskbar — gives Windows a taskbar entry without
@@ -1124,7 +1126,27 @@ class WindowManager {
         this.controlPanelWindow.show();
         this.controlPanelWindow.focus();
       }
-    });
+    };
+
+    // Scoped to this window's own renderer, so a paint report from the overlay
+    // can never release the control panel early.
+    this.controlPanelWindow.webContents.ipc.once("renderer-painted", revealControlPanel);
+
+    // Escape hatch for a renderer that never reports — a crash caught by the
+    // error boundary, say. Short, because the window now opens on its own
+    // background colour, so a forced show is a clean dark window rather than the
+    // white flash this whole path exists to remove.
+    if (!this._controlPanelStartHidden) {
+      visibilityTimer = setTimeout(() => {
+        if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
+          return;
+        }
+        if (!this.controlPanelWindow.isVisible()) {
+          debugLogger.warn("[Window] Control panel never reported a paint; showing anyway");
+          revealControlPanel();
+        }
+      }, CONTROL_PANEL_PAINT_TIMEOUT_MS);
+    }
 
     this.controlPanelWindow.on("close", (event) => {
       if (!this.isQuitting) {

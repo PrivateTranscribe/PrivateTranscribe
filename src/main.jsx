@@ -17,6 +17,24 @@ import "./index.css";
 // underneath a value the app had already adopted.
 applyStoredHotkeyMigrations();
 
+// Tell the main process the window now has real content on it.
+//
+// Electron's own `ready-to-show` fires at the first composited frame, which for
+// a React SPA is the empty <div id="root"> — showing on it is what produced a
+// blank window while the bundle was still booting. Two nested rAFs put this
+// after the commit that actually drew the first screen: the first fires before
+// that paint, the second after it.
+let paintedNotified = false;
+function notifyPaintedOnce() {
+  if (paintedNotified) return;
+  paintedNotified = true;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.electronAPI?.notifyRendererPainted?.();
+    });
+  });
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 function AppRouter() {
   // Initialize theme system
@@ -64,6 +82,15 @@ function AppRouter() {
       void trackAnalyticsEventOnce("onboarding_started", { step_count: 6 });
     }
   }, [isControlPanel, showOnboarding]);
+
+  // The loading spinner is not "real content" — releasing the window on it would
+  // just move the blank frame one step later. Wait for the branch that renders
+  // the actual surface.
+  useEffect(() => {
+    if (!isLoading) {
+      notifyPaintedOnce();
+    }
+  }, [isLoading]);
 
   const handleOnboardingComplete = () => {
     setShowOnboarding(false);
