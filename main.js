@@ -7,6 +7,7 @@ const {
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
   getAutoStartApprovalState,
+  resolveAutoStartEnabled,
 } = require("./src/helpers/autoStartLoginItemSettings");
 const { ensureStartMenuShortcut } = require("./src/helpers/startMenuShortcut");
 const APP_NAME = "PrivateTranscribe";
@@ -342,22 +343,23 @@ async function startApp() {
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
     if (app.isPackaged && !fs.existsSync(flagPath)) {
+      const autoStartLaunchOptions = buildAutoStartLaunchOptions({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        execPath: process.execPath,
+        appPath: app.getAppPath(),
+        launchMode: autoStartLaunchMode,
+      });
+
       // Never overrule a decision the user already made in Task Manager or Windows
       // Settings. An existing Run entry — approved or disabled — means this machine has
       // been set up before, even if our marker file was lost (reinstall, data reset).
       const existingApproval = getAutoStartApprovalState(
-        app.getLoginItemSettings(
-          buildAutoStartLaunchOptions({
-            platform: process.platform,
-            isPackaged: app.isPackaged,
-            execPath: process.execPath,
-            appPath: app.getAppPath(),
-            launchMode: autoStartLaunchMode,
-          })
-        ),
+        app.getLoginItemSettings(autoStartLaunchOptions),
         process.execPath
       );
 
+      let defaultApplied = true;
       if (existingApproval === null) {
         app.setLoginItemSettings(
           buildAutoStartSetOptions({
@@ -370,12 +372,31 @@ async function startApp() {
             launchMode: autoStartLaunchMode,
           })
         );
+
+        // setLoginItemSettings is fire-and-forget: it never reports a rejected registry
+        // write, and security software routinely blocks unsigned apps from touching the
+        // Run key. Read the state back — the marker is a one-shot, so writing it after a
+        // failed write means the app silently never starts at login and never retries.
+        defaultApplied = resolveAutoStartEnabled(
+          app.getLoginItemSettings(autoStartLaunchOptions),
+          process.platform
+        );
+        if (!defaultApplied) {
+          debugLogger.warn("First-run auto-start default did not stick", {
+            launchMode: autoStartLaunchMode,
+          });
+        }
       } else {
         debugLogger.debug("Skipping first-run auto-start default", {
           existingApproval,
         });
       }
-      fs.writeFileSync(flagPath, "1");
+
+      // Only burn the one-shot once the default is actually recorded, so a blocked write
+      // is retried on the next launch instead of being mistaken for a user's choice.
+      if (defaultApplied) {
+        fs.writeFileSync(flagPath, "1");
+      }
     }
   } catch {
     // Non-fatal — skip if userData isn't ready yet
