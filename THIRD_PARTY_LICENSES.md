@@ -66,3 +66,34 @@ Copyright (c) GitHub Inc.
 MIT License
 
 https://github.com/electron/electron
+
+---
+
+## Satoshi (Font)
+
+Copyright (c) Indian Type Foundry
+
+ITF Free Font License. Free for personal and commercial use, including
+self-hosting and bundling inside an application. The font may not be sold on
+its own or redistributed as a font product.
+
+Bundled as `src/assets/fonts/satoshi-variable.woff2` (variable, weight 300-900).
+
+https://www.fontshare.com/fonts/satoshi
+
+---
+
+## JetBrains Mono (Font)
+
+Copyright (c) 2020 The JetBrains Mono Project Authors
+
+SIL Open Font License, Version 1.1. Free to use, study, modify and redistribute,
+including bundled with software, provided the font itself is not sold on its own
+and any modified version is released under the same licence.
+
+Bundled as `src/assets/fonts/jetbrains-mono-latin.woff2` and
+`src/assets/fonts/jetbrains-mono-latin-ext.woff2` (variable, weight 400-700).
+
+https://github.com/JetBrains/JetBrainsMono
+
+https://openfontlicense.org/
