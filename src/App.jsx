@@ -168,19 +168,11 @@ const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP - OVERLAY_DOCK_OVERLAP;
 const OVERLAY_DOCK_PAD = 20;
 
 /**
- * The one material. `--color-muted` at 96%, a hairline white border, the same
- * blur and the same shadow - used by the button, every row, and the command
- * menu, so they are recognisably the same surface caught in different states.
+ * The material every row and the command menu are made of: `--color-muted` at
+ * 96%, a hairline white border, the same blur and the same shadow, so they are
+ * recognisably the same surface caught in different states. The dictation
+ * button deliberately sits outside this - see getMicButtonStyles.
  */
-// Exactly what Tailwind compiles `bg-muted/96` to, so the button's inline fill
-// and the rows' class fill are the same value from the same token.
-const OVERLAY_SURFACE_BG = "color-mix(in oklab, var(--color-muted) 96%, transparent)";
-const OVERLAY_SURFACE_BORDER = "rgba(255, 255, 255, 0.12)";
-const OVERLAY_SURFACE_SHADOW = "0 12px 30px rgba(0, 0, 0, 0.38)";
-/** Matches Tailwind's `backdrop-blur-xl`, which the rows use. */
-const OVERLAY_SURFACE_BLUR = "blur(24px)";
-
-/** The class half of the same material, for the rows and the menu. */
 const OVERLAY_SURFACE_CLASS =
   "border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl";
 
@@ -1139,10 +1131,10 @@ export default function App() {
 
   const micState = getMicState();
 
-  // The anchor of the column, and made of the same material as it: the same
-  // fill, the same hairline border, the same blur and the same shadow, with
-  // OVERLAY_RADIUS resolving to a circle at 44px. Only the fill moves between
-  // states, because only the fill is carrying state.
+  // The anchor of the column. It keeps the column's geometry - OVERLAY_RADIUS
+  // resolving to a circle at 44px - but not the rows' near-solid fill: the
+  // button stays the lighter, translucent pill it has always been, so the thing
+  // sitting on the desktop all day does not read as a solid slab.
   const getMicButtonStyles = () => {
     const base = {
       borderRadius: OVERLAY_RADIUS,
@@ -1155,36 +1147,37 @@ export default function App() {
       overflow: "hidden",
       transition:
         "background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease, transform 180ms ease",
-      backdropFilter: OVERLAY_SURFACE_BLUR,
-      boxShadow: OVERLAY_SURFACE_SHADOW,
+      backdropFilter: "blur(12px)",
     };
 
     switch (micState) {
       case "idle":
         return {
           ...base,
-          backgroundColor: OVERLAY_SURFACE_BG,
-          border: `1px solid ${OVERLAY_SURFACE_BORDER}`,
+          backgroundColor: "rgba(8, 9, 8, 0.72)",
+          border: "1.5px solid var(--color-border)",
+          boxShadow: "none",
         };
       case "hover":
         return {
           ...base,
-          backgroundColor: OVERLAY_SURFACE_BG,
-          border: "1px solid rgba(112, 255, 186, 0.28)",
+          backgroundColor: "rgba(8, 9, 8, 0.82)",
+          border: "1.5px solid rgba(112, 255, 186, 0.28)",
+          boxShadow: "none",
         };
       case "recording":
         return {
           ...base,
           backgroundColor: "var(--color-primary)",
-          border: "1px solid rgba(112, 255, 186, 0.5)",
-          // The shared shadow, plus the glow that says it is listening.
-          boxShadow: `${OVERLAY_SURFACE_SHADOW}, 0 0 18px rgba(112, 255, 186, 0.24)`,
+          border: "1.5px solid rgba(112, 255, 186, 0.5)",
+          boxShadow: "0 0 18px rgba(112, 255, 186, 0.24)",
         };
       case "processing":
         return {
           ...base,
           backgroundColor: "var(--color-surface-3)",
-          border: "1px solid rgba(112, 255, 186, 0.16)",
+          border: "1.5px solid rgba(112, 255, 186, 0.16)",
+          boxShadow: "none",
         };
       default:
         return base;
