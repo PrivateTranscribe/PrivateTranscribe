@@ -9,6 +9,10 @@ const {
   getAutoStartApprovalState,
   resolveAutoStartEnabled,
 } = require("./src/helpers/autoStartLoginItemSettings");
+const {
+  readAutoStartRegistryState,
+  registryAutoStartEnabled,
+} = require("./src/helpers/windowsAutoStartRegistry");
 const { ensureStartMenuShortcut } = require("./src/helpers/startMenuShortcut");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privatetranscribe.app";
@@ -351,13 +355,31 @@ async function startApp() {
         launchMode: autoStartLaunchMode,
       });
 
+      // What the OS will really do with this executable at login. On Windows that has to
+      // come from the registry: getLoginItemSettings reports executableWillLaunchAtLogin
+      // true with no Run entry present, and launchItems omits quoted paths entirely — so
+      // both of Electron's answers about our own entry are wrong.
+      const readAutoStartState = () => {
+        if (process.platform === "win32") {
+          const state = readAutoStartRegistryState({ execPath: process.execPath });
+          if (state) {
+            return {
+              approval: state.registered ? state.approved : null,
+              enabled: registryAutoStartEnabled(state),
+            };
+          }
+        }
+        const loginSettings = app.getLoginItemSettings(autoStartLaunchOptions);
+        return {
+          approval: getAutoStartApprovalState(loginSettings, process.execPath),
+          enabled: resolveAutoStartEnabled(loginSettings, process.platform),
+        };
+      };
+
       // Never overrule a decision the user already made in Task Manager or Windows
       // Settings. An existing Run entry — approved or disabled — means this machine has
       // been set up before, even if our marker file was lost (reinstall, data reset).
-      const existingApproval = getAutoStartApprovalState(
-        app.getLoginItemSettings(autoStartLaunchOptions),
-        process.execPath
-      );
+      const existingApproval = readAutoStartState().approval;
 
       let defaultApplied = true;
       if (existingApproval === null) {
@@ -377,10 +399,7 @@ async function startApp() {
         // write, and security software routinely blocks unsigned apps from touching the
         // Run key. Read the state back — the marker is a one-shot, so writing it after a
         // failed write means the app silently never starts at login and never retries.
-        defaultApplied = resolveAutoStartEnabled(
-          app.getLoginItemSettings(autoStartLaunchOptions),
-          process.platform
-        );
+        defaultApplied = readAutoStartState().enabled;
         if (!defaultApplied) {
           debugLogger.warn("First-run auto-start default did not stick", {
             launchMode: autoStartLaunchMode,

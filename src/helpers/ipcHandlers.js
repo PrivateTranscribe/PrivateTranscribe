@@ -38,6 +38,10 @@ const {
   canRegisterAutoStart,
   resolveAutoStartEnabled,
 } = require("./autoStartLoginItemSettings");
+const {
+  readAutoStartRegistryState,
+  registryAutoStartEnabled,
+} = require("./windowsAutoStartRegistry");
 
 // Shared with the window navigation guard so the two openExternal paths cannot
 // drift apart. See navigationGuard.js for the protocol allowlist rationale.
@@ -443,12 +447,21 @@ class IPCHandlers {
   }
 
   _getAutoStartEnabled(launchMode = this._readAutoStartLaunchMode()) {
-    const loginSettings = app.getLoginItemSettings(this._buildAutoStartLaunchOptions(launchMode));
+    // Report what the OS will actually do, not what Electron infers. On Windows read the
+    // Run key and the StartupApproved flag directly: getLoginItemSettings reports
+    // executableWillLaunchAtLogin true for an app with no Run entry at all, which pinned
+    // this toggle to "on" and made auto-start impossible to switch on. Reading the registry
+    // also catches an entry the user disabled in Task Manager, which launchItems misses
+    // because it silently omits quoted paths — and Electron writes ours quoted.
+    if (process.platform === "win32") {
+      const state = readAutoStartRegistryState({ execPath: process.execPath });
+      if (state) {
+        return registryAutoStartEnabled(state);
+      }
+      // Registry unreadable — fall through rather than report a confident "off".
+    }
 
-    // Report what the OS will actually do, not just whether a registry entry exists —
-    // a Windows entry the user disabled in Task Manager must read as off in the app.
-    // This also covers older installs registered without startup-mode args, because
-    // executableWillLaunchAtLogin ignores the args option.
+    const loginSettings = app.getLoginItemSettings(this._buildAutoStartLaunchOptions(launchMode));
     return resolveAutoStartEnabled(loginSettings, process.platform);
   }
 

@@ -159,18 +159,18 @@ function getAutoStartApprovalState(loginItemSettings, execPath = process.execPat
 /**
  * Whether the OS will actually launch the app at login.
  *
- * On Windows `openAtLogin` only reports whether the Run key exists — it stays true
- * after the user disables the entry in Task Manager or Windows Settings.
- * `executableWillLaunchAtLogin` folds in the StartupApproved flag, and ignores the
- * args option so installs registered before startup-mode args still resolve.
+ * This is the fallback path. Windows callers should prefer readAutoStartRegistryState in
+ * windowsAutoStartRegistry.js, which reads the Run key and the StartupApproved flag itself.
+ *
+ * `executableWillLaunchAtLogin` used to be preferred here because it folds in the
+ * StartupApproved flag. It cannot be trusted: on a real install it reports true while the
+ * Run key holds no entry for the app at all. That pinned the settings toggle to "on", so
+ * every attempt to switch it read back as a failed write and auto-start could never be
+ * turned on for real. `openAtLogin` at least reflects an actual Run value.
  */
 function resolveAutoStartEnabled(loginItemSettings, platform = process.platform) {
   if (!loginItemSettings) {
     return false;
-  }
-
-  if (platform === "win32" && typeof loginItemSettings.executableWillLaunchAtLogin === "boolean") {
-    return loginItemSettings.executableWillLaunchAtLogin;
   }
 
   return Boolean(loginItemSettings.openAtLogin);

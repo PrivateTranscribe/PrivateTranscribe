@@ -59,7 +59,7 @@ describe("the first-run auto-start default only burns its one-shot once it stick
   };
 
   it("re-reads the login item after registering the default", () => {
-    expect(firstRunBlock()).toContain("defaultApplied = resolveAutoStartEnabled(");
+    expect(firstRunBlock()).toContain("defaultApplied = readAutoStartState().enabled;");
   });
 
   it("leaves the marker unwritten when the write did not stick", () => {
