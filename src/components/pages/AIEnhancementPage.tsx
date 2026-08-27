@@ -1,16 +1,29 @@
 import { Brain, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import ReasoningModelSelector from "../ReasoningModelSelector";
+import PromptStudio from "../ui/PromptStudio";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { AlertDialog } from "../ui/dialog";
-import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { useAgentName } from "../../utils/agentName";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { SectionLabel } from "../ui/SectionLabel";
 
+/**
+ * One page for everything the AI does to dictated text: which model runs,
+ * what the assistant is called, and the system prompt behind it.
+ *
+ * The assistant name, the "Hey <name>" explainer, and Prompt Studio used to
+ * live on a separate Voice Assistant page. Two pages for one pipeline meant
+ * picking a model in one place and naming the thing that uses it in another,
+ * so they were merged here. Storage keys are untouched — `agentName` and
+ * `customUnifiedPrompt` still hold what they always held, and an existing
+ * user's values show up here without any migration.
+ */
 export default function AIEnhancementPage() {
   const isUnlocked = isFeatureUnlocked("ai-enhancement");
   const {
@@ -37,6 +50,7 @@ export default function AIEnhancementPage() {
   } = useSettings();
 
   const { alertDialog, showAlertDialog, hideAlertDialog } = useDialogs();
+  const { agentName, setAgentName } = useAgentName();
 
   const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
     String(llamaServerIdleTimeoutMinutes)
@@ -65,8 +79,8 @@ export default function AIEnhancementPage() {
           <BetaBadge locked={!isUnlocked} />
         </div>
         <p className="text-sm text-muted-foreground">
-          Automatically polish transcriptions with grammar fixes, formatting, and intelligent
-          command handling
+          Polish transcriptions with grammar fixes and formatting, name the assistant you address
+          mid-dictation, and tune the system prompt behind both
         </p>
       </div>
 
@@ -78,8 +92,10 @@ export default function AIEnhancementPage() {
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             AI Enhancement silently cleans up raw dictation - fixing grammar, cutting filler words,
-            and reformatting text before it reaches the clipboard. This beta requires approved
-            tester access while it is still being built.
+            and reformatting text before it reaches the clipboard. Name your assistant and you can
+            address it mid-dictation to switch from cleanup to direct instruction, or rewrite the
+            system prompt to match how you write. This beta requires approved tester access while it
+            is still being built.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>
@@ -179,6 +195,89 @@ export default function AIEnhancementPage() {
               </div>
             </div>
           )}
+
+          {/* Assistant name - the word that flips cleanup into instruction mode */}
+          <div className="mt-6 rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
+            <SectionLabel className="mb-4">Assistant name</SectionLabel>
+
+            <div className="flex gap-2 max-w-sm">
+              <Input
+                placeholder="e.g. Jarvis, Nova, Atlas..."
+                aria-label="Assistant name"
+                data-testid="agent-name-input"
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+                className="flex-1 text-center text-base font-mono"
+              />
+              <Button
+                onClick={() => {
+                  setAgentName(agentName.trim());
+                  showAlertDialog({
+                    title: "Assistant name updated",
+                    description: `Your assistant is now named "${agentName.trim()}". Address it by saying "Hey ${agentName.trim()}" followed by your instructions.`,
+                  });
+                }}
+                disabled={!agentName.trim()}
+                size="sm"
+                data-testid="agent-name-save"
+              >
+                Save
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground/60 mt-2">
+              Pick something short and natural to say aloud.
+            </p>
+
+            <p className="text-[12px] text-muted-foreground leading-relaxed mt-4">
+              Say <span className="font-medium text-foreground">"Hey {agentName}"</span> followed by
+              an instruction and the AI switches from cleanup to instruction mode. Without the
+              trigger phrase it just cleans up your dictation.
+            </p>
+
+            <div className="space-y-2.5 mt-4">
+              {[
+                {
+                  input: `Hey ${agentName}, write a formal email about the budget`,
+                  mode: "Instruction",
+                },
+                {
+                  input: `Hey ${agentName}, make this more professional`,
+                  mode: "Instruction",
+                },
+                {
+                  input: `Hey ${agentName}, convert this to bullet points`,
+                  mode: "Instruction",
+                },
+                { input: "We should schedule a meeting for next week", mode: "Cleanup" },
+              ].map((example, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span
+                    className={`shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded ${
+                      example.mode === "Instruction"
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {example.mode}
+                  </span>
+                  <p className="text-[12px] text-muted-foreground leading-relaxed">
+                    "{example.input}"
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Prompt Studio */}
+          <div className="mt-6">
+            <div className="mb-3">
+              <SectionLabel>System prompts</SectionLabel>
+              <p className="text-[11px] text-muted-foreground/60 mt-1">
+                Fine-tune the AI's behavior and output style.
+              </p>
+            </div>
+            <PromptStudio />
+          </div>
         </>
       )}
     </div>

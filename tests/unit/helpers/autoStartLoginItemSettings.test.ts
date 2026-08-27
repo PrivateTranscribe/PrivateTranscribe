@@ -185,16 +185,17 @@ describe("temporary app paths", () => {
 });
 
 describe("resolveAutoStartEnabled", () => {
-  it("reports off when Windows has the run key but Task Manager disabled it", () => {
-    expect(
-      resolveAutoStartEnabled({ openAtLogin: true, executableWillLaunchAtLogin: false }, "win32")
-    ).toBe(false);
-  });
-
-  it("reports on for older Windows installs registered without startup-mode args", () => {
-    // openAtLogin is false because the args do not match, but the executable still runs.
+  // Windows truth now comes from readAutoStartRegistryState. This helper is only the
+  // fallback for when the registry cannot be read, so it must never trust
+  // executableWillLaunchAtLogin: on a real install that field reports true while the Run
+  // key holds no entry, which pinned the settings toggle to "on" and made auto-start
+  // impossible to switch on.
+  it("ignores executableWillLaunchAtLogin on Windows", () => {
     expect(
       resolveAutoStartEnabled({ openAtLogin: false, executableWillLaunchAtLogin: true }, "win32")
+    ).toBe(false);
+    expect(
+      resolveAutoStartEnabled({ openAtLogin: true, executableWillLaunchAtLogin: false }, "win32")
     ).toBe(true);
   });
 

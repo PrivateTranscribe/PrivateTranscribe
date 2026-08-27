@@ -12,14 +12,24 @@ import {
   History,
   Clipboard,
   AudioLines,
+  MessagesSquare,
+  Play,
+  Pause,
+  Square,
+  SkipBack,
+  SkipForward,
 } from "lucide-react";
 import { useToast } from "./components/ui/Toast";
 import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
+import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
+import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
+import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
+import { READ_ALOUD_VOICE_STORAGE_KEY, resolveVoiceId } from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -28,6 +38,167 @@ const OVERLAY_HIDE_TOAST_MS = 1800;
 const LAST_TRANSCRIPT_KEY = "lastTranscriptText";
 const CONTROL_PANEL_PAGE_KEY = "controlPanelInitialPage";
 const CONTROL_PANEL_SETTINGS_TAB_KEY = "controlPanelInitialSettingsTab";
+
+/**
+ * Player states the overlay shows a pill for. Everything else - idle, stopped,
+ * finished - means there is nothing being read, and the overlay goes back to
+ * being just the dictation button.
+ */
+const READ_ALOUD_VISIBLE_STATUSES = new Set([
+  "splitting",
+  "loading-engine",
+  "synthesizing",
+  "playing",
+  "paused",
+  "error",
+]);
+
+const READ_ALOUD_STATUS_LABELS = {
+  splitting: "Preparing",
+  "loading-engine": "Preparing",
+  synthesizing: "Preparing",
+  playing: "Reading aloud",
+  paused: "Paused",
+  error: "Could not read that",
+};
+
+/**
+ * What the pill says when a read hotkey captured nothing. Without this the
+ * press is completely silent, and an empty selection is indistinguishable from
+ * a shortcut that never fired.
+ *
+ * "non-english" is deliberately not in this table: its wording depends on the
+ * detected language name carried on the event, so it is built where it is
+ * rendered instead of contorting this fixed-string table to hold a template.
+ */
+const READ_ALOUD_NOTICE_LABELS = {
+  "empty-selection": "Nothing selected",
+  unsupported: "Cannot read selections here",
+};
+
+/** Recognised reasons - anything else is silently ignored, see the handler below. */
+const READ_ALOUD_KNOWN_NOTICE_REASONS = new Set([
+  ...Object.keys(READ_ALOUD_NOTICE_LABELS),
+  "non-english",
+]);
+
+/**
+ * The bundled Read Aloud voices only speak English phonemes, so confidently
+ * non-English text is blocked before synthesis rather than mispronounced.
+ * `languageName` is missing only if the main process's guard somehow blocked
+ * without naming a language - the sentence still has to make sense then.
+ */
+function nonEnglishNoticeLabel(languageName) {
+  return languageName
+    ? `Looks like ${languageName}, Read Aloud speaks English only`
+    : "Read Aloud speaks English only";
+}
+
+/** Long enough to read, short enough to never sit in front of the next dictation. */
+const READ_ALOUD_NOTICE_MS = 2500;
+
+/**
+ * The Converse state machine's own word for what is happening, capitalized.
+ * The overlay says the state rather than interpreting it; the Converse page
+ * carries the sentence that explains what each state means.
+ */
+const CONVERSE_STATUS_LABELS = {
+  idle: "Idle",
+  thinking: "Thinking",
+  speaking: "Speaking",
+  listening: "Listening",
+};
+
+/**
+ * ── The overlay's geometry, in one place ───────────────────────────────────
+ *
+ * The overlay used to be three unrelated artifacts sharing a window: a round
+ * button, a wide floating capsule for Read Aloud, and a Converse pill, each
+ * with its own width, its own corner radius and its own gap. On screen they
+ * read as three windows stacked on one another rather than as one control.
+ *
+ * There is one rule now, and everything below is derived from it:
+ *
+ *   The dictation button is the anchor. Every surface the overlay shows is a
+ *   row in a single fixed-width column that is docked to the top of that
+ *   button, and every corner in the overlay is drawn with the button's own
+ *   radius.
+ *
+ * Fixed width, not shrink-to-fit, because the rows change content constantly -
+ * "Reading aloud" becomes "Paused", a sentence gets longer, a counter reaches
+ * two digits - and a column that resized on each of those would be a fidget
+ * sitting on top of the thing the user is dictating into. The slot is the same
+ * size in every state, so state changes happen inside it instead of moving it.
+ */
+
+/** Every overlay row is this wide. 400px window, 24px of air on each side. */
+const OVERLAY_COLUMN_W = 352;
+
+/**
+ * The dictation button's radius, and therefore every radius in the overlay.
+ * CSS clamps a corner to half the box, so one number gives a 44px button a
+ * circle, a 32px status row a pill, and the taller player panel corners that
+ * are exactly the button's arc. One rule, the whole family.
+ */
+const OVERLAY_RADIUS = 22;
+
+/** Between stacked rows. Small enough to read as one column, not two cards. */
+const OVERLAY_ROW_GAP = 6;
+
+/**
+ * The button's top edge, measured up from the window's bottom. The button sits
+ * at bottom:42 inside a 16px hover buffer and is 44px tall: 42 + 16 + 44.
+ */
+const OVERLAY_BUTTON_TOP = 102;
+
+/**
+ * How far the button's cap sits *inside* the bottom row. Tangent shapes touch
+ * at a point and still read as two; an overlap makes the button emerge from
+ * the column as one silhouette. The button paints over the column (z-index
+ * below), so nothing of it is ever covered.
+ */
+const OVERLAY_DOCK_OVERLAP = 10;
+
+const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP - OVERLAY_DOCK_OVERLAP;
+
+/**
+ * Extra bottom padding on whichever row is docked, so its content stops above
+ * the button's cap instead of being bitten into by it.
+ */
+const OVERLAY_DOCK_PAD = 20;
+
+/**
+ * The material every row and the command menu are made of: `--color-muted` at
+ * 96%, a hairline white border, the same blur and the same shadow, so they are
+ * recognisably the same surface caught in different states. The dictation
+ * button deliberately sits outside this - see getMicButtonStyles.
+ */
+const OVERLAY_SURFACE_CLASS =
+  "border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl";
+
+/**
+ * One entrance for every surface, growing from the anchor. Rows and the menu
+ * both use it, so opening the menu and starting a read are the same gesture.
+ */
+const OVERLAY_SURFACE_ANIMATION = "overlay-surface-in 180ms cubic-bezier(0.22, 1, 0.36, 1)";
+
+/** Shared trailing-control button: same target, same feedback, every row. */
+const OVERLAY_CONTROL_CLASS =
+  "rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6";
+
+/**
+ * The style a row carries. `docked` is true for the bottom row only - the one
+ * the button is actually attached to.
+ */
+function overlayRowStyle({ docked, interactive }) {
+  return {
+    borderRadius: OVERLAY_RADIUS,
+    paddingBottom: docked ? OVERLAY_DOCK_PAD : undefined,
+    transformOrigin: "bottom center",
+    animation: OVERLAY_SURFACE_ANIMATION,
+    pointerEvents: interactive ? "auto" : "none",
+  };
+}
 
 const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
   return (
@@ -204,9 +375,346 @@ export default function App() {
 
   const commandMenuRef = useRef(null);
   const buttonRef = useRef(null);
+  const readAloudPillRef = useRef(null);
+  const conversePillRef = useRef(null);
+  // { player, sync } — the sync call re-samples the player into React state.
+  const readAloudRef = useRef(null);
+  // Whether the main process is currently holding the transient playback
+  // shortcuts. The player is sampled four times a second; without this the
+  // renderer would re-ask for the same registration on every tick.
+  const readAloudKeysActiveRef = useRef(false);
+  const [readAloudState, setReadAloudState] = useState(null);
+  // Where the text being read came from, so a clipboard fallback can say so.
+  const [readAloudSource, setReadAloudSource] = useState(null);
+  // "empty-selection" | "unsupported" | "non-english" while the transient
+  // notice pill is up.
+  const [readAloudNotice, setReadAloudNotice] = useState(null);
+  // The detected language name for a "non-english" notice; unused otherwise.
+  const [readAloudNoticeLanguage, setReadAloudNoticeLanguage] = useState(null);
+  // { state, playIndex, total } while a Converse session is running, else null.
+  const [converseState, setConverseState] = useState(null);
   const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
+
+  // Read Aloud lives in the overlay renderer because that is where playback has
+  // to survive the control panel being closed. The player mutates its own state
+  // from audio callbacks and IPC continuations, outside React, so the pill
+  // mirrors it by sampling — and the sampling interval only exists between a
+  // speak() and the end of playback, never while the overlay is idle.
+  useEffect(() => {
+    const player = new ReadAloudPlayer();
+
+    let pollTimer = null;
+    const stopPolling = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+    // The pause/skip shortcuts exist only while a read does. This is the one
+    // place that knows when that starts and stops, so it is what tells the main
+    // process — and only on the edges, never on the poll tick in between.
+    const syncPlaybackKeys = (active) => {
+      if (readAloudKeysActiveRef.current === active) return;
+      readAloudKeysActiveRef.current = active;
+      void window.electronAPI?.readAloudSetPlaybackActive?.(active, {
+        // Read fresh on every edge rather than captured once: the toggle lives
+        // in the control panel's localStorage and the overlay is long-lived, so
+        // a value read at mount would be stale for the rest of the session.
+        // Only an explicit "false" turns it off, so the default is on.
+        duckOthers: localStorage.getItem("readAloudDuckOthers") !== "false",
+      });
+    };
+
+    const sync = () => {
+      const state = player.getState();
+      const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
+      setReadAloudState(visible ? state : null);
+      // An errored read has controls to press but nothing to control, so the
+      // shortcuts go back to the rest of the machine along with the buttons.
+      syncPlaybackKeys(visible && state.status !== "error");
+      // The source belongs to the read that is on screen. Dropping it with the
+      // pill keeps a finished clipboard read from labelling the next one.
+      if (!visible) {
+        setReadAloudSource(null);
+        stopPolling();
+      }
+      return state;
+    };
+    const startPolling = () => {
+      sync();
+      if (!pollTimer) pollTimer = setInterval(sync, 250);
+    };
+
+    readAloudRef.current = { player, sync: startPolling };
+
+    // The picker lives in the control panel, which may not even be open. Rather
+    // than plumbing a cross-window event for a value that is only needed at one
+    // instant, the voice is re-read from localStorage immediately before every
+    // speak() — so the next read always uses the current choice, and a stale or
+    // hand-edited value falls back to the default instead of throwing inside
+    // Kokoro. speak() clears the buffer cache anyway, so switching mid-session
+    // can never replay the old voice.
+    const applyStoredVoice = () => {
+      let stored = null;
+      try {
+        stored = localStorage.getItem(READ_ALOUD_VOICE_STORAGE_KEY);
+      } catch {
+        // Storage unavailable; resolveVoiceId falls back to the default.
+      }
+      player.voice = resolveVoiceId(stored);
+    };
+    applyStoredVoice();
+
+    let noticeTimer = null;
+    const clearNotice = () => {
+      if (noticeTimer) {
+        clearTimeout(noticeTimer);
+        noticeTimer = null;
+      }
+      setReadAloudNotice(null);
+      setReadAloudNoticeLanguage(null);
+    };
+
+    // The real feature path: the main process captures the foreground app's
+    // selection and pushes the text here. Not gated on the test flag - this is
+    // what a user's read hotkey ends up calling.
+    const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
+      const text = data?.text;
+      if (typeof text === "string" && text.trim()) {
+        // A real read supersedes whatever the last press had to say.
+        clearNotice();
+        setReadAloudSource(data?.source ?? null);
+        applyStoredVoice();
+        player.speak(text);
+        startPolling();
+      }
+    });
+
+    // The transient playback shortcuts. The main process holds the keys; the
+    // player lives here, so a press arrives as an op rather than as state.
+    const unsubscribeControl = window.electronAPI?.onReadAloudControl?.((_event, data) => {
+      const op = data?.op;
+      if (op === "toggle") player.toggle();
+      else if (op === "back") player.seek(-1);
+      else if (op === "forward") player.seek(1);
+      else return;
+      startPolling();
+    });
+
+    // The other half of "the hotkey always answers": a capture with nothing to
+    // read still puts the pill on screen, briefly, so the press is visible.
+    const unsubscribeNotice = window.electronAPI?.onReadAloudNotice?.((_event, data) => {
+      const reason = data?.reason;
+      if (!READ_ALOUD_KNOWN_NOTICE_REASONS.has(reason)) return;
+      if (noticeTimer) clearTimeout(noticeTimer);
+      setReadAloudNotice(reason);
+      setReadAloudNoticeLanguage(reason === "non-english" ? (data?.languageName ?? null) : null);
+      noticeTimer = setTimeout(() => {
+        noticeTimer = null;
+        setReadAloudNotice(null);
+        setReadAloudNoticeLanguage(null);
+      }, READ_ALOUD_NOTICE_MS);
+    });
+
+    // The overlay is the one window that is always running, so it is what tells
+    // the main process whether to hold the Read Aloud shortcut. Settings does
+    // the same on change; this covers a cold start.
+    void window.electronAPI?.readAloudSyncHotkey?.({
+      enabled: localStorage.getItem("readAloudEnabled") === "true",
+      hotkey: localStorage.getItem("readAloudHotkey") || DEFAULT_READ_ALOUD_HOTKEY,
+    });
+
+    const teardown = () => {
+      stopPolling();
+      clearNotice();
+      syncPlaybackKeys(false);
+      readAloudRef.current = null;
+      if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
+      if (typeof unsubscribeNotice === "function") unsubscribeNotice();
+      if (typeof unsubscribeControl === "function") unsubscribeControl();
+      player.dispose();
+    };
+
+    if (!window.electronAPI?.readAloudTestEnabled) {
+      return teardown;
+    }
+
+    window.__readAloudTest = {
+      speak: (text) => {
+        // No capture happened, so there is no source to attribute this to.
+        setReadAloudSource(null);
+        applyStoredVoice();
+        const result = player.speak(text);
+        startPolling();
+        return result;
+      },
+      getState: () => player.getState(),
+      getFirstBufferStats: () => player.getBufferStats(0),
+      clearCache: () => player.clearCache(),
+      pause: () => {
+        player.pause();
+        sync();
+      },
+      resume: () => {
+        player.resume();
+        startPolling();
+      },
+      seek: (delta) => {
+        player.seek(delta);
+        sync();
+      },
+      stop: () => {
+        player.stop();
+        sync();
+      },
+    };
+
+    return () => {
+      delete window.__readAloudTest;
+      teardown();
+    };
+  }, []);
+
+  // Converse playback lives in the overlay for the same reason Read Aloud does:
+  // it has to survive the control panel closing.
+  //
+  // The pill above the dictation button mirrors the main-process session, which
+  // owns the state machine. The overlay learns a conversation exists from the
+  // session's own events (a sentence, a turn ending, an interrupt) and only
+  // then starts sampling — an overlay that polled on the chance a session might
+  // one day start would poll forever for every user who never opens Converse.
+  // Sampling backs off to once a second whenever nothing is being spoken.
+  useEffect(() => {
+    const player = new ConversePlayer();
+    player.connect();
+
+    let cancelled = false;
+    let pollTimer = null;
+
+    const stopPolling = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const sample = async () => {
+      try {
+        const state = await window.electronAPI?.converseGetState?.();
+        if (cancelled) return null;
+        if (!state || state.running === false || state.state === "stopped") {
+          setConverseState(null);
+          return null;
+        }
+        const report = state.player || null;
+        const next = {
+          state: state.state,
+          playIndex: report?.playIndex ?? 0,
+          // Only the count the session has finished counting. While the answer
+          // is still being written, `known` grows, and a "2 / 5" that turns
+          // into "2 / 8" a second later is worse than no number.
+          total: report?.total ?? null,
+        };
+        setConverseState(next);
+        return next;
+      } catch {
+        // A dropped sample leaves the pill as it was; the next tick corrects it.
+        return null;
+      }
+    };
+
+    const loop = async () => {
+      pollTimer = null;
+      const next = await sample();
+      if (cancelled || !next) return;
+      const busy = next.state === "speaking" || next.state === "thinking";
+      pollTimer = setTimeout(loop, busy ? 250 : 1000);
+    };
+
+    const wake = () => {
+      if (cancelled || pollTimer) return;
+      void loop();
+    };
+
+    const unsubscribes = [
+      window.electronAPI?.onConverseSentence?.(wake),
+      window.electronAPI?.onConverseTurnEnd?.(wake),
+      window.electronAPI?.onConverseInterrupt?.(wake),
+    ];
+
+    if (window.electronAPI?.readAloudTestEnabled) {
+      window.__converseTest = { getPlayerState: () => player.getState() };
+    }
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+      for (const off of unsubscribes) {
+        if (typeof off === "function") off();
+      }
+      delete window.__converseTest;
+      player.dispose();
+    };
+  }, []);
+
+  const handleConverseInterrupt = useCallback(() => {
+    void window.electronAPI?.converseInterrupt?.("interrupted from the overlay");
+  }, []);
+
+  const readAloudPlaying = readAloudState?.playing === true;
+
+  // A clipboard fallback is still worth reading, but it is not what the user
+  // highlighted, so the pill names it rather than passing it off as the
+  // selection. Only while it is actually being read - "Preparing" and "Paused"
+  // are about the player, not about where the text came from.
+  const readAloudLabel =
+    readAloudSource === "clipboard" && readAloudState?.status === "playing"
+      ? "Reading clipboard"
+      : READ_ALOUD_STATUS_LABELS[readAloudState?.status] || "Reading aloud";
+
+  // The sentence being spoken, shown under the controls so a read has a place
+  // in the text and not just a count. Only once there is one to show: while the
+  // player is still splitting or loading the engine there is no sentence yet,
+  // and an empty second line would just make the pill twitch.
+  const readAloudSentence =
+    (readAloudState?.status === "playing" || readAloudState?.status === "paused") &&
+    typeof readAloudState?.currentSentence === "string" &&
+    readAloudState.currentSentence.trim()
+      ? readAloudState.currentSentence.trim()
+      : null;
+
+  const handleReadAloudToggle = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.toggle();
+    handle.sync();
+  }, []);
+
+  // Skipping clamps inside the player, so the first and last sentence make
+  // these no-ops rather than disabled buttons. A control that greys itself out
+  // twice a read is more movement than the read is worth.
+  const handleReadAloudBack = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.seek(-1);
+    handle.sync();
+  }, []);
+
+  const handleReadAloudForward = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.seek(1);
+    handle.sync();
+  }, []);
+
+  const handleReadAloudStop = useCallback(() => {
+    const handle = readAloudRef.current;
+    if (!handle) return;
+    handle.player.stop();
+    handle.sync();
+  }, []);
 
   useEffect(() => {
     window.electronAPI?.notifyDictationOverlayReady?.();
@@ -623,9 +1131,13 @@ export default function App() {
 
   const micState = getMicState();
 
+  // The anchor of the column. It keeps the column's geometry - OVERLAY_RADIUS
+  // resolving to a circle at 44px - but not the rows' near-solid fill: the
+  // button stays the lighter, translucent pill it has always been, so the thing
+  // sitting on the desktop all day does not read as a solid slab.
   const getMicButtonStyles = () => {
     const base = {
-      borderRadius: 999,
+      borderRadius: OVERLAY_RADIUS,
       width: 44,
       height: 44,
       display: "flex",
@@ -690,7 +1202,9 @@ export default function App() {
     const menuWidth = 248;
     // Conservative estimate of the tallest menu state (root + audio submenu)
     const MENU_EST_HEIGHT = 320;
-    const GAP = 12; // gap between button edge and menu
+    // Negative: the menu docks to the button the same way the status column
+    // does, overlapping its cap rather than floating a gap away from it.
+    const GAP = -OVERLAY_DOCK_OVERLAP;
 
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
@@ -712,6 +1226,10 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         bottom: clampedBottom,
+        // Keeps the last row clear of the button's cap, the same way the
+        // docked status row does.
+        paddingBottom: OVERLAY_DOCK_PAD,
+        transformOrigin: "bottom center",
         pointerEvents: "auto",
       };
     } else {
@@ -722,10 +1240,69 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         top: clampedTop,
+        paddingTop: OVERLAY_DOCK_PAD,
+        transformOrigin: "top center",
         pointerEvents: "auto",
       };
     }
   })();
+
+  // The overlay window is click-through except where it declares an interactive
+  // region, so the player's own buttons have to publish their rectangle the way
+  // the context menu does. Without this the pill is visible and unclickable.
+  useLayoutEffect(() => {
+    const pill = readAloudState ? readAloudPillRef.current : null;
+    const padding = 8;
+    const rect = pill?.getBoundingClientRect();
+    const regions = rect
+      ? [
+          {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+          },
+        ]
+      : [];
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("readaloud-player", regions);
+  }, [readAloudState]);
+
+  useEffect(() => {
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("readaloud-player", []);
+    };
+  }, []);
+
+  // Same contract for the Converse pill: its Interrupt button is only clickable
+  // where the overlay has declared the region.
+  useLayoutEffect(() => {
+    const pill = converseState ? conversePillRef.current : null;
+    const padding = 8;
+    const rect = pill?.getBoundingClientRect();
+    const regions = rect
+      ? [
+          {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + padding * 2,
+            height: rect.height + padding * 2,
+          },
+        ]
+      : [];
+
+    void window.electronAPI?.setMainWindowInteractiveRegions?.("converse-player", regions);
+    // The Read Aloud state is a dependency even though it is not read here: the
+    // Converse row sits above the Read Aloud row in the same column, so a read
+    // starting or ending moves it. Without this the region would only catch up
+    // on the next Converse poll, leaving Interrupt briefly unclickable.
+  }, [converseState, readAloudState, readAloudNotice]);
+
+  useEffect(() => {
+    return () => {
+      void window.electronAPI?.setMainWindowInteractiveRegions?.("converse-player", []);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const menu = isCommandMenuOpen ? commandMenuRef.current : null;
@@ -751,13 +1328,25 @@ export default function App() {
     };
   }, []);
 
+  // Which row the button is actually attached to. The column is built top-down,
+  // so this is whichever row renders last, and it is the only one that carries
+  // the dock padding.
+  const noticeRowVisible = Boolean(!readAloudState && readAloudNotice);
+  const dockedRow = readAloudState
+    ? "player"
+    : noticeRowVisible
+      ? "notice"
+      : converseState
+        ? "converse"
+        : null;
+
   return (
     <div className="dictation-window">
       <style>{`
-        @keyframes overlay-menu-in {
+        @keyframes overlay-surface-in {
           from {
             opacity: 0;
-            transform: translateY(8px) scale(0.98);
+            transform: translateY(6px) scale(0.98);
           }
           to {
             opacity: 1;
@@ -789,6 +1378,10 @@ export default function App() {
             alignItems: "center",
             gap: 8,
             pointerEvents: "none",
+            // Above the column, so the button's cap paints over the row it is
+            // docked to instead of being clipped by it - and so the row's dock
+            // padding never swallows a click meant for the button.
+            zIndex: 2,
           }}
         >
           {/* Wrapper needed for MicHalo to sit outside the overflow:hidden button */}
@@ -909,8 +1502,8 @@ export default function App() {
           {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (
             <div
-              className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/10 text-white/55 border border-white/8 whitespace-nowrap"
-              style={{ pointerEvents: "none", flexShrink: 0 }}
+              className={`px-2 py-1 text-[10px] font-medium text-white/55 whitespace-nowrap ${OVERLAY_SURFACE_CLASS}`}
+              style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
               title={`Active dictation mode: ${activeDictationMode}`}
             >
               {activeDictationMode}
@@ -918,13 +1511,193 @@ export default function App() {
           )}
         </div>
 
+        {/*
+          The overlay column. One fixed-width stack, docked to the top of the
+          dictation button, holding every surface the overlay has to show.
+          Converse sits above Read Aloud when both are running, so the order on
+          screen is stable and the button never moves.
+
+          The column itself is click-through; each row opts back in only if it
+          has something to press.
+        */}
+        {(readAloudState || noticeRowVisible || converseState) && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: OVERLAY_STACK_BOTTOM,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: OVERLAY_COLUMN_W,
+              display: "flex",
+              flexDirection: "column",
+              gap: OVERLAY_ROW_GAP,
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          >
+            {converseState && (
+              <div
+                ref={conversePillRef}
+                data-testid="converse-overlay-state"
+                data-state={converseState.state}
+                className={`flex items-center gap-2 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({
+                  docked: dockedRow === "converse",
+                  interactive: true,
+                })}
+              >
+                <MessagesSquare size={14} className="text-primary shrink-0" aria-hidden />
+                <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                  Claude Code
+                </span>
+                <span className="text-[11px] leading-none text-white/45 whitespace-nowrap">
+                  {CONVERSE_STATUS_LABELS[converseState.state] || converseState.state}
+                </span>
+
+                {converseState.state === "speaking" && converseState.total > 0 && (
+                  <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
+                    {Math.min(converseState.playIndex + 1, converseState.total)} /{" "}
+                    {converseState.total}
+                  </span>
+                )}
+
+                {/* Trailing controls sit against the column's right edge in
+                    every row, so a control is always in the same place
+                    regardless of how long the status text in front of it is. */}
+                {converseState.state === "speaking" && (
+                  <>
+                    <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
+                    <button
+                      aria-label="Interrupt Claude Code"
+                      onClick={handleConverseInterrupt}
+                      className={OVERLAY_CONTROL_CLASS}
+                    >
+                      <Square size={13} fill="currentColor" />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {readAloudState && (
+              <div
+                ref={readAloudPillRef}
+                data-testid="readaloud-overlay-player"
+                className={`flex flex-col gap-1.5 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ docked: dockedRow === "player", interactive: true })}
+              >
+                <div className="flex items-center gap-2">
+                  <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
+                  <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                    {readAloudLabel}
+                  </span>
+
+                  {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
+                    <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
+                      {readAloudState.index + 1} / {readAloudState.sentenceCount}
+                    </span>
+                  )}
+
+                  {/* ml-auto pins the controls to the column's right edge.
+                      Without it they sit against the status label and slide
+                      sideways every time it changes width — "Reading aloud" to
+                      "Paused" would move the pause button out from under the
+                      cursor that just pressed it. */}
+                  <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
+
+                  {readAloudState.status !== "error" && (
+                    <>
+                      <button
+                        aria-label="Previous sentence"
+                        onClick={handleReadAloudBack}
+                        className={OVERLAY_CONTROL_CLASS}
+                      >
+                        <SkipBack size={13} />
+                      </button>
+
+                      <button
+                        aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
+                        onClick={handleReadAloudToggle}
+                        className={OVERLAY_CONTROL_CLASS}
+                      >
+                        {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
+                      </button>
+
+                      <button
+                        aria-label="Next sentence"
+                        onClick={handleReadAloudForward}
+                        className={OVERLAY_CONTROL_CLASS}
+                      >
+                        <SkipForward size={13} />
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    aria-label="Stop reading"
+                    onClick={handleReadAloudStop}
+                    className={OVERLAY_CONTROL_CLASS}
+                  >
+                    {/* Filled: an outlined square reads as a checkbox, not stop. */}
+                    <Square size={13} fill="currentColor" />
+                  </button>
+                </div>
+
+                {/*
+                  The sentence takes the column's width rather than its own: it
+                  changes every few seconds, and a row that resized with each
+                  one would be a fidget on top of the dictation button.
+                */}
+                {readAloudSentence && (
+                  <span
+                    data-testid="readaloud-current-sentence"
+                    className="block w-full truncate text-[11px] leading-snug text-white/60"
+                    title={readAloudSentence}
+                  >
+                    {readAloudSentence}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/*
+              The same row, in the state a read reaches when there was nothing
+              to read. It carries no controls - there is nothing to pause - so
+              it stays click-through and disappears on its own, and it never
+              renders while a real read owns the slot.
+            */}
+            {noticeRowVisible && (
+              <div
+                data-testid="readaloud-overlay-notice"
+                data-reason={readAloudNotice}
+                className={`flex items-center gap-2 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ docked: dockedRow === "notice", interactive: false })}
+              >
+                <AudioLines size={14} className="text-white/40 shrink-0" aria-hidden />
+                {/* Wraps rather than overflows: a long language name would push
+                    "Read Aloud speaks English only" past the column edge. */}
+                <span className="text-[12px] font-medium leading-snug text-white/90">
+                  {readAloudNotice === "non-english"
+                    ? nonEnglishNoticeLabel(readAloudNoticeLanguage)
+                    : READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Context menu: positioned relative to full window, clamped to stay in bounds */}
         {isCommandMenuOpen && menuStyle && (
           <div
             ref={commandMenuRef}
-            className="w-[248px] rounded-xl border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl p-1.5"
+            className={`w-[248px] p-1.5 ${OVERLAY_SURFACE_CLASS}`}
             style={{
-              animation: "overlay-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+              // Same material, same radius, same entrance as the status rows —
+              // the menu is this overlay in another state, not another window.
+              borderRadius: OVERLAY_RADIUS,
+              animation: OVERLAY_SURFACE_ANIMATION,
+              // menuStyle carries the transform-origin, because only it knows
+              // whether the menu grew up out of the button or down out of it.
               ...menuStyle,
             }}
             onMouseEnter={() => setWindowInteractivity(true)}

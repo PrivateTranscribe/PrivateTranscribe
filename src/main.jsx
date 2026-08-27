@@ -9,7 +9,13 @@ import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { useTheme } from "./hooks/useTheme";
 import { refreshProStatus } from "./services/LicensingService.ts";
 import { trackAnalyticsEventOnce } from "./utils/analytics.ts";
+import { applyStoredHotkeyMigrations } from "./utils/hotkeys.ts";
 import "./index.css";
+
+// Repair stored hotkeys before anything reads them. useSettings persists its
+// default on first read, so a migration that ran after mount would be writing
+// underneath a value the app had already adopted.
+applyStoredHotkeyMigrations();
 
 // eslint-disable-next-line react-refresh/only-export-components
 function AppRouter() {

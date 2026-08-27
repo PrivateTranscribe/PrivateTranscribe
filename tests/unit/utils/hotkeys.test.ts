@@ -4,6 +4,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  DEFAULT_READ_ALOUD_HOTKEY,
+  LEGACY_READ_ALOUD_HOTKEY,
+  isValidHotkeyFormat as isValidHotkeyFormatReal,
+  migrateHotkeySettings,
+  normalizeHotkeyForComparison,
+} from "../../../src/utils/hotkeys";
 
 // Mock navigator for platform detection tests
 let mockNavigatorPlatform = "MacIntel";
@@ -320,6 +327,139 @@ describe("hotkeys", () => {
         expect(isValidHotkeyFormat("CommandOrControl+Shift+K")).toBe(true);
         expect(isValidHotkeyFormat("Alt+F4")).toBe(true);
       });
+    });
+  });
+});
+
+/**
+ * The suite above re-implements the module inline, so it verifies the shape of
+ * the logic rather than the shipped code. Everything below imports the real
+ * module: these are the functions a wrong answer from actually rebinds
+ * somebody's keyboard, so an inline copy would be testing the wrong thing.
+ */
+describe("hotkeys (real module)", () => {
+  describe("normalizeHotkeyForComparison", () => {
+    it("treats every modifier alias as the same key", () => {
+      const ctrlSpace = normalizeHotkeyForComparison("Ctrl+Space");
+      expect(normalizeHotkeyForComparison("CommandOrControl+Space")).toBe(ctrlSpace);
+      expect(normalizeHotkeyForComparison("CmdOrCtrl+Space")).toBe(ctrlSpace);
+      expect(normalizeHotkeyForComparison("Control+Space")).toBe(ctrlSpace);
+
+      const metaK = normalizeHotkeyForComparison("Super+K");
+      expect(normalizeHotkeyForComparison("Meta+K")).toBe(metaK);
+      expect(normalizeHotkeyForComparison("Win+K")).toBe(metaK);
+      expect(normalizeHotkeyForComparison("Cmd+K")).toBe(metaK);
+      expect(normalizeHotkeyForComparison("Command+K")).toBe(metaK);
+
+      expect(normalizeHotkeyForComparison("Option+K")).toBe(normalizeHotkeyForComparison("Alt+K"));
+    });
+
+    it("ignores the order the modifiers were written in", () => {
+      expect(normalizeHotkeyForComparison("Ctrl+Alt+Shift+R")).toBe(
+        normalizeHotkeyForComparison("Shift+Alt+Ctrl+R")
+      );
+      expect(normalizeHotkeyForComparison("Alt+CommandOrControl+Shift+R")).toBe(
+        normalizeHotkeyForComparison("Ctrl+Alt+Shift+R")
+      );
+    });
+
+    it("ignores the case of the base key", () => {
+      expect(normalizeHotkeyForComparison("Ctrl+k")).toBe(normalizeHotkeyForComparison("Ctrl+K"));
+      expect(normalizeHotkeyForComparison("f9")).toBe(normalizeHotkeyForComparison("F9"));
+    });
+
+    it("keeps genuinely different hotkeys apart", () => {
+      expect(normalizeHotkeyForComparison("Ctrl+Alt+R")).not.toBe(
+        normalizeHotkeyForComparison("Ctrl+Alt+Shift+R")
+      );
+      expect(normalizeHotkeyForComparison("Ctrl+K")).not.toBe(
+        normalizeHotkeyForComparison("Alt+K")
+      );
+    });
+
+    it("handles special and empty values", () => {
+      expect(normalizeHotkeyForComparison("GLOBE")).toBe("GLOBE");
+      expect(normalizeHotkeyForComparison("")).toBe("");
+      expect(normalizeHotkeyForComparison("   ")).toBe("");
+      expect(normalizeHotkeyForComparison(null)).toBe("");
+      expect(normalizeHotkeyForComparison(undefined)).toBe("");
+    });
+
+    it("normalizes modifier-only combos", () => {
+      expect(normalizeHotkeyForComparison("Control+Super")).toBe(
+        normalizeHotkeyForComparison("Ctrl+Win")
+      );
+    });
+  });
+
+  describe("isValidHotkeyFormat rejects Escape", () => {
+    it("refuses Escape under either spelling, alone or with modifiers", () => {
+      expect(isValidHotkeyFormatReal("Esc")).toBe(false);
+      expect(isValidHotkeyFormatReal("Escape")).toBe(false);
+      expect(isValidHotkeyFormatReal("esc")).toBe(false);
+      expect(isValidHotkeyFormatReal("CommandOrControl+Esc")).toBe(false);
+      expect(isValidHotkeyFormatReal("Ctrl+Alt+Shift+Escape")).toBe(false);
+    });
+
+    it("still accepts ordinary hotkeys", () => {
+      expect(isValidHotkeyFormatReal("CommandOrControl+Space")).toBe(true);
+      expect(isValidHotkeyFormatReal(DEFAULT_READ_ALOUD_HOTKEY)).toBe(true);
+      expect(isValidHotkeyFormatReal("F9")).toBe(true);
+      // A key whose name merely contains "esc" is not Escape.
+      expect(isValidHotkeyFormatReal("Ctrl+Escapade")).toBe(true);
+    });
+  });
+
+  describe("migrateHotkeySettings", () => {
+    const defaults = {
+      dictationKey: "CommandOrControl+Space",
+      readAloudHotkey: DEFAULT_READ_ALOUD_HOTKEY,
+    };
+
+    it("moves the old Read Aloud default to the new one", () => {
+      expect(
+        migrateHotkeySettings({ readAloudHotkey: LEGACY_READ_ALOUD_HOTKEY }, defaults)
+      ).toEqual({
+        readAloudHotkey: DEFAULT_READ_ALOUD_HOTKEY,
+      });
+    });
+
+    it("leaves a hotkey the user actually chose alone", () => {
+      expect(migrateHotkeySettings({ readAloudHotkey: "F9" }, defaults)).toEqual({});
+      expect(migrateHotkeySettings({ dictationKey: "CommandOrControl+Shift+K" }, defaults)).toEqual(
+        {}
+      );
+    });
+
+    it("resets a hotkey the Escape capture bug wrote", () => {
+      expect(migrateHotkeySettings({ dictationKey: "Esc" }, defaults)).toEqual({
+        dictationKey: defaults.dictationKey,
+      });
+      expect(migrateHotkeySettings({ readAloudHotkey: "Escape" }, defaults)).toEqual({
+        readAloudHotkey: DEFAULT_READ_ALOUD_HOTKEY,
+      });
+      expect(migrateHotkeySettings({ dictationKey: "CommandOrControl+Esc" }, defaults)).toEqual({
+        dictationKey: defaults.dictationKey,
+      });
+    });
+
+    it("is idempotent — running it on its own output changes nothing", () => {
+      const first = migrateHotkeySettings(
+        { dictationKey: "Esc", readAloudHotkey: LEGACY_READ_ALOUD_HOTKEY },
+        defaults
+      );
+      expect(first).toEqual({
+        dictationKey: defaults.dictationKey,
+        readAloudHotkey: DEFAULT_READ_ALOUD_HOTKEY,
+      });
+      expect(migrateHotkeySettings(first, defaults)).toEqual({});
+    });
+
+    it("ignores empty and missing values", () => {
+      expect(migrateHotkeySettings({}, defaults)).toEqual({});
+      expect(migrateHotkeySettings({ dictationKey: "", readAloudHotkey: null }, defaults)).toEqual(
+        {}
+      );
     });
   });
 });

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_SPOKEN_LANGUAGES,
   buildQuickLanguageCodes,
+  deriveFileLanguageDefault,
   derivePreferredLanguage,
   normalizeSpokenLanguages,
   readSpokenLanguages,
@@ -92,6 +93,38 @@ describe("readSpokenLanguages", () => {
   it("stays empty on auto-detect, which is not a claim about the speaker", () => {
     localStorage.setItem("preferredLanguage", "auto");
     expect(readSpokenLanguages()).toEqual([]);
+  });
+});
+
+describe("deriveFileLanguageDefault", () => {
+  it("falls back to auto when nothing is stored and nothing is spoken", () => {
+    expect(deriveFileLanguageDefault(null, [])).toBe("auto");
+    expect(deriveFileLanguageDefault(undefined, [])).toBe("auto");
+  });
+
+  it("derives the single spoken language when nothing is stored", () => {
+    expect(deriveFileLanguageDefault(null, ["da"])).toBe("da");
+  });
+
+  it("derives auto-detect when nothing is stored and multiple languages are spoken", () => {
+    expect(deriveFileLanguageDefault(null, ["da", "en"])).toBe("auto");
+  });
+
+  it("lets a stored choice win over any spoken set", () => {
+    expect(deriveFileLanguageDefault("sv", ["da", "en"])).toBe("sv");
+    expect(deriveFileLanguageDefault("sv", [])).toBe("sv");
+  });
+
+  it("treats a stored auto as a deliberate choice, not an absence of one", () => {
+    // A single spoken language would otherwise derive to itself; a stored
+    // "auto" still has to win, because picking Auto-detect on this page is
+    // exactly as much a user choice as picking any language code.
+    expect(deriveFileLanguageDefault("auto", ["da"])).toBe("auto");
+  });
+
+  it("falls back to the derived default when the stored value is not a real option", () => {
+    expect(deriveFileLanguageDefault("klingon", ["da"])).toBe("da");
+    expect(deriveFileLanguageDefault("", ["da"])).toBe("da");
   });
 });
 

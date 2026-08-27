@@ -135,6 +135,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("transcribe-local-whisper", audioBlob, options),
   transcribeFileV2: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-file-v2", audioBlob, options),
+  // Stops a running file transcription. Pass the jobId the same call was started
+  // with; omit it to stop whatever is running.
+  cancelFileTranscription: (jobId) => ipcRenderer.invoke("cancel-file-transcription", jobId),
   onFileTranscriptionProgress: registerListener("file-transcription-progress"),
   checkDiarizationModelStatus: () => ipcRenderer.invoke("check-diarization-model-status"),
   downloadDiarizationModels: () => ipcRenderer.invoke("download-diarization-models"),
@@ -177,6 +180,72 @@ contextBridge.exposeInMainWorld("electronAPI", {
   parakeetServerStatus: () => ipcRenderer.invoke("parakeet-server-status"),
   parakeetServerSetIdleTimeoutMinutes: (minutes) =>
     ipcRenderer.invoke("parakeet-server-set-idle-timeout-minutes", minutes),
+
+  // Read Aloud (Kokoro TTS) functions
+  readAloudCheckModelStatus: (modelId) =>
+    ipcRenderer.invoke("readaloud-check-model-status", modelId),
+  readAloudDownloadModel: (modelId) => ipcRenderer.invoke("readaloud-download-model", modelId),
+  onReadAloudDownloadProgress: registerListener("readaloud-download-progress"),
+  readAloudCancelDownload: () => ipcRenderer.invoke("readaloud-cancel-download"),
+  readAloudDeleteModel: (modelId) => ipcRenderer.invoke("readaloud-delete-model", modelId),
+  readAloudLoadEngine: (modelId) => ipcRenderer.invoke("readaloud-load-engine", modelId),
+  readAloudEngineStatus: () => ipcRenderer.invoke("readaloud-engine-status"),
+  readAloudSplit: (text) => ipcRenderer.invoke("readaloud-split", text),
+  readAloudSynth: (options) => ipcRenderer.invoke("readaloud-synth", options),
+  readAloudReadSelection: () => ipcRenderer.invoke("readaloud-read-selection"),
+  /** Exists so tests can exercise the real non-English guard without desktop capture. */
+  readAloudLanguageCheck: (text) => ipcRenderer.invoke("readaloud-language-check", text),
+  /** Round-trip cost of the copy worker's line protocol; injects nothing. */
+  readAloudCaptureProbe: () => ipcRenderer.invoke("readaloud-capture-probe"),
+  readAloudSyncHotkey: (settings) => ipcRenderer.invoke("readaloud-sync-hotkey", settings),
+  /**
+   * Tell the main process whether a read is on screen, so the transient
+   * pause/skip shortcuts are held only for the length of it — and so every
+   * other app is quieted for exactly that long.
+   *
+   * `duckOthers` rides along because it lives in localStorage, which the main
+   * process cannot read; omitting it means on, matching the toggle's default.
+   */
+  readAloudSetPlaybackActive: (active, options = {}) =>
+    ipcRenderer.invoke("readaloud-playback-active", Boolean(active), {
+      duckOthers: options?.duckOthers !== false,
+    }),
+  onReadAloudSpeak: registerListener("readaloud-speak"),
+  /** Fired instead of `readaloud-speak` when a capture produced nothing to read. */
+  onReadAloudNotice: registerListener("readaloud-notice"),
+  /** One press of a transient playback shortcut: pause/resume, or skip a sentence. */
+  onReadAloudControl: registerListener("readaloud-control"),
+  /**
+   * Dev-only switch for the headless Read Aloud test surface. Off unless the
+   * app was launched with PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1, so a
+   * shipped build never exposes window.__readAloudTest.
+   */
+  readAloudTestEnabled: process.env.PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST === "1",
+  /**
+   * Diagnostic switch that makes the first press synthesize the whole first
+   * sentence again, the way it did before first-chunk playback. It exists so
+   * the first-audio harness can measure the baseline and the chunked path in
+   * one run, differing only in this flag.
+   */
+  readAloudFirstChunkDisabled: process.env.PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_CHUNK === "1",
+
+  // Converse (voice loop): a persistent `claude` process whose reply is spoken
+  // sentence by sentence through the Read Aloud engine.
+  converseStart: (options) => ipcRenderer.invoke("converse-start", options),
+  converseSendUtterance: (text) => ipcRenderer.invoke("converse-send-utterance", text),
+  converseGetState: () => ipcRenderer.invoke("converse-get-state"),
+  converseInterrupt: (reason) => ipcRenderer.invoke("converse-interrupt-turn", reason),
+  converseStop: () => ipcRenderer.invoke("converse-stop"),
+  conversePermissionAutoAnswer: (behavior) =>
+    ipcRenderer.invoke("converse-permission-auto-answer", behavior),
+  conversePermissionAnswer: (id, behavior) =>
+    ipcRenderer.invoke("converse-permission-answer", id, behavior),
+  onConversePermissionRequest: registerListener("converse-permission-request"),
+  onConverseSentence: registerListener("converse-sentence"),
+  onConverseTurnEnd: registerListener("converse-turn-end"),
+  onConverseInterrupt: registerListener("converse-interrupt"),
+  /** Renderer -> main: where playback actually is. Fire-and-forget, not a request. */
+  converseReportPlayerState: (state) => ipcRenderer.send("converse-player-state", state),
 
   // Local llama-server functions
   llamaServerSetIdleTimeoutMinutes: (minutes) =>

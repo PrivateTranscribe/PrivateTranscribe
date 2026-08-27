@@ -12,11 +12,18 @@ const debugLogger = require("./debugLogger");
 const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
+const ReadAloudHotkey = require("./readAloudHotkey");
+const ReadAloudPlaybackKeys = require("./readAloudPlaybackKeys");
+const ReadAloudDucking = require("./readAloudDucking");
+const { buildExcludedPids } = require("./readAloudDucking");
+const { checkReadAloudLanguage } = require("./readAloudLanguageGuard");
+const { ConverseSession } = require("./converseSession");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const micWatcher = require("./micWatcher");
 const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
+const { isCancelledError } = require("./whisperServer");
 const {
   MAX_AUTO_THREADS,
   getPhysicalCoreCount,
@@ -31,6 +38,10 @@ const {
   canRegisterAutoStart,
   resolveAutoStartEnabled,
 } = require("./autoStartLoginItemSettings");
+const {
+  readAutoStartRegistryState,
+  registryAutoStartEnabled,
+} = require("./windowsAutoStartRegistry");
 
 // Shared with the window navigation guard so the two openExternal paths cannot
 // drift apart. See navigationGuard.js for the protocol allowlist rationale.
@@ -224,6 +235,22 @@ function findFileInHome(filename, dir, maxDepth) {
   return null;
 }
 
+/**
+ * Every process this app owns, for the Read Aloud duck's exclusion list.
+ *
+ * Our playback session belongs to Chromium's audio service, not to the main
+ * process, so process.pid alone is not enough — ducking "everything else" would
+ * otherwise quiet our own voice, which is the exact bug this feature exists to
+ * avoid. Wrapped because getAppMetrics() can throw before the app is ready.
+ */
+function safeAppMetrics() {
+  try {
+    return app.getAppMetrics() || [];
+  } catch {
+    return [];
+  }
+}
+
 class IPCHandlers {
   constructor(managers) {
     this.environmentManager = managers.environmentManager;
@@ -231,6 +258,8 @@ class IPCHandlers {
     this.clipboardManager = managers.clipboardManager;
     this.whisperManager = managers.whisperManager;
     this.parakeetManager = managers.parakeetManager;
+    this.kokoroManager = managers.kokoroManager || null;
+    this.selectionCapture = managers.selectionCapture || null;
     this.windowManager = managers.windowManager;
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
@@ -239,9 +268,40 @@ class IPCHandlers {
     this.getCudaAutoUpdateState = managers.getCudaAutoUpdateState || null;
     this.clearCudaAutoUpdateFailure = managers.clearCudaAutoUpdateFailure || null;
     this.hardwareDetector = new HardwareDetector();
+    // The Read Aloud global shortcut. Registration is driven by the renderer
+    // (readaloud-sync-hotkey) because the toggle and the accelerator live in
+    // localStorage, which the main process cannot read.
+    this.readAloudHotkey = new ReadAloudHotkey(() => this.readSelectionAndSpeak());
+    // Pause and skip, held only while a read is on screen. The overlay owns
+    // playback, so a press is forwarded to it rather than acted on here.
+    this.readAloudPlaybackKeys = new ReadAloudPlaybackKeys((op) => this.sendReadAloudControl(op));
+    // Quiet every OTHER app while a read is on screen. Deliberately NOT
+    // audioDuckingManager: that one moves the master volume, which sits above
+    // our own playback and would quiet the voice along with everything else.
+    this.readAloudDucking = new ReadAloudDucking({
+      // Evaluated at duck time, not here: the renderer and the Chromium audio
+      // service that actually owns our playback session may not exist yet when
+      // IPCHandlers is constructed.
+      getExcludedPids: () => buildExcludedPids(process.pid, safeAppMetrics()),
+    });
+    try {
+      this.readAloudDucking.configure({ userDataPath: app.getPath("userData") });
+    } catch (error) {
+      debugLogger.warn("[ReadAloudDucking] No userData path; crash repair disabled", {
+        error: error?.message,
+      });
+    }
+    // The live Converse session, created by `converse-start`. One at a time:
+    // it owns a persistent `claude` child process.
+    this.converseSession = null;
     // Current history limit - synced from control panel via set-history-limit.
     // Default 50 until the renderer sends the real value.
     this.historyLimit = 50;
+    // In-flight file transcriptions, by job id, so `cancel-file-transcription`
+    // can reach the http.request inside the decode loop. The page starts one at
+    // a time, but keying by id means a stale Cancel from an abandoned run can
+    // never stop the run that replaced it.
+    this.fileTranscriptionJobs = new Map();
     this.setupHandlers();
 
     // Surface GPU→CPU fallback transitions to every window so the user gets
@@ -261,6 +321,39 @@ class IPCHandlers {
       this.whisperManager.setCudaDownloadProgressListener((progress) => {
         this.broadcastToWindows("cuda-binary-download-progress", progress);
       });
+    }
+
+    void this.repairStrandedVolumes();
+  }
+
+  /**
+   * Undo a duck that a previous run never finished.
+   *
+   * Kristian's report: transcription ducking sometimes never restores — an
+   * error path, or the app closed mid-duck — and the master volume stays down
+   * until he fixes it by hand. Both duckers now write what they changed to disk
+   * before they change it; this is the other half. The master-volume repair
+   * only fires when the system STILL looks ducked, so a user who already
+   * dragged the slider back up does not get it yanked a second time.
+   */
+  async repairStrandedVolumes() {
+    try {
+      audioDuckingManager.configure({ userDataPath: app.getPath("userData") });
+    } catch (error) {
+      debugLogger.warn("[AudioDucking] No userData path; crash repair disabled", {
+        error: error?.message,
+      });
+      return;
+    }
+    try {
+      await audioDuckingManager.repairFromDisk();
+    } catch (error) {
+      debugLogger.warn("[AudioDucking] Startup repair threw", { error: error?.message });
+    }
+    try {
+      await this.readAloudDucking.repairFromDisk();
+    } catch (error) {
+      debugLogger.warn("[ReadAloudDucking] Startup repair threw", { error: error?.message });
     }
   }
 
@@ -354,12 +447,21 @@ class IPCHandlers {
   }
 
   _getAutoStartEnabled(launchMode = this._readAutoStartLaunchMode()) {
-    const loginSettings = app.getLoginItemSettings(this._buildAutoStartLaunchOptions(launchMode));
+    // Report what the OS will actually do, not what Electron infers. On Windows read the
+    // Run key and the StartupApproved flag directly: getLoginItemSettings reports
+    // executableWillLaunchAtLogin true for an app with no Run entry at all, which pinned
+    // this toggle to "on" and made auto-start impossible to switch on. Reading the registry
+    // also catches an entry the user disabled in Task Manager, which launchItems misses
+    // because it silently omits quoted paths — and Electron writes ours quoted.
+    if (process.platform === "win32") {
+      const state = readAutoStartRegistryState({ execPath: process.execPath });
+      if (state) {
+        return registryAutoStartEnabled(state);
+      }
+      // Registry unreadable — fall through rather than report a confident "off".
+    }
 
-    // Report what the OS will actually do, not just whether a registry entry exists —
-    // a Windows entry the user disabled in Task Manager must read as off in the app.
-    // This also covers older installs registered without startup-mode args, because
-    // executableWillLaunchAtLogin ignores the args option.
+    const loginSettings = app.getLoginItemSettings(this._buildAutoStartLaunchOptions(launchMode));
     return resolveAutoStartEnabled(loginSettings, process.platform);
   }
 
@@ -853,6 +955,16 @@ class IPCHandlers {
         options,
       });
 
+      // The id the renderer will quote when it cancels. Generated here when the
+      // caller did not supply one, so an older client cannot end up with a job
+      // nothing can stop.
+      const jobId =
+        typeof options.jobId === "string" && options.jobId
+          ? options.jobId
+          : `file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const controller = new AbortController();
+      this.fileTranscriptionJobs.set(jobId, controller);
+
       try {
         const onProgress = (progress) => {
           try {
@@ -866,8 +978,9 @@ class IPCHandlers {
           ...options,
           fileMode: true,
           onProgress,
+          signal: controller.signal,
         });
-        if (!result.success) return result;
+        if (!result.success) return { ...result, jobId };
 
         const speakerDetectionMode =
           result.speakerDetectionMode ||
@@ -883,6 +996,7 @@ class IPCHandlers {
 
         return {
           success: true,
+          jobId,
           text: formatted.text || result.text,
           srt: formatted.srt,
           speakerCount: formatted.speakerCount,
@@ -894,11 +1008,48 @@ class IPCHandlers {
           speakerDetectionMode,
           diarizationEngine: result.diarizationEngine,
           diarization: result.diarization,
+          // What the engine itself heard, and what it was told to hear. The
+          // page shows a notice when the two disagree; it never overrides the
+          // user's choice on their behalf.
+          requestedLanguage: options.language || null,
+          languageDetection: result.languageDetection || null,
         };
       } catch (error) {
+        // A cancel is a user decision, not a failure. Reported as its own
+        // outcome so the page can go quiet instead of showing a red banner.
+        if (isCancelledError(error)) {
+          debugLogger.info("File transcription cancelled", { jobId });
+          return { success: false, cancelled: true, jobId };
+        }
         debugLogger.error("File transcription v2 error", error);
-        return { success: false, error: error.message || "File transcription failed" };
+        return { success: false, jobId, error: error.message || "File transcription failed" };
+      } finally {
+        this.fileTranscriptionJobs.delete(jobId);
       }
+    });
+
+    ipcMain.handle("cancel-file-transcription", async (_event, jobId = null) => {
+      const jobs = this.fileTranscriptionJobs;
+      const targets =
+        typeof jobId === "string" && jobId
+          ? jobs.has(jobId)
+            ? [[jobId, jobs.get(jobId)]]
+            : []
+          : [...jobs.entries()];
+
+      for (const [id, controller] of targets) {
+        debugLogger.info("Cancelling file transcription", { jobId: id });
+        try {
+          controller.abort();
+        } catch (error) {
+          debugLogger.warn("File transcription abort threw", { jobId: id, error: error.message });
+        }
+      }
+
+      // `cancelled: false` is the honest answer when the run had already
+      // finished — the renderer keeps whatever result arrived rather than
+      // claiming it stopped something.
+      return { success: true, cancelled: targets.length > 0, jobs: targets.length };
     });
 
     ipcMain.handle("check-diarization-model-status", async () => {
@@ -1192,6 +1343,320 @@ class IPCHandlers {
       return this.parakeetManager.getServerStatus();
     });
 
+    // Read Aloud (Kokoro TTS) handlers.
+    //
+    // The engine lives in the main process; the renderer receives raw PCM and
+    // owns playback. `readaloud-load-engine` is deliberately separate from
+    // `readaloud-synth` so a caller can pay the cold-start cost up front rather
+    // than inside the first sentence's latency budget.
+    const requireKokoro = () => {
+      if (!this.kokoroManager) {
+        throw Object.assign(new Error("Read Aloud is unavailable"), {
+          code: "kokoro-unavailable",
+        });
+      }
+      return this.kokoroManager;
+    };
+
+    ipcMain.handle("readaloud-check-model-status", async (_event, modelId) => {
+      return requireKokoro().checkModelStatus(modelId || undefined);
+    });
+
+    ipcMain.handle("readaloud-download-model", async (event, modelId) => {
+      return requireKokoro().downloadKokoroModel(modelId || undefined, (progressData) => {
+        safeSend(event.sender, "readaloud-download-progress", progressData);
+      });
+    });
+
+    ipcMain.handle("readaloud-cancel-download", async () => {
+      return requireKokoro().cancelDownload();
+    });
+
+    ipcMain.handle("readaloud-delete-model", async (_event, modelId) => {
+      return requireKokoro().deleteModel(modelId || undefined);
+    });
+
+    ipcMain.handle("readaloud-load-engine", async (_event, modelId) => {
+      return requireKokoro().loadEngine(modelId || undefined);
+    });
+
+    ipcMain.handle("readaloud-engine-status", async () => {
+      return requireKokoro().getEngineStatus();
+    });
+
+    ipcMain.handle("readaloud-split", async (_event, text) => {
+      return requireKokoro().splitSentences(text);
+    });
+
+    ipcMain.handle("readaloud-synth", async (_event, { text, voice, speed } = {}) => {
+      return requireKokoro().synthesize(text, { voice, speed });
+    });
+
+    // Capture path shared with the Read Aloud global shortcut; see
+    // readSelectionAndSpeak().
+    ipcMain.handle("readaloud-read-selection", async () => this.readSelectionAndSpeak());
+
+    // Exposes the real non-English guard on its own, so tests can exercise the
+    // actual main-process decision (dynamic import and all) without desktop
+    // selection capture.
+    ipcMain.handle("readaloud-language-check", async (_event, text) =>
+      checkReadAloudLanguage(text)
+    );
+
+    // Prices the persistent copy worker's round-trip for the trigger-lag
+    // harness. Injects no keystrokes and never touches the clipboard.
+    ipcMain.handle("readaloud-capture-probe", async () =>
+      this.selectionCapture
+        ? this.selectionCapture.pingWorker()
+        : { ok: false, rttMs: null, detail: "selection capture unavailable" }
+    );
+
+    /**
+     * Bring the Read Aloud global shortcut in line with the renderer's saved
+     * settings. Called on overlay startup and whenever the toggle or the
+     * accelerator changes, because both live in localStorage.
+     *
+     * The model check happens here rather than in the renderer so a hotkey can
+     * never be bound to a feature that would fail the moment it is pressed.
+     */
+    ipcMain.handle("readaloud-sync-hotkey", async (_event, { enabled, hotkey } = {}) => {
+      let modelInstalled = false;
+      if (enabled && this.kokoroManager) {
+        try {
+          modelInstalled = (await this.kokoroManager.checkModelStatus()).installed;
+        } catch {
+          modelInstalled = false;
+        }
+      }
+
+      if (enabled && !modelInstalled) {
+        this.readAloudHotkey.apply({ enabled: false, hotkey });
+        return { registered: false, hotkey, reason: "model-not-installed" };
+      }
+
+      if (enabled && modelInstalled) {
+        // Pre-warm the engine off the press path. Loading 326MB of weights was
+        // the dominant cost of the first press of a session (the "pressing the
+        // hotkey lags the computer" report); paying it here, in the background,
+        // at the moment Read Aloud becomes armed, means the press itself only
+        // ever pays capture + synthesis. loadEngine() dedups concurrent calls
+        // and is a no-op once warm, so re-syncs cost nothing. Deliberately not
+        // awaited: hotkey registration must not wait out a model load.
+        this.kokoroManager.loadEngine().catch((error) => {
+          debugLogger.warn("Read Aloud engine pre-warm failed", { error: error?.message });
+        });
+      }
+
+      return this.readAloudHotkey.apply({ enabled, hotkey });
+    });
+
+    /**
+     * The overlay reporting whether a read is on screen right now.
+     *
+     * This is what makes the playback keys transient: they are bound while
+     * something is being read and released the moment the pill goes away, so
+     * Ctrl+Alt+Space is only taken from the rest of the machine for the
+     * length of a read. The overlay fires this on transitions only, not on
+     * every poll tick.
+     */
+    ipcMain.handle("readaloud-playback-active", async (_event, active, options = {}) => {
+      const isActive = Boolean(active);
+      const result = this.readAloudPlaybackKeys.apply({ active: isActive });
+
+      // The "Quiet other apps while reading" toggle lives in localStorage, so
+      // the renderer carries its value in on the same edge that starts and ends
+      // the read — the same shape readaloud-sync-hotkey uses for the enable
+      // toggle. Missing means on, so an older renderer still gets the default.
+      const duckOthers = options?.duckOthers !== false;
+
+      // Not awaited: a PowerShell round trip must never sit in front of the
+      // first word being spoken. Restore IS awaited, so a read that ends is
+      // never reported finished while somebody's music is still at 30%.
+      if (isActive && duckOthers) {
+        void this.readAloudDucking.duckOthers();
+      } else if (!isActive) {
+        await this.readAloudDucking.restore();
+      }
+
+      return { ...result, ducking: this.readAloudDucking.getStatus() };
+    });
+
+    // Converse (voice loop) handlers.
+    //
+    // A Converse session is one persistent `claude` process plus the state
+    // machine that turns its streamed reply into spoken sentences. Synthesis
+    // reuses the Read Aloud Kokoro engine above — there is no second TTS path —
+    // and playback lives in the overlay renderer so it survives the control
+    // panel closing.
+    //
+    // `converse-send-utterance` is the injection surface: text in, spoken reply
+    // out, no microphone involved. The future mic path transcribes first and
+    // calls exactly this, so a headless test exercises the real loop.
+    ipcMain.handle("converse-start", async (_event, options = {}) => {
+      const {
+        model,
+        cwd,
+        mock = false,
+        resume = false,
+        permissionRelay,
+        strictMcpConfig = false,
+        settingsFile = null,
+      } = options || {};
+
+      // Default ON for every real session. The relay was proven fail-closed
+      // before anything could reach it: with it off, the CLI has no
+      // `--permission-prompt-tool` at all, so a tool the user's own settings do
+      // not already allow is simply refused with no way to say yes. On, the
+      // question reaches the Converse page and the user answers it — and an
+      // unanswered one still denies itself. Callers can still pass it
+      // explicitly (the live spec does); mock mode spawns no CLI, so the
+      // session ignores it there.
+      const relayEnabled = permissionRelay === undefined ? true : Boolean(permissionRelay);
+
+      // Refuse early rather than failing on the first sentence: without the
+      // voice model there is nothing to speak the reply with.
+      const status = await requireKokoro().checkModelStatus();
+      if (!status.installed) {
+        throw Object.assign(
+          new Error(
+            `The voice model is not installed (missing: ${status.missingFiles.join(", ") || "everything"}). Download it before starting Converse.`
+          ),
+          { code: "model-not-installed" }
+        );
+      }
+
+      if (this.converseSession) this.converseSession.stop("restarted");
+
+      this.converseSession = new ConverseSession({
+        model: model || undefined,
+        cwd: cwd || undefined,
+        mock: Boolean(mock),
+        // Continue the last CLI session recorded for this cwd. Off by default:
+        // a resumed conversation carries yesterday's context, which is only
+        // ever what the caller asked for on purpose.
+        resume: Boolean(resume),
+        // Relay the harness's own permission questions to the user. The app
+        // adds no rules of its own and never bypasses the CLI's permission
+        // model; unanswered questions deny themselves (fail closed).
+        permissionRelay: relayEnabled,
+        strictMcpConfig: Boolean(strictMcpConfig),
+        settingsFile: settingsFile || null,
+        send: (channel, payload) => {
+          const overlay = this.windowManager?.mainWindow;
+          if (overlay && !overlay.isDestroyed()) {
+            safeSend(overlay.webContents, channel, payload);
+          }
+          // Permission questions are the one session event the control panel
+          // has to see: the prompt the user answers lives on the Converse
+          // page, not on the overlay. Everything else stays overlay-only,
+          // because the overlay owns playback and a second listener would mean
+          // a second voice.
+          if (channel === "converse-permission-request") {
+            const panel = this.windowManager?.controlPanelWindow;
+            if (panel && !panel.isDestroyed()) {
+              safeSend(panel.webContents, channel, payload);
+            }
+          }
+        },
+      });
+
+      try {
+        return await this.converseSession.start();
+      } catch (err) {
+        // A session that failed to start is not a session: drop it so the next
+        // converse-start (or a converse-get-state poll in the meantime) does
+        // not see a stale, never-usable session as still running.
+        this.converseSession = null;
+        throw err;
+      }
+    });
+
+    ipcMain.handle("converse-send-utterance", async (_event, text) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.sendUtterance(text);
+    });
+
+    ipcMain.handle("converse-get-state", async () => {
+      if (!this.converseSession) return { state: "stopped", running: false };
+      return this.converseSession.getState();
+    });
+
+    // Named apart from the `converse-interrupt` event the session pushes to the
+    // renderer, so one channel name never means two directions.
+    ipcMain.handle("converse-interrupt-turn", async (_event, reason) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.interrupt(reason || "manual");
+    });
+
+    ipcMain.handle("converse-stop", async () => {
+      if (!this.converseSession) return { state: "stopped", running: false };
+      const state = this.converseSession.stop();
+      this.converseSession = null;
+      return state;
+    });
+
+    // The user's standing or per-question answer to the harness's permission
+    // questions. Tonight the caller is the e2e spec (and later the voice/UI
+    // prompt); the relay itself denies anything left unanswered.
+    ipcMain.handle("converse-permission-auto-answer", async (_event, behavior) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.setPermissionAutoAnswer(behavior);
+    });
+
+    ipcMain.handle("converse-permission-answer", async (_event, id, behavior) => {
+      if (!this.converseSession) {
+        throw Object.assign(new Error("Converse is not running"), { code: "converse-not-started" });
+      }
+      return this.converseSession.answerPermission(id, behavior);
+    });
+
+    // Renderer -> main: where playback actually is. This is the only thing that
+    // moves the session into `speaking` and out of it, so the state machine can
+    // never claim audio played when it did not.
+    ipcMain.on("converse-player-state", (_event, report) => {
+      this.converseSession?.onPlayerState(report);
+    });
+
+    // The persistent `claude` process must not outlive the app.
+    app.on("before-quit", () => {
+      try {
+        this.converseSession?.stop("app quitting");
+      } catch {
+        // Nothing useful to do while the app is going down.
+      }
+      this.converseSession = null;
+
+      // The playback keys are only ever released by the overlay saying a read
+      // ended. A quit mid-read never sends that, so release them here too.
+      try {
+        this.readAloudPlaybackKeys.apply({ active: false });
+      } catch {
+        // Shutting down; globalShortcut may already be torn down.
+      }
+
+      // Same reasoning, with teeth: quitting mid-read or mid-recording used to
+      // leave volumes lowered until Kristian fixed them by hand. These are
+      // fire-and-forget because before-quit cannot be awaited — the on-disk
+      // state files are what actually guarantee recovery, and the next start
+      // repairs from them if the process dies before PowerShell returns.
+      try {
+        void this.readAloudDucking.restore();
+      } catch {
+        // Shutting down.
+      }
+      try {
+        void audioDuckingManager.restore();
+      } catch {
+        // Shutting down.
+      }
+    });
+
     // Utility handlers
     ipcMain.handle("cleanup-app", async (event) => {
       try {
@@ -1205,7 +1670,12 @@ class IPCHandlers {
     });
 
     ipcMain.handle("update-hotkey", async (event, hotkey) => {
-      return await this.windowManager.updateHotkey(hotkey);
+      const result = await this.windowManager.updateHotkey(hotkey);
+      // Re-registering the dictation hotkey can clear every global shortcut in
+      // the process, so Read Aloud has to be put back or it dies silently the
+      // first time the user edits their dictation key.
+      this.readAloudHotkey.reapply();
+      return result;
     });
 
     ipcMain.handle("set-hotkey-listening-mode", async (event, enabled, newHotkey = null) => {
@@ -2487,6 +2957,88 @@ class IPCHandlers {
     });
   }
 
+  /**
+   * Read whatever the user has selected in the foreground app and hand it to
+   * the overlay to speak.
+   *
+   * The overlay owns playback (it survives the control panel closing), so the
+   * text is pushed there as an event rather than returned to whoever asked.
+   * The full capture result still comes back to the caller, because how the
+   * capture went - selection vs clipboard fallback vs nothing, and how long
+   * the worker waited for the trigger modifiers - is the only visibility
+   * anything else has into a keystroke injected into another process.
+   *
+   * Shared by the `readaloud-read-selection` IPC and the global shortcut, so
+   * the hotkey cannot drift into a second, differently-behaving capture path.
+   *
+   * The hotkey always answers. A capture that produced no text used to send
+   * nothing at all, which made an empty selection indistinguishable from a dead
+   * shortcut, so the overlay now gets a `readaloud-notice` instead. And a read
+   * that fell back to the pre-existing clipboard carries its `source` on the
+   * speak event, because hearing old clipboard content with no explanation is
+   * its own kind of silent failure.
+   *
+   * A capture that did produce text still has to clear the language guard
+   * before it reaches synthesis: the bundled Kokoro voices are English-phoneme
+   * only, and speaking confidently non-English text through them produces
+   * garbled nonsense rather than failing loudly. A blocked read gets the same
+   * `readaloud-notice` treatment as an empty capture, naming the language
+   * instead of leaving the press looking like it did nothing.
+   */
+  async readSelectionAndSpeak() {
+    const result = this.selectionCapture
+      ? await this.selectionCapture.captureSelection()
+      : {
+          text: "",
+          source: "unsupported",
+          waitedMs: null,
+          detail: "ERR selection capture unavailable",
+        };
+
+    const overlay = this.windowManager?.mainWindow;
+    let languageGuard = null;
+    if (result.text) {
+      languageGuard = await checkReadAloudLanguage(result.text);
+    }
+
+    if (overlay && !overlay.isDestroyed()) {
+      if (result.text && !languageGuard?.block) {
+        safeSend(overlay.webContents, "readaloud-speak", {
+          text: result.text,
+          source: result.source,
+        });
+      } else if (languageGuard?.block) {
+        safeSend(overlay.webContents, "readaloud-notice", {
+          reason: "non-english",
+          languageName: languageGuard.languageName,
+        });
+      } else {
+        safeSend(overlay.webContents, "readaloud-notice", {
+          reason: readAloudNoticeReason(result.source),
+        });
+      }
+    }
+
+    if (languageGuard?.block) {
+      return { ...result, blockedLanguage: languageGuard.languageName };
+    }
+    return result;
+  }
+
+  /**
+   * Forward one playback key press to the overlay, which owns the player.
+   *
+   * Nothing is done here beyond delivery: the main process has no idea which
+   * sentence is playing, and duplicating that state so a shortcut could act on
+   * it is exactly how the two would drift apart.
+   */
+  sendReadAloudControl(op) {
+    const overlay = this.windowManager?.mainWindow;
+    if (!overlay || overlay.isDestroyed()) return false;
+    safeSend(overlay.webContents, "readaloud-control", { op });
+    return true;
+  }
+
   broadcastToWindows(channel, payload) {
     const windows = BrowserWindow.getAllWindows();
     windows.forEach((win) => {
@@ -2513,5 +3065,19 @@ function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
   return currentHotkey;
 }
 
+/**
+ * Which notice the overlay should show for a capture that produced no text.
+ *
+ * Only two things can be said honestly here. Either the machine cannot capture
+ * selections at all (`unsupported` - not Windows, or the copy worker never
+ * started), or the capture ran and came back with nothing to read. `none` is
+ * the ordinary case; anything unexpected is treated as the ordinary case too,
+ * because telling a Windows user their platform is unsupported would be a lie.
+ */
+function readAloudNoticeReason(source) {
+  return source === "unsupported" ? "unsupported" : "empty-selection";
+}
+
 module.exports = IPCHandlers;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
+module.exports.readAloudNoticeReason = readAloudNoticeReason;

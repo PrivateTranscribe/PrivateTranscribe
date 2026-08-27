@@ -14,6 +14,11 @@ module.exports = [
       // main-process config below cannot parse.
       "tmp/**",
       "website/**",
+      // Playwright's own output. Both are gitignored, but a failing e2e run
+      // drops the bundled trace viewer here and `npm run format` then lints
+      // Playwright's minified browser code and fails.
+      "playwright-report/**",
+      "test-results/**",
       "src/**", // src has its own config
     ],
   },

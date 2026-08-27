@@ -6,6 +6,8 @@ import {
   BookOpen,
   Brain,
   MessageSquare,
+  MessagesSquare,
+  AudioLines,
   Zap,
   Settings,
 } from "lucide-react";
@@ -20,8 +22,9 @@ export type PageId =
   | "history"
   | "transcribe"
   | "dictionary"
+  | "read-aloud"
   | "ai-enhancement"
-  | "voice-assistant"
+  | "converse"
   | "correction-memory"
   | "action-engine"
   | "settings";
@@ -49,7 +52,16 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "SPEECH",
-    items: [{ id: "dictionary", label: "Dictionary", icon: BookOpen }],
+    items: [
+      { id: "dictionary", label: "Dictionary", icon: BookOpen },
+      {
+        id: "read-aloud",
+        label: "Read Aloud",
+        icon: AudioLines,
+        badge: "Beta",
+        badgeVariant: "pro",
+      },
+    ],
   },
   {
     label: "INTELLIGENCE",
@@ -62,9 +74,9 @@ const navGroups: NavGroup[] = [
         badgeVariant: "pro",
       },
       {
-        id: "voice-assistant",
-        label: "Voice Assistant",
-        icon: MessageSquare,
+        id: "converse",
+        label: "Converse",
+        icon: MessagesSquare,
         badge: "Beta",
         badgeVariant: "pro",
       },
@@ -118,11 +130,6 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
     };
     getVersion();
   }, []);
-
-  const formatHotkey = (key: string) => {
-    if (!key) return "...";
-    return formatHotkeyLabel(key);
-  };
 
   return (
     <div
@@ -318,7 +325,7 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
               fontWeight: 500,
             }}
           >
-            {formatHotkey(hotkey)}
+            {formatHotkeyLabel(hotkey)}
           </span>{" "}
           to dictate
         </p>

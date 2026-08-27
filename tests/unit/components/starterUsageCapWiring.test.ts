@@ -11,7 +11,10 @@ describe("Starter usage cap wiring", () => {
 
     expect(hook).toContain("isStarterLimitReached");
     expect(hook).toContain("Starter word limit reached");
-    expect(hook).toContain('analyticsTrack?.("starter_limit_hit"');
+    // The button and the hotkey share one gate now, so the cap is asserted where
+    // that gate lives. trackUsageEvent still reaches electronAPI.analyticsTrack.
+    expect(hook).toContain("if (!starterCanBegin())");
+    expect(hook).toContain('trackUsageEvent("starter_limit_hit"');
     expect(hook).toContain("recordStarterUsageIfNeeded(text)");
   });
 

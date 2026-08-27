@@ -9,7 +9,11 @@ const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
 const { convertToWav } = require("./ffmpegUtils");
-const { resolveLockableLanguage, resolveAllowedLanguage } = require("./whisperLanguage");
+const {
+  resolveLockableLanguage,
+  resolveAllowedLanguage,
+  isKnownWhisperLanguage,
+} = require("./whisperLanguage");
 const GpuBinaryManager = require("./gpuBinaryManager");
 const { resolveWhisperThreads } = require("./cpuThreads");
 
@@ -260,8 +264,51 @@ function mergeVerboseJsonResults(results) {
   return { ...results[0], text, segments, chunks: results.length };
 }
 
+/**
+ * The error every cancelled transcription rejects with.
+ *
+ * Carries a flag rather than relying on the message, so the IPC layer can tell
+ * "the user pressed Cancel" apart from "the engine failed" without matching
+ * text — the difference between a calm idle state and a red error banner.
+ */
+function createCancelledError() {
+  const error = new Error("Transcription cancelled");
+  error.cancelled = true;
+  error.code = "TRANSCRIPTION_CANCELLED";
+  return error;
+}
+
+function isCancelledError(error) {
+  return error?.cancelled === true || error?.code === "TRANSCRIPTION_CANCELLED";
+}
+
+function throwIfCancelled(signal) {
+  if (signal?.aborted) throw createCancelledError();
+}
+
+/**
+ * Refuse a language whisper.cpp does not know, before it reaches the wire.
+ *
+ * whisper-server does not answer an unknown code with an error — it dies on the
+ * request (audit F3), taking the warm server and the next queued request with
+ * it. The check costs a set lookup; not doing it costs the process.
+ */
+function assertKnownWhisperLanguage(language) {
+  if (!language || language === "auto") return;
+  if (isKnownWhisperLanguage(language)) return;
+  const error = new Error(
+    `"${language}" is not a language this transcription engine knows. Pick a language from the list, or use Auto-detect.`
+  );
+  error.code = "UNKNOWN_TRANSCRIPTION_LANGUAGE";
+  throw error;
+}
+
 // Stop whisper-server after a period of inactivity to free GPU/CPU memory
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+// How many /inference requests to keep in the diagnostic tail. A chunked file
+// transcription issues one per chunk, so this holds a whole run plus context.
+const INFERENCE_REQUEST_LOG_LIMIT = 20;
 
 class WhisperServerManager {
   constructor() {
@@ -296,6 +343,17 @@ class WhisperServerManager {
     // Optional listener invoked when the GPU→CPU fallback engages or recovers,
     // so the UI can tell the user instead of degrading silently.
     this.onEngineFallbackChanged = null;
+
+    // What the engine was actually told, recorded at the moment it was told.
+    //
+    // Two separate records because whisper-server takes its instructions in two
+    // places: the command line it was launched with, and the multipart body of
+    // each /inference request. Language in particular travels on the request,
+    // not the command line — so neither record alone answers "what language did
+    // this decode run in". Both are captured verbatim rather than re-derived,
+    // so a diagnostic can never echo back what a caller believed it asked for.
+    this.lastSpawn = null;
+    this.recentInferenceRequests = [];
 
     // Idle timeout tracking (for automatic GPU memory cleanup)
     this.lastUsedTime = 0;
@@ -990,6 +1048,16 @@ class WhisperServerManager {
       throw error;
     }
 
+    // The argv this process was handed, taken from the same array that was
+    // passed to spawn() rather than rebuilt afterwards.
+    this.lastSpawn = {
+      binary: serverBinary,
+      args: [...args],
+      pid: this.process?.pid ?? null,
+      forceCpu: this.forceCpu,
+      startedAt: Date.now(),
+    };
+
     this.process.stdout.on("data", (data) => {
       const text = data.toString();
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
@@ -1282,7 +1350,13 @@ class WhisperServerManager {
         longSessionChunk = false,
         trimTrailingSilence = false,
         onProgress,
+        signal,
       } = options;
+
+      // Checked before anything expensive happens, so a bad code costs a fast
+      // error instead of a conversion, a decode, and the server's life.
+      assertKnownWhisperLanguage(language);
+      throwIfCancelled(signal);
 
       // Always convert to 16kHz mono WAV - whisper.cpp requires this exact format
       let finalBuffer = audioBuffer;
@@ -1303,6 +1377,10 @@ class WhisperServerManager {
         dropSilentResult: longSessionChunk,
       });
 
+      // FFmpeg cannot be interrupted usefully, but a cancel that landed during
+      // the conversion must not go on to spend the decode.
+      throwIfCancelled(signal);
+
       if (longSessionChunk && (parseWavPcmInfo(finalBuffer)?.dataSize ?? 0) === 0) {
         debugLogger.info("Long-session chunk held no speech after trimming; skipping inference");
         return { text: "" };
@@ -1317,12 +1395,21 @@ class WhisperServerManager {
         });
       }
 
+      // How much audio this run is about to decode. It is the only quantity the
+      // pipeline actually knows in advance: whisper-server reports a request
+      // when it finishes and nothing before that, so a single-chunk run has no
+      // percentage to give and the page must not invent one. Sent so the page
+      // can say what the wait is for ("18m 42s of audio") instead of animating
+      // a bar that is not measuring anything.
+      const audioSeconds = chunks.reduce((sum, chunk) => sum + (chunk.durationSeconds || 0), 0);
+
       if (typeof onProgress === "function") {
         onProgress({
           stage: "transcribing",
           percentage: 0,
           chunksTotal: chunks.length,
           chunksCompleted: 0,
+          audioSeconds,
         });
       }
 
@@ -1337,6 +1424,7 @@ class WhisperServerManager {
 
       const results = [];
       for (let index = 0; index < chunks.length; index += 1) {
+        throwIfCancelled(signal);
         const chunk = chunks[index];
         debugLogger.debug("Submitting whisper-server chunk", {
           chunk: index + 1,
@@ -1360,8 +1448,12 @@ class WhisperServerManager {
             tinydiarize: fileMode && speakerDetection,
             vad,
             longSessionChunk,
+            signal,
           });
         } catch (error) {
+          // A cancel is not a decode failure — retrying it would restart the
+          // work the user just stopped.
+          if (isCancelledError(error)) throw error;
           if (!fileMode) throw error;
           debugLogger.warn(
             "verbose_json file transcription failed; retrying with json compatibility fallback",
@@ -1380,6 +1472,7 @@ class WhisperServerManager {
             chunkCount: chunks.length,
             durationSeconds: chunk.durationSeconds,
             fileMode: false,
+            signal,
           });
           if (!Array.isArray(result?.segments) && result?.text) {
             result = {
@@ -1420,8 +1513,10 @@ class WhisperServerManager {
                 tinydiarize: fileMode && speakerDetection,
                 vad,
                 longSessionChunk,
+                signal,
               });
             } catch (error) {
+              if (isCancelledError(error)) throw error;
               // The first decode already produced usable text. A failed
               // re-decode should cost the user the correction, not the
               // dictation.
@@ -1459,6 +1554,7 @@ class WhisperServerManager {
             percentage,
             chunksTotal: chunks.length,
             chunksCompleted: index + 1,
+            audioSeconds,
           });
         }
       }
@@ -1543,13 +1639,27 @@ class WhisperServerManager {
       vad = false,
       longSessionChunk = false,
       detectLanguage = false,
+      signal,
     } = options;
+
+    // The last gate before the wire. Everything above this is convenience; an
+    // unknown code that gets past here kills the server process itself.
+    try {
+      assertKnownWhisperLanguage(language);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (signal?.aborted) return Promise.reject(createCancelledError());
+
     const form = new FormData();
     const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
 
     form.append("file", wavBuffer, { filename: fileName, contentType: "audio/wav" });
 
-    if (language && language !== "auto") form.append("language", language);
+    // One value for both the wire and the diagnostic record below, so the
+    // record cannot drift from what was actually sent.
+    const wireLanguage = language && language !== "auto" ? language : null;
+    if (wireLanguage) form.append("language", wireLanguage);
     if (translate) form.append("translate", "true");
     if (initialPrompt) {
       form.append("prompt", initialPrompt);
@@ -1560,7 +1670,8 @@ class WhisperServerManager {
     // whisper.cpp builds — plain json has returned it inconsistently. Ask for
     // the richer format solely while we still need to learn the language, so
     // requests that already know it keep the cheaper response.
-    form.append("response_format", fileMode || detectLanguage ? "verbose_json" : "json");
+    const responseFormat = fileMode || detectLanguage ? "verbose_json" : "json";
+    form.append("response_format", responseFormat);
 
     if (fileMode || longSessionChunk) {
       // Long-form audio is especially prone to Whisper repeating stale context
@@ -1577,12 +1688,41 @@ class WhisperServerManager {
       if (enabled) form.append(name, "true");
     }
 
+    // Recorded from the same values that were just put on the wire. `language`
+    // is null exactly when the field was omitted, which is what auto-detect
+    // looks like on this endpoint — the absence is the instruction.
+    this._recordInferenceRequest({
+      language: wireLanguage,
+      detectLanguage: !!detectLanguage,
+      translate: !!translate,
+      responseFormat,
+      fileMode: !!fileMode,
+      chunkIndex,
+      chunkCount,
+      port: this.port,
+      pid: this.process?.pid ?? null,
+      at: Date.now(),
+    });
+
     const timeoutMs = getWhisperRequestTimeoutMs(durationSeconds);
 
     if (tinydiarize) this._beginStdoutCapture();
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
+      // Set before the socket is torn down, so the "error" handler below can
+      // tell our own abort apart from the server dying under us. Without it a
+      // cancel looks exactly like ECONNRESET and would mark the warm server
+      // dead, costing the next dictation a cold start it did not need.
+      let cancelled = false;
+      let detachAbortListener = () => {};
+
+      const settle = (fn) => (value) => {
+        detachAbortListener();
+        fn(value);
+      };
+      const finishWith = settle(resolve);
+      const failWith = settle(reject);
 
       const req = http.request(
         {
@@ -1610,7 +1750,7 @@ class WhisperServerManager {
             });
 
             if (res.statusCode !== 200) {
-              reject(new Error(`whisper-server returned status ${res.statusCode}: ${data}`));
+              failWith(new Error(`whisper-server returned status ${res.statusCode}: ${data}`));
               return;
             }
 
@@ -1626,7 +1766,7 @@ class WhisperServerManager {
                 this.stoppedDueToIdle = false;
                 this._scheduleIdleCheck();
 
-                resolve(parsed);
+                finishWith(parsed);
               };
 
               // whisper.cpp writes tinydiarize speaker-turn markers to realtime stdout,
@@ -1636,7 +1776,7 @@ class WhisperServerManager {
               else finish();
             } catch (e) {
               if (tinydiarize) this._endStdoutCapture();
-              reject(new Error(`Failed to parse whisper-server response: ${e.message}`));
+              failWith(new Error(`Failed to parse whisper-server response: ${e.message}`));
             }
           });
         }
@@ -1644,17 +1784,57 @@ class WhisperServerManager {
 
       req.on("error", (error) => {
         if (tinydiarize) this._endStdoutCapture();
-        reject(new Error(`whisper-server request failed: ${error.message}`));
+        if (cancelled) {
+          // We tore this socket down ourselves. Nothing is wrong with the
+          // server, so `ready` stays as it was and the next request reuses it.
+          failWith(createCancelledError());
+          return;
+        }
+        // Our own local server refusing or resetting the connection means it is
+        // not serving any more, whatever `ready` still says. The "close" handler
+        // that clears the flag is asynchronous, so without this the very next
+        // request is handed to the dead server too and fails for a reason that
+        // has nothing to do with it — costing the user a second, valid
+        // transcription before the restart path is ever reached.
+        if (error.code === "ECONNREFUSED" || error.code === "ECONNRESET") {
+          this.ready = false;
+        }
+        failWith(new Error(`whisper-server request failed: ${error.message}`));
       });
       req.on("timeout", () => {
         if (tinydiarize) this._endStdoutCapture();
         req.destroy();
-        reject(
+        failWith(
           new Error(
             `whisper-server request timed out after ${Math.round(timeoutMs / 1000)}s while processing ${Math.round(durationSeconds || 0)}s of audio`
           )
         );
       });
+
+      if (signal) {
+        // Destroying the request mid-upload makes the multipart stream fail its
+        // next write. That is the intended outcome, but an unhandled "error" on
+        // it would take the process down, so it is absorbed here.
+        form.on("error", () => {});
+
+        const onAbort = () => {
+          cancelled = true;
+          if (tinydiarize) this._endStdoutCapture();
+          // Stop uploading as well as downloading: on a large file the request
+          // body can still be streaming when the user gives up.
+          try {
+            form.pause();
+          } catch {
+            // CombinedStream is always pausable; ignore if a future version is not.
+          }
+          req.destroy();
+          // destroy() usually surfaces through the "error" handler above, but a
+          // request that has not reached the socket yet emits nothing at all.
+          failWith(createCancelledError());
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        detachAbortListener = () => signal.removeEventListener("abort", onAbort);
+      }
 
       form.pipe(req);
     });
@@ -1799,6 +1979,36 @@ class WhisperServerManager {
     this.lastUsedTime = 0;
   }
 
+  /** Keep a bounded tail of what was asked of the engine, newest last. */
+  _recordInferenceRequest(entry) {
+    this.recentInferenceRequests.push(entry);
+    if (this.recentInferenceRequests.length > INFERENCE_REQUEST_LOG_LIMIT) {
+      this.recentInferenceRequests.splice(
+        0,
+        this.recentInferenceRequests.length - INFERENCE_REQUEST_LOG_LIMIT
+      );
+    }
+  }
+
+  /**
+   * The command line the current (or most recent) whisper-server was launched
+   * with, copied so a caller cannot edit the record.
+   *
+   * Note what this does NOT answer: the `--language` flag here is the server's
+   * startup default and stays fixed for the life of the process. The language a
+   * given decode ran in travels on the /inference request instead — read
+   * getRecentInferenceRequests() for that.
+   */
+  getLastSpawn() {
+    if (!this.lastSpawn) return null;
+    return { ...this.lastSpawn, args: [...this.lastSpawn.args] };
+  }
+
+  /** The tail of the /inference requests actually sent, oldest first. */
+  getRecentInferenceRequests() {
+    return this.recentInferenceRequests.map((entry) => ({ ...entry }));
+  }
+
   getStatus() {
     const activeModelPath = this.loadedModelPath || this.modelPath;
     return {
@@ -1871,3 +2081,7 @@ module.exports = WhisperServerManager;
 // Exported for tests: the parser is the whole of the compute-mode claim, so it
 // is pinned against output captured from the real binary.
 module.exports.detectServerBackend = detectServerBackend;
+// Cancellation is a contract between three layers (server manager, whisper
+// manager, IPC), so the predicate that identifies it lives in one place.
+module.exports.isCancelledError = isCancelledError;
+module.exports.createCancelledError = createCancelledError;

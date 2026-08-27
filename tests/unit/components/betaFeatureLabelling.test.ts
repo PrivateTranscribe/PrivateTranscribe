@@ -5,11 +5,19 @@ import { describe, expect, it } from "vitest";
 const readSource = (relativePath: string): string =>
   fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
+// VoiceAssistantPage is deliberately absent: it was merged into
+// AIEnhancementPage, which now carries the one badge and the one way out for
+// both the model settings and the assistant name / prompt controls.
 const BETA_SURFACES = [
   "src/components/pages/CorrectionMemoryPage.tsx",
-  "src/components/pages/VoiceAssistantPage.tsx",
   "src/components/pages/AIEnhancementPage.tsx",
   "src/components/pages/ActionEnginePage.tsx",
+  // Read Aloud was a Settings tab until it became a sidebar page; it is a
+  // badged beta surface like the rest now, so it is held to the same rules.
+  "src/components/pages/ReadAloudPage.tsx",
+  // Converse follows the same BetaBadge/BetaAccessLink/isFeatureUnlocked
+  // pattern as the other beta pages.
+  "src/components/pages/ConversePage.tsx",
 ];
 
 /**
@@ -60,8 +68,10 @@ describe("beta feature labelling", () => {
     }
 
     const settings = readSource("src/components/SettingsPage.tsx");
-    // Both locked cards and both locked toggles.
-    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(4);
+    // One locked card and both locked toggles. It was four until Read Aloud
+    // left Settings for its own sidebar page — that row's way out moved with
+    // it rather than being deleted, and ReadAloudPage.tsx is checked above.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(3);
   });
 
   it("keeps the beta destination in one place", () => {

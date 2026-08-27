@@ -307,7 +307,15 @@ async function scoreModel(
   let totalWords = 0;
   // Only meaningful when detection ran; pinned mode reports null rather than a
   // vacuous 100%.
+  //
+  // Scored over the utterances where a language was actually reported, not
+  // over every utterance. The app reports a detected language only once a
+  // chunk produces speech worth deciding on, so a clip that never reports one
+  // has not detected wrongly - it has not detected at all. Counting those
+  // against detection is how a run of 39 correct answers and one silent clip
+  // read as a 2.5% detection failure that never happened.
   let detectedCorrectly = 0;
+  let detectionsReported = 0;
   const started = Date.now();
 
   for (let i = 0; i < samples.length; i += 1) {
@@ -321,8 +329,10 @@ async function scoreModel(
         requestOptionsForMode(mode, model, language, spokenLanguages)
       );
       hypothesis = result?.text || "";
-      if (mode !== "pinned" && result?.detectedLanguage === language) {
-        detectedCorrectly += 1;
+      const detected = result?.detectedLanguage || null;
+      if (mode !== "pinned" && detected) {
+        detectionsReported += 1;
+        if (detected === language) detectedCorrectly += 1;
       }
     } catch (error) {
       // A failed utterance counts as fully wrong rather than being dropped;
@@ -361,7 +371,11 @@ async function scoreModel(
     totalErrors,
     totalWords,
     utterances: samples.length,
-    languageAccuracy: mode === "pinned" ? null : detectedCorrectly / samples.length,
+    languageAccuracy:
+      mode === "pinned" || detectionsReported === 0 ? null : detectedCorrectly / detectionsReported,
+    // Published alongside the rate so a high percentage over a handful of
+    // utterances cannot be mistaken for a high percentage over all of them.
+    detectionsReported: mode === "pinned" ? null : detectionsReported,
     elapsedMs: Date.now() - started,
     perUtterance,
   };
@@ -477,9 +491,11 @@ async function main() {
   console.log("| --- | --- | --- | --- | --- | --- | --- |");
   for (const result of results) {
     const detected =
-      result.languageAccuracy === null
+      result.mode === "pinned"
         ? "pinned"
-        : `${(result.languageAccuracy * 100).toFixed(0)}%`;
+        : result.languageAccuracy === null
+          ? "never reported"
+          : `${(result.languageAccuracy * 100).toFixed(0)}% of ${result.detectionsReported}`;
     console.log(
       `| ${result.model} | ${result.mode} | ${(result.wer * 100).toFixed(1)}% | ${detected} | ${result.totalErrors} | ${result.totalWords} | ${Math.round(result.elapsedMs / 1000)}s |`
     );
@@ -513,7 +529,11 @@ async function main() {
     console.log(
       `\n${result.model} ${result.mode}: ${delta >= 0 ? "+" : ""}${delta.toFixed(1)} points vs pinned ` +
         `(${(result.wer * 100).toFixed(1)}% vs ${(reference.wer * 100).toFixed(1)}%), correct ` +
-        `language on ${(result.languageAccuracy * 100).toFixed(0)}% of utterances`
+        `language on ${
+          result.languageAccuracy === null
+            ? "no reported"
+            : `${(result.languageAccuracy * 100).toFixed(0)}% of ${result.detectionsReported}`
+        } detections`
     );
   }
 

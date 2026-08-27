@@ -38,6 +38,36 @@
       "extractDir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
     }
   },
+  "kokoroModels": {
+    "kokoro-82m-v1.0-fp32": {
+      "name": "Kokoro 82M v1.0 (English)",
+      "description": "Local text-to-speech, English only. fp32 ONNX.",
+      "hfRepo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+      "sizeMb": 326,
+      "files": [
+        {
+          "relPath": "config.json",
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/config.json",
+          "bytes": 44
+        },
+        {
+          "relPath": "tokenizer.json",
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/tokenizer.json",
+          "bytes": 3497
+        },
+        {
+          "relPath": "tokenizer_config.json",
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/tokenizer_config.json",
+          "bytes": 113
+        },
+        {
+          "relPath": "onnx/model.onnx",
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx",
+          "bytes": 325532232
+        }
+      ]
+    }
+  },
   "whisperModels": {
     "turbo": {
       "name": "Turbo",

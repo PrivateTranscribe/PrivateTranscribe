@@ -22,6 +22,8 @@ import {
   X,
   Users,
   Info,
+  Languages,
+  CircleSlash,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
 import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProStatus";
@@ -34,8 +36,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { useToast } from "../ui/Toast";
 import { useSettings } from "../../hooks/useSettings";
 import { formatBytes } from "../../utils/formatBytes";
-import { getLanguageLabel } from "../../utils/languages";
+import { LANGUAGE_OPTIONS } from "../../utils/languages";
+import {
+  buildLanguageMismatchNotice,
+  type LanguageMismatchNotice,
+} from "../../utils/languageMismatch";
 import { buildStarterLimitMessage, recordStarterWords } from "../../utils/starterUsage";
+import {
+  buildQuickLanguageCodes,
+  deriveFileLanguageDefault,
+  derivePreferredLanguage,
+  readSpokenLanguages,
+} from "../../utils/spokenLanguages";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
 const VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "mkv", "avi", "webm"] as const;
@@ -56,7 +68,52 @@ const SPEAKER_COUNT_OPTIONS = [
 ] as const;
 type OutputFormat = "plain" | "timestamped" | "speakers";
 
-type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error";
+type UploadStatus = "idle" | "drag-active" | "processing" | "success" | "error" | "cancelled";
+
+/** The raw `fileTranscriptionLanguage` value, or null when nothing is stored. */
+function readRawStoredFileLanguage(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage?.getItem("fileTranscriptionLanguage") ?? null;
+}
+
+/**
+ * This page's language default: the user's own stored choice if it is still
+ * one the picker offers, otherwise derived from what Settings says the user
+ * speaks (see `deriveFileLanguageDefault`).
+ *
+ * The page used to hand a raw stored value straight to the engine. An unknown
+ * code kills whisper-server outright (audit F3), and localStorage is
+ * editable, survives downgrades, and outlives any list this app ships — so a
+ * value that doesn't validate is treated the same as no value at all.
+ *
+ * The "no value stored" state is sacred: it is what lets the default keep
+ * following Settings' spoken-language choice. Nothing may write to
+ * `fileTranscriptionLanguage` except the user (or the language-mismatch
+ * auto-correction) picking something on THIS page — see `setFileLanguage`.
+ * A mount-time write here would destroy that state for every user on their
+ * very first visit.
+ */
+function readStoredFileLanguage(): string {
+  return deriveFileLanguageDefault(readRawStoredFileLanguage(), readSpokenLanguages());
+}
+
+/**
+ * Whether a failure is "the model is not on disk" rather than something about
+ * the file. Same test the main process uses to classify its own dictation
+ * errors (ipcHandlers, transcribe-audio), so the two cannot drift apart.
+ */
+function isMissingModelError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("model") && lower.includes("not downloaded");
+}
+
+/** "1m 05s" / "42s" — used for both elapsed time and audio length. */
+function formatClockDuration(totalSeconds: number): string {
+  const safe = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
 
 function getFileExtension(fileName: string): string {
   const parts = fileName.split(".");
@@ -69,7 +126,16 @@ function toErrorMessage(error: unknown): string {
   return "Failed to transcribe this file. Please try again.";
 }
 
-export default function TranscribePage() {
+type TranscribePageProps = {
+  /**
+   * Take the user to where local models are installed. Supplied by the control
+   * panel shell; the missing-model error is useless without it, because nothing
+   * on this page can put a model on disk.
+   */
+  onOpenModelSettings?: () => void;
+};
+
+export default function TranscribePage({ onOpenModelSettings }: TranscribePageProps = {}) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioManagerRef = useRef<AudioManager | null>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
@@ -78,13 +144,31 @@ export default function TranscribePage() {
   const [transcript, setTranscript] = useState("");
   const [srt, setSrt] = useState("");
   const [speakerCount, setSpeakerCount] = useState(0);
+  // Whether speaker detection actually ran. Without it a count of 1 is
+  // ambiguous: it is what the placeholder label says when detection was off,
+  // and it is also what a detector that found no speaker change reports.
+  const [speakerDetectionActive, setSpeakerDetectionActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const [fileLanguage, setFileLanguageState] = useState(() => {
-    if (typeof window === "undefined") return "auto";
-    return window.localStorage?.getItem("fileTranscriptionLanguage") || "auto";
-  });
+  const [fileLanguage, setFileLanguageState] = useState(readStoredFileLanguage);
+  // Whether fileTranscriptionLanguage has ever been written on this page (by
+  // the user, or by the language-mismatch auto-correction). While false, the
+  // derived-default effect below keeps fileLanguage following Settings'
+  // spoken-language choice; once true, that choice is the user's and nothing
+  // here may override it again.
+  const hasStoredFileLanguageRef = useRef(
+    LANGUAGE_OPTIONS.some((option) => option.value === readRawStoredFileLanguage())
+  );
+  // The file of the current run, kept so "Transcribe again in <language>" can
+  // re-decode the same audio without asking the user to find it again.
+  const lastFileRef = useRef<File | null>(null);
+  // The id the main process knows this run by. Cleared the moment a run stops
+  // being the current one, so a late result from a cancelled run is discarded
+  // instead of overwriting the page.
+  const activeJobIdRef = useRef<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [languageNotice, setLanguageNotice] = useState<LanguageMismatchNotice | null>(null);
   const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
   const [transcriptionProgress, setTranscriptionProgress] = useState<{
@@ -92,6 +176,7 @@ export default function TranscribePage() {
     percentage: number;
     chunksTotal?: number;
     chunksCompleted?: number;
+    audioSeconds?: number;
   } | null>(null);
   const [tdrzDownloaded, setTdrzDownloaded] = useState(false);
   const [diarizationReady, setDiarizationReady] = useState(false);
@@ -116,7 +201,18 @@ export default function TranscribePage() {
     setFileTranscriptionSpeakerDetectionMode: setSpeakerDetectionMode,
     fileTranscriptionExpectedSpeakers: expectedSpeakers,
     setFileTranscriptionExpectedSpeakers: setExpectedSpeakers,
+    spokenLanguages,
   } = useSettings();
+
+  // Re-derive the default whenever Settings' spoken languages change while
+  // this page stays mounted, so a Settings edit is not stuck behind a
+  // navigate-away-and-back. Cheap because `spokenLanguages` already comes out
+  // of useSettings' own localStorage subscription — no new subscription is
+  // added here. Skipped entirely once the page has its own stored value.
+  useEffect(() => {
+    if (hasStoredFileLanguageRef.current) return;
+    setFileLanguageState(derivePreferredLanguage(spokenLanguages));
+  }, [spokenLanguages]);
 
   // Determine the best diarization engine automatically based on available models and language.
   // Multilingual (sherpa-onnx) is preferred when available; TinyDiarize is a fallback for English-only.
@@ -140,6 +236,7 @@ export default function TranscribePage() {
 
   const setFileLanguage = (language: string) => {
     const next = language || "auto";
+    hasStoredFileLanguageRef.current = true;
     setFileLanguageState(next);
     window.localStorage?.setItem("fileTranscriptionLanguage", next);
   };
@@ -179,11 +276,63 @@ export default function TranscribePage() {
     return "Uploading for cloud transcription.";
   }, [speakerLabelsEnabled, isUsingLocalDiarization, useLocalWhisper]);
 
-  const elapsedLabel = useMemo(() => {
-    const minutes = Math.floor(processingElapsedSeconds / 60);
-    const seconds = processingElapsedSeconds % 60;
-    return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
-  }, [processingElapsedSeconds]);
+  const elapsedLabel = useMemo(
+    () => formatClockDuration(processingElapsedSeconds),
+    [processingElapsedSeconds]
+  );
+
+  /**
+   * The only progress that is really progress.
+   *
+   * whisper-server answers a request when the whole request is done and says
+   * nothing while it works, so the percentage means something exactly when the
+   * audio was split into chunks — one completed chunk is one real step. Below
+   * the 20-minute chunking threshold the run is a single request, and the bar
+   * this page used to render sat at 0 until it flashed 100 at the very end.
+   * Rather than animate a number nobody measured, that case now shows what is
+   * actually known: how long the run has taken, and how much audio it covers.
+   */
+  const chunkProgress = useMemo(() => {
+    if (!transcriptionProgress || transcriptionProgress.stage !== "transcribing") return null;
+    return (transcriptionProgress.chunksTotal ?? 0) > 1 ? transcriptionProgress : null;
+  }, [transcriptionProgress]);
+
+  const audioLengthLabel = useMemo(() => {
+    const seconds = transcriptionProgress?.audioSeconds;
+    return typeof seconds === "number" && seconds > 0 ? formatClockDuration(seconds) : "";
+  }, [transcriptionProgress]);
+
+  /**
+   * What the run measured about speakers, or nothing.
+   *
+   * Detection off means there is nothing to report: every segment carries the
+   * same placeholder label, so the "1 speaker" this page used to show was the
+   * placeholder talking, not a measurement. Detection on with no second speaker
+   * means the detector ran and found no speaker change — on the committed
+   * three-voice fixture it finds none at all — so it says that instead of
+   * claiming a count it never measured.
+   */
+  const speakerSummary = useMemo(() => {
+    if (!speakerDetectionActive) return "";
+    if (speakerCount > 1) return `${speakerCount} speakers`;
+    return "No speaker turns found";
+  }, [speakerDetectionActive, speakerCount]);
+
+  const missingModel = status === "error" && isMissingModelError(errorMessage);
+
+  /**
+   * Local models are installed from Settings → Transcription, which is not on
+   * this page and never was. The shell hands down the route; the main process
+   * knows it too, so the button still works if this page is ever rendered
+   * without the prop.
+   */
+  const openModelSettings = () => {
+    if (onOpenModelSettings) {
+      onOpenModelSettings();
+      return;
+    }
+    void window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "transcription" });
+  };
 
   useEffect(() => {
     const mgr = new AudioManager();
@@ -191,6 +340,13 @@ export default function TranscribePage() {
     mgr._checkBetaFeatureAccess = (featureId: string) => isFeatureUnlocked(featureId);
     audioManagerRef.current = mgr;
     return () => {
+      // Leaving the page used to leave the decode running in the main process
+      // with nowhere to deliver its result — CPU spent on a transcript nobody
+      // would ever see. cleanup() never covered it: it aborts the cloud
+      // request controller, which the local file path does not register.
+      const jobId = activeJobIdRef.current;
+      activeJobIdRef.current = null;
+      if (jobId) window.electronAPI?.cancelFileTranscription?.(jobId);
       audioManagerRef.current?.cleanup();
       audioManagerRef.current = null;
     };
@@ -377,27 +533,66 @@ export default function TranscribePage() {
   };
 
   const resetState = () => {
+    activeJobIdRef.current = null;
+    lastFileRef.current = null;
     setStatus("idle");
     setSelectedFileName("");
     setSelectedFileSize(0);
     setTranscript("");
     setSrt("");
     setSpeakerCount(0);
+    setSpeakerDetectionActive(false);
     setErrorMessage("");
     setCopied(false);
     setTranscriptionProgress(null);
+    setLanguageNotice(null);
+    setCancelling(false);
   };
 
-  const processFile = async (file: File) => {
+  /**
+   * Stop the running decode.
+   *
+   * The id goes with the request so a Cancel that arrives after the run already
+   * ended cannot stop the next one. The page drops its claim on the run
+   * immediately, which is what makes a result that is already on its way back
+   * land nowhere instead of on screen.
+   */
+  const cancelTranscription = async () => {
+    const jobId = activeJobIdRef.current;
+    if (!jobId) return;
+    activeJobIdRef.current = null;
+    setCancelling(true);
+    try {
+      await window.electronAPI?.cancelFileTranscription?.(jobId);
+    } catch {
+      // The run is already disowned above; a failed cancel call cannot make the
+      // page lie about it.
+    }
+    setCancelling(false);
+    setStatus("cancelled");
+    setTranscriptionProgress(null);
+    setProcessingStartedAt(null);
+  };
+
+  const processFile = async (file: File, languageOverride?: string) => {
     const manager = audioManagerRef.current;
     if (!manager) return;
 
+    const jobId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    activeJobIdRef.current = jobId;
+    lastFileRef.current = file;
+    const isCurrentJob = () => activeJobIdRef.current === jobId;
+    const requestedLanguage = languageOverride || fileLanguage;
+
+    setLanguageNotice(null);
+    setCancelling(false);
     setStatus("processing");
     setProcessingStartedAt(Date.now());
     setProcessingElapsedSeconds(0);
     setTranscriptionProgress(null);
     setErrorMessage("");
     setTranscript("");
+    setSpeakerDetectionActive(false);
     setCopied(false);
     setSelectedFileName(file.name);
     setSelectedFileSize(file.size);
@@ -428,11 +623,24 @@ export default function TranscribePage() {
           speakerDetectionMode: resolvedDiarizationMode,
           expectedSpeakers: resolvedExpectedSpeakers,
           outputFormat,
-          language: fileLanguage,
+          language: requestedLanguage,
           translate: translateToEnglish === "on",
+          jobId,
         });
       } else {
         result = await manager.processWithOpenAIAPI(file, metadata);
+      }
+
+      // The run was cancelled or replaced while the engine was working. Its
+      // result belongs to nobody: showing it would contradict the page.
+      if (!isCurrentJob()) return;
+
+      if (result?.cancelled) {
+        activeJobIdRef.current = null;
+        setStatus("cancelled");
+        setTranscriptionProgress(null);
+        setProcessingStartedAt(null);
+        return;
       }
 
       const text = result?.text?.trim();
@@ -469,7 +677,12 @@ export default function TranscribePage() {
       setTranscript(text);
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
+      setSpeakerDetectionActive(result?.speakerDetectionActive === true);
+      setLanguageNotice(
+        buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
+      );
       setStatus("success");
+      activeJobIdRef.current = null;
       setProcessingStartedAt(null);
       toast({
         title: "Transcription complete",
@@ -477,7 +690,9 @@ export default function TranscribePage() {
         variant: "success",
       });
     } catch (error) {
+      if (!isCurrentJob()) return;
       const message = toErrorMessage(error);
+      activeJobIdRef.current = null;
       setErrorMessage(message);
       setStatus("error");
       setProcessingStartedAt(null);
@@ -487,6 +702,20 @@ export default function TranscribePage() {
         variant: "destructive",
       });
     }
+  };
+
+  /**
+   * Re-decode the same audio in the language the engine says it heard.
+   *
+   * The picker moves with it: this is the user choosing that language, so the
+   * page must not keep claiming the old one.
+   */
+  const transcribeAgainInDetectedLanguage = () => {
+    const notice = languageNotice;
+    const file = lastFileRef.current;
+    if (!notice || !file) return;
+    setFileLanguage(notice.detected);
+    processFile(file, notice.detected);
   };
 
   const downloadText = (content: string, extension: "txt" | "srt") => {
@@ -712,6 +941,7 @@ export default function TranscribePage() {
                 value={fileLanguage || "auto"}
                 onChange={setFileLanguage}
                 className="min-w-[200px]"
+                priorityCodes={buildQuickLanguageCodes(spokenLanguages, fileLanguage)}
               />
             </div>
 
@@ -828,29 +1058,50 @@ export default function TranscribePage() {
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <p className="max-w-md text-xs text-muted-foreground mb-3">{processingHint}</p>
 
-            {/* Progress bar */}
-            {transcriptionProgress && transcriptionProgress.percentage > 0 && (
+            {/* A bar only where there is something to fill it: one completed
+                chunk is one measured step. Everything else says elapsed time. */}
+            {chunkProgress && (
               <div className="w-full max-w-xs mb-3">
                 <div className="h-1.5 overflow-hidden rounded-full bg-primary/15">
                   <div
                     className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
-                    style={{ width: `${Math.min(100, transcriptionProgress.percentage)}%` }}
+                    style={{ width: `${Math.min(100, chunkProgress.percentage)}%` }}
                   />
                 </div>
                 <p className="mt-1.5 text-[11px] text-muted-foreground tabular-nums text-center">
-                  {transcriptionProgress.stage === "transcribing" &&
-                  transcriptionProgress.chunksTotal &&
-                  transcriptionProgress.chunksTotal > 1
-                    ? `${transcriptionProgress.percentage}% - chunk ${transcriptionProgress.chunksCompleted} of ${transcriptionProgress.chunksTotal}`
-                    : `${transcriptionProgress.percentage}%`}
+                  {`${chunkProgress.percentage}% · chunk ${chunkProgress.chunksCompleted} of ${chunkProgress.chunksTotal}`}
                 </p>
               </div>
             )}
 
             <div className="flex items-center gap-2 rounded-full border border-border-subtle bg-surface-raised/60 px-3 py-1 text-[11px] text-muted-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-              <span className="tabular-nums">{elapsedLabel}</span>
+              <span className="tabular-nums">{elapsedLabel} elapsed</span>
+              {audioLengthLabel && (
+                <>
+                  <span className="text-muted-foreground/35">·</span>
+                  <span className="tabular-nums">{audioLengthLabel} of audio</span>
+                </>
+              )}
             </div>
+
+            {!chunkProgress && (
+              <p className="mt-2 max-w-sm text-[11px] leading-relaxed text-muted-foreground">
+                Whisper decodes this file in one pass and reports when it is finished, so there is
+                no percentage to show along the way.
+              </p>
+            )}
+
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-4"
+              onClick={cancelTranscription}
+              disabled={cancelling}
+              data-prevent-browse="true"
+            >
+              {cancelling ? "Stopping…" : "Cancel"}
+            </Button>
           </>
         ) : status === "error" ? (
           <>
@@ -859,9 +1110,19 @@ export default function TranscribePage() {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">Transcription failed</h3>
             <p className="text-sm text-muted-foreground mb-5 max-w-2xl">{errorMessage}</p>
-            <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
-              Try another file
-            </Button>
+            {/* A missing model is the one failure another file cannot fix: no
+                file will transcribe until the model is on disk, and this page
+                holds no model picker. Offer the screen that does. */}
+            {missingModel ? (
+              <Button size="sm" onClick={openModelSettings} data-prevent-browse="true">
+                <Download size={14} />
+                Open model settings
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
+                Try another file
+              </Button>
+            )}
           </>
         ) : status === "success" ? (
           <>
@@ -872,12 +1133,31 @@ export default function TranscribePage() {
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground/70">
               <span className="tabular-nums">{formatBytes(selectedFileSize)}</span>
-              {speakerCount > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {speakerCount} speaker{speakerCount === 1 ? "" : "s"}
+              {speakerSummary && (
+                // A count is a finding and reads as one; "nothing found" is a
+                // note and should not shout louder than the result it sits next
+                // to.
+                <Badge variant={speakerCount > 1 ? "secondary" : "outline"} className="text-[10px]">
+                  {speakerSummary}
                 </Badge>
               )}
             </div>
+          </>
+        ) : status === "cancelled" ? (
+          <>
+            <div className="w-16 h-16 rounded-2xl bg-surface-raised flex items-center justify-center mb-5 shadow-lg">
+              <CircleSlash size={28} className="text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-1">Cancelled</h3>
+            <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
+            <p className="mb-5 max-w-md text-xs text-muted-foreground">
+              {processingElapsedSeconds > 0
+                ? `Stopped after ${elapsedLabel}. Nothing was transcribed and nothing was saved.`
+                : "Stopped before the transcript was finished. Nothing was saved."}
+            </p>
+            <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
+              Choose a file
+            </Button>
           </>
         ) : (
           <>
@@ -921,12 +1201,10 @@ export default function TranscribePage() {
                 <span>{transcriptStats.words.toLocaleString()} words</span>
                 <span className="text-muted-foreground/35">·</span>
                 <span>{transcriptStats.lines.toLocaleString()} lines</span>
-                {speakerCount > 0 && (
+                {speakerSummary && (
                   <>
                     <span className="text-muted-foreground/35">·</span>
-                    <span>
-                      {speakerCount} speaker{speakerCount === 1 ? "" : "s"}
-                    </span>
+                    <span>{speakerSummary}</span>
                   </>
                 )}
               </div>
@@ -967,6 +1245,42 @@ export default function TranscribePage() {
               </Button>
             </div>
           </div>
+
+          {/* whisper-server reports what it heard on every response, including
+              the ones it was ordered to decode as something else. Shown, not
+              acted on: the language the user picked stays picked until they
+              press the button. */}
+          {languageNotice && (
+            <div
+              className="flex flex-col gap-3 border-b border-border-subtle/60 bg-warning/5 px-5 py-4 sm:flex-row sm:items-start sm:justify-between"
+              data-prevent-browse="true"
+            >
+              <div className="flex gap-2.5">
+                <Languages size={15} className="mt-0.5 shrink-0 text-warning" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    This audio sounds like {languageNotice.detectedLabel}, not{" "}
+                    {languageNotice.forcedLabel}
+                  </p>
+                  <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                    Whisper detected {languageNotice.detectedLabel} with{" "}
+                    {languageNotice.probabilityPercent}% confidence, then transcribed the file as{" "}
+                    {languageNotice.forcedLabel} because that is the language selected here. Forcing
+                    the wrong language returns fluent text that is not what was said.
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={transcribeAgainInDetectedLanguage}
+                data-prevent-browse="true"
+              >
+                Transcribe again in {languageNotice.detectedLabel}
+              </Button>
+            </div>
+          )}
 
           <textarea
             readOnly

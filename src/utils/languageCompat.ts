@@ -5,11 +5,14 @@
  * model capabilities. All logic is centralised here so it can be shared
  * between the UI (settings warnings) and the runtime (audioManager fallback).
  *
- * Whisper supports ~99 languages - no restriction is applied.
+ * Whisper is restricted to the ~99 languages whisper.cpp itself accepts — not
+ * to the 58 the UI picker offers, which would refuse languages the engine
+ * really handles.
  * Parakeet supports a fixed set of 25 languages defined in modelRegistryData.json.
  */
 
 import { getParakeetModelInfo } from "../models/ModelRegistry";
+import { WHISPER_LANGUAGE_CODES } from "./whisperLanguageCodes";
 import logger from "./logger";
 
 export type TranscriptionModelType = "whisper" | "parakeet";
@@ -27,8 +30,12 @@ export function getModelSupportedLanguages(
   modelId?: string
 ): readonly string[] | null {
   if (modelType === "whisper") {
-    // Whisper (all variants) supports ~99 languages - no restriction.
-    return null;
+    // Whisper (all variants) accepts ~99 languages. Returning null here used to
+    // mean "no restriction", which let any string through — and a code
+    // whisper.cpp does not know kills whisper-server on the first /inference
+    // POST (audit F3). The engine's own set is the honest boundary: it refuses
+    // nothing whisper can actually decode.
+    return WHISPER_LANGUAGE_CODES;
   }
 
   if (modelType === "parakeet") {
@@ -88,7 +95,14 @@ export function resolveTranscriptionLanguage(
 
   if (!isLanguageSupported(language, modelType, modelId)) {
     const modelLabel = modelId ? `${modelType} model "${modelId}"` : modelType;
-    const supportedList = getModelSupportedLanguages(modelType, modelId)?.join(", ") ?? "all";
+    const supported = getModelSupportedLanguages(modelType, modelId);
+    // Whisper's list is ~99 codes; spelling all of them into every warning would
+    // bury the code that actually failed.
+    const supportedList = !supported
+      ? "all"
+      : supported.length > 30
+        ? `${supported.length} codes`
+        : supported.join(", ");
     logger.warn(
       `Language "${language}" not supported by ${modelLabel}; falling back to auto-detect`,
       { language, modelType, modelId: modelId ?? null, supportedLanguages: supportedList },

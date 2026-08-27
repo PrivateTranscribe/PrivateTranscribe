@@ -23,9 +23,24 @@ export const LICENSE_STATUS_EVENT = "privatetranscribe-license-status-changed";
 const _SEAL_KEY = "privatetranscribe_seal";
 const _EPOCH_KEY = "privatetranscribe_ts";
 
-// Beta access is intentionally session-only. It is populated only by a successful
-// response from the licensing server and is never restored from mutable localStorage.
-// Approved testers therefore need one online validation after each app restart.
+// Beta access follows the same offline rule as Pro: an approved tester who is
+// offline keeps their beta features from the cached entitlement, and only an
+// explicit server revocation takes them away (see refreshProStatus).
+//
+// The cached entitlement therefore carries `betaAccess`, which makes the flag
+// work in every renderer window without a licensing round-trip per window. This
+// module-level flag is still set on every successful activation: it is the
+// fresh-session truth, and getProStatus() ORs the two so a just-activated
+// window does not depend on re-reading what it only now wrote.
+//
+// Migration: entitlements cached by an older build have no `betaAccess` field.
+// They read as falsy, so a tester on an old cache stays locked until the next
+// successful online validation rewrites the entitlement in the new shape.
+//
+// Anti-tamper posture is deliberately unchanged — the seal is the same
+// "annoyance, not security" barrier that already guards `isPro`. Anyone who can
+// forge one can forge the other; that is a known and accepted trade for an
+// offline-first app.
 let _serverVerifiedBetaAccess = false;
 
 function _notifyLicenseStatusChanged(): void {
@@ -181,7 +196,10 @@ export function getProStatus(): ProStatus {
     // (see refreshProStatus), never from local time.
     return {
       isPro: true,
-      betaAccess: _serverVerifiedBetaAccess,
+      // Sealed cache OR this session's server answer. The cache is authoritative
+      // offline; a successful activation that reports `betaAccess: false`
+      // overwrites the cached field, so the OR cannot resurrect stale access.
+      betaAccess: _serverVerifiedBetaAccess || entitlement.betaAccess === true,
       licenseKey: key,
       expiresAt,
       offlineGrace: false,
@@ -246,10 +264,16 @@ export async function activateLicense(key: string): Promise<{
 
     // Cache locally
     const normalizedKey = key.trim().toUpperCase();
-    _serverVerifiedBetaAccess = data.entitlement?.betaAccess === true;
+    const betaAccess = data.entitlement?.betaAccess === true;
+    _serverVerifiedBetaAccess = betaAccess;
+    // The server is truth whenever it is reachable, so this always writes the
+    // fresh value — including `false`, which downgrades a previously cached
+    // tester without needing a revoke. The string is covered by the seal below
+    // exactly as before.
     const entitlementStr = JSON.stringify({
       token: data.entitlement?.token,
       expiresAt: data.entitlement?.expiresAt,
+      betaAccess,
     });
     localStorage.setItem(STORAGE_LICENSE_KEY, normalizedKey);
     localStorage.setItem(STORAGE_ENTITLEMENT, entitlementStr);
@@ -307,6 +331,11 @@ export async function deactivateDevice(): Promise<{ success: boolean; error?: st
  * longer valid (refund / chargeback / disabled key). Being offline, a network
  * error, or any other transient failure never removes Pro — a paying customer
  * who stays offline keeps Pro indefinitely (they simply stop receiving updates).
+ *
+ * Tester beta access rides on the same rule: it comes back from the sealed
+ * cached entitlement, so an approved tester who is offline keeps every beta
+ * feature. `_clearLicenseData()` below wipes the cached flag along with
+ * everything else, so a revocation removes beta access too.
  */
 export async function refreshProStatus(): Promise<ProStatus> {
   const key = localStorage.getItem(STORAGE_LICENSE_KEY);

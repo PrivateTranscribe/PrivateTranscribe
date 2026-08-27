@@ -1,0 +1,16 @@
+{
+  "clip": "banana",
+  "voice": "af_heart",
+  "text": "I put the banana in my backpack yesterday.",
+  "sampleRate": 16000,
+  "channels": 1,
+  "bitsPerSample": 16,
+  "totalSamples": 94800,
+  "totalSec": 5.925,
+  "speechStartSec": 0.4,
+  "speechEndSec": 3.425,
+  "correctionSource": "banana",
+  "correctionTarget": "Zephyr9000",
+  "sha256": "6873a8c39f78010c9e746646ccddc5394dff72923658663581b927ade827740d",
+  "bytes": 189644
+}

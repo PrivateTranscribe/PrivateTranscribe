@@ -98,6 +98,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     customTranscriptionApiKey,
     setCustomTranscriptionApiKey,
     dictationKey,
+    // Only read, so the hotkey field can refuse a key another feature owns.
+    readAloudHotkey,
+    voiceCallMuteKey,
     activationMode,
     setActivationMode,
     setDictationKey,
@@ -1030,6 +1033,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                   }}
                   disabled={isHotkeyRegistering}
                   variant="hero"
+                  ariaLabel="Dictation hotkey"
+                  conflicts={[
+                    { label: "Read Aloud", hotkey: readAloudHotkey },
+                    { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+                  ]}
+                  onClear={() => {
+                    void registerHotkeyWithRaceGuard(getDefaultHotkey());
+                  }}
                 />
               </div>
 

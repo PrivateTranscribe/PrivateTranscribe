@@ -20,8 +20,6 @@ import {
   Timer,
   ArrowRight,
   Lock,
-  MessageSquare,
-  Sparkles,
   BookOpen,
   CheckCircle2,
   XCircle,
@@ -51,16 +49,15 @@ import { BetaBadge } from "./ui/BetaBadge";
 import { BetaAccessLink } from "./ui/BetaAccessLink";
 import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
 import { resolveRatingLanguage } from "../utils/modelAccuracy";
-import { useAgentName } from "../utils/agentName";
 import ProSettingsSection from "./ProSettingsSection";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 
-import PromptStudio from "./ui/PromptStudio";
 import ReasoningModelSelector from "./ReasoningModelSelector";
 
 import { HotkeyInput } from "./ui/HotkeyInput";
+import { getDefaultHotkey } from "../utils/hotkeys";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
@@ -72,6 +69,7 @@ import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
 import { SectionLabel } from "./ui/SectionLabel";
+import { setAgentName as persistAgentName } from "../utils/agentName";
 
 export type SettingsSectionType =
   | "general"
@@ -79,8 +77,6 @@ export type SettingsSectionType =
   | "transcription"
   | "dictionary"
   | "aiModels"
-  | "agentConfig"
-  | "prompts"
   | "permissions"
   | "help"
   | "developer"
@@ -90,6 +86,10 @@ const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
 const WHISPER_IDLE_TIMEOUT_MIN = 1;
 const WHISPER_IDLE_TIMEOUT_MAX = 1440;
+const AGENT_NAME_MAX_LENGTH = 100;
+const CUSTOM_PROMPT_MAX_LENGTH = 20000;
+const AGENT_NAME_STORAGE_KEY = "agentName";
+const CUSTOM_PROMPT_STORAGE_KEY = "customUnifiedPrompt";
 type AutoStartLaunchMode = "tray" | "minimized" | "window";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -108,6 +108,21 @@ const isValidImportedLanguage = (value: unknown): value is string =>
   (value === "auto" ||
     LANGUAGE_OPTIONS.some((language) => language.value === value) ||
     /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(value));
+
+// customUnifiedPrompt is stored JSON.stringify()'d (see PromptStudio.tsx) so a
+// plain string can hold quotes/newlines safely. Decode it the same way
+// PromptStudio's getCurrentPrompt() does, and treat anything unparsable as
+// absent rather than exporting corrupt data.
+const readStoredCustomPrompt = (): string | undefined => {
+  const raw = localStorage.getItem(CUSTOM_PROMPT_STORAGE_KEY);
+  if (raw === null) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
@@ -1223,6 +1238,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     setSuccessConfirmation,
     overlaySnapToTaskbar,
     setOverlaySnapToTaskbar,
+    readAloudEnabled,
+    setReadAloudEnabled,
+    readAloudHotkey,
+    setReadAloudHotkey,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
@@ -1251,7 +1270,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
   const aiEnhancementUnlocked = isFeatureUnlocked("ai-enhancement");
-  const voiceAssistantUnlocked = isFeatureUnlocked("voice-assistant");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -1433,6 +1451,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           errorNotifications,
           successConfirmation,
           overlaySnapToTaskbar,
+          // Read Aloud
+          readAloudEnabled,
+          readAloudHotkey,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1440,6 +1461,20 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           customDictionary,
         },
       };
+
+      // agentName and customUnifiedPrompt live outside useSettings (in raw
+      // localStorage), so they're read directly here rather than from React
+      // state. Export the raw stored value, not the default — omit the key
+      // entirely when unset so importing this file on another machine
+      // doesn't stamp a default name/prompt over whatever is already there.
+      const rawAgentName = localStorage.getItem(AGENT_NAME_STORAGE_KEY);
+      if (rawAgentName !== null) {
+        payload.settings.agentName = rawAgentName;
+      }
+      const storedCustomPrompt = readStoredCustomPrompt();
+      if (storedCustomPrompt !== undefined) {
+        payload.settings.customUnifiedPrompt = storedCustomPrompt;
+      }
 
       if (includeApiKeys) {
         payload.settings.apiKeys = {
@@ -1492,6 +1527,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       errorNotifications,
       successConfirmation,
       overlaySnapToTaskbar,
+      readAloudEnabled,
+      readAloudHotkey,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1681,12 +1718,56 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         window.electronAPI?.setOverlaySnapToTaskbar?.(s.overlaySnapToTaskbar).catch(() => {});
       }
 
+      if (typeof s.readAloudEnabled === "boolean") setReadAloudEnabled(s.readAloudEnabled);
+      if (s.readAloudHotkey !== undefined) {
+        if (isSafeImportedIdentifier(s.readAloudHotkey)) {
+          setReadAloudHotkey(s.readAloudHotkey);
+        } else {
+          skipField("readAloudHotkey", "contains unsafe path-like content");
+        }
+      }
+
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
       if (s.selectedMicDeviceId !== undefined) {
         if (isSafeImportedIdentifier(s.selectedMicDeviceId)) {
           setSelectedMicDeviceId(s.selectedMicDeviceId);
         } else {
           skipField("selectedMicDeviceId", "contains unsafe path-like content");
+        }
+      }
+
+      // agentName and customUnifiedPrompt are absent from older export files
+      // (they weren't captured before this gate) — that must import cleanly
+      // with no behavior change, so both blocks are no-ops when the key is
+      // missing rather than clearing the existing value.
+      if (s.agentName !== undefined) {
+        const trimmedAgentName = typeof s.agentName === "string" ? s.agentName.trim() : "";
+        if (
+          isSafeImportedIdentifier(trimmedAgentName) &&
+          trimmedAgentName.length <= AGENT_NAME_MAX_LENGTH
+        ) {
+          persistAgentName(trimmedAgentName);
+        } else {
+          skipField(
+            "agentName",
+            `must be a non-empty name under ${AGENT_NAME_MAX_LENGTH} characters`
+          );
+        }
+      }
+
+      if (s.customUnifiedPrompt !== undefined) {
+        if (
+          typeof s.customUnifiedPrompt === "string" &&
+          s.customUnifiedPrompt.length <= CUSTOM_PROMPT_MAX_LENGTH
+        ) {
+          // Written the same way PromptStudio.savePrompt() writes it, so it
+          // reads back correctly via PromptStudio's getCurrentPrompt().
+          localStorage.setItem(CUSTOM_PROMPT_STORAGE_KEY, JSON.stringify(s.customUnifiedPrompt));
+        } else {
+          skipField(
+            "customUnifiedPrompt",
+            `must be a string under ${CUSTOM_PROMPT_MAX_LENGTH} characters`
+          );
         }
       }
 
@@ -1724,6 +1805,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setPauseMediaOnRecord,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,
+      persistAgentName,
       setOpenaiApiKey,
       setAnthropicApiKey,
       setGeminiApiKey,
@@ -1767,7 +1849,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const permissionsHook = usePermissions(showAlertDialog, { checkPasteToolsOnMount: false });
   const { checkPasteToolsAvailability } = permissionsHook;
   useClipboard(showAlertDialog);
-  const { agentName, setAgentName } = useAgentName();
   const installTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
@@ -2238,6 +2319,14 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       await registerHotkey(newHotkey);
                     }}
                     disabled={isHotkeyRegistering}
+                    ariaLabel="Dictation hotkey"
+                    conflicts={[
+                      { label: "Read Aloud", hotkey: readAloudHotkey },
+                      { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+                    ]}
+                    onClear={() => {
+                      void registerHotkey(getDefaultHotkey());
+                    }}
                   />
                 </SettingsPanelRow>
 
@@ -2614,6 +2703,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       onEnabledChange={setMuteVoiceCallOnRecord}
                       muteKey={voiceCallMuteKey}
                       onMuteKeyChange={setVoiceCallMuteKey}
+                      conflicts={[
+                        { label: "Dictation", hotkey: dictationKey },
+                        { label: "Read Aloud", hotkey: readAloudHotkey },
+                      ]}
                     />
                   </SettingsPanelRow>
                 )}
@@ -3184,158 +3277,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   </SettingsPanel>
                 )}
               </>
-            )}
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // AGENT CONFIG
-      // ───────────────────────────────────────────────────
-      case "agentConfig":
-        return (
-          <div className="space-y-8">
-            <SectionHeader
-              title="Voice Assistant"
-              description="Configure your AI agent's name and behavior"
-            />
-
-            {!voiceAssistantUnlocked && (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
-                <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  Customize your voice assistant with a personal name and fine-tuned system prompts
-                  for AI-enhanced transcriptions. This unfinished beta requires approved tester
-                  access.
-                </p>
-                <BetaAccessLink className="text-sm" />
-              </div>
-            )}
-
-            {voiceAssistantUnlocked && (
-              <>
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Agent name"
-                      description="Pick something short and natural to say aloud."
-                    >
-                      <div className="flex gap-2 w-full max-w-sm">
-                        <Input
-                          placeholder="e.g. Jarvis, Nova, Atlas..."
-                          value={agentName}
-                          onChange={(e) => setAgentName(e.target.value)}
-                          className="flex-1 text-center text-base font-mono"
-                        />
-                        <Button
-                          onClick={() => {
-                            setAgentName(agentName.trim());
-                            showAlertDialog({
-                              title: "Agent Name Updated",
-                              description: `Your agent is now named "${agentName.trim()}". Address it by saying "Hey ${agentName.trim()}" followed by your instructions.`,
-                            });
-                          }}
-                          disabled={!agentName.trim()}
-                          size="sm"
-                        >
-                          Save
-                        </Button>
-                      </div>
-                    </SettingsRow>
-                  </SettingsPanelRow>
-                </SettingsPanel>
-
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4 text-primary" />
-                        <p className="text-sm font-medium text-foreground">
-                          How instruction mode works
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        When you say{" "}
-                        <span className="font-medium text-foreground">
-                          &quot;Hey {agentName}&quot;
-                        </span>{" "}
-                        followed by an instruction, PrivateTranscribe switches from cleanup mode to
-                        assistant mode. Without the trigger phrase, it simply polishes your
-                        dictation.
-                      </p>
-                    </div>
-                  </SettingsPanelRow>
-                  <SettingsPanelRow>
-                    <div className="space-y-2.5">
-                      {[
-                        `Hey ${agentName}, write a formal email about the budget`,
-                        `Hey ${agentName}, make this more professional`,
-                        `Hey ${agentName}, convert this to bullet points`,
-                      ].map((example) => (
-                        <div key={example} className="flex items-start gap-3">
-                          <span className="shrink-0 mt-0.5 text-[10px] font-medium uppercase tracking-wider px-1.5 py-px rounded bg-primary/15 text-primary">
-                            Instruction
-                          </span>
-                          <p className="text-[12px] text-muted-foreground leading-relaxed">
-                            &quot;{example}&quot;
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </SettingsPanelRow>
-                </SettingsPanel>
-              </>
-            )}
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // PROMPTS
-      // ───────────────────────────────────────────────────
-      case "prompts":
-        return (
-          <div className="space-y-8">
-            <SectionHeader
-              title="System Prompts"
-              description="Shape how PrivateTranscribe interprets instructions, formats output, and responds to your voice assistant workflows."
-            />
-
-            {voiceAssistantUnlocked ? (
-              <PromptStudio />
-            ) : (
-              <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 shadow-[0_0_40px_rgba(112,255,186,0.08)] overflow-hidden relative">
-                <div className="absolute top-4 right-4">
-                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">
-                    Pro
-                  </Badge>
-                </div>
-                <div className="max-w-2xl space-y-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center shadow-[0_0_24px_rgba(112,255,186,0.12)]">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Your prompt workspace</h3>
-                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      The control room for system instructions - tune tone, cleanup rules, command
-                      behavior, and reusable prompt presets with full precision.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {[
-                      "Preset prompt profiles for different workflows",
-                      "Fine-grained instruction layers for cleanup vs assistant mode",
-                      "Safe testing before prompts affect live dictation",
-                    ].map((item) => (
-                      <div
-                        key={item}
-                        className="rounded-xl border border-border-subtle/50 bg-surface-raised/40 px-4 py-3 text-sm text-muted-foreground"
-                      >
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         );

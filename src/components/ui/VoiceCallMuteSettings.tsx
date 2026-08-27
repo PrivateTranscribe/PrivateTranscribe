@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Check, X, AlertTriangle } from "lucide-react";
-import HotkeyInput from "./HotkeyInput";
+import HotkeyInput, { type HotkeyConflict } from "./HotkeyInput";
 import { Toggle } from "./toggle";
 import type { VoiceCallApp } from "../../types/electron";
 
@@ -49,6 +49,8 @@ interface VoiceCallMuteSettingsProps {
   onEnabledChange: (enabled: boolean) => void;
   muteKey: string;
   onMuteKeyChange: (key: string) => void;
+  /** The app's other hotkeys, so this field can refuse to duplicate one. */
+  conflicts?: HotkeyConflict[];
 }
 
 /**
@@ -65,6 +67,7 @@ export default function VoiceCallMuteSettings({
   onEnabledChange,
   muteKey,
   onMuteKeyChange,
+  conflicts,
 }: VoiceCallMuteSettingsProps) {
   const [activeApps, setActiveApps] = useState<VoiceCallApp[]>([]);
   const [supported, setSupported] = useState(true);
@@ -175,6 +178,9 @@ export default function VoiceCallMuteSettings({
               value={muteKey}
               onChange={onMuteKeyChange}
               appliesToDictationHotkey={false}
+              ariaLabel="Voice call mute key"
+              conflicts={conflicts}
+              onClear={() => onMuteKeyChange("")}
             />
             {keyRisk && (
               <p className="flex items-start gap-2 text-xs text-muted-foreground mt-3 leading-relaxed">

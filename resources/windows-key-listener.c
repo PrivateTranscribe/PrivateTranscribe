@@ -16,12 +16,20 @@
  *   KEY_DOWN
  *   KEY_UP
  *
+ * Test seam:
+ *   windows-key-listener.exe --simulate "CommandOrControl+Space"
+ * installs no hooks and never reads the real keyboard. It prints READY and then
+ * replays scripted events from stdin (`DOWN <key> <timeMs>` / `UP <key> <timeMs>`,
+ * `QUIT` or EOF to stop) through the exact same decision function the live hook
+ * uses, so tests exercise the compiled logic without touching the user's machine.
+ *
  * Compile with (MSVC):
  *   cl /O2 windows-key-listener.c /Fe:windows-key-listener.exe user32.lib
  * Or with MinGW:
  *   gcc -O2 windows-key-listener.c -o windows-key-listener.exe -luser32
  */
 
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
@@ -44,12 +52,88 @@ static BOOL g_requireAlt = FALSE;
 static BOOL g_requireShift = FALSE;
 static BOOL g_requireWin = FALSE;
 
+// Simulate mode: driven from stdin, no hooks installed, real keyboard never read.
+static BOOL g_simulateMode = FALSE;
+
+/*
+ * How long after the trigger key goes down a required modifier may still arrive
+ * and count as "pressed together".
+ *
+ * A human aiming for Ctrl+Space does not hit both keys on the same millisecond;
+ * either one can land first, typically within a few tens of milliseconds. Without
+ * this window the press is simply dropped whenever the trigger wins the race.
+ *
+ * The window is bounded on purpose: holding the bare trigger key for a while and
+ * only then reaching for the modifier is a different intent (the user was typing)
+ * and must NOT fire the hotkey.
+ */
+#define MODIFIER_GRACE_MS 150
+
+// Physical key state rebuilt from the hook's own event stream. GetAsyncKeyState is
+// sampled at the instant an event is processed and can lag a simultaneous press,
+// which is exactly the race this listener has to survive.
+static BOOL g_triggerPhysDown = FALSE;
+static DWORD g_triggerDownTime = 0;
+
+// One flag per modifier family. Low-level hooks deliver the side-specific VKs
+// (VK_LCONTROL / VK_RCONTROL, ...), so any variant going down sets the family and
+// any variant going up clears it - matching the existing modifier-release logic,
+// which already treats a release of either side as ending the press.
+static BOOL g_ctrlPhysDown = FALSE;
+static BOOL g_altPhysDown = FALSE;
+static BOOL g_shiftPhysDown = FALSE;
+static BOOL g_winPhysDown = FALSE;
+
+// Tracked state OR a live sample. The live sample covers modifiers already held
+// before the hook was installed; in simulate mode it must never be consulted.
+static BOOL IsModifierHeld(BOOL tracked, int vkPrimary, int vkSecondary) {
+    if (tracked) return TRUE;
+    if (g_simulateMode) return FALSE;
+    if (GetAsyncKeyState(vkPrimary) & 0x8000) return TRUE;
+    if (vkSecondary && (GetAsyncKeyState(vkSecondary) & 0x8000)) return TRUE;
+    return FALSE;
+}
+
 static BOOL AreModifiersPressed(void) {
-    if (g_requireCtrl && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) return FALSE;
-    if (g_requireAlt && !(GetAsyncKeyState(VK_MENU) & 0x8000)) return FALSE;
-    if (g_requireShift && !(GetAsyncKeyState(VK_SHIFT) & 0x8000)) return FALSE;
-    if (g_requireWin && !((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000))) return FALSE;
+    if (g_requireCtrl && !IsModifierHeld(g_ctrlPhysDown, VK_CONTROL, 0)) return FALSE;
+    if (g_requireAlt && !IsModifierHeld(g_altPhysDown, VK_MENU, 0)) return FALSE;
+    if (g_requireShift && !IsModifierHeld(g_shiftPhysDown, VK_SHIFT, 0)) return FALSE;
+    if (g_requireWin && !IsModifierHeld(g_winPhysDown, VK_LWIN, VK_RWIN)) return FALSE;
     return TRUE;
+}
+
+static BOOL IsCtrlVk(DWORD vk) {
+    return vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL;
+}
+
+static BOOL IsAltVk(DWORD vk) {
+    return vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU;
+}
+
+static BOOL IsShiftVk(DWORD vk) {
+    return vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT;
+}
+
+static BOOL IsWinVk(DWORD vk) {
+    return vk == VK_LWIN || vk == VK_RWIN;
+}
+
+// Update the tracked physical modifier state from every keyboard event, whether or
+// not the modifier is part of the configured hotkey. Cheap, and it keeps the
+// picture complete when the hotkey changes shape.
+static void TrackModifierState(DWORD vk, BOOL isKeyDown) {
+    if (IsCtrlVk(vk)) g_ctrlPhysDown = isKeyDown;
+    else if (IsAltVk(vk)) g_altPhysDown = isKeyDown;
+    else if (IsShiftVk(vk)) g_shiftPhysDown = isKeyDown;
+    else if (IsWinVk(vk)) g_winPhysDown = isKeyDown;
+}
+
+static BOOL IsRequiredModifierVk(DWORD vk) {
+    if (g_requireCtrl && IsCtrlVk(vk)) return TRUE;
+    if (g_requireAlt && IsAltVk(vk)) return TRUE;
+    if (g_requireShift && IsShiftVk(vk)) return TRUE;
+    if (g_requireWin && IsWinVk(vk)) return TRUE;
+    return FALSE;
 }
 
 static void EmitDown(void) {
@@ -202,40 +286,59 @@ static DWORD ParseCompoundHotkey(const char* hotkey) {
     return mainKeyVk;
 }
 
+/*
+ * The whole keyboard decision, in one place. The live hook and the --simulate
+ * loop both call this, so a test drives the exact compiled logic.
+ *
+ * timeMs is the event timestamp (KBDLLHOOKSTRUCT::time), milliseconds since boot.
+ */
+static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
+    TrackModifierState(vkCode, isKeyDown);
+
+    // If a required modifier was released while we're held down, emit up.
+    if (g_isDown && !isKeyDown && IsRequiredModifierVk(vkCode)) {
+        EmitUp();
+    }
+
+    // The trigger key is handled first and exclusively: for a modifier-only combo
+    // (e.g. Control+Super) the trigger VK is itself a modifier, and it must never
+    // also be treated as "a required modifier arriving late".
+    if (vkCode == g_targetVk) {
+        if (isKeyDown) {
+            // Low-level hooks deliver auto-repeat as plain repeated WM_KEYDOWN with
+            // no repeat flag. Only the up->down transition starts the grace window;
+            // repeats must not extend it.
+            if (!g_triggerPhysDown) {
+                g_triggerPhysDown = TRUE;
+                g_triggerDownTime = timeMs;
+            }
+            if (AreModifiersPressed()) {
+                EmitDown();
+            }
+        } else {
+            g_triggerPhysDown = FALSE;
+            EmitUp();
+        }
+        return;
+    }
+
+    // Re-arm: the trigger key already went down but the modifier had not registered
+    // yet. Unsigned subtraction so the ~49.7 day wrap of the tick count is handled.
+    if (isKeyDown && !g_isDown && g_triggerPhysDown && IsRequiredModifierVk(vkCode)) {
+        if ((DWORD)(timeMs - g_triggerDownTime) <= MODIFIER_GRACE_MS && AreModifiersPressed()) {
+            EmitDown();
+        }
+    }
+}
+
 static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION && !g_isMouseButton) {
         KBDLLHOOKSTRUCT* kbd = (KBDLLHOOKSTRUCT*)lParam;
         BOOL isKeyDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
         BOOL isKeyUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
 
-        // If a required modifier was released while we're held down, emit up.
-        if (g_isDown && isKeyUp) {
-            BOOL modifierReleased = FALSE;
-            if (g_requireCtrl && (kbd->vkCode == VK_CONTROL || kbd->vkCode == VK_LCONTROL || kbd->vkCode == VK_RCONTROL)) {
-                modifierReleased = TRUE;
-            }
-            if (g_requireAlt && (kbd->vkCode == VK_MENU || kbd->vkCode == VK_LMENU || kbd->vkCode == VK_RMENU)) {
-                modifierReleased = TRUE;
-            }
-            if (g_requireShift && (kbd->vkCode == VK_SHIFT || kbd->vkCode == VK_LSHIFT || kbd->vkCode == VK_RSHIFT)) {
-                modifierReleased = TRUE;
-            }
-            if (g_requireWin && (kbd->vkCode == VK_LWIN || kbd->vkCode == VK_RWIN)) {
-                modifierReleased = TRUE;
-            }
-            if (modifierReleased) {
-                EmitUp();
-            }
-        }
-
-        if (kbd->vkCode == g_targetVk) {
-            if (isKeyDown) {
-                if (AreModifiersPressed()) {
-                    EmitDown();
-                }
-            } else if (isKeyUp) {
-                EmitUp();
-            }
+        if (isKeyDown || isKeyUp) {
+            HandleKeyboardEvent(kbd->vkCode, isKeyDown, kbd->time);
         }
     }
 
@@ -295,6 +398,103 @@ static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lPara
     return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
 }
 
+// --- Simulate mode --------------------------------------------------------
+
+static BOOL ParseNumber(const char* text, int base, long* out) {
+    char* end = NULL;
+    long value;
+    if (*text == '\0') return FALSE;
+    value = strtol(text, &end, base);
+    if (end == text || *end != '\0') return FALSE;
+    *out = value;
+    return TRUE;
+}
+
+// Accepts the side-specific modifier names the tests script with, plus a raw VK
+// code in hex (0xA2) or decimal.
+static BOOL ParseSimulateKey(const char* name, DWORD* out) {
+    long value = 0;
+
+    if (_stricmp(name, "LCTRL") == 0) { *out = VK_LCONTROL; return TRUE; }
+    if (_stricmp(name, "RCTRL") == 0) { *out = VK_RCONTROL; return TRUE; }
+    if (_stricmp(name, "LSHIFT") == 0) { *out = VK_LSHIFT; return TRUE; }
+    if (_stricmp(name, "RSHIFT") == 0) { *out = VK_RSHIFT; return TRUE; }
+    if (_stricmp(name, "LALT") == 0) { *out = VK_LMENU; return TRUE; }
+    if (_stricmp(name, "RALT") == 0) { *out = VK_RMENU; return TRUE; }
+    if (_stricmp(name, "LWIN") == 0) { *out = VK_LWIN; return TRUE; }
+    if (_stricmp(name, "RWIN") == 0) { *out = VK_RWIN; return TRUE; }
+    if (_stricmp(name, "SPACE") == 0) { *out = VK_SPACE; return TRUE; }
+
+    if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
+        if (!ParseNumber(name + 2, 16, &value)) return FALSE;
+        *out = (DWORD)value;
+        return TRUE;
+    }
+
+    if (!ParseNumber(name, 10, &value)) return FALSE;
+    *out = (DWORD)value;
+    return TRUE;
+}
+
+static int RunSimulateLoop(void) {
+    char line[512];
+    char original[512];
+
+    printf("READY\n");
+    fflush(stdout);
+
+    while (fgets(line, sizeof(line), stdin) != NULL) {
+        char* verb;
+        char* keyToken;
+        char* timeToken;
+        BOOL isKeyDown;
+        DWORD vkCode = 0;
+        long timeMs = 0;
+        size_t len = strlen(line);
+
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' ||
+                           line[len - 1] == ' ' || line[len - 1] == '\t')) {
+            line[--len] = '\0';
+        }
+        if (len == 0) continue;
+
+        strncpy(original, line, sizeof(original) - 1);
+        original[sizeof(original) - 1] = '\0';
+
+        if (_stricmp(line, "QUIT") == 0) break;
+
+        verb = strtok(line, " \t");
+        keyToken = strtok(NULL, " \t");
+        timeToken = strtok(NULL, " \t");
+
+        if (verb == NULL || keyToken == NULL || timeToken == NULL) {
+            fprintf(stderr, "ERR %s\n", original);
+            fflush(stderr);
+            continue;
+        }
+
+        if (_stricmp(verb, "DOWN") == 0) {
+            isKeyDown = TRUE;
+        } else if (_stricmp(verb, "UP") == 0) {
+            isKeyDown = FALSE;
+        } else {
+            fprintf(stderr, "ERR %s\n", original);
+            fflush(stderr);
+            continue;
+        }
+
+        if (!ParseSimulateKey(keyToken, &vkCode) || !ParseNumber(timeToken, 10, &timeMs)) {
+            fprintf(stderr, "ERR %s\n", original);
+            fflush(stderr);
+            continue;
+        }
+
+        HandleKeyboardEvent(vkCode, isKeyDown, (DWORD)timeMs);
+    }
+
+    return 0;
+}
+
 static BOOL WINAPI ConsoleHandler(DWORD signal) {
     if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
         if (g_keyboardHook) {
@@ -311,8 +511,16 @@ static BOOL WINAPI ConsoleHandler(DWORD signal) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <hotkey>\n", argv[0]);
+    int hotkeyArg = 1;
+    const char* hotkey;
+
+    if (argc >= 2 && strcmp(argv[1], "--simulate") == 0) {
+        g_simulateMode = TRUE;
+        hotkeyArg = 2;
+    }
+
+    if (argc < hotkeyArg + 1) {
+        fprintf(stderr, "Usage: %s [--simulate] <hotkey>\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s `                        (backtick)\n", argv[0]);
         fprintf(stderr, "  %s F8                       (function key F1-F12)\n", argv[0]);
@@ -321,10 +529,11 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "  %s Mouse5                   (side button forward)\n", argv[0]);
         fprintf(stderr, "  %s CommandOrControl+F11     (with modifier)\n", argv[0]);
         fprintf(stderr, "  %s Ctrl+Mouse4              (modifier + mouse)\n", argv[0]);
+        fprintf(stderr, "  %s --simulate Ctrl+Space    (stdin-driven test mode)\n", argv[0]);
         return 1;
     }
 
-    const char* hotkey = argv[1];
+    hotkey = argv[hotkeyArg];
     g_targetVk = ParseCompoundHotkey(hotkey);
 
     if (!g_isMouseButton && g_targetVk == 0) {
@@ -350,6 +559,11 @@ int main(int argc, char* argv[]) {
 
     fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
             hotkey, g_isMouseButton, g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin);
+
+    // Simulate mode installs no hooks and never samples the real keyboard.
+    if (g_simulateMode) {
+        return RunSimulateLoop();
+    }
 
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 

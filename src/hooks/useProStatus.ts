@@ -2,20 +2,33 @@ import { useState, useEffect } from "react";
 import { getProStatus, _verifyToken } from "../services/LicensingService";
 
 // Unfinished workflow features that require approved tester access.
+//
+// There is no "voice-assistant" entry any more: the assistant name and Prompt
+// Studio moved into the AI Enhancement page, so they gate on "ai-enhancement".
+// Nothing per-feature is persisted — every id here resolves through the one
+// `hasTesterAccess()` entitlement — so an existing tester keeps exactly the
+// access they had.
 const BETA_FEATURES = new Set([
   "correction-memory",
   "smart-context",
   "action-engine",
   "ai-enhancement",
-  "voice-assistant",
+  "converse",
+  "read-aloud",
 ]);
 
 // Subset of beta features that carry a visible badge in sidebar/page headers.
+// "correction-memory" is deliberately absent: it has no sidebar item of its
+// own (its page renders embedded inside Dictionary, which carries no badge),
+// so there is nothing for shouldShowProBadge("correction-memory") to badge.
+// It stays in BETA_FEATURES above because the feature gate itself is alive.
 const SIDEBAR_BETA_ITEMS = new Set([
-  "correction-memory",
   "ai-enhancement",
-  "voice-assistant",
+  "converse",
   "action-engine",
+  // Read Aloud used to be a Settings tab, where nobody found it. It is a
+  // sidebar page now, so it carries the same badge as every other beta item.
+  "read-aloud",
 ]);
 
 // localStorage key and custom event used by the temporary preview toggle

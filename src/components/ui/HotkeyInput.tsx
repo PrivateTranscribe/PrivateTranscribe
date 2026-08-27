@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { formatHotkeyLabel } from "../../utils/hotkeys";
+import { formatHotkeyLabel, normalizeHotkeyForComparison } from "../../utils/hotkeys";
 
 const CODE_TO_KEY: Record<string, string> = {
   Backquote: "`",
@@ -52,12 +52,12 @@ const CODE_TO_KEY: Record<string, string> = {
   Comma: ",",
   Period: ".",
   Slash: "/",
-  // Special keys
+  // Special keys.
+  // Escape, Backspace and Delete are deliberately absent — see
+  // NON_CAPTURABLE_CODES. They drive the field instead of being captured by it.
   Space: "Space",
-  Escape: "Esc",
   Tab: "Tab",
   Enter: "Enter",
-  Backspace: "Backspace",
   // Function keys
   F1: "F1",
   F2: "F2",
@@ -91,7 +91,6 @@ const CODE_TO_KEY: Record<string, string> = {
   ArrowRight: "Right",
   // Navigation keys
   Insert: "Insert",
-  Delete: "Delete",
   Home: "Home",
   End: "End",
   PageUp: "PageUp",
@@ -137,12 +136,50 @@ const MODIFIER_CODES = new Set([
   "CapsLock",
 ]);
 
+/**
+ * Keys that operate the field rather than being recorded by it.
+ *
+ * Escape is the desktop's universal "back out of this", and it used to be
+ * capturable here: pressing it to abandon the field bound Escape as the global
+ * dictation hotkey, taking the key away from every other app on the machine.
+ * Backspace and Delete are what anyone reaches for to empty a field, so
+ * recording them as a shortcut is the opposite of what was meant. All three are
+ * also absent from CODE_TO_KEY, so nothing downstream can commit them either.
+ */
+const NON_CAPTURABLE_CODES = {
+  cancel: new Set(["Escape"]),
+  clear: new Set(["Backspace", "Delete"]),
+};
+
+/** Another feature's hotkey, and the name to show if the user picks it too. */
+export interface HotkeyConflict {
+  /** The feature's visible name, e.g. "Read Aloud". */
+  label: string;
+  /** That feature's current hotkey. Empty or unset entries are ignored. */
+  hotkey: string;
+}
+
 export interface HotkeyInputProps {
   value: string;
   onChange: (hotkey: string) => void;
   onBlur?: () => void;
   disabled?: boolean;
   autoFocus?: boolean;
+  /**
+   * Other hotkeys in this app that the captured key must not collide with.
+   *
+   * Two features answering the same key press is not something the OS reports —
+   * one registration silently wins — so the refusal has to happen here, before
+   * the value is committed.
+   */
+  conflicts?: HotkeyConflict[];
+  /**
+   * Reset this field to its default. When provided, Backspace and Delete call
+   * it; without it they behave like Escape and cancel.
+   */
+  onClear?: () => void;
+  /** Names the field for screen readers, e.g. "Dictation hotkey". */
+  ariaLabel?: string;
   /**
    * Whether the captured key becomes the global dictation hotkey.
    *
@@ -159,6 +196,10 @@ export interface HotkeyInputProps {
 // eslint-disable-next-line react-refresh/only-export-components
 export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
   if (MODIFIER_CODES.has(e.code)) {
+    return null;
+  }
+
+  if (NON_CAPTURABLE_CODES.cancel.has(e.code) || NON_CAPTURABLE_CODES.clear.has(e.code)) {
     return null;
   }
 
@@ -216,13 +257,22 @@ export function HotkeyInput({
   onBlur,
   disabled = false,
   autoFocus = false,
+  conflicts,
+  onClear,
+  ariaLabel,
   appliesToDictationHotkey = true,
   variant = "default",
 }: HotkeyInputProps & HotkeyInputVariant) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Set<string>>(new Set());
+  /** The feature that already owns the key just pressed, while it is refused. */
+  const [conflictLabel, setConflictLabel] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastCapturedHotkeyRef = useRef<string | null>(null);
+  // Held in a ref so the mouse listener below does not resubscribe on every
+  // render just because the caller passed a fresh array literal.
+  const conflictsRef = useRef<HotkeyConflict[] | undefined>(conflicts);
+  conflictsRef.current = conflicts;
   const isMac = typeof navigator !== "undefined" && /Mac|Darwin/.test(navigator.platform);
   const isWindows = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
 
@@ -232,17 +282,58 @@ export function HotkeyInput({
   // How long a modifier combo must be held to register (avoids accidental captures)
   const MODIFIER_HOLD_THRESHOLD_MS = 300;
 
-  const finalizeCapture = useCallback(
+  /** Forget everything about the press in progress. */
+  const resetPressState = useCallback(() => {
+    setActiveModifiers(new Set());
+    heldModifiersRef.current = { ctrl: false, meta: false, alt: false, shift: false };
+    keyDownTimeRef.current = 0;
+  }, []);
+
+  /**
+   * Leave capture without reporting a hotkey.
+   *
+   * lastCapturedHotkeyRef stays null on purpose: the blur handler hands it to
+   * the main process, and null is what tells it to put back the hotkey the app
+   * already had. Anything else would make backing out of the field change the
+   * very setting the user was backing out of.
+   */
+  const cancelCapture = useCallback(() => {
+    lastCapturedHotkeyRef.current = null;
+    setIsCapturing(false);
+    setConflictLabel(null);
+    resetPressState();
+    containerRef.current?.blur();
+  }, [resetPressState]);
+
+  /**
+   * Report a captured hotkey, unless another feature already owns it.
+   *
+   * A refusal keeps the field listening so the next press is the correction,
+   * rather than dropping the user out of capture with nothing changed and no
+   * explanation.
+   */
+  const commitCapture = useCallback(
     (hotkey: string) => {
+      const normalized = normalizeHotkeyForComparison(hotkey);
+      const conflict = (conflictsRef.current || []).find(
+        (entry) => entry.hotkey && normalizeHotkeyForComparison(entry.hotkey) === normalized
+      );
+
+      if (conflict) {
+        setConflictLabel(conflict.label);
+        resetPressState();
+        return false;
+      }
+
       lastCapturedHotkeyRef.current = hotkey;
       onChange(hotkey);
       setIsCapturing(false);
-      setActiveModifiers(new Set());
-      heldModifiersRef.current = { ctrl: false, meta: false, alt: false, shift: false };
-      keyDownTimeRef.current = 0;
+      setConflictLabel(null);
+      resetPressState();
       containerRef.current?.blur();
+      return true;
     },
-    [onChange]
+    [onChange, resetPressState]
   );
 
   const handleKeyDown = useCallback(
@@ -250,6 +341,22 @@ export function HotkeyInput({
       if (disabled) return;
       e.preventDefault();
       e.stopPropagation();
+
+      if (NON_CAPTURABLE_CODES.cancel.has(e.nativeEvent.code)) {
+        cancelCapture();
+        return;
+      }
+
+      if (NON_CAPTURABLE_CODES.clear.has(e.nativeEvent.code)) {
+        // Without an onClear there is nothing sensible to reset to, so this
+        // degrades to the same "leave it alone" behaviour as Escape.
+        onClear?.();
+        cancelCapture();
+        return;
+      }
+
+      // A refusal is about the key that caused it; the next press supersedes it.
+      setConflictLabel(null);
 
       // Track held modifiers for modifier-only combo capture
       heldModifiersRef.current = {
@@ -271,11 +378,11 @@ export function HotkeyInput({
 
       const hotkey = mapKeyboardEventToHotkey(e.nativeEvent);
       if (hotkey) {
-        finalizeCapture(hotkey);
+        commitCapture(hotkey);
       }
       // If no base key yet, modifiers are being held - don't finalize until keyup
     },
-    [disabled, isMac, isWindows, finalizeCapture]
+    [disabled, isMac, isWindows, commitCapture, cancelCapture, onClear]
   );
 
   const handleKeyUp = useCallback(
@@ -301,17 +408,15 @@ export function HotkeyInput({
           if (heldModifiersRef.current.shift) parts.push("Shift");
           // Require 2+ modifiers for modifier-only combos (e.g. Ctrl+Win)
           if (parts.length >= 2) {
-            finalizeCapture(parts.join("+"));
+            commitCapture(parts.join("+"));
             return;
           }
         }
       }
 
-      heldModifiersRef.current = { ctrl: false, meta: false, alt: false, shift: false };
-      keyDownTimeRef.current = 0;
-      setActiveModifiers(new Set());
+      resetPressState();
     },
-    [disabled, isMac, finalizeCapture]
+    [disabled, isMac, commitCapture, resetPressState]
   );
 
   const handleFocus = useCallback(() => {
@@ -324,6 +429,7 @@ export function HotkeyInput({
   const handleBlur = useCallback(() => {
     setIsCapturing(false);
     setActiveModifiers(new Set());
+    setConflictLabel(null);
     // Passing null makes the main process restore the hotkey it already had.
     // Only the dictation hotkey field may hand over the key it just captured.
     window.electronAPI?.setHotkeyListeningMode?.(
@@ -369,11 +475,7 @@ export function HotkeyInput({
       if (e.shiftKey) mods.add("Shift");
       setActiveModifiers(mods);
 
-      lastCapturedHotkeyRef.current = hotkey;
-      onChange(hotkey);
-      setIsCapturing(false);
-      setActiveModifiers(new Set());
-      containerRef.current?.blur();
+      commitCapture(hotkey);
     };
 
     window.addEventListener("mousedown", onMouseDown, true);
@@ -381,25 +483,36 @@ export function HotkeyInput({
     return () => {
       window.removeEventListener("mousedown", onMouseDown, true);
     };
-  }, [isCapturing, disabled, isMac, onChange]);
+  }, [isCapturing, disabled, isMac, commitCapture]);
 
   useEffect(() => {
     if (!isCapturing || !isMac) return;
 
     const dispose = window.electronAPI?.onGlobeKeyPressed?.(() => {
-      lastCapturedHotkeyRef.current = "GLOBE";
-      onChange("GLOBE");
-      setIsCapturing(false);
-      setActiveModifiers(new Set());
-      containerRef.current?.blur();
+      commitCapture("GLOBE");
     });
 
     return () => dispose?.();
-  }, [isCapturing, isMac, onChange]);
+  }, [isCapturing, isMac, commitCapture]);
 
   const displayValue = formatHotkeyLabel(value);
   const isGlobe = value === "GLOBE";
   const hotkeyParts = value?.includes("+") ? displayValue.split("+") : [];
+  const fieldLabel = ariaLabel || "Press a key combination to set hotkey";
+
+  // The two ways out of capture are not discoverable from a field that only
+  // says "Recording", so they are stated while it is listening.
+  const captureHint = onClear ? "Esc cancels · Backspace resets" : "Esc cancels";
+
+  const conflictNotice = conflictLabel ? (
+    <span
+      role="status"
+      data-testid="hotkey-conflict"
+      className="text-xs font-medium text-destructive"
+    >
+      Already used by {conflictLabel}
+    </span>
+  ) : null;
 
   // Hero variant: large centered key display for onboarding
   if (variant === "hero") {
@@ -408,7 +521,7 @@ export function HotkeyInput({
         ref={containerRef}
         tabIndex={disabled ? -1 : 0}
         role="button"
-        aria-label="Press a key combination to set hotkey"
+        aria-label={fieldLabel}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
         onFocus={handleFocus}
@@ -450,6 +563,8 @@ export function HotkeyInput({
                 {isMac ? "Press any key or ⌘⇧K" : "Press any key or Ctrl+Shift+K"}
               </span>
             )}
+            {conflictNotice}
+            <span className="text-[10px] text-muted-foreground/60">{captureHint}</span>
           </div>
         ) : value ? (
           /* Has value: show the hotkey prominently */
@@ -496,7 +611,7 @@ export function HotkeyInput({
       ref={containerRef}
       tabIndex={disabled ? -1 : 0}
       role="button"
-      aria-label="Press a key combination to set hotkey"
+      aria-label={fieldLabel}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
       onFocus={handleFocus}
@@ -519,28 +634,32 @@ export function HotkeyInput({
 
       <div className="px-4 py-3">
         {isCapturing ? (
-          <div className="flex items-center justify-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-              <span className="text-xs font-medium text-muted-foreground">Recording</span>
-            </div>
-            {activeModifiers.size > 0 ? (
-              <div className="flex items-center gap-1">
-                {Array.from(activeModifiers).map((mod) => (
-                  <kbd
-                    key={mod}
-                    className="px-2 py-1 bg-primary/15 border border-primary/30 rounded text-xs font-semibold text-primary"
-                  >
-                    {mod}
-                  </kbd>
-                ))}
-                <span className="text-primary/40 text-xs">+ key</span>
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                <span className="text-xs font-medium text-muted-foreground">Recording</span>
               </div>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                {isMac ? "Try ⌘⇧K" : "Try Ctrl+Shift+K"}
-              </span>
-            )}
+              {activeModifiers.size > 0 ? (
+                <div className="flex items-center gap-1">
+                  {Array.from(activeModifiers).map((mod) => (
+                    <kbd
+                      key={mod}
+                      className="px-2 py-1 bg-primary/15 border border-primary/30 rounded text-xs font-semibold text-primary"
+                    >
+                      {mod}
+                    </kbd>
+                  ))}
+                  <span className="text-primary/40 text-xs">+ key</span>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  {isMac ? "Try ⌘⇧K" : "Try Ctrl+Shift+K"}
+                </span>
+              )}
+            </div>
+            {conflictNotice}
+            <span className="text-[10px] text-muted-foreground/60">{captureHint}</span>
           </div>
         ) : value ? (
           <div className="flex items-center justify-between">

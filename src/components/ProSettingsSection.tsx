@@ -20,16 +20,22 @@ const PRO_FEATURES_AVAILABLE = [
     desc: "Learns from your edits and automatically corrects recurring transcription errors",
   },
   {
+    // Voice Assistant used to be listed separately here. Its assistant name and
+    // prompt controls now live on the AI Enhancement page, so it is one line.
     name: "AI Enhancement",
-    desc: "Automatically polish transcriptions with grammar fixes, formatting, and intelligent rewrites",
-  },
-  {
-    name: "Voice Assistant",
-    desc: "Customize your AI companion with a personal name and fine-tuned system prompts",
+    desc: "Polish transcriptions automatically, name the assistant you address mid-dictation, and tune the system prompt behind both",
   },
   {
     name: "Action Engine",
     desc: "Trigger custom voice commands to launch apps, run scripts, and automate workflows",
+  },
+  {
+    name: "Read Aloud",
+    desc: "Select text anywhere and hit the hotkey to hear it read back in a local voice",
+  },
+  {
+    name: "Converse",
+    desc: "Talk to Claude Code about a project folder and hear its replies spoken back to you",
   },
 ];
 

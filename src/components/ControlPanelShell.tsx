@@ -13,8 +13,9 @@ import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
 import TranscribePage from "./pages/TranscribePage";
 import DictionaryPage from "./pages/DictionaryPage";
+import ReadAloudPage from "./pages/ReadAloudPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
-import VoiceAssistantPage from "./pages/VoiceAssistantPage";
+import ConversePage from "./pages/ConversePage";
 import ActionEnginePage from "./pages/ActionEnginePage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 import type { SettingsSectionType } from "./SettingsPage";
@@ -53,8 +54,9 @@ export default function ControlPanelShell() {
       "history",
       "transcribe",
       "dictionary",
+      "read-aloud",
       "ai-enhancement",
-      "voice-assistant",
+      "converse",
       "correction-memory",
       "action-engine",
       "settings",
@@ -294,6 +296,13 @@ export default function ControlPanelShell() {
     );
   };
 
+  /** Jump to a settings tab from inside another page, e.g. Transcribe's
+   *  missing-model error pointing at where models are installed. */
+  const openSettingsSection = (section: SettingsSectionType) => {
+    setActivePage("settings");
+    setSettingsTabRequest((current) => ({ section, requestId: current.requestId + 1 }));
+  };
+
   const renderPage = () => {
     switch (activePage) {
       case "home":
@@ -301,13 +310,15 @@ export default function ControlPanelShell() {
       case "history":
         return <HistoryPage />;
       case "transcribe":
-        return <TranscribePage />;
+        return <TranscribePage onOpenModelSettings={() => openSettingsSection("transcription")} />;
       case "dictionary":
         return <DictionaryPage />;
+      case "read-aloud":
+        return <ReadAloudPage />;
       case "ai-enhancement":
         return <AIEnhancementPage />;
-      case "voice-assistant":
-        return <VoiceAssistantPage />;
+      case "converse":
+        return <ConversePage />;
       case "correction-memory":
         return <DictionaryPage />;
       case "action-engine":

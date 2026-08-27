@@ -7,7 +7,12 @@ const {
   buildAutoStartLaunchOptions,
   buildAutoStartSetOptions,
   getAutoStartApprovalState,
+  resolveAutoStartEnabled,
 } = require("./src/helpers/autoStartLoginItemSettings");
+const {
+  readAutoStartRegistryState,
+  registryAutoStartEnabled,
+} = require("./src/helpers/windowsAutoStartRegistry");
 const { ensureStartMenuShortcut } = require("./src/helpers/startMenuShortcut");
 const APP_NAME = "PrivateTranscribe";
 const APP_ID = "com.privatetranscribe.app";
@@ -83,6 +88,8 @@ const micWatcher = require("./src/helpers/micWatcher");
 const voiceMuter = require("./src/helpers/voiceMuter");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
+const KokoroManager = require("./src/helpers/kokoro");
+const SelectionCapture = require("./src/helpers/selectionCapture");
 const TrayManager = require("./src/helpers/tray");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
@@ -105,6 +112,8 @@ let databaseManager = null;
 let clipboardManager = null;
 let whisperManager = null;
 let parakeetManager = null;
+let kokoroManager = null;
+let selectionCapture = null;
 let trayManager = null;
 let updateManager = null;
 let globeKeyManager = null;
@@ -164,6 +173,14 @@ async function initializeManagers() {
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
   parakeetManager = new ParakeetManager();
+  // Read Aloud (Kokoro TTS). Constructed only — the model is loaded lazily on
+  // the first synthesis request, and never downloaded implicitly.
+  kokoroManager = new KokoroManager();
+  // Reads the foreground app's selection for Read Aloud. The PowerShell worker
+  // is started eagerly because its ~300ms startup would otherwise land inside
+  // the first read's latency budget.
+  selectionCapture = new SelectionCapture();
+  selectionCapture.start();
   trayManager = new TrayManager();
   updateManager = new UpdateManager();
   updateManager.setBeforeQuitAndInstall(async () => {
@@ -226,6 +243,8 @@ async function initializeManagers() {
     clipboardManager,
     whisperManager,
     parakeetManager,
+    kokoroManager,
+    selectionCapture,
     windowManager,
     updateManager,
     windowsKeyManager,
@@ -328,22 +347,41 @@ async function startApp() {
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
     if (app.isPackaged && !fs.existsSync(flagPath)) {
+      const autoStartLaunchOptions = buildAutoStartLaunchOptions({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        execPath: process.execPath,
+        appPath: app.getAppPath(),
+        launchMode: autoStartLaunchMode,
+      });
+
+      // What the OS will really do with this executable at login. On Windows that has to
+      // come from the registry: getLoginItemSettings reports executableWillLaunchAtLogin
+      // true with no Run entry present, and launchItems omits quoted paths entirely — so
+      // both of Electron's answers about our own entry are wrong.
+      const readAutoStartState = () => {
+        if (process.platform === "win32") {
+          const state = readAutoStartRegistryState({ execPath: process.execPath });
+          if (state) {
+            return {
+              approval: state.registered ? state.approved : null,
+              enabled: registryAutoStartEnabled(state),
+            };
+          }
+        }
+        const loginSettings = app.getLoginItemSettings(autoStartLaunchOptions);
+        return {
+          approval: getAutoStartApprovalState(loginSettings, process.execPath),
+          enabled: resolveAutoStartEnabled(loginSettings, process.platform),
+        };
+      };
+
       // Never overrule a decision the user already made in Task Manager or Windows
       // Settings. An existing Run entry — approved or disabled — means this machine has
       // been set up before, even if our marker file was lost (reinstall, data reset).
-      const existingApproval = getAutoStartApprovalState(
-        app.getLoginItemSettings(
-          buildAutoStartLaunchOptions({
-            platform: process.platform,
-            isPackaged: app.isPackaged,
-            execPath: process.execPath,
-            appPath: app.getAppPath(),
-            launchMode: autoStartLaunchMode,
-          })
-        ),
-        process.execPath
-      );
+      const existingApproval = readAutoStartState().approval;
 
+      let defaultApplied = true;
       if (existingApproval === null) {
         app.setLoginItemSettings(
           buildAutoStartSetOptions({
@@ -356,12 +394,28 @@ async function startApp() {
             launchMode: autoStartLaunchMode,
           })
         );
+
+        // setLoginItemSettings is fire-and-forget: it never reports a rejected registry
+        // write, and security software routinely blocks unsigned apps from touching the
+        // Run key. Read the state back — the marker is a one-shot, so writing it after a
+        // failed write means the app silently never starts at login and never retries.
+        defaultApplied = readAutoStartState().enabled;
+        if (!defaultApplied) {
+          debugLogger.warn("First-run auto-start default did not stick", {
+            launchMode: autoStartLaunchMode,
+          });
+        }
       } else {
         debugLogger.debug("Skipping first-run auto-start default", {
           existingApproval,
         });
       }
-      fs.writeFileSync(flagPath, "1");
+
+      // Only burn the one-shot once the default is actually recorded, so a blocked write
+      // is retried on the next launch instead of being mistaken for a user's choice.
+      if (defaultApplied) {
+        fs.writeFileSync(flagPath, "1");
+      }
     }
   } catch {
     // Non-fatal — skip if userData isn't ready yet
@@ -931,6 +985,9 @@ if (gotSingleInstanceLock) {
     }
     if (windowsKeyManager) {
       windowsKeyManager.stop();
+    }
+    if (selectionCapture) {
+      selectionCapture.stop();
     }
     if (updateManager) {
       updateManager.cleanup();

@@ -45,9 +45,14 @@ beforeEach(() => {
 });
 
 describe("getModelSupportedLanguages", () => {
-  it("returns null for whisper (no restriction)", () => {
-    expect(getModelSupportedLanguages("whisper")).toBeNull();
-    expect(getModelSupportedLanguages("whisper", "turbo")).toBeNull();
+  it("returns whisper's own language set, not the UI picker's", () => {
+    const langs = getModelSupportedLanguages("whisper");
+    expect(langs).not.toBeNull();
+    expect(langs).toContain("en");
+    // In whisper, absent from the 58-entry picker.
+    expect(langs).toContain("yue");
+    expect(langs).not.toContain("zz");
+    expect(getModelSupportedLanguages("whisper", "turbo")).toEqual(langs);
   });
 
   it("returns language list for known parakeet model", () => {
@@ -79,10 +84,15 @@ describe("isLanguageSupported", () => {
     expect(isLanguageSupported("", "parakeet", "parakeet-tdt-0.6b-v3")).toBe(true);
   });
 
-  it("returns true for any language with whisper (no restriction)", () => {
+  it("returns true for every language whisper actually handles", () => {
     expect(isLanguageSupported("en", "whisper")).toBe(true);
     expect(isLanguageSupported("de", "whisper")).toBe(true);
-    expect(isLanguageSupported("zz", "whisper")).toBe(true); // even unknown codes
+    expect(isLanguageSupported("haw", "whisper")).toBe(true); // not in the picker
+  });
+
+  it("returns false for a code whisper does not know", () => {
+    // Passing this through killed whisper-server outright (audit F3).
+    expect(isLanguageSupported("zz", "whisper")).toBe(false);
   });
 
   it("returns true for supported parakeet language", () => {

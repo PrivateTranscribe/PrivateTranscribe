@@ -6,6 +6,8 @@ import {
   normalizeSpokenLanguages,
   resolveSpokenLanguages,
 } from "../utils/spokenLanguages";
+import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
+import { DEFAULT_KOKORO_VOICE_ID, READ_ALOUD_VOICE_STORAGE_KEY } from "../models/kokoroVoices";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -847,9 +849,13 @@ export function useSettings() {
   const boolSerializer = { serialize: String, deserialize: (v: string) => v === "true" };
 
   const [autoPaste, setAutoPaste] = useLocalStorage("autoPaste", true, boolSerializer);
+  // Off by default (Kristian, 2026-08-24): pasting is the delivery, and a
+  // fresh install should not silently overwrite the clipboard on every
+  // transcription. A FAILED paste still falls back to the clipboard no matter
+  // what this says — see dictationDelivery.js.
   const [copyToClipboard, setCopyToClipboard] = useLocalStorage(
     "copyToClipboard",
-    true,
+    false,
     boolSerializer
   );
   const [showPanelOnError, setShowPanelOnError] = useLocalStorage(
@@ -875,6 +881,45 @@ export function useSettings() {
     deserialize: String,
   });
   const [audioFeedback, setAudioFeedback] = useLocalStorage("audioFeedback", false, boolSerializer);
+  // Read Aloud. Off by default: it binds a global shortcut and needs a 326MB
+  // voice model, neither of which should happen to a user who never asked.
+  const [readAloudEnabled, setReadAloudEnabled] = useLocalStorage(
+    "readAloudEnabled",
+    false,
+    boolSerializer
+  );
+  // Stored raw like dictationKey, so the main process reads the accelerator
+  // rather than a JSON-quoted copy of it. The default and the reasoning behind
+  // it live in src/helpers/readAloudHotkey.js.
+  const [readAloudHotkey, setReadAloudHotkey] = useLocalStorage(
+    "readAloudHotkey",
+    DEFAULT_READ_ALOUD_HOTKEY,
+    {
+      serialize: String,
+      deserialize: String,
+    }
+  );
+  // On by default: a read you asked for is the thing you want to hear, and the
+  // alternative to quieting the other apps is nothing — Windows session volume
+  // is a multiplier UNDER the master, so PrivateTranscribe cannot be made
+  // louder than everything else. Read raw from localStorage by the overlay on
+  // every playback edge, so it is stored as plain "true"/"false".
+  const [readAloudDuckOthers, setReadAloudDuckOthers] = useLocalStorage(
+    "readAloudDuckOthers",
+    true,
+    boolSerializer
+  );
+  // Stored raw for the same reason readAloudHotkey is: the overlay reads this
+  // key straight out of localStorage right before it speaks, so a JSON-quoted
+  // copy would reach Kokoro as `"af_heart"` and be rejected as an unknown voice.
+  const [readAloudVoice, setReadAloudVoice] = useLocalStorage(
+    READ_ALOUD_VOICE_STORAGE_KEY,
+    DEFAULT_KOKORO_VOICE_ID,
+    {
+      serialize: String,
+      deserialize: String,
+    }
+  );
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
     true,
@@ -1150,6 +1195,14 @@ export function useSettings() {
     setVoiceCallMuteKey,
     audioFeedback,
     setAudioFeedback,
+    readAloudEnabled,
+    setReadAloudEnabled,
+    readAloudDuckOthers,
+    setReadAloudDuckOthers,
+    readAloudHotkey,
+    setReadAloudHotkey,
+    readAloudVoice,
+    setReadAloudVoice,
     errorNotifications,
     setErrorNotifications,
     successConfirmation,

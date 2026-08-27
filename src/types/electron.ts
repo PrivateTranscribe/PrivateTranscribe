@@ -160,6 +160,136 @@ export interface ParakeetDiagnosticsResult {
   models: string[];
 }
 
+/** Progress for a Kokoro model download, aggregated across the model's files. */
+export interface KokoroDownloadProgressData {
+  type: string;
+  model: string;
+  percentage?: number;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  error?: string;
+}
+
+export interface KokoroModelStatus {
+  model: string;
+  installed: boolean;
+  /** Registry-relative paths that are absent or truncated. */
+  missingFiles: string[];
+  totalBytes: number;
+  dir: string;
+}
+
+export interface KokoroEngineStatus {
+  loaded: boolean;
+  loading: boolean;
+  coldStartMs: number;
+  error: string | null;
+}
+
+export interface KokoroSynthResult {
+  pcm: Float32Array;
+  sampleRate: number;
+  synthMs: number;
+}
+
+/**
+ * Which agent answered a Converse turn. "mock" means the deterministic canned
+ * reply — either asked for, or fallen back to after the live CLI returned an
+ * API error. A mock run can never be mistaken for a live one.
+ */
+export type ConverseAgentMode = "live" | "mock";
+
+export type ConverseSessionState = "idle" | "thinking" | "speaking" | "listening" | "stopped";
+
+/** One entry of the Converse state log; `at` is a Date.now() timestamp. */
+export interface ConverseTransition {
+  state: ConverseSessionState;
+  at: number;
+  reason: string;
+}
+
+/** Renderer -> main playback report; the session's only evidence audio played. */
+export interface ConversePlayerReport {
+  gen: number;
+  playing: boolean;
+  playIndex: number;
+  known: number;
+  total: number | null;
+  cached: number;
+  drained: boolean;
+  lastSynthMs: number | null;
+  error: string | null;
+}
+
+export interface ConverseState {
+  state: ConverseSessionState;
+  running: boolean;
+  stateForMs?: number;
+  agentMode?: ConverseAgentMode;
+  model?: string;
+  /** Raw error text from the agent, kept verbatim (e.g. a rate-limit message). */
+  lastError?: string | null;
+  turnGen?: number;
+  /** Project directory the session runs in; the key its session id is stored under. */
+  cwd?: string;
+  /** The `claude` session this conversation is in, once the CLI has named it. */
+  sessionId?: string | null;
+  /** The id passed to `--resume` at start, or null for a fresh conversation. */
+  resumedFrom?: string | null;
+  stateLog?: ConverseTransition[];
+  player?: ConversePlayerReport | null;
+  agent?: Record<string, unknown>;
+  lastUtterance?: { text: string; at: number; gen: number } | null;
+  lastResponse?: { text: string; sentences: string[]; at?: number } | null;
+  lastInterrupt?: Record<string, unknown> | null;
+  /** Whether the CLI's own permission questions can reach the user at all. */
+  permissionRelay?: boolean;
+  /** Every permission question the harness asked, with how each was answered. */
+  permissionLog?: ConversePermissionEntry[];
+}
+
+/**
+ * One permission question the `claude` process asked, as the relay recorded it.
+ *
+ * This log is the truth the Converse page renders from: an entry with
+ * `answeredWith === null` is still waiting on the user, and everything else is
+ * settled. The page never decides an outcome itself — not even when its own
+ * countdown reaches zero.
+ */
+export interface ConversePermissionEntry {
+  id: number;
+  at: number;
+  tool_name: string;
+  input: unknown;
+  tool_use_id: string | null;
+  answeredWith: "allow" | "deny" | null;
+  answeredAt: number | null;
+  /** Who decided: the user, a standing answer, the deny timeout, or a stop. */
+  answeredBy?: "user" | "auto" | "timeout" | "session-stopped" | null;
+  /** When this question denies itself, absolute. The countdown reads this. */
+  deadline?: number;
+  timeoutMs?: number;
+}
+
+/** Outcome of copying the foreground app's selection. See selectionCapture.js. */
+export interface SelectionCaptureResult {
+  text: string;
+  /**
+   * `selection` - Ctrl+C actually produced new text.
+   * `clipboard` - the copy produced nothing, so the pre-existing clipboard was
+   *   used instead.
+   * `none` - nothing to read.
+   * `unsupported` - not Windows, or the capture worker is unavailable.
+   */
+  source: "selection" | "clipboard" | "none" | "unsupported";
+  /** How long the worker waited for the trigger modifiers to be released. */
+  waitedMs: number | null;
+  /** Wall time of the whole capture, for the trigger-lag timing harness. */
+  elapsedMs?: number;
+  /** Raw worker reply, e.g. "OK waited=120ms" or "ERR timeout". */
+  detail: string;
+}
+
 export interface PasteToolsResult {
   platform: "darwin" | "win32" | "linux";
   available: boolean;
@@ -359,8 +489,8 @@ export type ControlPanelPage =
   | "history"
   | "transcribe"
   | "dictionary"
+  | "read-aloud"
   | "ai-enhancement"
-  | "voice-assistant"
   | "correction-memory"
   | "action-engine"
   | "settings";
@@ -518,6 +648,9 @@ declare global {
       // Whisper operations (whisper.cpp)
       transcribeLocalWhisper: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
       transcribeFileV2: (audioBlob: Blob | ArrayBuffer, options?: any) => Promise<any>;
+      cancelFileTranscription: (
+        jobId?: string | null
+      ) => Promise<{ success: boolean; cancelled: boolean; jobs: number }>;
       onFileTranscriptionProgress: (
         callback: (
           event: any,
@@ -590,6 +723,212 @@ declare global {
         error?: string;
       }>;
       getParakeetDiagnostics: () => Promise<ParakeetDiagnosticsResult>;
+
+      // Read Aloud (Kokoro TTS) — engine runs in the main process, renderer plays PCM
+      readAloudCheckModelStatus: (modelId?: string) => Promise<KokoroModelStatus>;
+      readAloudDownloadModel: (modelId?: string) => Promise<{
+        model: string;
+        downloaded: boolean;
+        path: string;
+        success: boolean;
+      }>;
+      onReadAloudDownloadProgress: (
+        callback: (event: any, data: KokoroDownloadProgressData) => void
+      ) => (() => void) | void;
+      readAloudCancelDownload: () => Promise<{
+        success: boolean;
+        message?: string;
+        error?: string;
+      }>;
+      readAloudDeleteModel: (modelId?: string) => Promise<{
+        model: string;
+        deleted: boolean;
+        freed_bytes?: number;
+        freed_mb?: number;
+        error?: string;
+        success: boolean;
+      }>;
+      readAloudLoadEngine: (modelId?: string) => Promise<KokoroEngineStatus>;
+      readAloudEngineStatus: () => Promise<KokoroEngineStatus>;
+      readAloudSplit: (text: string) => Promise<string[]>;
+      readAloudSynth: (options: {
+        text: string;
+        voice?: string;
+        speed?: number;
+      }) => Promise<KokoroSynthResult>;
+      /**
+       * Copy the foreground app's selection and push it to the overlay to speak.
+       * The result describes the capture itself; the speaking happens over the
+       * `readaloud-speak` event.
+       */
+      readAloudReadSelection: () => Promise<SelectionCaptureResult>;
+      /**
+       * Real main-process decision on whether `text` is confidently
+       * non-English and should be blocked from synthesis. Exists so tests can
+       * exercise the actual guard (dynamic `tinyld` import and all) without
+       * desktop selection capture.
+       */
+      readAloudLanguageCheck: (text: string) => Promise<{
+        block: boolean;
+        language?: string;
+        languageName?: string;
+      }>;
+      /**
+       * Round-trip cost of the copy worker's line protocol. Injects no
+       * keystrokes and never touches the clipboard; exists for the
+       * trigger-lag timing harness.
+       */
+      readAloudCaptureProbe: () => Promise<{
+        ok: boolean;
+        rttMs: number | null;
+        detail: string;
+      }>;
+      /**
+       * Register or unregister the Read Aloud global shortcut to match the
+       * renderer's saved settings. The main process refuses to register while
+       * the voice model is missing, and reports that as `reason`.
+       */
+      readAloudSyncHotkey: (settings: { enabled: boolean; hotkey: string }) => Promise<{
+        registered: boolean;
+        hotkey: string;
+        reason?: string;
+      }>;
+      /**
+       * Report whether a read is currently on screen. While it is, the main
+       * process holds the transient playback shortcuts
+       * (Ctrl+Alt+Space / Left / Right); when it is not, nothing is bound.
+       */
+      readAloudSetPlaybackActive: (
+        active: boolean,
+        options?: { duckOthers?: boolean }
+      ) => Promise<{
+        active: boolean;
+        registered: string[];
+        reason?: string;
+        /** Per-app ducking counters, so a test can prove the wiring without audio. */
+        ducking?: {
+          supported: boolean;
+          ducked: boolean;
+          sessions: number;
+          duckRequests: number;
+          restoreRequests: number;
+          duckCalls: number;
+          restoreCalls: number;
+          repairs: number;
+          lastReason: string | null;
+        };
+      }>;
+      /**
+       * Text captured from the foreground app, for the overlay to speak.
+       * `source` mirrors SelectionCaptureResult: a `clipboard` read is the
+       * pre-existing clipboard rather than the selection, and the overlay says
+       * so instead of passing it off as what the user highlighted.
+       */
+      onReadAloudSpeak: (
+        callback: (
+          event: any,
+          data: { text: string; source?: SelectionCaptureResult["source"] }
+        ) => void
+      ) => (() => void) | void;
+      /**
+       * Sent instead of `readaloud-speak` when a capture produced no text, so
+       * the hotkey always answers with something the user can see.
+       */
+      onReadAloudNotice: (
+        callback: (event: any, data: { reason: "empty-selection" | "unsupported" }) => void
+      ) => (() => void) | void;
+      /**
+       * One press of a transient playback shortcut, forwarded from the main
+       * process because the overlay is where the player lives.
+       */
+      onReadAloudControl: (
+        callback: (event: any, data: { op: "toggle" | "back" | "forward" }) => void
+      ) => (() => void) | void;
+      /** True only when PRIVATETRANSCRIBE_DIAG_ENABLE_READALOUD_TEST=1 at launch. */
+      readAloudTestEnabled: boolean;
+      /**
+       * True only when PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_CHUNK=1 at launch:
+       * the first press synthesizes the whole first sentence, which is the
+       * baseline the first-audio gate measures against.
+       */
+      readAloudFirstChunkDisabled: boolean;
+
+      // Converse (voice loop) — one persistent `claude` process per session,
+      // its reply spoken sentence by sentence through the Read Aloud engine.
+      /**
+       * Start a session. `mock: true` replaces the CLI with a deterministic
+       * canned reply; the mode is reported back as `agentMode` so a run can
+       * never be mistaken for a live one.
+       */
+      converseStart: (options?: {
+        model?: string;
+        cwd?: string;
+        mock?: boolean;
+        /**
+         * Continue the last `claude` session recorded for this cwd instead of
+         * starting a fresh conversation. The id survives an app restart; the
+         * state reports it back as `resumedFrom`.
+         */
+        resume?: boolean;
+        /**
+         * Relay the harness's own permission questions to the app. The app
+         * adds no rules; unanswered questions deny themselves.
+         */
+        permissionRelay?: boolean;
+        /**
+         * Also pass `--strict-mcp-config`, which makes the CLI ignore the
+         * user's own project MCP servers. Off for real sessions; only a
+         * hermetic test turns it on.
+         */
+        strictMcpConfig?: boolean;
+        /** Path to a `--settings` file for the spawned CLI (tests only). */
+        settingsFile?: string | null;
+      }) => Promise<ConverseState>;
+      /** Inject a user turn as text. The microphone path will call this too. */
+      converseSendUtterance: (text: string) => Promise<{
+        accepted: boolean;
+        reason?: string;
+        state: string;
+        turnGen?: number;
+        agentMode?: ConverseAgentMode;
+      }>;
+      converseGetState: () => Promise<ConverseState>;
+      converseInterrupt: (reason?: string) => Promise<{
+        turnGen: number;
+        from: string;
+        state: string;
+      }>;
+      converseStop: () => Promise<ConverseState>;
+      conversePermissionAutoAnswer: (
+        behavior: "allow" | "deny" | null
+      ) => Promise<{ armed: "allow" | "deny" | null; reason?: string }>;
+      conversePermissionAnswer: (
+        id: number,
+        behavior: "allow" | "deny"
+      ) => Promise<{ answered: boolean; reason?: string }>;
+      onConversePermissionRequest: (
+        callback: (
+          event: any,
+          data: {
+            id: number;
+            tool_name: string;
+            input: unknown;
+            at: number;
+            deadline?: number;
+            timeoutMs?: number;
+          }
+        ) => void
+      ) => (() => void) | void;
+      onConverseSentence: (
+        callback: (event: any, data: { gen: number; index: number; text: string }) => void
+      ) => (() => void) | void;
+      onConverseTurnEnd: (
+        callback: (event: any, data: { gen: number; total: number }) => void
+      ) => (() => void) | void;
+      onConverseInterrupt: (
+        callback: (event: any, data: { gen: number; reason: string }) => void
+      ) => (() => void) | void;
+      converseReportPlayerState: (state: ConversePlayerReport) => void;
 
       // Local AI model management
       modelGetAll: () => Promise<any[]>;

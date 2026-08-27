@@ -1,0 +1,88 @@
+{
+  "clip": "control",
+  "sampleRate": 16000,
+  "totalSec": 46.825,
+  "totalSamples": 749200,
+  "utterances": [
+    {
+      "index": 0,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "I have been keeping my lecture notes this way for a couple of terms now, and I would not go back to the old way.",
+      "startSample": 0,
+      "endSample": 103200,
+      "startSec": 0,
+      "endSec": 6.45
+    },
+    {
+      "index": 1,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "The recorder sits on the desk and I only speak into it when something is worth keeping.",
+      "startSample": 110400,
+      "endSample": 193600,
+      "startSec": 6.9,
+      "endSec": 12.1
+    },
+    {
+      "index": 2,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "Afterwards I read the transcript on the train home and mark the parts I did not understand.",
+      "startSample": 204000,
+      "endSample": 296000,
+      "startSec": 12.75,
+      "endSec": 18.5
+    },
+    {
+      "index": 3,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "It is not perfect, and it never will be, but it is faster than writing everything by hand.",
+      "startSample": 303200,
+      "endSample": 400400,
+      "startSec": 18.95,
+      "endSec": 25.025
+    },
+    {
+      "index": 4,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "The part I did not expect was how much it changed the way I listen in class.",
+      "startSample": 410800,
+      "endSample": 488400,
+      "startSec": 25.675,
+      "endSec": 30.525
+    },
+    {
+      "index": 5,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "I am not trying to write down every word any more, so I can follow the argument instead.",
+      "startSample": 495600,
+      "endSample": 584400,
+      "startSec": 30.975,
+      "endSec": 36.525
+    },
+    {
+      "index": 6,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "The first few days felt clumsy, and then it stopped feeling like a tool at all.",
+      "startSample": 594800,
+      "endSample": 671200,
+      "startSec": 37.175,
+      "endSec": 41.95
+    },
+    {
+      "index": 7,
+      "speaker": "HOST",
+      "voice": "af_heart",
+      "text": "If you are thinking about trying it, give it a full week before you decide.",
+      "startSample": 678400,
+      "endSample": 749200,
+      "startSec": 42.4,
+      "endSec": 46.825
+    }
+  ]
+}

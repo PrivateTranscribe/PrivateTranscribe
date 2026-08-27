@@ -3454,6 +3454,12 @@ class AudioManager {
       outputFormat: metadata.outputFormat || "plain",
       inputFileName: metadata.originalFileName,
     };
+    // The handle the caller cancels with. Passed down rather than invented in
+    // the main process, so the page can stop a run it started before the first
+    // result has come back.
+    if (metadata.jobId) {
+      options.jobId = metadata.jobId;
+    }
     if (resolvedLanguage) {
       options.language = resolvedLanguage;
     } else {
@@ -3471,6 +3477,11 @@ class AudioManager {
     const result = await window.electronAPI.transcribeFileV2(arrayBuffer, options);
     if (result?.success && result.text) {
       return { success: true, ...result, source: "local-file-v2" };
+    }
+    // Cancelling is not an error. Handed back as an outcome so the caller can
+    // return to idle instead of rendering a failure the user caused on purpose.
+    if (result?.cancelled) {
+      return { success: false, cancelled: true, jobId: result.jobId, source: "local-file-v2" };
     }
     throw new Error(result?.message || result?.error || "Local file transcription failed");
   }
