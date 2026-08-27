@@ -451,6 +451,15 @@ async function startApp() {
     app.setActivationPolicy("regular");
   }
 
+  // Probe the CPU topology once, in the background, so nothing has to ask for it
+  // on a UI path. The Windows probe spawns PowerShell and takes over a second;
+  // it used to run synchronously the first time Settings mounted, freezing the
+  // whole main process while it did.
+  const { warmCpuTopology } = require("./src/helpers/cpuThreads");
+  warmCpuTopology().catch(() => {
+    // Falls back to an estimate on its own; never fatal.
+  });
+
   // Initialize Whisper manager at startup (don't await to avoid blocking).
   // Startup init only applies config (idle timeout / force CPU) and dependency checks.
   // whisper-server starts on first transcription or explicit server action.

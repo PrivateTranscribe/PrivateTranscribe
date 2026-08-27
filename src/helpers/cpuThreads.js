@@ -1,7 +1,8 @@
 "use strict";
 
 const os = require("os");
-const { execFileSync } = require("child_process");
+const { execFile } = require("child_process");
+const fs = require("fs");
 const debugLogger = require("./debugLogger");
 
 /**
@@ -41,6 +42,7 @@ const PROBE_TIMEOUT_MS = 4000;
 const AUTO = 0;
 
 let cachedPhysicalCores = null;
+let topologyProbePromise = null;
 
 function logicalCoreCount() {
   try {
@@ -51,39 +53,60 @@ function logicalCoreCount() {
 }
 
 /**
- * Best-effort physical core count. Node has no API for this, so each platform
- * needs its own probe. Every failure path falls through to an estimate rather
- * than throwing: a wrong thread count is a performance question, never a
- * reason to stop transcribing.
+ * The answer to fall back on when the real topology is not known yet. Assume SMT
+ * on anything big enough to plausibly have it, and take the logical count at
+ * face value on small machines where halving would be the more damaging guess.
  */
-function probePhysicalCores() {
+function estimatePhysicalCores() {
   const logical = logicalCoreCount();
+  return logical > SMALL_MACHINE_CORES ? Math.max(1, Math.round(logical / 2)) : logical;
+}
 
+function runProbe(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      command,
+      args,
+      { timeout: PROBE_TIMEOUT_MS, windowsHide: true, encoding: "utf8" },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      }
+    );
+  });
+}
+
+/**
+ * Best-effort physical core count. Node has no API for this, so each platform
+ * needs its own probe. Every failure path falls through to the estimate rather
+ * than throwing: a wrong thread count is a performance question, never a reason
+ * to stop transcribing.
+ *
+ * Asynchronous on purpose. This used to be `execFileSync("powershell", ...)`,
+ * which froze the Electron main process for as long as PowerShell took to start
+ * and answer — measured at 1.4s on a healthy 32-thread desktop. During that
+ * freeze nothing in the app runs: no IPC, no window messages, no hotkey
+ * handling, no tray. It ran on the Settings mount, so opening Settings stalled
+ * the whole app.
+ */
+async function probePhysicalCores() {
   try {
     if (process.platform === "win32") {
-      const out = execFileSync(
-        "powershell",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          "(Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum",
-        ],
-        { timeout: PROBE_TIMEOUT_MS, windowsHide: true, encoding: "utf8" }
-      );
+      const out = await runProbe("powershell", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "(Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum",
+      ]);
       const cores = Number.parseInt(String(out).trim(), 10);
       if (Number.isFinite(cores) && cores > 0) return cores;
     } else if (process.platform === "darwin") {
-      const out = execFileSync("sysctl", ["-n", "hw.physicalcpu"], {
-        timeout: PROBE_TIMEOUT_MS,
-        encoding: "utf8",
-      });
+      const out = await runProbe("sysctl", ["-n", "hw.physicalcpu"]);
       const cores = Number.parseInt(String(out).trim(), 10);
       if (Number.isFinite(cores) && cores > 0) return cores;
     } else {
       // Linux: count distinct (physical id, core id) pairs in /proc/cpuinfo.
-      const fs = require("fs");
-      const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+      const cpuinfo = await fs.promises.readFile("/proc/cpuinfo", "utf8");
       const seen = new Set();
       let physicalId = null;
       for (const line of cpuinfo.split("\n")) {
@@ -102,22 +125,47 @@ function probePhysicalCores() {
     });
   }
 
-  // No probe available. Assume SMT on anything big enough to plausibly have it,
-  // and take the logical count at face value on small machines where halving
-  // would be the more damaging guess.
-  return logical > SMALL_MACHINE_CORES ? Math.max(1, Math.round(logical / 2)) : logical;
+  return estimatePhysicalCores();
 }
 
-/** Cached because the Windows probe spawns PowerShell, which is not cheap. */
-function getPhysicalCoreCount() {
-  if (cachedPhysicalCores === null) {
-    cachedPhysicalCores = probePhysicalCores();
-    debugLogger.info("CPU topology detected", {
-      physicalCores: cachedPhysicalCores,
-      logicalCores: logicalCoreCount(),
-    });
+/**
+ * Kick off the probe and cache the result. Safe to call repeatedly — concurrent
+ * callers share one probe. Call it once at startup so the real number is in
+ * hand long before anything asks.
+ */
+function warmCpuTopology() {
+  if (cachedPhysicalCores !== null) {
+    return Promise.resolve(cachedPhysicalCores);
   }
-  return cachedPhysicalCores;
+  if (!topologyProbePromise) {
+    topologyProbePromise = probePhysicalCores()
+      .then((cores) => {
+        cachedPhysicalCores = cores;
+        debugLogger.info("CPU topology detected", {
+          physicalCores: cachedPhysicalCores,
+          logicalCores: logicalCoreCount(),
+        });
+        return cores;
+      })
+      .catch(() => estimatePhysicalCores())
+      .finally(() => {
+        topologyProbePromise = null;
+      });
+  }
+  return topologyProbePromise;
+}
+
+/**
+ * Synchronous and never blocking. Returns the probed count once it is known and
+ * the estimate until then, starting the probe on first use so a caller that
+ * skipped `warmCpuTopology()` still converges on the real number.
+ */
+function getPhysicalCoreCount() {
+  if (cachedPhysicalCores !== null) {
+    return cachedPhysicalCores;
+  }
+  void warmCpuTopology();
+  return estimatePhysicalCores();
 }
 
 /**
@@ -150,14 +198,17 @@ function resolveWhisperThreads(setting, topology = {}) {
 /** Test seam: forget the cached probe result. */
 function resetCpuTopologyCache() {
   cachedPhysicalCores = null;
+  topologyProbePromise = null;
 }
 
 module.exports = {
   AUTO,
   MAX_AUTO_THREADS,
   WHISPER_CPP_DEFAULT_THREADS,
+  estimatePhysicalCores,
   getPhysicalCoreCount,
   logicalCoreCount,
   resetCpuTopologyCache,
   resolveWhisperThreads,
+  warmCpuTopology,
 };
