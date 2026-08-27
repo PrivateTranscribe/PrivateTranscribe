@@ -107,9 +107,12 @@ describe("parsing", () => {
     const { parseDuckedList } = await loadHelpers();
 
     const rows = parseDuckedList(
-      ["# readaloud-ducking v1 2026-08-24T00:00:00Z fraction=0.3000", "", "garbage", "9001|0.5000|0.1500|id"].join(
-        "\n"
-      )
+      [
+        "# readaloud-ducking v1 2026-08-24T00:00:00Z fraction=0.3000",
+        "",
+        "garbage",
+        "9001|0.5000|0.1500|id",
+      ].join("\n")
     );
 
     expect(rows.map((r: any) => r.pid)).toEqual([9001]);
@@ -270,9 +273,10 @@ describe("crash repair", () => {
     const ReadAloudDucking = await load();
     fs.writeFileSync(
       statePath,
-      ["# readaloud-ducking v1 2026-08-24T00:00:00Z fraction=0.3000", `9001|0.6200|0.1860|${REAL_ID}`].join(
-        "\n"
-      ),
+      [
+        "# readaloud-ducking v1 2026-08-24T00:00:00Z fraction=0.3000",
+        `9001|0.6200|0.1860|${REAL_ID}`,
+      ].join("\n"),
       "utf8"
     );
 
@@ -353,5 +357,110 @@ describe("does nothing it should not", () => {
     expect(status.restoreRequests).toBe(1);
     expect(status.duckCalls).toBe(0);
     expect(status.lastReason).toBe("diagnostic-flag");
+  });
+});
+
+describe("the restore backstop", () => {
+  /**
+   * Restore hangs off one edge: the overlay reporting that a read ended. A
+   * renderer that dies mid-read never sends it, and per-app volumes hide in the
+   * Windows mixer where nobody thinks to look. The crash repair only helps if
+   * the app is restarted, so this covers the run that keeps going.
+   */
+  it("puts the other apps back when no read ever reports ending", async () => {
+    vi.useFakeTimers();
+    try {
+      const ReadAloudDucking = await load();
+      const runPowerShell = vi.fn(async (script: string) =>
+        script.includes("RestoreSessions") ? "restored=1" : `9001|0.6200|0.1860|${REAL_ID}`
+      );
+      const logger = makeLogger();
+      const ducking = new ReadAloudDucking({
+        platform: "win32",
+        logger,
+        runPowerShell,
+        stateFilePath: statePath,
+        getExcludedPids: () => [4242],
+        watchdogMs: 60_000,
+      });
+
+      await ducking.duckOthers();
+      expect(ducking.getStatus().ducked).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(61_000);
+
+      expect(ducking.getStatus().ducked, "the other apps stayed quiet forever").toBe(false);
+      expect(runPowerShell.mock.calls.some((c) => String(c[0]).includes("RestoreSessions"))).toBe(
+        true
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("putting the other apps back anyway")
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("counts from the newest read, not the first", async () => {
+    vi.useFakeTimers();
+    try {
+      const ReadAloudDucking = await load();
+      const runPowerShell = vi.fn(async (script: string) =>
+        script.includes("RestoreSessions") ? "restored=1" : `9001|0.6200|0.1860|${REAL_ID}`
+      );
+      const ducking = new ReadAloudDucking({
+        platform: "win32",
+        logger: makeLogger(),
+        runPowerShell,
+        stateFilePath: statePath,
+        getExcludedPids: () => [4242],
+        watchdogMs: 60_000,
+      });
+
+      await ducking.duckOthers();
+      await vi.advanceTimersByTimeAsync(50_000);
+      // A second read starting over a duck that is already standing.
+      await ducking.duckOthers();
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(ducking.getStatus().ducked, "a second read did not push the backstop out").toBe(true);
+      // Still exactly one duck: the second call is a no-op beyond re-arming.
+      expect(ducking.getStatus().duckCalls).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(ducking.getStatus().ducked).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fire after a read ended normally", async () => {
+    vi.useFakeTimers();
+    try {
+      const ReadAloudDucking = await load();
+      const runPowerShell = vi.fn(async (script: string) =>
+        script.includes("RestoreSessions") ? "restored=1" : `9001|0.6200|0.1860|${REAL_ID}`
+      );
+      const ducking = new ReadAloudDucking({
+        platform: "win32",
+        logger: makeLogger(),
+        runPowerShell,
+        stateFilePath: statePath,
+        getExcludedPids: () => [4242],
+        watchdogMs: 60_000,
+      });
+
+      await ducking.duckOthers();
+      await ducking.restore();
+      const restoresAfterTheRead = ducking.getStatus().restoreCalls;
+
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(ducking.getStatus().restoreCalls, "the backstop fired on top of a clean read").toBe(
+        restoresAfterTheRead
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

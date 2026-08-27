@@ -75,6 +75,21 @@ const DIAG_DISABLE_FLAG = "PRIVATETRANSCRIBE_DIAG_DISABLE_AUDIO_DUCKING";
 const STATE_FILE_NAME = "readaloud-ducking-state.txt";
 
 /**
+ * Last-resort backstop: how long other apps may stay quiet before they are put
+ * back without anyone asking.
+ *
+ * Restore is driven by one edge — the overlay reporting that a read ended. A
+ * renderer that dies mid-read, or a transition that never fires, leaves
+ * somebody's music at 30% with nothing left to notice it, and per-app levels
+ * hide in the Windows volume mixer where nobody looks. The crash repair only
+ * helps if the app is restarted; this covers the case where it is not.
+ *
+ * Thirty minutes because a long document read is legitimately long. Nothing
+ * normal gets near it, so this firing at all means something went wrong.
+ */
+const RESTORE_WATCHDOG_MS = 30 * 60 * 1000;
+
+/**
  * The state file is plain lines, not JSON, for one reason: the C# writes it,
  * and a session instance identifier is full of backslashes and pipes. Lines of
  * `pid|priorVolume|duckedVolume|instanceId` with the id last need no escaping
@@ -491,6 +506,7 @@ class ReadAloudDucking {
     getExcludedPids = () => [process.pid],
     stateFilePath = null,
     duckFraction = DEFAULT_DUCK_FRACTION,
+    watchdogMs = RESTORE_WATCHDOG_MS,
   } = {}) {
     this.platform = platform;
     this.logger = logger;
@@ -519,6 +535,33 @@ class ReadAloudDucking {
       lastReason: null,
     };
     this._inFlight = null;
+    this._watchdogMs = watchdogMs;
+    this._watchdogTimer = null;
+  }
+
+  /** @private Arm the backstop, or push an armed one out to a fresh interval. */
+  _armWatchdog() {
+    this._clearWatchdog();
+    if (!this._watchdogMs || this._watchdogMs <= 0) return;
+    this._watchdogTimer = setTimeout(() => {
+      this._watchdogTimer = null;
+      this.stats.lastReason = "watchdog";
+      this.logger.warn?.(
+        `[ReadAloudDucking] No read ever reported ending within ${Math.round(
+          this._watchdogMs / 1000
+        )}s - putting the other apps back anyway`
+      );
+      void this.restore();
+    }, this._watchdogMs);
+    // A backstop must never be a reason for the app to stay alive.
+    this._watchdogTimer?.unref?.();
+  }
+
+  /** @private */
+  _clearWatchdog() {
+    if (!this._watchdogTimer) return;
+    clearTimeout(this._watchdogTimer);
+    this._watchdogTimer = null;
   }
 
   /** Late-bind what only main.js knows: the userData dir and the app's PIDs. */
@@ -613,7 +656,12 @@ class ReadAloudDucking {
    */
   async duckOthers() {
     this.stats.duckRequests += 1;
-    if (this.ducked || this._inFlight) return this.getStatus();
+    if (this.ducked || this._inFlight) {
+      // A new read starting over a standing duck means playback is still going,
+      // so the backstop counts from now rather than from the first read.
+      if (this.ducked) this._armWatchdog();
+      return this.getStatus();
+    }
     if (this._blocked()) return this.getStatus();
 
     const run = this._doDuck();
@@ -649,6 +697,7 @@ class ReadAloudDucking {
       this.saved = sessions;
       this.ducked = true;
       this.stats.lastReason = null;
+      this._armWatchdog();
       this.logger.debug?.(
         `[ReadAloudDucking] Ducked ${sessions.length} other session(s) to ${this.duckFraction}`,
         { excluded }
@@ -672,6 +721,9 @@ class ReadAloudDucking {
         // _doDuck swallows its own errors; nothing to add here.
       }
     }
+    // After the wait, not before: the duck we just waited on arms the backstop
+    // when it lands, and disarming ahead of that would leave it running.
+    this._clearWatchdog();
     if (!this.ducked) return this.getStatus();
 
     const sessions = this.saved || [];
@@ -756,6 +808,7 @@ module.exports.parseDuckedList = parseDuckedList;
 module.exports.serializeState = serializeState;
 module.exports.DEFAULT_DUCK_FRACTION = DEFAULT_DUCK_FRACTION;
 module.exports.STATE_FILE_NAME = STATE_FILE_NAME;
+module.exports.RESTORE_WATCHDOG_MS = RESTORE_WATCHDOG_MS;
 module.exports.STATE_HEADER = STATE_HEADER;
 module.exports.DIAG_DISABLE_FLAG = DIAG_DISABLE_FLAG;
 module.exports.SESSION_CS = SESSION_CS;
