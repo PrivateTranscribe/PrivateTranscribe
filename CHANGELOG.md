@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.16.0 - 2026-08-27
+
+### Added
+
+- Read Aloud. Select text anywhere, press the hotkey, and PrivateTranscribe reads it back to you in a voice that never leaves your machine. It has its own page, 28 voices you can listen to before you pick one, and a player in the overlay that shows the sentence it is on.
+- You can steer a read while it happens, from the overlay or the keyboard. Ctrl+Alt+Space pauses and resumes, and Ctrl+Alt+left/right skip a sentence at a time.
+- Converse. Hold a spoken conversation with an agent that can do real work on your machine. It has its own page and overlay, talking over it stops the speech straight away and tells the agent what it missed, and a conversation survives restarting the app.
+- Other apps are turned down while Read Aloud speaks, then put back where you had them.
+
+### Changed
+
+- Read Aloud starts on the first clause instead of waiting for a whole sentence, and the engine warms up in advance, so the first press no longer stutters.
+- Transcribing no longer overwrites your clipboard unless you ask it to.
+- The Transcribe page takes its language from the languages you already said you speak.
+- Voice Assistant now lives inside AI Enhancement instead of having its own page.
+- Every overlay sits in one column under the dictation button rather than scattering across the screen.
+- Read Aloud skips text that is not English and tells you, instead of garbling it.
+- Reading aloud no longer takes the whole machine with it. Its threadpool is capped so everything else stays responsive.
+
+### Fixed
+
+- Start on boot works. The switch was stuck on, claiming the app would launch at login when nothing was actually registered, and every attempt to change it failed with a warning blaming security software. It now reads the real Windows startup entry, so it tells the truth and can be turned on and off.
+- File transcription no longer crashes when you cancel it, and stops transcribing in the wrong language.
+- A compound hotkey no longer misses the press when both keys land at the same instant.
+- The Read Aloud hotkey always answers, including in the middle of a read.
+- Tapping the dictation button over and over no longer walks your system volume down for good, and volumes come back even when a read never reports finishing.
+- Exported settings now carry your agent name and your custom prompt.
+- The firewall advice no longer points at a rule that does not cover the transcription engine.
+
 ## 0.15.0 - 2026-08-23
 
 ### Added
