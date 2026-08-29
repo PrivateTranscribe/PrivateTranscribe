@@ -27,4 +27,30 @@ describe("transcription text repair", () => {
       "OpenC ode is in the transcript"
     );
   });
+
+  // Danish writes compounds as one word and Whisper splits them apart. These
+  // terms are lowercase, so the capital that guards "open code" is never there.
+  it("repairs a lowercase compound the user added to the dictionary", () => {
+    expect(
+      repairSplitDictionaryTerms("Sundarbans har siden 1966 været et vildt reservat.", [
+        "vildtreservat",
+      ])
+    ).toBe("Sundarbans har siden 1966 været et vildtreservat.");
+
+    expect(repairSplitDictionaryTerms("kun mutationer i kim celler", ["kimceller"])).toBe(
+      "kun mutationer i kimceller"
+    );
+  });
+
+  it("still refuses to touch a lowercase phrase when the term is a capitalised name", () => {
+    expect(repairSplitDictionaryTerms("vi bruger open code her", ["OpenCode"])).toBe(
+      "vi bruger open code her"
+    );
+  });
+
+  it("leaves a lowercase compound alone when the user has not asked for it", () => {
+    expect(repairSplitDictionaryTerms("et vildt reservat i syd", ["kimceller"])).toBe(
+      "et vildt reservat i syd"
+    );
+  });
 });
