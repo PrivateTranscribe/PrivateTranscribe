@@ -29,6 +29,7 @@ blob-report/
 # Build / dist outputs
 .next/
 dist/
+dist-store/
 .nuxt/
 public/
 .out/
