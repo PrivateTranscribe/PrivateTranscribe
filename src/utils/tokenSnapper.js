@@ -24,10 +24,20 @@ const splitIdentifierToSpoken = (word) => {
   return acronym.replace(/\s+/g, " ").trim().toLowerCase();
 };
 
+/**
+ * The key a correction is stored and matched under.
+ *
+ * Keeps every letter and digit, not just the ASCII ones. Stripping to [a-z0-9]
+ * turned "tilstedeværelsen" into "tilstedev relsen" and "gåtur" into "g tur",
+ * and a key holding a space where a letter belongs can never match the word it
+ * came from - so every Danish correction containing æ, ø or å was learned and
+ * then silently never applied. Punctuation still collapses to a space, which is
+ * what lets "u de" and "u.de" share one key.
+ */
 const normalizeSpoken = (text) => {
   return (text || "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 };

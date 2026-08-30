@@ -17,6 +17,41 @@ describe("token correction learning", () => {
     expect(inferCorrectionPairs("use login error", "useLoginError")).toEqual([]);
   });
 
+  // Whisper splits Danish compounds apart - measured at 5 words per 2954 in
+  // Danish against 0 in English - and correcting one by hand is how a user
+  // teaches the app about it. Keys were stripped to [a-z0-9], so a word holding
+  // æ, ø or å was stored under a key with a space where the letter belonged and
+  // could never match the word again.
+  it("learns a Danish correction whose words contain æ, ø or å", () => {
+    expect(
+      inferCorrectionPairs("han var til stedeværelsen", "han var tilstedeværelsen", {
+        allowPhraseLearning: true,
+      })
+    ).toEqual([{ source: "til stedeværelsen", target: "tilstedeværelsen" }]);
+
+    expect(
+      inferCorrectionPairs("en stærk mod strøm", "en stærk modstrøm", {
+        allowPhraseLearning: true,
+      })
+    ).toEqual([{ source: "mod strøm", target: "modstrøm" }]);
+  });
+
+  it("applies a learned Danish correction back to a later transcript", () => {
+    expect(
+      snapTranscript({
+        transcript: "vi tog en dejlig gå tur",
+        corrections: [{ source: "gå tur", target: "gåtur", confirmed: true }],
+      })
+    ).toBe("vi tog en dejlig gåtur");
+
+    expect(
+      snapTranscript({
+        transcript: "Hvorfor er du u de på en gåtur?",
+        corrections: [{ source: "u de", target: "ude", confirmed: true }],
+      })
+    ).toBe("Hvorfor er du ude på en gåtur?");
+  });
+
   it("learns a phrase mapping when phrase correction learning is enabled", () => {
     expect(
       inferCorrectionPairs("use login error", "useLoginError", {
@@ -55,7 +90,9 @@ describe("token correction learning", () => {
   });
 
   it("reports no rejection reason when a correction is learnable", () => {
-    expect(explainCorrectionRejection("I spoke to cloud today", "I spoke to Claude today")).toBeNull();
+    expect(
+      explainCorrectionRejection("I spoke to cloud today", "I spoke to Claude today")
+    ).toBeNull();
   });
 
   it("applies learned phrase corrections before shorter word corrections", () => {
