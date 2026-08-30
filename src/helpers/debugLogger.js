@@ -51,7 +51,9 @@ class DebugLogger {
 
     // Check if app is ready before accessing app.getPath()
     // This is critical because app.getPath() can hang or fail before app.whenReady()
-    if (!app.isReady()) {
+    // `app` is undefined inside a utilityProcess (kokoroHost.js), where file
+    // logging is simply unavailable — console logging still works there.
+    if (!app?.isReady()) {
       // App not ready yet, will try again later via ensureFileLogging() or write()
       return;
     }

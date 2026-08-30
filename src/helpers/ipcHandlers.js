@@ -1388,9 +1388,15 @@ class IPCHandlers {
       return requireKokoro().splitSentences(text);
     });
 
-    ipcMain.handle("readaloud-synth", async (_event, { text, voice, speed } = {}) => {
-      return requireKokoro().synthesize(text, { voice, speed });
-    });
+    ipcMain.handle(
+      "readaloud-synth",
+      async (_event, { text, voice, speed, priority, epoch, channel } = {}) => {
+        // priority/epoch/channel steer the client's queue (interactive synths
+        // jump queued prefetch, stale epochs are dropped); the engine itself
+        // only ever sees text, voice and speed.
+        return requireKokoro().synthesize(text, { voice, speed, priority, epoch, channel });
+      }
+    );
 
     // Capture path shared with the Read Aloud global shortcut; see
     // readSelectionAndSpeak().

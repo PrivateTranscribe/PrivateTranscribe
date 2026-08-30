@@ -100,7 +100,7 @@ const micWatcher = require("./src/helpers/micWatcher");
 const voiceMuter = require("./src/helpers/voiceMuter");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
-const KokoroManager = require("./src/helpers/kokoro");
+const KokoroClient = require("./src/helpers/kokoroClient");
 const SelectionCapture = require("./src/helpers/selectionCapture");
 const TrayManager = require("./src/helpers/tray");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
@@ -206,9 +206,10 @@ async function initializeManagers() {
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
   parakeetManager = new ParakeetManager();
-  // Read Aloud (Kokoro TTS). Constructed only — the model is loaded lazily on
-  // the first synthesis request, and never downloaded implicitly.
-  kokoroManager = new KokoroManager();
+  // Read Aloud (Kokoro TTS). Constructed only — the engine lives in a
+  // below-normal-priority utilityProcess (see kokoroClient.js), spawned lazily
+  // on the first engine call, and the model is never downloaded implicitly.
+  kokoroManager = new KokoroClient();
   // Reads the foreground app's selection for Read Aloud. The PowerShell worker
   // is started eagerly because its ~300ms startup would otherwise land inside
   // the first read's latency budget.

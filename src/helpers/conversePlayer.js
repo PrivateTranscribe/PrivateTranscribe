@@ -115,7 +115,11 @@ export class ConversePlayer {
     if (!msg || typeof msg.index !== "number") return;
     if (msg.gen !== this.gen) this.resetTo(msg.gen);
     this.texts[msg.index] = msg.text;
-    if (msg.index <= this.playIndex + LOOKAHEAD) this.ensure(msg.index);
+    if (msg.index <= this.playIndex + LOOKAHEAD) {
+      this.ensure(msg.index, {
+        priority: msg.index === this.playIndex ? "interactive" : "prefetch",
+      });
+    }
     this.report();
     if (!this.busy) this.playFrom(this.playIndex);
   }
@@ -159,14 +163,23 @@ export class ConversePlayer {
 
   // --------------------------------------------------------------- synthesis
 
-  ensure(i) {
+  ensure(i, { priority = "interactive" } = {}) {
     if (i < 0 || this.texts[i] === undefined) return null;
     if (this.cache.has(i)) return Promise.resolve(this.cache.get(i));
     if (this.inflight.has(i)) return this.inflight.get(i);
 
     const myGen = this.gen;
     const job = Promise.resolve(
-      this.api.readAloudSynth({ text: this.texts[i], voice: this.voice, speed: this.speed })
+      this.api.readAloudSynth({
+        text: this.texts[i],
+        voice: this.voice,
+        speed: this.speed,
+        // The sentence being waited on outranks lookahead in the engine queue,
+        // and an interrupt's gen bump retires the dead turn's queued synths.
+        priority,
+        epoch: myGen,
+        channel: "converse",
+      })
     )
       .then(({ pcm, sampleRate, synthMs }) => {
         const ctx = getSharedAudioContext();
@@ -185,7 +198,9 @@ export class ConversePlayer {
       })
       .catch((err) => {
         this.inflight.delete(i);
-        this.error = String(err?.message || err);
+        // A synth from an interrupted turn (stale epoch) failing late must not
+        // mark the live turn as broken.
+        if (myGen === this.gen) this.error = String(err?.message || err);
         return null;
       });
 
@@ -194,7 +209,7 @@ export class ConversePlayer {
   }
 
   prefetch() {
-    for (let k = 1; k <= LOOKAHEAD; k++) this.ensure(this.playIndex + k);
+    for (let k = 1; k <= LOOKAHEAD; k++) this.ensure(this.playIndex + k, { priority: "prefetch" });
   }
 
   // ---------------------------------------------------------------- playback
