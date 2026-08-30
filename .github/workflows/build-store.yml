@@ -1,0 +1,231 @@
+name: Build Microsoft Store Installer
+
+# The Microsoft Store hosts a link, not the binary: it downloads the installer
+# from our own HTTPS URL and runs it with no arguments (Store policy 10.2.9).
+# That means two things this workflow exists to guarantee — the installer must
+# be signed by a CA in the Microsoft Trusted Root Program, and it must install
+# without showing any UI.
+#
+# Deliberately manual. A Store submission is a decision, not something every tag
+# should trigger, and each submission needs its own versioned URL that never
+# changes afterwards.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to R2 at the versioned Store URL"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-store:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same set as build-windows.yml on purpose. The Store installer must carry
+      # exactly the payload the public installer does; only its UI differs.
+      - name: Download native binaries
+        run: |
+          npm run compile:native
+          npm run download:whisper-cpp
+          node scripts/download-nircmd.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLAMA_CPP_VERSION: b9016
+
+      - name: Verify fast paste helper was built
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "resources/bin/windows-fast-paste.exe")) {
+            Write-Error "windows-fast-paste.exe is missing. Auto-paste into terminals would silently fall back to Ctrl+V."
+            exit 1
+          }
+
+      # Fail here rather than 10 minutes later inside electron-builder, where a
+      # missing credential surfaces as an opaque Azure auth error.
+      - name: Verify Azure signing credentials are present
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          $missing = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET') |
+            Where-Object { -not (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value }
+
+          if ($missing) {
+            throw "The Store rejects unsigned installers outright. Missing secrets: $($missing -join ', '). The client secret expires; if it was working and now is not, renew it on the PrivateTranscribe-Signing-CI app registration."
+          }
+
+      # Goes through `npm run build:store` rather than restating its flags, so
+      # the silent include and the separate output directory cannot drift from
+      # what a local build produces. --ignore-scripts skips prebuild:store; the
+      # downloads it would run are done explicitly above.
+      #
+      # Long-form --config.* on purpose. The short -c.win.signAndEditExecutable
+      # form is parsed as a config *file path* and the build dies with ENOENT.
+      - name: Package (Store NSIS, silent)
+        run: npm run build:store --ignore-scripts -- --config.forceCodeSigning=true --config.win.signAndEditExecutable=true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # The one thing that makes this build different from the public one is
+      # invisible until somebody runs it, and a wizard would fail certification.
+      # NSIS records it in the firstheader (fileform.h: FH_FLAGS_SILENT = 2),
+      # which sits in the clear a few tens of KB into the file.
+      - name: Verify the installer is silent
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path dist-store -Filter "*.exe" -File |
+            Where-Object { $_.Name -notlike "*.__uninstaller*" } |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw "No installer found in dist-store."
+          }
+
+          $stream = [System.IO.File]::OpenRead($installer.FullName)
+          $buffer = New-Object byte[] (4 * 1024 * 1024)
+          $read = $stream.Read($buffer, 0, $buffer.Length)
+          $stream.Close()
+
+          # Codepage 28591 (latin-1) maps every byte to one char, so IndexOf
+          # searches raw bytes. Spelled numerically because the ::Latin1 shortcut
+          # only exists on .NET 5+, which makes this untestable outside CI.
+          $text = [System.Text.Encoding]::GetEncoding(28591).GetString($buffer, 0, $read)
+          $flags = $null
+
+          # "NullsoftInst" can appear before the real header, so keep looking
+          # until the 0xDEADBEEF marker in front of it agrees.
+          $at = $text.IndexOf("NullsoftInst")
+          while ($at -ge 8) {
+            # 0xDEADBEEFL, with the suffix: PowerShell parses a bare
+            # 0xDEADBEEF as Int32 -559038737, which never equals the UInt32.
+            if ([BitConverter]::ToUInt32($buffer, $at - 4) -eq 0xDEADBEEFL) {
+              $flags = [BitConverter]::ToUInt32($buffer, $at - 8)
+              break
+            }
+            $at = $text.IndexOf("NullsoftInst", $at + 1)
+          }
+
+          if ($null -eq $flags) {
+            throw "Could not find the NSIS firstheader in $($installer.Name). Silence is unverified, so this build must not be submitted."
+          }
+
+          if (-not ($flags -band 2)) {
+            throw "FH_FLAGS_SILENT is not set on $($installer.Name) (flags=0x$($flags.ToString('x'))). This installer would show a wizard and fail Store certification. Check that nsis.include still points at resources/nsis/store-installer.nsh."
+          }
+
+          Write-Host "$($installer.Name): FH_FLAGS_SILENT set (flags=0x$($flags.ToString('x')))."
+
+      - name: Verify Windows signatures
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: Julsgaard Products
+        run: |
+          $artifacts = @()
+          $artifacts += Get-ChildItem -Path dist-store -Filter "*.exe" -File
+          $artifacts += Get-ChildItem -Path dist-store/win-unpacked -Filter "PrivateTranscribe.exe" -File -ErrorAction SilentlyContinue
+
+          if ($artifacts.Count -eq 0) {
+            throw "No Windows executable artifacts found to verify."
+          }
+
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid Authenticode signature for $($artifact.Name): $($signature.StatusMessage)"
+            }
+
+            $subject = $signature.SignerCertificate.Subject
+            if ($subject -notlike "*CN=$env:EXPECTED_PUBLISHER*") {
+              throw "Unexpected signing publisher for $($artifact.Name): $subject"
+            }
+
+            # Artifact Signing certificates are valid for only a few days, so an
+            # untimestamped signature stops verifying almost immediately after
+            # release. electron-builder has shipped Azure-signed binaries with no
+            # timestamp before (electron-builder#8626), so assert it rather than
+            # trusting the config.
+            if (-not $signature.TimeStamperCertificate) {
+              throw "No timestamp on $($artifact.Name). The signature would expire with the certificate within days."
+            }
+          }
+
+          Write-Host "Verified $($artifacts.Count) signed artifact(s) as '$env:EXPECTED_PUBLISHER', all timestamped."
+
+      - name: Upload Store installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: privatetranscribe-store-setup
+          path: dist-store/*.exe
+          retention-days: 7
+
+      # Partner Center wants a versioned URL whose binary never changes after
+      # submission, so this writes to store/<version>/ and refuses to overwrite.
+      # No latest.yml and no blockmap: the Store build must never become what
+      # existing installs auto-update to.
+      - name: Upload to R2 (versioned Store URL)
+        if: ${{ github.event.inputs.publish == 'true' }}
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          VERSION=$(node -p "require('./package.json').version")
+          INSTALLER=$(ls dist-store/*.exe 2>/dev/null | grep -v '__uninstaller' | head -1)
+
+          if [ -z "$INSTALLER" ]; then
+            echo "ERROR: no installer found in dist-store/"
+            exit 1
+          fi
+
+          SIZE=$(stat -c%s "$INSTALLER")
+          if [ "$SIZE" -lt 50000000 ]; then
+            echo "ERROR: refusing to publish — installer is only $SIZE bytes"
+            exit 1
+          fi
+
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          KEY="store/${VERSION}/PrivateTranscribe-Store-Setup-${VERSION}.exe"
+
+          # A submitted URL must keep serving the exact binary it was certified
+          # with, so a second run at the same version is a mistake, not a retry.
+          if aws s3api head-object --bucket privatetranscribe-assets --key "$KEY" \
+               --endpoint-url "$ENDPOINT" >/dev/null 2>&1; then
+            echo "ERROR: $KEY already exists. A submitted URL must never change its binary — bump the version instead."
+            exit 1
+          fi
+
+          aws s3 cp "$INSTALLER" "s3://privatetranscribe-assets/$KEY" \
+            --endpoint-url "$ENDPOINT" --no-progress
+
+          echo "Store installer published ($SIZE bytes)."
+          echo "Submit this URL in Partner Center:"
+          echo "  https://updates.privatetranscribe.com/${KEY}"

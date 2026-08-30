@@ -17,6 +17,16 @@ const packageJson = JSON.parse(read("package.json")) as {
 const storeInclude = read("resources/nsis/store-installer.nsh");
 const publicInclude = read("resources/nsis/cleanup-models.nsh");
 const storeBuildScript = packageJson.scripts["build:store"];
+const storeWorkflow = read(".github/workflows/build-store.yml");
+const releaseWorkflow = read(".github/workflows/build-windows.yml");
+
+/** Comment lines explain what a workflow deliberately does not do, so asserting
+ *  an absence has to look at what actually runs. */
+const withoutComments = (yaml: string) =>
+  yaml
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
 
 /**
  * The Microsoft Store accepts a plain EXE installer (policy 10.2.9) but hosts
@@ -72,6 +82,36 @@ describe("Microsoft Store installer variant", () => {
     // can never become what existing installs auto-update to.
     expect(storeBuildScript).toContain("--config.directories.output=dist-store");
     expect(storeBuildScript).toContain("--publish never");
+  });
+
+  test("CI builds the Store installer through the same npm script", () => {
+    // Not a second copy of the flags. If the workflow restated them, the silent
+    // include could be dropped from one and not the other and nothing would say
+    // so until certification failed.
+    expect(storeWorkflow).toContain("npm run build:store");
+  });
+
+  test("CI refuses to ship an installer it has not proved is silent", () => {
+    // A wizard fails Store certification, and the difference is invisible in the
+    // artifact list. NSIS records it in the firstheader as FH_FLAGS_SILENT = 2.
+    expect(storeWorkflow).toContain("Verify the installer is silent");
+    expect(storeWorkflow).toContain("FH_FLAGS_SILENT");
+  });
+
+  test("the Store workflow never touches the auto-update feed", () => {
+    // The public release publishes latest.yml and a blockmap, which is what
+    // existing installs follow. A Store artifact appearing there would push a
+    // silent installer at everyone as an update.
+    expect(withoutComments(storeWorkflow)).not.toContain("latest.yml");
+    expect(withoutComments(storeWorkflow)).not.toContain("blockmap");
+    expect(withoutComments(releaseWorkflow)).toContain("latest.yml");
+  });
+
+  test("the Store URL is versioned and write-once", () => {
+    // Policy 10.2.9: the binary behind a submitted URL must not change after
+    // submission, so republishing over one is an error rather than a retry.
+    expect(storeWorkflow).toContain("store/${VERSION}/");
+    expect(storeWorkflow).toContain("head-object");
   });
 
   test("installing stays per-user so the Store install needs no elevation", () => {
