@@ -12,7 +12,7 @@ import TranscriptionItem from "../ui/TranscriptionItem";
 import StarterUsageCard from "../ui/StarterUsageCard";
 import { LANGUAGE_OPTIONS } from "../../utils/languages";
 import { formatHotkeyLabel } from "../../utils/hotkeys";
-import { isBuiltInMicrophone } from "../../utils/audioDeviceUtils";
+import { describeMicrophoneSelection } from "../../utils/audioDeviceUtils";
 import type { AggregateStats } from "../../types/electron";
 import logger from "../../utils/logger";
 import { SectionLabel } from "../ui/SectionLabel";
@@ -338,22 +338,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     return "CPU";
   }, [useLocalWhisper, localTranscriptionProvider, whisperForceCpu, cudaStatus]);
 
-  const microphoneLabel = useMemo(() => {
-    const withLabels = audioInputs.filter((device) => device.label);
-
-    if (preferBuiltInMic) {
-      const builtIn = withLabels.find((device) => isBuiltInMicrophone(device.label));
-      return builtIn?.label || "Built-in preferred";
-    }
-
-    if (selectedMicDeviceId) {
-      const selected = withLabels.find((device) => device.deviceId === selectedMicDeviceId);
-      return selected?.label || "Selected microphone";
-    }
-
-    const defaultDevice = withLabels.find((device) => device.deviceId === "default");
-    return defaultDevice?.label || "System default";
-  }, [audioInputs, preferBuiltInMic, selectedMicDeviceId]);
+  const microphoneLabel = useMemo(
+    () => describeMicrophoneSelection(audioInputs, { preferBuiltInMic, selectedMicDeviceId }),
+    [audioInputs, preferBuiltInMic, selectedMicDeviceId]
+  );
 
   const handleCopy = async (text: string) => {
     try {

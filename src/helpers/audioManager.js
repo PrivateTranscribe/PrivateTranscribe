@@ -2,7 +2,7 @@ import ReasoningService from "../services/ReasoningService";
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import logger from "../utils/logger";
 import { resolveMicWarmWindowMs } from "../utils/micWarmWindow";
-import { isBuiltInMicrophone } from "../utils/audioDeviceUtils";
+import { buildMicrophoneConstraints, describeMicrophoneSelection } from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { readSpokenLanguages } from "../utils/spokenLanguages";
@@ -1569,42 +1569,40 @@ class AudioManager {
   }
 
   async getAudioConstraints() {
-    const preferBuiltIn = localStorage.getItem("preferBuiltInMic") !== "false";
-    const selectedDeviceId = localStorage.getItem("selectedMicDeviceId") || "";
+    const preference = {
+      preferBuiltInMic: localStorage.getItem("preferBuiltInMic") !== "false",
+      selectedMicDeviceId: localStorage.getItem("selectedMicDeviceId") || "",
+    };
 
-    if (preferBuiltIn) {
+    let audioInputs = this._cachedAudioInputs;
+    if (!audioInputs) {
       try {
-        const audioInputs =
-          this._cachedAudioInputs ??
-          (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
-        const builtInMic = audioInputs.find((d) => isBuiltInMicrophone(d.label));
-
-        if (builtInMic) {
-          logger.debug(
-            "Using built-in microphone",
-            { deviceId: builtInMic.deviceId, label: builtInMic.label },
-            "audio"
-          );
-          return { audio: { deviceId: { exact: builtInMic.deviceId }, autoGainControl: true } };
-        }
+        audioInputs = (await navigator.mediaDevices.enumerateDevices()).filter(
+          (d) => d.kind === "audioinput"
+        );
       } catch (error) {
         logger.debug(
-          "Failed to enumerate devices for built-in mic detection",
+          "Failed to enumerate audio inputs, falling back to the default device",
           { error: error.message },
           "audio"
         );
+        audioInputs = [];
       }
     }
 
-    // Use selected device if specified and not preferring built-in
-    if (!preferBuiltIn && selectedDeviceId) {
-      logger.debug("Using selected microphone", { deviceId: selectedDeviceId }, "audio");
-      return { audio: { deviceId: { exact: selectedDeviceId }, autoGainControl: true } };
-    }
+    // Same resolver the picker, the mic test, and the dashboard readout use, so
+    // what a test proves is what a dictation records.
+    const constraints = buildMicrophoneConstraints(audioInputs, preference);
+    logger.debug(
+      "Resolved microphone",
+      {
+        deviceId: constraints.audio?.deviceId?.exact || "default",
+        label: describeMicrophoneSelection(audioInputs, preference),
+      },
+      "audio"
+    );
 
-    // Fall back to default device
-    logger.debug("Using default microphone", {}, "audio");
-    return { audio: { autoGainControl: true } };
+    return constraints;
   }
 
   // Fire-and-forget pre-warm of the local transcription server so the model

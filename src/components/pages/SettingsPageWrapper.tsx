@@ -34,7 +34,7 @@ const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
   { id: "preferences", label: "Preferences" },
   { id: "transcription", label: "Transcription" },
-  { id: "permissions", label: "Permissions" },
+  { id: "permissions", label: "Microphone & Permissions" },
   { id: "pro", label: "PrivateTranscribe Pro" },
   { id: "help", label: "Help & Support" },
   { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },

@@ -22,6 +22,7 @@ import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import HardwareSetupStep from "./ui/HardwareSetupStep";
 import PermissionCard from "./ui/PermissionCard";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
+import MicrophoneDeviceSelect from "./ui/MicrophoneDeviceSelect";
 import PasteToolsInfo from "./ui/PasteToolsInfo";
 import StepProgress from "./ui/StepProgress";
 import { AlertDialog, ConfirmDialog } from "./ui/dialog";
@@ -43,6 +44,7 @@ import { SectionLabel } from "./ui/SectionLabel";
 import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { getLanguageLabel } from "../utils/languages";
 import { isWeakForNonEnglish, resolveRatingLanguage } from "../utils/modelAccuracy";
+import { buildMicrophoneConstraints } from "../utils/audioDeviceUtils";
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -105,6 +107,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     setActivationMode,
     setDictationKey,
     setWhisperForceCpu,
+    preferBuiltInMic,
+    selectedMicDeviceId,
+    setPreferBuiltInMic,
+    setSelectedMicDeviceId,
     setOpenaiApiKey,
     setGroqApiKey,
     updateTranscriptionSettings,
@@ -599,7 +605,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     setMicTestState("recording");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Test the microphone dictation will actually open. A plain
+      // `{ audio: true }` test can pass on the system default while dictation
+      // records silence from the device the settings point at.
+      let audioInputs: MediaDeviceInfo[] = [];
+      try {
+        audioInputs = (await navigator.mediaDevices.enumerateDevices()).filter(
+          (device) => device.kind === "audioinput"
+        );
+      } catch {
+        audioInputs = [];
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(
+        buildMicrophoneConstraints(audioInputs, { preferBuiltInMic, selectedMicDeviceId })
+      );
       micTestStreamRef.current = stream;
 
       const AudioContextCtor = window.AudioContext;
@@ -657,7 +677,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           : "PrivateTranscribe couldn't access your microphone. Check system permissions and try again."
       );
     }
-  }, [cleanupMicTestResources]);
+  }, [cleanupMicTestResources, preferBuiltInMic, selectedMicDeviceId]);
 
   useEffect(() => {
     return () => {
@@ -991,6 +1011,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 onOpenPrivacySettings={permissionsHook.openMicPrivacySettings}
               />
             )}
+
+            {/* Which microphone, decided here rather than after the first
+                silent dictation. Re-enumerates once access is granted. */}
+            <div className="space-y-2">
+              <SectionLabel>Microphone</SectionLabel>
+              <MicrophoneDeviceSelect
+                preferBuiltInMic={preferBuiltInMic}
+                selectedMicDeviceId={selectedMicDeviceId}
+                reloadSignal={permissionsHook.micPermissionGranted}
+                onChange={(next) => {
+                  setPreferBuiltInMic(next.preferBuiltInMic);
+                  setSelectedMicDeviceId(next.selectedMicDeviceId);
+                }}
+              />
+            </div>
 
             {/* Linux paste tools - only when needed */}
             {platform === "linux" &&
