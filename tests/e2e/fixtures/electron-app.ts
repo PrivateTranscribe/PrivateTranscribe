@@ -360,7 +360,10 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
   // so this takes effect for every later lookup; specs reload the window
   // they assert on, which re-runs the picker's model query.
   if (fakeHomeDir) {
-    await app.evaluate(({ app: electronApp }, dir) => electronApp.setPath("home", dir), fakeHomeDir);
+    await app.evaluate(
+      ({ app: electronApp }, dir) => electronApp.setPath("home", dir),
+      fakeHomeDir
+    );
   }
 
   // Startup is only finished once both windows have loaded. Closing the app
@@ -435,6 +438,17 @@ async function ensureOnboarded(app: ElectronApplication, complete: boolean): Pro
     await page.reload({ waitUntil: "domcontentloaded" });
     page = await findWindow(app, (w) => isControlPanelUrl(w.url()), "control panel");
   }
+
+  // Converse's hands-free microphone ships on, so any spec that starts a
+  // session would otherwise open the developer's real microphone while they
+  // are sitting at the machine. A spec that wants it sets it back to "true"
+  // itself, and then had better be driving a fake capture device.
+  await page.evaluate(() => {
+    if (localStorage.getItem("converseVoiceEnabled") === null) {
+      localStorage.setItem("converseVoiceEnabled", "false");
+    }
+  });
+
   return page;
 }
 
@@ -508,7 +522,12 @@ export const test = base.extend<
 
     if (seedRealWhisperModels.length > 0) {
       const modelsDir = path.join(dir, ".cache", "PrivateTranscribe", "whisper-models");
-      const realModelsDir = path.join(os.homedir(), ".cache", "PrivateTranscribe", "whisper-models");
+      const realModelsDir = path.join(
+        os.homedir(),
+        ".cache",
+        "PrivateTranscribe",
+        "whisper-models"
+      );
       fs.mkdirSync(modelsDir, { recursive: true });
 
       for (const model of seedRealWhisperModels) {
