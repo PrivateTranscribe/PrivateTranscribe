@@ -136,23 +136,23 @@
         {
           "id": "gpt-transcribe",
           "name": "GPT Transcribe",
-          "description": "Highest accuracy · $0.0045/min",
+          "description": "Current flagship, best accuracy · $0.0045/min",
           "recommended": true
         },
         {
           "id": "gpt-4o-mini-transcribe",
           "name": "GPT-4o Mini Transcribe",
-          "description": "Budget option · $0.003/min"
+          "description": "Cheapest cloud option · $0.003/min"
         },
         {
           "id": "gpt-4o-transcribe",
           "name": "GPT-4o Transcribe",
-          "description": "Previous high-accuracy model · $0.006/min"
+          "description": "Superseded by GPT Transcribe · $0.006/min"
         },
         {
           "id": "whisper-1",
           "name": "Whisper",
-          "description": "Original Whisper model"
+          "description": "Original Whisper, kept for compatibility · $0.006/min"
         }
       ]
     },
@@ -164,7 +164,12 @@
         {
           "id": "whisper-large-v3-turbo",
           "name": "Whisper Large v3 Turbo",
-          "description": "216x real-time speed"
+          "description": "Fastest and cheapest · $0.0007/min"
+        },
+        {
+          "id": "whisper-large-v3",
+          "name": "Whisper Large v3",
+          "description": "Higher accuracy, slower · $0.0019/min"
         }
       ]
     }
