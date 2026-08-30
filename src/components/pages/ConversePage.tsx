@@ -151,7 +151,7 @@ function permissionVerdict(entry: ConversePermissionEntry): {
 type InterruptRecord = {
   at?: number;
   from?: string;
-  playerWas?: { playIndex?: number } | null;
+  playerWas?: { playIndex?: number; gen?: number } | null;
 };
 
 /**
@@ -572,10 +572,21 @@ export default function ConversePage() {
   /** Fold one poll of the session state into the transcript. */
   const applyState = useCallback((next: ConverseState) => {
     const utterance = next.lastUtterance ?? null;
-    const sentences = next.lastResponse?.sentences ?? [];
+
+    // All recent replies, by generation — not just the current turn's. A short
+    // queued turn can finish inside one poll interval; building from the
+    // per-generation history means its reply still lands in the transcript.
+    const responses: { gen: number; sentences: string[] }[] =
+      next.recentResponses ??
+      (next.lastResponse && next.lastResponse.gen !== undefined
+        ? [{ gen: next.lastResponse.gen, sentences: next.lastResponse.sentences }]
+        : utterance && next.lastResponse
+          ? [{ gen: utterance.gen, sentences: next.lastResponse.sentences }]
+          : []);
 
     // An interrupt bumps the turn generation while the reply is still on
-    // screen, so the cut is recorded against the utterance that produced it.
+    // screen, so the cut is recorded against the turn that was audibly
+    // playing — named by the player report captured at the interrupt.
     const interrupt = (next.lastInterrupt ?? null) as InterruptRecord | null;
     let mark: { gen: number; index: number } | null = null;
     if (
@@ -584,8 +595,9 @@ export default function ConversePage() {
       interrupt.at !== lastInterruptAtRef.current
     ) {
       lastInterruptAtRef.current = interrupt.at;
-      if (interrupt.from === "speaking" && utterance) {
-        mark = { gen: utterance.gen, index: interrupt.playerWas?.playIndex ?? 0 };
+      const cutGen = interrupt.playerWas?.gen ?? utterance?.gen;
+      if (interrupt.from === "speaking" && cutGen !== undefined) {
+        mark = { gen: cutGen, index: interrupt.playerWas?.playIndex ?? 0 };
       }
     }
     const cutMark = mark;
@@ -610,20 +622,26 @@ export default function ConversePage() {
         updated = [...updated, { kind: "user", gen: utterance.gen, text: utterance.text }];
       }
 
-      if (utterance && sentences.length > 0) {
+      for (const response of responses) {
+        if (response.sentences.length === 0) continue;
         const at = updated.findIndex(
-          (turn) => turn.kind === "assistant" && turn.gen === utterance.gen
+          (turn) => turn.kind === "assistant" && turn.gen === response.gen
         );
         if (at === -1) {
           updated = [
             ...updated,
-            { kind: "assistant", gen: utterance.gen, sentences: [...sentences], cutIndex: null },
+            {
+              kind: "assistant",
+              gen: response.gen,
+              sentences: [...response.sentences],
+              cutIndex: null,
+            },
           ];
         } else {
           const existing = updated[at] as Extract<TranscriptTurn, { kind: "assistant" }>;
-          if (existing.sentences.length !== sentences.length) {
+          if (existing.sentences.length !== response.sentences.length) {
             updated = updated.slice();
-            updated[at] = { ...existing, sentences: [...sentences] };
+            updated[at] = { ...existing, sentences: [...response.sentences] };
           }
         }
       }
@@ -872,9 +890,12 @@ export default function ConversePage() {
     // button. Interrupting then would bump the turn while the harness is still
     // holding its own tool call open, so talking near it changes nothing.
     if (waitingOnUser) return;
-    if (!isSpeaking && !isThinking) return;
+    // Only audible speech is interrupted. Talking while the agent is merely
+    // working queues a follow-up instead of throwing the answer away — the
+    // way Codex steers a running task rather than killing it.
+    if (!isSpeaking) return;
     void window.electronAPI?.converseInterrupt?.("the user started speaking");
-  }, [isSpeaking, isThinking, waitingOnUser]);
+  }, [isSpeaking, waitingOnUser]);
 
   const handleVoiceUtterance = useCallback(
     (text: string) => {
@@ -1350,22 +1371,22 @@ export default function ConversePage() {
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
+              {/* Deliberately usable mid-turn: a message sent while Claude
+                  Code is working or speaking is queued and answered next,
+                  instead of bouncing with "busy". */}
               <Input
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void handleSend();
                 }}
-                placeholder="Type to Claude Code"
-                disabled={isThinking || isSpeaking}
+                placeholder={
+                  isThinking || isSpeaking ? "Type a follow-up, sent when this turn ends" : "Type to Claude Code"
+                }
                 className="flex-1"
                 data-testid="converse-input"
               />
-              <Button
-                onClick={handleSend}
-                disabled={!draft.trim() || isThinking || isSpeaking}
-                className="gap-1.5"
-              >
+              <Button onClick={handleSend} disabled={!draft.trim()} className="gap-1.5">
                 <Send size={14} />
                 Send
               </Button>

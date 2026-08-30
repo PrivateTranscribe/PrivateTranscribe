@@ -242,7 +242,9 @@ export interface ConverseState {
   player?: ConversePlayerReport | null;
   agent?: Record<string, unknown>;
   lastUtterance?: { text: string; at: number; gen: number } | null;
-  lastResponse?: { text: string; sentences: string[]; at?: number } | null;
+  lastResponse?: { gen?: number; text: string; sentences: string[]; at?: number } | null;
+  /** Sentences per recent generation; the transcript is built from this. */
+  recentResponses?: { gen: number; sentences: string[] }[];
   lastInterrupt?: Record<string, unknown> | null;
   /** Whether the CLI's own permission questions can reach the user at all. */
   permissionRelay?: boolean;
@@ -892,6 +894,8 @@ declare global {
         reason?: string;
         state: string;
         turnGen?: number;
+        /** True when the agent was mid-turn and the utterance runs next. */
+        queued?: boolean;
         agentMode?: ConverseAgentMode;
       }>;
       converseGetState: () => Promise<ConverseState>;

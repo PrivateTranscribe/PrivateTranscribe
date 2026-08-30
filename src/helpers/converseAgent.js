@@ -16,15 +16,41 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+/**
+ * Modeled on the communication rules of OpenAI Codex's realtime voice mode
+ * (its backend_prompt.md and realtime_start.md): spoken progress notes during
+ * long work instead of silence, no play-by-play, a spoken wrap-up at the end,
+ * update-frequency requests treated as sticky task-level preferences, and
+ * tolerance for speech-recognition noise in the user's messages. Our
+ * architecture differs from Codex's two-model split — here the working agent's
+ * own text IS the speech — so the cadence rules Codex gives its voice
+ * intermediary are given to the agent directly.
+ */
 const VOICE_SYSTEM_PROMPT =
-  "You are being used by voice. Answers are spoken aloud by TTS. Be concise and " +
-  "conversational. No markdown, no code blocks, no bullet lists, no headers - " +
-  "plain spoken sentences only. If asked to do work, do it, then summarize what " +
-  "you did in a few spoken sentences. The user can interrupt you mid-answer; " +
-  "when that happens, their next message starts with a bracketed note telling " +
-  "you exactly which sentences they heard and which were never spoken. Treat " +
-  "unheard text as unsaid: pick up from where they actually stopped hearing, " +
-  "and never assume they know something you only said in the unheard part.";
+  "You are being used by voice. Everything you write is spoken aloud by TTS, " +
+  "sentence by sentence, as you write it. Be concise and conversational. No " +
+  "markdown, no code blocks, no bullet lists, no headers, no tables - plain " +
+  "spoken sentences only. Never read out file contents, diffs, code, or " +
+  "structured data; say the key point instead. " +
+  "When a task takes more than a few seconds, speak short progress notes " +
+  "between steps: one brief sentence about what you just learned or are about " +
+  "to do, like 'The bug is in the hotkey manager, fixing it now.' Avoid " +
+  "play-by-play, filler, repeated confirmations, and narrating every tool " +
+  "call; by default share progress only when it is brief, grounded, and " +
+  "genuinely useful. When the work is done, give a short spoken summary of " +
+  "what you did and what changed. " +
+  "If the user asks for more frequent updates or for less talking, treat that " +
+  "as a standing preference for the rest of the task and do not silently " +
+  "revert to the default style. " +
+  "The user's messages may be voice transcriptions: they can be unpunctuated " +
+  "or contain recognition errors, so prefer the interpretation that makes " +
+  "sense in context. Messages can also arrive while you are still working; " +
+  "they were queued and are answered in order. " +
+  "The user can interrupt you mid-answer; when that happens, their next " +
+  "message starts with a bracketed note telling you exactly which sentences " +
+  "they heard and which were never spoken. Treat unheard text as unsaid: pick " +
+  "up from where they actually stopped hearing, and never assume they know " +
+  "something you only said in the unheard part.";
 
 /** Deterministic reply used by mock mode. Two sentences, on purpose. */
 const MOCK_REPLY_PARTS = ["Mock reply sentence one. ", "Mock reply sentence two."];
@@ -172,6 +198,7 @@ class ConverseAgent {
    */
   constructor({
     onDelta,
+    onTurnStart,
     onTurnEnd,
     onError,
     onSessionId,
@@ -186,6 +213,9 @@ class ConverseAgent {
     settingsFile = null,
   } = {}) {
     this.onDelta = onDelta || (() => {});
+    /** Fired when a turn becomes the one producing output — immediately for a
+     * turn sent while idle, at dequeue time for a queued one. */
+    this.onTurnStart = onTurnStart || (() => {});
     this.onTurnEnd = onTurnEnd || (() => {});
     this.onError = onError || (() => {});
     this.onSessionId = onSessionId || (() => {});
@@ -222,6 +252,14 @@ class ConverseAgent {
     this.startupMs = 0;
     this.buf = "";
     this.turn = null;
+    /**
+     * Utterances sent while a turn was still running. The CLI itself queues
+     * stdin user messages and runs each as its own turn after the current one
+     * finishes (verified against v2.1.224: two user lines produce two result
+     * events in order, the second processed only after the first completes) —
+     * this queue exists so *our* turn accounting follows the CLI's.
+     */
+    this.queuedTurns = [];
     this.turns = 0;
     this.sessionId = null;
     this.mockTimers = new Set();
@@ -331,6 +369,9 @@ class ConverseAgent {
       log("exited", code);
       this.ready = false;
       this.proc = null;
+      // Queued turns died with the process; clear before finishing the current
+      // turn so _finishTurn does not try to begin one on a dead stdin.
+      this.queuedTurns = [];
       if (this.turn) this._finishTurn({ reason: "process-exit", code });
     });
 
@@ -456,8 +497,15 @@ class ConverseAgent {
       this.fellBackAt = Date.now();
       this.agentMode = "mock";
       log("falling back to mock:", this.lastError.slice(0, 200));
+      // Utterances queued behind the failed turn were written to a CLI that
+      // just proved unreliable; running them against mock too would answer
+      // real requests with canned text. Dropped, and said so.
+      if (this.queuedTurns.length > 0) {
+        log("dropping", this.queuedTurns.length, "queued turns on mock fallback");
+        this.queuedTurns = [];
+      }
       this.onError({ where: "api", message: this.lastError, fellBackToMock: true });
-      this._runMockTurn(turn.prompt);
+      this._runMockTurn(turn.prompt, turn.meta);
       return;
     }
 
@@ -465,26 +513,47 @@ class ConverseAgent {
     this.onTurnEnd({
       text: turn.text,
       prompt: turn.prompt,
+      gen: turn.meta?.gen,
       firstTokenMs: turn.firstTokenMs,
       totalMs: Date.now() - turn.startedAt,
       mode: turn.mode,
       apiError,
       ...info,
     });
+
+    // The CLI has already started on the next queued message; follow it.
+    const next = this.queuedTurns.shift();
+    if (next) {
+      if (this.agentMode === "mock") {
+        this._runMockTurn(next.text, next.meta);
+      } else {
+        this._beginTurn(next.text, next.meta, "live");
+      }
+    }
   }
 
-  // -------------------------------------------------------------------- mock
-
-  _runMockTurn(prompt) {
+  _beginTurn(prompt, meta, mode) {
     this.turn = {
       text: "",
       prompt,
+      meta: meta || null,
       startedAt: Date.now(),
       firstTokenMs: null,
       sawDelta: false,
       apiError: null,
-      mode: "mock",
+      mode,
     };
+    try {
+      this.onTurnStart({ gen: meta?.gen, prompt });
+    } catch (err) {
+      log("onTurnStart threw", err.message);
+    }
+  }
+
+  // -------------------------------------------------------------------- mock
+
+  _runMockTurn(prompt, meta) {
+    this._beginTurn(prompt, meta, "mock");
 
     const timer = (fn, ms) => {
       const handle = setTimeout(() => {
@@ -505,31 +574,39 @@ class ConverseAgent {
 
   // -------------------------------------------------------------------- send
 
-  /** Returns false if the agent cannot take the utterance right now. */
-  send(text) {
-    if (this.turn) return false; // one turn at a time
-
+  /**
+   * Returns false if the agent cannot take the utterance right now. An
+   * utterance sent while a turn is running is accepted and QUEUED: in live
+   * mode it is written to the CLI immediately (the CLI runs stdin messages in
+   * order, each as its own turn), in mock mode it runs after the current mock
+   * turn — so a user can keep talking while the agent works, the way Codex
+   * queues follow-ups instead of refusing them.
+   */
+  send(text, meta = {}) {
     if (this.agentMode === "mock") {
-      this._runMockTurn(text);
+      if (this.turn) {
+        this.queuedTurns.push({ text, meta });
+        return true;
+      }
+      this._runMockTurn(text, meta);
       return true;
     }
 
     if (!this.ready || !this.proc || !this.proc.stdin.writable) return false;
 
-    this.turn = {
-      text: "",
-      prompt: text,
-      startedAt: Date.now(),
-      firstTokenMs: null,
-      sawDelta: false,
-      apiError: null,
-      mode: "live",
-    };
     const line =
       JSON.stringify({
         type: "user",
         message: { role: "user", content: [{ type: "text", text }] },
       }) + "\n";
+
+    if (this.turn) {
+      this.queuedTurns.push({ text, meta });
+      this.proc.stdin.write(line);
+      return true;
+    }
+
+    this._beginTurn(text, meta, "live");
     this.proc.stdin.write(line);
     return true;
   }
@@ -538,6 +615,7 @@ class ConverseAgent {
     for (const handle of this.mockTimers) clearTimeout(handle);
     this.mockTimers.clear();
     this.turn = null;
+    this.queuedTurns = [];
     this.ready = false;
 
     if (this.mcpConfigPath) {
@@ -572,6 +650,7 @@ class ConverseAgent {
       startupMs: this.startupMs,
       turns: this.turns,
       busy: Boolean(this.turn),
+      queuedTurns: this.queuedTurns.length,
       sessionId: this.sessionId,
       resumedFrom: this.resumeSessionId,
       sessionPersistence: this.sessionPersistence,

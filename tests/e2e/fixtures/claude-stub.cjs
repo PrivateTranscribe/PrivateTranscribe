@@ -344,6 +344,29 @@ async function askPermissions() {
   }
 }
 
+// The real CLI runs stdin user messages strictly in order, each as its own
+// turn — a message sent mid-turn is queued and answered after the current
+// result (verified against v2.1.224). The stub mirrors that, so queued
+// follow-ups exercise the same event ordering the app sees in production.
+const promptQueue = [];
+let replying = false;
+
+function enqueuePrompt(prompt) {
+  promptQueue.push(prompt);
+  maybeReply();
+}
+
+function maybeReply() {
+  if (replying || promptQueue.length === 0) return;
+  replying = true;
+  reply(promptQueue.shift());
+}
+
+function turnFinished() {
+  replying = false;
+  maybeReply();
+}
+
 function reply(prompt) {
   state.texts.push(prompt);
 
@@ -397,6 +420,7 @@ function streamSentences(sentences) {
       result: sentences.join(" "),
       session_id: SESSION_ID,
     });
+    turnFinished();
   };
 
   // The pause is before the first delta only, so a spec can catch "thinking"
@@ -432,7 +456,7 @@ process.stdin.on("data", (chunk) => {
     } catch {
       continue;
     }
-    if (event && event.type === "user") reply(userText(event.message));
+    if (event && event.type === "user") enqueuePrompt(userText(event.message));
   }
 });
 process.stdin.on("end", () => process.exit(0));
