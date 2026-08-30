@@ -26,6 +26,15 @@ export const SPEECH_ABSOLUTE_RMS = 0.02;
 export const SPEECH_DYNAMIC_RATIO = 8;
 
 /**
+ * Floor under the dynamic bar (~-54 dBFS). Chromium's noise suppression drives
+ * the gaps between words to denormal-tiny values rather than to zero, and a
+ * median of 1e-12 would otherwise put the bar at 8e-12, where every scrap of
+ * suppressed noise reads as speech and nothing is ever silent. Measured: real
+ * capture of a lone click reported 47 "loud" frames before this existed.
+ */
+export const SPEECH_DYNAMIC_MIN_RMS = 0.002;
+
+/**
  * Loud frames needed before a recording counts as speech. Two frames is about
  * 100ms of sound, which a spoken word clears and a single keyboard click or
  * desk knock does not.
@@ -70,8 +79,10 @@ export function summarizeSpeechLevels(levels: readonly number[] = []): SpeechLev
 
   // The lower of the two bars, so clearing either one counts. A recording that
   // is mostly speech has a high median, which would make the dynamic bar
-  // unreachable; a quiet microphone never reaches the absolute one.
-  const dynamicThreshold = floorRms > 0 ? floorRms * SPEECH_DYNAMIC_RATIO : Infinity;
+  // unreachable; a quiet microphone never reaches the absolute one. The bar
+  // therefore always lands between SPEECH_DYNAMIC_MIN_RMS and
+  // SPEECH_ABSOLUTE_RMS, however loud or quiet the recording's own floor is.
+  const dynamicThreshold = Math.max(floorRms * SPEECH_DYNAMIC_RATIO, SPEECH_DYNAMIC_MIN_RMS);
   const threshold = Math.min(SPEECH_ABSOLUTE_RMS, dynamicThreshold);
   const loudFrames = usable.filter((level) => level >= threshold).length;
 

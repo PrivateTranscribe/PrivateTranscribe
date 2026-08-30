@@ -55,3 +55,36 @@ describe("summarizeSpeechLevels", () => {
     });
   });
 });
+
+describe("summarizeSpeechLevels floor under the dynamic bar", () => {
+  /**
+   * Measured, not imagined: Chromium's noise suppression leaves the gaps
+   * between words at ~1e-12 rather than at zero. Without a floor under the
+   * dynamic bar that median puts the bar at 8e-12, and every suppressed scrap
+   * of noise counts as speech.
+   */
+  test("calls a lone click in noise-suppressed silence silence", () => {
+    const suppressed = Array.from({ length: 96 }, (_, i) => 1e-12 * (i + 1));
+    expect(summarizeSpeechLevels([...suppressed, 0.41])).toMatchObject({
+      speechDetected: false,
+      loudFrames: 1,
+    });
+  });
+
+  test("still keeps real speech recorded over the same suppressed floor", () => {
+    const suppressed = Array.from({ length: 50 }, (_, i) => 1e-12 * (i + 1));
+    const speech = Array.from({ length: 47 }, () => 0.2);
+    expect(summarizeSpeechLevels([...suppressed, ...speech])).toMatchObject({
+      speechDetected: true,
+      loudFrames: 47,
+    });
+  });
+
+  test("keeps very quiet speech that clears only the floor bar", () => {
+    const suppressed = Array.from({ length: 50 }, () => 1e-12);
+    const speech = Array.from({ length: 20 }, () => 0.009);
+    expect(summarizeSpeechLevels([...suppressed, ...speech])).toMatchObject({
+      speechDetected: true,
+    });
+  });
+});

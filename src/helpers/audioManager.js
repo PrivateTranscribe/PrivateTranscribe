@@ -10,6 +10,7 @@ import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import { getSharedAudioContext } from "../utils/sharedAudioContext";
 import { summarizeSpeechLevels } from "../utils/speechPresence";
+import { classifyNonSpeechArtifact } from "../utils/nonSpeechArtifact";
 import { buildDictionaryPrompt } from "../utils/dictionaryPrompt";
 import {
   getContext,
@@ -2026,6 +2027,28 @@ class AudioManager {
         await this.runTranscription(audioBlob, processingMetadata);
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        return;
+      }
+
+      // Sound reached the microphone, but it was not speech: breath, a fan, a
+      // keyboard. Whisper answers that with a subtitle annotation ("[Music]")
+      // or a stock phrase ("Thank you."), and pastes it into whatever the user
+      // was typing in. Neither the microphone level nor any decode threshold
+      // separates this from quiet speech - measured, see nonSpeechArtifact.ts
+      // - so it is caught here, on the text, for every provider at once.
+      const artifact = classifyNonSpeechArtifact(result?.text, {
+        durationSeconds: metadata.durationSeconds,
+      });
+      if (artifact.isArtifact) {
+        logger.info(
+          "Dropped a non-speech transcript",
+          {
+            reason: artifact.reason,
+            text: result.text,
+            durationSeconds: metadata.durationSeconds ?? null,
+          },
+          "transcription"
+        );
         return;
       }
 
