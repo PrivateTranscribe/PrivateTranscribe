@@ -8,12 +8,13 @@
  * would be a menu of dead ends, so this table is the 28 English voices and
  * nothing else.
  *
- * Copied verbatim from the frozen VOICES table in kokoro-js@1.2.1
- * (node_modules/kokoro-js/dist/kokoro.cjs): `name`, `language` mapped to a
- * plain accent word, `gender`, and `overallGrade`. The decorative `traits`
- * emoji are dropped. `overallGrade` is used rather than `targetQuality`
- * because the former is what the package author heard, and the latter is what
- * they were aiming for.
+ * Copied from the frozen VOICES table in kokoro-js@1.2.1
+ * (node_modules/kokoro-js/dist/kokoro.cjs), in that table's own order: `name`,
+ * and `language` mapped to a plain accent word. The decorative `traits` emoji
+ * are dropped, and so is the package author's `overallGrade` — a single
+ * subjective letter per voice was shown in the picker until 2026-08-30, when
+ * Kristian removed it. It graded voices on someone else's ear, in a list where
+ * every row already has a play button that answers the question properly.
  *
  * Guard rail: tests/unit/models/kokoroVoices.test.ts cross-checks every id in
  * here against the .bin files in the installed package, so a kokoro-js upgrade
@@ -31,109 +32,98 @@ export type KokoroVoice = {
   name: string;
   accent: KokoroVoiceAccent;
   gender: KokoroVoiceGender;
-  /** The package author's own listening grade, verbatim: "A", "B-", "F+". */
-  grade: string;
 };
 
-/** The voice used when nothing has been chosen; matches DEFAULT_KOKORO_VOICE. */
-export const DEFAULT_KOKORO_VOICE_ID = "af_heart";
+/**
+ * The voice every feature speaks with until someone picks another one.
+ *
+ * Chosen by ear rather than by the package's grades: Kristian listened through
+ * the list on 2026-08-30 and picked Lewis. Keep in sync with
+ * DEFAULT_KOKORO_VOICE in src/helpers/kokoro.js — that one is CommonJS in the
+ * main process and cannot import this file.
+ */
+export const DEFAULT_KOKORO_VOICE_ID = "bm_lewis";
 
-/** localStorage key holding the chosen voice id, written raw (no JSON quotes). */
+/** localStorage key holding Read Aloud's voice id, written raw (no JSON quotes). */
 export const READ_ALOUD_VOICE_STORAGE_KEY = "readAloudVoice";
 
+/**
+ * localStorage key holding Converse's voice id, written raw.
+ *
+ * Deliberately separate from Read Aloud's. The two are different acts — one
+ * reads back a document you selected, the other is an assistant answering you
+ * — and a user who wants a narrator for one and a different character for the
+ * other should not have to choose. They share a default, so anyone who never
+ * opens either picker hears one consistent voice.
+ */
+export const CONVERSE_VOICE_STORAGE_KEY = "converseVoice";
+
+/** The one Kokoro model in the registry, downloaded from the Read Aloud page. */
+export const KOKORO_MODEL_ID = "kokoro-82m-v1.0-fp32";
+export const KOKORO_MODEL_LABEL = "Kokoro 82M";
+/** Registry total, stated up front so the download is never a surprise. */
+export const KOKORO_MODEL_DOWNLOAD_LABEL = "326 MB";
+
 export const KOKORO_VOICES: KokoroVoice[] = [
-  { id: "af_heart", name: "Heart", accent: "American", gender: "Female", grade: "A" },
-  { id: "af_alloy", name: "Alloy", accent: "American", gender: "Female", grade: "C" },
-  { id: "af_aoede", name: "Aoede", accent: "American", gender: "Female", grade: "C+" },
-  { id: "af_bella", name: "Bella", accent: "American", gender: "Female", grade: "A-" },
-  { id: "af_jessica", name: "Jessica", accent: "American", gender: "Female", grade: "D" },
-  { id: "af_kore", name: "Kore", accent: "American", gender: "Female", grade: "C+" },
-  { id: "af_nicole", name: "Nicole", accent: "American", gender: "Female", grade: "B-" },
-  { id: "af_nova", name: "Nova", accent: "American", gender: "Female", grade: "C" },
-  { id: "af_river", name: "River", accent: "American", gender: "Female", grade: "D" },
-  { id: "af_sarah", name: "Sarah", accent: "American", gender: "Female", grade: "C+" },
-  { id: "af_sky", name: "Sky", accent: "American", gender: "Female", grade: "C-" },
-  { id: "am_adam", name: "Adam", accent: "American", gender: "Male", grade: "F+" },
-  { id: "am_echo", name: "Echo", accent: "American", gender: "Male", grade: "D" },
-  { id: "am_eric", name: "Eric", accent: "American", gender: "Male", grade: "D" },
-  { id: "am_fenrir", name: "Fenrir", accent: "American", gender: "Male", grade: "C+" },
-  { id: "am_liam", name: "Liam", accent: "American", gender: "Male", grade: "D" },
-  { id: "am_michael", name: "Michael", accent: "American", gender: "Male", grade: "C+" },
-  { id: "am_onyx", name: "Onyx", accent: "American", gender: "Male", grade: "D" },
-  { id: "am_puck", name: "Puck", accent: "American", gender: "Male", grade: "C+" },
-  { id: "am_santa", name: "Santa", accent: "American", gender: "Male", grade: "D-" },
-  { id: "bf_emma", name: "Emma", accent: "British", gender: "Female", grade: "B-" },
-  { id: "bf_isabella", name: "Isabella", accent: "British", gender: "Female", grade: "C" },
-  { id: "bm_george", name: "George", accent: "British", gender: "Male", grade: "C" },
-  { id: "bm_lewis", name: "Lewis", accent: "British", gender: "Male", grade: "D+" },
-  { id: "bf_alice", name: "Alice", accent: "British", gender: "Female", grade: "D" },
-  { id: "bf_lily", name: "Lily", accent: "British", gender: "Female", grade: "D" },
-  { id: "bm_daniel", name: "Daniel", accent: "British", gender: "Male", grade: "D" },
-  { id: "bm_fable", name: "Fable", accent: "British", gender: "Male", grade: "C" },
+  { id: "af_heart", name: "Heart", accent: "American", gender: "Female" },
+  { id: "af_alloy", name: "Alloy", accent: "American", gender: "Female" },
+  { id: "af_aoede", name: "Aoede", accent: "American", gender: "Female" },
+  { id: "af_bella", name: "Bella", accent: "American", gender: "Female" },
+  { id: "af_jessica", name: "Jessica", accent: "American", gender: "Female" },
+  { id: "af_kore", name: "Kore", accent: "American", gender: "Female" },
+  { id: "af_nicole", name: "Nicole", accent: "American", gender: "Female" },
+  { id: "af_nova", name: "Nova", accent: "American", gender: "Female" },
+  { id: "af_river", name: "River", accent: "American", gender: "Female" },
+  { id: "af_sarah", name: "Sarah", accent: "American", gender: "Female" },
+  { id: "af_sky", name: "Sky", accent: "American", gender: "Female" },
+  { id: "am_adam", name: "Adam", accent: "American", gender: "Male" },
+  { id: "am_echo", name: "Echo", accent: "American", gender: "Male" },
+  { id: "am_eric", name: "Eric", accent: "American", gender: "Male" },
+  { id: "am_fenrir", name: "Fenrir", accent: "American", gender: "Male" },
+  { id: "am_liam", name: "Liam", accent: "American", gender: "Male" },
+  { id: "am_michael", name: "Michael", accent: "American", gender: "Male" },
+  { id: "am_onyx", name: "Onyx", accent: "American", gender: "Male" },
+  { id: "am_puck", name: "Puck", accent: "American", gender: "Male" },
+  { id: "am_santa", name: "Santa", accent: "American", gender: "Male" },
+  { id: "bf_emma", name: "Emma", accent: "British", gender: "Female" },
+  { id: "bf_isabella", name: "Isabella", accent: "British", gender: "Female" },
+  { id: "bm_george", name: "George", accent: "British", gender: "Male" },
+  { id: "bm_lewis", name: "Lewis", accent: "British", gender: "Male" },
+  { id: "bf_alice", name: "Alice", accent: "British", gender: "Female" },
+  { id: "bf_lily", name: "Lily", accent: "British", gender: "Female" },
+  { id: "bm_daniel", name: "Daniel", accent: "British", gender: "Male" },
+  { id: "bm_fable", name: "Fable", accent: "British", gender: "Male" },
 ];
 
-/** Best letter first. Kokoro grades skip E, so the scale is A B C D F. */
-const GRADE_LETTERS = ["A", "B", "C", "D", "F"];
-
 /**
- * Rank a grade so a plain sort puts the best-sounding voice first.
+ * The picker's list: kokoro-js's original table order, verbatim.
  *
- * Letter dominates, then the modifier within that letter: "+" beats a bare
- * letter, which beats "-". So A, A-, B-, C+, C, C-, D+, D, D-, F+. An
- * unrecognised grade sorts last rather than throwing — a kokoro-js upgrade
- * introducing a new grade should push that voice down the list, not break the
- * page. (The unit test still catches the id drift that matters.)
- */
-export function gradeRank(grade: string): number {
-  const letterIndex = GRADE_LETTERS.indexOf(grade.charAt(0).toUpperCase());
-  if (letterIndex === -1) return Number.MAX_SAFE_INTEGER;
-
-  const modifier = grade.slice(1).trim();
-  const modifierRank = modifier === "+" ? 0 : modifier === "" ? 1 : 2;
-  return letterIndex * 3 + modifierRank;
-}
-
-/**
- * NO LONGER the picker's order — kept only because the grade badge still
- * renders and other code may want to reason about grades. Kristian rejected
- * grade-sorting on 2026-08-24 ("I don't really like your ranking of the
- * voices… it's very subjective. Just put it in the order that it was in
- * originally"), so the picker now shows KOKORO_VOICES in kokoro-js's own
- * table order.
- *
- * Original rationale, for the record: best grade first, American before
- * British inside a grade, then name A-Z.
- *
- * Grade leads because the user is choosing by ear and has no other way to
- * guess which of 28 names sounds good — the grade is the package author's own
- * listening judgement, so it is the closest thing to a preview that exists
- * before you press play. Accent groups within a grade because a run of
- * American names followed by a run of British ones is scannable, while
- * alternating them is not; name A-Z last so the order is stable and a voice
- * stays where the user last saw it.
- *
- * Does not mutate the input.
- */
-export function sortVoices(voices: KokoroVoice[]): KokoroVoice[] {
-  return [...voices].sort((a, b) => {
-    const byGrade = gradeRank(a.grade) - gradeRank(b.grade);
-    if (byGrade !== 0) return byGrade;
-
-    if (a.accent !== b.accent) return a.accent === "American" ? -1 : 1;
-
-    return a.name.localeCompare(b.name, "en");
-  });
-}
-
-/**
- * The picker's list: kokoro-js's original table order, verbatim. The package
- * author's order (Heart, Alloy, Aoede… then the British voices) is the one
- * every Kokoro user sees elsewhere, and Kristian asked for exactly it.
+ * Kristian rejected sorting the list by the package's grades on 2026-08-24
+ * ("it's very subjective. Just put it in the order that it was in
+ * originally"), and the grades themselves are gone as of 2026-08-30. The
+ * package author's order is the one every Kokoro user sees elsewhere, and it
+ * already runs all the American voices before all the British ones, which is
+ * exactly what the picker's accent headings group on.
  */
 export const SORTED_KOKORO_VOICES: KokoroVoice[] = [...KOKORO_VOICES];
 
+/** The accents present, in the order the table first mentions them. */
+export const KOKORO_ACCENTS: KokoroVoiceAccent[] = SORTED_KOKORO_VOICES.reduce<KokoroVoiceAccent[]>(
+  (accents, voice) => (accents.includes(voice.accent) ? accents : [...accents, voice.accent]),
+  []
+);
+
 export function findVoice(id: string | null | undefined): KokoroVoice | undefined {
   return KOKORO_VOICES.find((voice) => voice.id === id);
+}
+
+/**
+ * "Lewis, a British male voice" — the one phrase every screen uses to name a
+ * voice, so the article and the casing cannot drift between two pages.
+ */
+export function describeVoice(voice: KokoroVoice): string {
+  const article = voice.accent === "American" ? "an" : "a";
+  return `${voice.name}, ${article} ${voice.accent} ${voice.gender.toLowerCase()} voice`;
 }
 
 /**
@@ -142,11 +132,31 @@ export function findVoice(id: string | null | undefined): KokoroVoice | undefine
  * The value is written raw, but an older build (or a hand-edited profile)
  * could have left a JSON-quoted copy behind, and an id from a future kokoro-js
  * would throw inside `generate()` rather than degrade. Both fall back to the
- * default instead of taking Read Aloud down.
+ * default instead of taking playback down.
  */
 export function resolveVoiceId(raw: string | null | undefined): string {
   if (typeof raw !== "string") return DEFAULT_KOKORO_VOICE_ID;
 
   const trimmed = raw.trim().replace(/^"(.*)"$/, "$1");
   return findVoice(trimmed) ? trimmed : DEFAULT_KOKORO_VOICE_ID;
+}
+
+/**
+ * Read a stored voice id straight out of localStorage.
+ *
+ * The pickers live in the control panel; the players live in the overlay,
+ * which may have been running since before the window that changed the value
+ * existed. Rather than plumbing a cross-window event for something needed at
+ * exactly one instant, the players re-read the key immediately before they
+ * speak. Storage being unavailable is not worth surfacing here — the default
+ * voice still speaks.
+ */
+export function readStoredVoiceId(storageKey: string): string {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(storageKey);
+  } catch {
+    // Storage unavailable; resolveVoiceId falls back to the default.
+  }
+  return resolveVoiceId(stored);
 }

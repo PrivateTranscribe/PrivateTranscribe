@@ -29,7 +29,11 @@ import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
-import { READ_ALOUD_VOICE_STORAGE_KEY, resolveVoiceId } from "./models/kokoroVoices";
+import {
+  CONVERSE_VOICE_STORAGE_KEY,
+  READ_ALOUD_VOICE_STORAGE_KEY,
+  readStoredVoiceId,
+} from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -457,13 +461,7 @@ export default function App() {
     // Kokoro. speak() clears the buffer cache anyway, so switching mid-session
     // can never replay the old voice.
     const applyStoredVoice = () => {
-      let stored = null;
-      try {
-        stored = localStorage.getItem(READ_ALOUD_VOICE_STORAGE_KEY);
-      } catch {
-        // Storage unavailable; resolveVoiceId falls back to the default.
-      }
-      player.voice = resolveVoiceId(stored);
+      player.voice = readStoredVoiceId(READ_ALOUD_VOICE_STORAGE_KEY);
     };
     applyStoredVoice();
 
@@ -587,7 +585,13 @@ export default function App() {
   // one day start would poll forever for every user who never opens Converse.
   // Sampling backs off to once a second whenever nothing is being spoken.
   useEffect(() => {
-    const player = new ConversePlayer();
+    // Same reasoning as Read Aloud's applyStoredVoice above, except the player
+    // asks for itself: it re-reads the Converse voice at every turn boundary,
+    // so a change made in the control panel is heard on the next answer.
+    const player = new ConversePlayer({
+      resolveVoice: () => readStoredVoiceId(CONVERSE_VOICE_STORAGE_KEY),
+    });
+    player.voice = readStoredVoiceId(CONVERSE_VOICE_STORAGE_KEY);
     player.connect();
 
     let cancelled = false;

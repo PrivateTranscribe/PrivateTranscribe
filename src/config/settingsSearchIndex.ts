@@ -340,6 +340,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     page: "read-aloud",
     keywords: ["hotkey", "shortcut", "keyboard", "tts"],
   },
+  {
+    label: "Voice",
+    group: "Read Aloud",
+    page: "read-aloud",
+    keywords: ["voice", "accent", "british", "american", "speaker", "kokoro", "tts"],
+  },
 
   // ── Converse ──────────────────────────────────────────────────────────────
   {
@@ -371,6 +377,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     group: "Converse",
     page: "converse",
     keywords: ["mic", "mute", "converse", "claude code", "feedback", "echo"],
+  },
+  {
+    label: "Voice",
+    group: "Converse",
+    page: "converse",
+    keywords: ["voice", "accent", "british", "american", "speaker", "kokoro", "tts", "converse"],
   },
 ];
 

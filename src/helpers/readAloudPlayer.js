@@ -21,13 +21,18 @@ import {
   HEAD_KEEP_TRAIL_MS,
   TAIL_KEEP_LEAD_MS,
 } from "./readAloudFirstChunk";
+import { DEFAULT_KOKORO_VOICE_ID } from "../models/kokoroVoices";
 
 /** Sentences to synthesize ahead of the one playing, so seams stay gapless. */
 const LOOKAHEAD = 2;
-const DEFAULT_VOICE = "af_heart";
 
 export class ReadAloudPlayer {
-  constructor({ api = null, voice = DEFAULT_VOICE, speed = 1.0, disableFirstChunk } = {}) {
+  constructor({
+    api = null,
+    voice = DEFAULT_KOKORO_VOICE_ID,
+    speed = 1.0,
+    disableFirstChunk,
+  } = {}) {
     this.api = api || (typeof window === "undefined" ? null : window.electronAPI);
     this.voice = voice;
     this.speed = speed;

@@ -2,14 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
+  CONVERSE_VOICE_STORAGE_KEY,
   DEFAULT_KOKORO_VOICE_ID,
+  KOKORO_ACCENTS,
   KOKORO_VOICES,
+  READ_ALOUD_VOICE_STORAGE_KEY,
   SORTED_KOKORO_VOICES,
+  describeVoice,
   findVoice,
-  gradeRank,
   resolveVoiceId,
-  sortVoices,
-  type KokoroVoice,
 } from "../../../src/models/kokoroVoices";
 
 /**
@@ -22,18 +23,6 @@ import {
  */
 
 const VOICES_DIR = path.resolve(__dirname, "../../../node_modules/kokoro-js/voices");
-
-const voice = (overrides: Partial<KokoroVoice>): KokoroVoice => ({
-  id: "x",
-  name: "X",
-  accent: "American",
-  gender: "Female",
-  grade: "C",
-  ...overrides,
-});
-
-/** Names in the order sortVoices produced them, for readable assertions. */
-const orderOf = (voices: KokoroVoice[]) => sortVoices(voices).map((v) => v.name);
 
 describe("KOKORO_VOICES", () => {
   it("has exactly the 28 English voices", () => {
@@ -77,81 +66,42 @@ describe("KOKORO_VOICES", () => {
   });
 });
 
-describe("gradeRank", () => {
-  it("orders letters best-first", () => {
-    expect(gradeRank("A")).toBeLessThan(gradeRank("B"));
-    expect(gradeRank("B")).toBeLessThan(gradeRank("C"));
-    expect(gradeRank("D")).toBeLessThan(gradeRank("F"));
-  });
-
-  it("orders + above bare above - within a letter", () => {
-    expect(gradeRank("B+")).toBeLessThan(gradeRank("B"));
-    expect(gradeRank("B")).toBeLessThan(gradeRank("B-"));
-    expect(gradeRank("A")).toBeLessThan(gradeRank("A-"));
-  });
-
-  it("keeps a whole letter ahead of the next letter's best modifier", () => {
-    expect(gradeRank("A-")).toBeLessThan(gradeRank("B+"));
-  });
-
-  it("sinks an unrecognised grade instead of throwing", () => {
-    expect(gradeRank("Z")).toBeGreaterThan(gradeRank("F"));
-    expect(gradeRank("")).toBeGreaterThan(gradeRank("F"));
-  });
-});
-
-describe("sortVoices", () => {
-  it("puts a better grade first", () => {
-    expect(
-      orderOf([
-        voice({ name: "Bee", grade: "B" }),
-        voice({ name: "Ay", grade: "A" }),
-        voice({ name: "AyMinus", grade: "A-" }),
-        voice({ name: "BeePlus", grade: "B+" }),
-        voice({ name: "BeeMinus", grade: "B-" }),
-      ])
-    ).toEqual(["Ay", "AyMinus", "BeePlus", "Bee", "BeeMinus"]);
-  });
-
-  it("puts American before British inside one grade", () => {
-    expect(
-      orderOf([
-        voice({ name: "Brit", accent: "British", grade: "C" }),
-        voice({ name: "Yank", accent: "American", grade: "C" }),
-      ])
-    ).toEqual(["Yank", "Brit"]);
-  });
-
-  it("falls back to name A-Z", () => {
-    expect(
-      orderOf([
-        voice({ name: "Zoe", grade: "C" }),
-        voice({ name: "Amy", grade: "C" }),
-        voice({ name: "Mia", grade: "C" }),
-      ])
-    ).toEqual(["Amy", "Mia", "Zoe"]);
-  });
-
-  it("does not mutate its input", () => {
-    const input = [voice({ name: "Zoe", grade: "D" }), voice({ name: "Amy", grade: "A" })];
-    sortVoices(input);
-    expect(input.map((v) => v.name)).toEqual(["Zoe", "Amy"]);
-  });
-
-  // The picker itself no longer uses sortVoices: Kristian rejected the
-  // grade ordering as subjective and asked for kokoro-js's original table
-  // order, so SORTED_KOKORO_VOICES is the table verbatim.
-  it("is NOT the picker order — the picker shows the original table", () => {
+describe("SORTED_KOKORO_VOICES", () => {
+  // The picker shows kokoro-js's own table order: Kristian rejected ordering by
+  // the package's grades as subjective, and the grades themselves are gone.
+  it("is the table verbatim", () => {
     expect(SORTED_KOKORO_VOICES.map((v) => v.id)).toEqual(KOKORO_VOICES.map((v) => v.id));
-  });
-
-  it("keeps the default voice at the top of the original order", () => {
-    expect(SORTED_KOKORO_VOICES[0].id).toBe("af_heart");
   });
 
   it("returns every voice exactly once", () => {
     expect(SORTED_KOKORO_VOICES).toHaveLength(KOKORO_VOICES.length);
     expect(new Set(SORTED_KOKORO_VOICES.map((v) => v.id)).size).toBe(KOKORO_VOICES.length);
+  });
+
+  // The picker draws one sticky heading per accent over a flat list, so a table
+  // that interleaved the accents would put voices under the wrong heading.
+  it("keeps each accent in one unbroken run, so the headings can be flat", () => {
+    const runs: string[] = [];
+    for (const v of SORTED_KOKORO_VOICES) {
+      if (runs[runs.length - 1] !== v.accent) runs.push(v.accent);
+    }
+    expect(runs).toEqual(KOKORO_ACCENTS);
+    expect(new Set(runs).size).toBe(runs.length);
+  });
+});
+
+describe("describeVoice", () => {
+  it("names the voice with the right article", () => {
+    expect(describeVoice(findVoice("bm_lewis")!)).toBe("Lewis, a British male voice");
+    expect(describeVoice(findVoice("af_heart")!)).toBe("Heart, an American female voice");
+  });
+});
+
+describe("storage keys", () => {
+  // Read Aloud and Converse choose independently; one key for both would make
+  // picking a narrator silently change the assistant.
+  it("gives Read Aloud and Converse separate keys", () => {
+    expect(READ_ALOUD_VOICE_STORAGE_KEY).not.toBe(CONVERSE_VOICE_STORAGE_KEY);
   });
 });
 

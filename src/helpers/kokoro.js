@@ -25,8 +25,12 @@ const { getModelsDirForService } = require("./modelDirUtils");
 const modelRegistryData = require("../models/modelRegistryData.json");
 
 const DEFAULT_KOKORO_MODEL = "kokoro-82m-v1.0-fp32";
-/** Named once here so the cache key in the renderer and the engine agree. */
-const DEFAULT_KOKORO_VOICE = "af_heart";
+/**
+ * Named once here so the cache key in the renderer and the engine agree.
+ * Keep in sync with DEFAULT_KOKORO_VOICE_ID in src/models/kokoroVoices.ts —
+ * this file is CommonJS in the main process and cannot import that module.
+ */
+const DEFAULT_KOKORO_VOICE = "bm_lewis";
 /** Measured: fp32 beats q8 by ~5x on CPU. See docs/GOALS.md. */
 const KOKORO_DTYPE = "fp32";
 /**

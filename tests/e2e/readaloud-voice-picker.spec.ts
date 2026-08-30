@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
-import { SORTED_KOKORO_VOICES } from "../../src/models/kokoroVoices";
+import {
+  DEFAULT_KOKORO_VOICE_ID,
+  SORTED_KOKORO_VOICES,
+  findVoice,
+} from "../../src/models/kokoroVoices";
 import type { Locator, Page } from "@playwright/test";
 
 /**
@@ -48,9 +52,9 @@ async function openReadAloud(controlPanel: Page): Promise<Locator> {
 const storedVoice = (page: Page) => page.evaluate(() => localStorage.getItem("readAloudVoice"));
 
 /**
- * Shoot the section rather than the page: the rows, grades and preview buttons
- * are what a critic has to judge, and a full-page capture renders them too
- * small to read.
+ * Shoot the section rather than the page: the rows, accent headings and preview
+ * buttons are what a critic has to judge, and a full-page capture renders them
+ * too small to read.
  */
 async function captureSection(section: Locator, fileName: string) {
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
@@ -105,15 +109,22 @@ test.describe("read aloud voice picker", () => {
     // grade-sorting as subjective.
     expect(rendered.map((row) => row.id)).toEqual(SORTED_KOKORO_VOICES.map((v) => v.id));
 
-    // The original table happens to lead with the default voice.
-    expect(SORTED_KOKORO_VOICES[0].id).toBe("af_heart");
     const firstRow = picker.locator("[data-voice-id]").first();
     await expect(firstRow).toHaveAttribute("data-voice-id", SORTED_KOKORO_VOICES[0].id);
     await expect(firstRow).toContainText(SORTED_KOKORO_VOICES[0].name);
 
-    // Default state: af_heart selected, header naming it.
-    await expect(controlPanel.getByTestId("readaloud-voice-current")).toHaveText("Heart");
-    await expect(picker.locator('[data-voice-id="af_heart"]')).toHaveAttribute(
+    // One heading per accent, and no letter grade anywhere: the grades were
+    // removed on 2026-08-30, so a row must carry only what a person can check
+    // for themselves — the name, the gender, and the play button.
+    await expect(picker.getByText("American", { exact: true })).toBeVisible();
+    await expect(picker.getByText("British", { exact: true })).toBeVisible();
+    const rowText = await picker.locator("[data-voice-id]").allInnerTexts();
+    expect(rowText.join(" ")).not.toMatch(/[A-DF][+-]?/);
+
+    // Default state: the default voice selected, header naming it.
+    const fallback = findVoice(DEFAULT_KOKORO_VOICE_ID)!;
+    await expect(controlPanel.getByTestId("readaloud-voice-current")).toHaveText(fallback.name);
+    await expect(picker.locator(`[data-voice-id="${fallback.id}"]`)).toHaveAttribute(
       "data-selected",
       "true"
     );
@@ -145,8 +156,10 @@ test.describe("read aloud voice picker", () => {
     }
 
     // Previewing never changes the selection - the two are separate actions.
-    expect(await storedVoice(controlPanel)).toBe("af_heart");
-    await expect(controlPanel.getByTestId("readaloud-voice-current")).toHaveText("Heart");
+    expect(await storedVoice(controlPanel)).toBe(DEFAULT_KOKORO_VOICE_ID);
+    await expect(controlPanel.getByTestId("readaloud-voice-current")).toHaveText(
+      findVoice(DEFAULT_KOKORO_VOICE_ID)!.name
+    );
 
     // Captured after both previews completed rather than mid-synthesis: the
     // busy state lasts a few hundred milliseconds and racing a screenshot
@@ -165,7 +178,7 @@ test.describe("read aloud voice picker", () => {
       "data-selected",
       "true"
     );
-    await expect(picker.locator('[data-voice-id="af_heart"]')).toHaveAttribute(
+    await expect(picker.locator(`[data-voice-id="${DEFAULT_KOKORO_VOICE_ID}"]`)).toHaveAttribute(
       "data-selected",
       "false"
     );
@@ -184,7 +197,7 @@ test.describe("read aloud voice picker", () => {
       "true"
     );
 
-    // Fable is the 13th of 28 rows, well below the ~6 the list shows. Arriving
+    // Fable is the last of 28 rows, far below the ~6 the list shows. Arriving
     // on the page has to put it on screen, or the only way to see what is
     // selected is to scroll and hunt for the check mark.
     // Measured with rects, not offsetTop: offsetTop is relative to the nearest

@@ -211,6 +211,8 @@ export interface ConverseTransition {
 /** Renderer -> main playback report; the session's only evidence audio played. */
 export interface ConversePlayerReport {
   gen: number;
+  /** The Kokoro voice this turn is being spoken in. */
+  voice?: string;
   playing: boolean;
   playIndex: number;
   known: number;

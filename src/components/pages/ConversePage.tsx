@@ -21,12 +21,23 @@ import { SettingsRow } from "../ui/SettingsSection";
 import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { VoicePicker } from "../ui/VoicePicker";
 import { getTranscriptionProvider } from "../../models/ModelRegistry";
+import {
+  CONVERSE_VOICE_STORAGE_KEY,
+  DEFAULT_KOKORO_VOICE_ID,
+  KOKORO_MODEL_ID,
+  describeVoice,
+} from "../../models/kokoroVoices";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useConverseVoice, type ConverseVoicePhase } from "../../hooks/useConverseVoice";
 import { END_OF_TURN_CHOICES, VAD_DEFAULT_END_OF_TURN_MS } from "../../utils/converseVad";
-import type { ConversePermissionEntry, ConverseState } from "../../types/electron";
+import type {
+  ConversePermissionEntry,
+  ConverseState,
+  KokoroModelStatus,
+} from "../../types/electron";
 
 /**
  * Converse: talk to Claude Code about one project folder and hear the reply
@@ -482,6 +493,24 @@ export default function ConversePage() {
     "converseEndOfTurnMs",
     VAD_DEFAULT_END_OF_TURN_MS
   );
+  /**
+   * The voice the replies are spoken in. Stored raw, not JSON: the overlay's
+   * ConversePlayer reads this key straight out of localStorage at the start of
+   * every turn, and a quoted copy would reach Kokoro as `"bm_lewis"` and be
+   * rejected as an unknown voice.
+   */
+  const [converseVoice, setConverseVoice] = useLocalStorage(
+    CONVERSE_VOICE_STORAGE_KEY,
+    DEFAULT_KOKORO_VOICE_ID,
+    { serialize: String, deserialize: String }
+  );
+
+  /**
+   * Whether the voice model is on this machine. Converse cannot speak without
+   * it, so the picker is only offered when previewing a voice would actually
+   * make a sound — the same rule the Read Aloud page uses.
+   */
+  const [voiceModelInstalled, setVoiceModelInstalled] = useState(false);
 
   // Read, never written here: speech goes wherever the app's own transcription
   // setting sends it. The page says which of the two it is rather than claiming
@@ -628,6 +657,26 @@ export default function ConversePage() {
       return updated;
     });
   }, []);
+
+  // Asked once, on arrival. The answer only gates a picker, so a failed read is
+  // treated as "not installed" rather than retried — the start button already
+  // says so properly if the model is really missing.
+  useEffect(() => {
+    if (!isUnlocked) return undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const status: KokoroModelStatus | undefined =
+          await window.electronAPI?.readAloudCheckModelStatus?.(KOKORO_MODEL_ID);
+        if (!cancelled) setVoiceModelInstalled(Boolean(status?.installed));
+      } catch {
+        if (!cancelled) setVoiceModelInstalled(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isUnlocked]);
 
   // A session started before this page was opened is still the live one, so the
   // page joins it instead of pretending nothing is running.
@@ -1094,6 +1143,30 @@ export default function ConversePage() {
                     >
                       <Toggle checked={muteWhileSpeaking} onChange={setMuteWhileSpeaking} />
                     </SettingsRow>
+                  </SettingsPanelRow>
+
+                  {/* Same gate as Read Aloud's: without the model nothing here
+                      can make a sound, and an inert list of 28 names would only
+                      mislead. */}
+                  <SettingsPanelRow>
+                    {voiceModelInstalled ? (
+                      <VoicePicker
+                        value={converseVoice}
+                        onChange={setConverseVoice}
+                        testIdPrefix="converse"
+                        ariaLabel="Converse voice"
+                        usage={(voice) =>
+                          `Claude Code's replies are read back by ${describeVoice(voice)}.`
+                        }
+                      />
+                    ) : (
+                      <SettingsRow
+                        label="Voice"
+                        description="Available once the voice model is on this machine. It is downloaded on the Read Aloud page."
+                      >
+                        <span className="text-sm text-muted-foreground">Not installed</span>
+                      </SettingsRow>
+                    )}
                   </SettingsPanelRow>
 
                   <SettingsPanelRow>
