@@ -24,10 +24,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { VoicePicker } from "../ui/VoicePicker";
 import { getTranscriptionProvider } from "../../models/ModelRegistry";
 import {
-  CONVERSE_VOICE_STORAGE_KEY,
   DEFAULT_KOKORO_VOICE_ID,
   KOKORO_MODEL_ID,
-  describeVoice,
+  VOICE_STORAGE_KEY,
 } from "../../models/kokoroVoices";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -494,16 +493,15 @@ export default function ConversePage() {
     VAD_DEFAULT_END_OF_TURN_MS
   );
   /**
-   * The voice the replies are spoken in. Stored raw, not JSON: the overlay's
-   * ConversePlayer reads this key straight out of localStorage at the start of
-   * every turn, and a quoted copy would reach Kokoro as `"bm_lewis"` and be
-   * rejected as an unknown voice.
+   * The app's one voice, the same value the Read Aloud page writes. Stored raw,
+   * not JSON: the overlay's ConversePlayer reads this key straight out of
+   * localStorage at the start of every turn, and a quoted copy would reach
+   * Kokoro as `"bm_lewis"` and be rejected as an unknown voice.
    */
-  const [converseVoice, setConverseVoice] = useLocalStorage(
-    CONVERSE_VOICE_STORAGE_KEY,
-    DEFAULT_KOKORO_VOICE_ID,
-    { serialize: String, deserialize: String }
-  );
+  const [voiceId, setVoiceId] = useLocalStorage(VOICE_STORAGE_KEY, DEFAULT_KOKORO_VOICE_ID, {
+    serialize: String,
+    deserialize: String,
+  });
 
   /**
    * Whether the voice model is on this machine. Converse cannot speak without
@@ -1151,13 +1149,10 @@ export default function ConversePage() {
                   <SettingsPanelRow>
                     {voiceModelInstalled ? (
                       <VoicePicker
-                        value={converseVoice}
-                        onChange={setConverseVoice}
+                        value={voiceId}
+                        onChange={setVoiceId}
                         testIdPrefix="converse"
-                        ariaLabel="Converse voice"
-                        usage={(voice) =>
-                          `Claude Code's replies are read back by ${describeVoice(voice)}.`
-                        }
+                        ariaLabel="Voice"
                       />
                     ) : (
                       <SettingsRow

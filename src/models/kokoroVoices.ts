@@ -44,19 +44,19 @@ export type KokoroVoice = {
  */
 export const DEFAULT_KOKORO_VOICE_ID = "bm_lewis";
 
-/** localStorage key holding Read Aloud's voice id, written raw (no JSON quotes). */
-export const READ_ALOUD_VOICE_STORAGE_KEY = "readAloudVoice";
-
 /**
- * localStorage key holding Converse's voice id, written raw.
+ * localStorage key holding the app's voice id, written raw (no JSON quotes).
  *
- * Deliberately separate from Read Aloud's. The two are different acts — one
- * reads back a document you selected, the other is an assistant answering you
- * — and a user who wants a narrator for one and a different character for the
- * other should not have to choose. They share a default, so anyone who never
- * opens either picker hears one consistent voice.
+ * One key for everything PrivateTranscribe speaks. Read Aloud and Converse had
+ * a picker each for a day; Kristian collapsed them on 2026-08-30 — nobody wants
+ * their assistant and their narrator to be different people, and two settings
+ * for one voice is two places to be wrong.
+ *
+ * The name is Read Aloud's, kept because that is where the value already lives
+ * on every machine that has ever set it. Renaming the key would mean a
+ * migration, and a migration is a way to lose a setting.
  */
-export const CONVERSE_VOICE_STORAGE_KEY = "converseVoice";
+export const VOICE_STORAGE_KEY = "readAloudVoice";
 
 /** The one Kokoro model in the registry, downloaded from the Read Aloud page. */
 export const KOKORO_MODEL_ID = "kokoro-82m-v1.0-fp32";

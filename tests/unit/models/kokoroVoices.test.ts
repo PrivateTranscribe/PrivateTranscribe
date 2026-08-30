@@ -2,12 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
-  CONVERSE_VOICE_STORAGE_KEY,
   DEFAULT_KOKORO_VOICE_ID,
   KOKORO_ACCENTS,
   KOKORO_VOICES,
-  READ_ALOUD_VOICE_STORAGE_KEY,
   SORTED_KOKORO_VOICES,
+  VOICE_STORAGE_KEY,
   describeVoice,
   findVoice,
   resolveVoiceId,
@@ -97,11 +96,12 @@ describe("describeVoice", () => {
   });
 });
 
-describe("storage keys", () => {
-  // Read Aloud and Converse choose independently; one key for both would make
-  // picking a narrator silently change the assistant.
-  it("gives Read Aloud and Converse separate keys", () => {
-    expect(READ_ALOUD_VOICE_STORAGE_KEY).not.toBe(CONVERSE_VOICE_STORAGE_KEY);
+describe("VOICE_STORAGE_KEY", () => {
+  // Read Aloud and Converse share one voice. The key keeps Read Aloud's old
+  // name so the value already on disk is the value both pages read — a rename
+  // here silently resets everyone who has ever chosen a voice.
+  it("is the key Read Aloud has always written", () => {
+    expect(VOICE_STORAGE_KEY).toBe("readAloudVoice");
   });
 });
 

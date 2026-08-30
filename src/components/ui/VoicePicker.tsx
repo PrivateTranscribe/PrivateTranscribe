@@ -16,10 +16,10 @@ import { getSharedAudioContext, waitForAudioContextRunning } from "../../utils/s
 /**
  * The voice picker, shared by every feature that speaks.
  *
- * Read Aloud and Converse each store their own voice, but they choose it the
- * same way, from the same 28 voices, with the same preview mechanics — so this
- * is one component with a storage-agnostic value/onChange pair, not a copy per
- * page. A second copy is where the two would drift.
+ * One component and one stored value: Read Aloud and Converse show the same
+ * control over the same key, so choosing a voice on either page is choosing the
+ * voice. They had a picker each for a day; nobody wants their narrator and
+ * their assistant to be different people.
  *
  * All 28 voices in one scrollable list rather than a dropdown: the choice is
  * made by ear, so the accent, the gender and the preview button all have to be
@@ -162,18 +162,12 @@ export type VoicePickerProps = {
   /** The stored value, in whatever state storage left it; resolved internally. */
   value: string | null | undefined;
   onChange: (id: string) => void;
-  /**
-   * One sentence saying what this voice is used for, e.g. "The hotkey reads
-   * with Lewis, a British male voice." Written by the page, because only the
-   * page knows what speaks.
-   */
-  usage: (voice: KokoroVoice) => string;
-  /** Prefixes every data-testid and names the radiogroup: "readaloud", "converse". */
+  /** Prefixes every data-testid: "readaloud", "converse". */
   testIdPrefix: string;
   ariaLabel: string;
 };
 
-export function VoicePicker({ value, onChange, usage, testIdPrefix, ariaLabel }: VoicePickerProps) {
+export function VoicePicker({ value, onChange, testIdPrefix, ariaLabel }: VoicePickerProps) {
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -347,9 +341,12 @@ export function VoicePicker({ value, onChange, usage, testIdPrefix, ariaLabel }:
           {selected.name}
         </span>
       </div>
+      {/* Said on both pages, because the value is the same on both pages: a
+          picker that looked local would make changing it here feel safe. */}
       <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
-        {usage(selected)} Previews are synthesized on this machine, so the first one for each voice
-        takes a moment.
+        Everything PrivateTranscribe speaks — the Read Aloud hotkey and Claude Code&apos;s replies
+        in Converse — uses {describeVoice(selected)}. Previews are synthesized on this machine, so
+        the first one for each voice takes a moment.
       </p>
 
       <div

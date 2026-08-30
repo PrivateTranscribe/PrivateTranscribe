@@ -17,7 +17,6 @@ import {
   KOKORO_MODEL_DOWNLOAD_LABEL,
   KOKORO_MODEL_ID,
   KOKORO_MODEL_LABEL,
-  describeVoice,
 } from "../../models/kokoroVoices";
 import type { KokoroModelStatus } from "../../types/electron";
 
@@ -322,8 +321,7 @@ export default function ReadAloudPage() {
                   value={readAloudVoice}
                   onChange={setReadAloudVoice}
                   testIdPrefix="readaloud"
-                  ariaLabel="Read Aloud voice"
-                  usage={(voice) => `The hotkey reads with ${describeVoice(voice)}.`}
+                  ariaLabel="Voice"
                 />
               </PanelRow>
             )}

@@ -29,11 +29,7 @@ import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
-import {
-  CONVERSE_VOICE_STORAGE_KEY,
-  READ_ALOUD_VOICE_STORAGE_KEY,
-  readStoredVoiceId,
-} from "./models/kokoroVoices";
+import { VOICE_STORAGE_KEY, readStoredVoiceId } from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -461,7 +457,7 @@ export default function App() {
     // Kokoro. speak() clears the buffer cache anyway, so switching mid-session
     // can never replay the old voice.
     const applyStoredVoice = () => {
-      player.voice = readStoredVoiceId(READ_ALOUD_VOICE_STORAGE_KEY);
+      player.voice = readStoredVoiceId(VOICE_STORAGE_KEY);
     };
     applyStoredVoice();
 
@@ -589,9 +585,9 @@ export default function App() {
     // asks for itself: it re-reads the Converse voice at every turn boundary,
     // so a change made in the control panel is heard on the next answer.
     const player = new ConversePlayer({
-      resolveVoice: () => readStoredVoiceId(CONVERSE_VOICE_STORAGE_KEY),
+      resolveVoice: () => readStoredVoiceId(VOICE_STORAGE_KEY),
     });
-    player.voice = readStoredVoiceId(CONVERSE_VOICE_STORAGE_KEY);
+    player.voice = readStoredVoiceId(VOICE_STORAGE_KEY);
     player.connect();
 
     let cancelled = false;

@@ -5,6 +5,7 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
 import {
   DEFAULT_KOKORO_VOICE_ID,
   SORTED_KOKORO_VOICES,
+  VOICE_STORAGE_KEY,
   findVoice,
 } from "../../src/models/kokoroVoices";
 import type { Locator, Page } from "@playwright/test";
@@ -49,7 +50,9 @@ async function openReadAloud(controlPanel: Page): Promise<Locator> {
   return picker;
 }
 
-const storedVoice = (page: Page) => page.evaluate(() => localStorage.getItem("readAloudVoice"));
+/** The app's one voice key. Converse reads the same value. */
+const storedVoice = (page: Page) =>
+  page.evaluate((key) => localStorage.getItem(key), VOICE_STORAGE_KEY);
 
 /**
  * Shoot the section rather than the page: the rows, accent headings and preview
@@ -235,7 +238,7 @@ test.describe("read aloud voice picker", () => {
     // overlay's own view of the key keeps the assertion about the player, not
     // about Chromium's replication timing.
     await expect
-      .poll(() => overlayWindow.evaluate(() => localStorage.getItem("readAloudVoice")), {
+      .poll(() => overlayWindow.evaluate((key) => localStorage.getItem(key), VOICE_STORAGE_KEY), {
         timeout: 15_000,
       })
       .toBe("bf_emma");
