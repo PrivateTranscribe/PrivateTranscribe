@@ -26,15 +26,6 @@ const SOURCES = [
   "src/components/ui/MicrophoneSettings.tsx",
 ];
 
-/**
- * Rows the index deliberately leaves out, with the reason.
- *
- * `activeSection` can only ever hold a Settings tab id, and neither "dictionary"
- * nor "aiModels" is one, so those two switch cases cannot render. Indexing a row
- * nobody can navigate to would hand the user a result that goes nowhere.
- */
-const UNREACHABLE_LABELS = new Set(["Idle shutdown (minutes) [aiModels]"]);
-
 /** Every `<SettingsRow ... label="X">` in a file, in source order. */
 function extractRowLabels(relativePath: string): string[] {
   const lines = readFileSync(join(ROOT, relativePath), "utf8").split(/\r?\n/);
@@ -59,13 +50,10 @@ const indexLabels = new Set(SETTINGS_SEARCH_INDEX.map((entry) => entry.label));
 
 describe("settings search index matches the settings that exist", () => {
   it("indexes every settings row rendered in the app", () => {
-    const missing = [...sourceLabels].filter(
-      (label) => !indexLabels.has(label) && !UNREACHABLE_LABELS.has(label)
-    );
+    const missing = [...sourceLabels].filter((label) => !indexLabels.has(label));
 
-    // The aiModels duplicate shares its label with a reachable transcription
-    // row, so a bare label comparison cannot see it. Both are covered by the
-    // reachable entry; the unreachable one is documented above.
+    // Every row left in these files is reachable now: the two switch cases that
+    // could never render were deleted along with their duplicated controls.
     expect(missing).toEqual([]);
   });
 
@@ -90,6 +78,58 @@ describe("settings search index matches the settings that exist", () => {
       expect(seen.has(key)).toBe(false);
       seen.set(key, entry);
     }
+  });
+});
+
+describe("every settings section can actually be opened", () => {
+  /**
+   * `SettingsSectionType` is a type, so nothing checks it at runtime. A member
+   * with no tab to select it produces a switch case that never renders - which
+   * is how "dictionary" and "aiModels" sat in this file holding their own copies
+   * of controls that had already moved to their own pages, with a llama idle
+   * timeout nobody could reach.
+   */
+  const between = (source: string, start: string, end: string) => {
+    const from = source.indexOf(start);
+    return source.slice(from, source.indexOf(end, from + start.length));
+  };
+
+  const sectionMembers = [
+    ...between(
+      readFileSync(join(ROOT, "src/components/SettingsPage.tsx"), "utf8"),
+      "export type SettingsSectionType =",
+      ";"
+    ).matchAll(/"([a-zA-Z]+)"/g),
+  ].map((match) => match[1]);
+
+  const tabIds = [
+    ...between(
+      readFileSync(join(ROOT, "src/components/pages/SettingsPageWrapper.tsx"), "utf8"),
+      "const getSettingsTabs",
+      "];"
+    ).matchAll(/\bid:\s*"([a-zA-Z]+)"/g),
+  ].map((match) => match[1]);
+
+  const ipcTabs = [
+    ...between(
+      readFileSync(join(ROOT, "src/types/electron.ts"), "utf8"),
+      "export type ControlPanelSettingsTab =",
+      ";"
+    ).matchAll(/"([a-zA-Z]+)"/g),
+  ].map((match) => match[1]);
+
+  it("reads all three lists", () => {
+    expect(sectionMembers.length).toBeGreaterThan(0);
+    expect(tabIds.length).toBeGreaterThan(0);
+    expect(ipcTabs.length).toBeGreaterThan(0);
+  });
+
+  it("has a tab for every section the settings page can render", () => {
+    expect([...sectionMembers].sort()).toEqual([...tabIds].sort());
+  });
+
+  it("accepts the same tabs over IPC as the tab bar offers", () => {
+    expect([...ipcTabs].sort()).toEqual([...tabIds].sort());
   });
 });
 
