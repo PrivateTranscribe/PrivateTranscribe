@@ -9,6 +9,8 @@ import { readSpokenLanguages } from "../utils/spokenLanguages";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import { getSharedAudioContext } from "../utils/sharedAudioContext";
+import { summarizeSpeechLevels } from "../utils/speechPresence";
+import { classifyNonSpeechArtifact } from "../utils/nonSpeechArtifact";
 import { buildDictionaryPrompt } from "../utils/dictionaryPrompt";
 import {
   getContext,
@@ -43,6 +45,9 @@ const LONG_SESSION_SEGMENT_MAX_MS = 90 * 1000;
 const LONG_SESSION_SEGMENT_PAUSE_POLL_MS = 100;
 const LONG_SESSION_SEGMENT_PAUSE_HOLD_MS = 300;
 const LONG_SESSION_SEGMENT_PAUSE_RMS = 0.015;
+// How often the microphone level is sampled across a whole dictation, so the
+// recording can be judged for speech before it is handed to any engine.
+const SPEECH_LEVEL_POLL_MS = 50;
 const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 3;
 // Retrying a failed chunk instantly just re-runs it against whatever broke it.
 // A short pause lets a busy or restarting whisper-server come back first.
@@ -253,6 +258,7 @@ class AudioManager {
     this.longSessionSegment = null;
     this.longSessionPromotionUnavailable = false;
     this.segmentLevelAnalyser = null;
+    this.speechLevelMonitor = null;
     this.pendingStopAfterStart = false;
     this.pendingCancelAfterStart = false;
     this.discardCurrentRecording = false;
@@ -947,6 +953,7 @@ class AudioManager {
   }
 
   disposeSegmentLevelAnalyser() {
+    this.stopSpeechLevelMonitor();
     const node = this.segmentLevelAnalyser;
     this.segmentLevelAnalyser = null;
     if (!node) {
@@ -960,6 +967,67 @@ class AudioManager {
     } catch {
       // Ignore teardown errors from an already-disconnected graph.
     }
+  }
+
+  /**
+   * Sample the microphone for the whole of a dictation.
+   *
+   * The readings are what lets `processAudio` refuse to transcribe a recording
+   * nobody spoke into. Whisper answers silence with an invented stock phrase
+   * ("Thank you.") that then gets pasted, and no engine setting turns that off,
+   * so the recording is judged here instead.
+   *
+   * Costs nothing per reading - it reuses the analyser segment rotation
+   * already taps the live stream with. Returns false when Web Audio refuses
+   * the stream, and the dictation is then transcribed as it always was.
+   */
+  startSpeechLevelMonitor() {
+    this.stopSpeechLevelMonitor();
+
+    if (!this.ensureSegmentLevelAnalyser()) {
+      return false;
+    }
+
+    const monitor = { timer: null, levels: [] };
+    const poll = () => {
+      monitor.timer = null;
+      if (this.speechLevelMonitor !== monitor) {
+        return;
+      }
+
+      // null means unmeasurable right now, typically a context the OS
+      // suspended. Recording it as a level would read as silence.
+      const rms = this.readSegmentLevelRms();
+      if (rms !== null) {
+        monitor.levels.push(rms);
+      }
+
+      monitor.timer = setTimeout(poll, SPEECH_LEVEL_POLL_MS);
+    };
+
+    this.speechLevelMonitor = monitor;
+    monitor.timer = setTimeout(poll, SPEECH_LEVEL_POLL_MS);
+    return true;
+  }
+
+  stopSpeechLevelMonitor() {
+    const monitor = this.speechLevelMonitor;
+    this.speechLevelMonitor = null;
+    if (monitor?.timer) {
+      clearTimeout(monitor.timer);
+      monitor.timer = null;
+    }
+  }
+
+  /**
+   * The verdict on the recording that just ended, taken before teardown
+   * disposes the analyser. Always safe to call: with no monitor running it
+   * reports "not measured", which callers treat as speech.
+   */
+  takeSpeechLevelSummary() {
+    const levels = this.speechLevelMonitor?.levels ?? [];
+    this.stopSpeechLevelMonitor();
+    return summarizeSpeechLevels(levels);
   }
 
   readSegmentLevelRms() {
@@ -1442,6 +1510,8 @@ class AudioManager {
       ? null
       : new Blob(this.audioChunks, { type: this.recordingMimeType || "audio/webm" });
     const chunksCount = this.audioChunks.length;
+    // Read before releaseMediaRecorder() below disposes the analyser.
+    const speechLevel = this.takeSpeechLevelSummary();
 
     this.audioChunks = [];
     this.recordingChunkDurationsMs = [];
@@ -1494,7 +1564,7 @@ class AudioManager {
       "audio"
     );
 
-    await this.processAudio(audioBlob, { durationSeconds });
+    await this.processAudio(audioBlob, { durationSeconds, speechLevel });
     return true;
   }
 
@@ -1662,6 +1732,8 @@ class AudioManager {
               type: this.recordingMimeType || "audio/webm",
             });
         const chunksCount = this.audioChunks.length;
+        // Read before releaseMediaRecorder() below disposes the analyser.
+        const speechLevel = this.takeSpeechLevelSummary();
 
         this.audioChunks = [];
         this.recordingChunkDurationsMs = [];
@@ -1716,7 +1788,7 @@ class AudioManager {
           "audio"
         );
 
-        await this.processAudio(audioBlob, { durationSeconds });
+        await this.processAudio(audioBlob, { durationSeconds, speechLevel });
       };
 
       // Flush long dictations into periodic chunks. Without a timeslice, Electron
@@ -1730,6 +1802,7 @@ class AudioManager {
       // This recorder is discarded for short dictations and becomes chunk zero
       // only if the recording crosses the long-session threshold.
       this.startLongSessionSegmentCapture({ promotionCapture: true });
+      this.startSpeechLevelMonitor();
       this.isRecording = true;
       this.isProcessing = false;
       this.isStartingRecording = false;
@@ -1928,10 +2001,54 @@ class AudioManager {
       processingGeneration,
     };
     try {
+      // Nothing was said. Sending it anyway is how "Thank you." and other
+      // invented stock phrases end up pasted into whatever the user was
+      // typing in - Whisper has no way to answer "silence" and fills the gap
+      // instead. Handled like the engines' own "No audio detected": the
+      // recording is dropped and the overlay returns to idle without a toast,
+      // because a hotkey pressed with nothing spoken is not an error.
+      const speechLevel = metadata.speechLevel;
+      if (speechLevel && speechLevel.measured && !speechLevel.speechDetected) {
+        logger.info(
+          "Dictation held no speech; skipped transcription",
+          {
+            durationSeconds: metadata.durationSeconds ?? null,
+            readings: speechLevel.readings,
+            peakRms: Number(speechLevel.peakRms.toFixed(5)),
+            floorRms: Number(speechLevel.floorRms.toFixed(5)),
+            loudFrames: speechLevel.loudFrames,
+          },
+          "audio"
+        );
+        return;
+      }
+
       const { result, useLocalWhisper, localProvider, activeModel, computeMode } =
         await this.runTranscription(audioBlob, processingMetadata);
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+        return;
+      }
+
+      // Sound reached the microphone, but it was not speech: breath, a fan, a
+      // keyboard. Whisper answers that with a subtitle annotation ("[Music]")
+      // or a stock phrase ("Thank you."), and pastes it into whatever the user
+      // was typing in. Neither the microphone level nor any decode threshold
+      // separates this from quiet speech - measured, see nonSpeechArtifact.ts
+      // - so it is caught here, on the text, for every provider at once.
+      const artifact = classifyNonSpeechArtifact(result?.text, {
+        durationSeconds: metadata.durationSeconds,
+      });
+      if (artifact.isArtifact) {
+        logger.info(
+          "Dropped a non-speech transcript",
+          {
+            reason: artifact.reason,
+            text: result.text,
+            durationSeconds: metadata.durationSeconds ?? null,
+          },
+          "transcription"
+        );
         return;
       }
 

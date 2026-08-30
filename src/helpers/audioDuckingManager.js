@@ -1,6 +1,24 @@
 const { execFile } = require("child_process");
 const debugLogger = require("./debugLogger");
 
+/**
+ * Set by the e2e fixture so a test run never touches the machine's audio.
+ *
+ * readAloudDucking has honoured this since it was written; this module did not,
+ * which meant the fixture's promise only covered per-app volumes. A spec that
+ * ever exercised the dictation duck would move the real master volume of the
+ * machine running the suite. Same flag name on purpose: one switch turns off
+ * every kind of ducking.
+ */
+const DIAG_DISABLE_FLAG = "PRIVATETRANSCRIBE_DIAG_DISABLE_AUDIO_DUCKING";
+
+const isDiagFlagEnabled = (name) => {
+  const raw = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+};
+
 // ─── Windows: PowerShell + C# COM interop (IAudioEndpointVolume) ─────────────
 //
 // The C# type is the canonical approach confirmed working on Windows 10/11.
@@ -189,15 +207,17 @@ function psQuote(value) {
 /**
  * Is `previous` a duck that never got its restore?
  *
- * Returns the PowerShell test for "the volume still looks like that duck", or
- * null when there is nothing to compare against.
+ * Returns the PowerShell test for "the volume is still below where that duck
+ * found it", or null when there is nothing to compare against. This is the same
+ * rule as shouldRepairFromState — see the note there for why it tests the
+ * recorded baseline rather than the duck target.
  */
 function buildStillDuckedTest(previous, f4) {
   if (!previous) return null;
   if (previous.mode === "mute") return "$mute";
-  const target = Number(previous.duckTarget);
-  if (!Number.isFinite(target) || !Number.isFinite(Number(previous.volume))) return null;
-  return `$vol -le ${f4(target + STILL_DUCKED_EPSILON)}`;
+  const baseline = Number(previous.volume);
+  if (!Number.isFinite(baseline)) return null;
+  return `$vol -lt ${f4(baseline - STILL_DUCKED_EPSILON)}`;
 }
 
 /**
@@ -340,9 +360,9 @@ const windows = {
 const STATE_FILE_NAME = "audio-ducking-state.json";
 
 /**
- * How far above the ducked target the master volume can sit and still count as
- * "still ducked". Wide enough for float rounding through PowerShell, narrow
- * enough that a user who has already dragged the slider back up is not yanked.
+ * How close to the recorded baseline the master volume can sit and still count
+ * as already restored. Wide enough for float rounding through PowerShell,
+ * narrow enough that it never hides a duck that is still standing.
  */
 const STILL_DUCKED_EPSILON = 0.02;
 
@@ -358,16 +378,27 @@ const DUCK_WATCHDOG_MS = 10 * 60 * 1000;
 /**
  * Should a leftover state file be acted on?
  *
- * Only when the system still LOOKS ducked. If the user already fixed the
- * volume by hand, the honest thing is to leave it where they put it and just
- * drop the file — restoring would move their slider out from under them.
+ * The test is the recorded BASELINE, not the duck target: a duck is still
+ * holding the volume down for as long as the volume sits below where that duck
+ * found it.
+ *
+ * Testing the target instead is what silently destroyed the baseline. A
+ * stranded duck leaves the machine too quiet, so the user nudges the slider —
+ * 0.35 up to 0.40, say, when it had been 0.70 before the duck. The next start
+ * read 0.40 as "comfortably above the 0.35 target, they already fixed it",
+ * deleted the file, and the 0.70 was gone for good. The duck after that lowered
+ * from 0.40 instead, so every crash-plus-nudge ratcheted the volume down again
+ * with nothing left on disk that could undo it.
+ *
+ * At or above the baseline the user is genuinely past us, and their slider is
+ * left exactly where they put it.
  */
 function shouldRepairFromState(state, current) {
   if (!state || !current) return false;
   if (state.mode === "mute") return Boolean(current.muted);
-  const target = Number(state.duckTarget);
-  if (!Number.isFinite(target)) return false;
-  return Number(current.volume) <= target + STILL_DUCKED_EPSILON;
+  const baseline = Number(state.volume);
+  if (!Number.isFinite(baseline)) return false;
+  return Number(current.volume) < baseline - STILL_DUCKED_EPSILON;
 }
 
 /**
@@ -434,6 +465,20 @@ class AudioDuckingManager {
     if (stateFilePath) this._stateFilePath = stateFilePath;
     else if (userDataPath) this._stateFilePath = path.join(userDataPath, STATE_FILE_NAME);
     return this._stateFilePath;
+  }
+
+  /**
+   * @private Is every real audio move switched off for this run?
+   *
+   * Checked at call time rather than construction because the flag is set by
+   * whoever launches the process. Nothing here touches the state file either:
+   * a run that must not move the volume must not delete another run's evidence
+   * that the volume needs moving back.
+   */
+  _blocked() {
+    if (!isDiagFlagEnabled(DIAG_DISABLE_FLAG)) return false;
+    this._logger.debug("[AudioDucking] Skipping (diagnostic flag)");
+    return true;
   }
 
   /** @private Run `op` only once everything queued before it has finished. */
@@ -516,6 +561,8 @@ class AudioDuckingManager {
 
   /** @private The un-queued body, so an operation already on the queue can use it. */
   async _repairFromDisk() {
+    if (this._blocked()) return { repaired: false, reason: "diagnostic-flag" };
+
     const state = this._readState();
     if (!state) return { repaired: false, reason: "no-state-file" };
 
@@ -577,6 +624,8 @@ class AudioDuckingManager {
 
   /** @private */
   async _doDuck({ mode, duckLevel }) {
+    if (this._blocked()) return;
+
     if (this._isDucked) {
       this._logger.debug("[AudioDucking] Already ducked - nothing to do");
       // A second press means whatever owns this duck is still going, so the
@@ -669,6 +718,12 @@ class AudioDuckingManager {
   async _doRestore() {
     this._clearWatchdog();
 
+    if (this._blocked()) {
+      this._isDucked = false;
+      this._savedState = null;
+      return;
+    }
+
     if (!this._isDucked || !this._savedState) {
       // Nothing of ours is down. If a state file is still lying around, some
       // earlier duck is still holding the volume down - finish that job rather
@@ -702,3 +757,4 @@ module.exports.pickDuckBaseline = pickDuckBaseline;
 module.exports.STATE_FILE_NAME = STATE_FILE_NAME;
 module.exports.STILL_DUCKED_EPSILON = STILL_DUCKED_EPSILON;
 module.exports.DUCK_WATCHDOG_MS = DUCK_WATCHDOG_MS;
+module.exports.DIAG_DISABLE_FLAG = DIAG_DISABLE_FLAG;

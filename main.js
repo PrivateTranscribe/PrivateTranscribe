@@ -36,6 +36,18 @@ if (app.getName() !== APP_NAME) {
   app.setName(APP_NAME);
 }
 
+// Start crash capture before anything else can crash — including window
+// creation and manager startup, which is where a bad launch dies. Dumps stay on
+// the machine; nothing is uploaded. See src/helpers/crashCapture.js for why this
+// exists at all.
+try {
+  require("./src/helpers/crashCapture").startCrashCapture();
+} catch (error) {
+  // A missing crash handler must never be the reason the app fails to start.
+  // debugLogger is not safe to touch this early, so this goes to the console.
+  console.warn("Crash capture unavailable:", error?.message || error);
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
@@ -159,6 +171,27 @@ async function initializeManagers() {
   debugLogger = require("./src/helpers/debugLogger");
   // Ensure file logging is initialized now that app is ready
   debugLogger.ensureFileLogging();
+
+  // Say plainly when the previous session died, and where the evidence is. A
+  // crash the user only experiences as "it closed itself" is otherwise invisible
+  // in the logs, which is exactly how the 2026-08-30 one got away.
+  try {
+    const { collectPreviousCrashes } = require("./src/helpers/crashCapture");
+    const crashes = collectPreviousCrashes();
+    if (crashes.dumps.length > 0) {
+      debugLogger.warn("Crash dumps from a previous session are on disk", {
+        directory: crashes.directory,
+        dumps: crashes.dumps,
+        pruned: crashes.pruned,
+      });
+    } else {
+      debugLogger.debug("No crash dumps from previous sessions", {
+        directory: crashes.directory,
+      });
+    }
+  } catch (error) {
+    debugLogger.debug("Crash dump check skipped", { error: error.message });
+  }
 
   const analyticsManager = require("./src/helpers/analyticsManager");
   analyticsManager.initialize(process.env.SUPABASE_ANON_KEY || "");
@@ -450,6 +483,15 @@ async function startApp() {
   if (process.platform === "darwin") {
     app.setActivationPolicy("regular");
   }
+
+  // Probe the CPU topology once, in the background, so nothing has to ask for it
+  // on a UI path. The Windows probe spawns PowerShell and takes over a second;
+  // it used to run synchronously the first time Settings mounted, freezing the
+  // whole main process while it did.
+  const { warmCpuTopology } = require("./src/helpers/cpuThreads");
+  warmCpuTopology().catch(() => {
+    // Falls back to an estimate on its own; never fatal.
+  });
 
   // Initialize Whisper manager at startup (don't await to avoid blocking).
   // Startup init only applies config (idle timeout / force CPU) and dependency checks.

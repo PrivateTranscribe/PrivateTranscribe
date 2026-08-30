@@ -71,7 +71,14 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
   className = "",
 }) => {
   return (
-    <div className={`flex items-center justify-between gap-4 ${className}`}>
+    // The label doubles as the row's address: settings search scrolls to
+    // `[data-settings-label="..."]` after it switches tab or page. Tagging the
+    // shared primitive keeps every row findable without touching any of them,
+    // and a test pins the labels against the search index so the two cannot drift.
+    <div
+      data-settings-label={label}
+      className={`flex items-center justify-between gap-4 ${className}`}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium text-foreground">{label}</p>

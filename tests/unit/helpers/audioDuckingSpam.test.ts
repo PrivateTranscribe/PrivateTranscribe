@@ -153,14 +153,31 @@ describe("spamming the button", () => {
       JSON.stringify({ version: 1, mode: "duck", volume: 0.8, muted: false, duckTarget: 0.4 }),
       "utf8"
     );
-    // The user dragged the slider somewhere of their own choosing.
+    // Past the baseline, so the stale file has nothing left to say.
+    const fake = makeSlowApi({ volume: 0.9, muted: false });
+    const manager = makeManager(AudioDuckingManager, fake.api);
+
+    await manager.duck({ mode: "duck", duckLevel: 0.5 });
+    await manager.restore();
+
+    expect(fake.state.volume, "the stale file overrode a volume the user had chosen").toBe(0.9);
+  });
+
+  it("still returns to the real baseline when the user nudged a stranded duck part-way up", async () => {
+    const { AudioDuckingManager } = await loadModule();
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ version: 1, mode: "duck", volume: 0.8, muted: false, duckTarget: 0.4 }),
+      "utf8"
+    );
+    // Stranded at 0.4, nudged to 0.6 because it was too quiet to work with.
     const fake = makeSlowApi({ volume: 0.6, muted: false });
     const manager = makeManager(AudioDuckingManager, fake.api);
 
     await manager.duck({ mode: "duck", duckLevel: 0.5 });
     await manager.restore();
 
-    expect(fake.state.volume, "the stale file overrode a volume the user had chosen").toBe(0.6);
+    expect(fake.state.volume, "the nudge was mistaken for the user's own level").toBe(0.8);
   });
 });
 
@@ -263,7 +280,9 @@ describe("the Windows script", () => {
     const script = lines.join("\n");
 
     // The still-ducked test, then the baseline swap, then a target off $base.
-    expect(script).toContain("$vol -le");
+    // The test compares against the baseline (0.8 less the epsilon), not the
+    // duck target, so a part-way nudge still counts as un-restored.
+    expect(script).toContain("$vol -lt [float]::Parse('0.7800'");
     expect(script).toContain("$base = [float]::Parse('0.8000'");
     expect(script).toContain("[Math]::Max(0.01, $base *");
     // What gets reported back and written down is the baseline, not $vol.
@@ -280,7 +299,7 @@ describe("the Windows script", () => {
     }).join("\n");
 
     expect(script).toContain("$base = $vol");
-    expect(script).not.toContain("$vol -le");
+    expect(script).not.toContain("$vol -lt");
   });
 
   it("puts the volume back even when the user was muted before the duck", async () => {

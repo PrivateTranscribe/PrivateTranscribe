@@ -22,14 +22,25 @@ function buildPotentiallySpacedTermRegex(term: string): RegExp | null {
   return new RegExp(`(?<![\\p{L}\\p{N}])${chars.join("\\s*")}(?![\\p{L}\\p{N}])`, "giu");
 }
 
-function looksLikeAccidentalInternalSplit(value: string): boolean {
+/**
+ * Whether a spaced match should be collapsed back into the dictionary term.
+ *
+ * A term the user capitalised is a name, and it has an ordinary lowercase twin
+ * that has to survive: "OpenCode" in the dictionary must not rewrite the English
+ * phrase "open code". A capital somewhere in the match is what separates the odd
+ * STT fragment "OpenC ode" from that twin.
+ *
+ * A term the user wrote entirely in lowercase has no such twin to protect, and
+ * demanding a capital made this repair unreachable for every language that
+ * compounds in lowercase. Danish writes compounds as one word, and Whisper splits
+ * them - measured at 5 per 2954 words against 0 in English - so "vildtreservat"
+ * is precisely the case this function exists to fix. Adding the term is the
+ * user's way of asking for it; removing the term is how they take it back.
+ */
+function looksLikeAccidentalInternalSplit(value: string, term: string): boolean {
   if (!/\s/.test(value)) return false;
-
-  // Do not collapse ordinary all-lowercase phrases like "open code" just because
-  // the custom dictionary contains a CamelCase term. This repair is only for
-  // odd STT fragments such as "OpenC ode" where the model appears to have split
-  // a single known term internally.
-  return /[A-ZÆØÅ]/.test(value);
+  if (!/\p{Lu}/u.test(term)) return true;
+  return /\p{Lu}/u.test(value);
 }
 
 export function repairSplitDictionaryTerms(text: string, terms: string[] = []): string {
@@ -51,7 +62,7 @@ export function repairSplitDictionaryTerms(text: string, terms: string[] = []): 
     if (!regex) continue;
 
     repaired = repaired.replace(regex, (match) =>
-      looksLikeAccidentalInternalSplit(match) ? compact : match
+      looksLikeAccidentalInternalSplit(match, compact) ? compact : match
     );
   }
 

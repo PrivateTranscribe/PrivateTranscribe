@@ -52,6 +52,9 @@ const MAIN_WINDOW_CONFIG = {
   alwaysOnTop: true,
   resizable: false,
   transparent: true,
+  // Fully transparent rather than Electron's opaque default, so the frames
+  // before the renderer paints show the desktop and not a 400x500 box.
+  backgroundColor: "#00000000",
   show: false, // Start hidden, show after setup
   // The dictation overlay is a passive control, not the main application surface.
   // Keeping it out of Alt-Tab/taskbar and non-focusable on Windows avoids stealing
@@ -84,6 +87,11 @@ const CONTROL_PANEL_CONFIG = {
   resizable: true,
   show: false,
   frame: false,
+  // Electron's unset default is white, and the renderer cannot paint over it
+  // until the bundle has parsed and React has mounted. Without this the window's
+  // first frames are a white 1200x800 rectangle. Must stay equal to
+  // --color-background in index.css, or the handover flashes.
+  backgroundColor: "#080908",
   ...(process.platform === "darwin" && {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 20, y: 20 },

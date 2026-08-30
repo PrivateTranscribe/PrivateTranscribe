@@ -272,9 +272,25 @@ public static class AudioSessions {
    *
    * Returns one "pid|priorVolume|duckedVolume|instanceId" line per session it
    * actually changed.
+   *
+   * carriedIds/carriedVols are the priors from a leftover state file, i.e. a
+   * duck whose restore never landed. Where a session is still sitting below the
+   * level that duck recorded, THAT level is its prior, not the lowered one we
+   * can read now. Without this a failed restore plus one more read would write
+   * 30% in as the session's own "prior" and the user's real level would be gone
+   * for good — the same baseline loss audioDuckingManager guards against on the
+   * master volume.
    */
-  public static string[] DuckOthers(int[] excludePids, float fraction, string statePath, string header) {
+  public static string[] DuckOthers(int[] excludePids, float fraction, string statePath, string header,
+                                    string[] carriedIds, float[] carriedVols) {
     var skip = new HashSet<int>(excludePids ?? new int[0]);
+    var carried = new Dictionary<string, float>(StringComparer.Ordinal);
+    if (carriedIds != null && carriedVols != null) {
+      int n = Math.Min(carriedIds.Length, carriedVols.Length);
+      for (int i = 0; i < n; i++) {
+        if (carriedIds[i] != null) carried[carriedIds[i]] = carriedVols[i];
+      }
+    }
     var context = System.Guid.Empty;
     var e = Enumerate();
     int count;
@@ -303,11 +319,16 @@ public static class AudioSessions {
       if (sv.GetMasterVolume(out vol) != 0) continue;
       string id = InstanceId(c2);
       if (id == null) continue;
-      float target = vol * fraction;
+      // A prior we carried in wins whenever this session is still below it,
+      // which is exactly the "last restore never landed" case.
+      float prior = vol;
+      float carriedPrior;
+      if (carried.TryGetValue(id, out carriedPrior) && carriedPrior > vol) prior = carriedPrior;
+      float target = prior * fraction;
       if (target < 0f) target = 0f;
       vols.Add(sv);
       targets.Add(target);
-      rows.Add(pid.ToString(CultureInfo.InvariantCulture) + "|" + F(vol) + "|" + F(target) + "|" + id);
+      rows.Add(pid.ToString(CultureInfo.InvariantCulture) + "|" + F(prior) + "|" + F(target) + "|" + id);
     }
 
     if (!string.IsNullOrEmpty(statePath)) {
@@ -679,11 +700,22 @@ class ReadAloudDucking {
     this.stats.duckCalls += 1;
     try {
       const excluded = this.getExcludedPids() || [];
+
+      // A state file still on disk is a duck whose restore never landed. Its
+      // priors are the truth; the levels we can read now are the lowered ones.
+      // The C# only adopts a carried prior for a session still sitting below
+      // it, so a level the user has since raised themselves is left alone.
+      const carried = this._readState()?.sessions || [];
+      const carriedIds = carried.map((s) => psQuote(s.instanceId)).join(",");
+      const carriedVols = carried.map((s) => psFloat(s.priorVolume)).join(",");
+
       const body = [
         `$excluded = [int[]]@(${excluded.join(",")})`,
+        `$carriedIds = [string[]]@(${carriedIds})`,
+        `$carriedVols = [float[]]@(${carriedVols})`,
         `$rows = [AudioSessions]::DuckOthers($excluded, ${psFloat(this.duckFraction)}, ${psQuote(
           this.stateFilePath || ""
-        )}, ${psQuote(STATE_HEADER)})`,
+        )}, ${psQuote(STATE_HEADER)}, $carriedIds, $carriedVols)`,
         "foreach ($row in $rows) { Write-Output $row }",
       ].join("\n");
 

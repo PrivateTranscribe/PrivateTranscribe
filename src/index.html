@@ -2,22 +2,21 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- No external style or font origins: both faces are bundled and declared in
+         index.css. Keeping them out of the policy means a stray remote @font-face
+         fails loudly in the console instead of quietly reintroducing a
+         render-blocking network fetch on every app launch. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; font-src 'self' data: https://*.fontshare.com https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://0.0.0.0:* http://[::1]:* ws://localhost:* ws://127.0.0.1:* ws://[::1]:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://0.0.0.0:* http://[::1]:* ws://localhost:* ws://127.0.0.1:* ws://[::1]:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <link rel="icon" type="image/png" href="./assets/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      href="https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Deliberately no background here: this document is shared by the control
+         panel and the transparent dictation overlay, so a background set at the
+         document level would paint a solid rectangle behind the overlay before
+         React can mark it transparent. The pre-paint colour is set per window in
+         windowConfig.js instead, where the two surfaces can differ. -->
     <title>PrivateTranscribe</title>
   </head>
   <body class="dark">

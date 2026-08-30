@@ -562,4 +562,8 @@ module.exports = {
   normalizeForScoring,
   toWords,
   FLEURS_LOCALES,
+  // Exported so sibling diagnostics (scripts/detect-split-words.js) read the
+  // same cache with the same rules. A second copy of the dataset logic drifts.
+  ensureDataset,
+  loadSamples,
 };

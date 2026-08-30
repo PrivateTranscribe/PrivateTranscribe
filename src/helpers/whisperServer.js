@@ -73,6 +73,10 @@ const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const WAV_HEADER_BYTES = 44;
 const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
 const WHISPER_CHUNK_SECONDS = 60;
+// How far either side of a chunk boundary to look for a pause to cut on, and
+// how finely to measure loudness while looking.
+const CHUNK_SEAM_SEARCH_SECONDS = 5;
+const CHUNK_SEAM_FRAME_SECONDS = 0.02;
 const TRAILING_SILENCE_PAD_SECONDS = 0.8;
 const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
@@ -187,6 +191,57 @@ function parseWavPcmInfo(buffer) {
     dataSize,
     durationSeconds: dataSize / format.byteRate,
   };
+}
+
+/**
+ * Where to cut a long recording so the seam lands in a pause.
+ *
+ * Chunks are transcribed independently and their texts joined with a space, so
+ * a boundary that falls inside a word ships that word in two halves: cut
+ * "vildtreservat" down the middle and the transcript reads "vildt reservat".
+ * Cutting at the quietest nearby point puts the seam where a space belongs
+ * anyway, and gives each chunk an utterance that actually finishes.
+ *
+ * Returns the byte offset to cut at, or `targetOffset` unchanged whenever there
+ * is nothing better to say - non-PCM16 audio, a window too small to search, or
+ * speech so continuous that no frame stands out. Falling back to the clock is
+ * exactly what this did before, so the worst case is the old behaviour.
+ */
+function findQuietestCutOffset(buffer, info, targetOffset, dataEnd) {
+  if (info.bitsPerSample !== 16) return targetOffset;
+
+  const align = (bytes) => Math.floor(bytes / info.blockAlign) * info.blockAlign;
+  const frameBytes = Math.max(info.blockAlign, align(info.byteRate * CHUNK_SEAM_FRAME_SECONDS));
+  const radiusBytes = align(info.byteRate * CHUNK_SEAM_SEARCH_SECONDS);
+
+  const first = Math.max(info.dataOffset, targetOffset - radiusBytes);
+  const last = Math.min(dataEnd - frameBytes, targetOffset + radiusBytes);
+  if (last <= first) return targetOffset;
+
+  let bestOffset = targetOffset;
+  let bestEnergy = Infinity;
+
+  for (let offset = first; offset <= last; offset += frameBytes) {
+    let sum = 0;
+    let samples = 0;
+    for (let i = offset; i + 2 <= offset + frameBytes && i + 2 <= buffer.length; i += 2) {
+      const sample = buffer.readInt16LE(i);
+      sum += sample * sample;
+      samples += 1;
+    }
+    if (samples === 0) continue;
+
+    const energy = sum / samples;
+    // Ties go to the frame nearest the boundary, so uniform audio - digital
+    // silence especially - keeps chunks the length they were asked to be.
+    const closer = Math.abs(offset - targetOffset) < Math.abs(bestOffset - targetOffset);
+    if (energy < bestEnergy || (energy === bestEnergy && closer)) {
+      bestEnergy = energy;
+      bestOffset = offset;
+    }
+  }
+
+  return bestOffset;
 }
 
 function createPcm16WavBuffer(pcmData, sampleRate = 16000, channels = 1, bitsPerSample = 16) {
@@ -1854,16 +1909,25 @@ class WhisperServerManager {
 
     const chunks = [];
     const dataEnd = info.dataOffset + info.dataSize;
-    for (let start = info.dataOffset; start < dataEnd; start += bytesPerChunk) {
-      const end = Math.min(start + bytesPerChunk, dataEnd);
-      const alignedEnd = end === dataEnd ? end : end - ((end - info.dataOffset) % info.blockAlign);
-      const pcmData = wavBuffer.slice(start, alignedEnd);
-      if (pcmData.length === 0) continue;
+    let start = info.dataOffset;
+    while (start < dataEnd) {
+      const target = Math.min(start + bytesPerChunk, dataEnd);
+      // The last chunk ends where the audio ends; there is no seam to place.
+      let end =
+        target === dataEnd ? target : findQuietestCutOffset(wavBuffer, info, target, dataEnd);
+      end -= (end - info.dataOffset) % info.blockAlign;
+      // A seam that did not move forward would stall the walk. Fall back to the
+      // clock, which is what this did before the search existed.
+      if (end <= start) end = target;
+
+      const pcmData = wavBuffer.slice(start, end);
+      if (pcmData.length === 0) break;
       chunks.push({
         buffer: createPcm16WavBuffer(pcmData, info.sampleRate, info.channels, info.bitsPerSample),
         durationSeconds: pcmData.length / info.byteRate,
         offsetSeconds: (start - info.dataOffset) / info.byteRate,
       });
+      start = end;
     }
 
     return chunks.length > 0

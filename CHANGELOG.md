@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.16.1 - 2026-08-30
+
+### Added
+
+- Settings search. One box that looks through every setting in the app, not just the ones on the Settings page, and takes you to the row it found and marks it.
+- If the app ever crashes, it now leaves a crash report in its own folder on your machine. Nothing is uploaded anywhere.
+
+### Changed
+
+- The app no longer opens on a white window. Its fonts are bundled instead of fetched from the internet on every launch, and the window waits for real content before it shows.
+- Long recordings are now cut at a pause instead of at a fixed 60 seconds, so a word is never split across the seam.
+- Two Settings sections that no user could ever reach have been removed. Everything in them already lives on the Dictionary and AI Enhancement pages.
+
+### Fixed
+
+- Silence is no longer transcribed. An open microphone with nobody talking used to come back as "Thank you", "Okay", or a subtitle credit, and those are now dropped instead of pasted.
+- Your system volume comes back after dictation. A failed restore used to bake the turned-down level in as your real volume, so it walked down and stayed there.
+- Correction Memory keeps Danish letters. Corrections containing æ, ø or å were silently dropped before.
+- A lowercase compound you add to the custom dictionary now actually repairs a split word.
+- Opening Settings no longer freezes the app for a second and a half.
+- The Start Menu shortcut is only rewritten when it is actually stale, instead of on every launch.
+- Waking a display no longer takes the overlay's global mouse hook down and back up six times over.
+- Referral and creator discount codes work at checkout. They failed with a server error before, so no code had ever been used.
+
 ## 0.16.0 - 2026-08-27
 
 ### Added

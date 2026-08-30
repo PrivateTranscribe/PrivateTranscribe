@@ -58,11 +58,13 @@ function makeFakeApi(initial = { volume: 0.8, muted: false }) {
 }
 
 beforeEach(() => {
+  delete process.env.PRIVATETRANSCRIBE_DIAG_DISABLE_AUDIO_DUCKING;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-master-duck-"));
   statePath = path.join(tmpDir, "audio-ducking-state.json");
 });
 
 afterEach(() => {
+  delete process.env.PRIVATETRANSCRIBE_DIAG_DISABLE_AUDIO_DUCKING;
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -191,15 +193,41 @@ describe("the repair rule", () => {
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("Repaired a stranded duck"));
   });
 
-  it("leaves the volume alone when the user already fixed it, and just drops the file", async () => {
+  it("finishes the job when the user only nudged the slider part-way back up", async () => {
     const { AudioDuckingManager } = await loadModule();
     fs.writeFileSync(
       statePath,
       JSON.stringify({ version: 1, mode: "duck", volume: 0.8, muted: false, duckTarget: 0.16 }),
       "utf8"
     );
-    // The user dragged the slider back up to something of their own choosing.
+    // A stranded duck is too quiet to work with, so the user drags the slider
+    // up a bit. That is not "they fixed it" — 0.8 is still where it belongs,
+    // and the old target-based rule threw that number away for good here.
     const fake = makeFakeApi({ volume: 0.55, muted: false });
+    const logger = makeLogger();
+    const manager = new AudioDuckingManager({
+      platform: "linux",
+      logger,
+      stateFilePath: statePath,
+      platformApis: { linux: fake.api },
+    });
+
+    const result = await manager.repairFromDisk();
+
+    expect(result.repaired).toBe(true);
+    expect(fake.state.volume, "a part-way nudge was read as a finished restore").toBe(0.8);
+    expect(fs.existsSync(statePath)).toBe(false);
+  });
+
+  it("leaves the volume alone once the user is past the baseline, and just drops the file", async () => {
+    const { AudioDuckingManager } = await loadModule();
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ version: 1, mode: "duck", volume: 0.8, muted: false, duckTarget: 0.16 }),
+      "utf8"
+    );
+    // At or above where the duck found it, the user is genuinely past us.
+    const fake = makeFakeApi({ volume: 0.85, muted: false });
     const logger = makeLogger();
     const manager = new AudioDuckingManager({
       platform: "linux",
@@ -212,18 +240,22 @@ describe("the repair rule", () => {
 
     expect(result.repaired).toBe(false);
     expect(result.reason).toBe("already-restored");
-    expect(fake.state.volume, "the repair overwrote a volume the user had chosen").toBe(0.55);
+    expect(fake.state.volume, "the repair overwrote a volume the user had chosen").toBe(0.85);
     expect(fs.existsSync(statePath)).toBe(false);
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("leaving it alone"));
   });
 
-  it("treats a volume a hair above the target as still ducked (float rounding)", async () => {
+  it("measures still-ducked against the baseline, not the duck target", async () => {
     const { shouldRepairFromState, STILL_DUCKED_EPSILON } = await loadModule();
     const state = { mode: "duck", volume: 0.8, duckTarget: 0.16 };
 
     expect(shouldRepairFromState(state, { volume: 0.16 })).toBe(true);
-    expect(shouldRepairFromState(state, { volume: 0.16 + STILL_DUCKED_EPSILON / 2 })).toBe(true);
-    expect(shouldRepairFromState(state, { volume: 0.16 + STILL_DUCKED_EPSILON * 2 })).toBe(false);
+    // Well above the target but still short of the baseline: still our duck.
+    expect(shouldRepairFromState(state, { volume: 0.55 })).toBe(true);
+    // Only float rounding away from the baseline: treat it as restored.
+    expect(shouldRepairFromState(state, { volume: 0.8 - STILL_DUCKED_EPSILON / 2 })).toBe(false);
+    expect(shouldRepairFromState(state, { volume: 0.8 })).toBe(false);
+    expect(shouldRepairFromState(state, { volume: 0.95 })).toBe(false);
   });
 
   it("uses the mute flag rather than a level when the duck was a mute", async () => {
@@ -281,5 +313,54 @@ describe("unsupported platform", () => {
 
     expect(fs.existsSync(statePath)).toBe(false);
     expect(logger.debug).toHaveBeenCalledWith("[AudioDucking] Unsupported platform:", "sunos");
+  });
+});
+
+/**
+ * The e2e fixture sets this flag so a suite run can never touch the machine's
+ * audio. readAloudDucking honoured it from the start; this module did not, so
+ * the master volume was never actually covered by that promise.
+ */
+describe("the diagnostic disable flag", () => {
+  it("moves no volume and writes no state file while it is set", async () => {
+    const { AudioDuckingManager, DIAG_DISABLE_FLAG } = await loadModule();
+    process.env[DIAG_DISABLE_FLAG] = "1";
+    const fake = makeFakeApi({ volume: 0.8, muted: false });
+    const manager = new AudioDuckingManager({
+      platform: "linux",
+      logger: makeLogger(),
+      stateFilePath: statePath,
+      platformApis: { linux: fake.api },
+    });
+
+    await manager.duck({ mode: "duck", duckLevel: 0.2 });
+    await manager.restore();
+
+    expect(fake.order).toEqual([]);
+    expect(fake.state.volume).toBe(0.8);
+    expect(fs.existsSync(statePath)).toBe(false);
+  });
+
+  it("leaves another run's stranded state file alone rather than dropping it", async () => {
+    const { AudioDuckingManager, DIAG_DISABLE_FLAG } = await loadModule();
+    process.env[DIAG_DISABLE_FLAG] = "1";
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ version: 1, mode: "duck", volume: 0.8, muted: false, duckTarget: 0.16 }),
+      "utf8"
+    );
+    const fake = makeFakeApi({ volume: 0.16, muted: false });
+    const manager = new AudioDuckingManager({
+      platform: "linux",
+      logger: makeLogger(),
+      stateFilePath: statePath,
+      platformApis: { linux: fake.api },
+    });
+
+    const result = await manager.repairFromDisk();
+
+    expect(result.reason).toBe("diagnostic-flag");
+    expect(fake.order, "a blocked run repaired somebody else's volume").toEqual([]);
+    expect(fs.existsSync(statePath), "a blocked run threw away the evidence").toBe(true);
   });
 });

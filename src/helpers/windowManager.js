@@ -33,6 +33,14 @@ const {
 
 const BUTTON_HIT_TEST_PADDING = 4;
 const BUTTON_HOVER_POLL_MS = 50;
+// Shortest gap between two overlay-interactivity re-arms. A wake fires resume,
+// unlock-screen and display-metrics changes in a cluster; each re-arm cycles a
+// global low-level mouse hook, so the cluster is collapsed into one.
+const INTERACTIVITY_REFRESH_COOLDOWN_MS = 3000;
+// How long to wait for the renderer to report its first real paint before
+// showing the window regardless. Generous enough for a cold start on a slow
+// disk, short enough that a broken renderer is never an invisible app.
+const CONTROL_PANEL_PAINT_TIMEOUT_MS = 5000;
 
 class WindowManager {
   constructor() {
@@ -84,6 +92,8 @@ class WindowManager {
     this._ignoreOverlayMoveSaveUntil = 0;
     this._hoverInteractivityTimer = null;
     this._overlayMouseCaptured = null;
+    this._lastInteractivityRefreshAt = 0;
+    this._deferredInteractivityRefreshTimer = null;
     this._overlayInteractiveRegions = new Map();
 
     this._registerExitHandlers();
@@ -320,6 +330,15 @@ class WindowManager {
   _scheduleOverlayRecovery(reason, delays = [2500, 6000]) {
     this._clearOverlayRecoveryTimers();
 
+    // The staged retries exist because Windows reports the wrong monitor and
+    // work area for a while after a wake, so the position has to be re-clamped
+    // until the display settles. Interactivity is a different matter: re-arming
+    // it means toggling setIgnoreMouseEvents, which on Windows churns a global
+    // low-level mouse hook. Doing that once per stage put the app through two or
+    // three hook cycles per wake for no benefit — the last stage is the one that
+    // runs against the settled display, so only that stage re-arms.
+    const lastDelay = delays[delays.length - 1];
+
     for (const delay of delays) {
       const timer = setTimeout(() => {
         this._overlayRecoveryTimers.delete(timer);
@@ -327,7 +346,9 @@ class WindowManager {
           preferLastKnownButtonPosition: true,
           persistPosition: false,
         });
-        this._refreshMainWindowInteractivity(`${reason}:${delay}`);
+        if (delay === lastDelay) {
+          this._refreshMainWindowInteractivity(`${reason}:${delay}`);
+        }
       }, delay);
       this._overlayRecoveryTimers.add(timer);
     }
@@ -670,6 +691,45 @@ class WindowManager {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
       return;
     }
+
+    // Nothing to re-arm for an overlay that is not on screen. The refresh only
+    // exists so hover can make the mic button grabbable again, and a hidden or
+    // suppressed overlay has no hover — so touching a global mouse hook here
+    // would be pure churn. It is re-armed when the overlay comes back.
+    if (this.isOverlaySuppressed() || !this.mainWindow.isVisible()) {
+      debugLogger.debug("[Window] Skipped overlay interactivity refresh, overlay not on screen", {
+        reason,
+      });
+      return;
+    }
+
+    // Re-arming is two setIgnoreMouseEvents transitions, and on Windows that is
+    // a global low-level mouse hook going down and back up — every mouse event
+    // on the desktop passes through it. A single wake fires powerMonitor resume,
+    // unlock-screen, a debounced display-metrics change, and three renderer-side
+    // events (visibilitychange, pageshow, focus), so the app used to cycle that
+    // hook six or more times for one wake. One re-arm settles the state just as
+    // well.
+    //
+    // A request inside the cooldown is deferred rather than dropped: the later
+    // requests in a wake cluster are the ones that run against a settled
+    // display, and silently discarding them would trade hook churn for the stale
+    // hover this refresh exists to fix.
+    const sinceLast = Date.now() - this._lastInteractivityRefreshAt;
+    if (sinceLast < INTERACTIVITY_REFRESH_COOLDOWN_MS) {
+      if (!this._deferredInteractivityRefreshTimer) {
+        this._deferredInteractivityRefreshTimer = setTimeout(() => {
+          this._deferredInteractivityRefreshTimer = null;
+          this._refreshMainWindowInteractivity(`${reason}:deferred`);
+        }, INTERACTIVITY_REFRESH_COOLDOWN_MS - sinceLast);
+      }
+      debugLogger.debug("[Window] Coalesced overlay interactivity refresh", {
+        reason,
+        sinceLastMs: sinceLast,
+      });
+      return;
+    }
+    this._lastInteractivityRefreshAt = Date.now();
 
     if (this._interactivityRefreshTimer) {
       clearTimeout(this._interactivityRefreshTimer);
@@ -1085,34 +1145,32 @@ class WindowManager {
 
     this._guardWindowNavigation(this.controlPanelWindow, "control panel");
 
-    const visibilityTimer = this._controlPanelStartHidden
-      ? null
-      : setTimeout(() => {
-          if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
-            return;
-          }
-          if (!this.controlPanelWindow.isVisible()) {
-            console.warn("Control panel did not become visible in time; forcing show");
-            this.controlPanelWindow.show();
-            this.controlPanelWindow.focus();
-          }
-        }, 10000);
-
+    // Reveal the window on the renderer's own "I have drawn a real screen"
+    // signal rather than on `ready-to-show`, which fires at the first composited
+    // frame — an empty <div id="root"> while the bundle is still parsing. Better
+    // a slightly later window than a blank one.
+    let visibilityTimer = null;
     const clearVisibilityTimer = () => {
       if (visibilityTimer) {
         clearTimeout(visibilityTimer);
+        visibilityTimer = null;
       }
     };
 
-    this.controlPanelWindow.once("ready-to-show", () => {
+    let controlPanelRevealed = false;
+    const revealControlPanel = () => {
+      if (controlPanelRevealed) return;
+      if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) return;
+      controlPanelRevealed = true;
       clearVisibilityTimer();
+
       // Show dock icon on macOS when control panel opens
       if (process.platform === "darwin" && app.dock) {
         app.dock.show();
       }
       if (this._controlPanelStartHidden) {
         debugLogger.debug(
-          "[Window] Control panel ready but startup mode is tray-only, keeping hidden"
+          "[Window] Control panel painted but startup mode is tray-only, keeping hidden"
         );
       } else if (this._controlPanelStartMinimized) {
         // Show minimized to taskbar — gives Windows a taskbar entry without
@@ -1124,7 +1182,27 @@ class WindowManager {
         this.controlPanelWindow.show();
         this.controlPanelWindow.focus();
       }
-    });
+    };
+
+    // Scoped to this window's own renderer, so a paint report from the overlay
+    // can never release the control panel early.
+    this.controlPanelWindow.webContents.ipc.once("renderer-painted", revealControlPanel);
+
+    // Escape hatch for a renderer that never reports — a crash caught by the
+    // error boundary, say. Short, because the window now opens on its own
+    // background colour, so a forced show is a clean dark window rather than the
+    // white flash this whole path exists to remove.
+    if (!this._controlPanelStartHidden) {
+      visibilityTimer = setTimeout(() => {
+        if (!this.controlPanelWindow || this.controlPanelWindow.isDestroyed()) {
+          return;
+        }
+        if (!this.controlPanelWindow.isVisible()) {
+          debugLogger.warn("[Window] Control panel never reported a paint; showing anyway");
+          revealControlPanel();
+        }
+      }, CONTROL_PANEL_PAINT_TIMEOUT_MS);
+    }
 
     this.controlPanelWindow.on("close", (event) => {
       if (!this.isQuitting) {
@@ -1560,6 +1638,10 @@ class WindowManager {
       if (this._interactivityRefreshTimer) {
         clearTimeout(this._interactivityRefreshTimer);
         this._interactivityRefreshTimer = null;
+      }
+      if (this._deferredInteractivityRefreshTimer) {
+        clearTimeout(this._deferredInteractivityRefreshTimer);
+        this._deferredInteractivityRefreshTimer = null;
       }
       this._stopHoverInteractivityProbe();
       this._clearOverlayRecoveryTimers();

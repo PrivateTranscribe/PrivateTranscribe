@@ -19,7 +19,6 @@ import {
   Zap,
   Timer,
   ArrowRight,
-  Lock,
   BookOpen,
   CheckCircle2,
   XCircle,
@@ -54,8 +53,6 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 
-import ReasoningModelSelector from "./ReasoningModelSelector";
-
 import { HotkeyInput } from "./ui/HotkeyInput";
 import { getDefaultHotkey } from "../utils/hotkeys";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
@@ -71,12 +68,19 @@ import { getValidWhisperModelNames } from "../models/ModelRegistry";
 import { SectionLabel } from "./ui/SectionLabel";
 import { setAgentName as persistAgentName } from "../utils/agentName";
 
+/**
+ * The Settings tabs, and nothing else.
+ *
+ * These are exactly the ids `SettingsPageWrapper` can hold and exactly the ones
+ * `ControlPanelSettingsTab` allows over IPC. Keeping a member here that no tab
+ * can select buys a switch case that never runs, which is how the old
+ * "dictionary" and "aiModels" sections sat unreachable behind their own copies
+ * of controls that had already moved to DictionaryPage and AIEnhancementPage.
+ */
 export type SettingsSectionType =
   | "general"
   | "preferences"
   | "transcription"
-  | "dictionary"
-  | "aiModels"
   | "permissions"
   | "help"
   | "developer"
@@ -1269,7 +1273,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
 
   const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
-  const aiEnhancementUnlocked = isFeatureUnlocked("ai-enhancement");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -1367,13 +1370,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   useEffect(() => {
     setWhisperThreadsDraft(whisperThreads > 0 ? String(whisperThreads) : "");
   }, [whisperThreads]);
-
-  const [llamaIdleDraft, setLlamaIdleDraft] = useState<string>(
-    String(llamaServerIdleTimeoutMinutes)
-  );
-  useEffect(() => {
-    setLlamaIdleDraft(String(llamaServerIdleTimeoutMinutes));
-  }, [llamaServerIdleTimeoutMinutes]);
 
   const cachePathHint =
     typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
@@ -1899,23 +1895,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       setTranslateToEnglish("off");
     }
   }, [canTranslateToEnglish, translateToEnglish, setTranslateToEnglish]);
-
-  const [newDictionaryWord, setNewDictionaryWord] = useState("");
-
-  const handleAddDictionaryWord = useCallback(() => {
-    const word = newDictionaryWord.trim();
-    if (word && !customDictionary.includes(word)) {
-      setCustomDictionary([...customDictionary, word]);
-      setNewDictionaryWord("");
-    }
-  }, [newDictionaryWord, customDictionary, setCustomDictionary]);
-
-  const handleRemoveDictionaryWord = useCallback(
-    (wordToRemove: string) => {
-      setCustomDictionary(customDictionary.filter((word) => word !== wordToRemove));
-    },
-    [customDictionary, setCustomDictionary]
-  );
 
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [autoStartLaunchMode, setAutoStartLaunchMode] = useState<AutoStartLaunchMode>("tray");
@@ -3092,191 +3071,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   activeWhisperForceCpu={whisperForceCpu}
                 />
               </div>
-            )}
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // DICTIONARY
-      // ───────────────────────────────────────────────────
-      case "dictionary":
-        return (
-          <div className="space-y-8">
-            <SectionHeader
-              title="Dictionary"
-              description="Teach PrivateTranscribe the words that matter to you - names, products, acronyms, and specialist terms."
-            />
-
-            <SettingsPanel>
-              <SettingsPanelRow>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Add a custom word or phrase"
-                      value={newDictionaryWord}
-                      onChange={(e) => setNewDictionaryWord(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddDictionaryWord();
-                        }
-                      }}
-                    />
-                    <Button onClick={handleAddDictionaryWord} disabled={!newDictionaryWord.trim()}>
-                      Add
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    PrivateTranscribe uses this list to better recognize spellings that generic
-                    speech models often miss.
-                  </p>
-                </div>
-              </SettingsPanelRow>
-
-              <SettingsPanelRow>
-                {customDictionary.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {customDictionary.map((word) => (
-                      <Badge
-                        key={word}
-                        variant="secondary"
-                        className="px-2.5 py-1 text-xs cursor-pointer hover:bg-destructive/10 hover:text-destructive transition-colors"
-                        onClick={() => handleRemoveDictionaryWord(word)}
-                        title="Click to remove"
-                      >
-                        {word} ×
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-border-subtle bg-surface-raised/20 px-4 py-6 text-center">
-                    <p className="text-sm font-medium text-foreground">Your dictionary is ready</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Add words above to improve recognition for names, jargon, and niche terms.
-                    </p>
-                  </div>
-                )}
-              </SettingsPanelRow>
-            </SettingsPanel>
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // AI MODELS
-      // ───────────────────────────────────────────────────
-      case "aiModels":
-        return (
-          <div className="space-y-8">
-            <SectionHeader
-              title="AI Enhancement"
-              description="Configure AI text cleanup and polish"
-            />
-
-            {!aiEnhancementUnlocked && (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
-                <Lock size={24} className="mx-auto text-primary/60" />
-                <h3 className="text-base font-semibold text-foreground">Beta feature</h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  AI Enhancement automatically polishes your transcriptions - fixing grammar,
-                  formatting text, and handling intelligent rewrites. This unfinished beta requires
-                  approved tester access.
-                </p>
-                <BetaAccessLink className="text-sm" />
-              </div>
-            )}
-
-            {aiEnhancementUnlocked && (
-              <>
-                <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5">
-                  <SectionLabel className="mb-4">How it works</SectionLabel>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground/50 mb-2">
-                        Before (raw dictation)
-                      </p>
-                      <div className="rounded-lg bg-surface-1/50 border border-border-subtle/30 p-3">
-                        <p className="text-[12px] text-muted-foreground leading-relaxed italic">
-                          &quot;so basically what i was thinking is that we should probably schedule
-                          a meeting for next week um to discuss the uh the budget for q2&quot;
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-primary/60 mb-2">After (AI enhanced)</p>
-                      <div className="rounded-lg bg-primary/5 border border-primary/10 p-3">
-                        <p className="text-[12px] text-foreground leading-relaxed">
-                          &quot;We should schedule a meeting next week to discuss the Q2
-                          budget.&quot;
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <ReasoningModelSelector
-                  useReasoningModel={useReasoningModel}
-                  setUseReasoningModel={(value) => {
-                    setUseReasoningModel(value);
-                    updateReasoningSettings({ useReasoningModel: value });
-                  }}
-                  setCloudReasoningBaseUrl={setCloudReasoningBaseUrl}
-                  cloudReasoningBaseUrl={cloudReasoningBaseUrl}
-                  reasoningModel={reasoningModel}
-                  setReasoningModel={setReasoningModel}
-                  localReasoningProvider={reasoningProvider}
-                  setLocalReasoningProvider={setReasoningProvider}
-                  openaiApiKey={openaiApiKey}
-                  setOpenaiApiKey={setOpenaiApiKey}
-                  anthropicApiKey={anthropicApiKey}
-                  setAnthropicApiKey={setAnthropicApiKey}
-                  geminiApiKey={geminiApiKey}
-                  setGeminiApiKey={setGeminiApiKey}
-                  groqApiKey={groqApiKey}
-                  setGroqApiKey={setGroqApiKey}
-                  customReasoningApiKey={customReasoningApiKey}
-                  setCustomReasoningApiKey={setCustomReasoningApiKey}
-                  showAlertDialog={showAlertDialog}
-                />
-
-                {reasoningProvider === "local" && (
-                  <SettingsPanel>
-                    <SettingsPanelRow>
-                      <SettingsRow
-                        label="Idle shutdown (minutes)"
-                        description="Stops the local llama-server after being idle to free RAM/VRAM. Set to 0 to keep it running."
-                      >
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={240}
-                            step={1}
-                            value={llamaIdleDraft}
-                            onChange={(e) => {
-                              setLlamaIdleDraft(e.target.value);
-                            }}
-                            onBlur={() => {
-                              const raw = parseInt(llamaIdleDraft, 10);
-                              const next = Number.isFinite(raw)
-                                ? Math.max(0, Math.min(240, raw))
-                                : llamaServerIdleTimeoutMinutes;
-
-                              setLlamaIdleDraft(String(next));
-                              updateReasoningSettings({ llamaServerIdleTimeoutMinutes: next });
-                              window.electronAPI
-                                ?.llamaServerSetIdleTimeoutMinutes(next)
-                                ?.catch(() => {});
-                            }}
-                            className="w-24 text-right"
-                            aria-label="Llama server idle shutdown minutes"
-                          />
-                          <span className="text-xs text-muted-foreground">min</span>
-                        </div>
-                      </SettingsRow>
-                    </SettingsPanelRow>
-                  </SettingsPanel>
-                )}
-              </>
             )}
           </div>
         );

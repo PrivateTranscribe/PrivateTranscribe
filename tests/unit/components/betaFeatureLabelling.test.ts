@@ -68,10 +68,13 @@ describe("beta feature labelling", () => {
     }
 
     const settings = readSource("src/components/SettingsPage.tsx");
-    // One locked card and both locked toggles. It was four until Read Aloud
-    // left Settings for its own sidebar page — that row's way out moved with
-    // it rather than being deleted, and ReadAloudPage.tsx is checked above.
-    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(3);
+    // Both locked toggles: Correction Memory and Smart Context, in Preferences.
+    // It was four until Read Aloud left Settings for its own sidebar page, and
+    // three until the unreachable "aiModels" case was deleted — that case held a
+    // second AI Enhancement locked card behind a tab that could never be
+    // selected. Its way out was never reachable; the real one lives on
+    // AIEnhancementPage.tsx, which is checked above.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(2);
   });
 
   it("keeps the beta destination in one place", () => {
