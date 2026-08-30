@@ -38,13 +38,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Same set as build-windows.yml on purpose. The Store installer must carry
-      # exactly the payload the public installer does; only its UI differs.
-      - name: Download native binaries
-        run: |
-          npm run compile:native
-          npm run download:whisper-cpp
-          node scripts/download-nircmd.js
+      # The whole of prepare:resources, not the shorter list build-windows.yml
+      # uses. The installer users actually get is built by release-production.yml
+      # via `npm run build:win`, whose prebuild:win runs this — and it is what
+      # fetches llama-server, whose ggml/llama DLLs are the local reasoning
+      # runtime. A Store build that skipped it shipped 13 MB light and silently
+      # lost local GGUF reasoning.
+      - name: Prepare bundled resources
+        run: npm run prepare:resources
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LLAMA_CPP_VERSION: b9016
@@ -56,6 +57,27 @@ jobs:
             Write-Error "windows-fast-paste.exe is missing. Auto-paste into terminals would silently fall back to Ctrl+V."
             exit 1
           }
+
+      # electron-builder bundles resources/bin/*.exe by name but its DLLs by
+      # wildcard, so a missing download does not fail the build — it produces a
+      # smaller installer that looks fine and has no local reasoning runtime.
+      # Run #1 shipped exactly that. Name the files instead of trusting the glob.
+      - name: Verify the local AI runtime was bundled
+        shell: pwsh
+        run: |
+          $required = @("ggml-base.dll", "ggml-cpu-x64.dll")
+          $missing = $required | Where-Object { -not (Test-Path "resources/bin/$_") }
+
+          if ($missing) {
+            throw "resources/bin is missing $($missing -join ', '). prepare:resources did not fetch llama-server, and this installer would ship without local GGUF reasoning."
+          }
+
+          $dlls = @(Get-ChildItem -Path resources/bin -Filter "*.dll" -File)
+          if ($dlls.Count -lt 10) {
+            throw "Only $($dlls.Count) DLL(s) in resources/bin; the public installer ships far more. Refusing to build a Store installer with a thinner payload than the download everybody else gets."
+          }
+
+          Write-Host "resources/bin has $($dlls.Count) DLLs including the llama.cpp runtime."
 
       # Fail here rather than 10 minutes later inside electron-builder, where a
       # missing credential surfaces as an opaque Azure auth error.

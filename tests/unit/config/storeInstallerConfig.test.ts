@@ -91,6 +91,16 @@ describe("Microsoft Store installer variant", () => {
     expect(storeWorkflow).toContain("npm run build:store");
   });
 
+  test("CI bundles the same payload the public installer ships", () => {
+    // Run #1 shipped 13 MB light with no ggml/llama DLLs at all, because it
+    // copied build-windows.yml's shorter download list. The installer users
+    // actually get comes from release-production.yml, whose prebuild:win runs
+    // the full prepare:resources — that is what fetches llama-server.
+    expect(storeWorkflow).toContain("npm run prepare:resources");
+    expect(storeWorkflow).toContain("Verify the local AI runtime was bundled");
+    expect(storeWorkflow).toContain("ggml-base.dll");
+  });
+
   test("CI refuses to ship an installer it has not proved is silent", () => {
     // A wizard fails Store certification, and the difference is invisible in the
     // artifact list. NSIS records it in the firstheader as FH_FLAGS_SILENT = 2.
