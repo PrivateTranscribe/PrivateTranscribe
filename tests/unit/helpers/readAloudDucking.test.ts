@@ -142,6 +142,44 @@ describe("duck", () => {
     const status = ducking.getStatus();
     expect(status.ducked).toBe(true);
     expect(status.sessions).toBe(1);
+    // Nothing un-restored to go on, so the script carries no priors in.
+    expect(script).toContain("$carriedIds = [string[]]@()");
+    expect(script).toContain("$carriedVols = [float[]]@()");
+  });
+
+  /**
+   * A restore that failed leaves the file on disk and Spotify at 30%. The next
+   * read must duck from the 0.62 the file remembers, not from the 0.186 it can
+   * read now — otherwise 0.186 becomes the session's own "prior" and the level
+   * the user actually chose is gone for good. audioDuckingManager has guarded
+   * the master volume against exactly this since it was written.
+   */
+  it("carries the priors from a leftover state file into the next duck", async () => {
+    const ReadAloudDucking = await load();
+    fs.writeFileSync(
+      statePath,
+      [
+        "# readaloud-ducking v1 2026-08-24T00:00:00Z fraction=0.3000",
+        `9001|0.6200|0.1860|${REAL_ID}`,
+      ].join("\n"),
+      "utf8"
+    );
+    const runPowerShell = vi.fn(async () => `9001|0.6200|0.1860|${REAL_ID}`);
+
+    const ducking = new ReadAloudDucking({
+      platform: "win32",
+      logger: makeLogger(),
+      runPowerShell,
+      stateFilePath: statePath,
+      getExcludedPids: () => [],
+    });
+
+    await ducking.duckOthers();
+
+    const script = runPowerShell.mock.calls[0][0] as string;
+    expect(script).toContain(`$carriedIds = [string[]]@('${REAL_ID}')`);
+    expect(script).toContain("$carriedVols = [float[]]@([float]::Parse('0.6200'");
+    expect(script).toContain("$carriedIds, $carriedVols)");
   });
 
   it("writes the restore list to disk before the volumes move", async () => {
