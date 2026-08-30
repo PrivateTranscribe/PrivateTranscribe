@@ -388,6 +388,33 @@
   }
 }
 
+/* The row a settings search just jumped to.
+   Settings screens are dense and the scroll alone does not say which row was
+   meant, so this answers "that one" and then fades. It marks, it does not
+   pulse - repeating motion in a settings list is decoration. */
+@keyframes settings-row-found {
+  0%,
+  60% {
+    background-color: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.settings-row-found {
+  border-radius: 8px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary) 14%, transparent);
+  animation: settings-row-found 1600ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-row-found {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+}
+
 /* Grain overlay — barely perceptible texture for depth */
 .grain-overlay {
   position: relative;

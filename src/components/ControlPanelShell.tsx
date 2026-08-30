@@ -328,6 +328,7 @@ export default function ControlPanelShell() {
           <SettingsPageWrapper
             requestedSection={settingsTabRequest.section}
             requestId={settingsTabRequest.requestId}
+            onNavigate={(page) => setActivePage(page as PageId)}
           />
         );
       default:
