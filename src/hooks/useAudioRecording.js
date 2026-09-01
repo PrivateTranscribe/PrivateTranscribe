@@ -460,6 +460,39 @@ export const useAudioRecording = (toast, options = {}) => {
           return;
         }
 
+        // Delivery-failure feedback. These fire regardless of the success-toast
+        // preference: a silently degraded delivery is indistinguishable from
+        // the hotkey doing nothing, which reads as the app being broken.
+        if (!delivery.recoverable) {
+          // History, paste, and clipboard all failed - this toast is the only
+          // surviving copy of the words, so show them and keep it up longer.
+          toastRef.current?.({
+            title: "Dictation could not be delivered",
+            description: text.length > 200 ? text.slice(0, 200) + "…" : text,
+            variant: "destructive",
+            duration: 15000,
+          });
+        } else if (!actionHandled && shouldPaste && delivery.pasteConfirmed !== true) {
+          if (delivery.copied) {
+            const pasteKey =
+              (window.electronAPI?.getPlatform?.() ?? "win32") === "darwin" ? "Cmd+V" : "Ctrl+V";
+            toastRef.current?.({
+              title: "Copied instead of pasted",
+              description: `The text could not be typed into the app you were in. It is on your clipboard - press ${pasteKey} to insert it.`,
+              variant: "default",
+              duration: 6000,
+            });
+          } else {
+            toastRef.current?.({
+              title: "Saved to History only",
+              description:
+                "The text could not be pasted or copied. Open History in the control panel to get it.",
+              variant: "destructive",
+              duration: 8000,
+            });
+          }
+        }
+
         // Success confirmation notification (skipped for action triggers - those
         // show their own "Action triggered" toast above)
         const showSuccess = localStorage.getItem("successConfirmation") === "true";
