@@ -143,7 +143,9 @@ export const useAudioRecording = (toast, options = {}) => {
       if (isProEntitled()) return true;
       if (!isStarterLimitReached()) return true;
       showStarterLimitReached();
-      window.electronAPI?.openControlPanel?.();
+      // Land on the Pro tab: this is the moment the limit message points at
+      // Pro, not whatever tab the panel happened to be left on.
+      window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "pro" });
       window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
       return false;
     };
