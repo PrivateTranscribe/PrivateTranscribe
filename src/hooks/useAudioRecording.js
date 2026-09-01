@@ -252,10 +252,40 @@ export const useAudioRecording = (toast, options = {}) => {
       import("../utils/audioFeedback").then((m) => m[sound]()).catch(() => {});
     };
 
+    // ── Cold-start feedback ───────────────────────────────────────────────────
+    // The first dictation after launch pays the whisper model load, which can
+    // run long enough to read as a hang behind the overlay's generic processing
+    // state. When the first local transcription is still working after a few
+    // seconds, say what is actually happening - once per app session.
+    let firstTranscriptionDone = false;
+    let coldStartTimer = null;
+    const clearColdStartTimer = () => {
+      if (coldStartTimer) {
+        clearTimeout(coldStartTimer);
+        coldStartTimer = null;
+      }
+    };
+
     manager.setCallbacks({
       onStateChange: ({ isRecording, isProcessing, longSession }) => {
         if (disposed) {
           return;
+        }
+        if (isProcessing && !firstTranscriptionDone && !coldStartTimer) {
+          coldStartTimer = setTimeout(() => {
+            coldStartTimer = null;
+            if (disposed || firstTranscriptionDone) return;
+            if (localStorage.getItem("useLocalWhisper") !== "true") return;
+            toastRef.current?.({
+              title: "Loading the speech model",
+              description:
+                "The first dictation after launch takes longer while the model loads. The next ones are fast.",
+              variant: "default",
+              duration: 8000,
+            });
+          }, 4000);
+        } else if (!isProcessing) {
+          clearColdStartTimer();
         }
         setIsRecording(isRecording);
         setIsProcessing(isProcessing);
@@ -265,10 +295,33 @@ export const useAudioRecording = (toast, options = {}) => {
         if (disposed) {
           return;
         }
+        // A missing model or engine binary is a setup problem the overlay
+        // cannot fix. Put the way out on the toast itself instead of naming
+        // Settings and leaving the user to go find the right page.
+        const isSetupError = /not downloaded|binary not found/i.test(
+          `${error.title ?? ""} ${error.description ?? ""}`
+        );
         toastRef.current?.({
           title: error.title,
           description: error.description,
           variant: "destructive",
+          ...(isSetupError && {
+            duration: 12000,
+            action: React.createElement(
+              "button",
+              {
+                className:
+                  "rounded-[6px] border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15",
+                onClick: () => {
+                  window.electronAPI?.openControlPanel?.({
+                    page: "settings",
+                    settingsTab: "transcription",
+                  });
+                },
+              },
+              "Open Settings"
+            ),
+          }),
         });
 
         // Error notification (system-level)
@@ -291,6 +344,11 @@ export const useAudioRecording = (toast, options = {}) => {
         window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
       },
       onTranscriptionComplete: async (result, commitContext = {}) => {
+        clearColdStartTimer();
+        if (result.success) {
+          // The model is loaded now; later dictations don't need the hint.
+          firstTranscriptionDone = true;
+        }
         // Always restore audio when transcription finishes (safety net)
         restoreAudio();
         resumeMedia();
@@ -861,6 +919,7 @@ export const useAudioRecording = (toast, options = {}) => {
     // Cleanup
     return () => {
       disposed = true;
+      clearColdStartTimer();
       recordingFlowRef.current = null;
       disposeToggle?.();
       disposeStart?.();
