@@ -106,6 +106,17 @@ interface StarterTemplate {
   form: ActionFormState;
 }
 
+// Shell actions run via execFile (no shell, see helpers/actionEngineManager.js#_executeShell),
+// so the command must be a real executable rather than a shell built-in. On Windows, "start"
+// is a cmd.exe built-in, not an executable, so we invoke cmd.exe directly and have it run
+// "start cmd" internally — that opens a new, visible console window.
+const OPEN_TERMINAL_COMMAND =
+  window.electronAPI?.getPlatform?.() === "darwin"
+    ? "open -a Terminal"
+    : window.electronAPI?.getPlatform?.() === "win32"
+      ? "cmd /c start cmd"
+      : "gnome-terminal";
+
 const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     icon: Terminal,
@@ -118,7 +129,7 @@ const STARTER_TEMPLATES: StarterTemplate[] = [
       triggerPhrase: "open terminal",
       triggerMode: "contains",
       actionType: "shell",
-      actionConfig: { command: "gnome-terminal" },
+      actionConfig: { command: OPEN_TERMINAL_COMMAND },
       enabled: true,
     },
   },
