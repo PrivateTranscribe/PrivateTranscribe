@@ -42,6 +42,8 @@ const TRACK_INTERVAL_MS = 700;
 const PAD = 3;
 
 const DISABLE_FLAG = "PRIVATETRANSCRIBE_DIAG_DISABLE_READALOUD_HIGHLIGHT";
+/** The player's statuses between a copy and its first spoken word. */
+const PREPARING_STATUSES = new Set(["splitting", "loading-engine", "synthesizing"]);
 
 const isFlagEnabled = (name) => {
   const raw = String(process.env[name] || "")
@@ -85,23 +87,29 @@ function layoutHighlight(rects, toDip) {
 }
 
 /**
- * The page the highlight window shows: nothing but tinted boxes on a
+ * The page the highlight window shows: nothing but outlined boxes on a
  * transparent ground. Inline, because it is 20 lines and has no reason to be
- * a build artefact. The colour is the app's primary (#70FFBA) at low alpha,
- * which reads as a marker pen rather than a selection.
+ * a build artefact. The mark is a 1.5px stroke in the app's primary (#70FFBA)
+ * with only a faint fill: the text underneath is usually still the source
+ * app's own selection, and a solid tint over selection blue blended to a cyan
+ * that made the sentence being spoken the hardest one to read (blind critic,
+ * 2026-09-02). The boxes live in their own container - painting into <body>
+ * counted the page's <script> as the first box and left the first line of a
+ * wrapped sentence unmarked (same review, same day).
  */
 const HIGHLIGHT_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;background:transparent;overflow:hidden;pointer-events:none}
-.box{position:absolute;border-radius:4px;background:rgba(112,255,186,0.22);
-box-shadow:inset 0 0 0 1px rgba(112,255,186,0.28);
+#boxes{position:absolute;inset:0}
+.box{position:absolute;border-radius:4px;background:rgba(112,255,186,0.12);
+box-shadow:inset 0 0 0 1.5px rgba(112,255,186,0.9),0 0 0 1px rgba(0,0,0,0.18);
 transition:left 120ms ease-out,top 120ms ease-out,width 120ms ease-out,height 120ms ease-out}
-</style></head><body><script>
+</style></head><body><div id="boxes"></div><script>
 window.__render=function(boxes){
-  var body=document.body;
-  while(body.children.length>boxes.length){body.removeChild(body.lastChild);}
+  var host=document.getElementById('boxes');
+  while(host.children.length>boxes.length){host.removeChild(host.lastChild);}
   boxes.forEach(function(b,i){
-    var el=body.children[i];
-    if(!el){el=document.createElement('div');el.className='box';body.appendChild(el);}
+    var el=host.children[i];
+    if(!el){el=document.createElement('div');el.className='box';host.appendChild(el);}
     el.style.left=b.x+'px';el.style.top=b.y+'px';el.style.width=b.width+'px';el.style.height=b.height+'px';
   });
 };
@@ -300,7 +308,12 @@ class ReadAloudHighlight {
     this.anchored = false;
     this.anchorPromise = (async () => {
       if (!this.worker) this.start();
-      await this.waitForReady();
+      // A cold worker spends a second or two loading the UI Automation
+      // assemblies. Anchoring is off the speaking path, and the user's
+      // selection and focus usually outlive that, so this waits it out rather
+      // than giving up at the transport default (which it did, silently, on
+      // the first read after launch - measured 2026-09-02).
+      await this.waitForReady(8000);
       const started = Date.now();
       const reply = await this.send("anchor");
       const ok = reply.startsWith("OK");
@@ -317,6 +330,11 @@ class ReadAloudHighlight {
    */
   async onSentence({ status, index, sentence } = {}) {
     if (!this.isSupported) return;
+    // Between the copy and the first spoken word the player reports
+    // splitting / loading-engine / synthesizing. Those are the read starting,
+    // not ending: clearing on them threw the anchor away 400ms after it was
+    // made, every time the engine was already warm (2026-09-02).
+    if (PREPARING_STATUSES.has(status)) return;
     const reading = status === "playing" || status === "paused";
     if (!reading || typeof sentence !== "string" || !sentence.trim()) {
       this.clear();

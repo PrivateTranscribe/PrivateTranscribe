@@ -1473,6 +1473,9 @@ class IPCHandlers {
         this.kokoroManager.loadEngine().catch((error) => {
           debugLogger.warn("Read Aloud engine pre-warm failed", { error: error?.message });
         });
+        // Same idea for the in-place highlight's worker: its first anchor
+        // must not wait on a PowerShell start and two assembly loads.
+        this.readAloudHighlight?.start();
       }
 
       return this.readAloudHotkey.apply({ enabled, hotkey });
