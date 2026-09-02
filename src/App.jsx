@@ -199,7 +199,7 @@ const OVERLAY_STATUS_CONTROL_CLASS =
  * button deliberately sits outside this - see getMicButtonStyles.
  */
 const OVERLAY_SURFACE_CLASS =
-  "border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl";
+  "border border-white/12 bg-muted/96 text-white shadow-[0_6px_18px_rgba(0,0,0,0.32)] backdrop-blur-xl";
 
 /**
  * One entrance for every surface, growing from the anchor. Rows and the menu
@@ -235,13 +235,17 @@ function overlayRowStyle({ interactive, status = false }) {
  * preparing), dim otherwise. The same dot on the Converse capsule and the
  * Read Aloud panel is what makes them one family across two shapes.
  */
-function liveDotStyle({ live, pulse }) {
+function liveDotStyle({ live, pulse, warn = false }) {
   return {
     width: 6,
     height: 6,
     borderRadius: 3,
     flexShrink: 0,
-    backgroundColor: live || pulse ? "var(--color-primary)" : "rgba(255,255,255,0.4)",
+    backgroundColor: warn
+      ? "var(--color-warning)"
+      : live || pulse
+        ? "var(--color-primary)"
+        : "rgba(255,255,255,0.4)",
     animation: pulse ? "overlay-dot-pulse 1.6s ease-in-out infinite" : undefined,
   };
 }
@@ -266,7 +270,7 @@ const OverlayProgress = ({ index, total, label, testId }) => {
       aria-valuenow={position}
       data-testid={testId}
       data-position={`${position}/${total}`}
-      className="relative h-[2px] w-9 shrink-0 overflow-hidden rounded-full bg-white/15"
+      className="relative ml-1 h-[2px] w-11 shrink-0 overflow-hidden rounded-full bg-white/25"
     >
       <span
         className="absolute inset-y-0 left-0 rounded-full bg-primary/85 transition-[width] duration-300 ease-out"
@@ -1719,10 +1723,12 @@ export default function App() {
                   <button
                     aria-label="Stop reading"
                     onClick={handleReadAloudStop}
-                    className={`${OVERLAY_CONTROL_CLASS} ${readAloudState.status === "error" ? "ml-auto" : ""}`}
+                    className={`${OVERLAY_STATUS_CONTROL_CLASS} ml-1 ${readAloudState.status === "error" ? "ml-auto" : ""}`}
                   >
-                    {/* Filled: an outlined square reads as a checkbox, not stop. */}
-                    <Square size={13} fill="currentColor" />
+                    {/* The same tinted disc as the Converse capsule's stop: one
+                        function, one look. Filled, because an outlined square
+                        reads as a checkbox. */}
+                    <Square size={8} fill="currentColor" />
                   </button>
                 </div>
 
@@ -1734,7 +1740,7 @@ export default function App() {
                 {readAloudSentence && (
                   <span
                     data-testid="readaloud-current-sentence"
-                    className="block w-full truncate text-[11px] leading-snug text-white/60"
+                    className="block w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"
                     title={readAloudSentence}
                   >
                     {readAloudSentence}
@@ -1758,7 +1764,17 @@ export default function App() {
               >
                 {/* A notice is a message, not an activity, so its dot is the
                     dim one - same slot as every other row, nothing lit. */}
-                <span style={liveDotStyle({ live: false, pulse: false })} aria-hidden />
+                <span
+                  style={liveDotStyle({
+                    live: false,
+                    pulse: false,
+                    // Something the user has to act on (wrong language, an app
+                    // we cannot read from) is amber; "nothing selected" is a
+                    // nudge and stays dim.
+                    warn: readAloudNotice !== "empty-selection",
+                  })}
+                  aria-hidden
+                />
                 {/* Same line height as the Converse capsule, so swapping one
                     for the other in the slot does not change the capsule's
                     height. Wraps rather than overflows: a long language name

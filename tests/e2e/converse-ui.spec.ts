@@ -276,7 +276,13 @@ test.describe("converse ui", () => {
       // The overlay is 400x500 and mostly transparent, so its screenshot is an
       // order of magnitude smaller than a full page — and the pointer must stay
       // off it, since hovering the overlay makes the app take mouse events.
-      await captureEvidence(overlayWindow, "converse-overlay-speaking.png", { parkMouse: false });
+      await captureEvidence(overlayWindow, "converse-overlay-speaking.png", {
+        parkMouse: false,
+        // The capsule is small now: 9.5KB of PNG against 3.4KB for the bare
+        // button, so the floor sits between the two rather than at the page
+        // default.
+        minBytes: 6_000,
+      });
 
       // --------------------------------------------------- after interrupt
       // The whole answer is written by now but only a few sentences of it have
