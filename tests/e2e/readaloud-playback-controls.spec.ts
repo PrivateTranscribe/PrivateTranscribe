@@ -167,14 +167,14 @@ test.describe("read aloud playback controls", () => {
     expect(forward.index, "Next sentence did not advance the cursor").toBe(1);
     await expect(sentenceLine).toContainText(MARKERS[1]);
     await expect(sentenceLine).not.toContainText(MARKERS[0]);
-    await expect(player).toContainText("2 / 5");
+    await expect(player).toContainText("2 of 5");
 
     // Back: and returns.
     await overlayWindow.getByRole("button", { name: "Previous sentence" }).click();
     const back = await waitForState(overlayWindow, { index: 0, playing: false });
     expect(back.index, "Previous sentence did not move the cursor back").toBe(0);
     await expect(sentenceLine).toContainText(MARKERS[0]);
-    await expect(player).toContainText("1 / 5");
+    await expect(player).toContainText("1 of 5");
 
     await overlayWindow.evaluate(() => (window as any).__readAloudTest.stop());
   });

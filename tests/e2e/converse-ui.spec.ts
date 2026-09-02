@@ -81,7 +81,9 @@ async function captureEvidence(
       () =>
         document
           .getAnimations()
-          .every((animation) => animation.playState === "finished" || animation.playState === "idle"),
+          .every(
+            (animation) => animation.playState === "finished" || animation.playState === "idle"
+          ),
       null,
       { timeout: 5_000 }
     )
@@ -141,9 +143,9 @@ test.describe("converse ui", () => {
 
     // Locked means locked: no folder picker and no session controls are
     // reachable from here.
-    await expect(
-      controlPanel.getByRole("button", { name: /Choose a project folder/ })
-    ).toHaveCount(0);
+    await expect(controlPanel.getByRole("button", { name: /Choose a project folder/ })).toHaveCount(
+      0
+    );
     await expect(controlPanel.getByRole("button", { name: "Start session" })).toHaveCount(0);
 
     await captureEvidence(controlPanel, "converse-page-locked.png");
@@ -156,7 +158,9 @@ test.describe("converse ui", () => {
     await expect(
       controlPanel.getByRole("button", { name: /Choose a project folder/ })
     ).toBeVisible();
-    await expect(controlPanel.getByText(/Claude Code runs inside the folder you choose/)).toBeVisible();
+    await expect(
+      controlPanel.getByText(/Claude Code runs inside the folder you choose/)
+    ).toBeVisible();
 
     // Nothing has been chosen yet, so there is nothing to remember.
     await expect(controlPanel.getByTestId("converse-recent-project")).toHaveCount(0);
@@ -254,16 +258,18 @@ test.describe("converse ui", () => {
       // ------------------------------------------------- overlay, speaking
       const pill = overlayWindow.getByTestId("converse-overlay-state");
       await expect(pill).toBeVisible({ timeout: 30_000 });
-      await expect(pill).toContainText("Claude Code");
-      await expect(pill).toContainText("Speaking");
-      await expect(overlayWindow.getByRole("button", { name: "Interrupt Claude Code" })).toBeVisible();
+      // Subject and state in one phrase, nothing else.
+      await expect(pill).toContainText("Claude Code speaking");
+      await expect(
+        overlayWindow.getByRole("button", { name: "Interrupt Claude Code" })
+      ).toBeVisible();
 
       // Sentence position, so the listener knows how much is left. It appears
       // only once the answer has stopped growing — the eighth sentence being on
       // screen is what says the count is final — and playback is still several
       // sentences behind at that point.
       await expect(transcript).toContainText("Stub sentence eight.", { timeout: 20_000 });
-      await expect(pill).toContainText(/\d+ \/ 8/);
+      await expect(pill).toContainText(/\d+ of 8/);
       // The overlay is 400x500 and mostly transparent, so its screenshot is an
       // order of magnitude smaller than a full page — and the pointer must stay
       // off it, since hovering the overlay makes the app take mouse events.

@@ -34,7 +34,7 @@ const MIN_SCREENSHOT_BYTES = 10_000;
 /** Registry total for kokoro-82m-v1.0-fp32, the size the UI promises. */
 const EXPECTED_MODEL_BYTES = 326_000_000;
 
-/** Enough sentences that a "3 / 12" position readout means something. */
+/** Enough sentences that a "3 of 12" position readout means something. */
 const TWELVE_SENTENCES = Array.from(
   { length: 12 },
   (_, i) => `This is sentence number ${i + 1} of the passage being read aloud.`
@@ -68,7 +68,9 @@ async function captureSidebar(page: Page, fileName: string) {
   await page.screenshot({ path: filePath, clip: { x: 0, y: 0, width: 240, height } });
 
   const bytes = fs.statSync(filePath).size;
-  expect(bytes, `${fileName} is too small to show anything (${bytes} bytes)`).toBeGreaterThan(5_000);
+  expect(bytes, `${fileName} is too small to show anything (${bytes} bytes)`).toBeGreaterThan(
+    5_000
+  );
 }
 
 /** The sidebar entry drops its "Beta" badge once tester access is active. */
@@ -87,7 +89,9 @@ test.describe("read aloud page", () => {
     await expect(entry.getByText("Beta", { exact: true })).toBeVisible();
 
     // It sits in SPEECH, beside Dictionary, not off in some unrelated group.
-    await expect(controlPanel.getByRole("button", { name: "Dictionary", exact: true })).toBeVisible();
+    await expect(
+      controlPanel.getByRole("button", { name: "Dictionary", exact: true })
+    ).toBeVisible();
 
     await captureSidebar(controlPanel, "readaloud-sidebar-after.png");
 
@@ -174,7 +178,9 @@ test.describe("read aloud page", () => {
 
       const status = controlPanel.getByTestId("readaloud-model-status");
       await expect(status).toContainText("is not on this machine", { timeout: 20_000 });
-      await expect(controlPanel.getByRole("button", { name: /Download voice model/ })).toBeVisible();
+      await expect(
+        controlPanel.getByRole("button", { name: /Download voice model/ })
+      ).toBeVisible();
 
       const modelStatus = await controlPanel.evaluate(
         async () => await window.electronAPI.readAloudCheckModelStatus()
@@ -252,7 +258,7 @@ test.describe("read aloud page", () => {
       await expect(player).toBeVisible({ timeout: 30_000 });
       await expect(player).toContainText("Reading aloud", { timeout: 60_000 });
       // Sentence position, so the listener knows how much is left.
-      await expect(player).toContainText(/\d+ \/ 12/);
+      await expect(player).toContainText(/\d+ of 12/);
       await expect(overlayWindow.getByRole("button", { name: "Pause reading" })).toBeVisible();
       await expect(overlayWindow.getByRole("button", { name: "Stop reading" })).toBeVisible();
 
