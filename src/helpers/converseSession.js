@@ -137,7 +137,9 @@ class ConverseSession {
           // Spoken too, the way Codex announces approvals — a user who walked
           // away from the window would otherwise only discover the stalled
           // question when the deny timeout has already fired.
-          this._speakServiceLine("I need your approval to continue. Answer the question in the app.");
+          this._speakServiceLine(
+            "I need your approval to continue. Answer the question in the app."
+          );
         },
       });
       relayInfo = await this.relay.start();

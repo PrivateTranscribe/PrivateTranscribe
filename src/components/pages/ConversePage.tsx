@@ -1381,7 +1381,9 @@ export default function ConversePage() {
                   if (event.key === "Enter") void handleSend();
                 }}
                 placeholder={
-                  isThinking || isSpeaking ? "Type a follow-up, sent when this turn ends" : "Type to Claude Code"
+                  isThinking || isSpeaking
+                    ? "Type a follow-up, sent when this turn ends"
+                    : "Type to Claude Code"
                 }
                 className="flex-1"
                 data-testid="converse-input"
