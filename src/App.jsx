@@ -478,6 +478,10 @@ export default function App() {
   // renderer would re-ask for the same registration on every tick.
   const readAloudKeysActiveRef = useRef(false);
   const [readAloudState, setReadAloudState] = useState(null);
+  // True while the sentence being read is tinted where it lives, in the app
+  // it came from. The overlay then stops repeating it on its own line.
+  const [readAloudHighlightActive, setReadAloudHighlightActive] = useState(false);
+  const readAloudReportedRef = useRef("");
   // Where the text being read came from, so a clipboard fallback can say so.
   const [readAloudSource, setReadAloudSource] = useState(null);
   // "empty-selection" | "unsupported" | "non-english" while the transient
@@ -521,10 +525,24 @@ export default function App() {
       });
     };
 
+    // Tell the main process which sentence is on, so the in-place highlight
+    // can follow. Only on a change of sentence or status, never per tick.
+    const reportSentence = (state) => {
+      const key = `${state.status}:${state.index}`;
+      if (readAloudReportedRef.current === key) return;
+      readAloudReportedRef.current = key;
+      void window.electronAPI?.readAloudReportSentence?.({
+        status: state.status,
+        index: state.index,
+        sentence: state.currentSentence ?? null,
+      });
+    };
+
     const sync = () => {
       const state = player.getState();
       const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
       setReadAloudState(visible ? state : null);
+      reportSentence(state);
       // An errored read has controls to press but nothing to control, so the
       // shortcuts go back to the rest of the machine along with the buttons.
       syncPlaybackKeys(visible && state.status !== "error");
@@ -568,6 +586,10 @@ export default function App() {
     // The real feature path: the main process captures the foreground app's
     // selection and pushes the text here. Not gated on the test flag - this is
     // what a user's read hotkey ends up calling.
+    const unsubscribeHighlight = window.electronAPI?.onReadAloudHighlight?.((_event, data) => {
+      setReadAloudHighlightActive(Boolean(data?.active));
+    });
+
     const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
       const text = data?.text;
       if (typeof text === "string" && text.trim()) {
@@ -620,6 +642,7 @@ export default function App() {
       syncPlaybackKeys(false);
       readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
+      if (typeof unsubscribeHighlight === "function") unsubscribeHighlight();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       if (typeof unsubscribeControl === "function") unsubscribeControl();
       player.dispose();
@@ -1735,9 +1758,11 @@ export default function App() {
                 {/*
                   The sentence takes the column's width rather than its own: it
                   changes every few seconds, and a row that resized with each
-                  one would be a fidget on top of the dictation button.
+                  one would be a fidget on top of the dictation button. It is
+                  left out entirely while the same sentence is tinted where it
+                  lives in the source app - saying it twice would be noise.
                 */}
-                {readAloudSentence && (
+                {readAloudSentence && !readAloudHighlightActive && (
                   <span
                     data-testid="readaloud-current-sentence"
                     className="block w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"

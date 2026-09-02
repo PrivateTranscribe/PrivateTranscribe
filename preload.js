@@ -193,6 +193,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAloudSplit: (text) => ipcRenderer.invoke("readaloud-split", text),
   readAloudSynth: (options) => ipcRenderer.invoke("readaloud-synth", options),
   readAloudReadSelection: () => ipcRenderer.invoke("readaloud-read-selection"),
+  /**
+   * The player telling the main process which sentence it is on, so the
+   * in-place highlight in the source app can follow. `{status, index, sentence}`.
+   */
+  readAloudReportSentence: (payload) => ipcRenderer.invoke("readaloud-sentence", payload),
+  readAloudHighlightStatus: () => ipcRenderer.invoke("readaloud-highlight-status"),
+  /** `{active}`: the sentence is (or is no longer) highlighted where it lives. */
+  onReadAloudHighlight: registerListener("readaloud-highlight"),
   /** Exists so tests can exercise the real non-English guard without desktop capture. */
   readAloudLanguageCheck: (text) => ipcRenderer.invoke("readaloud-language-check", text),
   /** Round-trip cost of the copy worker's line protocol; injects nothing. */

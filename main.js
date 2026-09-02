@@ -102,6 +102,7 @@ const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
 const KokoroClient = require("./src/helpers/kokoroClient");
 const SelectionCapture = require("./src/helpers/selectionCapture");
+const ReadAloudHighlight = require("./src/helpers/readAloudHighlight");
 const TrayManager = require("./src/helpers/tray");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
@@ -126,6 +127,7 @@ let whisperManager = null;
 let parakeetManager = null;
 let kokoroManager = null;
 let selectionCapture = null;
+let readAloudHighlight = null;
 let trayManager = null;
 let updateManager = null;
 let globeKeyManager = null;
@@ -215,6 +217,9 @@ async function initializeManagers() {
   // the first read's latency budget.
   selectionCapture = new SelectionCapture();
   selectionCapture.start();
+  // Not started here: its worker spawns on the first read that has a source
+  // window to point at, so an idle app never runs a second PowerShell.
+  readAloudHighlight = new ReadAloudHighlight();
   trayManager = new TrayManager();
   updateManager = new UpdateManager();
   updateManager.setBeforeQuitAndInstall(async () => {
@@ -279,6 +284,7 @@ async function initializeManagers() {
     parakeetManager,
     kokoroManager,
     selectionCapture,
+    readAloudHighlight,
     windowManager,
     updateManager,
     windowsKeyManager,
@@ -1031,6 +1037,9 @@ if (gotSingleInstanceLock) {
     }
     if (selectionCapture) {
       selectionCapture.stop();
+    }
+    if (readAloudHighlight) {
+      readAloudHighlight.stop();
     }
     if (updateManager) {
       updateManager.cleanup();
