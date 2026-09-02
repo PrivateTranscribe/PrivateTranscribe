@@ -12,9 +12,10 @@ import { expect, test } from "./fixtures/electron-app";
  * replaced them, so it cannot quietly come apart again:
  *
  *   1. Idle, the overlay is the button and nothing else.
- *   2. Every surface the overlay shows is a row in one column. A PANEL (the
- *      Read Aloud player) takes the column's full width; a STATUS (a notice,
- *      the Converse state) hugs its words and never exceeds the column.
+ *   2. Every surface the overlay shows is a row in one column, and every row
+ *      is a STATUS capsule: it hugs its words and never exceeds the column.
+ *      (A PANEL shape - full column width - is kept in the helper for any
+ *      row that ever needs one; today none does.)
  *   3. The bottom row floats a fixed, small gap above the button's cap - never
  *      touching it, never overlapping it - and every row is centred on the
  *      button, so the pair reads as one control and its caption.
@@ -184,9 +185,9 @@ test.describe("overlay unification", () => {
       await expect(player).toBeVisible({ timeout: 60_000 });
       await expect(sentenceLine).toBeVisible({ timeout: 60_000 });
 
-      // The two-row player and the one-row notice are the same column width and
-      // dock the same way — that is what makes them one family rather than two.
-      await expectDockedToButton(overlayWindow, player, { shape: "panel" });
+      // The player and the notice hug their words the same way and float the
+      // same way — that is what makes them one family rather than two.
+      await expectDockedToButton(overlayWindow, player, { shape: "status" });
       await captureEvidence(overlayWindow, "overlay-unified-reading.png");
 
       await overlayWindow.getByRole("button", { name: "Pause reading" }).click();
@@ -198,7 +199,7 @@ test.describe("overlay unification", () => {
         if (active instanceof HTMLElement) active.blur();
       });
       await expect(player).toContainText("Paused");
-      await expectDockedToButton(overlayWindow, player, { shape: "panel" });
+      await expectDockedToButton(overlayWindow, player, { shape: "status" });
       await captureEvidence(overlayWindow, "overlay-unified-paused.png");
 
       await overlayWindow.evaluate(() => (window as any).__readAloudTest.stop());

@@ -281,7 +281,15 @@ test.describe("read aloud in-place highlight", () => {
       await expect(overlayWindow.getByTestId("readaloud-current-sentence")).toHaveCount(0);
 
       // ------------------------------------------------------- sentence 2
-      await overlayWindow.getByRole("button", { name: "Next sentence" }).click();
+      // Exactly what a press of Ctrl+Alt+Right sends the overlay.
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        const overlay = BrowserWindow.getAllWindows().find((win) => {
+          if (win.isDestroyed()) return false;
+          const url = win.webContents.getURL();
+          return url.includes("index.html") && !url.includes("panel=true");
+        });
+        overlay?.webContents.send("readaloud-control", { op: "forward" });
+      });
       await expect(player.getByTestId("readaloud-progress")).toHaveAttribute(
         "data-position",
         "2/3"

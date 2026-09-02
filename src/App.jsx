@@ -15,8 +15,6 @@ import {
   Play,
   Pause,
   Square,
-  SkipBack,
-  SkipForward,
 } from "lucide-react";
 import { useToast } from "./components/ui/Toast";
 import { useWindowDrag } from "./hooks/useWindowDrag";
@@ -123,19 +121,15 @@ const CONVERSE_STATUS_LABELS = {
  *   centred on it, and every corner in the overlay is drawn with the
  *   button's own radius.
  *
- * A row is one of two shapes, and which one is decided by what it carries:
- *
- *   - A PANEL takes the column's full width. The Read Aloud player is one: it
- *     carries a sentence that changes every few seconds and a row of
- *     controls, and a panel that resized on each of those would be a fidget
- *     sitting on top of the thing the user is dictating into. The slot is the
- *     same size in every state, so state changes happen inside it.
- *   - A STATUS hugs its words, centred on the button. The Converse state and
- *     the Read Aloud notices are these: a few words that only change at a
- *     state boundary. Stretched to the column they left a dead rail of empty
- *     surface either side of "Speaking", which is what made the overlay look
- *     bolted on rather than built in. They are text on a small capsule and
- *     nothing else - no glyph, no divider - so the words are the whole thing.
+ * Every row is a STATUS capsule: it hugs its words, centred on the button,
+ * never wider than the column. The Converse state, the Read Aloud player and
+ * the Read Aloud notices are all this one shape: a dot, a few words, at most
+ * a hairline and two tinted discs. Stretched to the column they left a dead
+ * rail of empty surface either side of "Speaking", which is what made the
+ * overlay look bolted on rather than built in. The player used to be a
+ * full-width panel carrying the sentence being read; the sentence is now
+ * shown where it lives, tinted in the source app, and only falls back to a
+ * line on the capsule when that app keeps its text out of reach.
  */
 
 /** Every overlay row is this wide. 400px window, 24px of air on each side. */
@@ -806,23 +800,6 @@ export default function App() {
     const handle = readAloudRef.current;
     if (!handle) return;
     handle.player.toggle();
-    handle.sync();
-  }, []);
-
-  // Skipping clamps inside the player, so the first and last sentence make
-  // these no-ops rather than disabled buttons. A control that greys itself out
-  // twice a read is more movement than the read is worth.
-  const handleReadAloudBack = useCallback(() => {
-    const handle = readAloudRef.current;
-    if (!handle) return;
-    handle.player.seek(-1);
-    handle.sync();
-  }, []);
-
-  const handleReadAloudForward = useCallback(() => {
-    const handle = readAloudRef.current;
-    if (!handle) return;
-    handle.player.seek(1);
     handle.sync();
   }, []);
 
@@ -1688,57 +1665,48 @@ export default function App() {
               </div>
             )}
 
+            {/*
+              The Read Aloud player is a status capsule like the others: the
+              dot, the state, the hairline, pause and stop. Skipping a sentence
+              is on the keys (Ctrl+Alt+←/→) rather than two more buttons; the
+              hairline says where the read is. The sentence itself is shown
+              where it lives, tinted in the source app, and only falls back to
+              a line here when that app keeps its text out of reach.
+            */}
             {readAloudState && (
               <div
                 ref={readAloudPillRef}
                 data-testid="readaloud-overlay-player"
-                className={`flex flex-col gap-1.5 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({ interactive: true })}
+                className={`flex flex-col gap-1.5 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ interactive: true, status: true })}
               >
                 <div className="flex items-center gap-2">
                   <span style={readAloudDotStyle(readAloudState)} aria-hidden />
-                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} whitespace-nowrap`}>
+                  {/* A fixed label width, sized to the longest state, so
+                      "Reading aloud" becoming "Paused" never moves the pause
+                      button out from under the cursor that just pressed it. */}
+                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} w-[7.25rem] whitespace-nowrap`}>
                     {readAloudLabel}
                   </span>
 
                   {readAloudState.status !== "error" && (
-                    <OverlayProgress
-                      index={readAloudState.index}
-                      total={readAloudState.sentenceCount}
-                      label="Read progress"
-                      testId="readaloud-progress"
-                    />
-                  )}
-
-                  {/* ml-auto pins the controls to the column's right edge.
-                      Without it they sit against the status label and slide
-                      sideways every time it changes width — "Reading aloud" to
-                      "Paused" would move the pause button out from under the
-                      cursor that just pressed it. */}
-                  {readAloudState.status !== "error" && (
                     <>
-                      <button
-                        aria-label="Previous sentence"
-                        onClick={handleReadAloudBack}
-                        className={`${OVERLAY_CONTROL_CLASS} ml-auto`}
-                      >
-                        <SkipBack size={13} />
-                      </button>
-
+                      <OverlayProgress
+                        index={readAloudState.index}
+                        total={readAloudState.sentenceCount}
+                        label="Read progress"
+                        testId="readaloud-progress"
+                      />
                       <button
                         aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
                         onClick={handleReadAloudToggle}
-                        className={OVERLAY_CONTROL_CLASS}
+                        className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 ml-1`}
                       >
-                        {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
-                      </button>
-
-                      <button
-                        aria-label="Next sentence"
-                        onClick={handleReadAloudForward}
-                        className={OVERLAY_CONTROL_CLASS}
-                      >
-                        <SkipForward size={13} />
+                        {readAloudPlaying ? (
+                          <Pause size={10} fill="currentColor" strokeWidth={0} />
+                        ) : (
+                          <Play size={10} fill="currentColor" strokeWidth={0} />
+                        )}
                       </button>
                     </>
                   )}
@@ -1746,7 +1714,7 @@ export default function App() {
                   <button
                     aria-label="Stop reading"
                     onClick={handleReadAloudStop}
-                    className={`${OVERLAY_STATUS_CONTROL_CLASS} ml-1 ${readAloudState.status === "error" ? "ml-auto" : ""}`}
+                    className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 -mr-0.5 ${readAloudState.status === "error" ? "ml-1" : ""}`}
                   >
                     {/* The same tinted disc as the Converse capsule's stop: one
                         function, one look. Filled, because an outlined square
@@ -1756,16 +1724,14 @@ export default function App() {
                 </div>
 
                 {/*
-                  The sentence takes the column's width rather than its own: it
-                  changes every few seconds, and a row that resized with each
-                  one would be a fidget on top of the dictation button. It is
-                  left out entirely while the same sentence is tinted where it
-                  lives in the source app - saying it twice would be noise.
+                  The fallback: only when the sentence cannot be tinted where
+                  it lives. Truncated to the column so a long sentence never
+                  pushes the capsule past the edge, indented under the title.
                 */}
                 {readAloudSentence && !readAloudHighlightActive && (
                   <span
                     data-testid="readaloud-current-sentence"
-                    className="block w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"
+                    className="block max-w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"
                     title={readAloudSentence}
                   >
                     {readAloudSentence}
