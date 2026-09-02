@@ -119,8 +119,9 @@ const CONVERSE_STATUS_LABELS = {
  * There is one rule now, and everything below is derived from it:
  *
  *   The dictation button is the anchor. Every surface the overlay shows is a
- *   row in a single column that is docked to the top of that button, and
- *   every corner in the overlay is drawn with the button's own radius.
+ *   row in a single column that floats a fixed hair above that button,
+ *   centred on it, and every corner in the overlay is drawn with the
+ *   button's own radius.
  *
  * A row is one of two shapes, and which one is decided by what it carries:
  *
@@ -158,31 +159,25 @@ const OVERLAY_ROW_GAP = 6;
 const OVERLAY_BUTTON_TOP = 102;
 
 /**
- * How far the button's cap sits *inside* the bottom row. Tangent shapes touch
- * at a point and still read as two; an overlap makes the button emerge from
- * the column as one silhouette. The button paints over the column (z-index
- * below), so nothing of it is ever covered.
+ * The air between the bottom row and the button's cap. The rows used to
+ * overlap the cap by 10px so the pair read as one silhouette; that worked on
+ * a 352px panel and read as a collision on a 230px capsule, where the cap
+ * bit a notch out of the row and the two hairline borders crossed in plain
+ * view (both blind critics, then Kristian: "it looks like it's kind of
+ * colliding"). A small, constant gap is the iOS answer: the capsule is a
+ * thing floating above its control, not a thing the control is stuck
+ * through. Same gap for every row shape, so the family stays one family.
  */
-const OVERLAY_DOCK_OVERLAP = 10;
+const OVERLAY_BUTTON_GAP = 8;
 
-const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP - OVERLAY_DOCK_OVERLAP;
-
-/**
- * Extra bottom padding on whichever row is docked, so its content stops above
- * the button's cap instead of being bitten into by it. A panel's bottom line
- * is a sentence spanning the full width, so it needs the whole cap height
- * plus a margin; a status row's single line is short enough that only its
- * middle sits over the cap, and the cap's arc is lower there.
- */
-const OVERLAY_DOCK_PAD = 20;
-const OVERLAY_STATUS_DOCK_PAD = 14;
+const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP + OVERLAY_BUTTON_GAP;
 
 /**
- * Vertical padding of a status row. With a 12px line and the dock pad this is
- * a 35px capsule, against the panel's 49px - the "way smaller" Kristian asked
- * for on 2026-09-02, without floating it off the button.
+ * Vertical padding of a status row. With a 12px line this is a 30px capsule,
+ * against the 49px full-width row before - the "way smaller" Kristian asked
+ * for on 2026-09-02.
  */
-const OVERLAY_STATUS_PAD_Y = 7;
+const OVERLAY_STATUS_PAD_Y = 8;
 
 /** A status row's one line: the status word, then anything after it in a quieter tone. */
 const OVERLAY_STATUS_TEXT_CLASS = "text-[12px] font-medium leading-none text-white/90";
@@ -217,16 +212,14 @@ const OVERLAY_CONTROL_CLASS =
   "rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6";
 
 /**
- * The style a row carries. `docked` is true for the bottom row only - the one
- * the button is actually attached to. `status` rows hug their content and
- * sit centred in the column; everything else stretches to the column width.
+ * The style a row carries. `status` rows hug their content and sit centred in
+ * the column; everything else stretches to the column width.
  */
-function overlayRowStyle({ docked, interactive, status = false }) {
-  const dockPad = status ? OVERLAY_STATUS_DOCK_PAD : OVERLAY_DOCK_PAD;
+function overlayRowStyle({ interactive, status = false }) {
   return {
     borderRadius: OVERLAY_RADIUS,
     paddingTop: status ? OVERLAY_STATUS_PAD_Y : undefined,
-    paddingBottom: docked ? dockPad : status ? OVERLAY_STATUS_PAD_Y : undefined,
+    paddingBottom: status ? OVERLAY_STATUS_PAD_Y : undefined,
     alignSelf: status ? "center" : "stretch",
     maxWidth: "100%",
     transformOrigin: "bottom center",
@@ -252,6 +245,36 @@ function liveDotStyle({ live, pulse }) {
     animation: pulse ? "overlay-dot-pulse 1.6s ease-in-out infinite" : undefined,
   };
 }
+
+/**
+ * How far through a read or an answer the voice is, as a hairline instead of
+ * a count. "3 of 8" made the listener do arithmetic to learn the one thing
+ * they wanted - roughly how much is left - and Kristian asked whether the
+ * digits were needed at all (2026-09-02). They are not; the fraction is. The
+ * position stays on the element as data for the specs and as an aria value
+ * for anyone who cannot see the bar.
+ */
+const OverlayProgress = ({ index, total, label, testId }) => {
+  if (!(total > 0)) return null;
+  const position = Math.min(index + 1, total);
+  return (
+    <span
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={position}
+      data-testid={testId}
+      data-position={`${position}/${total}`}
+      className="relative h-[2px] w-9 shrink-0 overflow-hidden rounded-full bg-white/15"
+    >
+      <span
+        className="absolute inset-y-0 left-0 rounded-full bg-primary/85 transition-[width] duration-300 ease-out"
+        style={{ width: `${(position / total) * 100}%` }}
+      />
+    </span>
+  );
+};
 
 function converseDotStyle(state) {
   return liveDotStyle({
@@ -1269,9 +1292,8 @@ export default function App() {
     const menuWidth = 248;
     // Conservative estimate of the tallest menu state (root + audio submenu)
     const MENU_EST_HEIGHT = 320;
-    // Negative: the menu docks to the button the same way the status column
-    // does, overlapping its cap rather than floating a gap away from it.
-    const GAP = -OVERLAY_DOCK_OVERLAP;
+    // The menu floats off the button the same way the status column does.
+    const GAP = OVERLAY_BUTTON_GAP;
 
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
@@ -1293,9 +1315,6 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         bottom: clampedBottom,
-        // Keeps the last row clear of the button's cap, the same way the
-        // docked status row does.
-        paddingBottom: OVERLAY_DOCK_PAD,
         transformOrigin: "bottom center",
         pointerEvents: "auto",
       };
@@ -1307,7 +1326,6 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         top: clampedTop,
-        paddingTop: OVERLAY_DOCK_PAD,
         transformOrigin: "top center",
         pointerEvents: "auto",
       };
@@ -1395,17 +1413,7 @@ export default function App() {
     };
   }, []);
 
-  // Which row the button is actually attached to. The column is built top-down,
-  // so this is whichever row renders last, and it is the only one that carries
-  // the dock padding.
   const noticeRowVisible = Boolean(!readAloudState && readAloudNotice);
-  const dockedRow = readAloudState
-    ? "player"
-    : noticeRowVisible
-      ? "notice"
-      : converseState
-        ? "converse"
-        : null;
 
   return (
     <div className="dictation-window">
@@ -1618,11 +1626,7 @@ export default function App() {
                 data-testid="converse-overlay-state"
                 data-state={converseState.state}
                 className={`flex items-center gap-2 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({
-                  docked: dockedRow === "converse",
-                  interactive: true,
-                  status: true,
-                })}
+                style={overlayRowStyle({ interactive: true, status: true })}
               >
                 <span style={converseDotStyle(converseState.state)} aria-hidden />
                 {/* Subject and state in one phrase: an always-on-top pill that
@@ -1637,11 +1641,13 @@ export default function App() {
                     CONVERSE_STATUS_LABELS[converseState.state] || converseState.state
                   ).toLowerCase()}
                 </span>
-                {converseState.state === "speaking" && converseState.total > 0 && (
-                  <span className={`${OVERLAY_STATUS_DETAIL_CLASS} whitespace-nowrap`}>
-                    {Math.min(converseState.playIndex + 1, converseState.total)} of{" "}
-                    {converseState.total}
-                  </span>
+                {converseState.state === "speaking" && (
+                  <OverlayProgress
+                    index={converseState.playIndex}
+                    total={converseState.total}
+                    label="Answer progress"
+                    testId="converse-progress"
+                  />
                 )}
                 {converseState.state === "speaking" && (
                   <button
@@ -1660,7 +1666,7 @@ export default function App() {
                 ref={readAloudPillRef}
                 data-testid="readaloud-overlay-player"
                 className={`flex flex-col gap-1.5 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({ docked: dockedRow === "player", interactive: true })}
+                style={overlayRowStyle({ interactive: true })}
               >
                 <div className="flex items-center gap-2">
                   <span style={readAloudDotStyle(readAloudState)} aria-hidden />
@@ -1668,10 +1674,13 @@ export default function App() {
                     {readAloudLabel}
                   </span>
 
-                  {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
-                    <span className={`${OVERLAY_STATUS_DETAIL_CLASS} whitespace-nowrap`}>
-                      {readAloudState.index + 1} of {readAloudState.sentenceCount}
-                    </span>
+                  {readAloudState.status !== "error" && (
+                    <OverlayProgress
+                      index={readAloudState.index}
+                      total={readAloudState.sentenceCount}
+                      label="Read progress"
+                      testId="readaloud-progress"
+                    />
                   )}
 
                   {/* ml-auto pins the controls to the column's right edge.
@@ -1745,11 +1754,7 @@ export default function App() {
                 data-testid="readaloud-overlay-notice"
                 data-reason={readAloudNotice}
                 className={`flex items-center gap-2 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({
-                  docked: dockedRow === "notice",
-                  interactive: false,
-                  status: true,
-                })}
+                style={overlayRowStyle({ interactive: false, status: true })}
               >
                 {/* A notice is a message, not an activity, so its dot is the
                     dim one - same slot as every other row, nothing lit. */}

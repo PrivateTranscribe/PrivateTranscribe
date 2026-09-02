@@ -28,7 +28,7 @@ const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence"
 /** The overlay is a small window; its screenshots are much smaller than a page. */
 const MIN_SCREENSHOT_BYTES = 3_000;
 
-/** Two sentences: enough that a "1 of 2" position readout is real. */
+/** Two sentences: enough that a 1/2 progress position is real. */
 const TWO_SENTENCES =
   "This text was not selected in any application. It came straight from the clipboard.";
 
@@ -149,7 +149,10 @@ test.describe("read aloud feedback", () => {
       await expect(player).toContainText("Reading clipboard", { timeout: 60_000 });
       // The text is still being read, and the position readout still works —
       // labelling it must not turn it into a warning that does nothing.
-      await expect(player).toContainText(/\d+ of 2/);
+      await expect(player.getByTestId("readaloud-progress")).toHaveAttribute(
+        "data-position",
+        /^\d+\/2$/
+      );
       await expect(overlayWindow.getByRole("button", { name: "Pause reading" })).toBeVisible();
       await expect(player).not.toContainText("Reading aloud");
 

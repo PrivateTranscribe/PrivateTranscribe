@@ -34,7 +34,7 @@ const MIN_SCREENSHOT_BYTES = 10_000;
 /** Registry total for kokoro-82m-v1.0-fp32, the size the UI promises. */
 const EXPECTED_MODEL_BYTES = 326_000_000;
 
-/** Enough sentences that a "3 of 12" position readout means something. */
+/** Enough sentences that a 3/12 progress position means something. */
 const TWELVE_SENTENCES = Array.from(
   { length: 12 },
   (_, i) => `This is sentence number ${i + 1} of the passage being read aloud.`
@@ -258,7 +258,10 @@ test.describe("read aloud page", () => {
       await expect(player).toBeVisible({ timeout: 30_000 });
       await expect(player).toContainText("Reading aloud", { timeout: 60_000 });
       // Sentence position, so the listener knows how much is left.
-      await expect(player).toContainText(/\d+ of 12/);
+      await expect(player.getByTestId("readaloud-progress")).toHaveAttribute(
+        "data-position",
+        /^\d+\/12$/
+      );
       await expect(overlayWindow.getByRole("button", { name: "Pause reading" })).toBeVisible();
       await expect(overlayWindow.getByRole("button", { name: "Stop reading" })).toBeVisible();
 

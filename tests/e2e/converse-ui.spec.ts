@@ -264,12 +264,15 @@ test.describe("converse ui", () => {
         overlayWindow.getByRole("button", { name: "Interrupt Claude Code" })
       ).toBeVisible();
 
-      // Sentence position, so the listener knows how much is left. It appears
+      // Progress, so the listener knows how much is left. It appears
       // only once the answer has stopped growing — the eighth sentence being on
       // screen is what says the count is final — and playback is still several
       // sentences behind at that point.
       await expect(transcript).toContainText("Stub sentence eight.", { timeout: 20_000 });
-      await expect(pill).toContainText(/\d+ of 8/);
+      await expect(overlayWindow.getByTestId("converse-progress")).toHaveAttribute(
+        "data-position",
+        /^\d+\/8$/
+      );
       // The overlay is 400x500 and mostly transparent, so its screenshot is an
       // order of magnitude smaller than a full page — and the pointer must stay
       // off it, since hovering the overlay makes the app take mouse events.

@@ -15,9 +15,9 @@ import { expect, test } from "./fixtures/electron-app";
  *   2. Every surface the overlay shows is a row in one column. A PANEL (the
  *      Read Aloud player) takes the column's full width; a STATUS (a notice,
  *      the Converse state) hugs its words and never exceeds the column.
- *   3. The bottom row is DOCKED to the button - it overlaps the button's cap
- *      rather than floating a gap above it - and every row is centred on the
- *      button, so the two read as one silhouette.
+ *   3. The bottom row floats a fixed, small gap above the button's cap - never
+ *      touching it, never overlapping it - and every row is centred on the
+ *      button, so the pair reads as one control and its caption.
  *
  * It is also where the gate's evidence screenshots come from, which is why
  * each state is captured as well as asserted.
@@ -28,7 +28,7 @@ const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Mirrors the constants in src/App.jsx. A change here is a change of design. */
 const COLUMN_W = 352;
-const DOCK_OVERLAP = 10;
+const BUTTON_GAP = 8;
 
 const FIVE_SENTENCES = [
   "The first sentence mentions a paddleboat.",
@@ -114,9 +114,10 @@ async function expectDockedToButton(
   const buttonCentre = buttonBox.x + buttonBox.width / 2;
   expect(Math.abs(rowCentre - buttonCentre), "column is centred on the button").toBeLessThan(1.5);
 
-  // Docked, not floating: the row's bottom edge sits INSIDE the button's cap.
-  const overlap = rowBox.y + rowBox.height - buttonBox.y;
-  expect(Math.round(overlap), "row overlaps the button's cap").toBe(DOCK_OVERLAP);
+  // A constant hair of air above the cap: the borders never cross, and the
+  // gap is the same for a capsule and a panel.
+  const gap = buttonBox.y - (rowBox.y + rowBox.height);
+  expect(Math.round(gap), "row floats the fixed gap above the button's cap").toBe(BUTTON_GAP);
 }
 
 test.describe("overlay unification", () => {
