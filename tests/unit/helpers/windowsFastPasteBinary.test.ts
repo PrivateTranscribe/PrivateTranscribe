@@ -20,6 +20,19 @@ describe("windows-fast-paste source contract", () => {
     expect(helperSource).toContain("focused.GetRuntimeId()");
     expect(helperSource).toContain("SameRuntimeId(textBefore.RuntimeId, textAfter.RuntimeId)");
   });
+
+  // Chromium exposes ValuePattern on a Document element and answers it with the
+  // document URL, which never changes when text is pasted. Reading that instead
+  // of the text made every paste into a contenteditable composer (Claude
+  // Desktop, Slack, Notion) report as unconfirmed.
+  test("reads the focused text through TextPattern before ValuePattern", () => {
+    const textPatternAt = helperSource.indexOf("TryGetCurrentPattern(TextPattern.Pattern");
+    const valuePatternAt = helperSource.indexOf("TryGetCurrentPattern(ValuePattern.Pattern");
+
+    expect(textPatternAt).toBeGreaterThan(-1);
+    expect(valuePatternAt).toBeGreaterThan(-1);
+    expect(textPatternAt).toBeLessThan(valuePatternAt);
+  });
 });
 
 // Exercises the compiled helper itself, which unit tests of the JS wrapper

@@ -208,15 +208,13 @@ internal static class WindowsFastPaste
             }
 
             object pattern;
-            if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out pattern))
-            {
-                return new AccessibleTextSnapshot
-                {
-                    Text = ((ValuePattern)pattern).Current.Value ?? string.Empty,
-                    RuntimeId = runtimeId,
-                };
-            }
 
+            // TextPattern is tried first because it is the only one that means
+            // the same thing everywhere. Chromium also exposes ValuePattern on a
+            // Document element, but there the value is the document URL, not the
+            // text, so a contenteditable composer (Claude Desktop, Slack, Notion)
+            // read the same before and after every paste and insertion was never
+            // confirmed. Where both exist on a plain input they agree.
             if (focused.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
             {
                 // Bound the local read rather than retaining an arbitrary document.
@@ -225,6 +223,15 @@ internal static class WindowsFastPaste
                 return new AccessibleTextSnapshot
                 {
                     Text = ((TextPattern)pattern).DocumentRange.GetText(131072) ?? string.Empty,
+                    RuntimeId = runtimeId,
+                };
+            }
+
+            if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out pattern))
+            {
+                return new AccessibleTextSnapshot
+                {
+                    Text = ((ValuePattern)pattern).Current.Value ?? string.Empty,
                     RuntimeId = runtimeId,
                 };
             }
