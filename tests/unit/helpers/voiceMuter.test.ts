@@ -29,9 +29,9 @@ function rejectedKeys(exePath: string, names: string[], concurrency = 8): Promis
     }
   };
 
-  return Promise.all(
-    Array.from({ length: Math.min(concurrency, names.length) }, worker)
-  ).then(() => rejected.sort());
+  return Promise.all(Array.from({ length: Math.min(concurrency, names.length) }, worker)).then(() =>
+    rejected.sort()
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -81,6 +81,9 @@ describe("VoiceMuter release safety", () => {
     // Two presses would need two releases to balance. If the second release
     // never came the key would stay logically down system-wide.
     const muter = new VoiceMuter();
+    // The guard under test sits behind the platform check. Force support so
+    // the assertion holds on the Linux CI runner as well as on Windows.
+    muter.isSupported = true;
     muter.process = { fake: true };
     muter.heldKey = "F13";
     await expect(muter.hold("F13")).resolves.toBe(true);
@@ -99,7 +102,15 @@ describe("VoiceMuter release safety", () => {
  * A mirrored list in TypeScript would just be a second thing to keep in sync.
  */
 describe("every key the picker can emit is one the helper can press", () => {
-  const exePath = path.join(__dirname, "..", "..", "..", "resources", "bin", "windows-hold-key.exe");
+  const exePath = path.join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "resources",
+    "bin",
+    "windows-hold-key.exe"
+  );
   const runnable = process.platform === "win32" && fs.existsSync(exePath);
 
   test.runIf(runnable)("no picker key name is rejected by the helper", async () => {

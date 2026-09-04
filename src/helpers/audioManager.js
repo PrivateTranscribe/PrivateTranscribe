@@ -275,8 +275,9 @@ class AudioManager {
     this._checkBetaFeatureAccess = null;
     this._deviceChangeHandler = null;
 
-    // Pre-warm device cache and keep it fresh
-    if (navigator.mediaDevices) {
+    // Pre-warm device cache and keep it fresh. `typeof` guard: under Vitest on
+    // Node 20 there is no global navigator at all, and a bare reference throws.
+    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
       this._warmDeviceCache();
       this._deviceChangeHandler = () => {
         this._warmDeviceCache();
@@ -3840,7 +3841,7 @@ class AudioManager {
     // Force-release the warm mic stream on teardown. Otherwise the "always ready" setting
     // (no release timer) would leave the device open after the window/manager is gone.
     this._clearPooledStream();
-    if (navigator.mediaDevices && this._deviceChangeHandler) {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices && this._deviceChangeHandler) {
       navigator.mediaDevices.removeEventListener("devicechange", this._deviceChangeHandler);
       this._deviceChangeHandler = null;
     }
