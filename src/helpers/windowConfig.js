@@ -47,6 +47,12 @@ const MAIN_WINDOW_CONFIG = {
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
+    // The overlay is never the focused window during a dictation, and Chromium
+    // treats an unfocused or occluded window as hidden: requestAnimationFrame
+    // stops and setTimeout drops to about once a second. The level meter is
+    // driven by requestAnimationFrame, so throttling freezes the bars mid
+    // dictation while the recording itself carries on in the main process.
+    backgroundThrottling: false,
   },
   frame: false,
   alwaysOnTop: true,

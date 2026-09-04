@@ -27,6 +27,14 @@ describe("window pre-paint background", () => {
     expect(MAIN_WINDOW_CONFIG.backgroundColor).toBe("#00000000");
   });
 
+  it("never throttles the dictation overlay when it is not in front", () => {
+    // Chromium stops requestAnimationFrame in a window it considers hidden,
+    // which an occluded always-on-top overlay is. The level meter runs on
+    // requestAnimationFrame, so the default would freeze the bars for exactly
+    // the case the overlay exists to cover.
+    expect(MAIN_WINDOW_CONFIG.webPreferences.backgroundThrottling).toBe(false);
+  });
+
   it("keeps both windows hidden until something asks for them", () => {
     expect(MAIN_WINDOW_CONFIG.show).toBe(false);
     expect(CONTROL_PANEL_CONFIG.show).toBe(false);
