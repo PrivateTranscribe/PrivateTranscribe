@@ -137,6 +137,7 @@ describe("parseWindowsFastPasteOutput", () => {
 
     expect(parseWindowsFastPasteOutput(output)).toEqual({
       pasted: true,
+      evidence: "absent",
       dispatched: true,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
@@ -175,9 +176,46 @@ describe("parseWindowsFastPasteOutput", () => {
     ).toThrow("did not confirm text insertion");
   });
 
+  // The app stays quiet about a paste only when the helper explicitly says it
+  // could not read the target. An older helper predates the field entirely, and
+  // must not be read as "nothing to worry about".
+  test("keeps an unreadable target apart from a field it watched", () => {
+    const readNothing = parseWindowsFastPasteOutput(
+      JSON.stringify({ pasted: false, evidence: "none", dispatched: true, isTerminal: false })
+    );
+    expect(readNothing.evidence).toBe("none");
+
+    const watchedIt = parseWindowsFastPasteOutput(
+      JSON.stringify({ pasted: false, evidence: "absent", dispatched: true, isTerminal: false })
+    );
+    expect(watchedIt.evidence).toBe("absent");
+
+    const olderHelper = parseWindowsFastPasteOutput(
+      JSON.stringify({ pasted: false, dispatched: true, isTerminal: false })
+    );
+    expect(olderHelper.evidence).toBe("absent");
+  });
+
+  test("carries the evidence onto the thrown not-confirmed error", () => {
+    expect(() =>
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, evidence: "none", dispatched: true, isTerminal: false })
+      )
+    ).toThrow("did not confirm text insertion");
+
+    try {
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, evidence: "none", dispatched: true, isTerminal: false })
+      );
+    } catch (error) {
+      expect((error as { evidence?: string }).evidence).toBe("none");
+    }
+  });
+
   test("degrades to a non-terminal result on unreadable output", () => {
     expect(parseWindowsFastPasteOutput("not json")).toEqual({
       pasted: false,
+      evidence: "absent",
       dispatched: false,
       isTerminal: false,
       windowClass: "",

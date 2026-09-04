@@ -533,7 +533,20 @@ export const useAudioRecording = (toast, options = {}) => {
             duration: 15000,
           });
         } else if (!actionHandled && shouldPaste && delivery.pasteConfirmed !== true) {
-          if (delivery.copied) {
+          if (!delivery.copied) {
+            toastRef.current?.({
+              title: "Saved to History only",
+              description:
+                "The text could not be pasted or copied. Open History in the control panel to get it.",
+              variant: "destructive",
+              duration: 8000,
+            });
+          } else if (delivery.pasteEvidence !== "none") {
+            // "none" means the target gave no readable text either before or
+            // after the paste, so the app has no idea whether it landed.
+            // Elevated windows, protected fields and games all read that way,
+            // and telling someone their paste failed when it did not is worse
+            // than saying nothing. The clipboard already holds the text.
             const pasteKey =
               (window.electronAPI?.getPlatform?.() ?? "win32") === "darwin" ? "Cmd+V" : "Ctrl+V";
             toastRef.current?.({
@@ -541,14 +554,6 @@ export const useAudioRecording = (toast, options = {}) => {
               description: `The text could not be typed into the app you were in. It is on your clipboard - press ${pasteKey} to insert it.`,
               variant: "default",
               duration: 6000,
-            });
-          } else {
-            toastRef.current?.({
-              title: "Saved to History only",
-              description:
-                "The text could not be pasted or copied. Open History in the control panel to get it.",
-              variant: "destructive",
-              duration: 8000,
             });
           }
         }

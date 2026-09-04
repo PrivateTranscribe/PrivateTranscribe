@@ -35,6 +35,15 @@ internal static class WindowsFastPaste
         public int[] RuntimeId;
     }
 
+    // What the helper actually observed, which is not the same question as
+    // whether the paste worked. "absent" means it watched the focused field
+    // throughout and the text never arrived. "none" means it could not read the
+    // field at all, so it knows nothing either way and the caller must not
+    // report a failure it cannot back.
+    private const string EvidenceInserted = "inserted";
+    private const string EvidenceAbsent = "absent";
+    private const string EvidenceNone = "none";
+
     private static readonly string[] TerminalWindowClasses =
     {
         "ConsoleWindowClass",
@@ -101,7 +110,7 @@ internal static class WindowsFastPaste
 
         if (detectOnly)
         {
-            WriteResult(false, false, isTerminal, windowClass, processName);
+            WriteResult(EvidenceNone, false, isTerminal, windowClass, processName);
             return 0;
         }
 
@@ -121,20 +130,21 @@ internal static class WindowsFastPaste
             return 1;
         }
 
-        bool confirmed = ConfirmAccessibleInsertion(textBefore, clipboardText);
-        WriteResult(confirmed, true, isTerminal, windowClass, processName);
+        string evidence = ConfirmAccessibleInsertion(textBefore, clipboardText);
+        WriteResult(evidence, true, isTerminal, windowClass, processName);
         return 0;
     }
 
     private static void WriteResult(
-        bool pasted,
+        string evidence,
         bool dispatched,
         bool isTerminal,
         string windowClass,
         string processName)
     {
         Console.Write(
-            "{\"pasted\":" + (pasted ? "true" : "false") +
+            "{\"pasted\":" + (evidence == EvidenceInserted ? "true" : "false") +
+            ",\"evidence\":\"" + evidence + "\"" +
             ",\"dispatched\":" + (dispatched ? "true" : "false") +
             ",\"isTerminal\":" + (isTerminal ? "true" : "false") +
             ",\"windowClass\":\"" + EscapeJson(windowClass) +
@@ -146,18 +156,24 @@ internal static class WindowsFastPaste
     // insertion only when the focused accessible text changes and contains the
     // clipboard text. Captured content stays in this process and is never
     // written to stdout, stderr, logs, analytics, or disk.
-    private static bool ConfirmAccessibleInsertion(
+    //
+    // A target that never gives a readable snapshot of the same focused element
+    // reports "none" rather than "absent". Elevated windows, protected fields
+    // and apps with no accessible text at all land there, and calling that a
+    // failed paste puts a false warning in front of the user.
+    private static string ConfirmAccessibleInsertion(
         AccessibleTextSnapshot textBefore,
         string clipboardText)
     {
         if (textBefore == null || string.IsNullOrEmpty(clipboardText))
         {
-            return false;
+            return EvidenceNone;
         }
 
         string normalizedBefore = NormalizeNewlines(textBefore.Text);
         string normalizedClipboard = NormalizeNewlines(clipboardText);
         int occurrencesBefore = CountOccurrences(normalizedBefore, normalizedClipboard);
+        bool watchedTheSameField = false;
         for (int attempt = 0; attempt < 12; attempt++)
         {
             Thread.Sleep(25);
@@ -167,14 +183,15 @@ internal static class WindowsFastPaste
                 continue;
             }
 
+            watchedTheSameField = true;
             string normalizedAfter = NormalizeNewlines(textAfter.Text);
             if (!string.Equals(normalizedAfter, normalizedBefore, StringComparison.Ordinal) &&
                 CountOccurrences(normalizedAfter, normalizedClipboard) > occurrencesBefore)
             {
-                return true;
+                return EvidenceInserted;
             }
         }
-        return false;
+        return watchedTheSameField ? EvidenceAbsent : EvidenceNone;
     }
 
     private static string ReadClipboardText()

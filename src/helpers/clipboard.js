@@ -4,6 +4,7 @@ const { killProcess } = require("../utils/process");
 const debugLogger = require("./debugLogger");
 const {
   assertWindowsFastPasteSucceeded,
+  PASTE_EVIDENCE_ABSENT,
   getWindowsPasteShortcut,
   resolveWindowsFastPasteExecutable,
 } = require("./windowsPasteTarget");
@@ -317,6 +318,8 @@ class ClipboardManager {
       this.safeLog("Windows paste helper not found; keeping text on the clipboard");
       return {
         delivered: false,
+        // Nothing was sent, so the text is definitely not in the target field.
+        evidence: PASTE_EVIDENCE_ABSENT,
         dispatched: false,
         fallback: "clipboard",
         method: "windows-fast-paste",
@@ -335,6 +338,9 @@ class ClipboardManager {
       );
       return {
         delivered: false,
+        // A helper that could not read the target reports "none", and the app
+        // must then stay quiet rather than claim a paste failure it cannot see.
+        evidence: notConfirmed ? error.evidence : PASTE_EVIDENCE_ABSENT,
         dispatched: notConfirmed && error.dispatched === true,
         fallback: "clipboard",
         method: "windows-fast-paste",

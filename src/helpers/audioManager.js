@@ -3760,19 +3760,24 @@ class AudioManager {
     }
   }
 
+  /**
+   * Returns what happened rather than a plain boolean, because "the text did
+   * not arrive" and "the target could not be read at all" need different
+   * handling. Only the first is worth telling the user about.
+   */
   async safePaste(text) {
     try {
       const result = await window.electronAPI.pasteText(text);
-      if (result?.delivered === false) {
-        return false;
-      }
-      return true;
+      return {
+        delivered: result?.delivered !== false,
+        evidence: result?.evidence ?? null,
+      };
     } catch (error) {
       this.onError?.({
         title: "Paste Error",
         description: `Failed to paste text. Please check accessibility permissions. ${error.message}`,
       });
-      return false;
+      return { delivered: false, evidence: "absent" };
     }
   }
 

@@ -42,8 +42,11 @@ describe("ClipboardManager Windows paste routing", () => {
     const manager = new ClipboardManager();
     vi.spyOn(manager, "getFastPastePath").mockReturnValue(null);
 
+    // No helper means nothing was ever sent, so the text really is not in the
+    // target field and the user is worth telling.
     await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
       delivered: false,
+      evidence: "absent",
       dispatched: false,
       fallback: "clipboard",
       method: "windows-fast-paste",
@@ -57,6 +60,7 @@ describe("ClipboardManager Windows paste routing", () => {
 
     await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
       delivered: false,
+      evidence: "absent",
       dispatched: false,
       fallback: "clipboard",
       method: "windows-fast-paste",
@@ -69,11 +73,34 @@ describe("ClipboardManager Windows paste routing", () => {
     const notConfirmed = Object.assign(new Error("not confirmed"), {
       code: "WINDOWS_PASTE_NOT_CONFIRMED",
       dispatched: true,
+      evidence: "absent",
     });
     vi.spyOn(manager, "pasteWithFastPaste").mockRejectedValue(notConfirmed);
 
     await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
       delivered: false,
+      evidence: "absent",
+      dispatched: true,
+      fallback: "clipboard",
+      method: "windows-fast-paste",
+    });
+  });
+
+  // A helper that could not read the target says so, and that has to reach the
+  // caller intact or the app warns about a paste nobody can say failed.
+  test("passes an unreadable target through instead of calling it a failure", async () => {
+    const manager = new ClipboardManager();
+    vi.spyOn(manager, "getFastPastePath").mockReturnValue(HELPER_PATH);
+    const unreadable = Object.assign(new Error("not confirmed"), {
+      code: "WINDOWS_PASTE_NOT_CONFIRMED",
+      dispatched: true,
+      evidence: "none",
+    });
+    vi.spyOn(manager, "pasteWithFastPaste").mockRejectedValue(unreadable);
+
+    await expect(manager.pasteWindows({ text: "before" })).resolves.toEqual({
+      delivered: false,
+      evidence: "none",
       dispatched: true,
       fallback: "clipboard",
       method: "windows-fast-paste",

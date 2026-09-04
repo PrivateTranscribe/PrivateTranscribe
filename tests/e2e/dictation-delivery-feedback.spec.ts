@@ -72,7 +72,7 @@ async function configureDictation(overlay: Page): Promise<void> {
   await expect(overlay.getByRole("button", { name: "Dictation overlay" })).toBeVisible();
 }
 
-type DeliveryFailure = "paste" | "paste-and-clipboard" | "everything";
+type DeliveryFailure = "paste" | "paste-unreadable" | "paste-and-clipboard" | "everything";
 
 /**
  * Re-register the main-process delivery handlers to fail like their real
@@ -84,11 +84,14 @@ async function breakDelivery(app: ElectronApplication, failure: DeliveryFailure)
     ipcMain.removeHandler("paste-text");
     ipcMain.handle("paste-text", async () => ({
       delivered: false,
-      dispatched: false,
+      // "none" is the helper saying it could not read the target at all, which
+      // is not the same as the text failing to arrive.
+      evidence: mode === "paste-unreadable" ? "none" : "absent",
+      dispatched: mode === "paste-unreadable",
       fallback: "clipboard",
     }));
 
-    if (mode !== "paste") {
+    if (mode !== "paste" && mode !== "paste-unreadable") {
       ipcMain.removeHandler("write-clipboard");
       ipcMain.handle("write-clipboard", async () => {
         throw new Error("e2e: clipboard unavailable");
@@ -143,6 +146,23 @@ test.describe("dictation delivery feedback", () => {
     });
     await expect(overlayWindow.getByText(/press Ctrl\+V to insert it/)).toBeVisible();
     await captureEvidence(overlayWindow, "dictation-feedback-copy-fallback.png");
+  });
+
+  // Elevated windows, password fields and fullscreen games give the helper
+  // nothing to read. Warning there put a false "it did not paste" in front of
+  // people whose paste had worked, so an unreadable target now says nothing and
+  // leaves the text on the clipboard.
+  test("a paste it could not verify stays quiet", async ({ electronApp, overlayWindow }) => {
+    await configureDictation(overlayWindow);
+    await breakDelivery(electronApp, "paste-unreadable");
+    await dictate(electronApp, overlayWindow);
+
+    // Wait out the window in which the toast would have appeared.
+    await overlayWindow.waitForTimeout(TOAST_TIMEOUT_MS);
+    await expect(overlayWindow.getByText("Copied instead of pasted")).toHaveCount(0);
+    await expect(overlayWindow.getByText("Saved to History only")).toHaveCount(0);
+    await expect(overlayWindow.getByText("Dictation could not be delivered")).toHaveCount(0);
+    await captureEvidence(overlayWindow, "dictation-feedback-unverified-quiet.png");
   });
 
   test("paste and clipboard both failing points at History", async ({

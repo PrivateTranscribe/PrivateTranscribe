@@ -6,6 +6,15 @@ const path = require("path");
 const FAST_PASTE_EXECUTABLE = "windows-fast-paste.exe";
 
 /**
+ * What the helper observed, which is a different question from whether the
+ * paste worked. "absent" means it watched the focused field and the text never
+ * arrived. "none" means it could not read the field at all, so nothing about
+ * the paste can be claimed in either direction.
+ */
+const PASTE_EVIDENCE_ABSENT = "absent";
+const PASTE_EVIDENCE_NONE = "none";
+
+/**
  * Candidate locations for the compiled fast paste helper, in priority order:
  * the packaged resources directory first, then the two development layouts.
  */
@@ -46,6 +55,11 @@ function parseWindowsFastPasteOutput(stdout) {
     const parsed = JSON.parse(String(stdout || "").trim());
     return {
       pasted: parsed.pasted === true,
+      // Only the exact string "none" means the helper could not see the target
+      // and knows nothing. Anything else, a missing field from an older helper
+      // included, keeps the louder "we think the paste failed" handling.
+      evidence:
+        parsed.evidence === PASTE_EVIDENCE_NONE ? PASTE_EVIDENCE_NONE : PASTE_EVIDENCE_ABSENT,
       dispatched: parsed.dispatched === true,
       isTerminal: parsed.isTerminal === true,
       windowClass: typeof parsed.windowClass === "string" ? parsed.windowClass.slice(0, 128) : "",
@@ -54,6 +68,7 @@ function parseWindowsFastPasteOutput(stdout) {
   } catch {
     return {
       pasted: false,
+      evidence: PASTE_EVIDENCE_ABSENT,
       dispatched: false,
       isTerminal: false,
       windowClass: "",
@@ -70,6 +85,7 @@ function assertWindowsFastPasteSucceeded(stdout) {
     );
     error.code = "WINDOWS_PASTE_NOT_CONFIRMED";
     error.dispatched = result.dispatched;
+    error.evidence = result.evidence;
     throw error;
   }
   return result;
@@ -89,6 +105,8 @@ function getWindowsPasteShortcut({ isTerminal = false } = {}) {
 module.exports = {
   assertWindowsFastPasteSucceeded,
   FAST_PASTE_EXECUTABLE,
+  PASTE_EVIDENCE_ABSENT,
+  PASTE_EVIDENCE_NONE,
   getWindowsFastPasteExecutablePaths,
   getWindowsPasteShortcut,
   parseWindowsFastPasteOutput,

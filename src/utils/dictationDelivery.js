@@ -23,9 +23,18 @@ export async function deliverDictation({
   }
 
   let pasteConfirmed = null;
+  // What the paste attempt could actually observe, when it can say. "none"
+  // means the target was unreadable and neither success nor failure is known.
+  let pasteEvidence = null;
   if (shouldPaste) {
     try {
-      pasteConfirmed = (await paste(text)) === true;
+      const outcome = await paste(text);
+      if (outcome && typeof outcome === "object") {
+        pasteConfirmed = outcome.delivered === true;
+        pasteEvidence = outcome.evidence ?? null;
+      } else {
+        pasteConfirmed = outcome === true;
+      }
     } catch {
       pasteConfirmed = false;
     }
@@ -53,5 +62,5 @@ export async function deliverDictation({
   const recoverable =
     persisted || pasteConfirmed === true || copied || additionalConfirmedDelivery === true;
 
-  return { persisted, pasteConfirmed, copied, outputAction, recoverable };
+  return { persisted, pasteConfirmed, pasteEvidence, copied, outputAction, recoverable };
 }
