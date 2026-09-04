@@ -94,6 +94,12 @@ export type PrivateTranscribeOptions = {
   /** Extra environment variables for the launched app (overrides defaults). */
   appEnv: Record<string, string>;
   /**
+   * Extra command-line arguments for the launched app, placed before the app
+   * path. Lets a spec reproduce a login launch (`--launch-at-login
+   * --startup-mode=tray`) without touching the machine's Run key.
+   */
+  appArgs: string[];
+  /**
    * Exact contents to write to `analytics-consent.txt` before launch.
    *
    * The consent file is versioned, and an upgrade is the only way to reach the
@@ -311,6 +317,7 @@ type LaunchInputs = {
   consoleMessages: ConsoleEntry[];
   muteAudio: boolean;
   fakeAudioCaptureFile: string;
+  appArgs: string[];
 };
 
 /**
@@ -320,8 +327,15 @@ type LaunchInputs = {
  * cannot drift apart.
  */
 async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
-  const { env, userDataDir, fakeHomeDir, consoleMessages, muteAudio, fakeAudioCaptureFile } =
-    inputs;
+  const {
+    env,
+    userDataDir,
+    fakeHomeDir,
+    consoleMessages,
+    muteAudio,
+    fakeAudioCaptureFile,
+    appArgs,
+  } = inputs;
 
   const args = [
     `--user-data-dir=${userDataDir}`,
@@ -343,7 +357,7 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
     );
   }
 
-  args.push(".");
+  args.push(...appArgs, ".");
 
   const app = await electron.launch({
     cwd: REPO_ROOT,
@@ -467,6 +481,7 @@ export const test = base.extend<
 >({
   completeOnboarding: [true, { option: true }],
   appEnv: [{}, { option: true }],
+  appArgs: [[], { option: true }],
   seedConsentFile: ["denied", { option: true }],
   seedWhisperModels: [[], { option: true }],
   seedRealWhisperModels: [[], { option: true }],
@@ -587,6 +602,7 @@ export const test = base.extend<
       userDataDir,
       fakeHomeDir,
       appEnv,
+      appArgs,
       consoleMessages,
       seedKokoroModel,
       completeOnboarding,
@@ -621,6 +637,7 @@ export const test = base.extend<
       consoleMessages,
       muteAudio: seedKokoroModel,
       fakeAudioCaptureFile,
+      appArgs,
     };
 
     let app = await launchApp(inputs);
