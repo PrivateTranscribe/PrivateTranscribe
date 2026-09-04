@@ -100,8 +100,9 @@ const micWatcher = require("./src/helpers/micWatcher");
 const voiceMuter = require("./src/helpers/voiceMuter");
 const WhisperManager = require("./src/helpers/whisper");
 const ParakeetManager = require("./src/helpers/parakeet");
-const KokoroManager = require("./src/helpers/kokoro");
+const KokoroClient = require("./src/helpers/kokoroClient");
 const SelectionCapture = require("./src/helpers/selectionCapture");
+const ReadAloudHighlight = require("./src/helpers/readAloudHighlight");
 const TrayManager = require("./src/helpers/tray");
 const IPCHandlers = require("./src/helpers/ipcHandlers");
 const UpdateManager = require("./src/updater");
@@ -126,6 +127,7 @@ let whisperManager = null;
 let parakeetManager = null;
 let kokoroManager = null;
 let selectionCapture = null;
+let readAloudHighlight = null;
 let trayManager = null;
 let updateManager = null;
 let globeKeyManager = null;
@@ -206,14 +208,18 @@ async function initializeManagers() {
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
   parakeetManager = new ParakeetManager();
-  // Read Aloud (Kokoro TTS). Constructed only — the model is loaded lazily on
-  // the first synthesis request, and never downloaded implicitly.
-  kokoroManager = new KokoroManager();
+  // Read Aloud (Kokoro TTS). Constructed only — the engine lives in a
+  // below-normal-priority utilityProcess (see kokoroClient.js), spawned lazily
+  // on the first engine call, and the model is never downloaded implicitly.
+  kokoroManager = new KokoroClient();
   // Reads the foreground app's selection for Read Aloud. The PowerShell worker
   // is started eagerly because its ~300ms startup would otherwise land inside
   // the first read's latency budget.
   selectionCapture = new SelectionCapture();
   selectionCapture.start();
+  // Not started here: its worker spawns on the first read that has a source
+  // window to point at, so an idle app never runs a second PowerShell.
+  readAloudHighlight = new ReadAloudHighlight();
   trayManager = new TrayManager();
   updateManager = new UpdateManager();
   updateManager.setBeforeQuitAndInstall(async () => {
@@ -278,6 +284,7 @@ async function initializeManagers() {
     parakeetManager,
     kokoroManager,
     selectionCapture,
+    readAloudHighlight,
     windowManager,
     updateManager,
     windowsKeyManager,
@@ -572,21 +579,23 @@ async function startApp() {
     }
   }
 
-  // Create windows according to the login launch mode. Normal launches keep the
-  // familiar visible overlay + control panel behavior; Windows auto-start can stay
-  // quiet in the tray while still loading a hidden renderer for hotkeys.
+  // Create windows according to the login launch mode. The mode only decides what
+  // happens to the control panel: tray keeps it hidden, minimized parks it in the
+  // taskbar, window opens it. The dictation overlay is created on every launch and
+  // follows its own visibility policy (shown / snoozed / off), so a login launch
+  // ends up with the same floating button a manual launch does. It used to be
+  // skipped for tray and minimized logins, which left the user with no overlay
+  // until the first hotkey press.
   const isTrayLoginLaunch = loginLaunchMode === "tray";
   const isMinimizedLoginLaunch = loginLaunchMode === "minimized";
-  const shouldShowOverlayAtStartup = !loginLaunchMode || loginLaunchMode === "window";
 
   if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW")) {
     debugLogger.warn("[Diagnostics] Skipping dictation overlay window creation");
-  } else if (shouldShowOverlayAtStartup) {
-    await windowManager.createMainWindow({ initialShowDelayMs: 2000 });
   } else {
-    debugLogger.info("Startup launch mode keeps dictation overlay hidden", {
-      launchMode: loginLaunchMode,
-    });
+    if (loginLaunchMode) {
+      debugLogger.info("Login launch: creating dictation overlay", { launchMode: loginLaunchMode });
+    }
+    await windowManager.createMainWindow({ initialShowDelayMs: 2000 });
   }
 
   // Create control panel window
@@ -1030,6 +1039,9 @@ if (gotSingleInstanceLock) {
     }
     if (selectionCapture) {
       selectionCapture.stop();
+    }
+    if (readAloudHighlight) {
+      readAloudHighlight.stop();
     }
     if (updateManager) {
       updateManager.cleanup();

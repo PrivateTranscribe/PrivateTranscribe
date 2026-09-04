@@ -12,12 +12,9 @@ import {
   History,
   Clipboard,
   AudioLines,
-  MessagesSquare,
   Play,
   Pause,
   Square,
-  SkipBack,
-  SkipForward,
 } from "lucide-react";
 import { useToast } from "./components/ui/Toast";
 import { useWindowDrag } from "./hooks/useWindowDrag";
@@ -29,7 +26,7 @@ import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
-import { READ_ALOUD_VOICE_STORAGE_KEY, resolveVoiceId } from "./models/kokoroVoices";
+import { VOICE_STORAGE_KEY, readStoredVoiceId } from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
 // Delay between showing the "overlay hidden" toast and actually hiding, so the
@@ -72,7 +69,7 @@ const READ_ALOUD_STATUS_LABELS = {
  * rendered instead of contorting this fixed-string table to hold a template.
  */
 const READ_ALOUD_NOTICE_LABELS = {
-  "empty-selection": "Nothing selected",
+  "empty-selection": "Nothing selected to read aloud",
   unsupported: "Cannot read selections here",
 };
 
@@ -120,15 +117,19 @@ const CONVERSE_STATUS_LABELS = {
  * There is one rule now, and everything below is derived from it:
  *
  *   The dictation button is the anchor. Every surface the overlay shows is a
- *   row in a single fixed-width column that is docked to the top of that
- *   button, and every corner in the overlay is drawn with the button's own
- *   radius.
+ *   row in a single column that floats a fixed hair above that button,
+ *   centred on it, and every corner in the overlay is drawn with the
+ *   button's own radius.
  *
- * Fixed width, not shrink-to-fit, because the rows change content constantly -
- * "Reading aloud" becomes "Paused", a sentence gets longer, a counter reaches
- * two digits - and a column that resized on each of those would be a fidget
- * sitting on top of the thing the user is dictating into. The slot is the same
- * size in every state, so state changes happen inside it instead of moving it.
+ * Every row is a STATUS capsule: it hugs its words, centred on the button,
+ * never wider than the column. The Converse state, the Read Aloud player and
+ * the Read Aloud notices are all this one shape: a dot, a few words, at most
+ * a hairline and two tinted discs. Stretched to the column they left a dead
+ * rail of empty surface either side of "Speaking", which is what made the
+ * overlay look bolted on rather than built in. The player used to be a
+ * full-width panel carrying the sentence being read; the sentence is now
+ * shown where it lives, tinted in the source app, and only falls back to a
+ * line on the capsule when that app keeps its text out of reach.
  */
 
 /** Every overlay row is this wide. 400px window, 24px of air on each side. */
@@ -152,20 +153,38 @@ const OVERLAY_ROW_GAP = 6;
 const OVERLAY_BUTTON_TOP = 102;
 
 /**
- * How far the button's cap sits *inside* the bottom row. Tangent shapes touch
- * at a point and still read as two; an overlap makes the button emerge from
- * the column as one silhouette. The button paints over the column (z-index
- * below), so nothing of it is ever covered.
+ * The air between the bottom row and the button's cap. The rows used to
+ * overlap the cap by 10px so the pair read as one silhouette; that worked on
+ * a 352px panel and read as a collision on a 230px capsule, where the cap
+ * bit a notch out of the row and the two hairline borders crossed in plain
+ * view (both blind critics, then Kristian: "it looks like it's kind of
+ * colliding"). A small, constant gap is the iOS answer: the capsule is a
+ * thing floating above its control, not a thing the control is stuck
+ * through. Same gap for every row shape, so the family stays one family.
  */
-const OVERLAY_DOCK_OVERLAP = 10;
+const OVERLAY_BUTTON_GAP = 8;
 
-const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP - OVERLAY_DOCK_OVERLAP;
+const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP + OVERLAY_BUTTON_GAP;
 
 /**
- * Extra bottom padding on whichever row is docked, so its content stops above
- * the button's cap instead of being bitten into by it.
+ * Vertical padding of a status row. With a 12px line this is a 30px capsule,
+ * against the 49px full-width row before - the "way smaller" Kristian asked
+ * for on 2026-09-02.
  */
-const OVERLAY_DOCK_PAD = 20;
+const OVERLAY_STATUS_PAD_Y = 8;
+
+/** A status row's one line: the status word, then anything after it in a quieter tone. */
+const OVERLAY_STATUS_TEXT_CLASS = "text-[12px] font-medium leading-none text-white/90";
+const OVERLAY_STATUS_DETAIL_CLASS = "text-[12px] leading-none tabular-nums text-white/60";
+
+/**
+ * The stop control of a status row: a tinted disc, so the one thing in the
+ * row that can be pressed looks pressable and the count next to it stays the
+ * brighter of the two. Its 20px sit inside the row's padding (see the
+ * negative margins at the call site), so the capsule stays one line tall.
+ */
+const OVERLAY_STATUS_CONTROL_CLASS =
+  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors duration-150 hover:bg-white/18 hover:text-white focus:outline-none focus:bg-white/18";
 
 /**
  * The material every row and the command menu are made of: `--color-muted` at
@@ -174,7 +193,7 @@ const OVERLAY_DOCK_PAD = 20;
  * button deliberately sits outside this - see getMicButtonStyles.
  */
 const OVERLAY_SURFACE_CLASS =
-  "border border-white/12 bg-muted/96 text-white shadow-[0_12px_30px_rgba(0,0,0,0.38)] backdrop-blur-xl";
+  "border border-white/12 bg-muted/96 text-white shadow-[0_6px_18px_rgba(0,0,0,0.32)] backdrop-blur-xl";
 
 /**
  * One entrance for every surface, growing from the anchor. Rows and the menu
@@ -187,17 +206,86 @@ const OVERLAY_CONTROL_CLASS =
   "rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6";
 
 /**
- * The style a row carries. `docked` is true for the bottom row only - the one
- * the button is actually attached to.
+ * The style a row carries. `status` rows hug their content and sit centred in
+ * the column; everything else stretches to the column width.
  */
-function overlayRowStyle({ docked, interactive }) {
+function overlayRowStyle({ interactive, status = false }) {
   return {
     borderRadius: OVERLAY_RADIUS,
-    paddingBottom: docked ? OVERLAY_DOCK_PAD : undefined,
+    paddingTop: status ? OVERLAY_STATUS_PAD_Y : undefined,
+    paddingBottom: status ? OVERLAY_STATUS_PAD_Y : undefined,
+    alignSelf: status ? "center" : "stretch",
+    maxWidth: "100%",
     transformOrigin: "bottom center",
     animation: OVERLAY_SURFACE_ANIMATION,
     pointerEvents: interactive ? "auto" : "none",
   };
+}
+
+/**
+ * The live marker in front of every status word - the one place a row uses
+ * colour. Lit while something is audibly happening (speaking, listening,
+ * reading), pulsing while the user is waiting on the machine (thinking,
+ * preparing), dim otherwise. The same dot on the Converse capsule and the
+ * Read Aloud panel is what makes them one family across two shapes.
+ */
+function liveDotStyle({ live, pulse, warn = false }) {
+  return {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    flexShrink: 0,
+    backgroundColor: warn
+      ? "var(--color-warning)"
+      : live || pulse
+        ? "var(--color-primary)"
+        : "rgba(255,255,255,0.4)",
+    animation: pulse ? "overlay-dot-pulse 1.6s ease-in-out infinite" : undefined,
+  };
+}
+
+/**
+ * How far through a read or an answer the voice is, as a hairline instead of
+ * a count. "3 of 8" made the listener do arithmetic to learn the one thing
+ * they wanted - roughly how much is left - and Kristian asked whether the
+ * digits were needed at all (2026-09-02). They are not; the fraction is. The
+ * position stays on the element as data for the specs and as an aria value
+ * for anyone who cannot see the bar.
+ */
+const OverlayProgress = ({ index, total, label, testId }) => {
+  if (!(total > 0)) return null;
+  const position = Math.min(index + 1, total);
+  return (
+    <span
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={position}
+      data-testid={testId}
+      data-position={`${position}/${total}`}
+      className="relative ml-1 h-[2px] w-11 shrink-0 overflow-hidden rounded-full bg-white/25"
+    >
+      <span
+        className="absolute inset-y-0 left-0 rounded-full bg-primary/85 transition-[width] duration-300 ease-out"
+        style={{ width: `${(position / total) * 100}%` }}
+      />
+    </span>
+  );
+};
+
+function converseDotStyle(state) {
+  return liveDotStyle({
+    live: state === "speaking" || state === "listening",
+    pulse: state === "thinking",
+  });
+}
+
+function readAloudDotStyle(state) {
+  return liveDotStyle({
+    live: state?.status === "playing",
+    pulse: ["splitting", "loading-engine", "synthesizing"].includes(state?.status),
+  });
 }
 
 const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
@@ -384,6 +472,10 @@ export default function App() {
   // renderer would re-ask for the same registration on every tick.
   const readAloudKeysActiveRef = useRef(false);
   const [readAloudState, setReadAloudState] = useState(null);
+  // True while the sentence being read is tinted where it lives, in the app
+  // it came from. The overlay then stops repeating it on its own line.
+  const [readAloudHighlightActive, setReadAloudHighlightActive] = useState(false);
+  const readAloudReportedRef = useRef("");
   // Where the text being read came from, so a clipboard fallback can say so.
   const [readAloudSource, setReadAloudSource] = useState(null);
   // "empty-selection" | "unsupported" | "non-english" while the transient
@@ -427,10 +519,24 @@ export default function App() {
       });
     };
 
+    // Tell the main process which sentence is on, so the in-place highlight
+    // can follow. Only on a change of sentence or status, never per tick.
+    const reportSentence = (state) => {
+      const key = `${state.status}:${state.index}`;
+      if (readAloudReportedRef.current === key) return;
+      readAloudReportedRef.current = key;
+      void window.electronAPI?.readAloudReportSentence?.({
+        status: state.status,
+        index: state.index,
+        sentence: state.currentSentence ?? null,
+      });
+    };
+
     const sync = () => {
       const state = player.getState();
       const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
       setReadAloudState(visible ? state : null);
+      reportSentence(state);
       // An errored read has controls to press but nothing to control, so the
       // shortcuts go back to the rest of the machine along with the buttons.
       syncPlaybackKeys(visible && state.status !== "error");
@@ -457,13 +563,7 @@ export default function App() {
     // Kokoro. speak() clears the buffer cache anyway, so switching mid-session
     // can never replay the old voice.
     const applyStoredVoice = () => {
-      let stored = null;
-      try {
-        stored = localStorage.getItem(READ_ALOUD_VOICE_STORAGE_KEY);
-      } catch {
-        // Storage unavailable; resolveVoiceId falls back to the default.
-      }
-      player.voice = resolveVoiceId(stored);
+      player.voice = readStoredVoiceId(VOICE_STORAGE_KEY);
     };
     applyStoredVoice();
 
@@ -480,6 +580,10 @@ export default function App() {
     // The real feature path: the main process captures the foreground app's
     // selection and pushes the text here. Not gated on the test flag - this is
     // what a user's read hotkey ends up calling.
+    const unsubscribeHighlight = window.electronAPI?.onReadAloudHighlight?.((_event, data) => {
+      setReadAloudHighlightActive(Boolean(data?.active));
+    });
+
     const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
       const text = data?.text;
       if (typeof text === "string" && text.trim()) {
@@ -532,6 +636,7 @@ export default function App() {
       syncPlaybackKeys(false);
       readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
+      if (typeof unsubscribeHighlight === "function") unsubscribeHighlight();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       if (typeof unsubscribeControl === "function") unsubscribeControl();
       player.dispose();
@@ -587,7 +692,13 @@ export default function App() {
   // one day start would poll forever for every user who never opens Converse.
   // Sampling backs off to once a second whenever nothing is being spoken.
   useEffect(() => {
-    const player = new ConversePlayer();
+    // Same reasoning as Read Aloud's applyStoredVoice above, except the player
+    // asks for itself: it re-reads the Converse voice at every turn boundary,
+    // so a change made in the control panel is heard on the next answer.
+    const player = new ConversePlayer({
+      resolveVoice: () => readStoredVoiceId(VOICE_STORAGE_KEY),
+    });
+    player.voice = readStoredVoiceId(VOICE_STORAGE_KEY);
     player.connect();
 
     let cancelled = false;
@@ -689,23 +800,6 @@ export default function App() {
     const handle = readAloudRef.current;
     if (!handle) return;
     handle.player.toggle();
-    handle.sync();
-  }, []);
-
-  // Skipping clamps inside the player, so the first and last sentence make
-  // these no-ops rather than disabled buttons. A control that greys itself out
-  // twice a read is more movement than the read is worth.
-  const handleReadAloudBack = useCallback(() => {
-    const handle = readAloudRef.current;
-    if (!handle) return;
-    handle.player.seek(-1);
-    handle.sync();
-  }, []);
-
-  const handleReadAloudForward = useCallback(() => {
-    const handle = readAloudRef.current;
-    if (!handle) return;
-    handle.player.seek(1);
     handle.sync();
   }, []);
 
@@ -1202,9 +1296,8 @@ export default function App() {
     const menuWidth = 248;
     // Conservative estimate of the tallest menu state (root + audio submenu)
     const MENU_EST_HEIGHT = 320;
-    // Negative: the menu docks to the button the same way the status column
-    // does, overlapping its cap rather than floating a gap away from it.
-    const GAP = -OVERLAY_DOCK_OVERLAP;
+    // The menu floats off the button the same way the status column does.
+    const GAP = OVERLAY_BUTTON_GAP;
 
     const desiredLeft = rect.left + rect.width / 2 - menuWidth / 2;
     const menuLeft = Math.max(edge, Math.min(iW - menuWidth - edge, desiredLeft));
@@ -1226,9 +1319,6 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         bottom: clampedBottom,
-        // Keeps the last row clear of the button's cap, the same way the
-        // docked status row does.
-        paddingBottom: OVERLAY_DOCK_PAD,
         transformOrigin: "bottom center",
         pointerEvents: "auto",
       };
@@ -1240,7 +1330,6 @@ export default function App() {
         position: "absolute",
         left: menuLeft,
         top: clampedTop,
-        paddingTop: OVERLAY_DOCK_PAD,
         transformOrigin: "top center",
         pointerEvents: "auto",
       };
@@ -1328,17 +1417,7 @@ export default function App() {
     };
   }, []);
 
-  // Which row the button is actually attached to. The column is built top-down,
-  // so this is whichever row renders last, and it is the only one that carries
-  // the dock padding.
   const noticeRowVisible = Boolean(!readAloudState && readAloudNotice);
-  const dockedRow = readAloudState
-    ? "player"
-    : noticeRowVisible
-      ? "notice"
-      : converseState
-        ? "converse"
-        : null;
 
   return (
     <div className="dictation-window">
@@ -1352,6 +1431,10 @@ export default function App() {
             opacity: 1;
             transform: translateY(0) scale(1);
           }
+        }
+        @keyframes overlay-dot-pulse {
+          0%, 100% { opacity: 0.35; }
+          50% { opacity: 1; }
         }
       `}</style>
 
@@ -1535,100 +1618,95 @@ export default function App() {
               zIndex: 1,
             }}
           >
+            {/*
+              The Converse status: a dot, the state's own word, and while it
+              speaks, how far through the answer it is and a way to stop it.
+              The page carries the agent's name and the sentence that explains
+              the state; the overlay only has to say what is happening now.
+            */}
             {converseState && (
               <div
                 ref={conversePillRef}
                 data-testid="converse-overlay-state"
                 data-state={converseState.state}
-                className={`flex items-center gap-2 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({
-                  docked: dockedRow === "converse",
-                  interactive: true,
-                })}
+                className={`flex items-center gap-2 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ interactive: true, status: true })}
               >
-                <MessagesSquare size={14} className="text-primary shrink-0" aria-hidden />
-                <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                <span style={converseDotStyle(converseState.state)} aria-hidden />
+                {/* Subject and state in one phrase: an always-on-top pill that
+                    only said "Speaking" was ambiguous next to a Read Aloud row
+                    that speaks too, minutes after the page that named the
+                    agent was buried under other windows. */}
+                <span className={`${OVERLAY_STATUS_TEXT_CLASS} whitespace-nowrap`}>
                   Claude Code
+                </span>{" "}
+                <span className={`${OVERLAY_STATUS_DETAIL_CLASS} -ml-1 whitespace-nowrap`}>
+                  {(
+                    CONVERSE_STATUS_LABELS[converseState.state] || converseState.state
+                  ).toLowerCase()}
                 </span>
-                <span className="text-[11px] leading-none text-white/45 whitespace-nowrap">
-                  {CONVERSE_STATUS_LABELS[converseState.state] || converseState.state}
-                </span>
-
-                {converseState.state === "speaking" && converseState.total > 0 && (
-                  <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
-                    {Math.min(converseState.playIndex + 1, converseState.total)} /{" "}
-                    {converseState.total}
-                  </span>
-                )}
-
-                {/* Trailing controls sit against the column's right edge in
-                    every row, so a control is always in the same place
-                    regardless of how long the status text in front of it is. */}
                 {converseState.state === "speaking" && (
-                  <>
-                    <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
-                    <button
-                      aria-label="Interrupt Claude Code"
-                      onClick={handleConverseInterrupt}
-                      className={OVERLAY_CONTROL_CLASS}
-                    >
-                      <Square size={13} fill="currentColor" />
-                    </button>
-                  </>
+                  <OverlayProgress
+                    index={converseState.playIndex}
+                    total={converseState.total}
+                    label="Answer progress"
+                    testId="converse-progress"
+                  />
+                )}
+                {converseState.state === "speaking" && (
+                  <button
+                    aria-label="Interrupt Claude Code"
+                    onClick={handleConverseInterrupt}
+                    className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 -mr-0.5 ml-1`}
+                  >
+                    <Square size={8} fill="currentColor" />
+                  </button>
                 )}
               </div>
             )}
 
+            {/*
+              The Read Aloud player is a status capsule like the others: the
+              dot, the state, the hairline, pause and stop. Skipping a sentence
+              is on the keys (Ctrl+Alt+←/→) rather than two more buttons; the
+              hairline says where the read is. The sentence itself is shown
+              where it lives, tinted in the source app, and only falls back to
+              a line here when that app keeps its text out of reach.
+            */}
             {readAloudState && (
               <div
                 ref={readAloudPillRef}
                 data-testid="readaloud-overlay-player"
-                className={`flex flex-col gap-1.5 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({ docked: dockedRow === "player", interactive: true })}
+                className={`flex flex-col gap-1.5 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ interactive: true, status: true })}
               >
                 <div className="flex items-center gap-2">
-                  <AudioLines size={14} className="text-primary shrink-0" aria-hidden />
-                  <span className="text-[12px] font-medium leading-none text-white/90 whitespace-nowrap">
+                  <span style={readAloudDotStyle(readAloudState)} aria-hidden />
+                  {/* A fixed label width, sized to the longest state, so
+                      "Reading aloud" becoming "Paused" never moves the pause
+                      button out from under the cursor that just pressed it. */}
+                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} w-[7.25rem] whitespace-nowrap`}>
                     {readAloudLabel}
                   </span>
 
-                  {readAloudState.sentenceCount > 0 && readAloudState.status !== "error" && (
-                    <span className="text-[11px] leading-none tabular-nums text-white/45 whitespace-nowrap">
-                      {readAloudState.index + 1} / {readAloudState.sentenceCount}
-                    </span>
-                  )}
-
-                  {/* ml-auto pins the controls to the column's right edge.
-                      Without it they sit against the status label and slide
-                      sideways every time it changes width — "Reading aloud" to
-                      "Paused" would move the pause button out from under the
-                      cursor that just pressed it. */}
-                  <div className="ml-auto h-3.5 w-px bg-white/12" aria-hidden />
-
                   {readAloudState.status !== "error" && (
                     <>
-                      <button
-                        aria-label="Previous sentence"
-                        onClick={handleReadAloudBack}
-                        className={OVERLAY_CONTROL_CLASS}
-                      >
-                        <SkipBack size={13} />
-                      </button>
-
+                      <OverlayProgress
+                        index={readAloudState.index}
+                        total={readAloudState.sentenceCount}
+                        label="Read progress"
+                        testId="readaloud-progress"
+                      />
                       <button
                         aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
                         onClick={handleReadAloudToggle}
-                        className={OVERLAY_CONTROL_CLASS}
+                        className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 ml-1`}
                       >
-                        {readAloudPlaying ? <Pause size={13} /> : <Play size={13} />}
-                      </button>
-
-                      <button
-                        aria-label="Next sentence"
-                        onClick={handleReadAloudForward}
-                        className={OVERLAY_CONTROL_CLASS}
-                      >
-                        <SkipForward size={13} />
+                        {readAloudPlaying ? (
+                          <Pause size={10} fill="currentColor" strokeWidth={0} />
+                        ) : (
+                          <Play size={10} fill="currentColor" strokeWidth={0} />
+                        )}
                       </button>
                     </>
                   )}
@@ -1636,22 +1714,24 @@ export default function App() {
                   <button
                     aria-label="Stop reading"
                     onClick={handleReadAloudStop}
-                    className={OVERLAY_CONTROL_CLASS}
+                    className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 -mr-0.5 ${readAloudState.status === "error" ? "ml-1" : ""}`}
                   >
-                    {/* Filled: an outlined square reads as a checkbox, not stop. */}
-                    <Square size={13} fill="currentColor" />
+                    {/* The same tinted disc as the Converse capsule's stop: one
+                        function, one look. Filled, because an outlined square
+                        reads as a checkbox. */}
+                    <Square size={8} fill="currentColor" />
                   </button>
                 </div>
 
                 {/*
-                  The sentence takes the column's width rather than its own: it
-                  changes every few seconds, and a row that resized with each
-                  one would be a fidget on top of the dictation button.
+                  The fallback: only when the sentence cannot be tinted where
+                  it lives. Truncated to the column so a long sentence never
+                  pushes the capsule past the edge, indented under the title.
                 */}
-                {readAloudSentence && (
+                {readAloudSentence && !readAloudHighlightActive && (
                   <span
                     data-testid="readaloud-current-sentence"
-                    className="block w-full truncate text-[11px] leading-snug text-white/60"
+                    className="block max-w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"
                     title={readAloudSentence}
                   >
                     {readAloudSentence}
@@ -1670,13 +1750,27 @@ export default function App() {
               <div
                 data-testid="readaloud-overlay-notice"
                 data-reason={readAloudNotice}
-                className={`flex items-center gap-2 px-3 py-2 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({ docked: dockedRow === "notice", interactive: false })}
+                className={`flex items-center gap-2 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
+                style={overlayRowStyle({ interactive: false, status: true })}
               >
-                <AudioLines size={14} className="text-white/40 shrink-0" aria-hidden />
-                {/* Wraps rather than overflows: a long language name would push
-                    "Read Aloud speaks English only" past the column edge. */}
-                <span className="text-[12px] font-medium leading-snug text-white/90">
+                {/* A notice is a message, not an activity, so its dot is the
+                    dim one - same slot as every other row, nothing lit. */}
+                <span
+                  style={liveDotStyle({
+                    live: false,
+                    pulse: false,
+                    // Something the user has to act on (wrong language, an app
+                    // we cannot read from) is amber; "nothing selected" is a
+                    // nudge and stays dim.
+                    warn: readAloudNotice !== "empty-selection",
+                  })}
+                  aria-hidden
+                />
+                {/* Same line height as the Converse capsule, so swapping one
+                    for the other in the slot does not change the capsule's
+                    height. Wraps rather than overflows: a long language name
+                    would push "Read Aloud speaks English only" past the edge. */}
+                <span className={OVERLAY_STATUS_TEXT_CLASS}>
                   {readAloudNotice === "non-english"
                     ? nonEnglishNoticeLabel(readAloudNoticeLanguage)
                     : READ_ALOUD_NOTICE_LABELS[readAloudNotice]}

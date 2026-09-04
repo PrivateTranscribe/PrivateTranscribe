@@ -137,7 +137,8 @@ test.use({ seedKokoroModel: true });
 test.describe("read aloud playback controls", () => {
   test.setTimeout(180_000);
 
-  test("the capsule shows the sentence being read, and the skip buttons move it", async ({
+  test("the capsule shows the sentence being read, and the skip keys move it", async ({
+    electronApp,
     overlayWindow,
   }) => {
     await startRead(overlayWindow);
@@ -161,20 +162,22 @@ test.describe("read aloud playback controls", () => {
 
     await captureEvidence(overlayWindow, "readaloud-playback-paused.png");
 
-    // Forward: cursor and the visible sentence move together.
-    await overlayWindow.getByRole("button", { name: "Next sentence" }).click();
+    // Forward: cursor and the visible sentence move together. Skipping is on
+    // the keys (Ctrl+Alt+→), which arrive as this event; the capsule carries
+    // no skip buttons of its own.
+    await sendToOverlay(electronApp, "readaloud-control", { op: "forward" });
     const forward = await waitForState(overlayWindow, { index: 1, playing: false });
-    expect(forward.index, "Next sentence did not advance the cursor").toBe(1);
+    expect(forward.index, "forward did not advance the cursor").toBe(1);
     await expect(sentenceLine).toContainText(MARKERS[1]);
     await expect(sentenceLine).not.toContainText(MARKERS[0]);
-    await expect(player).toContainText("2 / 5");
+    await expect(player.getByTestId("readaloud-progress")).toHaveAttribute("data-position", "2/5");
 
     // Back: and returns.
-    await overlayWindow.getByRole("button", { name: "Previous sentence" }).click();
+    await sendToOverlay(electronApp, "readaloud-control", { op: "back" });
     const back = await waitForState(overlayWindow, { index: 0, playing: false });
-    expect(back.index, "Previous sentence did not move the cursor back").toBe(0);
+    expect(back.index, "back did not move the cursor back").toBe(0);
     await expect(sentenceLine).toContainText(MARKERS[0]);
-    await expect(player).toContainText("1 / 5");
+    await expect(player.getByTestId("readaloud-progress")).toHaveAttribute("data-position", "1/5");
 
     await overlayWindow.evaluate(() => (window as any).__readAloudTest.stop());
   });

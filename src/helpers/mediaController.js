@@ -58,8 +58,9 @@
  *  - Option D: Use Windows audio session API to detect what is playing, then
  *    send app-specific pause commands — possible with PowerShell but complex
  *
- * Until one of these is implemented and tested, the feature remains disabled
- * on Windows at the UI level (SettingsPage.tsx).
+ * Until one of these is implemented and tested, the feature stays off on
+ * Windows. Enforced by isMediaPauseSupported() below, not by the Settings UI —
+ * a hidden toggle leaves its stored value behind and the feature keeps running.
  * ─────────────────────────────────────────────────────────────────────────────
  *
  *  - macOS   : checks Spotify/Music.app state via AppleScript, then sends
@@ -428,6 +429,30 @@ let didPause = false;
 // actually called TryPauseAsync successfully.
 let pausedWindowsAumid = null;
 
+// Platforms where "pause media while recording" is allowed to act.
+//
+// Windows is withdrawn (see the TODO at the top of this file). The Settings UI
+// has shown "Soon" there ever since, but hiding a toggle does not clear what it
+// stored: anyone who switched the feature on before it was withdrawn kept a
+// `pauseMediaOnRecord=true` in localStorage, so the main process went on
+// running the SMTC pause — and its nircmd fallback went on sending a global
+// VK_MEDIA_PLAY_PAUSE — on every dictation, with no control left in the UI to
+// stop it. Found on Kristian's own install: pauseMedia() invoked, twice, in
+// logs written months after the feature was disabled.
+//
+// So the UI is not the gate. This is. Re-enabling Windows means deleting it
+// from this set, and the stored preference each user already has comes back
+// with it.
+const MEDIA_PAUSE_UNSUPPORTED_PLATFORMS = new Set(["win32"]);
+
+/**
+ * Whether this platform may pause and resume media at all.
+ * @param {string} [platform] Defaults to the running platform.
+ */
+function isMediaPauseSupported(platform = process.platform) {
+  return !MEDIA_PAUSE_UNSUPPORTED_PLATFORMS.has(platform);
+}
+
 // Tracks the in-flight pauseMedia() promise so resumeMedia() can await it.
 // Race condition fix: pauseMedia() is async (2–5 s state check + WinRT call),
 // but resumeMedia() may arrive before it finishes.  Without this, resumeMedia()
@@ -500,6 +525,14 @@ async function pauseMedia() {
     { platform: process.platform },
     "media"
   );
+  if (!isMediaPauseSupported()) {
+    debugLogger.debug(
+      "mediaController: pauseMedia — unsupported on this platform; no media command sent",
+      { platform: process.platform },
+      "media"
+    );
+    return;
+  }
   try {
     pendingPausePromise = _doPauseMedia();
     await pendingPausePromise;
@@ -525,6 +558,14 @@ async function resumeMedia() {
     { platform: process.platform },
     "media"
   );
+  if (!isMediaPauseSupported()) {
+    debugLogger.debug(
+      "mediaController: resumeMedia — unsupported on this platform; no media command sent",
+      { platform: process.platform },
+      "media"
+    );
+    return;
+  }
   try {
     if (pendingPausePromise) {
       debugLogger.debug(
@@ -573,4 +614,4 @@ async function resumeMedia() {
   }
 }
 
-module.exports = { pauseMedia, resumeMedia };
+module.exports = { pauseMedia, resumeMedia, isMediaPauseSupported };

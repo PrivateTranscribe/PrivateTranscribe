@@ -63,15 +63,37 @@ class ConverseSession {
     this.stateLog = [{ state: "idle", at: Date.now(), reason: "session created" }];
 
     this.turnGen = 0;
+    /**
+     * Staleness fence: turns with gen <= fence are dead (interrupted or the
+     * session stopped). Deliberately separate from turnGen — a queued
+     * follow-up advances turnGen while the previous turn is still live, and
+     * that must NOT make the live turn's output look interrupted.
+     */
+    this.fence = 0;
     this.activeTurnGen = 0;
     this.sentenceStream = new SentenceStream();
     this.sentenceIndex = 0;
-    this.lastResponse = { text: "", sentences: [] };
+    this.lastResponse = { gen: 0, text: "", sentences: [] };
     this.lastUtterance = null;
     this.lastInterrupt = null;
     this.pendingInterrupt = null;
     this.player = null;
     this.stopped = false;
+
+    /**
+     * Queued-turn playback handoff. A follow-up utterance sent while the agent
+     * is working starts its own turn the moment the previous one finishes —
+     * but its sentences must not reach the player while the previous answer is
+     * still coming out of the speakers, because the player resets its queue on
+     * a new generation. `speakingGen` is the generation the player is busy
+     * with; events for any other generation wait in `deferred` until the
+     * player drains (or an interrupt clears everything).
+     */
+    this.speakingGen = null;
+    this.deferred = [];
+    /** Sentences per generation, so an interrupt can name what was actually
+     * playing even when a queued turn has since become the live one. */
+    this.sentencesByGen = new Map();
 
     // Resolved here rather than left to the agent's default, because the same
     // directory is also the key the session id is remembered under: the two
@@ -100,7 +122,7 @@ class ConverseSession {
       // The app adds no permission rules of its own: the relay only carries
       // the harness's own question to the user and their answer back.
       this.relay = new ConversePermissionRelay({
-        onRequest: (entry) =>
+        onRequest: (entry) => {
           this.send("converse-permission-request", {
             id: entry.id,
             tool_name: entry.tool_name,
@@ -111,7 +133,14 @@ class ConverseSession {
             // arrive. The relay is the clock; the countdown only reads it.
             deadline: entry.deadline,
             timeoutMs: entry.timeoutMs,
-          }),
+          });
+          // Spoken too, the way Codex announces approvals — a user who walked
+          // away from the window would otherwise only discover the stalled
+          // question when the deny timeout has already fired.
+          this._speakServiceLine(
+            "I need your approval to continue. Answer the question in the app."
+          );
+        },
       });
       relayInfo = await this.relay.start();
     }
@@ -126,6 +155,7 @@ class ConverseSession {
       strictMcpConfig,
       settingsFile: settingsFile || null,
       onSessionId: (id) => this._rememberSessionId(id),
+      onTurnStart: (info) => this._onTurnStart(info),
       onDelta: (text) => this._onDelta(text),
       onTurnEnd: (info) => this._onTurnEnd(info),
       onError: (err) => {
@@ -193,6 +223,16 @@ class ConverseSession {
       agent: status,
       lastUtterance: this.lastUtterance,
       lastResponse: this.lastResponse,
+      /**
+       * Sentences per recent generation. The transcript builds from this
+       * rather than from lastResponse alone: a short queued turn can stream
+       * its whole answer and hand over to the next turn inside one 200ms UI
+       * poll, and a snapshot of only the current turn would never show it.
+       */
+      recentResponses: Array.from(this.sentencesByGen.entries()).map(([gen, sentences]) => ({
+        gen,
+        sentences: sentences.slice(),
+      })),
       lastInterrupt: this.lastInterrupt,
       // What the NEXT outbound utterance will be wrapped with: which sentences
       // the user heard, which one was cut mid-word, and which were never
@@ -243,32 +283,53 @@ class ConverseSession {
     if (!this.agent) {
       return { accepted: false, reason: "not-started", state: this.state };
     }
-    if (this.state === "thinking" || this.state === "speaking") {
-      // Barge-in is a separate gate; until then a mid-turn utterance is refused
-      // rather than silently queued behind the one in flight.
-      return { accepted: false, reason: "busy", state: this.state };
-    }
 
     this.turnGen += 1;
     const gen = this.turnGen;
-    // Deltas are stamped with the generation of the turn that produced them,
-    // not the generation current when they arrive: an interrupt bumps turnGen
-    // while the agent is still streaming, and stamping at arrival time would
-    // let the dead turn's tail re-enter as if it belonged to the new one.
-    this.activeTurnGen = gen;
-    this.sentenceStream = new SentenceStream();
-    this.sentenceIndex = 0;
-    this.lastResponse = { text: "", sentences: [], at: Date.now() };
     this.lastUtterance = { text: utterance, at: Date.now(), gen };
-    this.setState("thinking", `turn ${gen}`);
+
+    // A mid-turn utterance is accepted and queued, the way Codex queues
+    // follow-ups instead of refusing them: the agent (and the CLI under it)
+    // runs it as the next turn the moment the current one finishes. The
+    // per-turn resets happen in _onTurnStart, which fires when this turn
+    // actually starts producing — immediately when the agent is idle.
+    const queued = this.state === "thinking" || this.state === "speaking";
 
     const agentText = this.withInterruptContext(utterance);
-    if (!this.agent.send(agentText)) {
+    if (!this.agent.send(agentText, { gen })) {
       this.setState("listening", "agent refused the utterance");
       return { accepted: false, reason: "agent-unavailable", state: this.state, turnGen: gen };
     }
 
-    return { accepted: true, turnGen: gen, state: this.state, agentMode: this.agent.agentMode };
+    return {
+      accepted: true,
+      queued,
+      turnGen: gen,
+      state: this.state,
+      agentMode: this.agent.agentMode,
+    };
+  }
+
+  /**
+   * A turn became the one producing output. Deltas are stamped with the
+   * generation of the turn that produced them, not the generation current
+   * when they arrive: an interrupt bumps turnGen while the agent is still
+   * streaming, and stamping at arrival time would let the dead turn's tail
+   * re-enter as if it belonged to the new one.
+   */
+  _onTurnStart(info) {
+    if (this.stopped) return;
+    const gen = Number.isInteger(info?.gen) ? info.gen : this.turnGen;
+    this.activeTurnGen = gen;
+    this.sentenceStream = new SentenceStream();
+    this.sentenceIndex = 0;
+    // A queued turn that was interrupted while waiting still runs in the CLI,
+    // but it is dead to the conversation: no resets, no state change — its
+    // output is dropped sentence by sentence in _emitSentence.
+    if (gen <= this.fence) return;
+    this.activeTurnEnded = false;
+    this.lastResponse = { gen, text: "", sentences: [], at: Date.now() };
+    this.setState("thinking", `turn ${gen}`);
   }
 
   _onDelta(text) {
@@ -277,43 +338,132 @@ class ConverseSession {
   }
 
   _emitSentence(gen, text) {
-    if (gen !== this.turnGen) return; // interrupted mid-stream
+    if (gen <= this.fence) return; // interrupted mid-stream
     this.lastResponse.sentences.push(text);
     this.lastResponse.text = this.lastResponse.sentences.join(" ");
-    this.send("converse-sentence", { gen, index: this.sentenceIndex, text });
+    this._rememberSentence(gen, text);
+    this._dispatchToPlayer({ kind: "sentence", gen, index: this.sentenceIndex, text });
     this.sentenceIndex += 1;
   }
 
-  _onTurnEnd(info) {
-    const gen = this.activeTurnGen;
-    for (const sentence of this.sentenceStream.flush()) this._emitSentence(gen, sentence);
-    if (gen !== this.turnGen) return;
+  _rememberSentence(gen, text) {
+    let list = this.sentencesByGen.get(gen);
+    if (!list) {
+      list = [];
+      this.sentencesByGen.set(gen, list);
+      // Bounded: only the generations an interrupt could still name matter.
+      while (this.sentencesByGen.size > 4) {
+        this.sentencesByGen.delete(this.sentencesByGen.keys().next().value);
+      }
+    }
+    list.push(text);
+  }
 
-    this.send("converse-turn-end", { gen, total: this.sentenceIndex });
+  /**
+   * The player resets its queue whenever it sees a new generation, so events
+   * for a turn must not reach it while an older answer is still audible —
+   * they wait here until the player reports that answer drained (or an
+   * interrupt throws everything out).
+   */
+  _dispatchToPlayer(evt) {
+    if (this.speakingGen !== null && this.speakingGen !== evt.gen) {
+      this.deferred.push(evt);
+      return;
+    }
+    if (evt.kind === "sentence") {
+      this.speakingGen = evt.gen;
+      this.send("converse-sentence", { gen: evt.gen, index: evt.index, text: evt.text });
+    } else {
+      this.send("converse-turn-end", { gen: evt.gen, total: evt.total });
+    }
+  }
+
+  _flushDeferred() {
+    const items = this.deferred;
+    this.deferred = [];
+    for (const evt of items) {
+      // A deferred event can be stale by the time it is flushed.
+      if (evt.gen <= this.fence) continue;
+      this._dispatchToPlayer(evt);
+    }
+  }
+
+  _onTurnEnd(info) {
+    const gen = Number.isInteger(info?.gen) ? info.gen : this.activeTurnGen;
+    for (const sentence of this.sentenceStream.flush()) this._emitSentence(gen, sentence);
+    if (gen <= this.fence) return;
+
+    this.activeTurnEnded = true;
+    this._dispatchToPlayer({ kind: "turn-end", gen, total: this.sentenceIndex });
     this.lastTurnInfo = {
       firstTokenMs: info?.firstTokenMs ?? null,
       totalMs: info?.totalMs ?? null,
       mode: info?.mode ?? null,
     };
 
-    if (this.sentenceIndex === 0) {
-      // Nothing to speak, so playback will never report a drain.
+    if (this.sentenceIndex === 0 && this.speakingGen === null) {
+      // Nothing to speak and nothing still playing, so playback will never
+      // report a drain.
       this.setState("listening", "empty response");
     }
+  }
+
+  /**
+   * Speak one line that did not come from the agent's answer — the Codex
+   * appendSpeech idea, used for the approval announcement. Injected into the
+   * live turn's sentence flow so synthesis, ducking and interrupt accounting
+   * all treat it as ordinary speech.
+   */
+  _speakServiceLine(text) {
+    if (this.stopped) return;
+    if (this.activeTurnGen <= this.fence) return;
+    if (this.state !== "thinking" && this.state !== "speaking") return;
+    this._emitSentence(this.activeTurnGen, text);
   }
 
   // ---------------------------------------------------- renderer -> session
 
   /** @param {{gen:number, playIndex:number, playing:boolean, drained:boolean}} report */
   onPlayerState(report) {
-    if (!report || report.gen !== this.turnGen) return;
+    if (!report) return;
+    // Reports can describe the current turn, the older answer still coming
+    // out of the speakers while a queued turn runs, or the player's reset
+    // after an interrupt (which reports with the fence generation, and is the
+    // proof that playback actually stopped); anything else is stale.
+    if (
+      report.gen !== this.activeTurnGen &&
+      report.gen !== this.speakingGen &&
+      report.gen !== this.turnGen
+    ) {
+      return;
+    }
     this.player = report;
 
-    if (report.playing && this.state === "thinking") {
+    if (report.playing && this.state === "thinking" && report.gen === this.activeTurnGen) {
       this.setState("speaking", `sentence ${report.playIndex}`);
     }
-    if (report.drained && (this.state === "speaking" || this.state === "thinking")) {
-      this.setState("listening", "playback drained");
+    if (report.drained) {
+      if (report.gen === this.speakingGen) {
+        // The speakers are free; hand them to whichever turn was waiting.
+        this.speakingGen = null;
+        this._flushDeferred();
+      }
+      if (
+        report.gen === this.activeTurnGen &&
+        (this.state === "speaking" || this.state === "thinking")
+      ) {
+        this.setState("listening", "playback drained");
+      } else if (
+        this.speakingGen === null &&
+        this.activeTurnEnded &&
+        this.sentenceIndex === 0 &&
+        (this.state === "speaking" || this.state === "thinking")
+      ) {
+        // A queued turn finished with nothing to say while the previous
+        // answer was still audible: the drain just heard belongs to the old
+        // generation, and no drain will ever arrive for the empty one.
+        this.setState("listening", "empty response after drain");
+      }
     }
   }
 
@@ -328,12 +478,22 @@ class ConverseSession {
   interrupt(reason) {
     const from = this.state;
     this.turnGen += 1;
+    // Everything up to and including this moment is dead: the streaming turn,
+    // and any follow-up still queued behind it.
+    this.fence = this.turnGen;
     this.sentenceStream = new SentenceStream();
 
     // Record what the user actually heard vs. what was cut off, so the next
     // turn can hand the agent that context. playIndex is the sentence that was
-    // playing (partially heard); everything after it was never spoken.
-    const sentences = (this.lastResponse && this.lastResponse.sentences) || [];
+    // playing (partially heard); everything after it was never spoken. The
+    // sentences are looked up by the generation the PLAYER was on — with a
+    // queued turn live, lastResponse already belongs to a newer generation
+    // than the audio that just got cut.
+    const playerGen = this.player && Number.isInteger(this.player.gen) ? this.player.gen : null;
+    const sentences =
+      (playerGen !== null && this.sentencesByGen.get(playerGen)) ||
+      (this.lastResponse && this.lastResponse.sentences) ||
+      [];
     if (from === "speaking" && sentences.length > 0) {
       const idx =
         this.player && Number.isInteger(this.player.playIndex) ? this.player.playIndex : 0;
@@ -345,6 +505,10 @@ class ConverseSession {
     } else if (from === "thinking") {
       this.pendingInterrupt = { heard: [], cutOff: null, unheard: sentences.slice() };
     }
+
+    // Whatever was waiting for the speakers died with the turn it belonged to.
+    this.speakingGen = null;
+    this.deferred = [];
 
     this.lastInterrupt = { at: Date.now(), reason, from, playerWas: this.player };
     this.send("converse-interrupt", { gen: this.turnGen, reason });
@@ -375,6 +539,9 @@ class ConverseSession {
     if (this.stopped) return this.getState();
     this.stopped = true;
     this.turnGen += 1;
+    this.fence = this.turnGen;
+    this.speakingGen = null;
+    this.deferred = [];
     if (this.agent) this.agent.stop();
     if (this.relay) {
       const finalState = this.getState();

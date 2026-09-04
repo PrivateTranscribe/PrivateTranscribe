@@ -7,7 +7,7 @@ import {
   resolveSpokenLanguages,
 } from "../utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
-import { DEFAULT_KOKORO_VOICE_ID, READ_ALOUD_VOICE_STORAGE_KEY } from "../models/kokoroVoices";
+import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../models/kokoroVoices";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -913,7 +913,7 @@ export function useSettings() {
   // key straight out of localStorage right before it speaks, so a JSON-quoted
   // copy would reach Kokoro as `"af_heart"` and be rejected as an unknown voice.
   const [readAloudVoice, setReadAloudVoice] = useLocalStorage(
-    READ_ALOUD_VOICE_STORAGE_KEY,
+    VOICE_STORAGE_KEY,
     DEFAULT_KOKORO_VOICE_ID,
     {
       serialize: String,

@@ -261,6 +261,17 @@ class IPCHandlers {
     this.kokoroManager = managers.kokoroManager || null;
     this.selectionCapture = managers.selectionCapture || null;
     this.windowManager = managers.windowManager;
+    // The in-place highlight tells the overlay when the sentence is visible
+    // where it lives, so the overlay can drop its own copy of it.
+    this.readAloudHighlight = managers.readAloudHighlight || null;
+    if (this.readAloudHighlight) {
+      this.readAloudHighlight.onActiveChange = (active) => {
+        const overlay = this.windowManager?.mainWindow;
+        if (overlay && !overlay.isDestroyed()) {
+          safeSend(overlay.webContents, "readaloud-highlight", { active: Boolean(active) });
+        }
+      };
+    }
     this.updateManager = managers.updateManager;
     this.windowsKeyManager = managers.windowsKeyManager;
     this.actionEngineManager = managers.actionEngineManager || null;
@@ -1388,13 +1399,30 @@ class IPCHandlers {
       return requireKokoro().splitSentences(text);
     });
 
-    ipcMain.handle("readaloud-synth", async (_event, { text, voice, speed } = {}) => {
-      return requireKokoro().synthesize(text, { voice, speed });
-    });
+    ipcMain.handle(
+      "readaloud-synth",
+      async (_event, { text, voice, speed, priority, epoch, channel } = {}) => {
+        // priority/epoch/channel steer the client's queue (interactive synths
+        // jump queued prefetch, stale epochs are dropped); the engine itself
+        // only ever sees text, voice and speed.
+        return requireKokoro().synthesize(text, { voice, speed, priority, epoch, channel });
+      }
+    );
 
     // Capture path shared with the Read Aloud global shortcut; see
     // readSelectionAndSpeak().
     ipcMain.handle("readaloud-read-selection", async () => this.readSelectionAndSpeak());
+
+    // The overlay's player reporting where it is, sentence by sentence, so the
+    // in-place highlight can follow it. Fire-and-forget on the renderer side.
+    ipcMain.handle("readaloud-sentence", async (_event, payload) => {
+      if (!this.readAloudHighlight) return { ok: false };
+      await this.readAloudHighlight.onSentence(payload || {});
+      return { ok: true };
+    });
+    ipcMain.handle("readaloud-highlight-status", async () =>
+      this.readAloudHighlight ? this.readAloudHighlight.getStatus() : { supported: false }
+    );
 
     // Exposes the real non-English guard on its own, so tests can exercise the
     // actual main-process decision (dynamic import and all) without desktop
@@ -1445,6 +1473,9 @@ class IPCHandlers {
         this.kokoroManager.loadEngine().catch((error) => {
           debugLogger.warn("Read Aloud engine pre-warm failed", { error: error?.message });
         });
+        // Same idea for the in-place highlight's worker: its first anchor
+        // must not wait on a PowerShell start and two assembly loads.
+        this.readAloudHighlight?.start();
       }
 
       return this.readAloudHotkey.apply({ enabled, hotkey });
@@ -3003,6 +3034,11 @@ class IPCHandlers {
 
     if (overlay && !overlay.isDestroyed()) {
       if (result.text && !languageGuard?.block) {
+        // Only a real selection is on screen somewhere; a clipboard fallback
+        // is not. Not awaited: the first spoken word must not wait for UIA.
+        if (result.source === "selection" && this.readAloudHighlight) {
+          void this.readAloudHighlight.anchor();
+        }
         safeSend(overlay.webContents, "readaloud-speak", {
           text: result.text,
           source: result.source,

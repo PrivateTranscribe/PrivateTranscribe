@@ -12,10 +12,13 @@ import { expect, test } from "./fixtures/electron-app";
  * replaced them, so it cannot quietly come apart again:
  *
  *   1. Idle, the overlay is the button and nothing else.
- *   2. Every surface the overlay shows is a row in one fixed-width column.
- *   3. The bottom row is DOCKED to the button - it overlaps the button's cap
- *      rather than floating a gap above it - and the column is centred on the
- *      button, so the two read as one silhouette.
+ *   2. Every surface the overlay shows is a row in one column, and every row
+ *      is a STATUS capsule: it hugs its words and never exceeds the column.
+ *      (A PANEL shape - full column width - is kept in the helper for any
+ *      row that ever needs one; today none does.)
+ *   3. The bottom row floats a fixed, small gap above the button's cap - never
+ *      touching it, never overlapping it - and every row is centred on the
+ *      button, so the pair reads as one control and its caption.
  *
  * It is also where the gate's evidence screenshots come from, which is why
  * each state is captured as well as asserted.
@@ -26,7 +29,7 @@ const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Mirrors the constants in src/App.jsx. A change here is a change of design. */
 const COLUMN_W = 352;
-const DOCK_OVERLAP = 10;
+const BUTTON_GAP = 8;
 
 const FIVE_SENTENCES = [
   "The first sentence mentions a paddleboat.",
@@ -74,7 +77,11 @@ async function sendToOverlay(
  * The whole gate in one assertion: this row belongs to the column, and the
  * column is attached to the button.
  */
-async function expectDockedToButton(overlayWindow: Page, row: ReturnType<Page["getByTestId"]>) {
+async function expectDockedToButton(
+  overlayWindow: Page,
+  row: ReturnType<Page["getByTestId"]>,
+  { shape }: { shape: "panel" | "status" }
+) {
   // Every row grows out of the anchor on its way in. Measuring mid-entrance
   // measures the scale the row is passing through, not the one it lands on.
   await row.evaluate(async (element) => {
@@ -90,17 +97,28 @@ async function expectDockedToButton(overlayWindow: Page, row: ReturnType<Page["g
   expect(buttonBox, "the dictation button has no box to measure").not.toBeNull();
   if (!rowBox || !buttonBox) return;
 
-  // One column width, in every state, so the slot never resizes under the user.
-  expect(Math.round(rowBox.width), "row width is the column width").toBe(COLUMN_W);
+  if (shape === "panel") {
+    // One column width, in every state, so the slot never resizes under the user.
+    expect(Math.round(rowBox.width), "panel width is the column width").toBe(COLUMN_W);
+  } else {
+    // A status row is its words on a capsule: narrower than the column, never
+    // wider. Stretched to the column it left a dead rail either side of two
+    // words, the nit both critics recorded when the column first landed.
+    expect(Math.round(rowBox.width), "status row stays inside the column").toBeLessThanOrEqual(
+      COLUMN_W
+    );
+    expect(rowBox.width, "status row hugs its words").toBeLessThan(COLUMN_W);
+  }
 
   // Centred on the button: the button is the anchor the column grows from.
   const rowCentre = rowBox.x + rowBox.width / 2;
   const buttonCentre = buttonBox.x + buttonBox.width / 2;
   expect(Math.abs(rowCentre - buttonCentre), "column is centred on the button").toBeLessThan(1.5);
 
-  // Docked, not floating: the row's bottom edge sits INSIDE the button's cap.
-  const overlap = rowBox.y + rowBox.height - buttonBox.y;
-  expect(Math.round(overlap), "row overlaps the button's cap").toBe(DOCK_OVERLAP);
+  // A constant hair of air above the cap: the borders never cross, and the
+  // gap is the same for a capsule and a panel.
+  const gap = buttonBox.y - (rowBox.y + rowBox.height);
+  expect(Math.round(gap), "row floats the fixed gap above the button's cap").toBe(BUTTON_GAP);
 }
 
 test.describe("overlay unification", () => {
@@ -121,8 +139,8 @@ test.describe("overlay unification", () => {
 
     const notice = overlayWindow.getByTestId("readaloud-overlay-notice");
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveText("Nothing selected");
-    await expectDockedToButton(overlayWindow, notice);
+    await expect(notice).toHaveText("Nothing selected to read aloud");
+    await expectDockedToButton(overlayWindow, notice, { shape: "status" });
 
     await captureEvidence(overlayWindow, "overlay-unified-notice-empty.png");
   });
@@ -139,7 +157,7 @@ test.describe("overlay unification", () => {
     const notice = overlayWindow.getByTestId("readaloud-overlay-notice");
     await expect(notice).toBeVisible();
     await expect(notice).toHaveText("Looks like Danish, Read Aloud speaks English only");
-    await expectDockedToButton(overlayWindow, notice);
+    await expectDockedToButton(overlayWindow, notice, { shape: "status" });
 
     await captureEvidence(overlayWindow, "overlay-unified-notice-nonenglish.png");
   });
@@ -167,9 +185,9 @@ test.describe("overlay unification", () => {
       await expect(player).toBeVisible({ timeout: 60_000 });
       await expect(sentenceLine).toBeVisible({ timeout: 60_000 });
 
-      // The two-row player and the one-row notice are the same column width and
-      // dock the same way — that is what makes them one family rather than two.
-      await expectDockedToButton(overlayWindow, player);
+      // The player and the notice hug their words the same way and float the
+      // same way — that is what makes them one family rather than two.
+      await expectDockedToButton(overlayWindow, player, { shape: "status" });
       await captureEvidence(overlayWindow, "overlay-unified-reading.png");
 
       await overlayWindow.getByRole("button", { name: "Pause reading" }).click();
@@ -181,7 +199,7 @@ test.describe("overlay unification", () => {
         if (active instanceof HTMLElement) active.blur();
       });
       await expect(player).toContainText("Paused");
-      await expectDockedToButton(overlayWindow, player);
+      await expectDockedToButton(overlayWindow, player, { shape: "status" });
       await captureEvidence(overlayWindow, "overlay-unified-paused.png");
 
       await overlayWindow.evaluate(() => (window as any).__readAloudTest.stop());

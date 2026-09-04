@@ -17,6 +17,9 @@ const builderConfig = JSON.parse(
 const workflows = [
   ".github/workflows/build-windows.yml",
   ".github/workflows/release-production.yml",
+  // The Store rejects unsigned installers outright, so this one is not optional
+  // either — it just ships to a different destination.
+  ".github/workflows/build-store.yml",
 ];
 
 /**

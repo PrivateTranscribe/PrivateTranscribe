@@ -21,13 +21,18 @@ import {
   HEAD_KEEP_TRAIL_MS,
   TAIL_KEEP_LEAD_MS,
 } from "./readAloudFirstChunk";
+import { DEFAULT_KOKORO_VOICE_ID } from "../models/kokoroVoices";
 
 /** Sentences to synthesize ahead of the one playing, so seams stay gapless. */
 const LOOKAHEAD = 2;
-const DEFAULT_VOICE = "af_heart";
 
 export class ReadAloudPlayer {
-  constructor({ api = null, voice = DEFAULT_VOICE, speed = 1.0, disableFirstChunk } = {}) {
+  constructor({
+    api = null,
+    voice = DEFAULT_KOKORO_VOICE_ID,
+    speed = 1.0,
+    disableFirstChunk,
+  } = {}) {
     this.api = api || (typeof window === "undefined" ? null : window.electronAPI);
     this.voice = voice;
     this.speed = speed;
@@ -177,7 +182,7 @@ export class ReadAloudPlayer {
 
   // -------------------------------------------------------------- synthesis
 
-  async ensure(i) {
+  async ensure(i, { priority = "interactive" } = {}) {
     if (i < 0 || i >= this.sentences.length) return null;
     if (this.cache.has(i)) return this.cache.get(i);
     if (this.inflight.has(i)) return this.inflight.get(i);
@@ -199,6 +204,12 @@ export class ReadAloudPlayer {
           text: this.sentences[i],
           voice: this.voice,
           speed: this.speed,
+          // Queue steering for the main-process engine: the sentence being
+          // waited on outranks lookahead, and a bumped epoch retires queued
+          // synths from the previous press.
+          priority,
+          epoch,
+          channel: "readaloud",
         });
       })
       .then(({ pcm, sampleRate, synthMs }) => {
@@ -218,8 +229,13 @@ export class ReadAloudPlayer {
       })
       .catch((err) => {
         this.inflight.delete(i);
-        this.error = String(err?.message || err);
-        this.status = "error";
+        // A synth from a superseded press (stale epoch, or any late failure
+        // after the listener moved on) must not paint the current read as
+        // broken.
+        if (epoch === this.epoch) {
+          this.error = String(err?.message || err);
+          this.status = "error";
+        }
         throw err;
       });
 
@@ -247,7 +263,17 @@ export class ReadAloudPlayer {
     const job = this.ensureEngine()
       .then(() => {
         if (recordTimings) this.lastEngineWaitMs = Date.now() - engineWaitStarted;
-        return this.api.readAloudSynth({ text, voice: this.voice, speed: this.speed });
+        return this.api.readAloudSynth({
+          text,
+          voice: this.voice,
+          speed: this.speed,
+          // The head is what the press is waiting on; the tail plays a
+          // sentence-length later, so it queues as lookahead and cannot block
+          // the next press's head.
+          priority: key === "head" ? "interactive" : "prefetch",
+          epoch,
+          channel: "readaloud",
+        });
       })
       .then(({ pcm, sampleRate, synthMs }) => {
         const ctx = this.getContext();
@@ -288,7 +314,7 @@ export class ReadAloudPlayer {
 
   prefetch() {
     for (let k = 1; k <= LOOKAHEAD; k++) {
-      this.ensure(this.index + k)?.catch?.(() => {
+      this.ensure(this.index + k, { priority: "prefetch" })?.catch?.(() => {
         // Prefetch failures surface when that sentence is actually reached.
       });
     }

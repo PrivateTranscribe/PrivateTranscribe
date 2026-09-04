@@ -72,17 +72,26 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["autostart", "tray", "minimized", "window", "boot"],
   },
   {
-    label: "Prefer Built-in Microphone",
+    label: "Microphone",
     group: "Audio Input",
     page: "settings",
-    section: "general",
-    keywords: ["mic", "microphone", "input device", "headset"],
+    section: "permissions",
+    keywords: [
+      "mic",
+      "microphone",
+      "input device",
+      "headset",
+      "sound",
+      "audio input",
+      "built-in",
+      "test",
+    ],
   },
   {
     label: "Keep microphone ready",
     group: "Audio Input",
     page: "settings",
-    section: "general",
+    section: "permissions",
     keywords: ["mic", "microphone", "warm", "latency", "delay"],
   },
 
@@ -331,6 +340,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     page: "read-aloud",
     keywords: ["hotkey", "shortcut", "keyboard", "tts"],
   },
+  {
+    label: "Voice",
+    group: "Read Aloud",
+    page: "read-aloud",
+    keywords: ["voice", "accent", "british", "american", "speaker", "kokoro", "tts"],
+  },
 
   // ── Converse ──────────────────────────────────────────────────────────────
   {
@@ -340,10 +355,34 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["claude code", "agent", "assistant", "converse"],
   },
   {
-    label: "Mute my microphone while Claude Code speaks",
+    label: "Talk instead of typing",
     group: "Converse",
     page: "converse",
-    keywords: ["mic", "mute", "converse", "claude code", "feedback"],
+    keywords: ["voice", "mic", "microphone", "hands free", "converse", "speak", "dictate"],
+  },
+  {
+    label: "Where your voice is transcribed",
+    group: "Converse",
+    page: "converse",
+    keywords: ["voice", "local", "cloud", "privacy", "whisper", "converse", "transcription"],
+  },
+  {
+    label: "Pause that ends your turn",
+    group: "Converse",
+    page: "converse",
+    keywords: ["voice", "pause", "silence", "end of turn", "converse", "sensitivity"],
+  },
+  {
+    label: "Close my microphone while Claude Code speaks",
+    group: "Converse",
+    page: "converse",
+    keywords: ["mic", "mute", "converse", "claude code", "feedback", "echo"],
+  },
+  {
+    label: "Voice",
+    group: "Converse",
+    page: "converse",
+    keywords: ["voice", "accent", "british", "american", "speaker", "kokoro", "tts", "converse"],
   },
 ];
 

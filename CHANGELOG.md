@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.17.0 - 2026-09-04
+
+### Added
+
+- Converse can be talked to instead of typed at. With a session running the microphone stays open, each spoken turn is found by its own pauses, and speaking over a reply cuts it off. It never opens the microphone without a running session, and it never answers a permission question for you.
+- Converse gives spoken progress notes while it works, queues what you say while it is busy and answers it next, and speaks its permission questions so you hear it is waiting even when you are away from the window.
+- Read Aloud marks the sentence it is on where the text lives, in the source app, instead of repeating it in the overlay. Works in Notepad, Chrome and Edge, and follows the page when you scroll.
+- The microphone picker sits beside the microphone permission, lists every input by name, says which one the next dictation will open, and has a Test button that listens for four seconds and tells you what it heard.
+- The app tells you when a dictation was not pasted. A paste that fell back to the clipboard, a paste that only made it to History, and a total loss each get their own message, the last one carrying the text itself.
+- A toast explains the slow first dictation after launch while the model loads, and a dictation that fails because no model is downloaded now offers a button straight to the right Settings tab.
+- Groq gains Whisper Large v3 beside the turbo model, and the OpenAI list says which transcription model is current, which is superseded, and what each costs per minute.
+
+### Changed
+
+- One voice for the whole app. Read Aloud and Converse share the same voice setting, the voice list is grouped by accent with a preview on every row, and the letter grades are gone. The default voice is Lewis; anyone who already picked a voice keeps it.
+- The overlay's rows are text-only capsules that float above the dictation button, with a live dot and a thin progress line instead of icons, dividers and counts. The Read Aloud player is the same size as every other row.
+- Speech synthesis runs in its own low-priority process, so Read Aloud and Converse no longer make the rest of the machine stutter while they speak.
+- The Starter limit message opens Settings on the Pro tab instead of whatever tab was last open.
+
+### Fixed
+
+- The dictation overlay opens when the app starts with your PC. Tray only and Minimized launches left you with the tray icon and no floating button until the first hotkey press.
+- "Pause media while recording" really is off on Windows. The switch had been hidden but a saved preference could still pause and restart your video on every dictation.
+- The Action Engine's Open Terminal starter template opens a terminal on Windows instead of failing silently.
+
 ## 0.16.1 - 2026-08-30
 
 ### Added

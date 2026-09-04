@@ -181,6 +181,7 @@ const KNOWN_TRANSCRIPTION_MODELS = new Set([
   "gpt-4o-transcribe-diarize",
   "whisper-1",
   "whisper-large-v3-turbo",
+  "whisper-large-v3",
   "mixed",
 ]);
 

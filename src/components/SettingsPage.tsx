@@ -2379,24 +2379,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 </SettingsPanel>
               </div>
             )}
-
-            {/* Microphone */}
-            <div>
-              <SectionHeader
-                title="Audio Input"
-                description="Choose your preferred microphone and configure audio settings"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <MicrophoneSettings
-                    preferBuiltInMic={preferBuiltInMic}
-                    selectedMicDeviceId={selectedMicDeviceId}
-                    onPreferBuiltInChange={setPreferBuiltInMic}
-                    onDeviceSelect={setSelectedMicDeviceId}
-                  />
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
           </div>
         );
 
@@ -3119,6 +3101,25 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 onOpenPrivacySettings={permissionsHook.openMicPrivacySettings}
               />
             )}
+
+            {/* Audio input - the other half of "can it hear me", so it lives
+                beside the permission rather than buried in General. */}
+            <div>
+              <SectionHeader
+                title="Audio Input"
+                description="Choose which microphone dictation records from, and check that it hears you"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <MicrophoneSettings
+                    preferBuiltInMic={preferBuiltInMic}
+                    selectedMicDeviceId={selectedMicDeviceId}
+                    onPreferBuiltInChange={setPreferBuiltInMic}
+                    onDeviceSelect={setSelectedMicDeviceId}
+                  />
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
 
             {/* Linux paste tools info */}
             {platform === "linux" &&

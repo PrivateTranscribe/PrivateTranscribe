@@ -94,6 +94,12 @@ export type PrivateTranscribeOptions = {
   /** Extra environment variables for the launched app (overrides defaults). */
   appEnv: Record<string, string>;
   /**
+   * Extra command-line arguments for the launched app, placed before the app
+   * path. Lets a spec reproduce a login launch (`--launch-at-login
+   * --startup-mode=tray`) without touching the machine's Run key.
+   */
+  appArgs: string[];
+  /**
    * Exact contents to write to `analytics-consent.txt` before launch.
    *
    * The consent file is versioned, and an upgrade is the only way to reach the
@@ -311,6 +317,7 @@ type LaunchInputs = {
   consoleMessages: ConsoleEntry[];
   muteAudio: boolean;
   fakeAudioCaptureFile: string;
+  appArgs: string[];
 };
 
 /**
@@ -320,8 +327,15 @@ type LaunchInputs = {
  * cannot drift apart.
  */
 async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
-  const { env, userDataDir, fakeHomeDir, consoleMessages, muteAudio, fakeAudioCaptureFile } =
-    inputs;
+  const {
+    env,
+    userDataDir,
+    fakeHomeDir,
+    consoleMessages,
+    muteAudio,
+    fakeAudioCaptureFile,
+    appArgs,
+  } = inputs;
 
   const args = [
     `--user-data-dir=${userDataDir}`,
@@ -343,7 +357,7 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
     );
   }
 
-  args.push(".");
+  args.push(...appArgs, ".");
 
   const app = await electron.launch({
     cwd: REPO_ROOT,
@@ -360,7 +374,10 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
   // so this takes effect for every later lookup; specs reload the window
   // they assert on, which re-runs the picker's model query.
   if (fakeHomeDir) {
-    await app.evaluate(({ app: electronApp }, dir) => electronApp.setPath("home", dir), fakeHomeDir);
+    await app.evaluate(
+      ({ app: electronApp }, dir) => electronApp.setPath("home", dir),
+      fakeHomeDir
+    );
   }
 
   // Startup is only finished once both windows have loaded. Closing the app
@@ -435,6 +452,17 @@ async function ensureOnboarded(app: ElectronApplication, complete: boolean): Pro
     await page.reload({ waitUntil: "domcontentloaded" });
     page = await findWindow(app, (w) => isControlPanelUrl(w.url()), "control panel");
   }
+
+  // Converse's hands-free microphone ships on, so any spec that starts a
+  // session would otherwise open the developer's real microphone while they
+  // are sitting at the machine. A spec that wants it sets it back to "true"
+  // itself, and then had better be driving a fake capture device.
+  await page.evaluate(() => {
+    if (localStorage.getItem("converseVoiceEnabled") === null) {
+      localStorage.setItem("converseVoiceEnabled", "false");
+    }
+  });
+
   return page;
 }
 
@@ -453,6 +481,7 @@ export const test = base.extend<
 >({
   completeOnboarding: [true, { option: true }],
   appEnv: [{}, { option: true }],
+  appArgs: [[], { option: true }],
   seedConsentFile: ["denied", { option: true }],
   seedWhisperModels: [[], { option: true }],
   seedRealWhisperModels: [[], { option: true }],
@@ -508,7 +537,12 @@ export const test = base.extend<
 
     if (seedRealWhisperModels.length > 0) {
       const modelsDir = path.join(dir, ".cache", "PrivateTranscribe", "whisper-models");
-      const realModelsDir = path.join(os.homedir(), ".cache", "PrivateTranscribe", "whisper-models");
+      const realModelsDir = path.join(
+        os.homedir(),
+        ".cache",
+        "PrivateTranscribe",
+        "whisper-models"
+      );
       fs.mkdirSync(modelsDir, { recursive: true });
 
       for (const model of seedRealWhisperModels) {
@@ -568,6 +602,7 @@ export const test = base.extend<
       userDataDir,
       fakeHomeDir,
       appEnv,
+      appArgs,
       consoleMessages,
       seedKokoroModel,
       completeOnboarding,
@@ -602,6 +637,7 @@ export const test = base.extend<
       consoleMessages,
       muteAudio: seedKokoroModel,
       fakeAudioCaptureFile,
+      appArgs,
     };
 
     let app = await launchApp(inputs);

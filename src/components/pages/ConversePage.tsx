@@ -9,6 +9,8 @@ import {
   X,
   KeyRound,
   Check,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -18,9 +20,23 @@ import { SectionLabel } from "../ui/SectionLabel";
 import { SettingsRow } from "../ui/SettingsSection";
 import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { VoicePicker } from "../ui/VoicePicker";
+import { getTranscriptionProvider } from "../../models/ModelRegistry";
+import {
+  DEFAULT_KOKORO_VOICE_ID,
+  KOKORO_MODEL_ID,
+  VOICE_STORAGE_KEY,
+} from "../../models/kokoroVoices";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import type { ConversePermissionEntry, ConverseState } from "../../types/electron";
+import { useConverseVoice, type ConverseVoicePhase } from "../../hooks/useConverseVoice";
+import { END_OF_TURN_CHOICES, VAD_DEFAULT_END_OF_TURN_MS } from "../../utils/converseVad";
+import type {
+  ConversePermissionEntry,
+  ConverseState,
+  KokoroModelStatus,
+} from "../../types/electron";
 
 /**
  * Converse: talk to Claude Code about one project folder and hear the reply
@@ -135,7 +151,7 @@ function permissionVerdict(entry: ConversePermissionEntry): {
 type InterruptRecord = {
   at?: number;
   from?: string;
-  playerWas?: { playIndex?: number } | null;
+  playerWas?: { playIndex?: number; gen?: number } | null;
 };
 
 /**
@@ -343,6 +359,120 @@ function PermissionRecord({ entry }: { entry: ConversePermissionEntry }) {
   );
 }
 
+/** What the microphone is doing, in the words a listener needs. */
+const VOICE_PHASE_TEXT: Record<ConverseVoicePhase, string> = {
+  off: "Voice is off. Type below, or switch the microphone on.",
+  starting: "Opening the microphone.",
+  listening: "Listening. Say your piece, then pause and it sends.",
+  hearing: "Hearing you. Pause when you are done.",
+  transcribing: "Writing down what you said.",
+  muted: "Microphone closed while Claude Code speaks.",
+  error: "The microphone is not available.",
+};
+
+/** Bars in the level meter. Enough to read as a level, few enough to stay calm. */
+const METER_BARS = 14;
+
+/**
+ * The live microphone, as one row: whether it is open, what it can hear, and
+ * what it is doing with it. The meter is the proof — a status line that says
+ * "listening" while the bars stay flat is how a dead microphone goes unnoticed
+ * for a whole conversation.
+ */
+function VoiceBar({
+  phase,
+  level,
+  error,
+  notice,
+  enabled,
+  onToggle,
+  onRetry,
+}: {
+  phase: ConverseVoicePhase;
+  level: number;
+  error: string | null;
+  notice: string | null;
+  enabled: boolean;
+  onToggle: (next: boolean) => void;
+  onRetry: () => void;
+}) {
+  const live = phase === "listening" || phase === "hearing" || phase === "transcribing";
+  const lit = Math.round(Math.min(1, Math.max(0, level)) * METER_BARS);
+
+  return (
+    <div
+      data-testid="converse-voice"
+      data-phase={phase}
+      className="rounded-xl border border-border-subtle/50 bg-surface-raised/50 px-4 py-3 space-y-2"
+    >
+      <div className="flex items-center gap-3">
+        <Button
+          variant={enabled ? "default" : "outline"}
+          size="sm"
+          data-testid="converse-voice-toggle"
+          aria-pressed={enabled}
+          onClick={() => onToggle(!enabled)}
+          className="gap-1.5 shrink-0"
+        >
+          {enabled ? <Mic size={14} /> : <MicOff size={14} />}
+          {enabled ? "Voice on" : "Voice off"}
+        </Button>
+
+        {/* Only while the microphone is actually open. A meter beside "Voice
+            off" or an error would be measuring nothing. */}
+        <div
+          data-testid="converse-voice-level"
+          data-level={lit}
+          aria-hidden
+          className={`flex items-end gap-[3px] h-5 shrink-0 ${
+            phase === "off" || phase === "error" ? "hidden" : ""
+          }`}
+        >
+          {Array.from({ length: METER_BARS }, (_, index) => {
+            // Height rises across the row so a quiet room still reads as a
+            // shape rather than a flat line of identical dots.
+            const height = 6 + Math.round((index / (METER_BARS - 1)) * 12);
+            const on = live && index < lit;
+            return (
+              <span
+                key={index}
+                style={{ height }}
+                className={`w-[3px] rounded-full transition-colors duration-75 ${
+                  on ? "bg-primary" : "bg-border-subtle"
+                }`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Never truncated: the only long line here is the microphone error,
+            and the half of it that would be cut is the part that says what to
+            do about it. */}
+        <span
+          data-testid="converse-voice-state"
+          className={`min-w-0 flex-1 text-[12px] leading-relaxed ${
+            phase === "error" ? "text-warning" : "text-muted-foreground"
+          }`}
+        >
+          {phase === "error" && error ? error : VOICE_PHASE_TEXT[phase]}
+        </span>
+
+        {phase === "error" && (
+          <Button variant="outline" size="sm" onClick={onRetry} className="shrink-0">
+            Try again
+          </Button>
+        )}
+      </div>
+
+      {notice && phase !== "error" && (
+        <p className="text-[11px] text-warning" data-testid="converse-voice-notice">
+          {notice}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function ConversePage() {
   const isUnlocked = isFeatureUnlocked("converse");
 
@@ -352,6 +482,45 @@ export default function ConversePage() {
     "converseMuteWhileSpeaking",
     true
   );
+  /**
+   * Hands-free. On by default because this page is for talking, but it only
+   * ever opens the microphone while a session is actually running — starting
+   * the app never does.
+   */
+  const [voiceEnabled, setVoiceEnabled] = useLocalStorage<boolean>("converseVoiceEnabled", true);
+  const [endOfTurnMs, setEndOfTurnMs] = useLocalStorage<number>(
+    "converseEndOfTurnMs",
+    VAD_DEFAULT_END_OF_TURN_MS
+  );
+  /**
+   * The app's one voice, the same value the Read Aloud page writes. Stored raw,
+   * not JSON: the overlay's ConversePlayer reads this key straight out of
+   * localStorage at the start of every turn, and a quoted copy would reach
+   * Kokoro as `"bm_lewis"` and be rejected as an unknown voice.
+   */
+  const [voiceId, setVoiceId] = useLocalStorage(VOICE_STORAGE_KEY, DEFAULT_KOKORO_VOICE_ID, {
+    serialize: String,
+    deserialize: String,
+  });
+
+  /**
+   * Whether the voice model is on this machine. Converse cannot speak without
+   * it, so the picker is only offered when previewing a voice would actually
+   * make a sound — the same rule the Read Aloud page uses.
+   */
+  const [voiceModelInstalled, setVoiceModelInstalled] = useState(false);
+
+  // Read, never written here: speech goes wherever the app's own transcription
+  // setting sends it. The page says which of the two it is rather than claiming
+  // "local" for a user who has chosen a cloud provider.
+  const [useLocalWhisper] = useLocalStorage("useLocalWhisper", false, {
+    serialize: String,
+    deserialize: (value) => value === "true",
+  });
+  const [cloudTranscriptionProvider] = useLocalStorage("cloudTranscriptionProvider", "openai", {
+    serialize: String,
+    deserialize: String,
+  });
 
   const [sessionActive, setSessionActive] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -403,10 +572,21 @@ export default function ConversePage() {
   /** Fold one poll of the session state into the transcript. */
   const applyState = useCallback((next: ConverseState) => {
     const utterance = next.lastUtterance ?? null;
-    const sentences = next.lastResponse?.sentences ?? [];
+
+    // All recent replies, by generation — not just the current turn's. A short
+    // queued turn can finish inside one poll interval; building from the
+    // per-generation history means its reply still lands in the transcript.
+    const responses: { gen: number; sentences: string[] }[] =
+      next.recentResponses ??
+      (next.lastResponse && next.lastResponse.gen !== undefined
+        ? [{ gen: next.lastResponse.gen, sentences: next.lastResponse.sentences }]
+        : utterance && next.lastResponse
+          ? [{ gen: utterance.gen, sentences: next.lastResponse.sentences }]
+          : []);
 
     // An interrupt bumps the turn generation while the reply is still on
-    // screen, so the cut is recorded against the utterance that produced it.
+    // screen, so the cut is recorded against the turn that was audibly
+    // playing — named by the player report captured at the interrupt.
     const interrupt = (next.lastInterrupt ?? null) as InterruptRecord | null;
     let mark: { gen: number; index: number } | null = null;
     if (
@@ -415,8 +595,9 @@ export default function ConversePage() {
       interrupt.at !== lastInterruptAtRef.current
     ) {
       lastInterruptAtRef.current = interrupt.at;
-      if (interrupt.from === "speaking" && utterance) {
-        mark = { gen: utterance.gen, index: interrupt.playerWas?.playIndex ?? 0 };
+      const cutGen = interrupt.playerWas?.gen ?? utterance?.gen;
+      if (interrupt.from === "speaking" && cutGen !== undefined) {
+        mark = { gen: cutGen, index: interrupt.playerWas?.playIndex ?? 0 };
       }
     }
     const cutMark = mark;
@@ -441,20 +622,26 @@ export default function ConversePage() {
         updated = [...updated, { kind: "user", gen: utterance.gen, text: utterance.text }];
       }
 
-      if (utterance && sentences.length > 0) {
+      for (const response of responses) {
+        if (response.sentences.length === 0) continue;
         const at = updated.findIndex(
-          (turn) => turn.kind === "assistant" && turn.gen === utterance.gen
+          (turn) => turn.kind === "assistant" && turn.gen === response.gen
         );
         if (at === -1) {
           updated = [
             ...updated,
-            { kind: "assistant", gen: utterance.gen, sentences: [...sentences], cutIndex: null },
+            {
+              kind: "assistant",
+              gen: response.gen,
+              sentences: [...response.sentences],
+              cutIndex: null,
+            },
           ];
         } else {
           const existing = updated[at] as Extract<TranscriptTurn, { kind: "assistant" }>;
-          if (existing.sentences.length !== sentences.length) {
+          if (existing.sentences.length !== response.sentences.length) {
             updated = updated.slice();
-            updated[at] = { ...existing, sentences: [...sentences] };
+            updated[at] = { ...existing, sentences: [...response.sentences] };
           }
         }
       }
@@ -486,6 +673,26 @@ export default function ConversePage() {
       return updated;
     });
   }, []);
+
+  // Asked once, on arrival. The answer only gates a picker, so a failed read is
+  // treated as "not installed" rather than retried — the start button already
+  // says so properly if the model is really missing.
+  useEffect(() => {
+    if (!isUnlocked) return undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const status: KokoroModelStatus | undefined =
+          await window.electronAPI?.readAloudCheckModelStatus?.(KOKORO_MODEL_ID);
+        if (!cancelled) setVoiceModelInstalled(Boolean(status?.installed));
+      } catch {
+        if (!cancelled) setVoiceModelInstalled(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isUnlocked]);
 
   // A session started before this page was opened is still the live one, so the
   // page joins it instead of pretending nothing is running.
@@ -557,6 +764,14 @@ export default function ConversePage() {
     [permissions]
   );
 
+  /**
+   * A pending question is not the agent thinking — it is the agent stopped,
+   * waiting on this window. The state machine has no word for that (nothing
+   * about the turn has changed), so the label says it instead of `data-state`,
+   * which stays the session's own state and nothing else.
+   */
+  const waitingOnUser = sessionActive && pendingPermissions.length > 0;
+
   // Only runs while something is actually waiting, so an idle session does no
   // work per second.
   useEffect(() => {
@@ -613,17 +828,23 @@ export default function ConversePage() {
     }
   }, [projectPath, rememberProject]);
 
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
-    if (!text) return;
+  /**
+   * The one way a turn leaves this page. The microphone calls exactly what the
+   * text box calls, so a spoken turn and a typed one are the same event as far
+   * as the session, the transcript, and the agent are concerned.
+   *
+   * @returns the message when it was refused, so the caller can put it back
+   *   where the user can see it; null when it was accepted.
+   */
+  const submitUtterance = useCallback(async (text: string): Promise<string | null> => {
+    const utterance = text.trim();
+    if (!utterance) return null;
     setSendError(null);
-    setDraft("");
     try {
-      const result = await window.electronAPI.converseSendUtterance(text);
+      const result = await window.electronAPI.converseSendUtterance(utterance);
       if (!result?.accepted) {
-        setDraft(text);
         setSendError(refusalMessage(result?.reason));
-        return;
+        return utterance;
       }
       // Echoed straight away rather than waiting for the next poll, so the
       // message appears in the transcript as it is sent.
@@ -632,14 +853,23 @@ export default function ConversePage() {
         setTranscript((current) =>
           current.some((turn) => turn.kind === "user" && turn.gen === gen)
             ? current
-            : [...current, { kind: "user", gen, text }]
+            : [...current, { kind: "user", gen, text: utterance }]
         );
       }
+      return null;
     } catch (error) {
-      setDraft(text);
       setSendError(error instanceof Error ? error.message : String(error));
+      return utterance;
     }
-  }, [draft]);
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    const refused = await submitUtterance(text);
+    if (refused) setDraft(refused);
+  }, [draft, submitUtterance]);
 
   const handleInterrupt = useCallback(async () => {
     try {
@@ -648,6 +878,47 @@ export default function ConversePage() {
       // The session is already gone; the next poll clears the view.
     }
   }, []);
+
+  /**
+   * Speaking over the reply cuts it off, in the same call the overlay's own
+   * Interrupt button makes. Fired at the first detected syllable rather than
+   * at the end of the sentence, because a reply that keeps talking for another
+   * two seconds is exactly what makes a voice assistant feel deaf.
+   */
+  const handleVoiceSpeechStart = useCallback(() => {
+    // A question on screen means the agent is already stopped, waiting on a
+    // button. Interrupting then would bump the turn while the harness is still
+    // holding its own tool call open, so talking near it changes nothing.
+    if (waitingOnUser) return;
+    // Only audible speech is interrupted. Talking while the agent is merely
+    // working queues a follow-up instead of throwing the answer away — the
+    // way Codex steers a running task rather than killing it.
+    if (!isSpeaking) return;
+    void window.electronAPI?.converseInterrupt?.("the user started speaking");
+  }, [isSpeaking, waitingOnUser]);
+
+  const handleVoiceUtterance = useCallback(
+    (text: string) => {
+      if (waitingOnUser) {
+        setSendError("Answer the question above first. What you just said was not sent.");
+        return;
+      }
+      void submitUtterance(text);
+    },
+    [submitUtterance, waitingOnUser]
+  );
+
+  const voice = useConverseVoice({
+    enabled: voiceEnabled,
+    active: sessionActive,
+    // Only while sound is actually coming out. Muting through `thinking` as
+    // well would swallow the "no, stop" that has to land while the agent is
+    // still working.
+    muted: muteWhileSpeaking && isSpeaking,
+    endOfTurnMs,
+    onUtterance: handleVoiceUtterance,
+    onSpeechStart: handleVoiceSpeechStart,
+  });
 
   const handleStop = useCallback(async () => {
     try {
@@ -677,12 +948,24 @@ export default function ConversePage() {
   }, [liveState]);
 
   /**
-   * A pending question is not the agent thinking — it is the agent stopped,
-   * waiting on this window. The state machine has no word for that (nothing
-   * about the turn has changed), so the label says it instead of `data-state`,
-   * which stays the session's own state and nothing else.
+   * Where a spoken turn is actually transcribed. Converse uses the app's own
+   * transcription setting, so this has to be read out rather than asserted:
+   * "stays on this machine" is false for a user who has chosen a cloud
+   * provider, and that is the one claim this app cannot get wrong.
    */
-  const waitingOnUser = sessionActive && pendingPermissions.length > 0;
+  const speechRoute = useMemo(() => {
+    if (useLocalWhisper) {
+      return {
+        short: "On this machine",
+        line: "Your voice is transcribed on this machine.",
+      };
+    }
+    const name = getTranscriptionProvider(cloudTranscriptionProvider)?.name || "a cloud provider";
+    return {
+      short: `${name}, over the internet`,
+      line: `Your voice is sent to ${name} to be transcribed.`,
+    };
+  }, [useLocalWhisper, cloudTranscriptionProvider]);
 
   const statusHelp = (() => {
     if (waitingOnUser) {
@@ -716,7 +999,7 @@ export default function ConversePage() {
           <BetaBadge locked={!isUnlocked} />
         </div>
         <p className="text-sm text-muted-foreground">
-          Ask Claude Code about one project folder and hear the answer spoken by the local voice
+          Talk to Claude Code about one project folder and hear the answer spoken back
         </p>
       </div>
 
@@ -824,11 +1107,82 @@ export default function ConversePage() {
 
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Mute my microphone while Claude Code speaks"
-                      description="Stops the spoken reply being picked up as your next sentence. Saved now, used once voice input reaches this page."
+                      label="Talk instead of typing"
+                      description="Opens the microphone while the session runs. Say something, pause, and it is transcribed on this machine and sent."
+                    >
+                      <Toggle checked={voiceEnabled} onChange={setVoiceEnabled} />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+
+                  {voiceEnabled && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="Where your voice is transcribed"
+                        description="Converse uses the transcription engine chosen in Settings. Nothing here changes it."
+                      >
+                        <span
+                          className="text-sm text-foreground"
+                          data-testid="converse-speech-route"
+                        >
+                          {speechRoute.short}
+                        </span>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
+
+                  {voiceEnabled && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="Pause that ends your turn"
+                        description="How long you can go quiet mid-sentence before what you said is sent."
+                      >
+                        <Select
+                          value={String(endOfTurnMs)}
+                          onValueChange={(value) => setEndOfTurnMs(Number(value))}
+                        >
+                          <SelectTrigger className="w-40" data-testid="converse-end-of-turn-select">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {END_OF_TURN_CHOICES.map((choice) => (
+                              <SelectItem key={choice.value} value={String(choice.value)}>
+                                {choice.label} · {(choice.value / 1000).toFixed(1)}s
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
+
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Close my microphone while Claude Code speaks"
+                      description="Stops the spoken reply being heard as your next sentence. With it off you can talk over the reply and it stops mid-word."
                     >
                       <Toggle checked={muteWhileSpeaking} onChange={setMuteWhileSpeaking} />
                     </SettingsRow>
+                  </SettingsPanelRow>
+
+                  {/* Same gate as Read Aloud's: without the model nothing here
+                      can make a sound, and an inert list of 28 names would only
+                      mislead. */}
+                  <SettingsPanelRow>
+                    {voiceModelInstalled ? (
+                      <VoicePicker
+                        value={voiceId}
+                        onChange={setVoiceId}
+                        testIdPrefix="converse"
+                        ariaLabel="Voice"
+                      />
+                    ) : (
+                      <SettingsRow
+                        label="Voice"
+                        description="Available once the voice model is on this machine. It is downloaded on the Read Aloud page."
+                      >
+                        <span className="text-sm text-muted-foreground">Not installed</span>
+                      </SettingsRow>
+                    )}
                   </SettingsPanelRow>
 
                   <SettingsPanelRow>
@@ -1003,33 +1357,46 @@ export default function ConversePage() {
             )}
           </div>
 
+          <VoiceBar
+            phase={voice.phase}
+            level={voice.level}
+            error={voice.error}
+            notice={voice.notice}
+            enabled={voiceEnabled}
+            onToggle={setVoiceEnabled}
+            onRetry={voice.retry}
+          />
+
           {sendError && <p className="text-[12px] text-destructive">{sendError}</p>}
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
+              {/* Deliberately usable mid-turn: a message sent while Claude
+                  Code is working or speaking is queued and answered next,
+                  instead of bouncing with "busy". */}
               <Input
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void handleSend();
                 }}
-                placeholder="Type to Claude Code"
-                disabled={isThinking || isSpeaking}
+                placeholder={
+                  isThinking || isSpeaking
+                    ? "Type a follow-up, sent when this turn ends"
+                    : "Type to Claude Code"
+                }
                 className="flex-1"
                 data-testid="converse-input"
               />
-              <Button
-                onClick={handleSend}
-                disabled={!draft.trim() || isThinking || isSpeaking}
-                className="gap-1.5"
-              >
+              <Button onClick={handleSend} disabled={!draft.trim()} className="gap-1.5">
                 <Send size={14} />
                 Send
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground/70">
-              Voice input reaches this page in a later build. For now the conversation is typed and
-              the reply is spoken.
+              {waitingOnUser
+                ? "Permission questions are answered with the buttons above, never by voice."
+                : `Speaking and typing go to the same place. ${speechRoute.line}`}
             </p>
           </div>
         </div>

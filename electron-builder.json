@@ -88,6 +88,10 @@
       "to": "readaloud-copy-worker.ps1"
     },
     {
+      "from": "resources/readaloud-highlight-worker.ps1",
+      "to": "readaloud-highlight-worker.ps1"
+    },
+    {
       "from": "resources/bin/",
       "to": "bin/",
       "filter": [

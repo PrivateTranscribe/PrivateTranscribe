@@ -99,10 +99,15 @@ test.describe("read aloud non-english guard", () => {
 
     await expect(notice).toBeVisible();
     await expect(notice).toHaveText("Looks like Danish, Read Aloud speaks English only");
+    // Captured once its 180ms entrance has landed and before its 2.5s life
+    // ends: taken any earlier the evidence is a half-faded ghost (it was,
+    // twice), any later it is an empty window.
+    await notice.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    await captureEvidence(overlayWindow, "readaloud-nonenglish-notice.png");
     // Nothing is or was being spoken - the guard runs before synthesis.
     await expect(overlayWindow.getByTestId("readaloud-overlay-player")).toHaveCount(0);
-
-    await captureEvidence(overlayWindow, "readaloud-nonenglish-notice.png");
 
     await expect(notice).toHaveCount(0, { timeout: 8_000 });
   });

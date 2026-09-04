@@ -16,15 +16,25 @@
  */
 
 import { getSharedAudioContext, waitForAudioContextRunning } from "../utils/sharedAudioContext";
+import { DEFAULT_KOKORO_VOICE_ID } from "../models/kokoroVoices";
 
 /** Sentences to synthesize ahead of the one playing, so seams stay gapless. */
 const LOOKAHEAD = 2;
-const DEFAULT_VOICE = "af_heart";
 
 export class ConversePlayer {
-  constructor({ api = null, voice = DEFAULT_VOICE, speed = 1.0 } = {}) {
+  /**
+   * `resolveVoice` is read at the start of every turn rather than once at
+   * construction. The picker lives in the control panel and this player lives
+   * in the overlay, which may have been running since before that window
+   * existed — so the choice is pulled at the one instant it is needed. A turn
+   * boundary is also the only safe moment to switch: the buffers already
+   * synthesized for the turn in flight are in the old voice, and swapping
+   * mid-answer would change speaker mid-sentence.
+   */
+  constructor({ api = null, voice = DEFAULT_KOKORO_VOICE_ID, speed = 1.0, resolveVoice } = {}) {
     this.api = api || (typeof window === "undefined" ? null : window.electronAPI);
     this.voice = voice;
+    this.resolveVoice = typeof resolveVoice === "function" ? resolveVoice : null;
     this.speed = speed;
 
     /** Turn generation this queue belongs to; -1 until the first sentence. */
@@ -80,6 +90,9 @@ export class ConversePlayer {
   getState() {
     return {
       gen: this.gen,
+      // Reported so a bug report says which voice actually spoke, not which one
+      // the control panel showed at the time it was filed.
+      voice: this.voice,
       playing: this.playing,
       playIndex: this.playIndex,
       known: this.texts.filter((t) => t !== undefined).length,
@@ -102,7 +115,11 @@ export class ConversePlayer {
     if (!msg || typeof msg.index !== "number") return;
     if (msg.gen !== this.gen) this.resetTo(msg.gen);
     this.texts[msg.index] = msg.text;
-    if (msg.index <= this.playIndex + LOOKAHEAD) this.ensure(msg.index);
+    if (msg.index <= this.playIndex + LOOKAHEAD) {
+      this.ensure(msg.index, {
+        priority: msg.index === this.playIndex ? "interactive" : "prefetch",
+      });
+    }
     this.report();
     if (!this.busy) this.playFrom(this.playIndex);
   }
@@ -121,6 +138,16 @@ export class ConversePlayer {
 
   resetTo(newGen) {
     this.gen = newGen;
+    // New turn, empty cache: the moment to pick up a voice change made in the
+    // control panel since the last answer.
+    if (this.resolveVoice) {
+      try {
+        const next = this.resolveVoice();
+        if (next) this.voice = next;
+      } catch {
+        // Keep speaking with the voice we already have.
+      }
+    }
     this.stopSource();
     this.texts = [];
     this.cache.clear();
@@ -136,14 +163,23 @@ export class ConversePlayer {
 
   // --------------------------------------------------------------- synthesis
 
-  ensure(i) {
+  ensure(i, { priority = "interactive" } = {}) {
     if (i < 0 || this.texts[i] === undefined) return null;
     if (this.cache.has(i)) return Promise.resolve(this.cache.get(i));
     if (this.inflight.has(i)) return this.inflight.get(i);
 
     const myGen = this.gen;
     const job = Promise.resolve(
-      this.api.readAloudSynth({ text: this.texts[i], voice: this.voice, speed: this.speed })
+      this.api.readAloudSynth({
+        text: this.texts[i],
+        voice: this.voice,
+        speed: this.speed,
+        // The sentence being waited on outranks lookahead in the engine queue,
+        // and an interrupt's gen bump retires the dead turn's queued synths.
+        priority,
+        epoch: myGen,
+        channel: "converse",
+      })
     )
       .then(({ pcm, sampleRate, synthMs }) => {
         const ctx = getSharedAudioContext();
@@ -162,7 +198,9 @@ export class ConversePlayer {
       })
       .catch((err) => {
         this.inflight.delete(i);
-        this.error = String(err?.message || err);
+        // A synth from an interrupted turn (stale epoch) failing late must not
+        // mark the live turn as broken.
+        if (myGen === this.gen) this.error = String(err?.message || err);
         return null;
       });
 
@@ -171,7 +209,7 @@ export class ConversePlayer {
   }
 
   prefetch() {
-    for (let k = 1; k <= LOOKAHEAD; k++) this.ensure(this.playIndex + k);
+    for (let k = 1; k <= LOOKAHEAD; k++) this.ensure(this.playIndex + k, { priority: "prefetch" });
   }
 
   // ---------------------------------------------------------------- playback
