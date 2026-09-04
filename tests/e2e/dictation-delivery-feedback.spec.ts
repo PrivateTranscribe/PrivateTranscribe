@@ -157,8 +157,23 @@ test.describe("dictation delivery feedback", () => {
     await breakDelivery(electronApp, "paste-unreadable");
     await dictate(electronApp, overlayWindow);
 
-    // Wait out the window in which the toast would have appeared.
-    await overlayWindow.waitForTimeout(TOAST_TIMEOUT_MS);
+    // Delivery persists to history before it pastes, so a saved transcript means
+    // the toast has already had its chance. Waiting out the full toast timeout
+    // instead would spend the whole test budget.
+    await expect
+      .poll(
+        () =>
+          overlayWindow.evaluate(async () => {
+            const rows = await (
+              window as unknown as { electronAPI: any }
+            ).electronAPI.getTranscriptions(1);
+            return Array.isArray(rows) ? rows.length : 0;
+          }),
+        { timeout: 60_000 }
+      )
+      .toBeGreaterThan(0);
+    await overlayWindow.waitForTimeout(2_000);
+
     await expect(overlayWindow.getByText("Copied instead of pasted")).toHaveCount(0);
     await expect(overlayWindow.getByText("Saved to History only")).toHaveCount(0);
     await expect(overlayWindow.getByText("Dictation could not be delivered")).toHaveCount(0);
