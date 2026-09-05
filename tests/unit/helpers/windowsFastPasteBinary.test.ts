@@ -74,10 +74,12 @@ describe.runIf(helperPath)("windows-fast-paste.exe", () => {
     expect(Object.keys(JSON.parse(result.stdout.trim())).sort()).toEqual([
       "chord",
       "dispatched",
+      "enterSent",
       "evidence",
       "isTerminal",
       "pasted",
       "processName",
+      "sendEnter",
       "windowClass",
     ]);
   });

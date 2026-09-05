@@ -35,7 +35,56 @@ describe("ClipboardManager Windows paste routing", () => {
 
     await manager.pasteWindows({ text: "before" });
 
-    expect(fastPaste).toHaveBeenCalledWith(HELPER_PATH, { text: "before" });
+    expect(fastPaste).toHaveBeenCalledWith(HELPER_PATH, { text: "before" }, {});
+  });
+
+  test("passes the send-enter request through to the helper", async () => {
+    const manager = new ClipboardManager();
+    vi.spyOn(manager, "getFastPastePath").mockReturnValue(HELPER_PATH);
+    const fastPaste = vi.spyOn(manager, "pasteWithFastPaste").mockResolvedValue(undefined);
+
+    await manager.pasteWindows({ text: "before" }, { sendEnter: true });
+
+    expect(fastPaste).toHaveBeenCalledWith(HELPER_PATH, { text: "before" }, { sendEnter: true });
+  });
+
+  test("only hands the helper --send-enter when asked to send", () => {
+    const manager = new ClipboardManager();
+    const spawned = vi
+      .spyOn(manager, "_spawnFastPaste")
+      .mockImplementation(() => ({ on() {}, stdout: null, stderr: null }) as never);
+    vi.useFakeTimers();
+    try {
+      void manager.pasteWithFastPaste(HELPER_PATH, { text: "before" }, { sendEnter: true });
+      void manager.pasteWithFastPaste(HELPER_PATH, { text: "before" });
+      vi.advanceTimersByTime(50);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(spawned).toHaveBeenNthCalledWith(1, HELPER_PATH, ["--send-enter"]);
+    expect(spawned).toHaveBeenNthCalledWith(2, HELPER_PATH, []);
+  });
+
+  test("reports an Enter the helper pressed on a target it could not read", async () => {
+    const manager = new ClipboardManager();
+    vi.spyOn(manager, "getFastPastePath").mockReturnValue(HELPER_PATH);
+    const notConfirmed = Object.assign(new Error("not confirmed"), {
+      code: "WINDOWS_PASTE_NOT_CONFIRMED",
+      dispatched: true,
+      evidence: "none",
+      enterSent: true,
+    });
+    vi.spyOn(manager, "pasteWithFastPaste").mockRejectedValue(notConfirmed);
+
+    await expect(manager.pasteWindows({ text: "before" }, { sendEnter: true })).resolves.toEqual({
+      delivered: false,
+      evidence: "none",
+      dispatched: true,
+      enterSent: true,
+      fallback: "clipboard",
+      method: "windows-fast-paste",
+    });
   });
 
   test("keeps the transcript on the clipboard when the helper is missing", async () => {
@@ -48,6 +97,7 @@ describe("ClipboardManager Windows paste routing", () => {
       delivered: false,
       evidence: "absent",
       dispatched: false,
+      enterSent: false,
       fallback: "clipboard",
       method: "windows-fast-paste",
     });
@@ -62,6 +112,7 @@ describe("ClipboardManager Windows paste routing", () => {
       delivered: false,
       evidence: "absent",
       dispatched: false,
+      enterSent: false,
       fallback: "clipboard",
       method: "windows-fast-paste",
     });
@@ -81,6 +132,7 @@ describe("ClipboardManager Windows paste routing", () => {
       delivered: false,
       evidence: "absent",
       dispatched: true,
+      enterSent: false,
       fallback: "clipboard",
       method: "windows-fast-paste",
     });
@@ -102,6 +154,7 @@ describe("ClipboardManager Windows paste routing", () => {
       delivered: false,
       evidence: "none",
       dispatched: true,
+      enterSent: false,
       fallback: "clipboard",
       method: "windows-fast-paste",
     });

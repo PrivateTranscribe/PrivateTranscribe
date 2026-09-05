@@ -139,10 +139,39 @@ describe("parseWindowsFastPasteOutput", () => {
       pasted: true,
       evidence: "absent",
       dispatched: true,
+      enterSent: false,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
     });
+  });
+
+  // Agent Mode's spoken "send": the helper reports whether it pressed Enter,
+  // and a helper built before the field existed reads as "did not".
+  test("reads whether Enter was pressed after the paste", () => {
+    expect(
+      parseWindowsFastPasteOutput(
+        JSON.stringify({ pasted: true, evidence: "inserted", sendEnter: true, enterSent: true })
+      ).enterSent
+    ).toBe(true);
+    expect(
+      parseWindowsFastPasteOutput(
+        JSON.stringify({ pasted: false, evidence: "absent", sendEnter: true, enterSent: false })
+      ).enterSent
+    ).toBe(false);
+    expect(parseWindowsFastPasteOutput(JSON.stringify({ pasted: true })).enterSent).toBe(false);
+    expect(parseWindowsFastPasteOutput('{"enterSent":"true"}').enterSent).toBe(false);
+  });
+
+  test("carries enterSent onto the not-confirmed error for unobservable targets", () => {
+    try {
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, evidence: "none", dispatched: true, enterSent: true })
+      );
+      throw new Error("expected the helper output to be rejected");
+    } catch (error) {
+      expect((error as { enterSent?: boolean }).enterSent).toBe(true);
+    }
   });
 
   test("reads a successful ordinary paste", () => {
@@ -217,6 +246,7 @@ describe("parseWindowsFastPasteOutput", () => {
       pasted: false,
       evidence: "absent",
       dispatched: false,
+      enterSent: false,
       isTerminal: false,
       windowClass: "",
       processName: "",

@@ -61,6 +61,9 @@ function parseWindowsFastPasteOutput(stdout) {
       evidence:
         parsed.evidence === PASTE_EVIDENCE_NONE ? PASTE_EVIDENCE_NONE : PASTE_EVIDENCE_ABSENT,
       dispatched: parsed.dispatched === true,
+      // Agent Mode's spoken "send". Only a literal true from the helper counts;
+      // an older helper never writes the field and never pressed Enter.
+      enterSent: parsed.enterSent === true,
       isTerminal: parsed.isTerminal === true,
       windowClass: typeof parsed.windowClass === "string" ? parsed.windowClass.slice(0, 128) : "",
       processName: typeof parsed.processName === "string" ? parsed.processName.slice(0, 128) : "",
@@ -70,6 +73,7 @@ function parseWindowsFastPasteOutput(stdout) {
       pasted: false,
       evidence: PASTE_EVIDENCE_ABSENT,
       dispatched: false,
+      enterSent: false,
       isTerminal: false,
       windowClass: "",
       processName: "",
@@ -86,6 +90,7 @@ function assertWindowsFastPasteSucceeded(stdout) {
     error.code = "WINDOWS_PASTE_NOT_CONFIRMED";
     error.dispatched = result.dispatched;
     error.evidence = result.evidence;
+    error.enterSent = result.enterSent;
     throw error;
   }
   return result;
