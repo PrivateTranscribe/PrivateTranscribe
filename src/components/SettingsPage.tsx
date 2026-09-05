@@ -1370,6 +1370,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       case "windows-only":
         return "Windows only for now.";
       case "diagnostic-flag":
+        return "Turned off by a diagnostic flag for this run.";
       case "suspended":
         return "Paused while a hotkey field is capturing.";
       default:
