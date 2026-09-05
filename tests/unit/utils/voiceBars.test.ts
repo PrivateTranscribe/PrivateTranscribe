@@ -14,28 +14,37 @@ import {
  */
 describe("voice bar geometry", () => {
   const LEVELS = [0, 0.05, 0.2, 0.5, 0.85, 1];
-  const TIMES = [0, 250, 1_000, 4_321];
 
-  it("renders the same geometry the height calculation produced", () => {
+  it("renders the geometry the height calculation asks for", () => {
     for (const micLevel of LEVELS) {
-      for (const nowMs of TIMES) {
-        for (let i = 0; i < VOICE_BAR_COUNT; i++) {
-          const onScreen = VOICE_BAR_HEIGHTS[i] * voiceBarScale(i, micLevel, nowMs);
-          expect(onScreen).toBeCloseTo(voiceBarHeight(i, micLevel, nowMs), 10);
-        }
+      for (let i = 0; i < VOICE_BAR_COUNT; i++) {
+        const onScreen = VOICE_BAR_HEIGHTS[i] * voiceBarScale(i, micLevel);
+        expect(onScreen).toBeCloseTo(voiceBarHeight(i, micLevel), 10);
       }
     }
   });
 
   it("never scales a bar past the height it was laid out at", () => {
     for (const micLevel of LEVELS) {
-      for (const nowMs of TIMES) {
-        for (let i = 0; i < VOICE_BAR_COUNT; i++) {
-          const scale = voiceBarScale(i, micLevel, nowMs);
-          expect(scale).toBeGreaterThan(0);
-          expect(scale).toBeLessThanOrEqual(1);
-        }
+      for (let i = 0; i < VOICE_BAR_COUNT; i++) {
+        const scale = voiceBarScale(i, micLevel);
+        expect(scale).toBeGreaterThan(0);
+        expect(scale).toBeLessThanOrEqual(1);
       }
+    }
+  });
+
+  // The bars used to breathe on a sine while nothing was being said. Movement
+  // that does not mean "the microphone heard something" also hides a meter that
+  // has stopped updating, which is the failure this shape is meant to expose.
+  it("is perfectly still while nothing is being said", () => {
+    for (let i = 0; i < VOICE_BAR_COUNT; i++) {
+      const atRest = voiceBarHeight(i, 0);
+      // Same answer no matter when it is asked, so the only input is the level.
+      for (let call = 0; call < 50; call++) {
+        expect(voiceBarHeight(i, 0)).toBe(atRest);
+      }
+      expect(atRest).toBe(Math.max(2, [2.8, 5.3, 9.0, 6.6, 4.0][i]));
     }
   });
 
@@ -45,18 +54,15 @@ describe("voice bar geometry", () => {
 
     let previous = -Infinity;
     for (const micLevel of LEVELS) {
-      const height = voiceBarHeight(2, micLevel, 0);
+      const height = voiceBarHeight(2, micLevel);
       expect(height).toBeGreaterThan(previous);
       previous = height;
     }
   });
 
-  it("holds a floor so a silent bar is still visible", () => {
+  it("holds a floor so a resting bar is still visible", () => {
     for (let i = 0; i < VOICE_BAR_COUNT; i++) {
-      // Worst case: no level and the breathing term at its lowest.
-      for (const nowMs of [0, 100, 200, 300, 400, 500, 600, 700, 800]) {
-        expect(voiceBarHeight(i, 0, nowMs)).toBeGreaterThanOrEqual(2);
-      }
+      expect(voiceBarHeight(i, 0)).toBeGreaterThanOrEqual(2);
     }
   });
 });

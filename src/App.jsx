@@ -311,13 +311,12 @@ const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
 /**
  * VoiceBars - voice-reactive bar visualiser rendered inside the recording button.
  *
- * Five bars, heights matching logo proportions, driven by micLevel (0-1). Each bar
- * has a subtle phase offset for a natural "breathing" feel when level is low.
- * Colors are dark (primary-foreground) since the button background is mint.
+ * Five bars, heights matching logo proportions, driven by micLevel (0-1). They
+ * hold the logo shape exactly while nothing is being said, so any movement means
+ * the microphone heard something. Colors are dark (primary-foreground) since the
+ * button background is mint.
  */
 const VoiceBars = ({ micLevel }) => {
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2.5, pointerEvents: "none" }}>
       {VOICE_BAR_HEIGHTS.map((laidOutHeight, i) => (
@@ -330,7 +329,7 @@ const VoiceBars = ({ micLevel }) => {
             height: laidOutHeight,
             borderRadius: 2,
             backgroundColor: "var(--color-background)",
-            transform: `scaleY(${voiceBarScale(i, micLevel, now)})`,
+            transform: `scaleY(${voiceBarScale(i, micLevel)})`,
             transformOrigin: "center",
             willChange: "transform",
             // Fast transition keeps it responsive; easing keeps it elegant
