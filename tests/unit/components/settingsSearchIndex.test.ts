@@ -23,6 +23,7 @@ const SOURCES = [
   "src/components/SettingsPage.tsx",
   "src/components/pages/ConversePage.tsx",
   "src/components/pages/ReadAloudPage.tsx",
+  "src/components/pages/DictionaryPage.tsx",
   "src/components/ui/MicrophoneSettings.tsx",
 ];
 
@@ -155,9 +156,9 @@ describe("searching settings", () => {
   });
 
   it("finds a row by a word only its group heading uses", () => {
-    // The row is called "Learn phrase and sentence rewrites"; nothing in the
-    // label says "correction memory", which is what a person searches for.
-    expect(labelsFor("correction memory")).toContain("Learn phrase and sentence rewrites");
+    // The row is called "While recording"; nothing in the label says
+    // "ducking", which is what a person who knows the term searches for.
+    expect(labelsFor("ducking")).toContain("While recording");
   });
 
   it("finds a row by a synonym the UI never shows", () => {

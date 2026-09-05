@@ -21,13 +21,7 @@ export type SettingsSearchPage =
   | "converse"
   | "ai-enhancement";
 
-export type SettingsSearchSection =
-  | "general"
-  | "preferences"
-  | "permissions"
-  | "pro"
-  | "help"
-  | "developer";
+export type SettingsSearchSection = "general" | "permissions" | "pro" | "developer";
 
 export interface SettingsSearchEntry {
   /** The exact label rendered on the row; also its `data-settings-label`. */
@@ -95,145 +89,130 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["mic", "microphone", "warm", "latency", "delay"],
   },
 
-  // ── Settings › Preferences ────────────────────────────────────────────────
+  // ── Settings › General (behaviour, notifications, privacy) ───────────────
   {
     label: "Apply dictionary matching",
-    group: "Correction Memory",
-    page: "settings",
-    section: "preferences",
+    group: "Dictionary",
+    page: "dictionary",
     keywords: ["dictionary", "snapping", "terms", "replace"],
-  },
-  {
-    label: "Auto-learn corrections",
-    group: "Correction Memory",
-    page: "settings",
-    section: "preferences",
-    keywords: ["correction memory", "learning", "teach", "remember"],
-  },
-  {
-    label: "Learn phrase and sentence rewrites",
-    group: "Correction Memory",
-    page: "settings",
-    section: "preferences",
-    keywords: ["correction memory", "phrase", "sentence", "learning", "rewrite"],
   },
   {
     label: "While recording",
     group: "Audio Ducking",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["ducking", "volume", "mute other apps", "music"],
   },
   {
     label: "Volume while recording",
     group: "Audio Ducking",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["ducking", "volume", "quiet", "music"],
   },
   {
     label: "Pause media while recording",
     group: "Audio Ducking",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["ducking", "spotify", "music", "video", "playback"],
   },
   {
     label: "Auto-paste transcription",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["paste", "insert", "clipboard"],
   },
   {
     label: "Copy to clipboard",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["clipboard", "copy", "overwrite"],
   },
   {
     label: "Show control panel on error",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["error", "window", "popup"],
   },
   {
     label: "Snap overlay to taskbar",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["overlay", "dictation button", "position", "taskbar", "dock"],
   },
   {
     label: "Hide overlay",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["overlay", "dictation button", "bubble", "hide", "invisible"],
   },
   {
     label: "Audio feedback",
     group: "Notifications",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["sound", "beep", "chime"],
   },
   {
     label: "Error notifications",
     group: "Notifications",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["toast", "alert", "warning"],
   },
   {
     label: "Success confirmation",
     group: "Notifications",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["toast", "confirm", "done"],
   },
   {
     label: "Optional product analytics",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["telemetry", "tracking", "privacy", "opt out", "data"],
   },
   {
     label: "History limit",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["history", "transcriptions", "storage", "retention", "delete"],
   },
   {
     label: "Smart Context",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "active window", "app awareness"],
   },
   {
     label: "Active file context",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "file", "editor", "smart context"],
   },
   {
     label: "LLM Context Enhancement",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "ai", "reasoning", "smart context"],
   },
   {
     label: "Include active file content",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "file", "content", "privacy", "smart context"],
   },
 
@@ -266,12 +245,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["accessibility", "permission", "macos", "paste", "reset"],
   },
 
-  // ── Settings › Help & Support ─────────────────────────────────────────────
+  // ── Settings › General (help) ─────────────────────────────────────────────
   {
     label: "Contact & Feedback",
     group: "Help & Support",
     page: "settings",
-    section: "help",
+    section: "general",
     keywords: ["support", "email", "bug", "report", "help"],
   },
 

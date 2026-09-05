@@ -32,10 +32,8 @@ type SettingsTab = {
 
 const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
-  { id: "preferences", label: "Preferences" },
   { id: "permissions", label: "Microphone & Permissions" },
   { id: "pro", label: "PrivateTranscribe Pro" },
-  { id: "help", label: "Help & Support" },
   { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },
 ];
 
@@ -79,14 +77,7 @@ export default function SettingsPageWrapper({
       return;
     }
 
-    const validSections: SettingsSectionType[] = [
-      "general",
-      "preferences",
-      "permissions",
-      "pro",
-      "help",
-      "developer",
-    ];
+    const validSections: SettingsSectionType[] = ["general", "permissions", "pro", "developer"];
 
     if (validSections.includes(requestedSection as SettingsSectionType)) {
       setActiveTab(requestedSection as SettingsSectionType);

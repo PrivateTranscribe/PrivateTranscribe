@@ -9,8 +9,8 @@ describe("control panel navigation", () => {
   test("accepts known pages and settings tabs", () => {
     expect(normalizeControlPanelDestination({ page: "history" })).toEqual({ page: "history" });
     expect(
-      normalizeControlPanelDestination({ page: "settings", settingsTab: "preferences" })
-    ).toEqual({ page: "settings", settingsTab: "preferences" });
+      normalizeControlPanelDestination({ page: "settings", settingsTab: "permissions" })
+    ).toEqual({ page: "settings", settingsTab: "permissions" });
   });
 
   test("drops unknown routes and tabs", () => {

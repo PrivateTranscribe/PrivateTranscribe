@@ -2,6 +2,8 @@ import { useState, useCallback } from "react";
 import { BookOpen } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Toggle } from "../ui/toggle";
+import { SettingsRow } from "../ui/SettingsSection";
 import { useSettings } from "../../hooks/useSettings";
 import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
@@ -20,7 +22,12 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
 }
 
 export default function DictionaryPage() {
-  const { customDictionary, setCustomDictionary } = useSettings();
+  const {
+    customDictionary,
+    setCustomDictionary,
+    enableVariableSnapping,
+    setEnableVariableSnapping,
+  } = useSettings();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const [newWord, setNewWord] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
@@ -187,6 +194,17 @@ export default function DictionaryPage() {
       <div className="mt-8">
         <p className="text-[13px] font-medium text-foreground mb-3">How it works</p>
         <SettingsPanel>
+          <SettingsPanelRow>
+            <SettingsRow
+              label="Apply dictionary matching"
+              description="Hand your words to the model before it starts and repair casing and splits afterwards. Correction Memory replacements use the same switch."
+            >
+              <Toggle
+                checked={enableVariableSnapping}
+                onChange={(checked: boolean) => setEnableVariableSnapping(checked)}
+              />
+            </SettingsRow>
+          </SettingsPanelRow>
           <SettingsPanelRow>
             <p className="text-[12px] text-muted-foreground leading-relaxed">
               Your words are handed to the transcription model before it starts, so it is more

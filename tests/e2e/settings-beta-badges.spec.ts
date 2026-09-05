@@ -14,7 +14,6 @@ test.describe("beta feature labelling", () => {
     controlPanel,
   }) => {
     await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-    await controlPanel.getByRole("button", { name: "Preferences", exact: true }).click();
 
     // Walk up from the label to the SettingsRow that owns it, so the badge
     // and the control are asserted on the same row rather than on the page.

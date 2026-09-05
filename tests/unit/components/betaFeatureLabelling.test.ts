@@ -41,11 +41,12 @@ describe("beta feature labelling", () => {
   it("badges the locked controls in Settings, not only their descriptions", () => {
     const settings = readSource("src/components/SettingsPage.tsx");
 
-    // Smart Context and Auto-learn corrections are the two toggles that sit
-    // disabled for everyone without tester access.
+    // Smart Context is the one toggle left in Settings that sits disabled for
+    // everyone without tester access. Correction Memory's toggles live on its
+    // own page under Dictionary now, badged there.
     expect(settings).toContain("badge={smartContextUnlocked ? undefined : <BetaBadge locked />}");
-    expect(settings).toContain(
-      "badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}"
+    expect(readSource("src/components/pages/CorrectionMemoryPage.tsx")).toContain(
+      "<BetaBadge locked={!isUnlocked} />"
     );
 
     // The badge carries the "Beta" word now, so the description should explain
@@ -68,13 +69,12 @@ describe("beta feature labelling", () => {
     }
 
     const settings = readSource("src/components/SettingsPage.tsx");
-    // Both locked toggles: Correction Memory and Smart Context, in Preferences.
-    // It was four until Read Aloud left Settings for its own sidebar page, and
-    // three until the unreachable "aiModels" case was deleted — that case held a
-    // second AI Enhancement locked card behind a tab that could never be
-    // selected. Its way out was never reachable; the real one lives on
-    // AIEnhancementPage.tsx, which is checked above.
-    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(2);
+    // One locked toggle left in Settings: Smart Context, in General. It was
+    // four until Read Aloud left Settings for its own sidebar page, three until
+    // the unreachable "aiModels" case was deleted, and two until Correction
+    // Memory's toggles moved onto their own page under Dictionary, which is
+    // checked above.
+    expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(1);
   });
 
   it("keeps the beta destination in one place", () => {

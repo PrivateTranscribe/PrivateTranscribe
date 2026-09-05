@@ -77,14 +77,7 @@ import { setAgentName as persistAgentName } from "../utils/agentName";
  * "dictionary" and "aiModels" sections sat unreachable behind their own copies
  * of controls that had already moved to DictionaryPage and AIEnhancementPage.
  */
-export type SettingsSectionType =
-  | "general"
-  | "preferences"
-  | "dictation"
-  | "permissions"
-  | "help"
-  | "developer"
-  | "pro";
+export type SettingsSectionType = "general" | "dictation" | "permissions" | "developer" | "pro";
 
 const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
@@ -1271,7 +1264,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     };
   }, []);
 
-  const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -1295,45 +1287,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       .catch(() => {});
   }, [activeSection]);
 
-  const [correctionCount, setCorrectionCount] = useState<number | null>(null);
-  const [clearConfirmPending, setClearConfirmPending] = useState(false);
-  const [isClearingCorrections, setIsClearingCorrections] = useState(false);
-
-  useEffect(() => {
-    if (!correctionMemoryUnlocked || !enableCorrectionLearning) {
-      setCorrectionCount(null);
-      return;
-    }
-    window.electronAPI
-      ?.getCorrectionMemory?.(1000)
-      .then((rows) => setCorrectionCount(Array.isArray(rows) ? rows.length : 0))
-      .catch(() => setCorrectionCount(0));
-  }, [correctionMemoryUnlocked, enableCorrectionLearning]);
-
   // Sync overlay taskbar-snap preference to main process on settings mount.
   // (Overlay visibility is main-process-owned and needs no push-sync.)
   useEffect(() => {
     window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
   }, [overlaySnapToTaskbar]);
-
-  const handleClearCorrections = useCallback(async () => {
-    if (!correctionMemoryUnlocked) return;
-    if (!clearConfirmPending) {
-      setClearConfirmPending(true);
-      return;
-    }
-    setIsClearingCorrections(true);
-    try {
-      const rows = (await window.electronAPI?.getCorrectionMemory?.(10000)) ?? [];
-      for (const row of rows) {
-        await window.electronAPI?.deleteCorrection?.(row.source);
-      }
-      setCorrectionCount(0);
-    } finally {
-      setIsClearingCorrections(false);
-      setClearConfirmPending(false);
-    }
-  }, [clearConfirmPending, correctionMemoryUnlocked]);
 
   // Whisper-server idle shutdown setting (minutes) has a draft state to avoid snapping
   // while typing (e.g. clearing the field).
@@ -2094,7 +2052,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const renderSectionContent = () => {
     switch (activeSection) {
       // ───────────────────────────────────────────────────
-      // GENERAL - Updates, Hotkey, Startup, Mic
+      // GENERAL - Updates, CUDA, Startup, Behavior, Notifications, Privacy, Help
       // ───────────────────────────────────────────────────
       case "general":
         return (
@@ -2343,125 +2301,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 </SettingsPanel>
               </div>
             )}
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // PREFERENCES - New section with additional options
-      // ───────────────────────────────────────────────────
-      case "preferences":
-        return (
-          <div className="space-y-8">
-            {/* Correction Memory */}
-            <div>
-              <SectionHeader
-                title="Correction Memory"
-                description="Apply your saved corrections and learn new ones from edits"
-                badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Apply dictionary matching"
-                    description={
-                      correctionMemoryUnlocked
-                        ? "Use dictionary entries and approved-tester correction memory while transcribing."
-                        : "Use dictionary entries while transcribing. The Correction Memory half stays off until tester access is approved."
-                    }
-                  >
-                    <Toggle
-                      checked={enableVariableSnapping}
-                      onChange={(checked: boolean) => setEnableVariableSnapping(checked)}
-                    />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Auto-learn corrections"
-                    badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
-                    description={
-                      correctionMemoryUnlocked ? (
-                        "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                      ) : (
-                        <>
-                          Still being built, so it is limited to approved testers for now. Nothing
-                          here is running in the background. <BetaAccessLink />
-                        </>
-                      )
-                    }
-                  >
-                    <Toggle
-                      checked={enableCorrectionLearning}
-                      onChange={(checked: boolean) => setEnableCorrectionLearning(checked)}
-                      disabled={!correctionMemoryUnlocked}
-                    />
-                  </SettingsRow>
-                  {enableCorrectionLearning && correctionMemoryUnlocked && (
-                    <div className="mt-2 flex items-center justify-between">
-                      <p
-                        className={
-                          correctionCount !== null && correctionCount > 0
-                            ? "text-xs text-success"
-                            : "text-xs text-muted-foreground"
-                        }
-                      >
-                        {correctionCount === null
-                          ? ""
-                          : correctionCount > 0
-                            ? `✓ Learning - ${correctionCount} correction${correctionCount === 1 ? "" : "s"} stored`
-                            : "Listening for corrections..."}
-                      </p>
-                      {correctionCount !== null && correctionCount > 0 && (
-                        <div className="flex items-center gap-2">
-                          {clearConfirmPending && (
-                            <span className="text-xs text-muted-foreground">Are you sure?</span>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleClearCorrections}
-                            disabled={isClearingCorrections}
-                            className={
-                              clearConfirmPending
-                                ? "border-destructive text-destructive hover:bg-destructive/10"
-                                : ""
-                            }
-                          >
-                            {isClearingCorrections
-                              ? "Clearing..."
-                              : clearConfirmPending
-                                ? "Yes, clear all"
-                                : "Clear all corrections"}
-                          </Button>
-                          {clearConfirmPending && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setClearConfirmPending(false)}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Learn phrase and sentence rewrites"
-                    description="Off learns word fixes like cloud -> Claude. On can also learn changed spans or full repeated sentence rewrites."
-                  >
-                    <Toggle
-                      checked={enablePhraseCorrectionLearning}
-                      onChange={(checked: boolean) => setEnablePhraseCorrectionLearning(checked)}
-                      disabled={!correctionMemoryUnlocked || !enableCorrectionLearning}
-                    />
-                  </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
             {/* Audio Ducking */}
             <div className="border-t border-border/30 pt-8">
               <SectionHeader
@@ -2779,6 +2618,37 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 )}
               </SettingsPanel>
             </div>
+
+            {/* Help & Support */}
+            <div className="border-t border-border/30 pt-8">
+              <SectionHeader
+                title="Help & Support"
+                description="Report a problem or send feedback"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Contact & Feedback"
+                    description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
+                  >
+                    <div className="flex items-center gap-2">
+                      <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard?.writeText("support@privatetranscribe.com");
+                          setEmailCopied(true);
+                          setTimeout(() => setEmailCopied(false), 2000);
+                        }}
+                      >
+                        {emailCopied ? "✓ Copied!" : "Copy Email"}
+                      </Button>
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
           </div>
         );
 
@@ -3064,8 +2934,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         return (
           <div className="space-y-6">
             <SectionHeader
-              title="System Permissions"
-              description="Grant access to microphone, accessibility features, and other system capabilities"
+              title={platform === "darwin" ? "Microphone & Accessibility" : "Microphone"}
+              description={
+                platform === "darwin"
+                  ? "Allow access, pick the device, and check that it hears you"
+                  : "Allow access, pick the device you dictate with, and check that it hears you"
+              }
             />
 
             {/* Permission Cards - matching onboarding style */}
@@ -3105,10 +2979,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {/* Audio input - the other half of "can it hear me", so it lives
                 beside the permission rather than buried in General. */}
             <div>
-              <SectionHeader
-                title="Audio Input"
-                description="Choose which microphone dictation records from, and check that it hears you"
-              />
               <SettingsPanel>
                 <SettingsPanelRow>
                   <MicrophoneSettings
@@ -3157,64 +3027,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             )}
           </div>
         );
-
-      // ───────────────────────────────────────────────────
-      // HELP & SUPPORT
-      // ───────────────────────────────────────────────────
-      case "help": {
-        return (
-          <div className="space-y-6">
-            <SectionHeader
-              title="Help & Support"
-              description="Get assistance with PrivateTranscribe and report issues"
-            />
-
-            <SettingsPanel>
-              <SettingsPanelRow>
-                <SettingsRow
-                  label="Contact & Feedback"
-                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
-                >
-                  <div className="flex items-center gap-2">
-                    <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard?.writeText("support@privatetranscribe.com");
-                        setEmailCopied(true);
-                        setTimeout(() => setEmailCopied(false), 2000);
-                      }}
-                    >
-                      {emailCopied ? "✓ Copied!" : "Copy Email"}
-                    </Button>
-                  </div>
-                </SettingsRow>
-              </SettingsPanelRow>
-            </SettingsPanel>
-
-            <div>
-              <p className="text-[13px] font-medium text-foreground mb-3">Version Information</p>
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Current version"
-                    description={
-                      updateStatus.isDevelopment
-                        ? "Running in development mode"
-                        : "Installed version of PrivateTranscribe"
-                    }
-                  >
-                    <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
-                      {currentVersion || "..."}
-                    </span>
-                  </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-          </div>
-        );
-      }
 
       // ───────────────────────────────────────────────────
       // PRO

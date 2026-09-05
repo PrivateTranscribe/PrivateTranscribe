@@ -87,8 +87,9 @@ describe("paid Pro and tester beta access contract", () => {
     const actionPage = readSource("src/components/pages/ActionEnginePage.tsx");
 
     expect(correctionPage).toContain("if (!isUnlocked)");
-    expect(settings).toContain("if (!correctionMemoryUnlocked || !enableCorrectionLearning)");
-    expect(settings).toContain("if (!correctionMemoryUnlocked) return;");
+    expect(correctionPage).toContain("if (!isUnlocked) return;");
+    // Settings no longer reads correction memory at all; the page owns it.
+    expect(settings).not.toContain("getCorrectionMemory");
     expect(actionHook).toContain("export function useActionEngine(isUnlocked = false)");
     expect(actionHook).toContain("if (!isUnlocked) return null;");
     expect(actionHook).toContain('error: "Approved tester access required."');

@@ -500,13 +500,7 @@ export type ControlPanelPage =
   | "action-engine"
   | "settings";
 
-export type ControlPanelSettingsTab =
-  | "general"
-  | "preferences"
-  | "permissions"
-  | "pro"
-  | "help"
-  | "developer";
+export type ControlPanelSettingsTab = "general" | "permissions" | "pro" | "developer";
 
 export interface ControlPanelDestination {
   page: ControlPanelPage;
