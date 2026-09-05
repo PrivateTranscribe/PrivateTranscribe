@@ -8,8 +8,9 @@ import { expect, test } from "./fixtures/electron-app";
  *
  * Idle, the dictation button is a short line, not a disc. It opens into the
  * 44px circle when the pointer rests on it, when a recording starts, and it
- * stays open through the decode, then closes again. Every shape is centred on
- * the same point, because the 44px hit box underneath never changes size.
+ * stays open through the decode, then closes again. The line rests a little
+ * above the circle's bottom edge and the circle grows mostly upward from it,
+ * because the 44px hit box underneath never changes size.
  *
  * Each state is captured as well as asserted, so a change to the shape can be
  * judged by eye. Set PT_SHOT_DIR to choose where the shots land; it defaults
@@ -35,12 +36,15 @@ const dictationButton = (overlay: Page) =>
 const HIT_BOX = 44;
 const REST_W = 28;
 const REST_H = 6;
+const REST_LIFT = 10;
 
 /**
- * The visible shell is this size, and sits on the centre of the hit box.
+ * The visible shell is this size, centred left to right on the hit box, with
+ * its bottom edge `lift` above the hit box's bottom edge. The circle fills the
+ * hit box (lift 0); the line rests a little above its bottom (REST_LIFT).
  * Measured once the open or close transition has landed, never mid-way.
  */
-async function expectShell(overlay: Page, width: number, height: number) {
+async function expectShell(overlay: Page, width: number, height: number, lift: number) {
   const button = dictationButton(overlay);
   const shell = button.locator(".overlay-shell");
   await shell.evaluate(async (element) => {
@@ -59,9 +63,12 @@ async function expectShell(overlay: Page, width: number, height: number) {
   expect(Math.round(shellBox.height), "shell height").toBe(height);
 
   const dx = shellBox.x + shellBox.width / 2 - (buttonBox.x + buttonBox.width / 2);
-  const dy = shellBox.y + shellBox.height / 2 - (buttonBox.y + buttonBox.height / 2);
+  const gap = buttonBox.y + buttonBox.height - (shellBox.y + shellBox.height);
   expect(Math.abs(dx), "shell is centred on the anchor, horizontally").toBeLessThan(1.5);
-  expect(Math.abs(dy), "shell is centred on the anchor, vertically").toBeLessThan(1.5);
+  expect(
+    Math.abs(gap - lift),
+    "shell rests the expected lift above the anchor's bottom"
+  ).toBeLessThan(1.5);
 }
 
 async function capture(page: Page, fileName: string) {
@@ -122,19 +129,19 @@ test.describe("overlay resting shape", () => {
     // Idle: the mouse is somewhere else entirely, and the button is a line.
     await overlayWindow.mouse.move(10, 10);
     await overlayWindow.waitForTimeout(600);
-    await expectShell(overlayWindow, REST_W, REST_H);
+    await expectShell(overlayWindow, REST_W, REST_H, REST_LIFT);
     await capture(overlayWindow, "overlay-shape-idle.png");
 
     // Hover: the pointer rests on the button, and the line opens into the circle.
     await button.hover();
     await overlayWindow.waitForTimeout(600);
-    await expectShell(overlayWindow, HIT_BOX, HIT_BOX);
+    await expectShell(overlayWindow, HIT_BOX, HIT_BOX, 0);
     await capture(overlayWindow, "overlay-shape-hover.png");
 
     // Leaving closes it again, at once.
     await overlayWindow.mouse.move(10, 10);
     await overlayWindow.waitForTimeout(400);
-    await expectShell(overlayWindow, REST_W, REST_H);
+    await expectShell(overlayWindow, REST_W, REST_H, REST_LIFT);
 
     // Dragging: the window follows the mouse a frame or two behind, so the
     // pointer leaves the button mid-drag. The circle stays in the user's hand
@@ -147,17 +154,17 @@ test.describe("overlay resting shape", () => {
     await overlayWindow.mouse.move(grab.x + 40, grab.y - 40, { steps: 6 });
     await overlayWindow.mouse.move(10, 10, { steps: 6 });
     await overlayWindow.waitForTimeout(400);
-    await expectShell(overlayWindow, HIT_BOX, HIT_BOX);
+    await expectShell(overlayWindow, HIT_BOX, HIT_BOX, 0);
     await capture(overlayWindow, "overlay-shape-dragging.png");
     await overlayWindow.mouse.up();
     await overlayWindow.waitForTimeout(400);
-    await expectShell(overlayWindow, REST_W, REST_H);
+    await expectShell(overlayWindow, REST_W, REST_H, REST_LIFT);
 
     // Recording: driven the way the hotkey drives it, with the fake mic playing.
     await toggleDictation(electronApp);
     await expect(recordingHalo(overlayWindow)).toHaveCount(1, { timeout: 30_000 });
     await overlayWindow.waitForTimeout(2_500);
-    await expectShell(overlayWindow, HIT_BOX, HIT_BOX);
+    await expectShell(overlayWindow, HIT_BOX, HIT_BOX, 0);
     await capture(overlayWindow, "overlay-shape-recording.png");
 
     // Processing: the halo goes, the decode is still running, the circle stays.
@@ -165,12 +172,12 @@ test.describe("overlay resting shape", () => {
     await expect(recordingHalo(overlayWindow)).toHaveCount(0, { timeout: 60_000 });
     await overlayWindow.waitForTimeout(250);
     await capture(overlayWindow, "overlay-shape-processing.png");
-    await expectShell(overlayWindow, HIT_BOX, HIT_BOX);
+    await expectShell(overlayWindow, HIT_BOX, HIT_BOX, 0);
 
     // Idle again, once the decode has finished: back to the line.
     await expect(button).toHaveCSS("cursor", "pointer", { timeout: 90_000 });
     await overlayWindow.waitForTimeout(600);
-    await expectShell(overlayWindow, REST_W, REST_H);
+    await expectShell(overlayWindow, REST_W, REST_H, REST_LIFT);
     await capture(overlayWindow, "overlay-shape-idle-after.png");
   });
 });

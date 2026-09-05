@@ -147,13 +147,21 @@ const OVERLAY_RADIUS = 22;
 /**
  * The resting line. When nothing is happening the button is not a 44px disc
  * on top of whatever the user is reading, it is this: a short dark line with
- * nothing in it. It grows into the circle, around the same centre, the moment
- * there is something to show - a hover, a recording, a decode, the menu, or a
- * row docked above it. The 44px hit box underneath never changes size, so the
+ * nothing in it. It grows into the circle, mostly upward, the moment there is
+ * something to show - a hover, a recording, a decode, the menu, or a row
+ * docked above it. The 44px hit box underneath never changes size, so the
  * anchor the column and the taskbar snap are measured from stays put.
  */
 const OVERLAY_REST_W = 28;
 const OVERLAY_REST_H = 6;
+
+/**
+ * Where the line rests, measured up from the bottom of the hit box. On the
+ * circle's centre (19) it floated well clear of the taskbar; on the circle's
+ * bottom edge (0) it hugged it. Kristian looked at both on the desktop and
+ * asked for the middle, so the circle grows mostly upward from the line.
+ */
+const OVERLAY_REST_LIFT = 10;
 
 /** Open and close time. Push-to-talk starts before this ends, so it stays short. */
 const OVERLAY_OPEN_MS = 180;
@@ -1273,9 +1281,12 @@ export default function App() {
   const getMicShellStyles = () => {
     const base = {
       position: "absolute",
-      top: "50%",
+      // Anchored to the bottom of the hit box. The circle fills it; the line
+      // rests OVERLAY_REST_LIFT above its bottom edge, so the circle grows
+      // mostly upward from the line into the spot it has always had.
+      bottom: isOverlayOpen ? 0 : OVERLAY_REST_LIFT,
       left: "50%",
-      transform: "translate(-50%, -50%)",
+      transform: "translateX(-50%)",
       width: isOverlayOpen ? 44 : OVERLAY_REST_W,
       height: isOverlayOpen ? 44 : OVERLAY_REST_H,
       borderRadius: OVERLAY_RADIUS,
@@ -1283,7 +1294,7 @@ export default function App() {
       alignItems: "center",
       justifyContent: "center",
       overflow: "hidden",
-      transition: `width ${OVERLAY_OPEN_MS}ms ease-out, height ${OVERLAY_OPEN_MS}ms ease-out, background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease`,
+      transition: `width ${OVERLAY_OPEN_MS}ms ease-out, height ${OVERLAY_OPEN_MS}ms ease-out, bottom ${OVERLAY_OPEN_MS}ms ease-out, background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease`,
       // Only a hover waits before opening; everything else, and every close,
       // happens at once.
       transitionDelay: micState === "hover" ? `${OVERLAY_HOVER_OPEN_DELAY_MS}ms` : "0ms",
