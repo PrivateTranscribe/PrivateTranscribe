@@ -1232,7 +1232,10 @@ export default function App() {
   const getMicState = () => {
     if (isRecording) return "recording";
     if (isProcessing) return "processing";
-    if (isHovered && !isRecording && !isProcessing) return "hover";
+    // A drag counts as a hover. The window follows the mouse a frame or two
+    // behind, so the pointer can leave the button mid-drag and take the hover
+    // with it; the button being carried must not close in the user's hand.
+    if ((isHovered || isDragging) && !isRecording && !isProcessing) return "hover";
     return "idle";
   };
 

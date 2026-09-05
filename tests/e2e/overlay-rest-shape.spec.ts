@@ -136,6 +136,23 @@ test.describe("overlay resting shape", () => {
     await overlayWindow.waitForTimeout(400);
     await expectShell(overlayWindow, REST_W, REST_H);
 
+    // Dragging: the window follows the mouse a frame or two behind, so the
+    // pointer leaves the button mid-drag. The circle stays in the user's hand
+    // until they let go.
+    const grab = await button.boundingBox();
+    expect(grab, "the dictation button has no box to grab").not.toBeNull();
+    if (!grab) return;
+    await overlayWindow.mouse.move(grab.x + grab.width / 2, grab.y + grab.height / 2);
+    await overlayWindow.mouse.down();
+    await overlayWindow.mouse.move(grab.x + 40, grab.y - 40, { steps: 6 });
+    await overlayWindow.mouse.move(10, 10, { steps: 6 });
+    await overlayWindow.waitForTimeout(400);
+    await expectShell(overlayWindow, HIT_BOX, HIT_BOX);
+    await capture(overlayWindow, "overlay-shape-dragging.png");
+    await overlayWindow.mouse.up();
+    await overlayWindow.waitForTimeout(400);
+    await expectShell(overlayWindow, REST_W, REST_H);
+
     // Recording: driven the way the hotkey drives it, with the fake mic playing.
     await toggleDictation(electronApp);
     await expect(recordingHalo(overlayWindow)).toHaveCount(1, { timeout: 30_000 });
