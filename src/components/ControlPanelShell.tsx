@@ -361,6 +361,13 @@ export default function ControlPanelShell() {
         <AppSidebar
           activePage={activePage}
           onPageChange={setActivePage}
+          onOpenEarlyAccess={() => {
+            setActivePage("settings");
+            setSettingsTabRequest((current) => ({
+              section: "pro",
+              requestId: current.requestId + 1,
+            }));
+          }}
           updateSlot={renderUpdateNotice()}
         />
 

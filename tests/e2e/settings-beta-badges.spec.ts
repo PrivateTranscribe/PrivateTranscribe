@@ -44,7 +44,9 @@ test.describe("beta feature labelling", () => {
   });
 
   test("uses one word for the locked state on a beta page", async ({ controlPanel }) => {
-    await controlPanel.getByRole("button", { name: "AI Enhancement Beta" }).click();
+    // Locked features are not in the sidebar; the Pro tab's card is the way in.
+    await controlPanel.getByRole("button", { name: "Early access features", exact: true }).click();
+    await controlPanel.getByRole("button", { name: /^AI Enhancement/ }).click();
     await expect(
       controlPanel.getByRole("heading", { name: "AI Enhancement" }).first()
     ).toBeVisible();

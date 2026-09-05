@@ -36,13 +36,12 @@ test.describe("settings search", () => {
     await openSettings(controlPanel);
     await controlPanel
       .getByRole("searchbox", { name: "Search settings" })
-      .fill("correction memory");
+      .fill("ducking");
 
+    // The row is called "While recording"; only its group heading says ducking.
     const results = controlPanel.getByRole("listbox", { name: "Settings search results" });
     await expect(results).toBeVisible();
-    await expect(
-      results.getByRole("option", { name: /Learn phrase and sentence rewrites/ })
-    ).toBeVisible();
+    await expect(results.getByRole("option", { name: /While recording/ })).toBeVisible();
 
     await controlPanel.screenshot({
       path: "test-results/e2e/settings-search-results.png",
@@ -55,7 +54,7 @@ test.describe("settings search", () => {
     await controlPanel.getByRole("searchbox", { name: "Search settings" }).fill("telemetry");
     await controlPanel.getByRole("option", { name: /Optional product analytics/ }).click();
 
-    // The row lives under Preferences; the search opened that tab on its own.
+    // The row lives under General; the search opened that tab on its own.
     const row = controlPanel.locator('[data-settings-label="Optional product analytics"]');
     await expect(row).toBeVisible();
     await expect(row).toHaveClass(/settings-row-found/);

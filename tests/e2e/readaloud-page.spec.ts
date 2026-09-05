@@ -73,20 +73,30 @@ async function captureSidebar(page: Page, fileName: string) {
   );
 }
 
-/** The sidebar entry drops its "Beta" badge once tester access is active. */
+/**
+ * Unlocked, Read Aloud sits in the sidebar. Locked, it is not listed there and
+ * the route runs through the Pro tab's feature card.
+ */
 async function openReadAloudPage(controlPanel: Page) {
-  await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
+  const entry = controlPanel.getByRole("button", { name: "Read Aloud", exact: true });
+  if ((await entry.count()) > 0) {
+    await entry.click();
+  } else {
+    await controlPanel.getByRole("button", { name: "Early access features", exact: true }).click();
+    await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
+  }
   await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
 }
 
 test.describe("read aloud page", () => {
-  test("is in the sidebar with a Beta badge, and no longer a settings tab", async ({
+  test("stays out of the sidebar while locked, and is no longer a settings tab", async ({
     controlPanel,
   }) => {
-    // The whole point of the move: it is visible without opening Settings.
-    const entry = controlPanel.getByRole("button", { name: "Read Aloud Beta" });
-    await expect(entry).toBeVisible();
-    await expect(entry.getByText("Beta", { exact: true })).toBeVisible();
+    // Locked features are not listed; the one door is the early access row.
+    await expect(controlPanel.getByRole("button", { name: /^Read Aloud/ })).toHaveCount(0);
+    await expect(
+      controlPanel.getByRole("button", { name: "Early access features", exact: true })
+    ).toBeVisible();
 
     // It sits in SPEECH, beside Dictionary, not off in some unrelated group.
     await expect(

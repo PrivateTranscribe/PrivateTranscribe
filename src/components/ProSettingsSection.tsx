@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, X, RefreshCw } from "lucide-react";
+import { Check, ChevronRight, X, RefreshCw } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/Toast";
@@ -39,6 +39,15 @@ const PRO_FEATURES_AVAILABLE = [
   },
 ];
 
+/** Where each listed feature lives, so the card can open it. */
+const FEATURE_PAGES: Record<string, string> = {
+  "Correction Memory": "dictionary",
+  "AI Enhancement": "ai-enhancement",
+  "Action Engine": "action-engine",
+  "Read Aloud": "read-aloud",
+  Converse: "converse",
+};
+
 const PRO_FEATURES_COMING = [
   {
     name: "Smart Context",
@@ -48,7 +57,12 @@ const PRO_FEATURES_COMING = [
 
 const licensingReady = isLicensingConfigured();
 
-export default function ProSettingsSection() {
+export default function ProSettingsSection({
+  onNavigate,
+}: {
+  /** Leaves Settings for a feature's own page. Cards are plain text without it. */
+  onNavigate?: (page: string) => void;
+} = {}) {
   const [status, setStatus] = useState<ProStatus>(getProStatus());
   const [keyInput, setKeyInput] = useState("");
   const [activating, setActivating] = useState(false);
@@ -296,18 +310,39 @@ export default function ProSettingsSection() {
           </p>
         </div>
 
-        {PRO_FEATURES_AVAILABLE.map((feature) => (
-          <div
-            key={feature.name}
-            className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
-          >
-            <Check size={14} className="shrink-0 text-pro" />
-            <div className="min-w-0 flex-1">
-              <span className="text-sm font-medium text-foreground">{feature.name}</span>
-              <p className="text-xs text-muted-foreground">{feature.desc}</p>
-            </div>
-          </div>
-        ))}
+        {PRO_FEATURES_AVAILABLE.map((feature) => {
+          const page = FEATURE_PAGES[feature.name];
+          const body = (
+            <>
+              <Check size={14} className="shrink-0 text-pro" />
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-foreground">{feature.name}</span>
+                <p className="text-xs text-muted-foreground">{feature.desc}</p>
+              </div>
+            </>
+          );
+          if (!page || !onNavigate) {
+            return (
+              <div
+                key={feature.name}
+                className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
+              >
+                {body}
+              </div>
+            );
+          }
+          return (
+            <button
+              key={feature.name}
+              type="button"
+              onClick={() => onNavigate(page)}
+              className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3 text-left transition-colors hover:border-pro/40 hover:bg-background/60"
+            >
+              {body}
+              <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+            </button>
+          );
+        })}
 
         {PRO_FEATURES_COMING.length > 0 && (
           <div className="mt-4 space-y-2">

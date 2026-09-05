@@ -123,6 +123,8 @@ const readStoredCustomPrompt = (): string | undefined => {
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
+  /** Leaves Settings for another page, used by the Pro tab's feature cards. */
+  onNavigate?: (page: string) => void;
 }
 
 // ── Reusable layout primitives ──────────────────────────────────────
@@ -1128,7 +1130,7 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
 
 // ── Main component ──────────────────────────────────────────────────
 
-export default function SettingsPage({ activeSection = "general" }: SettingsPageProps) {
+export default function SettingsPage({ activeSection = "general", onNavigate }: SettingsPageProps) {
   const {
     confirmDialog,
     alertDialog,
@@ -3040,7 +3042,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               title="PrivateTranscribe Pro"
               description="Unlock advanced features with a one-time license"
             />
-            <ProSettingsSection />
+            <ProSettingsSection onNavigate={onNavigate} />
           </div>
         );
 

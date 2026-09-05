@@ -45,11 +45,8 @@ describe("Pro branding", () => {
     }
     expect(readSource("src/components/ui/BetaBadge.tsx")).toContain('variant={locked ? "pro"');
 
-    // The sidebar renders its badges through the shared Badge component rather
-    // than an inline-styled span, and routes the pro variant to the pro token.
-    const sidebar = readSource("src/components/AppSidebar.tsx");
-    expect(sidebar).toContain('from "./ui/badge"');
-    expect(sidebar).toMatch(/badgeVariant === "pro"\s*\?\s*"pro"/);
+    // The sidebar no longer badges anything: locked features are not listed
+    // there at all, so the pro token only has to exist in the shared badge.
     expect(readSource("src/components/ui/badge.tsx")).toContain("bg-pro/15");
   });
 

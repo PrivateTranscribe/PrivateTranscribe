@@ -149,7 +149,7 @@ export default function SettingsPageWrapper({
       </div>
 
       {/* Settings content */}
-      <SettingsPage activeSection={activeTab} />
+      <SettingsPage activeSection={activeTab} onNavigate={onNavigate} />
     </div>
   );
 }

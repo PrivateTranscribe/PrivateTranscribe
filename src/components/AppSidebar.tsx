@@ -11,12 +11,12 @@ import {
   AudioLines,
   Zap,
   Settings,
+  FlaskConical,
 } from "lucide-react";
-import { shouldShowProBadge } from "../hooks/useProStatus";
+import { hasTesterAccess, isFeatureUnlocked } from "../hooks/useProStatus";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import FeedbackDialog from "./FeedbackDialog";
-import { Badge } from "./ui/badge";
 
 export type PageId =
   | "home"
@@ -35,8 +35,6 @@ interface NavItem {
   id: PageId;
   label: string;
   icon: typeof LayoutDashboard;
-  badge?: string;
-  badgeVariant?: "new" | "soon" | "pro";
 }
 
 interface NavGroup {
@@ -44,6 +42,12 @@ interface NavGroup {
   items: NavItem[];
 }
 
+/**
+ * Every feature the app has. Entries whose feature is still tester-only are
+ * filtered out at render time for everyone without tester access, so a new
+ * install sees only what it can open. The "Early access features" row below
+ * the groups is the one door to the rest.
+ */
 const navGroups: NavGroup[] = [
   {
     items: [
@@ -57,45 +61,19 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "dictation", label: "Dictation", icon: Mic },
       { id: "dictionary", label: "Dictionary", icon: BookOpen },
-      {
-        id: "read-aloud",
-        label: "Read Aloud",
-        icon: AudioLines,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
+      { id: "read-aloud", label: "Read Aloud", icon: AudioLines },
     ],
   },
   {
     label: "INTELLIGENCE",
     items: [
-      {
-        id: "ai-enhancement",
-        label: "AI Enhancement",
-        icon: Brain,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
-      {
-        id: "converse",
-        label: "Converse",
-        icon: MessagesSquare,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
+      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
+      { id: "converse", label: "Converse", icon: MessagesSquare },
     ],
   },
   {
     label: "ADVANCED",
-    items: [
-      {
-        id: "action-engine",
-        label: "Action Engine",
-        icon: Zap,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
-    ],
+    items: [{ id: "action-engine", label: "Action Engine", icon: Zap }],
   },
 ];
 
@@ -108,9 +86,16 @@ interface AppSidebarProps {
    * instead of competing with the brand in the title bar.
    */
   updateSlot?: React.ReactNode;
+  /** Opens the Pro tab, where the tester-only features are listed. */
+  onOpenEarlyAccess?: () => void;
 }
 
-export default function AppSidebar({ activePage, onPageChange, updateSlot }: AppSidebarProps) {
+export default function AppSidebar({
+  activePage,
+  onPageChange,
+  updateSlot,
+  onOpenEarlyAccess,
+}: AppSidebarProps) {
   const [hotkey] = useLocalStorage("dictationKey", "", {
     serialize: String,
     deserialize: String,
@@ -134,6 +119,11 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
     getVersion();
   }, []);
 
+  const testerAccess = hasTesterAccess();
+  const visibleGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => isFeatureUnlocked(item.id)) }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div
       style={{
@@ -152,8 +142,8 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
 
       {/* Navigation */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
-        {navGroups.map((group, gi) => (
-          <div key={gi} style={{ marginBottom: gi < navGroups.length - 1 ? "6px" : 0 }}>
+        {visibleGroups.map((group, gi) => (
+          <div key={gi} style={{ marginBottom: gi < visibleGroups.length - 1 ? "6px" : 0 }}>
             {group.label && (
               <p
                 style={{
@@ -219,25 +209,48 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
                     }}
                   />
                   <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.badge && (item.badgeVariant !== "pro" || shouldShowProBadge(item.id)) && (
-                    <Badge
-                      variant={
-                        item.badgeVariant === "new"
-                          ? "default"
-                          : item.badgeVariant === "pro"
-                            ? "pro"
-                            : "outline"
-                      }
-                      className="rounded px-1.5 py-px text-[9px] font-semibold tracking-[0.02em]"
-                    >
-                      {item.badge}
-                    </Badge>
-                  )}
                 </button>
               );
             })}
           </div>
         ))}
+
+        {/* The one door to the tester-only features, for people who cannot open them yet */}
+        {!testerAccess && (
+          <button
+            type="button"
+            onClick={() => onOpenEarlyAccess?.()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              width: "100%",
+              padding: "8px 12px",
+              marginTop: "6px",
+              backgroundColor: "transparent",
+              color: "var(--color-foreground-faint)",
+              border: "none",
+              borderRadius: "8px",
+              borderLeft: "2px solid transparent",
+              cursor: "pointer",
+              fontSize: "12px",
+              textAlign: "left",
+              transition: "all 0.15s ease",
+              fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--color-popover)";
+              e.currentTarget.style.color = "var(--color-foreground-subtle)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = "var(--color-foreground-faint)";
+            }}
+          >
+            <FlaskConical size={15} style={{ opacity: 0.6, flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>Early access features</span>
+          </button>
+        )}
 
         {/* Divider */}
         <div
