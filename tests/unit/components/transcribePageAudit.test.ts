@@ -160,14 +160,14 @@ describe("F7 — the missing-model error offers a way to get the model (FIXED)",
     expect(source).toMatch(/includes\("not downloaded"\)/);
   });
 
-  it("points at the settings section that installs local models", () => {
+  it("points at the Dictation page that installs local models", () => {
     const source = transcribePage();
 
     expect(source).toContain("onOpenModelSettings");
-    expect(source).toContain('settingsTab: "transcription"');
+    expect(source).toContain('page: "dictation"');
     // The shell supplies the in-app route rather than reopening a window.
     expect(read("src", "components", "ControlPanelShell.tsx")).toContain(
-      'onOpenModelSettings={() => openSettingsSection("transcription")}'
+      'onOpenModelSettings={() => setActivePage("dictation")}'
     );
   });
 });

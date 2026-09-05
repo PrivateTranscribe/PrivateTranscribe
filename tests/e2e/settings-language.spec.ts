@@ -44,7 +44,7 @@ test.describe("settings transcription language", () => {
           els.map((el) => Number(el.getAttribute("title")?.match(/(\d)\/5/)?.[1]))
         );
 
-    // The picker lives under the Transcription tab; General is the default.
+    // The picker lives on the Dictation page.
     const openTranscriptionTab = async (language: string) => {
       await controlPanel.evaluate((lang) => {
         localStorage.setItem("useLocalWhisper", "true");
@@ -52,8 +52,7 @@ test.describe("settings transcription language", () => {
         localStorage.setItem("preferredLanguage", lang);
       }, language);
       await controlPanel.reload({ waitUntil: "domcontentloaded" });
-      await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-      await controlPanel.getByRole("button", { name: "Transcription", exact: true }).click();
+      await controlPanel.getByRole("button", { name: "Dictation", exact: true }).click();
       await expect(controlPanel.locator('[title^="Accuracy"]').first()).toBeVisible();
     };
 

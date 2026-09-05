@@ -17,6 +17,7 @@ import ReadAloudPage from "./pages/ReadAloudPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
 import ConversePage from "./pages/ConversePage";
 import ActionEnginePage from "./pages/ActionEnginePage";
+import DictationPage from "./pages/DictationPage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 import type { SettingsSectionType } from "./SettingsPage";
 
@@ -53,6 +54,7 @@ export default function ControlPanelShell() {
       "home",
       "history",
       "transcribe",
+      "dictation",
       "dictionary",
       "read-aloud",
       "ai-enhancement",
@@ -296,13 +298,6 @@ export default function ControlPanelShell() {
     );
   };
 
-  /** Jump to a settings tab from inside another page, e.g. Transcribe's
-   *  missing-model error pointing at where models are installed. */
-  const openSettingsSection = (section: SettingsSectionType) => {
-    setActivePage("settings");
-    setSettingsTabRequest((current) => ({ section, requestId: current.requestId + 1 }));
-  };
-
   const renderPage = () => {
     switch (activePage) {
       case "home":
@@ -310,7 +305,9 @@ export default function ControlPanelShell() {
       case "history":
         return <HistoryPage />;
       case "transcribe":
-        return <TranscribePage onOpenModelSettings={() => openSettingsSection("transcription")} />;
+        return <TranscribePage onOpenModelSettings={() => setActivePage("dictation")} />;
+      case "dictation":
+        return <DictationPage />;
       case "dictionary":
         return <DictionaryPage />;
       case "read-aloud":

@@ -80,7 +80,7 @@ import { setAgentName as persistAgentName } from "../utils/agentName";
 export type SettingsSectionType =
   | "general"
   | "preferences"
-  | "transcription"
+  | "dictation"
   | "permissions"
   | "help"
   | "developer"
@@ -1284,7 +1284,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     string | undefined
   >(undefined);
   useEffect(() => {
-    if (activeSection !== "transcription") return;
+    if (activeSection !== "dictation") return;
     window.electronAPI
       ?.detectHardware?.()
       .then((result) => {
@@ -2284,42 +2284,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <CudaEngineUpdateCard />
             </div>
 
-            {/* Dictation Hotkey */}
-            <div>
-              <SectionHeader
-                title="Dictation Control"
-                description="Configure how you activate and control voice dictation"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <HotkeyInput
-                    value={dictationKey}
-                    onChange={async (newHotkey) => {
-                      await registerHotkey(newHotkey);
-                    }}
-                    disabled={isHotkeyRegistering}
-                    ariaLabel="Dictation hotkey"
-                    conflicts={[
-                      { label: "Read Aloud", hotkey: readAloudHotkey },
-                      { label: "Mute my voice call", hotkey: voiceCallMuteKey },
-                    ]}
-                    onClear={() => {
-                      void registerHotkey(getDefaultHotkey());
-                    }}
-                  />
-                </SettingsPanelRow>
-
-                {!isUsingGnomeHotkeys && (
-                  <SettingsPanelRow>
-                    <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
-                      Activation Mode
-                    </p>
-                    <ActivationModeSelector value={activationMode} onChange={setActivationMode} />
-                  </SettingsPanelRow>
-                )}
-              </SettingsPanel>
-            </div>
-
             {/* Startup */}
             {platform !== "linux" && (
               <div>
@@ -2388,95 +2352,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       case "preferences":
         return (
           <div className="space-y-8">
-            {/* Language */}
-            <div>
-              <SectionHeader
-                title="Language"
-                description="Configure speech recognition language and translation"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  {/* Stacked rather than a SettingsRow: the picker needs the
-                      full width of the panel, and its search list expands
-                      downward. Squeezed into the row's narrow right-hand
-                      column it read as a stray chip floating beside the
-                      description. */}
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-foreground">Languages you speak</p>
-                    <SpokenLanguagesSelector
-                      value={spokenLanguages}
-                      onChange={(next) => {
-                        setSpokenLanguages(next);
-                        // English output is only valid for an explicit
-                        // non-English speech language, and that is exactly
-                        // what a single non-English selection produces.
-                        const derived = derivePreferredLanguage(next, preferredLanguage);
-                        if (derived === "en" || derived === "auto") {
-                          setTranslateToEnglish("off");
-                        }
-                      }}
-                    />
-                    <p className="text-[13px] leading-relaxed text-muted-foreground">
-                      {describeSpokenLanguages(spokenLanguages, preferredLanguage)}
-                      {/* A pin can be set from the overlay's quick-switch menu,
-                          so Settings has to be able to clear it. Without this
-                          the row could describe a pinned state it gave the
-                          user no way to leave. */}
-                      {spokenLanguages.length > 1 && preferredLanguage !== "auto" && (
-                        <button
-                          type="button"
-                          onClick={() => setPreferredLanguage("auto")}
-                          className="ml-1.5 text-primary underline-offset-2 hover:underline"
-                        >
-                          Switch to automatic
-                        </button>
-                      )}
-                    </p>
-                  </div>
-                </SettingsPanelRow>
-
-                {/* Its own row so the panel's divider separates the two
-                    questions. Sharing one row left the spoken-language status
-                    line touching the Output language label, and they read as
-                    a single paragraph. */}
-                <SettingsPanelRow>
-                  <SettingsRow label="Output language" description={outputLanguageHelp}>
-                    <div className="flex flex-wrap gap-1.5 justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setTranslateToEnglish("off")}
-                        className={[
-                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
-                          translateToEnglish !== "on"
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-surface-raised border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
-                        ].join(" ")}
-                      >
-                        Same as speech
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canTranslateToEnglish}
-                        onClick={() => canTranslateToEnglish && setTranslateToEnglish("on")}
-                        className={[
-                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
-                          !canTranslateToEnglish
-                            ? "opacity-40 cursor-not-allowed bg-surface-raised border-border-subtle text-muted-foreground"
-                            : translateToEnglish === "on"
-                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                              : "bg-surface-raised border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
-                        ].join(" ")}
-                      >
-                        English
-                      </button>
-                    </div>
-                  </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
             {/* Correction Memory */}
-            <div className="border-t border-border/30 pt-8">
+            <div>
               <SectionHeader
                 title="Correction Memory"
                 description="Apply your saved corrections and learn new ones from edits"
@@ -2906,9 +2783,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         );
 
       // ───────────────────────────────────────────────────
-      // TRANSCRIPTION
+      // DICTATION (its own sidebar page, rendered through this section)
       // ───────────────────────────────────────────────────
-      case "transcription":
+      case "dictation":
         return (
           <div className="space-y-6">
             <SectionHeader
@@ -2954,6 +2831,129 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               setCloudTranscriptionBaseUrl={setCloudTranscriptionBaseUrl}
               variant="settings"
             />
+
+            {/* Language */}
+            <div>
+              <SectionHeader
+                title="Language"
+                description="Configure speech recognition language and translation"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  {/* Stacked rather than a SettingsRow: the picker needs the
+                      full width of the panel, and its search list expands
+                      downward. Squeezed into the row's narrow right-hand
+                      column it read as a stray chip floating beside the
+                      description. */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Languages you speak</p>
+                    <SpokenLanguagesSelector
+                      value={spokenLanguages}
+                      onChange={(next) => {
+                        setSpokenLanguages(next);
+                        // English output is only valid for an explicit
+                        // non-English speech language, and that is exactly
+                        // what a single non-English selection produces.
+                        const derived = derivePreferredLanguage(next, preferredLanguage);
+                        if (derived === "en" || derived === "auto") {
+                          setTranslateToEnglish("off");
+                        }
+                      }}
+                    />
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      {describeSpokenLanguages(spokenLanguages, preferredLanguage)}
+                      {/* A pin can be set from the overlay's quick-switch menu,
+                          so Settings has to be able to clear it. Without this
+                          the row could describe a pinned state it gave the
+                          user no way to leave. */}
+                      {spokenLanguages.length > 1 && preferredLanguage !== "auto" && (
+                        <button
+                          type="button"
+                          onClick={() => setPreferredLanguage("auto")}
+                          className="ml-1.5 text-primary underline-offset-2 hover:underline"
+                        >
+                          Switch to automatic
+                        </button>
+                      )}
+                    </p>
+                  </div>
+                </SettingsPanelRow>
+
+                {/* Its own row so the panel's divider separates the two
+                    questions. Sharing one row left the spoken-language status
+                    line touching the Output language label, and they read as
+                    a single paragraph. */}
+                <SettingsPanelRow>
+                  <SettingsRow label="Output language" description={outputLanguageHelp}>
+                    <div className="flex flex-wrap gap-1.5 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setTranslateToEnglish("off")}
+                        className={[
+                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                          translateToEnglish !== "on"
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-surface-raised border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
+                        ].join(" ")}
+                      >
+                        Same as speech
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canTranslateToEnglish}
+                        onClick={() => canTranslateToEnglish && setTranslateToEnglish("on")}
+                        className={[
+                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                          !canTranslateToEnglish
+                            ? "opacity-40 cursor-not-allowed bg-surface-raised border-border-subtle text-muted-foreground"
+                            : translateToEnglish === "on"
+                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                              : "bg-surface-raised border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
+                        ].join(" ")}
+                      >
+                        English
+                      </button>
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Dictation Hotkey */}
+            <div>
+              <SectionHeader
+                title="Dictation Control"
+                description="Configure how you activate and control voice dictation"
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <HotkeyInput
+                    value={dictationKey}
+                    onChange={async (newHotkey) => {
+                      await registerHotkey(newHotkey);
+                    }}
+                    disabled={isHotkeyRegistering}
+                    ariaLabel="Dictation hotkey"
+                    conflicts={[
+                      { label: "Read Aloud", hotkey: readAloudHotkey },
+                      { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+                    ]}
+                    onClear={() => {
+                      void registerHotkey(getDefaultHotkey());
+                    }}
+                  />
+                </SettingsPanelRow>
+
+                {!isUsingGnomeHotkeys && (
+                  <SettingsPanelRow>
+                    <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
+                      Activation Mode
+                    </p>
+                    <ActivationModeSelector value={activationMode} onChange={setActivationMode} />
+                  </SettingsPanelRow>
+                )}
+              </SettingsPanel>
+            </div>
 
             {useLocalWhisper && localTranscriptionProvider === "whisper" && (
               <div className="mt-6">

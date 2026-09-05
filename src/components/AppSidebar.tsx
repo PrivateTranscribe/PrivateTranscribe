@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Clock,
   Upload,
+  Mic,
   BookOpen,
   Brain,
   MessageSquare,
@@ -21,6 +22,7 @@ export type PageId =
   | "home"
   | "history"
   | "transcribe"
+  | "dictation"
   | "dictionary"
   | "read-aloud"
   | "ai-enhancement"
@@ -53,6 +55,7 @@ const navGroups: NavGroup[] = [
   {
     label: "SPEECH",
     items: [
+      { id: "dictation", label: "Dictation", icon: Mic },
       { id: "dictionary", label: "Dictionary", icon: BookOpen },
       {
         id: "read-aloud",

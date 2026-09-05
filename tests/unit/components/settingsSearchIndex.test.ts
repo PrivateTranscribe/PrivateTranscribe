@@ -124,8 +124,22 @@ describe("every settings section can actually be opened", () => {
     expect(ipcTabs.length).toBeGreaterThan(0);
   });
 
-  it("has a tab for every section the settings page can render", () => {
-    expect([...sectionMembers].sort()).toEqual([...tabIds].sort());
+  /**
+   * Sections that a sidebar page renders directly instead of a Settings tab.
+   * Dictation is the product, so its setup is a page; SettingsPage still owns
+   * the JSX because the picker and hotkey rows are wired into its state.
+   */
+  const pageOwnedSections = ["dictation"];
+
+  it("has a tab or a page for every section the settings page can render", () => {
+    const tabSections = sectionMembers.filter((id) => !pageOwnedSections.includes(id));
+    expect([...tabSections].sort()).toEqual([...tabIds].sort());
+    for (const id of pageOwnedSections) {
+      expect(sectionMembers).toContain(id);
+      expect(readFileSync(join(ROOT, "src/components/AppSidebar.tsx"), "utf8")).toContain(
+        `id: "${id}"`
+      );
+    }
   });
 
   it("accepts the same tabs over IPC as the tab bar offers", () => {

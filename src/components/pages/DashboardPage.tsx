@@ -576,7 +576,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             Transcribe file
           </button>
           <button
-            onClick={() => onNavigate("settings")}
+            onClick={() => onNavigate("dictation")}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border-subtle bg-surface-raised text-sm font-medium text-foreground hover:bg-surface-raised/80 hover:border-primary/30 transition-all duration-200"
           >
             <Settings size={15} className="text-primary" />

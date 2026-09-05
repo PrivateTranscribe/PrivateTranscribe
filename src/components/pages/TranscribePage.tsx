@@ -321,7 +321,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const missingModel = status === "error" && isMissingModelError(errorMessage);
 
   /**
-   * Local models are installed from Settings → Transcription, which is not on
+   * Local models are installed from the Dictation page, which is not on
    * this page and never was. The shell hands down the route; the main process
    * knows it too, so the button still works if this page is ever rendered
    * without the prop.
@@ -331,7 +331,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
       onOpenModelSettings();
       return;
     }
-    void window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "transcription" });
+    void window.electronAPI?.openControlPanel?.({ page: "dictation" });
   };
 
   useEffect(() => {

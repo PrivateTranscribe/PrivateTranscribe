@@ -12,8 +12,7 @@ async function openLanguageSettings(page: import("@playwright/test").Page, spoke
     localStorage.setItem("spokenLanguages", JSON.stringify(languages));
   }, spoken);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Preferences", exact: true }).click();
+  await page.getByRole("button", { name: "Dictation", exact: true }).click();
 }
 
 test.describe("spoken language picker", () => {
@@ -75,8 +74,7 @@ test.describe("spoken language picker", () => {
     await openLanguageSettings(controlPanel, ["da", "en"]);
     await controlPanel.evaluate(() => localStorage.setItem("preferredLanguage", "da"));
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
-    await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-    await controlPanel.getByRole("button", { name: "Preferences", exact: true }).click();
+    await controlPanel.getByRole("button", { name: "Dictation", exact: true }).click();
 
     await expect(controlPanel.getByText(/Pinned to Danish/)).toBeVisible();
 
@@ -102,8 +100,7 @@ test.describe("spoken language picker", () => {
 
     // And it stays gone across a reload rather than being resurrected.
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
-    await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-    await controlPanel.getByRole("button", { name: "Preferences", exact: true }).click();
+    await controlPanel.getByRole("button", { name: "Dictation", exact: true }).click();
     await expect(controlPanel.getByText("Auto-detect", { exact: true })).toBeVisible();
 
     await controlPanel.screenshot({

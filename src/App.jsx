@@ -1987,9 +1987,7 @@ export default function App() {
                   icon={Settings}
                   label="More languages in settings"
                   trailing="chevron"
-                  onClick={() =>
-                    void openControlPanel({ page: "settings", settingsTab: "preferences" })
-                  }
+                  onClick={() => void openControlPanel({ page: "dictation" })}
                 />
               </>
             )}

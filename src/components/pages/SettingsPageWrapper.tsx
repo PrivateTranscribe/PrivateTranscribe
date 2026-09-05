@@ -33,7 +33,6 @@ type SettingsTab = {
 const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
   { id: "preferences", label: "Preferences" },
-  { id: "transcription", label: "Transcription" },
   { id: "permissions", label: "Microphone & Permissions" },
   { id: "pro", label: "PrivateTranscribe Pro" },
   { id: "help", label: "Help & Support" },
@@ -83,7 +82,6 @@ export default function SettingsPageWrapper({
     const validSections: SettingsSectionType[] = [
       "general",
       "preferences",
-      "transcription",
       "permissions",
       "pro",
       "help",
@@ -106,7 +104,8 @@ export default function SettingsPageWrapper({
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Settings</h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          Configure transcription, hotkeys, permissions, and advanced options
+          Updates, startup, permissions, and advanced options. Model, language, and hotkey live on
+          the Dictation page.
         </p>
       </div>
 

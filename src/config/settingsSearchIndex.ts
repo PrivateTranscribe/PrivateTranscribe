@@ -15,6 +15,7 @@
 
 export type SettingsSearchPage =
   | "settings"
+  | "dictation"
   | "dictionary"
   | "read-aloud"
   | "converse"
@@ -23,7 +24,6 @@ export type SettingsSearchPage =
 export type SettingsSearchSection =
   | "general"
   | "preferences"
-  | "transcription"
   | "permissions"
   | "pro"
   | "help"
@@ -96,13 +96,6 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
 
   // ── Settings › Preferences ────────────────────────────────────────────────
-  {
-    label: "Output language",
-    group: "Language",
-    page: "settings",
-    section: "preferences",
-    keywords: ["danish", "dansk", "english", "dictation language", "spoken"],
-  },
   {
     label: "Apply dictionary matching",
     group: "Correction Memory",
@@ -244,19 +237,23 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["context", "file", "content", "privacy", "smart context"],
   },
 
-  // ── Settings › Transcription ──────────────────────────────────────────────
+  // ── Dictation ─────────────────────────────────────────────────────────────
+  {
+    label: "Output language",
+    group: "Language",
+    page: "dictation",
+    keywords: ["danish", "dansk", "english", "dictation language", "spoken"],
+  },
   {
     label: "CPU threads",
     group: "Local Whisper performance",
-    page: "settings",
-    section: "transcription",
+    page: "dictation",
     keywords: ["whisper", "performance", "speed", "cores", "cpu"],
   },
   {
     label: "Idle shutdown (minutes)",
     group: "Local Whisper performance",
-    page: "settings",
-    section: "transcription",
+    page: "dictation",
     keywords: ["whisper server", "memory", "ram", "unload", "idle"],
   },
 

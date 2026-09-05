@@ -492,6 +492,7 @@ export type ControlPanelPage =
   | "home"
   | "history"
   | "transcribe"
+  | "dictation"
   | "dictionary"
   | "read-aloud"
   | "ai-enhancement"
@@ -502,7 +503,6 @@ export type ControlPanelPage =
 export type ControlPanelSettingsTab =
   | "general"
   | "preferences"
-  | "transcription"
   | "permissions"
   | "pro"
   | "help"

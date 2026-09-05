@@ -2,6 +2,7 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "home",
   "history",
   "transcribe",
+  "dictation",
   "dictionary",
   "read-aloud",
   "ai-enhancement",
@@ -14,7 +15,6 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
 const VALID_SETTINGS_TABS = new Set([
   "general",
   "preferences",
-  "transcription",
   "permissions",
   "pro",
   "help",

@@ -35,10 +35,10 @@ async function seedHotkeys(
   await page.reload({ waitUntil: "domcontentloaded" });
 }
 
-/** Open Settings (General is the default tab) and focus the dictation field. */
+/** Open the Dictation page and focus the hotkey field. */
 async function focusDictationHotkey(page: Page) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Dictation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Dictation", exact: true })).toBeVisible();
 
   const field = page.getByRole("button", { name: "Dictation hotkey" });
   await field.click();
