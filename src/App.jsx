@@ -144,6 +144,27 @@ const OVERLAY_COLUMN_W = 352;
  */
 const OVERLAY_RADIUS = 22;
 
+/**
+ * The resting line. When nothing is happening the button is not a 44px disc
+ * on top of whatever the user is reading, it is this: a short dark line with
+ * nothing in it. It grows into the circle, around the same centre, the moment
+ * there is something to show - a hover, a recording, a decode, the menu, or a
+ * row docked above it. The 44px hit box underneath never changes size, so the
+ * anchor the column and the taskbar snap are measured from stays put.
+ */
+const OVERLAY_REST_W = 28;
+const OVERLAY_REST_H = 6;
+
+/** Open and close time. Push-to-talk starts before this ends, so it stays short. */
+const OVERLAY_OPEN_MS = 180;
+
+/**
+ * How long the pointer has to rest on the line before it opens. A mouse on
+ * its way to the taskbar crosses the line in a few milliseconds; this keeps
+ * that pass-by from popping the circle open. Closing has no delay.
+ */
+const OVERLAY_HOVER_OPEN_DELAY_MS = 120;
+
 /** Between stacked rows. Small enough to read as one column, not two cards. */
 const OVERLAY_ROW_GAP = 6;
 
@@ -1217,23 +1238,54 @@ export default function App() {
 
   const micState = getMicState();
 
-  // The anchor of the column. It keeps the column's geometry - OVERLAY_RADIUS
-  // resolving to a circle at 44px - but not the rows' near-solid fill: the
-  // button stays the lighter, translucent pill it has always been, so the thing
-  // sitting on the desktop all day does not read as a solid slab.
-  const getMicButtonStyles = () => {
+  // Open whenever there is something to show. Idle with nothing docked above
+  // it, the button rests as the line.
+  const isOverlayOpen =
+    micState !== "idle" ||
+    isCommandMenuOpen ||
+    Boolean(readAloudState) ||
+    Boolean(readAloudNotice) ||
+    Boolean(converseState);
+
+  // The hit box: always 44px, always transparent. Hover, click, drag and the
+  // context menu land on this, so the line is as easy to hit as the circle,
+  // and the geometry everything else is measured from never moves.
+  const getMicButtonStyles = () => ({
+    width: 44,
+    height: 44,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    padding: 0,
+    border: "none",
+    background: "transparent",
+  });
+
+  // The visible shell inside the hit box. It is the anchor of the column and
+  // keeps the column's geometry - OVERLAY_RADIUS resolving to a circle at 44px
+  // and to a pill at the resting 6px - but not the rows' near-solid fill: the
+  // button stays the lighter, translucent surface it has always been, so the
+  // thing sitting on the desktop all day does not read as a solid slab.
+  const getMicShellStyles = () => {
     const base = {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      width: isOverlayOpen ? 44 : OVERLAY_REST_W,
+      height: isOverlayOpen ? 44 : OVERLAY_REST_H,
       borderRadius: OVERLAY_RADIUS,
-      width: 44,
-      height: 44,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      position: "relative",
       overflow: "hidden",
-      transition:
-        "background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease, transform 180ms ease",
+      transition: `width ${OVERLAY_OPEN_MS}ms ease-out, height ${OVERLAY_OPEN_MS}ms ease-out, background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease`,
+      // Only a hover waits before opening; everything else, and every close,
+      // happens at once.
+      transitionDelay: micState === "hover" ? `${OVERLAY_HOVER_OPEN_DELAY_MS}ms` : "0ms",
       backdropFilter: "blur(12px)",
+      pointerEvents: "none",
     };
 
     switch (micState) {
@@ -1428,6 +1480,11 @@ export default function App() {
           0%, 100% { opacity: 0.35; }
           50% { opacity: 1; }
         }
+        @media (prefers-reduced-motion: reduce) {
+          .overlay-shell, .overlay-shell > * {
+            transition-duration: 0ms !important;
+          }
+        }
       `}</style>
 
       {/*
@@ -1545,32 +1602,47 @@ export default function App() {
                   micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
               }}
             >
-              {micState === "idle" ? (
-                <VoiceWaveIndicator isListening={false} />
-              ) : micState === "hover" ? (
-                <VoiceWaveIndicator isListening={false} />
-              ) : micState === "recording" ? (
-                <VoiceBars micLevel={micLevel} />
-              ) : micState === "processing" ? (
-                <VoiceWaveIndicator isListening={true} />
-              ) : null}
-
-              {micState === "recording" && (
+              <div className="overlay-shell" style={getMicShellStyles()}>
+                {/* The bars fade as the shell closes, so the line is empty, not a clipped logo. */}
                 <div
-                  className="absolute inset-0 rounded-full"
                   style={{
-                    border: `1.5px solid rgba(112,255,186,${0.25 + micLevel * 0.4})`,
-                    // Subtle scale-pulse at baseline; micLevel adds static lift on top
-                    animation: "ring-pulse 2.4s ease-in-out infinite",
-                    // Translate ring-pulse scale relative to current halo scale
-                    transformOrigin: "center",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: isOverlayOpen ? 1 : 0,
+                    transition: `opacity ${OVERLAY_OPEN_MS}ms ease-out`,
+                    transitionDelay:
+                      micState === "hover" ? `${OVERLAY_HOVER_OPEN_DELAY_MS}ms` : "0ms",
                   }}
-                />
-              )}
+                >
+                  {micState === "idle" ? (
+                    <VoiceWaveIndicator isListening={false} />
+                  ) : micState === "hover" ? (
+                    <VoiceWaveIndicator isListening={false} />
+                  ) : micState === "recording" ? (
+                    <VoiceBars micLevel={micLevel} />
+                  ) : micState === "processing" ? (
+                    <VoiceWaveIndicator isListening={true} />
+                  ) : null}
+                </div>
 
-              {micState === "processing" && (
-                <div className="absolute inset-0 rounded-full border border-primary/15" />
-              )}
+                {micState === "recording" && (
+                  <div
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      border: `1.5px solid rgba(112,255,186,${0.25 + micLevel * 0.4})`,
+                      // Subtle scale-pulse at baseline; micLevel adds static lift on top
+                      animation: "ring-pulse 2.4s ease-in-out infinite",
+                      // Translate ring-pulse scale relative to current halo scale
+                      transformOrigin: "center",
+                    }}
+                  />
+                )}
+
+                {micState === "processing" && (
+                  <div className="absolute inset-0 rounded-full border border-primary/15" />
+                )}
+              </div>
             </button>
           </div>
 
