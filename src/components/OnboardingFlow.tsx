@@ -151,12 +151,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const canConfigureAutoStart = platform !== "linux";
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
-  const [micTestState, setMicTestState] = useState<"idle" | "recording" | "success" | "error">(
-    "idle"
-  );
-  const [micTestCountdown, setMicTestCountdown] = useState<number | null>(null);
-  const [micTestLevel, setMicTestLevel] = useState(0);
-  const [micTestError, setMicTestError] = useState<string | null>(null);
   const { toast } = useToast();
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
@@ -165,12 +159,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const autoRegisterInFlightRef = useRef(false);
   const hotkeyStepInitializedRef = useRef(false);
   const hotkeyRegistrationCounterRef = useRef(0);
-  const micTestTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-  const micTestIntervalRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
-  const micTestRafRef = useRef<number | null>(null);
-  const micTestStreamRef = useRef<MediaStream | null>(null);
-  const micTestAudioContextRef = useRef<AudioContext | null>(null);
-  const micTestSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const pendingStatusChecksRef = useRef(0);
 
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
@@ -593,123 +581,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       setOnboardingError("Something went wrong. Please try again.");
     }
   }, [saveSettings, removeCurrentStep, onComplete, steps.length]);
-
-  const cleanupMicTestResources = useCallback(() => {
-    if (micTestRafRef.current !== null) {
-      window.cancelAnimationFrame(micTestRafRef.current);
-      micTestRafRef.current = null;
-    }
-
-    if (micTestTimeoutRef.current) {
-      window.clearTimeout(micTestTimeoutRef.current);
-      micTestTimeoutRef.current = null;
-    }
-
-    if (micTestIntervalRef.current) {
-      window.clearInterval(micTestIntervalRef.current);
-      micTestIntervalRef.current = null;
-    }
-
-    micTestSourceRef.current?.disconnect();
-    micTestSourceRef.current = null;
-
-    micTestStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micTestStreamRef.current = null;
-
-    const audioContext = micTestAudioContextRef.current;
-    micTestAudioContextRef.current = null;
-    if (audioContext) {
-      void audioContext.close();
-    }
-  }, []);
-
-  const handleMicTest = useCallback(async () => {
-    cleanupMicTestResources();
-    setMicTestError(null);
-    setMicTestLevel(0);
-    setMicTestCountdown(3);
-    setMicTestState("recording");
-
-    try {
-      // Test the microphone dictation will actually open. A plain
-      // `{ audio: true }` test can pass on the system default while dictation
-      // records silence from the device the settings point at.
-      let audioInputs: MediaDeviceInfo[] = [];
-      try {
-        audioInputs = (await navigator.mediaDevices.enumerateDevices()).filter(
-          (device) => device.kind === "audioinput"
-        );
-      } catch {
-        audioInputs = [];
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia(
-        buildMicrophoneConstraints(audioInputs, { preferBuiltInMic, selectedMicDeviceId })
-      );
-      micTestStreamRef.current = stream;
-
-      const AudioContextCtor = window.AudioContext;
-      if (!AudioContextCtor) {
-        throw new Error("AudioContext is not available in this environment.");
-      }
-      const audioContext = new AudioContextCtor();
-      micTestAudioContextRef.current = audioContext;
-
-      const source = audioContext.createMediaStreamSource(stream);
-      micTestSourceRef.current = source;
-
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      const sampleBuffer = new Uint8Array(analyser.fftSize);
-
-      const updateLevel = () => {
-        analyser.getByteTimeDomainData(sampleBuffer);
-        let sum = 0;
-        for (let i = 0; i < sampleBuffer.length; i += 1) {
-          const normalized = (sampleBuffer[i] - 128) / 128;
-          sum += normalized * normalized;
-        }
-        const rms = Math.sqrt(sum / sampleBuffer.length);
-        setMicTestLevel(Math.min(1, Math.max(0.08, rms * 6)));
-        micTestRafRef.current = window.requestAnimationFrame(updateLevel);
-      };
-
-      updateLevel();
-
-      micTestIntervalRef.current = window.setInterval(() => {
-        setMicTestCountdown((previous) => {
-          if (previous === null || previous <= 1) {
-            return 1;
-          }
-          return previous - 1;
-        });
-      }, 1000);
-
-      micTestTimeoutRef.current = window.setTimeout(() => {
-        cleanupMicTestResources();
-        setMicTestLevel(0);
-        setMicTestCountdown(null);
-        setMicTestState("success");
-      }, 3000);
-    } catch (error) {
-      cleanupMicTestResources();
-      setMicTestLevel(0);
-      setMicTestCountdown(null);
-      setMicTestState("error");
-      setMicTestError(
-        error instanceof Error
-          ? error.message
-          : "PrivateTranscribe couldn't access your microphone. Check system permissions and try again."
-      );
-    }
-  }, [cleanupMicTestResources, preferBuiltInMic, selectedMicDeviceId]);
-
-  useEffect(() => {
-    return () => {
-      cleanupMicTestResources();
-    };
-  }, [cleanupMicTestResources]);
 
   useEffect(() => {
     if (!useLocalWhisper) {
@@ -1226,62 +1097,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     retry under Settings, General, CUDA Engine.
                   </p>
                 )}
-              </div>
-
-              <div className="space-y-3 text-left">
-                <h3 className="text-sm font-medium">Test your microphone</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleMicTest()}
-                  disabled={micTestState === "recording"}
-                  className="h-9 px-4"
-                >
-                  <Mic className="w-4 h-4" />
-                  {micTestState === "recording"
-                    ? `${micTestCountdown ?? 3}...`
-                    : "Test your microphone"}
-                </Button>
-
-                <div className="flex items-center gap-1.5">
-                  {Array.from({ length: 5 }, (_, index) => {
-                    const activeBars = Math.ceil(micTestLevel * 5);
-                    const isActive = index < activeBars;
-                    return (
-                      <div
-                        key={index}
-                        className={`h-2 w-2 rounded transition-colors duration-200 ${
-                          isActive ? "bg-primary" : "bg-muted"
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-
-                {micTestState === "success" && (
-                  <p className="text-sm text-primary font-medium">Microphone working! ✓</p>
-                )}
-
-                {micTestState === "error" && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                    <p className="text-xs text-destructive">
-                      {micTestError ||
-                        "PrivateTranscribe couldn't access your microphone. Check permissions and try again."}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="mt-2 h-7 text-xs"
-                      onClick={() => void handleMicTest()}
-                    >
-                      Retry microphone test
-                    </Button>
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  We&apos;ll listen for 3 seconds to confirm your microphone is working.
-                </p>
               </div>
             </div>
           </div>
