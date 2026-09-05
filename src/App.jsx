@@ -147,10 +147,11 @@ const OVERLAY_RADIUS = 22;
 /**
  * The resting line. When nothing is happening the button is not a 44px disc
  * on top of whatever the user is reading, it is this: a short dark line with
- * nothing in it. It grows into the circle, around the same centre, the moment
- * there is something to show - a hover, a recording, a decode, the menu, or a
- * row docked above it. The 44px hit box underneath never changes size, so the
- * anchor the column and the taskbar snap are measured from stays put.
+ * nothing in it, sat where the circle's bottom edge is. It grows upward into
+ * the circle the moment there is something to show - a hover, a recording, a
+ * decode, the menu, or a row docked above it. The 44px hit box underneath
+ * never changes size, so the anchor the column and the taskbar snap are
+ * measured from stays put.
  */
 const OVERLAY_REST_W = 28;
 const OVERLAY_REST_H = 6;
@@ -1273,9 +1274,12 @@ export default function App() {
   const getMicShellStyles = () => {
     const base = {
       position: "absolute",
-      top: "50%",
+      // Anchored to the bottom of the hit box, not its centre: the resting
+      // line sits where the circle's bottom edge is, right above the taskbar,
+      // and the circle grows upward from it into the spot it has always had.
+      bottom: 0,
       left: "50%",
-      transform: "translate(-50%, -50%)",
+      transform: "translateX(-50%)",
       width: isOverlayOpen ? 44 : OVERLAY_REST_W,
       height: isOverlayOpen ? 44 : OVERLAY_REST_H,
       borderRadius: OVERLAY_RADIUS,

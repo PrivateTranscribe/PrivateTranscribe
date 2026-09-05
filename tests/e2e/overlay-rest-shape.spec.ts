@@ -8,8 +8,9 @@ import { expect, test } from "./fixtures/electron-app";
  *
  * Idle, the dictation button is a short line, not a disc. It opens into the
  * 44px circle when the pointer rests on it, when a recording starts, and it
- * stays open through the decode, then closes again. Every shape is centred on
- * the same point, because the 44px hit box underneath never changes size.
+ * stays open through the decode, then closes again. The line rests on the
+ * circle's bottom edge and the circle grows upward from it, because the 44px
+ * hit box underneath never changes size.
  *
  * Each state is captured as well as asserted, so a change to the shape can be
  * judged by eye. Set PT_SHOT_DIR to choose where the shots land; it defaults
@@ -58,10 +59,12 @@ async function expectShell(overlay: Page, width: number, height: number) {
   expect(Math.round(shellBox.width), "shell width").toBe(width);
   expect(Math.round(shellBox.height), "shell height").toBe(height);
 
+  // Centred left to right, and sat on the bottom edge: the line rests where
+  // the circle's bottom edge is, and the circle grows upward from it.
   const dx = shellBox.x + shellBox.width / 2 - (buttonBox.x + buttonBox.width / 2);
-  const dy = shellBox.y + shellBox.height / 2 - (buttonBox.y + buttonBox.height / 2);
+  const dBottom = shellBox.y + shellBox.height - (buttonBox.y + buttonBox.height);
   expect(Math.abs(dx), "shell is centred on the anchor, horizontally").toBeLessThan(1.5);
-  expect(Math.abs(dy), "shell is centred on the anchor, vertically").toBeLessThan(1.5);
+  expect(Math.abs(dBottom), "shell sits on the bottom edge of the anchor").toBeLessThan(1.5);
 }
 
 async function capture(page: Page, fileName: string) {
