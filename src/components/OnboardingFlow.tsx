@@ -509,6 +509,15 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     toast,
   ]);
 
+  /** Local Whisper on a CUDA-capable machine that has no usable GPU engine yet. */
+  const gpuEngineWanted =
+    useLocalWhisper &&
+    isModelDownloaded &&
+    !skippedModelSetup &&
+    !whisperForceCpu &&
+    !!cudaStatus?.supported &&
+    !(cudaStatus?.installed && cudaStatus.upToDate);
+
   const nextStep = useCallback(async () => {
     if (currentStep >= steps.length - 1) {
       return;
@@ -524,6 +533,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       } finally {
         setIsVerifyingHotkey(false);
       }
+    }
+
+    // A supported GPU with no engine yet: kick the download off and move on.
+    // The main process owns the download, so leaving this step, or finishing
+    // onboarding, does not stop it, and the whisper server switches to the
+    // engine on its own once it is installed.
+    if (currentStep === 2 && gpuEngineWanted && cudaDownloadState === "idle") {
+      void handleDownloadCuda();
     }
 
     const newStep = currentStep + 1;
@@ -543,7 +560,16 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         }
       }
     }
-  }, [currentStep, ensureHotkeyRegistered, setCurrentStep, steps.length, toast]);
+  }, [
+    currentStep,
+    cudaDownloadState,
+    ensureHotkeyRegistered,
+    gpuEngineWanted,
+    handleDownloadCuda,
+    setCurrentStep,
+    steps.length,
+    toast,
+  ]);
 
   const prevStep = useCallback(() => {
     if (currentStep > 0) {
@@ -883,27 +909,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {shouldShowCudaDownload && (
               <div className="rounded-lg border border-border-subtle bg-surface-1 overflow-hidden">
                 <div className="p-3 border-b border-border-subtle">
-                  <h3 className="text-sm font-medium text-foreground">GPU Engine</h3>
+                  <h3 className="text-sm font-medium text-foreground">GPU engine</h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Download the GPU engine (faster transcription) to keep acceleration enabled.
+                    {cudaDownloadState === "downloading"
+                      ? "Downloading in the background. Keep going, dictation runs on your CPU until it finishes and then switches to the GPU on its own."
+                      : cudaDownloadState === "error"
+                        ? "The download did not finish. Dictation still works on your CPU. Try again here, or later from Settings."
+                        : "Your graphics card can run Whisper several times faster. Next starts a ~750 MB download in the background, and dictation runs on your CPU until it finishes."}
                   </p>
                 </div>
 
                 {cudaDownloadState === "downloading" && (
-                  <DownloadProgressBar modelName="GPU Engine" progress={cudaDownloadProgress} />
+                  <DownloadProgressBar modelName="GPU engine" progress={cudaDownloadProgress} />
                 )}
 
                 <div className="p-3 space-y-2">
-                  {cudaDownloadState !== "downloading" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => void handleDownloadCuda()}
-                    >
-                      Download GPU Engine (~750 MB)
-                    </Button>
-                  )}
                   {cudaDownloadState === "downloading" && (
                     <Button
                       type="button"
@@ -911,11 +931,23 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       className="w-full"
                       onClick={() => void handleCancelCudaDownload()}
                     >
-                      Cancel Download
+                      Cancel download
                     </Button>
                   )}
-                  {cudaDownloadError && (
-                    <p className="text-xs text-destructive">{cudaDownloadError}</p>
+                  {cudaDownloadState === "error" && (
+                    <>
+                      {cudaDownloadError && (
+                        <p className="text-xs text-destructive">{cudaDownloadError}</p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => void handleDownloadCuda()}
+                      >
+                        Try the download again
+                      </Button>
+                    </>
                   )}
                   <Button
                     type="button"
@@ -923,7 +955,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     onClick={handleSkipCudaAndUseCpu}
                     className="h-8 px-4 text-xs w-full"
                   >
-                    Skip - use your CPU
+                    Use my CPU only
                   </Button>
                 </div>
               </div>
@@ -1174,7 +1206,24 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 </p>
                 {useLocalWhisper && skippedModelSetup && (
                   <p className="text-xs text-muted-foreground">
-                    Local model setup was skipped. You can configure it later in Settings.
+                    Local model setup was skipped. You can configure it later on the Dictation page.
+                  </p>
+                )}
+                {cudaDownloadState === "downloading" && (
+                  <p className="text-xs text-muted-foreground">
+                    GPU engine download at {Math.round(cudaDownloadProgress.percentage)}%. Dictation
+                    runs on your CPU until it finishes, then switches to the GPU on its own.
+                  </p>
+                )}
+                {cudaDownloadState === "done" && (
+                  <p className="text-xs text-primary">
+                    GPU engine installed. Dictation runs on your graphics card.
+                  </p>
+                )}
+                {cudaDownloadState === "error" && (
+                  <p className="text-xs text-muted-foreground">
+                    The GPU engine download did not finish. Dictation runs on your CPU. You can
+                    retry under Settings, General, CUDA Engine.
                   </p>
                 )}
               </div>
@@ -1263,13 +1312,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             return false;
           }
 
-          if (!skippedModelSetup && !whisperForceCpu) {
-            if (!cudaStatus) {
-              return false;
-            }
-            if (cudaStatus.supported && (!cudaStatus.installed || !cudaStatus.upToDate)) {
-              return false;
-            }
+          // The GPU engine never blocks the step. When it is missing, Next
+          // starts the download in the background (see nextStep) and dictation
+          // runs on the CPU until it lands. Only wait for the status itself.
+          if (!skippedModelSetup && !whisperForceCpu && !cudaStatus) {
+            return false;
           }
           return true;
         } else {
@@ -1319,13 +1366,10 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           ? "Checking setup status..."
           : !skippedModelSetup && !isModelDownloaded
             ? "Download a model, or skip for now"
-            : !skippedModelSetup &&
-                !whisperForceCpu &&
-                cudaStatus?.supported &&
-                (!cudaStatus.installed || !cudaStatus.upToDate)
-              ? "Download GPU engine, or switch to CPU mode"
-              : "Select a setup option to continue"
-      : null;
+            : "Select a setup option to continue"
+      : currentStep === 2 && gpuEngineWanted && cudaDownloadState === "idle"
+        ? "Next also starts the GPU engine download (~750 MB) in the background"
+        : null;
 
   return (
     <div
