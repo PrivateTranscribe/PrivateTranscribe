@@ -29,9 +29,14 @@ const {
   BUTTON_OFFSET_Y,
   BUTTON_HALF,
   WindowPositionUtil,
+  shouldPersistOverlayMove,
 } = require("./windowConfig");
 
 const BUTTON_HIT_TEST_PADDING = 4;
+// How long after a display is added, removed or re-measured that a `moved`
+// event on the overlay is taken to be the OS shuffling windows, not the user.
+// Covers the 2 s metrics debounce plus the 5 s the re-clamp itself ignores.
+const DISPLAY_CHANGE_MOVE_IGNORE_MS = 7000;
 const BUTTON_HOVER_POLL_MS = 50;
 // Shortest gap between two overlay-interactivity re-arms. A wake fires resume,
 // unlock-screen and display-metrics changes in a cluster; each re-arm cycles a
@@ -548,6 +553,13 @@ class WindowManager {
     // Firing immediately can save a wrong clamped position, which persists across reboots.
     // Wait 2 s after the last event so we act on the final stable work area.
     this._displayMetricsChangedHandler = () => {
+      // Open the quiet window now, not after the debounce: the OS has already
+      // moved the overlay off a dropped monitor by the time this fires, and
+      // that move must not be saved as the user's choice.
+      this._ignoreOverlayMoveSaveUntil = Math.max(
+        this._ignoreOverlayMoveSaveUntil,
+        Date.now() + DISPLAY_CHANGE_MOVE_IGNORE_MS
+      );
       if (this._displayMetricsTimer) clearTimeout(this._displayMetricsTimer);
       this._displayMetricsTimer = setTimeout(() => {
         this._displayMetricsTimer = null;
@@ -1617,13 +1629,28 @@ class WindowManager {
     });
 
     this.mainWindow.on("moved", () => {
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        if (Date.now() < this._ignoreOverlayMoveSaveUntil) {
-          return;
-        }
-        const [x, y] = this.mainWindow.getPosition();
-        this._scheduleSavePosition(x + BUTTON_OFFSET_X, y + BUTTON_OFFSET_Y);
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        return;
       }
+      const [x, y] = this.mainWindow.getPosition();
+      const button = { x: x + BUTTON_OFFSET_X, y: y + BUTTON_OFFSET_Y };
+      const previous = this._lastKnownButtonPosition;
+      const verdict = shouldPersistOverlayMove({
+        isDragging: Boolean(this.dragManager?.isDragging),
+        ignoreUntil: this._ignoreOverlayMoveSaveUntil,
+        previousDisplayId: previous ? screen.getDisplayNearestPoint(previous).id : null,
+        nextDisplayId: screen.getDisplayNearestPoint(button).id,
+      });
+      if (!verdict.persist) {
+        // Keep the user's spot so the display-change re-clamp can put the
+        // overlay back on it once the monitor returns.
+        debugLogger.info("[Window] Ignoring overlay move:", verdict.reason, {
+          from: previous,
+          to: button,
+        });
+        return;
+      }
+      this._scheduleSavePosition(button.x, button.y);
     });
 
     this.mainWindow.on("closed", () => {
