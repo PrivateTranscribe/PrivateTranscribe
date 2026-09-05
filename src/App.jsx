@@ -21,6 +21,7 @@ import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
+import { VOICE_BAR_HEIGHTS, voiceBarScale } from "./utils/voiceBars";
 import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
@@ -315,33 +316,25 @@ const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
  * Colors are dark (primary-foreground) since the button background is mint.
  */
 const VoiceBars = ({ micLevel }) => {
-  // Phase offsets so bars don't move in perfect unison at low levels
-  const phases = [0, Math.PI * 0.5, Math.PI * 0.9, Math.PI * 0.4, Math.PI * 0.7];
-  // Resting heights derived from logo proportions (tallest bar = 9px)
-  const restingHeights = [2.8, 5.3, 9.0, 6.6, 4.0];
-  // Center bar grows most; outer bars grow less
-  const growthFactors = [8, 11, 16, 12, 9];
   const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-
-  // Bar height: resting floor (with subtle breathing) + mic-driven component
-  const barHeights = phases.map((phase, i) => {
-    const breathing = Math.sin((now / 1000) * 1.2 * Math.PI + phase) * 0.8;
-    const driven = micLevel * growthFactors[i];
-    return Math.max(2, restingHeights[i] + breathing + driven);
-  });
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2.5, pointerEvents: "none" }}>
-      {barHeights.map((h, i) => (
+      {VOICE_BAR_HEIGHTS.map((laidOutHeight, i) => (
         <div
           key={i}
           style={{
             width: 2,
-            height: h,
+            // Fixed height, driven by transform. See src/utils/voiceBars.js for
+            // why the level must not reach the screen through layout.
+            height: laidOutHeight,
             borderRadius: 2,
             backgroundColor: "var(--color-background)",
+            transform: `scaleY(${voiceBarScale(i, micLevel, now)})`,
+            transformOrigin: "center",
+            willChange: "transform",
             // Fast transition keeps it responsive; easing keeps it elegant
-            transition: "height 60ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            transition: "transform 60ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
           }}
         />
       ))}
