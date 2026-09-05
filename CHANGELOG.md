@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.1 - 2026-09-05
+
+### Changed
+
+- Starter now includes 1,000 transcribed words per day instead of 5,000. In five months nobody but the developer ever reached the old limit, so it never told anyone where Pro begins. Existing installs move to the new limit on their next day; today's count is kept.
+
 ## 0.17.0 - 2026-09-04
 
 ### Added
