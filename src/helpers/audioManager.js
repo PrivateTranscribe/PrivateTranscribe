@@ -3765,9 +3765,9 @@ class AudioManager {
    * not arrive" and "the target could not be read at all" need different
    * handling. Only the first is worth telling the user about.
    */
-  async safePaste(text) {
+  async safePaste(text, options = {}) {
     try {
-      const result = await window.electronAPI.pasteText(text);
+      const result = await window.electronAPI.pasteText(text, options);
       return {
         delivered: result?.delivered !== false,
         evidence: result?.evidence ?? null,

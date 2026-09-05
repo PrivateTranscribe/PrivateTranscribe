@@ -7,6 +7,13 @@ import {
   recordStarterWords,
 } from "../utils/starterUsage";
 import {
+  buildAgentModeLimitMessage,
+  isAgentModeLimitReached,
+  readAgentModeUsage,
+  recordAgentModeUse,
+} from "../utils/agentModeUsage";
+import { cleanAgentPrompt } from "../utils/agentPrompt";
+import {
   buildTranscriptionAnalyticsProperties,
   trackAnalyticsEvent,
   trackAnalyticsEventOnce,
@@ -61,6 +68,8 @@ export const useAudioRecording = (toast, options = {}) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [longSession, setLongSession] = useState({ active: false });
   const [transcript, setTranscript] = useState("");
+  /** Mirrors the in-effect agentSession flag so the overlay can badge it. */
+  const [isAgentSession, setIsAgentSession] = useState(false);
   const audioManagerRef = useRef(null);
   const toastRef = useRef(toast);
   const onToggleRef = useRef(options.onToggle);
@@ -73,6 +82,11 @@ export const useAudioRecording = (toast, options = {}) => {
    * button was then two flows racing over one volume.
    */
   const recordingFlowRef = useRef(null);
+  /**
+   * Published out of the effect for the same reason: cancelRecording and
+   * cancelProcessing live out here and have to be able to clear the flag.
+   */
+  const clearAgentSessionRef = useRef(null);
 
   useEffect(() => {
     toastRef.current = toast;
@@ -99,6 +113,18 @@ export const useAudioRecording = (toast, options = {}) => {
     let hybridKeyDownAt = 0;
     let hybridStartedFromIdle = false;
     let hybridWasRecordingOnKeyDown = false;
+    /**
+     * Whether the recording in flight, or the processing after it, started from
+     * the Agent Mode key. A stale true would push the NEXT plain dictation
+     * through the rules pass and press Enter on it, so every path that ends a
+     * session without reaching onTranscriptionComplete clears it.
+     */
+    let agentSession = false;
+
+    const setAgentSession = (active) => {
+      agentSession = Boolean(active);
+      setIsAgentSession(agentSession);
+    };
 
     const clearCorrectionInterval = (intervalId) => {
       clearInterval(intervalId);
@@ -145,6 +171,25 @@ export const useAudioRecording = (toast, options = {}) => {
       showStarterLimitReached();
       // Land on the Pro tab: this is the moment the limit message points at
       // Pro, not whatever tab the panel happened to be left on.
+      window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "pro" });
+      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
+      return false;
+    };
+
+    const showAgentModeLimitReached = () => {
+      const usage = readAgentModeUsage();
+      toastRef.current?.({
+        title: "Agent Mode free uses spent for today",
+        description: buildAgentModeLimitMessage(usage),
+        variant: "default",
+        duration: 8000,
+      });
+    };
+
+    const agentModeCanBegin = () => {
+      if (isProEntitled()) return true;
+      if (!isAgentModeLimitReached()) return true;
+      showAgentModeLimitReached();
       window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "pro" });
       window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
       return false;
@@ -297,6 +342,7 @@ export const useAudioRecording = (toast, options = {}) => {
         if (disposed) {
           return;
         }
+        setAgentSession(false);
         // A missing model or engine binary is a setup problem the overlay
         // cannot fix. Put the way out on the toast itself instead of naming
         // Settings and leaving the user to go find the right page.
@@ -346,6 +392,10 @@ export const useAudioRecording = (toast, options = {}) => {
         window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
       },
       onTranscriptionComplete: async (result, commitContext = {}) => {
+        // Read and cleared before any early return, so an abandoned completion
+        // cannot leave the flag set for the next dictation.
+        const wasAgentSession = agentSession;
+        setAgentSession(false);
         clearColdStartTimer();
         if (result.success) {
           // The model is loaded now; later dictations don't need the hint.
@@ -410,6 +460,20 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
+        // The rules pass runs after starter counting on purpose: the cap counts
+        // the words that were dictated, not what survives the rewrite.
+        let sendEnter = false;
+        if (wasAgentSession) {
+          const cleaned = cleanAgentPrompt(text);
+          text = cleaned.text;
+          sendEnter = cleaned.send;
+          // No analytics event here yet: event names are pinned by a database
+          // check constraint, so a new one needs a Supabase migration first.
+          if (!isProEntitled()) {
+            recordAgentModeUse();
+          }
+        }
+
         setTranscript(text);
 
         if (result.completeness?.reason === "failed-chunks") {
@@ -440,6 +504,8 @@ export const useAudioRecording = (toast, options = {}) => {
         try {
           const aeEnabled = localStorage.getItem("actionEngineEnabled") !== "false";
           if (
+            // A ramble aimed at a coding agent is never a voice command.
+            !wasAgentSession &&
             aeEnabled &&
             isBetaFeatureUnlocked("action-engine") &&
             window.electronAPI?.actionEngineMatch
@@ -513,7 +579,7 @@ export const useAudioRecording = (toast, options = {}) => {
           shouldCopy: !actionHandled && shouldCopy,
           additionalConfirmedDelivery: actionHandled,
           persist: () => manager.saveTranscription(text, result.durationSeconds),
-          paste: () => manager.safePaste(text),
+          paste: () => manager.safePaste(text, sendEnter ? { sendEnter: true } : {}),
           copy: (value) => window.electronAPI?.writeClipboard?.(value),
         });
         if (!canCommit()) {
@@ -790,6 +856,44 @@ export const useAudioRecording = (toast, options = {}) => {
       endRecordingFlow({ playSound: true });
     };
 
+    const handleAgentStart = () => {
+      const currentState = manager.getState();
+      if (
+        currentState.isRecording ||
+        currentState.isProcessing ||
+        currentState.isStartingRecording
+      ) {
+        return;
+      }
+
+      // The Starter word cap still applies: these are dictated words like any
+      // other. The Agent Mode cap is a second, separate allowance.
+      if (!starterCanBegin()) {
+        return;
+      }
+      if (!agentModeCanBegin()) {
+        return;
+      }
+
+      setAgentSession(true);
+      void Promise.resolve(beginRecordingFlow({ playSound: true }))
+        .then((started) => {
+          if (!started) {
+            setAgentSession(false);
+          }
+        })
+        .catch(() => {
+          setAgentSession(false);
+        });
+    };
+
+    const handleAgentStop = () => {
+      const stopped = endRecordingFlow({ playSound: true });
+      if (!stopped && !manager.getState().isProcessing) {
+        setAgentSession(false);
+      }
+    };
+
     const handleHybridKeyDown = () => {
       if (hybridKeyDownAt > 0) {
         return;
@@ -841,6 +945,16 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeStop = window.electronAPI.onStopDictation?.(() => {
       handleStop();
+      onToggleRef.current?.();
+    });
+
+    const disposeAgentStart = window.electronAPI.onStartAgentDictation?.(() => {
+      handleAgentStart();
+      onToggleRef.current?.();
+    });
+
+    const disposeAgentStop = window.electronAPI.onStopAgentDictation?.(() => {
+      handleAgentStop();
       onToggleRef.current?.();
     });
 
@@ -922,15 +1036,19 @@ export const useAudioRecording = (toast, options = {}) => {
     };
 
     recordingFlowRef.current = { begin: beginRecordingFlow, end: endRecordingFlow };
+    clearAgentSessionRef.current = () => setAgentSession(false);
 
     // Cleanup
     return () => {
       disposed = true;
       clearColdStartTimer();
       recordingFlowRef.current = null;
+      clearAgentSessionRef.current = null;
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
+      disposeAgentStart?.();
+      disposeAgentStop?.();
       disposeHybridKeyDown?.();
       disposeHybridKeyUp?.();
       disposeNoAudio?.();
@@ -969,6 +1087,7 @@ export const useAudioRecording = (toast, options = {}) => {
       }
       return false;
     } finally {
+      clearAgentSessionRef.current?.();
       window.electronAPI?.restoreSystemAudio?.();
       window.electronAPI?.mediaResume?.();
       // Notify main process that dictation was cancelled.
@@ -992,6 +1111,7 @@ export const useAudioRecording = (toast, options = {}) => {
       }
       return false;
     } finally {
+      clearAgentSessionRef.current?.();
       // Notify main process that dictation was cancelled.
       // When overlay is disabled, this triggers the window to be destroyed.
       window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
@@ -1019,6 +1139,7 @@ export const useAudioRecording = (toast, options = {}) => {
   return {
     isRecording,
     isProcessing,
+    isAgentSession,
     longSession,
     transcript,
     startRecording,

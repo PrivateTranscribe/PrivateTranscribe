@@ -13,6 +13,7 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
+const AgentModeHotkey = require("./agentModeHotkey");
 const ReadAloudPlaybackKeys = require("./readAloudPlaybackKeys");
 const ReadAloudDucking = require("./readAloudDucking");
 const { buildExcludedPids } = require("./readAloudDucking");
@@ -283,6 +284,33 @@ class IPCHandlers {
     // (readaloud-sync-hotkey) because the toggle and the accelerator live in
     // localStorage, which the main process cannot read.
     this.readAloudHotkey = new ReadAloudHotkey(() => this.readSelectionAndSpeak());
+    // Agent Mode's hold-to-talk key. Same reason the registration is renderer
+    // driven: the toggle and the key live in localStorage.
+    this.agentModeHoldActive = false;
+    this.agentModeHotkey = new AgentModeHotkey({
+      onHoldStart: () => {
+        this.agentModeHoldActive = true;
+        return Promise.resolve(this.windowManager.sendStartAgentDictation())
+          .then(() => {
+            // The key can be released while a hidden overlay is still loading.
+            // Re-send stop after startup completes so audio cannot stay ducked.
+            if (!this.agentModeHoldActive) {
+              this.windowManager.sendStopAgentDictation();
+            }
+          })
+          .catch((error) => {
+            this.agentModeHoldActive = false;
+            this.windowManager.sendStopAgentDictation();
+            debugLogger.warn("[AgentMode] Failed to start hold dictation", {
+              error: error?.message || String(error),
+            });
+          });
+      },
+      onHoldEnd: () => {
+        this.agentModeHoldActive = false;
+        this.windowManager.sendStopAgentDictation();
+      },
+    });
     // Pause and skip, held only while a read is on screen. The overlay owns
     // playback, so a press is forwarded to it rather than acted on here.
     this.readAloudPlaybackKeys = new ReadAloudPlaybackKeys((op) => this.sendReadAloudControl(op));
@@ -812,8 +840,8 @@ class IPCHandlers {
     });
 
     // Clipboard handlers
-    ipcMain.handle("paste-text", async (event, text) => {
-      return this.clipboardManager.pasteText(text);
+    ipcMain.handle("paste-text", async (event, text, options) => {
+      return this.clipboardManager.pasteText(text, options);
     });
 
     ipcMain.handle("read-clipboard", async (event) => {
@@ -1482,6 +1510,17 @@ class IPCHandlers {
     });
 
     /**
+     * Bring the Agent Mode hold key in line with the renderer's saved settings.
+     * No model check, unlike Read Aloud: the rules pass runs on the transcript
+     * and needs nothing downloaded.
+     */
+    ipcMain.handle("agent-mode-sync-hotkey", (_event, { enabled, hotkey } = {}) =>
+      this.agentModeHotkey.apply({ enabled, hotkey })
+    );
+
+    ipcMain.handle("agent-mode-hotkey-status", () => this.agentModeHotkey.getStatus());
+
+    /**
      * The overlay reporting whether a read is on screen right now.
      *
      * This is what makes the playback keys transient: they are bound while
@@ -1706,6 +1745,10 @@ class IPCHandlers {
       // the process, so Read Aloud has to be put back or it dies silently the
       // first time the user edits their dictation key.
       this.readAloudHotkey.reapply();
+      // Agent Mode runs its own listener process, so today's dictation path
+      // cannot drop it. Reapplied here anyway so a future change to that path
+      // cannot silently take the key away.
+      this.agentModeHotkey.reapply();
       return result;
     });
 
@@ -1741,6 +1784,10 @@ class IPCHandlers {
           debugLogger.log("[IPC] Stopping Windows key listener for hotkey capture mode");
           this.windowsKeyManager.stop();
         }
+
+        // While the settings hotkey field is capturing, a held Right Ctrl must
+        // not start a recording behind the dialog.
+        this.agentModeHotkey.suspend();
 
         // On GNOME Wayland, unregister the keybinding during capture
         if (hotkeyManager.isUsingGnome() && hotkeyManager.gnomeManager) {
@@ -1796,6 +1843,13 @@ class IPCHandlers {
             hotkeyManager.currentHotkey = effectiveHotkey;
           }
         }
+      }
+
+      if (!enabled) {
+        // Outside the branch above on purpose: that one is skipped when the
+        // dictation hotkey is switched off for the session, and a suspended
+        // Agent Mode key that never comes back would be silent breakage.
+        this.agentModeHotkey.reapply();
       }
 
       return { success: true };

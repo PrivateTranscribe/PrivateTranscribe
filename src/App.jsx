@@ -651,6 +651,13 @@ export default function App() {
       hotkey: localStorage.getItem("readAloudHotkey") || DEFAULT_READ_ALOUD_HOTKEY,
     });
 
+    // Agent Mode defaults to on, unlike Read Aloud: it needs no model, and
+    // Right Ctrl held on its own does nothing else.
+    void window.electronAPI?.agentModeSyncHotkey?.({
+      enabled: localStorage.getItem("agentModeEnabled") !== "false",
+      hotkey: localStorage.getItem("agentModeHotkey") || "RightControl",
+    });
+
     const teardown = () => {
       stopPolling();
       clearNotice();
@@ -921,6 +928,7 @@ export default function App() {
   const {
     isRecording,
     isProcessing,
+    isAgentSession,
     transcript,
     toggleListening,
     cancelRecording,
@@ -1659,6 +1667,17 @@ export default function App() {
               </div>
             </button>
           </div>
+
+          {/* Agent Mode badge - shown only while an Agent Mode session is live */}
+          {isAgentSession && (isRecording || isProcessing) && (
+            <div
+              className={`px-2 py-1 text-[10px] font-medium text-white/55 whitespace-nowrap ${OVERLAY_SURFACE_CLASS}`}
+              style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
+              title="Dictating a prompt for your coding agent"
+            >
+              Agent Mode
+            </div>
+          )}
 
           {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (

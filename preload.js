@@ -23,7 +23,7 @@ const registerListener = (channel, handlerFactory) => {
 };
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  pasteText: (text) => ipcRenderer.invoke("paste-text", text),
+  pasteText: (text, options) => ipcRenderer.invoke("paste-text", text, options),
   hideWindow: () => ipcRenderer.invoke("hide-window"),
   showDictationPanel: () => ipcRenderer.invoke("show-dictation-panel"),
   getOverlayState: () => ipcRenderer.invoke("get-overlay-state"),
@@ -206,6 +206,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Round-trip cost of the copy worker's line protocol; injects nothing. */
   readAloudCaptureProbe: () => ipcRenderer.invoke("readaloud-capture-probe"),
   readAloudSyncHotkey: (settings) => ipcRenderer.invoke("readaloud-sync-hotkey", settings),
+
+  /** Agent Mode: hold the key, ramble, release. The overlay owns the recording. */
+  onStartAgentDictation: registerListener("start-agent-dictation", (callback) => () => callback()),
+  onStopAgentDictation: registerListener("stop-agent-dictation", (callback) => () => callback()),
+  agentModeSyncHotkey: (settings) => ipcRenderer.invoke("agent-mode-sync-hotkey", settings),
+  agentModeHotkeyStatus: () => ipcRenderer.invoke("agent-mode-hotkey-status"),
   /**
    * Tell the main process whether a read is on screen, so the transient
    * pause/skip shortcuts are held only for the length of it — and so every

@@ -1016,6 +1016,49 @@ class WindowManager {
     }
   }
 
+  /**
+   * Agent Mode's own start/stop pair. Deliberately not a flag on
+   * sendStartDictation: that one is called from several places that must keep
+   * meaning plain dictation.
+   */
+  async sendStartAgentDictation() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.isOverlaySuppressed()) {
+      if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+        await this.createMainWindow();
+      }
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("start-agent-dictation");
+      }
+      return;
+    }
+
+    const dictationWindow = await this.showDictationPanel();
+    if (dictationWindow && !dictationWindow.isDestroyed()) {
+      dictationWindow.webContents.send("start-agent-dictation");
+    }
+  }
+
+  sendStopAgentDictation() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.isOverlaySuppressed()) {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send("stop-agent-dictation");
+      }
+      return;
+    }
+
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send("stop-agent-dictation");
+    }
+  }
+
   async sendHybridDictationKeyDown() {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
