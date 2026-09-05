@@ -15,9 +15,9 @@ const BETA_SURFACES = [
   // Read Aloud was a Settings tab until it became a sidebar page; it is a
   // badged beta surface like the rest now, so it is held to the same rules.
   "src/components/pages/ReadAloudPage.tsx",
-  // Converse follows the same BetaBadge/BetaAccessLink/isFeatureUnlocked
-  // pattern as the other beta pages.
-  "src/components/pages/ConversePage.tsx",
+  // ConversePage is deliberately absent: Converse left the tester gate for the
+  // Pro entitlement, so its locked state sells Pro (a Pro badge and the buy
+  // button) instead of linking to the tester application.
 ];
 
 /**

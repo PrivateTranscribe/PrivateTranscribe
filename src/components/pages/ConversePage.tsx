@@ -18,8 +18,7 @@ import { Toggle } from "../ui/toggle";
 import { InfoBox } from "../ui/InfoBox";
 import { SectionLabel } from "../ui/SectionLabel";
 import { SettingsRow } from "../ui/SettingsSection";
-import { BetaBadge } from "../ui/BetaBadge";
-import { BetaAccessLink } from "../ui/BetaAccessLink";
+import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { VoicePicker } from "../ui/VoicePicker";
 import { getTranscriptionProvider } from "../../models/ModelRegistry";
@@ -474,7 +473,19 @@ function VoiceBar({
 }
 
 export default function ConversePage() {
-  const isUnlocked = isFeatureUnlocked("converse");
+  const [isUnlocked, setIsUnlocked] = useState(() => isFeatureUnlocked("converse"));
+
+  // Pro is activated in the settings window, not here, so this page has to
+  // re-read the entitlement when it comes back to the front.
+  useEffect(() => {
+    const refresh = () => setIsUnlocked(isFeatureUnlocked("converse"));
+    window.addEventListener("focus", refresh);
+    window.addEventListener("privatetranscribe-pro-preview-changed", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("privatetranscribe-pro-preview-changed", refresh);
+    };
+  }, []);
 
   const [projects, setProjects] = useState<RememberedProject[]>(() => readProjects());
   const [projectPath, setProjectPath] = useState<string | null>(null);
@@ -996,7 +1007,7 @@ export default function ConversePage() {
         <div className="flex items-center gap-3 mb-2">
           <MessagesSquare size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Converse</h1>
-          <BetaBadge locked={!isUnlocked} />
+          {!isUnlocked && <Badge variant="pro">Pro</Badge>}
         </div>
         <p className="text-sm text-muted-foreground">
           Talk to Claude Code about one project folder and hear the answer spoken back
@@ -1006,13 +1017,28 @@ export default function ConversePage() {
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">Talk to Claude Code out loud</h3>
+          <h3 className="text-base font-semibold text-foreground">
+            Voice control for Claude Code runs you walk away from
+          </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-            Converse points the Claude Code CLI at a folder on this machine and speaks its replies
-            with the on-device voice model. The conversation reaches Claude Code exactly as it would
-            from a terminal. This unfinished beta requires approved tester access.
+            Converse points Claude Code at a folder, speaks its status and questions out loud, and
+            takes your approval by voice. It never reads code aloud.
           </p>
-          <BetaAccessLink className="text-sm" />
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() =>
+              void window.electronAPI?.openControlPanel?.({
+                page: "settings",
+                settingsTab: "pro",
+              })
+            }
+          >
+            Get PrivateTranscribe Pro - €29
+          </Button>
+          <p className="text-[12px] text-muted-foreground">
+            Pro is Converse and Agent Mode. One licence, this PC.
+          </p>
         </div>
       )}
 

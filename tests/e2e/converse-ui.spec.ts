@@ -133,13 +133,22 @@ async function expectStatusMatchesSession(controlPanel: Page, expected: string) 
 }
 
 test.describe("converse ui", () => {
-  test("shows the locked beta state with a way out", async ({ controlPanel }) => {
-    await openConversePage(controlPanel);
+  test("shows the locked Pro state with the way to buy", async ({ controlPanel }) => {
+    await controlPanel.evaluate(() => {
+      localStorage.setItem("PRO_ENFORCEMENT", "true");
+    });
+    await controlPanel.reload({ waitUntil: "domcontentloaded" });
 
-    await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
+    // The sidebar entry carries the Pro badge while it is locked, so it cannot
+    // go through openConversePage's tester-state name.
+    await controlPanel.getByRole("button", { name: /^Converse( Pro)?$/ }).click();
+    await expect(controlPanel.getByRole("heading", { name: "Converse" })).toBeVisible();
+
+    await expect(controlPanel.getByText("Pro", { exact: true }).first()).toBeVisible();
     await expect(
-      controlPanel.getByRole("button", { name: /Apply for early access/ })
+      controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" })
     ).toBeVisible();
+    await expect(controlPanel.getByText("Apply for early access")).toHaveCount(0);
 
     // Locked means locked: no folder picker and no session controls are
     // reachable from here.
@@ -149,6 +158,14 @@ test.describe("converse ui", () => {
     await expect(controlPanel.getByRole("button", { name: "Start session" })).toHaveCount(0);
 
     await captureEvidence(controlPanel, "converse-page-locked.png");
+
+    await controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" }).click();
+    await expect(controlPanel.getByRole("heading", { name: "Converse" })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      controlPanel.getByText("PrivateTranscribe Pro", { exact: false }).first()
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("explains itself before a folder is chosen", async ({ controlPanel }) => {

@@ -13,7 +13,8 @@ import {
   Settings,
   FlaskConical,
 } from "lucide-react";
-import { hasTesterAccess, isFeatureUnlocked } from "../hooks/useProStatus";
+import { hasTesterAccess, isFeatureUnlocked, shouldShowProBadge } from "../hooks/useProStatus";
+import { Badge } from "./ui/badge";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import FeedbackDialog from "./FeedbackDialog";
@@ -35,6 +36,12 @@ interface NavItem {
   id: PageId;
   label: string;
   icon: typeof LayoutDashboard;
+  /**
+   * Sold rather than hidden: the item stays in the sidebar when it is locked
+   * and carries a Pro badge, because its page is the locked state that says
+   * what Pro buys. Tester-only items are filtered out instead.
+   */
+  proGated?: boolean;
 }
 
 interface NavGroup {
@@ -68,7 +75,7 @@ const navGroups: NavGroup[] = [
     label: "INTELLIGENCE",
     items: [
       { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
-      { id: "converse", label: "Converse", icon: MessagesSquare },
+      { id: "converse", label: "Converse", icon: MessagesSquare, proGated: true },
     ],
   },
   {
@@ -121,7 +128,10 @@ export default function AppSidebar({
 
   const testerAccess = hasTesterAccess();
   const visibleGroups = navGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => isFeatureUnlocked(item.id)) }))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.proGated || isFeatureUnlocked(item.id)),
+    }))
     .filter((group) => group.items.length > 0);
 
   return (
@@ -209,6 +219,11 @@ export default function AppSidebar({
                     }}
                   />
                   <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.proGated && shouldShowProBadge(item.id) && (
+                    <Badge variant="pro" className="px-1.5 py-px text-[9px] font-semibold">
+                      Pro
+                    </Badge>
+                  )}
                 </button>
               );
             })}
