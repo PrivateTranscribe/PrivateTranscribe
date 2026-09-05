@@ -14,11 +14,12 @@ const read = (...segments: string[]) =>
   fs.readFileSync(path.join(process.cwd(), ...segments), "utf8");
 
 describe("Agent Mode settings wiring", () => {
-  it("renders the three Agent Mode rows on the settings page", () => {
+  it("renders the four Agent Mode rows on the settings page", () => {
     const page = read("src", "components", "SettingsPage.tsx");
 
     expect(page).toContain('label="Agent Mode"');
     expect(page).toContain('label="Agent Mode hotkey"');
+    expect(page).toContain('label="Rewrite with Claude Code"');
     expect(page).toContain('label="Prompts today"');
   });
 
@@ -31,11 +32,27 @@ describe("Agent Mode settings wiring", () => {
     expect(page).toContain("Everything runs on this PC. No text leaves it.");
   });
 
-  it("stores both settings with the defaults the overlay reads raw", () => {
+  it("asks the main process whether Claude Code is there and says so honestly", () => {
+    const page = read("src", "components", "SettingsPage.tsx");
+
+    expect(page).toContain("agentModeRewriteStatus");
+    expect(page).toContain(
+      "Claude Code was not found on this PC. Prompts are pasted as spoken, with paths in backticks."
+    );
+    expect(page).toContain(
+      "Your words go through your own Claude Code login before they are pasted. Nothing else leaves this PC."
+    );
+    expect(page).toContain(
+      "The rewrite goes through your Claude Code login. Everything else runs on this PC."
+    );
+  });
+
+  it("stores the settings with the defaults the overlay reads raw", () => {
     const hook = read("src", "hooks", "useSettings.ts");
 
     expect(hook).toMatch(/useLocalStorage\(\s*"agentModeEnabled",\s*true,/);
     expect(hook).toMatch(/useLocalStorage\(\s*"agentModeHotkey",\s*DEFAULT_AGENT_MODE_HOTKEY,/);
+    expect(hook).toMatch(/useLocalStorage\(\s*"agentModeRewrite",\s*true,/);
   });
 
   it("defaults to the key the main process defaults to", () => {
@@ -55,7 +72,7 @@ describe("Agent Mode settings wiring", () => {
     expect(values).not.toContain("LeftAlt");
   });
 
-  it("carries both settings through settings export", () => {
+  it("carries all three settings through settings export", () => {
     const page = read("src", "components", "SettingsPage.tsx");
     const exportBlock = page.slice(
       page.indexOf("// Agent Mode"),
@@ -64,7 +81,9 @@ describe("Agent Mode settings wiring", () => {
 
     expect(exportBlock).toContain("agentModeEnabled,");
     expect(exportBlock).toContain("agentModeHotkey,");
+    expect(exportBlock).toContain("agentModeRewrite,");
     expect(page).toContain("setAgentModeEnabled(s.agentModeEnabled)");
     expect(page).toContain("setAgentModeHotkey(s.agentModeHotkey)");
+    expect(page).toContain("setAgentModeRewrite(s.agentModeRewrite)");
   });
 });

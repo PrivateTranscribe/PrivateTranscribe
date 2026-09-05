@@ -1,47 +1,30 @@
 /**
- * Agent Mode: turn a spoken ramble into a prompt for a coding agent (Claude Code,
- * Cursor, Codex) and report whether the speaker ended with "send". Pure string
- * rules, no model and no network, so it runs on every install and offline.
+ * Agent Mode fallback: turn a spoken ramble into a prompt for a coding agent
+ * (Claude Code, Cursor, Codex) and report whether the speaker ended with "send".
+ * Pure string rules, no model and no network. This is the fallback used when the
+ * Claude Code rewrite is switched off, missing, or failed; when it answers, its
+ * text is used instead of anything here.
+ *
+ * The filler and false-start rules that used to run first were removed on
+ * purpose: Whisper already drops most hesitation and a coding agent does not
+ * care about the rest, so the regexes only risked eating real content.
  *
  * Rule order, each step reading the previous step's output:
- *   1 stripFiller -> 2 collapseFalseStarts -> 3 formatCodeReferences
- *   4 applySpokenKeys -> 5 extractSendCommand -> 6 tidyPunctuation
- * Step 5 runs before step 6 so the send check sees the spoken tail instead of a
- * tail that step 6 has already terminated with a period.
+ *   1 formatCodeReferences -> 2 applySpokenKeys -> 3 extractSendCommand
+ *   4 tidyPunctuation
+ * Step 3 runs before step 4 so the send check sees the spoken tail instead of a
+ * tail that step 4 has already terminated with a period.
  */
 
 const WORD_START = "(?<![\\p{L}\\p{N}'’])";
 const WORD_END = "(?![\\p{L}\\p{N}'’])";
-const WORD = "[\\p{L}\\p{N}][\\p{L}\\p{N}'’_-]*";
 const JOIN_TOKEN = "[\\p{L}\\p{N}_][\\p{L}\\p{N}_./:-]*";
 const CLAUSE_START = "(^|[.!?][ \\t]*|\\n[ \\t]*)";
 const MASK_OPEN = String.fromCharCode(0xe000);
 const MASK_CLOSE = String.fromCharCode(0xe001);
 const MAX_PASSES = 5;
 
-const FILLER_WORDS = [
-  "umm",
-  "uhh",
-  "uhm",
-  "um",
-  "uh",
-  "erm",
-  "er",
-  "hmm",
-  "mhm",
-  "hm",
-  "mm",
-  "ah",
-  "øhm",
-  "øh",
-  "æh",
-  "altså",
-];
-const FILLER_PHRASES = "you know|i mean|sort of|kind of";
 const SPOKEN_SEPARATORS = ["colonColon", "slash", "dash", "underscore", "dot"];
-
-// "colon colon" is a spoken separator, not a stutter, so rule 2 must leave it for rule 3.
-const SEPARATOR_WORDS = new Set(["colon", "dot", "slash", "dash", "hyphen", "underscore"]);
 
 // Words that never sit either side of a spoken "dot", "slash" or "dash". Without
 // this, "the dot on the map" becomes "the.on".
@@ -210,29 +193,6 @@ const NAMED_REFERENCE_EXCLUSIONS = new Set([
 ]);
 
 const CODE_SPAN_RE = /`[^`]*`/gu;
-const FILLER_RE = new RegExp(`${WORD_START}(?:${FILLER_WORDS.join("|")})${WORD_END}`, "giu");
-const PHRASE_BETWEEN_COMMAS_RE = new RegExp(
-  `,[ \\t]*(?:${FILLER_PHRASES})${WORD_END}[ \\t]*,`,
-  "giu"
-);
-const PHRASE_CLAUSE_START_RE = new RegExp(
-  `${CLAUSE_START}(?:${FILLER_PHRASES})${WORD_END}[ \\t]*,[ \\t]*`,
-  "giu"
-);
-const OPENER_RE = new RegExp(
-  `${CLAUSE_START}(?:(?:okay[ \\t]+so|alright|basically|okay|so)${WORD_END}[ \\t]*,?` +
-    `|right${WORD_END}[ \\t]*,)[ \\t]*`,
-  "giu"
-);
-const REPEAT_RE = new RegExp(
-  `${WORD_START}((?:${WORD}[ \\t]+){0,3}${WORD})[,\\s]+(\\1)${WORD_END}`,
-  "giu"
-);
-const CORRECTION_RE = new RegExp(
-  `${CLAUSE_START}((?:${WORD}[ \\t]+){0,5}${WORD})[ \\t]*,[ \\t]*` +
-    `(?:no wait|sorry|no|actually)${WORD_END}[ \\t]*,[ \\t]*`,
-  "giu"
-);
 const SEPARATOR_RE = {
   colonColon: new RegExp(
     `${WORD_START}(${JOIN_TOKEN})[ \\t]+colon[ \\t]+colon[ \\t]+(${JOIN_TOKEN})${WORD_END}`,
@@ -312,44 +272,6 @@ function mapOutsideCodeSpans(text, transform) {
   return out + transform(text.slice(last));
 }
 
-/**
- * Rule 1. Does not touch "like", and only drops "you know" / "I mean" / "sort of" /
- * "kind of" when a comma already sets them off, so content survives.
- */
-export function stripFiller(text) {
-  return mapOutsideCodeSpans(asString(text), (chunk) => {
-    let out = chunk;
-    for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-      const before = out;
-      out = out.replace(OPENER_RE, "$1");
-      out = out.replace(FILLER_RE, "");
-      out = out.replace(PHRASE_BETWEEN_COMMAS_RE, ",");
-      out = out.replace(PHRASE_CLAUSE_START_RE, "$1");
-      if (out === before) break;
-    }
-    return collapseInlineSpaces(out);
-  });
-}
-
-/**
- * Rule 2. Never reorders or rewords; the self-correction marker must sit between two
- * commas, which is what keeps "the answer is no, keep it" and a leading "Actually,".
- */
-export function collapseFalseStarts(text) {
-  return mapOutsideCodeSpans(asString(text), (chunk) => {
-    let out = chunk;
-    for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-      const before = out;
-      out = out.replace(REPEAT_RE, (match, run, copy) =>
-        SEPARATOR_WORDS.has(run.toLowerCase()) ? match : copy
-      );
-      out = out.replace(CORRECTION_RE, "$1");
-      if (out === before) break;
-    }
-    return out;
-  });
-}
-
 function isStopWordJoin(left, right) {
   return JOIN_STOP_WORDS.has(left.toLowerCase()) || JOIN_STOP_WORDS.has(right.toLowerCase());
 }
@@ -418,7 +340,7 @@ function wrapNamedCodeReferences(chunk) {
 }
 
 /**
- * Rule 3. Does not guess word joins the speaker did not make: "use effect" stays two
+ * Rule 1. Does not guess word joins the speaker did not make: "use effect" stays two
  * words, and "dashboard page dot tsx" only joins the token next to "dot".
  */
 export function formatCodeReferences(text) {
@@ -427,7 +349,7 @@ export function formatCodeReferences(text) {
   return mapOutsideCodeSpans(wrapped, wrapNamedCodeReferences);
 }
 
-/** Rule 4. Does not invent line breaks; only a spoken "new line" makes one. */
+/** Rule 2. Does not invent line breaks; only a spoken "new line" makes one. */
 export function applySpokenKeys(text) {
   return mapOutsideCodeSpans(asString(text), (chunk) =>
     chunk
@@ -437,7 +359,7 @@ export function applySpokenKeys(text) {
   );
 }
 
-/** Rule 5. Does not look anywhere but the tail, so "send the email" stays content. */
+/** Rule 3. Does not look anywhere but the tail, so "send the email" stays content. */
 export function extractSendCommand(text) {
   const source = asString(text);
   if (!SEND_TAIL_RE.test(source)) return { text: source, send: false };
@@ -500,7 +422,7 @@ function endLinesWithPeriod(text) {
 }
 
 /**
- * Rule 6. Does not re-case anything inside backticks or the word straight after a
+ * Rule 4. Does not re-case anything inside backticks or the word straight after a
  * closing backtick, and does not expand or create contractions.
  */
 export function tidyPunctuation(text) {
@@ -519,21 +441,17 @@ export function tidyPunctuation(text) {
 
 /** The rule list a settings screen can render; ids match the exported functions. */
 export const AGENT_PROMPT_RULES = Object.freeze([
-  { id: "stripFiller", label: "Filler and hesitation", order: 1 },
-  { id: "collapseFalseStarts", label: "False starts and repeats", order: 2 },
-  { id: "formatCodeReferences", label: "Paths and identifiers as code", order: 3 },
-  { id: "applySpokenKeys", label: "Spoken line breaks", order: 4 },
-  { id: "extractSendCommand", label: "Trailing send", order: 5 },
-  { id: "tidyPunctuation", label: "Punctuation and capitals", order: 6 },
+  { id: "formatCodeReferences", label: "Paths and identifiers as code", order: 1 },
+  { id: "applySpokenKeys", label: "Spoken line breaks", order: 2 },
+  { id: "extractSendCommand", label: "Trailing send", order: 3 },
+  { id: "tidyPunctuation", label: "Punctuation and capitals", order: 4 },
 ]);
 
 export function cleanAgentPrompt(transcript) {
   const original = asString(transcript).trim();
   if (!original) return { text: "", send: false, changed: false };
 
-  let text = stripFiller(original);
-  text = collapseFalseStarts(text);
-  text = formatCodeReferences(text);
+  let text = formatCodeReferences(original);
   text = applySpokenKeys(text);
   const sent = extractSendCommand(text);
   text = tidyPunctuation(sent.text);

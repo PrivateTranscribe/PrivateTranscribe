@@ -4,14 +4,12 @@ import {
   AGENT_PROMPT_RULES,
   applySpokenKeys,
   cleanAgentPrompt,
-  collapseFalseStarts,
   extractSendCommand,
   formatCodeReferences,
-  stripFiller,
   tidyPunctuation,
 } from "../../../src/utils/agentPrompt";
 
-describe("cleanAgentPrompt: real rambles", () => {
+describe("cleanAgentPrompt (fallback): real rambles", () => {
   it("ramble 1: the login form crash", () => {
     const result = cleanAgentPrompt(
       "So um the login form, when I submit empty it uh crashes, I think it's in auth slash " +
@@ -19,8 +17,8 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "The login form, when I submit empty it crashes, I think it's in `auth/login.ts`, " +
-        "the `validate` function, fix it and add a test."
+      "So um the login form, when I submit empty it uh crashes, I think it's in " +
+        "`auth/login.ts`, the `validate` function, fix it and add a test."
     );
     expect(result.send).toBe(true);
     expect(result.changed).toBe(true);
@@ -33,28 +31,28 @@ describe("cleanAgentPrompt: real rambles", () => {
         "new line, fix it, don't touch the other hooks, send it."
     );
 
-    // Two honest limits are pinned here: "use effect" stays two words because no rule can
-    // know it is useEffect, and "dot" only joins the token beside it, so the file name comes
-    // out as dashboard `page.tsx` rather than `dashboard-page.tsx`.
+    // Three honest limits are pinned here: the hesitation survives now that the filler rules
+    // are gone, "use effect" stays two words because no rule can know it is useEffect, and
+    // "dot" only joins the token beside it, so the file name comes out as dashboard
+    // `page.tsx` rather than `dashboard-page.tsx`.
     expect(result.text).toBe(
-      "The use effect in dashboard `page.tsx` re-renders on every keystroke.\n" +
+      "Okay so, the the use effect in, um, in dashboard `page.tsx` re-renders on every " +
+        "keystroke.\n" +
         "I think the dependency array is missing `user_id`.\n" +
         "Fix it, don't touch the other hooks."
     );
     expect(result.send).toBe(true);
   });
 
-  it("ramble 3: a mid-sentence send is content, and the correction rule stays out", () => {
+  it("ramble 3: a mid-sentence send is content", () => {
     const result = cleanAgentPrompt(
       "Uh, can you send the error output to a file called debug log dot txt, no wait, " +
         "debug dot log, and then read it back."
     );
 
-    // The run before ", no wait," reaches back twelve words to the previous comma, past the
-    // one-to-six word limit, so the correction does not fire. Pinned as it actually behaves.
     expect(result.text).toBe(
-      "Can you send the error output to a file called debug `log.txt`, no wait, `debug.log`, " +
-        "and then read it back."
+      "Uh, can you send the error output to a file called debug `log.txt`, no wait, " +
+        "`debug.log`, and then read it back."
     );
     expect(result.send).toBe(false);
   });
@@ -66,7 +64,7 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "The npm run build script fails on Windows, I think it's in `package.json`, " +
+      "Um, the npm run build script fails on Windows, I think it's in `package.json`, " +
         "the `build` command, can you check it."
     );
     expect(result.send).toBe(true);
@@ -80,7 +78,8 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "The playwright test for the login flow is flaky, it fails maybe one in five runs.\n" +
+      "So, uh, the playwright test for the login flow is flaky, it fails maybe one in five " +
+        "runs.\n" +
         "Look at `tests/e2e/login.spec.ts` and add a wait."
     );
     expect(result.send).toBe(true);
@@ -93,8 +92,8 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "I need to rebase the `feature/auth-2` branch onto main, there are conflicts in " +
-        "`login.ts`, resolve them and keep my changes."
+      "Okay, I need to rebase the `feature/auth-2` branch onto main, there are conflicts in " +
+        "`login.ts`, um, resolve them and keep my changes."
     );
     expect(result.send).toBe(false);
   });
@@ -107,8 +106,8 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "The migration adds a `user_id` column to the `orders` table, but the `created_at` " +
-        "field is not null, so fix the migration and add a down migration."
+      "Um, the migration adds a `user_id` column to the `orders` table, but the `created_at` " +
+        "field is um not null, so fix the migration and add a down migration."
     );
     expect(result.send).toBe(false);
   });
@@ -120,7 +119,8 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "Rename the flag from `send_enter` to `auto_send` in `settings.ts` and in `main.js`.\n" +
+      "So, rename the flag from `send_enter` to `auto_send` in `settings.ts` and in " +
+        "`main.js`.\n" +
         "Keep the old key working for one release."
     );
     expect(result.send).toBe(true);
@@ -134,8 +134,9 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "The sidebar overlaps the main content on narrow windows, I think the layout " +
-        "`container` class in `app.css` is wrong, can you fix it and check the mobile breakpoint."
+      "Um, the sidebar overlaps the, um, the main content on narrow windows, I think the " +
+        "layout `container` class in `app.css` is wrong, can you fix it and uh check the " +
+        "mobile breakpoint."
     );
     expect(result.send).toBe(false);
   });
@@ -147,22 +148,14 @@ describe("cleanAgentPrompt: real rambles", () => {
     );
 
     expect(result.text).toBe(
-      "The rust build fails with an error in `crate::parser`, the `parse_line` function " +
-        "panics on empty input, can you add a guard."
+      "Alright, the rust build fails with an error in `crate::parser`, the `parse_line` " +
+        "function panics on empty input, can you add a guard."
     );
     expect(result.send).toBe(true);
   });
 });
 
 describe("cleanAgentPrompt: counterexamples", () => {
-  it("leaves 'like' alone", () => {
-    expect(cleanAgentPrompt("I like the new design, keep it.")).toEqual({
-      text: "I like the new design, keep it.",
-      send: false,
-      changed: false,
-    });
-  });
-
   it("leaves a mid-sentence send alone", () => {
     expect(cleanAgentPrompt("Send the email to the team first.")).toEqual({
       text: "Send the email to the team first.",
@@ -260,15 +253,14 @@ describe("cleanAgentPrompt: contract", () => {
     });
   });
 
-  it("lists the six rules in order for a settings screen", () => {
+  it("lists the four rules in order for a settings screen", () => {
     expect(AGENT_PROMPT_RULES.map((rule) => rule.id)).toEqual([
-      "stripFiller",
-      "collapseFalseStarts",
       "formatCodeReferences",
       "applySpokenKeys",
       "extractSendCommand",
       "tidyPunctuation",
     ]);
+    expect(AGENT_PROMPT_RULES.map((rule) => rule.order)).toEqual([1, 2, 3, 4]);
   });
 
   it("cleans a 4,000 character transcript well under 50 ms", () => {
@@ -281,59 +273,6 @@ describe("cleanAgentPrompt: contract", () => {
 
     expect(result.text.length).toBeGreaterThan(0);
     expect(elapsed).toBeLessThan(50);
-  });
-});
-
-describe("stripFiller", () => {
-  it("removes English hesitation and a sentence-initial opener", () => {
-    expect(stripFiller("So um the login form uh crashes")).toBe(" the login form crashes");
-  });
-
-  it("removes Danish hesitation", () => {
-    expect(stripFiller("Øh, altså the build æh fails")).toBe(", the build fails");
-  });
-
-  it("drops 'you know' only when commas set it off", () => {
-    expect(stripFiller("the form, you know, crashes")).toBe("the form, crashes");
-    expect(stripFiller("it sort of crashes")).toBe("it sort of crashes");
-  });
-
-  it("keeps 'like' as content", () => {
-    expect(stripFiller("I like the new design")).toBe("I like the new design");
-  });
-
-  it("only drops a sentence-initial 'right' when a comma follows it", () => {
-    expect(stripFiller("Right, fix the build")).toBe("fix the build");
-    expect(stripFiller("Right now it crashes")).toBe("Right now it crashes");
-  });
-});
-
-describe("collapseFalseStarts", () => {
-  it("collapses an immediately repeated word, keeping the second copy's casing", () => {
-    expect(collapseFalseStarts("the the login form")).toBe("the login form");
-    expect(collapseFalseStarts("The the form")).toBe("the form");
-  });
-
-  it("collapses a repeated run with a comma between the copies", () => {
-    expect(collapseFalseStarts("it's in the, it's in the auth file")).toBe("it's in the auth file");
-  });
-
-  it("applies an explicit self-correction", () => {
-    expect(collapseFalseStarts("it crashes, no wait, it hangs")).toBe("it hangs");
-    expect(collapseFalseStarts("open login, sorry, open logout")).toBe("open logout");
-  });
-
-  it("leaves a content 'no' and a sentence-initial 'actually' alone", () => {
-    expect(collapseFalseStarts("The answer is no, keep the flag")).toBe(
-      "The answer is no, keep the flag"
-    );
-    expect(collapseFalseStarts("Actually, let's use the other one")).toBe(
-      "Actually, let's use the other one"
-    );
-  });
-
-  it("leaves the spoken separator 'colon colon' for rule 3", () => {
-    expect(collapseFalseStarts("crate colon colon parser")).toBe("crate colon colon parser");
   });
 });
 
@@ -423,7 +362,7 @@ describe("extractSendCommand", () => {
 });
 
 describe("tidyPunctuation", () => {
-  it("collapses the punctuation filler removal leaves behind", () => {
+  it("collapses doubled and leading punctuation", () => {
     expect(tidyPunctuation("the form, , crashes")).toBe("The form, crashes.");
     expect(tidyPunctuation(", fix the build")).toBe("Fix the build.");
   });

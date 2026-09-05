@@ -5,15 +5,16 @@ import { expect, test } from "./fixtures/electron-app";
 
 /**
  * Agent Mode end to end: the hold key starts an Agent Mode recording, the
- * ramble is decoded by a real whisper model, the rules pass cleans it, and the
- * paste carries the send-Enter request.
+ * ramble is decoded by a real whisper model, the rewrite goes out to the
+ * Claude Code CLI and comes back, and the paste carries the send-Enter request.
  *
  * The key itself is not pressed: the fixture disables the native listener so
  * a run never binds a machine-global key. The spec sends the same IPC the
  * listener's hold gesture sends, which is where the listener hands over.
  * The paste handler is replaced with one that records what it was asked to
  * paste, because the fixture must never type into whatever window Kristian
- * has in front.
+ * has in front. The CLI is a stub (claude-print-stub.cjs) for the same reason
+ * a live one would spend Kristian's subscription on every run.
  *
  * The ramble is the product spec's sentence, spoken by Windows text to speech
  * into tests/fixtures/dictation/agent-ramble.wav.
@@ -21,6 +22,7 @@ import { expect, test } from "./fixtures/electron-app";
 
 const FIXTURE_DIR = path.resolve(__dirname, "..", "fixtures", "dictation");
 const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const STUB_PATH = path.resolve(__dirname, "fixtures", "claude-print-stub.cjs");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Fixture speech (11.5 s) plus a cold whisper model load, with slack. */
@@ -99,7 +101,14 @@ test.describe("Agent Mode", () => {
   test.use({
     fakeAudioCaptureFile: path.join(FIXTURE_DIR, "agent-ramble.wav"),
     seedRealWhisperModels: ["base"],
-    appEnv: { WHISPER_FORCE_CPU: "true" },
+    appEnv: {
+      WHISPER_FORCE_CPU: "true",
+      // The rewrite runs for real through the app's spawn path; only the
+      // binary on the other end is the stub.
+      PRIVATETRANSCRIBE_DIAG_DISABLE_AGENT_REWRITE: "",
+      PT_CONVERSE_CLAUDE_BIN: process.execPath,
+      PT_CONVERSE_CLAUDE_ARGS: JSON.stringify([STUB_PATH]),
+    },
   });
 
   test("the hold key pastes a cleaned prompt and asks for Enter", async ({
@@ -131,13 +140,12 @@ test.describe("Agent Mode", () => {
 
     const [paste] = await readPastes(electronApp);
     expect(paste.options).toEqual({ sendEnter: true });
-    expect(paste.text).not.toMatch(/\bum\b|\buh\b/i);
-    expect(paste.text).not.toMatch(/\bsend\b\.?$/i);
-    expect(paste.text).toMatch(/`[^`]+`/);
-    expect(paste.text).toMatch(/\bfix it\b/i);
-    // Whisper base on a synthetic voice varies; the exact path is the one
-    // assertion that can flake, so it is logged for the demo rather than pinned.
-    console.log(`[agent-mode e2e] pasted: ${JSON.stringify(paste.text)}`);
+    // The stub's reply, which proves the spawn, the stdin hand-over and the
+    // JSON parse all ran; the spoken tail decided Enter, not the reply.
+    expect(paste.text).toBe(
+      "Fix the crash when the login form is submitted empty. " +
+        "It is in `auth/login.ts`, the `validate` function. Fix it and add a test."
+    );
   });
 
   test("a plain dictation still pastes without Enter", async ({ electronApp, overlayWindow }) => {

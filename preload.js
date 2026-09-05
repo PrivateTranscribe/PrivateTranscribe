@@ -212,6 +212,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onStopAgentDictation: registerListener("stop-agent-dictation", (callback) => () => callback()),
   agentModeSyncHotkey: (settings) => ipcRenderer.invoke("agent-mode-sync-hotkey", settings),
   agentModeHotkeyStatus: () => ipcRenderer.invoke("agent-mode-hotkey-status"),
+  agentModeRewriteStatus: () => ipcRenderer.invoke("agent-mode-rewrite-status"),
+  agentModeRewrite: (text) => ipcRenderer.invoke("agent-mode-rewrite", text),
   /**
    * Tell the main process whether a read is on screen, so the transient
    * pause/skip shortcuts are held only for the length of it — and so every

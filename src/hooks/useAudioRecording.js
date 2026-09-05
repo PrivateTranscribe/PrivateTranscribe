@@ -12,7 +12,7 @@ import {
   readAgentModeUsage,
   recordAgentModeUse,
 } from "../utils/agentModeUsage";
-import { cleanAgentPrompt } from "../utils/agentPrompt";
+import { cleanAgentPrompt, extractSendCommand } from "../utils/agentPrompt";
 import {
   buildTranscriptionAnalyticsProperties,
   trackAnalyticsEvent,
@@ -70,6 +70,12 @@ export const useAudioRecording = (toast, options = {}) => {
   const [transcript, setTranscript] = useState("");
   /** Mirrors the in-effect agentSession flag so the overlay can badge it. */
   const [isAgentSession, setIsAgentSession] = useState(false);
+  /**
+   * Separate from isProcessing because the two end at different moments: the
+   * recorder owns isProcessing, and the Claude Code rewrite runs inside the
+   * completion callback, after the transcript exists and with its own cancel.
+   */
+  const [isRewriting, setIsRewriting] = useState(false);
   const audioManagerRef = useRef(null);
   const toastRef = useRef(toast);
   const onToggleRef = useRef(options.onToggle);
@@ -124,6 +130,7 @@ export const useAudioRecording = (toast, options = {}) => {
     const setAgentSession = (active) => {
       agentSession = Boolean(active);
       setIsAgentSession(agentSession);
+      if (!agentSession) setIsRewriting(false);
     };
 
     const clearCorrectionInterval = (intervalId) => {
@@ -460,13 +467,50 @@ export const useAudioRecording = (toast, options = {}) => {
           });
         }
 
-        // The rules pass runs after starter counting on purpose: the cap counts
+        // The rewrite runs after starter counting on purpose: the cap counts
         // the words that were dictated, not what survives the rewrite.
         let sendEnter = false;
         if (wasAgentSession) {
-          const cleaned = cleanAgentPrompt(text);
-          text = cleaned.text;
-          sendEnter = cleaned.send;
+          // The send word is decided here, not by the model, so Enter never depends on
+          // what the rewrite did with the tail.
+          const { text: spoken, send } = extractSendCommand(text);
+          sendEnter = send;
+          const rewriteOn = localStorage.getItem("agentModeRewrite") !== "false";
+          let rewritten = null;
+          let failure = null;
+          if (rewriteOn && window.electronAPI?.agentModeRewrite) {
+            setIsRewriting(true);
+            try {
+              const reply = await window.electronAPI.agentModeRewrite(spoken);
+              if (reply?.ok && typeof reply.text === "string" && reply.text.trim()) {
+                rewritten = reply.text.trim();
+              } else {
+                failure = reply || { reason: "bad-output" };
+              }
+            } catch (error) {
+              failure = { reason: "spawn-error", message: String(error?.message || error) };
+            } finally {
+              setIsRewriting(false);
+            }
+            if (!canCommit()) return;
+          }
+          if (rewritten !== null) {
+            text = rewritten;
+          } else {
+            text = cleanAgentPrompt(spoken).text;
+            // Nothing is said when the setting is off: the settings page already
+            // explains what off means, so a toast would only repeat it every time.
+            if (failure && failure.reason !== "disabled") {
+              toastRef.current?.({
+                title:
+                  failure.reason === "not-found"
+                    ? "Claude Code not found. Pasted as spoken."
+                    : "Claude Code did not answer. Pasted as spoken.",
+                variant: "default",
+                duration: 5000,
+              });
+            }
+          }
           // No analytics event here yet: event names are pinned by a database
           // check constraint, so a new one needs a Supabase migration first.
           if (!isProEntitled()) {
@@ -1140,6 +1184,7 @@ export const useAudioRecording = (toast, options = {}) => {
     isRecording,
     isProcessing,
     isAgentSession,
+    isRewriting,
     longSession,
     transcript,
     startRecording,

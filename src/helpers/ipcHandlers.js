@@ -14,6 +14,7 @@ const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
 const AgentModeHotkey = require("./agentModeHotkey");
+const { AgentPromptRewriter } = require("./agentPromptRewriter");
 const ReadAloudPlaybackKeys = require("./readAloudPlaybackKeys");
 const ReadAloudDucking = require("./readAloudDucking");
 const { buildExcludedPids } = require("./readAloudDucking");
@@ -287,6 +288,7 @@ class IPCHandlers {
     // Agent Mode's hold-to-talk key. Same reason the registration is renderer
     // driven: the toggle and the key live in localStorage.
     this.agentModeHoldActive = false;
+    this.agentPromptRewriter = new AgentPromptRewriter();
     this.agentModeHotkey = new AgentModeHotkey({
       onHoldStart: () => {
         this.agentModeHoldActive = true;
@@ -1519,6 +1521,10 @@ class IPCHandlers {
     );
 
     ipcMain.handle("agent-mode-hotkey-status", () => this.agentModeHotkey.getStatus());
+
+    ipcMain.handle("agent-mode-rewrite-status", () => this.agentPromptRewriter.getStatus());
+
+    ipcMain.handle("agent-mode-rewrite", (_event, text) => this.agentPromptRewriter.rewrite(text));
 
     /**
      * The overlay reporting whether a read is on screen right now.

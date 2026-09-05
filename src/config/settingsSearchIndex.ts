@@ -250,6 +250,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["right ctrl", "hotkey", "shortcut", "hold", "push to talk"],
   },
   {
+    label: "Rewrite with Claude Code",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["claude code", "rewrite", "cli", "login", "prompt", "haiku"],
+  },
+  {
     label: "Prompts today",
     group: "Agent Mode",
     page: "dictation",

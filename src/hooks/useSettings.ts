@@ -937,6 +937,14 @@ export function useSettings() {
       deserialize: String,
     }
   );
+  // On by default: whoever buys Agent Mode already has Claude Code installed
+  // and logged in. The settings page disables the toggle itself when the CLI
+  // is not found, so the default never points at something that cannot run.
+  const [agentModeRewrite, setAgentModeRewrite] = useLocalStorage(
+    "agentModeRewrite",
+    true,
+    boolSerializer
+  );
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
     true,
@@ -1224,6 +1232,8 @@ export function useSettings() {
     setAgentModeEnabled,
     agentModeHotkey,
     setAgentModeHotkey,
+    agentModeRewrite,
+    setAgentModeRewrite,
     errorNotifications,
     setErrorNotifications,
     successConfirmation,

@@ -11,8 +11,6 @@ export interface AgentPromptRule {
 export const AGENT_PROMPT_RULES: readonly AgentPromptRule[];
 export function applySpokenKeys(text: string): string;
 export function cleanAgentPrompt(transcript?: unknown): AgentPromptResult;
-export function collapseFalseStarts(text: string): string;
 export function extractSendCommand(text: string): { text: string; send: boolean };
 export function formatCodeReferences(text: string): string;
-export function stripFiller(text: string): string;
 export function tidyPunctuation(text: string): string;

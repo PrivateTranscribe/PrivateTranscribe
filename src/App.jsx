@@ -929,6 +929,7 @@ export default function App() {
     isRecording,
     isProcessing,
     isAgentSession,
+    isRewriting,
     transcript,
     toggleListening,
     cancelRecording,
@@ -1106,7 +1107,7 @@ export default function App() {
           } else {
             closeContextMenu();
           }
-        } else if (isRecording || isProcessing) {
+        } else if (isRecording || isProcessing || isRewriting) {
           // Cancel the active recording/processing rather than hiding the overlay.
           // Hiding while recording would leave the audio pipeline running invisibly.
           if (isRecording) {
@@ -1136,6 +1137,7 @@ export default function App() {
     handlePasteLastTranscript,
     isRecording,
     isProcessing,
+    isRewriting,
     cancelRecording,
     cancelProcessing,
     isDragging,
@@ -1247,7 +1249,7 @@ export default function App() {
 
   const getMicState = () => {
     if (isRecording) return "recording";
-    if (isProcessing) return "processing";
+    if (isProcessing || isRewriting) return "processing";
     // A drag counts as a hover. The window follows the mouse a frame or two
     // behind, so the pointer can leave the button mid-drag and take the hover
     // with it; the button being carried must not close in the user's hand.
@@ -1669,13 +1671,20 @@ export default function App() {
           </div>
 
           {/* Agent Mode badge - shown only while an Agent Mode session is live */}
-          {isAgentSession && (isRecording || isProcessing) && (
+          {/* The session flag is already cleared when the rewrite runs (the
+              completion callback clears it first), so the rewrite shows on its
+              own flag rather than on the session. */}
+          {((isAgentSession && (isRecording || isProcessing)) || isRewriting) && (
             <div
               className={`px-2 py-1 text-[10px] font-medium text-white/55 whitespace-nowrap ${OVERLAY_SURFACE_CLASS}`}
               style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
-              title="Dictating a prompt for your coding agent"
+              title={
+                isRewriting
+                  ? "Your words are going through your Claude Code login"
+                  : "Dictating a prompt for your coding agent"
+              }
             >
-              Agent Mode
+              {isRewriting ? "Rewriting with Claude Code" : "Agent Mode"}
             </div>
           )}
 

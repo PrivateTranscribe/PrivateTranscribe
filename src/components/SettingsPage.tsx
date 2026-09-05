@@ -142,12 +142,19 @@ interface AgentModeHotkeyStatus {
   reason?: string;
 }
 
+interface AgentModeRewriteStatus {
+  available: boolean;
+  bin: string | null;
+  reason?: "not-found" | "diagnostic-flag";
+}
+
 interface AgentModeBridge {
   agentModeSyncHotkey?: (settings: {
     enabled: boolean;
     hotkey: string;
   }) => Promise<AgentModeHotkeyStatus>;
   agentModeHotkeyStatus?: () => Promise<AgentModeHotkeyStatus>;
+  agentModeRewriteStatus?: () => Promise<AgentModeRewriteStatus>;
 }
 
 const agentModeBridge = (): AgentModeBridge =>
@@ -1310,11 +1317,15 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     setAgentModeEnabled,
     agentModeHotkey,
     setAgentModeHotkey,
+    agentModeRewrite,
+    setAgentModeRewrite,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
 
   const [agentModeStatus, setAgentModeStatus] = useState<AgentModeHotkeyStatus | null>(null);
+  const [agentModeRewriteStatus, setAgentModeRewriteStatus] =
+    useState<AgentModeRewriteStatus | null>(null);
   const [agentModeUsage, setAgentModeUsage] = useState(() => readAgentModeUsage());
   const [isAgentModePro, setIsAgentModePro] = useState(() => getEffectiveEntitlement() === "pro");
 
@@ -1349,14 +1360,45 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
   // A prompt is spent in the overlay window, so the count is re-read whenever
   // this window comes back to the front rather than only on mount.
   useEffect(() => {
+    let cancelled = false;
     const refreshAgentModeUsage = () => {
       setAgentModeUsage(readAgentModeUsage());
       setIsAgentModePro(getEffectiveEntitlement() === "pro");
+      void agentModeBridge()
+        .agentModeRewriteStatus?.()
+        .then((status) => {
+          if (!cancelled && status) setAgentModeRewriteStatus(status);
+        })
+        .catch(() => undefined);
     };
     refreshAgentModeUsage();
     window.addEventListener("focus", refreshAgentModeUsage);
-    return () => window.removeEventListener("focus", refreshAgentModeUsage);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshAgentModeUsage);
+    };
   }, []);
+
+  // The toggle disables itself on not-found instead of hiding: a row that
+  // vanishes reads as a missing feature, a disabled one says what to install.
+  const agentModeRewriteBlocked =
+    agentModeRewriteStatus !== null && !agentModeRewriteStatus.available;
+  const agentModeRewriteLive =
+    agentModeRewrite && agentModeRewriteStatus !== null && agentModeRewriteStatus.available;
+
+  const agentModeRewriteDescription = (): string => {
+    if (!agentModeRewriteStatus) return "Checking for Claude Code...";
+    if (agentModeRewriteStatus.reason === "diagnostic-flag") {
+      return "Turned off by a diagnostic flag for this run.";
+    }
+    if (!agentModeRewriteStatus.available) {
+      return "Claude Code was not found on this PC. Prompts are pasted as spoken, with paths in backticks.";
+    }
+    if (agentModeRewrite) {
+      return "Your words go through your own Claude Code login before they are pasted. Nothing else leaves this PC.";
+    }
+    return "Off. Prompts are pasted as spoken, with paths in backticks.";
+  };
 
   const agentModeStatusDescription = (): string => {
     if (!agentModeEnabled) return "Off. The dictation key works as before.";
@@ -1549,6 +1591,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           // Agent Mode
           agentModeEnabled,
           agentModeHotkey,
+          agentModeRewrite,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1626,6 +1669,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       readAloudHotkey,
       agentModeEnabled,
       agentModeHotkey,
+      agentModeRewrite,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1825,6 +1869,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       }
 
       if (typeof s.agentModeEnabled === "boolean") setAgentModeEnabled(s.agentModeEnabled);
+      if (typeof s.agentModeRewrite === "boolean") setAgentModeRewrite(s.agentModeRewrite);
       if (s.agentModeHotkey !== undefined) {
         if (
           isSafeImportedIdentifier(s.agentModeHotkey) &&
@@ -3023,22 +3068,40 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 </SettingsPanelRow>
 
                 <SettingsPanelRow>
+                  <SettingsRow
+                    label="Rewrite with Claude Code"
+                    description={agentModeRewriteDescription()}
+                  >
+                    <Toggle
+                      checked={agentModeRewrite}
+                      onChange={setAgentModeRewrite}
+                      disabled={!agentModeEnabled || agentModeRewriteBlocked}
+                    />
+                  </SettingsRow>
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
                   <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
                     What it does to your words
                   </p>
                   <ul className="text-[12px] leading-relaxed text-muted-foreground space-y-1">
-                    <li>Drops filler and false starts, like "um" and "the the, no wait".</li>
+                    <li>
+                      Turns the ramble into a prompt a coding agent can act on: outcome first,
+                      changes of mind resolved, your technical details kept word for word.
+                    </li>
                     <li>
                       Formats paths and identifiers as code, like{" "}
                       <code className="font-mono">auth/login.ts</code> and{" "}
-                      <code className="font-mono">useEffect</code>.
+                      <code className="font-mono">user_id</code>.
                     </li>
                     <li>
                       Turns a spoken "new line" into a line break and a trailing "send" into Enter.
                     </li>
                   </ul>
                   <p className="text-[12px] leading-relaxed text-muted-foreground mt-2">
-                    Everything runs on this PC. No text leaves it.
+                    {agentModeRewriteLive
+                      ? "The rewrite goes through your Claude Code login. Everything else runs on this PC."
+                      : "Everything runs on this PC. No text leaves it."}
                   </p>
                 </SettingsPanelRow>
 
