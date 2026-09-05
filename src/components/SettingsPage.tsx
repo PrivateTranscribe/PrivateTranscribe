@@ -42,7 +42,8 @@ import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
-import { isFeatureUnlocked } from "../hooks/useProStatus";
+import { getEffectiveEntitlement, isFeatureUnlocked } from "../hooks/useProStatus";
+import { readAgentModeUsage } from "../utils/agentModeUsage";
 import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { BetaBadge } from "./ui/BetaBadge";
 import { BetaAccessLink } from "./ui/BetaAccessLink";
@@ -54,7 +55,12 @@ import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 
 import { HotkeyInput } from "./ui/HotkeyInput";
-import { getDefaultHotkey } from "../utils/hotkeys";
+import {
+  AGENT_MODE_HOTKEY_OPTIONS,
+  getDefaultHotkey,
+  normalizeHotkeyForComparison,
+  parseHotkey,
+} from "../utils/hotkeys";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
@@ -119,6 +125,63 @@ const readStoredCustomPrompt = (): string | undefined => {
   } catch {
     return undefined;
   }
+};
+
+/**
+ * Agent Mode's two IPC calls, and the status they report.
+ *
+ * The main process owns the key listener, so it is the only thing that knows
+ * whether the hold key is really live, so the section asks it rather than
+ * inferring a state from the toggle. Declared here because the shared
+ * electronAPI type does not carry these two calls yet.
+ */
+interface AgentModeHotkeyStatus {
+  registered: boolean;
+  hotkey: string;
+  enabled?: boolean;
+  reason?: string;
+}
+
+interface AgentModeBridge {
+  agentModeSyncHotkey?: (settings: {
+    enabled: boolean;
+    hotkey: string;
+  }) => Promise<AgentModeHotkeyStatus>;
+  agentModeHotkeyStatus?: () => Promise<AgentModeHotkeyStatus>;
+}
+
+const agentModeBridge = (): AgentModeBridge =>
+  (window.electronAPI ?? {}) as unknown as AgentModeBridge;
+
+/** The modifier each right-hand Agent Mode key is, for conflict comparison. */
+const AGENT_MODE_MODIFIER_EQUIVALENTS: Record<string, string> = {
+  RightControl: "Ctrl",
+  RightAlt: "Alt",
+  RightShift: "Shift",
+};
+
+const agentModeKeyLabel = (value: string): string =>
+  AGENT_MODE_HOTKEY_OPTIONS.find((option) => option.value === value)?.label || value;
+
+/**
+ * Whether the Agent Mode key and the dictation key are the same physical key.
+ *
+ * A bare `RightControl` is Ctrl, so it only clashes with a dictation hotkey
+ * that is itself modifier-only; `Ctrl+Space` leaves Right Ctrl alone. Every
+ * other Agent Mode key is an ordinary key, compared on base key name.
+ */
+const isAgentModeKeySameAsDictation = (agentHotkey: string, dictationHotkey: string): boolean => {
+  const modifierEquivalent = AGENT_MODE_MODIFIER_EQUIVALENTS[agentHotkey];
+  if (modifierEquivalent) {
+    return (
+      normalizeHotkeyForComparison(dictationHotkey) ===
+      normalizeHotkeyForComparison(modifierEquivalent)
+    );
+  }
+
+  const agentBase = parseHotkey(agentHotkey).baseKey.trim().toUpperCase();
+  const dictationBase = parseHotkey(dictationHotkey).baseKey.trim().toUpperCase();
+  return agentBase.length > 0 && agentBase === dictationBase;
 };
 
 interface SettingsPageProps {
@@ -1243,9 +1306,79 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     setReadAloudEnabled,
     readAloudHotkey,
     setReadAloudHotkey,
+    agentModeEnabled,
+    setAgentModeEnabled,
+    agentModeHotkey,
+    setAgentModeHotkey,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
+
+  const [agentModeStatus, setAgentModeStatus] = useState<AgentModeHotkeyStatus | null>(null);
+  const [agentModeUsage, setAgentModeUsage] = useState(() => readAgentModeUsage());
+  const [isAgentModePro, setIsAgentModePro] = useState(() => getEffectiveEntitlement() === "pro");
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const bridge = agentModeBridge();
+      await bridge
+        .agentModeSyncHotkey?.({ enabled: agentModeEnabled, hotkey: agentModeHotkey })
+        .catch(() => undefined);
+      const status = await bridge.agentModeHotkeyStatus?.().catch(() => undefined);
+      if (!cancelled && status) setAgentModeStatus(status);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentModeEnabled, agentModeHotkey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void agentModeBridge()
+      .agentModeHotkeyStatus?.()
+      .then((status) => {
+        if (!cancelled && status) setAgentModeStatus(status);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A prompt is spent in the overlay window, so the count is re-read whenever
+  // this window comes back to the front rather than only on mount.
+  useEffect(() => {
+    const refreshAgentModeUsage = () => {
+      setAgentModeUsage(readAgentModeUsage());
+      setIsAgentModePro(getEffectiveEntitlement() === "pro");
+    };
+    refreshAgentModeUsage();
+    window.addEventListener("focus", refreshAgentModeUsage);
+    return () => window.removeEventListener("focus", refreshAgentModeUsage);
+  }, []);
+
+  const agentModeStatusDescription = (): string => {
+    if (!agentModeEnabled) return "Off. The dictation key works as before.";
+    if (!agentModeStatus) return "Checking the key...";
+    if (agentModeStatus.registered) {
+      return `Listening for ${agentModeKeyLabel(agentModeHotkey)} in every app. Hold it and talk.`;
+    }
+    switch (agentModeStatus.reason) {
+      case "disabled":
+        return "Off. The dictation key works as before.";
+      case "windows-only":
+        return "Windows only for now.";
+      case "diagnostic-flag":
+      case "suspended":
+        return "Paused while a hotkey field is capturing.";
+      default:
+        return "The key listener could not start, so the hold key is not live. Restarting PrivateTranscribe usually fixes it.";
+    }
+  };
+
+  const agentModeKeyClashesWithDictation =
+    agentModeEnabled && isAgentModeKeySameAsDictation(agentModeHotkey, dictationKey);
 
   // Overlay visibility is owned by the main process; mirror it here and stay
   // in sync via the overlay-state-changed broadcast so this toggle can never
@@ -1412,6 +1545,9 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           // Read Aloud
           readAloudEnabled,
           readAloudHotkey,
+          // Agent Mode
+          agentModeEnabled,
+          agentModeHotkey,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1487,6 +1623,8 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       overlaySnapToTaskbar,
       readAloudEnabled,
       readAloudHotkey,
+      agentModeEnabled,
+      agentModeHotkey,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1682,6 +1820,18 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           setReadAloudHotkey(s.readAloudHotkey);
         } else {
           skipField("readAloudHotkey", "contains unsafe path-like content");
+        }
+      }
+
+      if (typeof s.agentModeEnabled === "boolean") setAgentModeEnabled(s.agentModeEnabled);
+      if (s.agentModeHotkey !== undefined) {
+        if (
+          isSafeImportedIdentifier(s.agentModeHotkey) &&
+          AGENT_MODE_HOTKEY_OPTIONS.some((option) => option.value === s.agentModeHotkey)
+        ) {
+          setAgentModeHotkey(s.agentModeHotkey);
+        } else {
+          skipField("agentModeHotkey", "is not one of the Agent Mode keys");
         }
       }
 
@@ -2826,6 +2976,106 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                     <ActivationModeSelector value={activationMode} onChange={setActivationMode} />
                   </SettingsPanelRow>
                 )}
+              </SettingsPanel>
+            </div>
+
+            {/* Agent Mode */}
+            <div>
+              <SectionHeader
+                title="Agent Mode"
+                description="Hold a second key, describe the bug, release. A cleaned-up prompt lands in Claude Code, Cursor or Codex."
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow label="Agent Mode" description={agentModeStatusDescription()}>
+                    <Toggle checked={agentModeEnabled} onChange={setAgentModeEnabled} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Agent Mode hotkey"
+                    description="Hold it while you talk. Right Ctrl is free in every editor we checked."
+                  >
+                    <Select
+                      value={agentModeHotkey}
+                      onValueChange={setAgentModeHotkey}
+                      disabled={!agentModeEnabled}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGENT_MODE_HOTKEY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </SettingsRow>
+                  {agentModeKeyClashesWithDictation && (
+                    <p className="text-[11px] text-warning leading-relaxed mt-2">
+                      Same key as dictation. Pick another one.
+                    </p>
+                  )}
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
+                  <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
+                    What it does to your words
+                  </p>
+                  <ul className="text-[12px] leading-relaxed text-muted-foreground space-y-1">
+                    <li>Drops filler and false starts, like "um" and "the the, no wait".</li>
+                    <li>
+                      Formats paths and identifiers as code, like{" "}
+                      <code className="font-mono">auth/login.ts</code> and{" "}
+                      <code className="font-mono">useEffect</code>.
+                    </li>
+                    <li>
+                      Turns a spoken "new line" into a line break and a trailing "send" into Enter.
+                    </li>
+                  </ul>
+                  <p className="text-[12px] leading-relaxed text-muted-foreground mt-2">
+                    Everything runs on this PC. No text leaves it.
+                  </p>
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Prompts today"
+                    description={
+                      isAgentModePro ? (
+                        "Unlimited on this license."
+                      ) : (
+                        <>
+                          Starter includes {agentModeUsage.limit} a day. Resets at midnight.{" "}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void window.electronAPI?.openControlPanel?.({
+                                page: "settings",
+                                settingsTab: "pro",
+                              })
+                            }
+                            className="text-primary underline-offset-2 hover:underline"
+                          >
+                            Unlimited with Pro
+                          </button>
+                        </>
+                      )
+                    }
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
+                        {isAgentModePro
+                          ? "Unlimited"
+                          : `${agentModeUsage.usesToday} of ${agentModeUsage.limit}`}
+                      </span>
+                      {isAgentModePro && <Badge variant="pro">Pro</Badge>}
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
               </SettingsPanel>
             </div>
 

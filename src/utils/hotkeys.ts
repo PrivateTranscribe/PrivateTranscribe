@@ -147,6 +147,26 @@ export const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+Shift+R";
  */
 export const LEGACY_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
+/** Must equal DEFAULT_AGENT_MODE_HOTKEY in src/helpers/agentModeHotkey.js. */
+export const DEFAULT_AGENT_MODE_HOTKEY = "RightControl";
+
+/**
+ * The keys the Agent Mode picker offers, value first, label second.
+ *
+ * No F11 or F12: browsers and editors keep those for full screen and dev tools.
+ * No Left Ctrl or Left Alt: those sit under the hands that are typing.
+ */
+export const AGENT_MODE_HOTKEY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "RightControl", label: "Right Ctrl" },
+  { value: "RightAlt", label: "Right Alt" },
+  { value: "RightShift", label: "Right Shift" },
+  { value: "Pause", label: "Pause" },
+  { value: "ScrollLock", label: "Scroll Lock" },
+  { value: "F8", label: "F8" },
+  { value: "F9", label: "F9" },
+  { value: "F10", label: "F10" },
+];
+
 /**
  * Modifier spellings that mean the same physical key, mapped to one token each.
  *

@@ -236,6 +236,26 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["whisper server", "memory", "ram", "unload", "idle"],
   },
 
+  // ── Dictation › Agent Mode ────────────────────────────────────────────────
+  {
+    label: "Agent Mode",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["claude code", "cursor", "codex", "prompt", "agent", "coding"],
+  },
+  {
+    label: "Agent Mode hotkey",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["right ctrl", "hotkey", "shortcut", "hold", "push to talk"],
+  },
+  {
+    label: "Prompts today",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["cap", "limit", "20", "pro", "daily", "usage"],
+  },
+
   // ── Settings › Permissions ────────────────────────────────────────────────
   {
     label: "Reset accessibility permissions",
