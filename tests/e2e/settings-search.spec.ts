@@ -34,9 +34,7 @@ test.describe("settings search", () => {
 
   test("finds a setting by a word that appears nowhere on its row", async ({ controlPanel }) => {
     await openSettings(controlPanel);
-    await controlPanel
-      .getByRole("searchbox", { name: "Search settings" })
-      .fill("ducking");
+    await controlPanel.getByRole("searchbox", { name: "Search settings" }).fill("ducking");
 
     // The row is called "While recording"; only its group heading says ducking.
     const results = controlPanel.getByRole("listbox", { name: "Settings search results" });
