@@ -1,4 +1,4 @@
-export const STARTER_DAILY_WORD_LIMIT = 5000;
+export const STARTER_DAILY_WORD_LIMIT = 1000;
 export const STARTER_USAGE_KEY = "privatetranscribe_starter_usage_v1";
 
 export function getLocalDay(date = new Date()) {
@@ -31,10 +31,11 @@ function normalizeUsage(value, date = new Date()) {
   if (!value || typeof value !== "object" || value.date !== today) {
     return { date: today, wordsUsed: 0, limit: STARTER_DAILY_WORD_LIMIT };
   }
+  // The stored limit is legacy state from older installs; always trust the current constant so cap lowers apply immediately.
   return {
     date: today,
     wordsUsed: Math.max(0, Number(value.wordsUsed) || 0),
-    limit: Math.max(STARTER_DAILY_WORD_LIMIT, Number(value.limit) || STARTER_DAILY_WORD_LIMIT),
+    limit: STARTER_DAILY_WORD_LIMIT,
   };
 }
 
