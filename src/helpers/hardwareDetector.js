@@ -597,20 +597,20 @@ class HardwareDetector {
 
       if (rec.whisperModel === "large") {
         rec.reasoning.push(
-          `High-VRAM NVIDIA GPU with CUDA detected${vramDisplay ? ` (${vramDisplay} VRAM)` : ""} - Whisper Large recommended for best local accuracy`
+          `NVIDIA graphics card${vramDisplay ? ` with ${vramDisplay} of memory` : ""}. Whisper Large picked for the best accuracy.`
         );
       } else if (rec.whisperModel === "turbo") {
         rec.reasoning.push(
-          "NVIDIA GPU with CUDA detected - Whisper Turbo recommended for fast local inference"
+          "NVIDIA graphics card. Whisper Turbo picked for speed on the GPU."
         );
       } else {
         rec.reasoning.push(
-          `Lower-VRAM NVIDIA GPU with CUDA detected${vramDisplay ? ` (${vramDisplay} VRAM)` : ""} - Whisper ${rec.whisperModel === "small" ? "Small" : "Base"} recommended for reliability`
+          `NVIDIA graphics card${vramDisplay ? ` with ${vramDisplay} of memory` : ""}. Whisper ${rec.whisperModel === "small" ? "Small" : "Base"} picked so it fits comfortably.`
         );
       }
 
       if (vramMb >= 4096) {
-        rec.reasoning.push(`GPU has ${vramDisplay} VRAM - excellent for local transcription`);
+        rec.reasoning.push(`${vramDisplay} of graphics memory is plenty for local transcription.`);
       }
 
       return rec;
@@ -677,16 +677,16 @@ class HardwareDetector {
     if (cpu.count >= 16) {
       rec.whisperModel = "small";
       rec.reasoning.push(
-        `High-core-count CPU (${cpu.count} threads) - Small model balances speed and accuracy on CPU`
+        `${cpu.count}-thread processor. Whisper Small balances speed and accuracy without a GPU.`
       );
     } else if (cpu.count >= 4) {
       rec.whisperModel = "base";
       rec.reasoning.push(
-        `${cpu.count}-thread CPU - Base model recommended for responsive CPU transcription`
+        `${cpu.count}-thread processor. Whisper Base keeps transcription quick without a GPU.`
       );
     } else {
       rec.whisperModel = "tiny";
-      rec.reasoning.push(`Limited CPU (${cpu.count} threads) - Tiny model recommended for speed`);
+      rec.reasoning.push(`${cpu.count}-thread processor. Whisper Tiny picked so it stays fast.`);
     }
 
     return rec;

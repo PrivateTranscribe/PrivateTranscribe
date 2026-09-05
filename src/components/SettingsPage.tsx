@@ -382,29 +382,29 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   );
 
   const description = !isSupported
-    ? "CUDA engine downloads are available on Windows/Linux x64 with NVIDIA GPUs."
+    ? "Needs an NVIDIA graphics card on Windows or Linux. This computer runs local Whisper on the CPU."
     : downloadState === "downloading"
       ? downloadPhase === "installing"
-        ? "Installing the CUDA engine. This takes a moment for a package this size."
-        : `Downloading the CUDA engine — ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}. Quitting PrivateTranscribe pauses it; it resumes from here next launch.`
+        ? "Installing the GPU engine. This takes a moment for a package this size."
+        : `Downloading the GPU engine, ${downloadProgress}%${byteLabel ? ` (${byteLabel})` : ""}. Quitting PrivateTranscribe pauses it and it resumes next launch.`
       : autoUpdateFailed
-        ? "Automatic CUDA engine update failed. Retry manually here."
+        ? "The automatic engine update did not finish. Retry it here."
         : needsUpdate
-          ? "A newer CUDA engine is available. Update before testing GPU transcription."
+          ? "A newer GPU engine matches this version of the app. Update it before you rely on GPU speed."
           : isUpToDate
             ? fallbackActive
-              ? "CUDA engine is current, but Whisper fell back to CPU after a GPU startup failure. It retries the GPU automatically; check diagnostics if it stays on CPU."
+              ? "Installed, but Whisper fell back to your CPU after the graphics card failed to start. It retries on its own."
               : newerEnginePublished
-                ? `CUDA engine is current for this app version. Engine ${latestPublished} is published and installs with the next PrivateTranscribe update.`
+                ? `Up to date for this version of the app. Engine ${latestPublished} arrives with the next PrivateTranscribe update.`
                 : engine === "cuda"
-                  ? "CUDA engine is current and currently active."
-                  : "CUDA engine is current. Run a transcription or benchmark to verify active GPU use."
-            : "CUDA engine is not installed. Download it to enable GPU Whisper acceleration.";
+                  ? "Installed and in use. Dictation runs on your graphics card."
+                  : "Installed. It starts with your next dictation."
+            : "Not installed. Dictation runs on your CPU until you download it (about 750 MB).";
 
   return (
     <SettingsPanel>
       <SettingsPanelRow>
-        <SettingsRow label="CUDA engine" description={description}>
+        <SettingsRow label="GPU engine" description={description}>
           <div className="flex items-center gap-2.5 flex-wrap justify-end">{badge}</div>
         </SettingsRow>
       </SettingsPanelRow>
@@ -413,21 +413,25 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-muted-foreground">
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <SectionLabel className="mb-1">Installed</SectionLabel>
-              <p className="text-foreground font-mono">{currentVersion}</p>
+              <SectionLabel className="mb-1">On this PC</SectionLabel>
+              <p className="text-foreground font-mono">
+                {isInstalled ? currentVersion : "nothing yet"}
+              </p>
             </div>
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <SectionLabel className="mb-1">Required</SectionLabel>
+              <SectionLabel className="mb-1">This app needs</SectionLabel>
               <p className="text-foreground font-mono">{expectedVersion}</p>
             </div>
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <SectionLabel className="mb-1">Backend</SectionLabel>
-              <p className="text-foreground font-mono">
+              <SectionLabel className="mb-1">Running on</SectionLabel>
+              <p className="text-foreground">
                 {engine === "cuda"
-                  ? "cuda active"
+                  ? "Graphics card"
                   : fallbackActive
-                    ? "cpu fallback"
-                    : engine || "idle"}
+                    ? "CPU, after a GPU failure"
+                    : engine === "cpu"
+                      ? "CPU"
+                      : "Not running right now"}
               </p>
             </div>
           </div>
@@ -492,12 +496,12 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
               >
                 <Download className="w-3.5 h-3.5" />
                 {autoUpdateFailed
-                  ? "Retry CUDA Update"
+                  ? "Retry update"
                   : needsUpdate
-                    ? "Update CUDA Engine"
+                    ? "Update GPU engine"
                     : needsInstall
-                      ? "Download CUDA Engine"
-                      : "Reinstall CUDA Engine"}
+                      ? "Download GPU engine"
+                      : "Reinstall GPU engine"}
               </Button>
             )}
             <Button onClick={refreshStatus} variant="ghost" size="sm" className="gap-1.5">
@@ -508,8 +512,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
 
           {!compact && (
             <p className="text-[13px] text-muted-foreground leading-relaxed">
-              This updates the separate Whisper CUDA runtime, not the main app. Use this before GPU
-              benchmark tests after installing a new PrivateTranscribe version.
+              This updates only the GPU engine, not the app itself.
             </p>
           )}
         </div>
@@ -766,7 +769,7 @@ function GpuStatusCard({
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Downloading CUDA engine… {downloadProgress}%</span>
+                        <span>Downloading the GPU engine, {downloadProgress}%</span>
                       </div>
                       <Button
                         onClick={handleCancelDownload}
@@ -795,10 +798,10 @@ function GpuStatusCard({
                     )}
                     <span>
                       {cudaEffectiveEngine === "cuda"
-                        ? "CUDA engine active - Whisper is using GPU acceleration."
+                        ? "Running on your graphics card."
                         : cudaFallbackActive
-                          ? "CUDA engine installed, but Whisper fell back to CPU. It retries the GPU automatically."
-                          : "CUDA engine installed - run a transcription or speed test to verify GPU use."}
+                          ? "GPU engine installed, but Whisper fell back to your CPU. It retries the graphics card on its own."
+                          : "GPU engine installed. It starts with your next dictation or speed test."}
                     </span>
                   </div>
                 ) : downloadState === "error" ? (
@@ -831,14 +834,14 @@ function GpuStatusCard({
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      {cudaAutoUpdateFailed ? "Retry" : "Update CUDA Engine"}
+                      {cudaAutoUpdateFailed ? "Retry" : "Update GPU engine"}
                     </Button>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-2">
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      GPU · Whisper requires the CUDA engine (~750 MB). Download it once to enable
-                      GPU-accelerated transcription.
+                      Your graphics card can run Whisper several times faster. One download of about
+                      750 MB, then dictation runs on the GPU.
                     </p>
                     <Button
                       onClick={handleDownloadCuda}
@@ -847,7 +850,7 @@ function GpuStatusCard({
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      Download CUDA Engine
+                      Download GPU engine
                     </Button>
                   </div>
                 )}
@@ -875,7 +878,7 @@ function GpuStatusCard({
                     <p className="text-xs text-muted-foreground">
                       {detection.gpu.model ?? "GPU detected"}
                       {detection.gpu.vram
-                        ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
+                        ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} graphics memory`
                         : ""}
                     </p>
                   ) : (
@@ -962,9 +965,8 @@ function GpuStatusCard({
                       <div className="mt-2 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2">
                         <AlertCircle className="w-3 h-3 text-warning mt-0.5 shrink-0" />
                         <p className="text-[10px] text-warning leading-relaxed">
-                          GPU acceleration may not be working. Your NVIDIA GPU might not be
-                          compatible with the current CUDA binary (RTX 50-series requires a newer
-                          build). A Blackwell-compatible update is in progress.
+                          The graphics card does not seem to be doing the work. Some newer cards
+                          (RTX 50-series) need a newer GPU engine than the one installed.
                         </p>
                       </div>
                     )}
@@ -2236,8 +2238,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {/* CUDA Engine Updates */}
             <div>
               <SectionHeader
-                title="CUDA Engine"
-                description="Manage the separate GPU runtime used by local Whisper transcription"
+                title="GPU speed-up"
+                description="The separate engine that lets local Whisper run on your NVIDIA graphics card"
               />
               <CudaEngineUpdateCard />
             </div>
@@ -2829,7 +2831,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div className="mt-6">
                 <SectionHeader
                   title="Local Whisper performance"
-                  description="How much of the CPU local Whisper may use, and when it shuts itself down"
+                  description="How much of your processor local Whisper may use, and when it switches itself off"
                 />
                 <SettingsPanel>
                   <SettingsPanelRow>
@@ -2837,8 +2839,8 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                       label="CPU threads"
                       description={
                         cpuThreadInfo
-                          ? `Auto uses ${cpuThreadInfo.autoThreads} of your ${cpuThreadInfo.logicalCores} threads (${cpuThreadInfo.physicalCores} cores). It holds some back on purpose so the rest of the machine stays responsive while transcribing. Raise it for more speed and less headroom. Leave empty for auto.`
-                          : "How many CPU threads local Whisper may use. Auto holds some back on purpose so the rest of the machine stays responsive while transcribing. Leave empty for auto."
+                          ? `Auto uses ${cpuThreadInfo.autoThreads} of your ${cpuThreadInfo.logicalCores} threads and leaves the rest so your PC stays responsive while it transcribes. Raise it for more speed. Leave empty for auto.`
+                          : "How much of the processor local Whisper may use. Auto leaves some free so your PC stays responsive while it transcribes. Leave empty for auto."
                       }
                     >
                       <div className="flex items-center gap-2">
@@ -2874,7 +2876,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Idle shutdown (minutes)"
-                      description="Stops the local Whisper server after being idle to free memory. GPU mode may also free VRAM. Set to 0 to keep it running."
+                      description="Switches the local speech engine off after this many quiet minutes to free memory. 0 keeps it running."
                     >
                       <div className="flex items-center gap-2">
                         <Input
@@ -2916,7 +2918,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div className="mt-6">
                 <SectionHeader
                   title="Performance"
-                  description="Hardware detection, CUDA setup, and transcription speed benchmarks"
+                  description="What this PC runs on, and how fast it transcribes"
                 />
                 <GpuStatusCard
                   activeProvider={localTranscriptionProvider}

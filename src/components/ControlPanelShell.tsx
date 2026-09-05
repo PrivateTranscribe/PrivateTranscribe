@@ -139,7 +139,7 @@ export default function ControlPanelShell() {
         } else if (data?.recovered) {
           toast({
             title: "GPU transcription restored",
-            description: "The CUDA engine started successfully and is back in use.",
+            description: "The graphics card is back in use for dictation.",
             variant: "success",
             duration: 5000,
           });

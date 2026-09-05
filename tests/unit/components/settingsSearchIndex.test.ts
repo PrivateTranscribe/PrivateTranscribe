@@ -163,7 +163,7 @@ describe("searching settings", () => {
 
   it("finds a row by a synonym the UI never shows", () => {
     expect(labelsFor("telemetry")).toContain("Optional product analytics");
-    expect(labelsFor("nvidia")).toContain("CUDA engine");
+    expect(labelsFor("nvidia")).toContain("GPU engine");
     expect(labelsFor("dansk")).toContain("Output language");
   });
 

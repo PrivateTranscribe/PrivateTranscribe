@@ -327,13 +327,13 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (whisperForceCpu || cudaStatus?.forceCpu) return "CPU";
 
     const engineStatus = cudaStatus?.engineStatus;
-    if (engineStatus?.fallback?.active) return "CPU fallback";
-    if (engineStatus?.effectiveEngine === "cuda") return "GPU - CUDA";
+    if (engineStatus?.fallback?.active) return "CPU, after a GPU failure";
+    if (engineStatus?.effectiveEngine === "cuda") return "GPU";
     if (engineStatus?.effectiveEngine === "cpu") return "CPU";
     if (engineStatus?.transition === "starting" && engineStatus.desiredMode === "gpu") {
-      return "GPU - CUDA starting";
+      return "GPU, starting";
     }
-    if (cudaStatus?.installed && cudaStatus.upToDate) return "GPU - CUDA ready";
+    if (cudaStatus?.installed && cudaStatus.upToDate) return "GPU, ready";
     if (cudaStatus?.supported === false) return "CPU";
     return "CPU";
   }, [useLocalWhisper, localTranscriptionProvider, whisperForceCpu, cudaStatus]);

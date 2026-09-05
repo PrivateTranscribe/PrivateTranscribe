@@ -38,11 +38,11 @@ export interface SettingsSearchEntry {
 export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   // ── Settings › General ────────────────────────────────────────────────────
   {
-    label: "CUDA engine",
-    group: "CUDA Engine",
+    label: "GPU engine",
+    group: "GPU speed-up",
     page: "settings",
     section: "general",
-    keywords: ["gpu", "nvidia", "acceleration", "graphics card", "speed"],
+    keywords: ["cuda", "nvidia", "acceleration", "graphics card", "speed"],
   },
   {
     label: "Current version",

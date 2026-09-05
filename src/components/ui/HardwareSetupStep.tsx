@@ -309,7 +309,7 @@ export default function HardwareSetupStep({
               </IconTile>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">
-                  {applied ? "Settings Applied" : "Recommended Setup"}
+                  {applied ? "What was picked for you" : "What fits this machine"}
                 </h4>
                 <ul className="mt-1.5 space-y-1">
                   {detection.recommendations.reasoning.map((reason, idx) => (
@@ -333,12 +333,12 @@ export default function HardwareSetupStep({
               </IconTile>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground">
-                  {applied ? "Default Settings Applied" : "No Recommendations Available"}
+                  {applied ? "Safe defaults picked" : "No recommendation this time"}
                 </h4>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {applied
-                    ? "Using safe CPU defaults with Whisper Turbo model. You can adjust settings later."
-                    : "Hardware analysis completed but could not generate recommendations. Safe CPU defaults will be used."}
+                    ? "Local Whisper on your processor with the Turbo model. You can change it on the next step."
+                    : "The check finished without a clear recommendation, so safe processor defaults are used."}
                 </p>
               </div>
             </div>
@@ -410,10 +410,12 @@ export default function HardwareSetupStep({
       <div className="text-center space-y-0.5">
         {stepLabel && <p className="text-xs text-muted-foreground/60 mb-1">{stepLabel}</p>}
         <h2 className="text-xl font-semibold text-foreground tracking-tight">
-          {detectionState === "detecting" ? "Detecting Hardware" : "Hardware Detected"}
+          {detectionState === "detecting" ? "Checking your computer" : "Your computer"}
         </h2>
         <p className="text-xs text-muted-foreground">
-          We'll detect your hardware and recommend optimal settings
+          {detectionState === "detecting"
+            ? "One moment while PrivateTranscribe looks at your processor and graphics card"
+            : "PrivateTranscribe picked the settings that fit this machine. You can change them on the next step."}
         </p>
       </div>
 
@@ -445,7 +447,7 @@ export default function HardwareSetupStep({
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Recommended settings applied</span>
+                  <span className="text-sm font-medium">Settings applied</span>
                 </div>
               )}
             </>
@@ -458,7 +460,7 @@ export default function HardwareSetupStep({
               ) : (
                 <div className="flex items-center gap-2 text-success">
                   <Check className="w-4 h-4" />
-                  <span className="text-sm font-medium">Recommended settings applied</span>
+                  <span className="text-sm font-medium">Settings applied</span>
                 </div>
               )}
               {showSkip && !applied && (
