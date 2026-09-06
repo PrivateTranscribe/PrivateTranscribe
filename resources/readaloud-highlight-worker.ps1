@@ -99,6 +99,50 @@ function Rects-Json($r) {
   return '[' + ($out -join ',') + ']'
 }
 
+function Get-SourceWords([string]$text) {
+  # Clipboard list markers can be absent from UIA, or exposed as a different
+  # glyph. Mask them rather than deleting them: playback uses copied offsets.
+  $markers = '(?m)^[\t ]*(?:[-+*]|[\u2022\u25E6\u25AA\u2023\u2043]|\d{1,4}[.)])[\t ]+'
+  $masked = [regex]::Replace($text, $markers, { param($m) ' ' * $m.Length })
+  return [regex]::Matches($masked, '\S+')
+}
+
+function Find-WordSequence($scope, $words) {
+  if ($words.Count -eq 0) { return $null }
+  $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
+  $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
+  $search = $scope.Clone()
+  # Retry repeated first words, but bound calls into another app's UIA provider.
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
+    $first = $search.FindText($words[0].Value, $false, $true)
+    if (-not $first) { return $null }
+    $rest = $scope.Clone()
+    $rest.MoveEndpointByRange($start, $first, $end)
+    $last = $first
+    $matched = $true
+    for ($i = 1; $i -lt $words.Count; $i++) {
+      $next = $rest.FindText($words[$i].Value, $false, $true)
+      if (-not $next) { $matched = $false; break }
+      $gap = $rest.Clone()
+      $gap.MoveEndpointByRange($end, $next, $start)
+      # Only whitespace and list markers may separate consecutive words.
+      # Never span unrelated text just because the first/last words occur.
+      if (@(Get-SourceWords $gap.GetText(-1)).Count -gt 0) {
+        $matched = $false; break
+      }
+      $last = $next
+      $rest.MoveEndpointByRange($start, $next, $end)
+    }
+    if ($matched) {
+      $span = $first.Clone()
+      $span.MoveEndpointByRange($end, $last, $end)
+      return $span
+    }
+    $search.MoveEndpointByRange($start, $first, $end)
+  }
+  return $null
+}
+
 function Find-Sentence($text) {
   if (-not $script:range) { throw "not anchored" }
   $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
@@ -114,28 +158,12 @@ function Find-Sentence($text) {
   }
   $scopes += $script:range
 
+  $words = @(Get-SourceWords $text)
   foreach ($scope in $scopes) {
     $hit = $scope.FindText($text, $false, $true)
     if ($hit) { return $hit }
-  }
-
-  # The copied text and the on-screen text can differ in whitespace (a hard
-  # line break inside a sentence, a wrapped heading). Pin the sentence by its
-  # first and last words instead and span the two.
-  $words = $text -split '\s+' | Where-Object { $_.Length -gt 0 }
-  if ($words.Count -lt 3) { return $null }
-  $head = ($words[0..([math]::Min(3, $words.Count - 1))]) -join ' '
-  $tail = ($words[([math]::Max(0, $words.Count - 4))..($words.Count - 1)]) -join ' '
-  foreach ($scope in $scopes) {
-    $h1 = $scope.FindText($head, $false, $true)
-    if (-not $h1) { continue }
-    $rest = $scope.Clone()
-    $rest.MoveEndpointByRange($start, $h1, $end)
-    $h2 = $rest.FindText($tail, $false, $true)
-    if (-not $h2) { continue }
-    $span = $h1.Clone()
-    $span.MoveEndpointByRange($end, $h2, $end)
-    return $span
+    $hit = Find-WordSequence $scope $words
+    if ($hit) { return $hit }
   }
   return $null
 }
@@ -154,7 +182,7 @@ function Locate-Word($payload) {
     $rest = $hit.Clone()
     $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
     $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
-    foreach ($match in [regex]::Matches($payload.sentence, '\S+')) {
+    foreach ($match in @(Get-SourceWords $payload.sentence)) {
       $word = $rest.FindText($match.Value, $false, $true)
       if (-not $word) { break }
       $words[[string]$match.Index] = $word
