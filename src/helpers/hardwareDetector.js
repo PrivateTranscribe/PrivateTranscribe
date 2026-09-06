@@ -600,9 +600,7 @@ class HardwareDetector {
           `NVIDIA graphics card${vramDisplay ? ` with ${vramDisplay} of memory` : ""}. Whisper Large picked for the best accuracy.`
         );
       } else if (rec.whisperModel === "turbo") {
-        rec.reasoning.push(
-          "NVIDIA graphics card. Whisper Turbo picked for speed on the GPU."
-        );
+        rec.reasoning.push("NVIDIA graphics card. Whisper Turbo picked for speed on the GPU.");
       } else {
         rec.reasoning.push(
           `NVIDIA graphics card${vramDisplay ? ` with ${vramDisplay} of memory` : ""}. Whisper ${rec.whisperModel === "small" ? "Small" : "Base"} picked so it fits comfortably.`
