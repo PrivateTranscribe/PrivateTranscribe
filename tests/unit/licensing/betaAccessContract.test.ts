@@ -111,11 +111,9 @@ describe("paid Pro and tester beta access contract", () => {
   it("does not tell users that paid Pro unlocks tester-only screens", () => {
     const correctionMemory = readSource("src/components/pages/CorrectionMemoryPage.tsx");
     const actionEngine = readSource("src/components/pages/ActionEnginePage.tsx");
-    expect(correctionMemory.replace(/\s+/g, " ")).toContain(
-      "This beta requires approved tester access."
-    );
+    expect(correctionMemory.replace(/\s+/g, " ")).toContain("Requires beta access.");
     expect(correctionMemory).not.toContain("Unlock it with Pro");
-    expect(actionEngine).toContain("This beta requires approved tester access.");
+    expect(actionEngine.replace(/\s+/g, " ")).toContain("Requires approved tester access.");
     expect(actionEngine).not.toContain("Get it with Pro");
 
     for (const source of [
