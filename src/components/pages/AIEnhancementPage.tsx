@@ -1,4 +1,5 @@
 import { EnhancementTest } from "../EnhancementTest";
+import { EnhancementProfile } from "../EnhancementProfile";
 import { Brain, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import ReasoningModelSelector from "../ReasoningModelSelector";
@@ -115,6 +116,9 @@ export default function AIEnhancementPage() {
             showAlertDialog={showAlertDialog}
           />
 
+          <div className="mt-5">
+            <EnhancementProfile />
+          </div>
           <div className="mt-5">
             <EnhancementTest
               model={reasoningModel}

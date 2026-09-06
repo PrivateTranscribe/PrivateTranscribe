@@ -1,4 +1,5 @@
 import promptData from "./promptData.json";
+import { getProfileTemplate } from "./promptProfiles";
 
 export const UNIFIED_SYSTEM_PROMPT = promptData.UNIFIED_SYSTEM_PROMPT;
 const DICTIONARY_SUFFIX = promptData.DICTIONARY_SUFFIX;
@@ -12,21 +13,8 @@ export function getSystemPrompt(
 ): string {
   const name = agentName?.trim() || "Assistant";
 
-  let promptTemplate =
-    typeof customSystemPrompt === "string" ? customSystemPrompt : UNIFIED_SYSTEM_PROMPT;
-  if (customSystemPrompt === undefined && typeof window !== "undefined" && window.localStorage) {
-    const customPrompt = window.localStorage.getItem("customUnifiedPrompt");
-    if (customPrompt) {
-      try {
-        const parsed = JSON.parse(customPrompt);
-        if (typeof parsed === "string") {
-          promptTemplate = parsed;
-        }
-      } catch {
-        // Use default if parsing fails
-      }
-    }
-  }
+  const promptTemplate =
+    typeof customSystemPrompt === "string" ? customSystemPrompt : getProfileTemplate();
 
   let prompt = promptTemplate.replace(/\{\{agentName\}\}/g, name);
 

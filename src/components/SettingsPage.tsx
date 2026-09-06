@@ -1618,6 +1618,20 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
         payload.settings.customUnifiedPrompt = storedCustomPrompt;
       }
 
+      for (const key of ["enhancementPromptProfile", "enhancementWritingStyle"]) {
+        const value = localStorage.getItem(key);
+        if (value !== null) payload.settings[key] = value;
+      }
+      try {
+        const experimental = JSON.parse(
+          localStorage.getItem("experimentalUnifiedPrompt") || "null"
+        );
+        if (typeof experimental === "string")
+          payload.settings.experimentalUnifiedPrompt = experimental;
+      } catch {
+        /* Ignore malformed saved customization. */
+      }
+
       if (includeApiKeys) {
         payload.settings.apiKeys = {
           openaiApiKey,
@@ -1941,6 +1955,25 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           );
         }
       }
+
+      for (const [key, limit] of [
+        ["enhancementWritingStyle", 2000],
+        ["experimentalUnifiedPrompt", CUSTOM_PROMPT_MAX_LENGTH],
+      ] as const) {
+        if (s[key] === undefined) continue;
+        if (typeof s[key] === "string" && s[key].length <= limit) {
+          localStorage.setItem(
+            key,
+            key === "experimentalUnifiedPrompt" ? JSON.stringify(s[key]) : s[key]
+          );
+        } else skipField(key, `must be a string under ${limit} characters`);
+      }
+      if (s.enhancementPromptProfile !== undefined) {
+        if (["current", "experimental"].includes(s.enhancementPromptProfile)) {
+          localStorage.setItem("enhancementPromptProfile", s.enhancementPromptProfile);
+        } else skipField("enhancementPromptProfile", "must be current or experimental");
+      }
+      window.dispatchEvent(new Event("privatetranscribe-prompt-change"));
 
       if (allowApiKeysOnImport) {
         const keys = s.apiKeys || {};

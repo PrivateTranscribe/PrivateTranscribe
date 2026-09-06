@@ -4,9 +4,20 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import ReasoningService from "../services/ReasoningService";
 import { getModelProvider, modelRegistry, getCloudModel } from "../models/ModelRegistry";
+import { usePromptProfile } from "../hooks/usePromptProfile";
+import { isShortDictation } from "../utils/shortDictation";
 
 const SAMPLE =
   "um hey Alex I can't attend the meeting tomorrow could you could you send me the notes afterwards and uh I'll I'll catch up on Friday thanks";
+
+type CleanupResult = {
+  text?: string;
+  error?: string;
+  seconds: number;
+  modelName: string;
+  label: string;
+  keptShort?: boolean;
+};
 
 export function EnhancementTest({
   model,
@@ -22,9 +33,9 @@ export function EnhancementTest({
   enabled: boolean;
 }) {
   const [text, setText] = useState(SAMPLE);
-  const [result, setResult] = useState<{ text: string; seconds: number; modelName: string } | null>(
-    null
-  );
+  const [result, setResult] = useState<CleanupResult[] | null>(null);
+  const { profile, currentTemplate, experimentalTemplate } = usePromptProfile();
+  const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
   const generation = useRef({ value: 0 });
@@ -38,16 +49,25 @@ export function EnhancementTest({
     return () => {
       state.value++;
     };
-  }, [model, provider, preferredLanguage, enabled, text]);
+  }, [
+    model,
+    provider,
+    preferredLanguage,
+    enabled,
+    text,
+    agentName,
+    profile,
+    currentTemplate,
+    experimentalTemplate,
+  ]);
   useEffect(() => {
     if (result || error) feedback.current?.scrollIntoView({ block: "nearest" });
   }, [result, error]);
 
   const isLocal = provider === "local" || Boolean(modelRegistry.getProvider(provider));
-  const run = async () => {
+  const run = async (compare = false) => {
     if (inFlight.current || !text.trim() || !model || !enabled) return;
     const current = ++generation.current.value;
-    const started = performance.now();
     inFlight.current = true;
     setRunning(true);
     setError("");
@@ -55,14 +75,51 @@ export function EnhancementTest({
     const modelName =
       modelRegistry.getModel(model)?.model.name || getCloudModel(model)?.name || model;
     try {
-      const cleaned = await ReasoningService.processText(text.trim(), model, agentName, {
-        preferredLanguage,
-        smartContext: null,
-        timeoutMs: 30000,
-        maxRetries: 0,
-      });
-      if (current === generation.current.value) {
-        setResult({ text: cleaned, seconds: (performance.now() - started) / 1000, modelName });
+      const selected =
+        profile === "experimental"
+          ? { label: "Experimental prompt", template: experimentalTemplate, preserveShort: true }
+          : { label: "Current prompt", template: currentTemplate, preserveShort: false };
+      const candidates = compare
+        ? [
+            { label: "Current prompt", template: currentTemplate, preserveShort: false },
+            { label: "Experimental prompt", template: experimentalTemplate, preserveShort: true },
+          ]
+        : [selected];
+      const results: CleanupResult[] = [];
+      // The shared provider service accepts one request at a time. Freeze both
+      // templates and the input for this run without switching the saved profile.
+      for (const candidate of candidates) {
+        if (current !== generation.current.value) break;
+        setProgress(
+          `Testing ${candidate.label.toLowerCase()}${compare ? ` (${results.length + 1}/2)` : ""}…`
+        );
+        const started = performance.now();
+        try {
+          const cleaned = await ReasoningService.processText(text.trim(), model, agentName, {
+            promptTemplate: candidate.template,
+            preserveShortDictation: candidate.preserveShort,
+            preferredLanguage,
+            smartContext: null,
+            timeoutMs: 30000,
+            maxRetries: 0,
+          });
+          results.push({
+            text: cleaned,
+            seconds: (performance.now() - started) / 1000,
+            modelName,
+            label: candidate.label,
+            keptShort: candidate.preserveShort && isShortDictation(text),
+          });
+        } catch (cause) {
+          if (!compare) throw cause;
+          results.push({
+            error: cause instanceof Error ? cause.message : "Cleanup failed.",
+            seconds: (performance.now() - started) / 1000,
+            modelName,
+            label: candidate.label,
+          });
+        }
+        if (current === generation.current.value) setResult([...results]);
       }
     } catch (cause) {
       if (current === generation.current.value)
@@ -70,6 +127,7 @@ export function EnhancementTest({
     } finally {
       inFlight.current = false;
       setRunning(false);
+      setProgress("");
     }
   };
 
@@ -83,8 +141,9 @@ export function EnhancementTest({
           Try cleanup
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Check how the model handles fillers, repeated words, and punctuation. This test never
-          pastes into another app.
+          Test a word, a sentence, or a longer dictation. Compare prompts on the same text and
+          model. Testing never pastes or changes your dictation prompt. A comparison makes two
+          requests for longer text. Experimental keeps one or two words without a model rewrite.
         </p>
       </div>
       <Textarea
@@ -104,34 +163,64 @@ export function EnhancementTest({
                 ? "Runs locally on your PC."
                 : "Sends this text to your selected cloud provider."}
         </p>
-        <Button onClick={run} disabled={running || !enabled || !model || !text.trim()} size="sm">
-          {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-          {running ? "Cleaning up…" : "Try cleanup"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => run()}
+            disabled={running || !enabled || !model || !text.trim()}
+            size="sm"
+          >
+            {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {running ? "Cleaning up…" : "Try cleanup"}
+          </Button>
+          <Button
+            onClick={() => run(true)}
+            disabled={running || !enabled || !model || !text.trim()}
+            size="sm"
+            variant="outline"
+          >
+            Compare both prompts
+          </Button>
+        </div>
       </div>
       <div ref={feedback} aria-live="polite" aria-atomic="true">
+        {running && <p className="text-xs text-muted-foreground mb-3">{progress}</p>}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
         {result && (
-          <div className="rounded-lg border border-border-subtle bg-surface-1 p-4 space-y-2">
-            <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-              <span>Cleaned text</span>
-              <span>
-                {result.modelName} · {result.seconds.toFixed(2)} s
-              </span>
-            </div>
-            <p
-              className="whitespace-pre-wrap break-words text-sm text-foreground"
-              data-testid="cleanup-result"
-            >
-              {result.text || "No text remains after cleanup."}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Check names, numbers, and meaning before relying on cleanup.
-            </p>
+          <div className="grid gap-3">
+            {result.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-lg border border-border-subtle bg-surface-1 p-4 space-y-2"
+              >
+                <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{item.label}</span>
+                  <span>
+                    {item.keptShort
+                      ? "Kept as spoken · no model call"
+                      : `${item.modelName} · ${item.seconds.toFixed(2)} s`}
+                  </span>
+                </div>
+                <p
+                  className="whitespace-pre-wrap break-words text-sm text-foreground"
+                  data-testid={result.length === 1 ? "cleanup-result" : "comparison-result"}
+                >
+                  {item.error ? (
+                    <span role="alert" className="text-destructive">
+                      {item.error}
+                    </span>
+                  ) : (
+                    item.text || "No text remains after cleanup."
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Check names, numbers, and meaning before relying on cleanup.
+                </p>
+              </div>
+            ))}
           </div>
         )}
       </div>
