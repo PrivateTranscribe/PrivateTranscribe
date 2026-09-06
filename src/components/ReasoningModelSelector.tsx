@@ -567,8 +567,8 @@ export default function ReasoningModelSelector({
   }[selectedCloudProvider];
 
   const MODE_TABS = [
-    { id: "cloud", name: "Cloud" },
     { id: "local", name: "Local" },
+    { id: "cloud", name: "Cloud" },
   ];
 
   const renderModeIcon = (id: string) => {
