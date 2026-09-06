@@ -20,6 +20,20 @@ function harness() {
 }
 afterEach(() => vi.useRealTimers());
 describe("Read Aloud highlight follow", () => {
+  it.each(["NONE not-in-selection", "NONE no-hit", "ERR stale range"])(
+    "retries locating after %s instead of remeasuring a missing range",
+    async (reply) => {
+      vi.useFakeTimers();
+      const h = harness();
+      h.send.mockResolvedValueOnce(reply);
+      await h.onSentence(state());
+      expect(h.active).toBe(false);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(h.send.mock.calls[1][0]).toMatch(/^locate /);
+      expect(h.active).toBe(true);
+      h.clear();
+    }
+  );
   it("refreshes scroll geometry within 50 ms and recovers from offscreen", async () => {
     vi.useFakeTimers();
     const h = harness();
