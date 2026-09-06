@@ -115,7 +115,13 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
           if (!analyser || !dataArray) return;
 
-          analyser.getFloatTimeDomainData(dataArray);
+          if (ctx.state === "running") {
+            analyser.getFloatTimeDomainData(dataArray);
+          } else {
+            // A suspended analyser can repeat its last nonzero frame forever.
+            // Do not let stale samples reset the recovery watchdog.
+            dataArray.fill(0);
+          }
 
           // Root mean square amplitude
           let sum = 0;
@@ -128,13 +134,8 @@ export function useMicLevel(audioManagerRef, isRecording) {
           if (rms > STALL_EPS) {
             lastSignalAt = nowTs;
             selfHealCount = 0;
-          } else if (
-            ctx.state === "running" &&
-            selfHealCount < MAX_SELF_HEAL &&
-            nowTs - lastSignalAt > STALL_MS
-          ) {
-            // Pipe looks healthy but has produced pure silence for too long —
-            // rebuild the audio graph instead of polling zeros forever.
+          } else if (selfHealCount < MAX_SELF_HEAL && nowTs - lastSignalAt > STALL_MS) {
+            // Recover both a silent running graph and one suspended mid-recording.
             selfHealStalledGraph();
             return;
           }
