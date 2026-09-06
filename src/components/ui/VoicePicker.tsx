@@ -349,7 +349,7 @@ export function VoicePicker({
               <span data-testid={`${testIdPrefix}-voice-current`} className="text-foreground">
                 {selected.name}
               </span>
-              {` · ${selected.accent} · Also used in Converse`}
+              {` · ${selected.accent} · ${testIdPrefix === "converse" ? "Also used in Read Aloud" : "Also used in Converse"}`}
             </p>
           </div>
           <Button

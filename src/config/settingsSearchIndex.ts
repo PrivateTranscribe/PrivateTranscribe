@@ -357,22 +357,28 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
 
   // ── Converse ──────────────────────────────────────────────────────────────
   {
-    label: "Agent",
-    group: "Converse",
-    page: "converse",
-    keywords: ["claude code", "agent", "assistant", "converse"],
-  },
-  {
     label: "Talk instead of typing",
     group: "Converse",
     page: "converse",
-    keywords: ["voice", "mic", "microphone", "hands free", "converse", "speak", "dictate"],
-  },
-  {
-    label: "Where your voice is transcribed",
-    group: "Converse",
-    page: "converse",
-    keywords: ["voice", "local", "cloud", "privacy", "whisper", "converse", "transcription"],
+    keywords: [
+      "voice",
+      "mic",
+      "microphone",
+      "hands free",
+      "converse",
+      "speak",
+      "dictate",
+      "claude code",
+      "agent",
+      "assistant",
+      "where your voice is transcribed",
+      "local",
+      "cloud",
+      "privacy",
+      "whisper",
+      "transcription provider",
+      "route",
+    ],
   },
   {
     label: "Pause that ends your turn",
@@ -381,10 +387,18 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["voice", "pause", "silence", "end of turn", "converse", "sensitivity"],
   },
   {
-    label: "Close my microphone while Claude Code speaks",
+    label: "Mute microphone during replies",
     group: "Converse",
     page: "converse",
-    keywords: ["mic", "mute", "converse", "claude code", "feedback", "echo"],
+    keywords: [
+      "mic",
+      "mute",
+      "converse",
+      "claude code",
+      "feedback",
+      "echo",
+      "close my microphone while claude code speaks",
+    ],
   },
   {
     label: "Voice",

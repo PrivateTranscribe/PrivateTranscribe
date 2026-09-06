@@ -9,7 +9,7 @@ import type { Page } from "@playwright/test";
  * Ledger gate `converse-ui`: the Converse page and the overlay's conversation
  * state exist, are beta gated, and survive a blind design review.
  *
- * Every state the UI can be in gets a screenshot in docs/goal-evidence/,
+ * Every state the UI can be in gets a screenshot in test-results/e2e/,
  * because a critic reads them afterwards and a state with no picture is a state
  * nobody judged: locked, no project chosen, a project chosen but not started,
  * and then the live session in idle / thinking / speaking / after-interrupt,
@@ -25,7 +25,7 @@ import type { Page } from "@playwright/test";
  * the splitter, the queue player, the state machine — is the real one.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = path.resolve("test-results/e2e");
 const STUB_PATH = path.join(__dirname, "fixtures", "claude-stub.cjs");
 
 /** A screenshot that is present but blank would pass a bare existence check. */
@@ -176,7 +176,7 @@ test.describe("converse ui", () => {
       controlPanel.getByRole("button", { name: /Choose a project folder/ })
     ).toBeVisible();
     await expect(
-      controlPanel.getByText(/Claude Code runs inside the folder you choose/)
+      controlPanel.getByText("Choose the project Claude Code should work on.", { exact: true })
     ).toBeVisible();
 
     // Nothing has been chosen yet, so there is nothing to remember.
@@ -234,7 +234,17 @@ test.describe("converse ui", () => {
       // ---------------------------------------------------- project chosen
       await controlPanel.getByTestId("converse-recent-project").first().click();
       await expect(controlPanel.getByTestId("converse-project-path")).toHaveText(projectDir);
-      await expect(controlPanel.getByText(/Headphones recommended/)).toBeVisible();
+
+      const voiceOptions = controlPanel.locator("summary").filter({ hasText: "Voice options" });
+      await expect(voiceOptions).toBeVisible();
+      await expect(
+        controlPanel.locator('[data-settings-label="Mute microphone during replies"]')
+      ).toBeHidden();
+      await voiceOptions.click();
+      await expect(
+        controlPanel.locator('[data-settings-label="Mute microphone during replies"]')
+      ).toBeVisible();
+      await expect(controlPanel.getByText(/Use headphones so replies/)).toHaveCount(0);
 
       // Mute-while-speaking ships on, and the stored preference has to say so.
       expect(

@@ -17,6 +17,7 @@ import { Input } from "../ui/input";
 import { Toggle } from "../ui/toggle";
 import { InfoBox } from "../ui/InfoBox";
 import { SectionLabel } from "../ui/SectionLabel";
+import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { SettingsRow } from "../ui/SettingsSection";
 import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -1009,16 +1010,14 @@ export default function ConversePage() {
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Converse</h1>
           {!isUnlocked && <Badge variant="pro">Pro</Badge>}
         </div>
-        <p className="text-sm text-muted-foreground">
-          Talk to Claude Code about one project folder and hear the answer spoken back
-        </p>
+        <p className="text-sm text-muted-foreground">Talk through a project with Claude Code.</p>
       </div>
 
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
           <h3 className="text-base font-semibold text-foreground">
-            Voice control for Claude Code runs you walk away from
+            Talk through Claude Code tasks
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
             Converse points Claude Code at a folder, speaks its status and questions out loud, and
@@ -1068,8 +1067,7 @@ export default function ConversePage() {
                 ) : (
                   <div className="space-y-3">
                     <p className="text-[13px] text-muted-foreground leading-relaxed">
-                      Claude Code runs inside the folder you choose, the same as it would in a
-                      terminal opened there.
+                      Choose the project Claude Code should work on.
                     </p>
                     <Button onClick={handleChooseFolder} className="gap-2">
                       <FolderOpen size={15} />
@@ -1124,105 +1122,103 @@ export default function ConversePage() {
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
-                      label="Agent"
-                      description="Converse talks to the Claude Code CLI installed on this machine. It is the only agent in this release."
-                    >
-                      <span className="text-sm text-foreground">Claude Code</span>
-                    </SettingsRow>
-                  </SettingsPanelRow>
-
-                  <SettingsPanelRow>
-                    <SettingsRow
                       label="Talk instead of typing"
-                      description="Opens the microphone while the session runs. Say something, pause, and it is transcribed on this machine and sent."
+                      description={
+                        voiceEnabled ? (
+                          <>
+                            Speak, then pause to send. Transcription:{" "}
+                            <span data-testid="converse-speech-route">{speechRoute.short}</span>.
+                          </>
+                        ) : (
+                          "Use the microphone during a session."
+                        )
+                      }
                     >
                       <Toggle checked={voiceEnabled} onChange={setVoiceEnabled} />
                     </SettingsRow>
                   </SettingsPanelRow>
+                </SettingsPanel>
+                <div className="mt-4">
+                  <SettingsDisclosure
+                    title="Voice options"
+                    status={voiceModelInstalled ? "Voice ready" : "Voice not installed"}
+                  >
+                    {voiceEnabled && (
+                      <SettingsPanelRow>
+                        <SettingsRow
+                          label="Pause that ends your turn"
+                          description="How long to wait before sending your words."
+                        >
+                          <Select
+                            value={String(endOfTurnMs)}
+                            onValueChange={(value) => setEndOfTurnMs(Number(value))}
+                          >
+                            <SelectTrigger
+                              className="w-40"
+                              data-testid="converse-end-of-turn-select"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {END_OF_TURN_CHOICES.map((choice) => (
+                                <SelectItem key={choice.value} value={String(choice.value)}>
+                                  {choice.label} · {(choice.value / 1000).toFixed(1)}s
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </SettingsRow>
+                      </SettingsPanelRow>
+                    )}
 
-                  {voiceEnabled && (
                     <SettingsPanelRow>
                       <SettingsRow
-                        label="Where your voice is transcribed"
-                        description="Converse uses the transcription engine chosen in Settings. Nothing here changes it."
+                        label="Mute microphone during replies"
+                        description="Prevents spoken replies from starting another turn."
                       >
-                        <span
-                          className="text-sm text-foreground"
-                          data-testid="converse-speech-route"
-                        >
-                          {speechRoute.short}
-                        </span>
+                        <Toggle checked={muteWhileSpeaking} onChange={setMuteWhileSpeaking} />
                       </SettingsRow>
                     </SettingsPanelRow>
-                  )}
 
-                  {voiceEnabled && (
-                    <SettingsPanelRow>
-                      <SettingsRow
-                        label="Pause that ends your turn"
-                        description="How long you can go quiet mid-sentence before what you said is sent."
-                      >
-                        <Select
-                          value={String(endOfTurnMs)}
-                          onValueChange={(value) => setEndOfTurnMs(Number(value))}
-                        >
-                          <SelectTrigger className="w-40" data-testid="converse-end-of-turn-select">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {END_OF_TURN_CHOICES.map((choice) => (
-                              <SelectItem key={choice.value} value={String(choice.value)}>
-                                {choice.label} · {(choice.value / 1000).toFixed(1)}s
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </SettingsRow>
-                    </SettingsPanelRow>
-                  )}
-
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Close my microphone while Claude Code speaks"
-                      description="Stops the spoken reply being heard as your next sentence. With it off you can talk over the reply and it stops mid-word."
-                    >
-                      <Toggle checked={muteWhileSpeaking} onChange={setMuteWhileSpeaking} />
-                    </SettingsRow>
-                  </SettingsPanelRow>
-
-                  {/* Same gate as Read Aloud's: without the model nothing here
+                    {/* Same gate as Read Aloud's: without the model nothing here
                       can make a sound, and an inert list of 28 names would only
                       mislead. */}
-                  <SettingsPanelRow>
-                    {voiceModelInstalled ? (
-                      <VoicePicker
-                        value={voiceId}
-                        onChange={setVoiceId}
-                        testIdPrefix="converse"
-                        ariaLabel="Voice"
-                      />
-                    ) : (
-                      <SettingsRow
-                        label="Voice"
-                        description="Available once the voice model is on this machine. It is downloaded on the Read Aloud page."
-                      >
-                        <span className="text-sm text-muted-foreground">Not installed</span>
-                      </SettingsRow>
-                    )}
-                  </SettingsPanelRow>
+                    <SettingsPanelRow>
+                      {voiceModelInstalled ? (
+                        <VoicePicker
+                          value={voiceId}
+                          onChange={setVoiceId}
+                          testIdPrefix="converse"
+                          ariaLabel="Voice"
+                          collapsible
+                        />
+                      ) : (
+                        <SettingsRow
+                          label="Voice"
+                          description="Download the voice model on the Read Aloud page."
+                        >
+                          <span className="text-sm text-muted-foreground">Not installed</span>
+                        </SettingsRow>
+                      )}
+                    </SettingsPanelRow>
 
-                  <SettingsPanelRow>
-                    <InfoBox variant="muted" className="p-3">
-                      <div className="flex items-start gap-2.5">
-                        <Headphones size={15} className="mt-px shrink-0 text-muted-foreground" />
-                        <p className="text-[12px] text-muted-foreground leading-relaxed">
-                          Headphones recommended. Out of speakers, the microphone hears the reply
-                          and treats it as your next sentence.
-                        </p>
-                      </div>
-                    </InfoBox>
-                  </SettingsPanelRow>
-                </SettingsPanel>
+                    {voiceEnabled && !muteWhileSpeaking && (
+                      <SettingsPanelRow>
+                        <InfoBox variant="muted" className="p-3">
+                          <div className="flex items-start gap-2.5">
+                            <Headphones
+                              size={15}
+                              className="mt-px shrink-0 text-muted-foreground"
+                            />
+                            <p className="text-[12px] text-muted-foreground leading-relaxed">
+                              Use headphones so replies are not picked up by your microphone.
+                            </p>
+                          </div>
+                        </InfoBox>
+                      </SettingsPanelRow>
+                    )}
+                  </SettingsDisclosure>
+                </div>
               </div>
 
               {startError && (
@@ -1232,7 +1228,7 @@ export default function ConversePage() {
                       Claude Code CLI problem needs no mention of Settings. */}
                   {startError.startsWith("The voice model is not installed") && (
                     <p className="text-[12px] text-muted-foreground mt-1">
-                      The voice model is downloaded in Settings, under Read Aloud.
+                      Download the voice model on the Read Aloud page.
                     </p>
                   )}
                 </InfoBox>
@@ -1243,9 +1239,6 @@ export default function ConversePage() {
                   <MessagesSquare size={15} />
                   {starting ? "Starting session" : "Start session"}
                 </Button>
-                <span className="text-[12px] text-muted-foreground">
-                  Starts Claude Code in {folderName(projectPath)}.
-                </span>
               </div>
             </>
           )}
