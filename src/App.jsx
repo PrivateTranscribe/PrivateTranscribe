@@ -493,9 +493,6 @@ export default function App() {
   // renderer would re-ask for the same registration on every tick.
   const readAloudKeysActiveRef = useRef(false);
   const [readAloudState, setReadAloudState] = useState(null);
-  // True while the sentence being read is tinted where it lives, in the app
-  // it came from. The overlay then stops repeating it on its own line.
-  const [readAloudHighlightActive, setReadAloudHighlightActive] = useState(false);
   const readAloudReportedRef = useRef("");
   // Where the text being read came from, so a clipboard fallback can say so.
   const [readAloudSource, setReadAloudSource] = useState(null);
@@ -627,10 +624,6 @@ export default function App() {
     // The real feature path: the main process captures the foreground app's
     // selection and pushes the text here. Not gated on the test flag - this is
     // what a user's read hotkey ends up calling.
-    const unsubscribeHighlight = window.electronAPI?.onReadAloudHighlight?.((_event, data) => {
-      setReadAloudHighlightActive(Boolean(data?.active));
-    });
-
     const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
       const text = data?.text;
       if (typeof text === "string" && text.trim()) {
@@ -690,7 +683,6 @@ export default function App() {
       syncPlaybackKeys(false);
       readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
-      if (typeof unsubscribeHighlight === "function") unsubscribeHighlight();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       if (typeof unsubscribeControl === "function") unsubscribeControl();
       window.removeEventListener("storage", syncStoredPlaybackKeys);
@@ -839,17 +831,6 @@ export default function App() {
     readAloudSource === "clipboard" && readAloudState?.status === "playing"
       ? "Reading clipboard"
       : READ_ALOUD_STATUS_LABELS[readAloudState?.status] || "Reading aloud";
-
-  // The sentence being spoken, shown under the controls so a read has a place
-  // in the text and not just a count. Only once there is one to show: while the
-  // player is still splitting or loading the engine there is no sentence yet,
-  // and an empty second line would just make the pill twitch.
-  const readAloudSentence =
-    (readAloudState?.status === "playing" || readAloudState?.status === "paused") &&
-    typeof readAloudState?.currentSentence === "string" &&
-    readAloudState.currentSentence.trim()
-      ? readAloudState.currentSentence.trim()
-      : null;
 
   const handleReadAloudToggle = useCallback(() => {
     const handle = readAloudRef.current;
@@ -1802,9 +1783,8 @@ export default function App() {
               The Read Aloud player is a status capsule like the others: the
               dot, the state, the hairline, pause and stop. Skipping a sentence
               is on the keys (Ctrl+Alt+←/→) rather than two more buttons; the
-              hairline says where the read is. The sentence itself is shown
-              where it lives, tinted in the source app, and only falls back to
-              a line here when that app keeps its text out of reach.
+              hairline says where the read is. Word highlighting stays in the
+              source app; missing geometry never changes the capsule's size.
             */}
             {readAloudState && (
               <div
@@ -1855,21 +1835,6 @@ export default function App() {
                     <Square size={8} fill="currentColor" />
                   </button>
                 </div>
-
-                {/*
-                  The fallback: only when the sentence cannot be tinted where
-                  it lives. Truncated to the column so a long sentence never
-                  pushes the capsule past the edge, indented under the title.
-                */}
-                {readAloudSentence && !readAloudHighlightActive && (
-                  <span
-                    data-testid="readaloud-current-sentence"
-                    className="block max-w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"
-                    title={readAloudSentence}
-                  >
-                    {readAloudSentence}
-                  </span>
-                )}
               </div>
             )}
 

@@ -12,11 +12,10 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
  * Three things are proven here, all against a real Kokoro synthesis so the
  * player is genuinely mid-read rather than in a mocked state:
  *
- *   1. The capsule's second line carries the sentence being spoken, and follows
- *      the cursor when it moves.
- *   2. The new back/forward buttons move that cursor, clicked as a user clicks
- *      them.
- *   3. The `readaloud-control` events do the same thing. That is the whole
+ *   1. The capsule's progress follows the current sentence without repeating
+ *      the text underneath the controls.
+ *   2. Pause and resume work through the capsule's buttons.
+ *   3. The `readaloud-control` events skip sentences. That is the whole
  *      keybinding path except the OS hook itself: the main process turns a
  *      press of Ctrl+Alt+Space / Left / Right into exactly one of these
  *      events, and the accelerators themselves are never registered in a test
@@ -137,7 +136,7 @@ test.use({ seedKokoroModel: true });
 test.describe("read aloud playback controls", () => {
   test.setTimeout(180_000);
 
-  test("the capsule shows the sentence being read, and the skip keys move it", async ({
+  test("the capsule tracks progress, and the skip keys move it", async ({
     electronApp,
     overlayWindow,
   }) => {
@@ -147,18 +146,17 @@ test.describe("read aloud playback controls", () => {
     const sentenceLine = overlayWindow.getByTestId("readaloud-current-sentence");
 
     await expect(player).toBeVisible();
-    await expect(sentenceLine).toBeVisible();
-    await expect(sentenceLine).toContainText(MARKERS[0]);
+    await expect(sentenceLine).toHaveCount(0);
+    await expect(player.getByTestId("readaloud-progress")).toHaveAttribute("data-position", "1/5");
 
     await captureEvidence(overlayWindow, "readaloud-playback-controls.png");
 
     // Pause first: a playing sentence advances on its own clock, and every
-    // assertion below is about where a BUTTON put the cursor. The sentence line
-    // has to survive the pause, so this is also what proves it does.
+    // assertion below is about where a control put the cursor.
     await overlayWindow.getByRole("button", { name: "Pause reading" }).click();
     const paused = await waitForState(overlayWindow, { index: 0, playing: false });
     expect(paused.playing, "pause did not take").toBe(false);
-    await expect(sentenceLine).toContainText(MARKERS[0]);
+    expect(paused.currentSentence).toContain(MARKERS[0]);
 
     await captureEvidence(overlayWindow, "readaloud-playback-paused.png");
 
@@ -168,15 +166,15 @@ test.describe("read aloud playback controls", () => {
     await sendToOverlay(electronApp, "readaloud-control", { op: "forward" });
     const forward = await waitForState(overlayWindow, { index: 1, playing: false });
     expect(forward.index, "forward did not advance the cursor").toBe(1);
-    await expect(sentenceLine).toContainText(MARKERS[1]);
-    await expect(sentenceLine).not.toContainText(MARKERS[0]);
+    expect(forward.currentSentence).toContain(MARKERS[1]);
+    await expect(sentenceLine).toHaveCount(0);
     await expect(player.getByTestId("readaloud-progress")).toHaveAttribute("data-position", "2/5");
 
     // Back: and returns.
     await sendToOverlay(electronApp, "readaloud-control", { op: "back" });
     const back = await waitForState(overlayWindow, { index: 0, playing: false });
     expect(back.index, "back did not move the cursor back").toBe(0);
-    await expect(sentenceLine).toContainText(MARKERS[0]);
+    expect(back.currentSentence).toContain(MARKERS[0]);
     await expect(player.getByTestId("readaloud-progress")).toHaveAttribute("data-position", "1/5");
 
     await overlayWindow.evaluate(() => (window as any).__readAloudTest.stop());
@@ -189,14 +187,14 @@ test.describe("read aloud playback controls", () => {
     await startRead(overlayWindow);
 
     const sentenceLine = overlayWindow.getByTestId("readaloud-current-sentence");
-    await expect(sentenceLine).toContainText(MARKERS[0]);
+    await expect(sentenceLine).toHaveCount(0);
 
     // Exactly what a press of Ctrl+Alt+Right sends.
     await sendToOverlay(electronApp, "readaloud-control", { op: "forward" });
     const forward = await waitForState(overlayWindow, { index: 1, playing: true });
     expect(forward.index, "forward op did not advance the cursor").toBe(1);
     expect(forward.playing, "forward op stopped playback").toBe(true);
-    await expect(sentenceLine).toContainText(MARKERS[1]);
+    expect(forward.currentSentence).toContain(MARKERS[1]);
 
     // And what Ctrl+Alt+Space sends.
     await sendToOverlay(electronApp, "readaloud-control", { op: "toggle" });

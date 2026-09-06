@@ -183,7 +183,7 @@ test.describe("overlay unification", () => {
       const player = overlayWindow.getByTestId("readaloud-overlay-player");
       const sentenceLine = overlayWindow.getByTestId("readaloud-current-sentence");
       await expect(player).toBeVisible({ timeout: 60_000 });
-      await expect(sentenceLine).toBeVisible({ timeout: 60_000 });
+      await expect(sentenceLine).toHaveCount(0);
 
       // The player and the notice hug their words the same way and float the
       // same way — that is what makes them one family rather than two.
