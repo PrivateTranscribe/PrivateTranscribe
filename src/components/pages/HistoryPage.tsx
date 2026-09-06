@@ -100,17 +100,14 @@ export default function HistoryPage() {
     async (text: string) => {
       try {
         await navigator.clipboard.writeText(text);
-        toast({
-          title: "Copied",
-          description: "Transcription copied to clipboard",
-          variant: "success",
-        });
+        return true;
       } catch {
         toast({
-          title: "Error",
-          description: "Failed to copy to clipboard",
+          title: "Copy failed",
+          description: "Your text is still here. Try copying again.",
           variant: "destructive",
         });
+        return false;
       }
     },
     [toast]

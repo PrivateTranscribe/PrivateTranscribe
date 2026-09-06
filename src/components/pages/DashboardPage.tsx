@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useToast } from "../ui/Toast";
 import { Activity, Command, Flame, Gauge, Settings, Timer, Upload } from "lucide-react";
 import { IconTile } from "../ui/IconTile";
 import { PageId } from "../AppSidebar";
@@ -150,8 +151,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     dictationKey,
   } = useSettings();
 
-  const [copiedId, setCopiedId] = useState<number | null>(null);
-  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast } = useToast();
   const [stats, setStats] = useState<AggregateStats>({
     total_words: 0,
     total_transcriptions: 0,
@@ -346,30 +346,16 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      const item = transcriptions.find((t) => t.text === text);
-      if (item) {
-        setCopiedId(item.id);
-        if (copiedResetTimerRef.current) {
-          clearTimeout(copiedResetTimerRef.current);
-        }
-        copiedResetTimerRef.current = setTimeout(() => {
-          copiedResetTimerRef.current = null;
-          setCopiedId(null);
-        }, 2000);
-      }
+      return true;
     } catch {
-      // Silently fail
+      toast({
+        title: "Copy failed",
+        description: "Your text is still here. Try copying again.",
+        variant: "destructive",
+      });
+      return false;
     }
   };
-
-  useEffect(() => {
-    return () => {
-      if (copiedResetTimerRef.current) {
-        clearTimeout(copiedResetTimerRef.current);
-        copiedResetTimerRef.current = null;
-      }
-    };
-  }, []);
 
   const handleDelete = async (id: number) => {
     try {
