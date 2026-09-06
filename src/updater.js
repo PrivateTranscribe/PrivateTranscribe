@@ -266,7 +266,13 @@ class UpdateManager {
   async getAppVersion() {
     try {
       const { app } = require("electron");
-      return { version: app.getVersion() };
+      const buildType = this.updateRuntime?.isDevelopment
+        ? "development"
+        : this.updateRuntime?.manualInstallRequired
+          ? "unpacked"
+          : "installed";
+
+      return { version: app.getVersion(), buildType };
     } catch (error) {
       console.error("❌ Error getting app version:", error);
       throw error;

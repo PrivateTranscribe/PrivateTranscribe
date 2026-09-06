@@ -108,6 +108,7 @@ export default function AppSidebar({
     deserialize: String,
   });
   const [currentVersion, setCurrentVersion] = useState("");
+  const [buildLabel, setBuildLabel] = useState("");
   // Re-render when the Pro preview toggle changes so badges update immediately.
   const [, forceUpdate] = useState(0);
   useEffect(() => {
@@ -120,7 +121,18 @@ export default function AppSidebar({
     const getVersion = async () => {
       try {
         const result = await window.electronAPI?.getAppVersion?.();
-        if (result && result.version) setCurrentVersion(result.version);
+        if (result && result.version) {
+          setCurrentVersion(result.version);
+          setBuildLabel(
+            result.buildType === "development"
+              ? "Development build"
+              : result.buildType === "unpacked"
+                ? "Unpacked build"
+                : result.buildType === "installed"
+                  ? "Installed build"
+                  : ""
+          );
+        }
       } catch {}
     };
     getVersion();
@@ -390,7 +402,7 @@ export default function AppSidebar({
           }
         />
 
-        {/* Version / early access marker */}
+        {/* Version and runtime build, separate from feature access. */}
         {currentVersion && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <p
@@ -405,17 +417,10 @@ export default function AppSidebar({
             <span
               style={{
                 fontSize: "9px",
-                color: "var(--color-primary)",
-                backgroundColor: "rgba(112,255,186,0.08)",
-                border: "1px solid rgba(112,255,186,0.16)",
-                borderRadius: "999px",
-                padding: "2px 6px",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                fontWeight: 700,
+                color: "var(--color-muted-foreground)",
               }}
             >
-              Early access
+              {buildLabel}
             </span>
           </div>
         )}

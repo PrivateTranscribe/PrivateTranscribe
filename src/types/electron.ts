@@ -91,6 +91,7 @@ export interface UpdateResult {
 
 export interface AppVersionResult {
   version: string;
+  buildType: "development" | "unpacked" | "installed";
 }
 
 export interface WhisperDownloadProgressData {
