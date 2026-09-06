@@ -117,9 +117,7 @@ test.describe("read aloud page", () => {
     await openReadAloudPage(controlPanel);
 
     await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
-    await expect(
-      controlPanel.getByRole("button", { name: /Apply for beta access/ })
-    ).toBeVisible();
+    await expect(controlPanel.getByRole("button", { name: /Apply for beta access/ })).toBeVisible();
     await expect(controlPanel.getByText("English only.")).toBeVisible();
 
     // Locked means locked: no download button is reachable from here.
@@ -136,7 +134,7 @@ test.describe("read aloud page", () => {
       await openReadAloudPage(controlPanel);
 
       const status = controlPanel.getByTestId("readaloud-model-status");
-      await expect(status).toContainText("is not on this machine");
+      await expect(status).toContainText("Download once to read offline");
       await expect(controlPanel.getByText("English only.")).toBeVisible();
 
       const downloadButton = controlPanel.getByRole("button", { name: /Download voice model/ });
@@ -146,7 +144,7 @@ test.describe("read aloud page", () => {
       // Sitting on the screen must not trigger a 326MB fetch. Nothing here
       // clicks anything for two seconds; the state has to be unchanged after.
       await controlPanel.waitForTimeout(2000);
-      await expect(status).toContainText("is not on this machine");
+      await expect(status).toContainText("Download once to read offline");
       await expect(controlPanel.getByTestId("readaloud-download-progress")).toHaveCount(0);
 
       const modelStatus = await controlPanel.evaluate(
@@ -187,7 +185,7 @@ test.describe("read aloud page", () => {
       await controlPanel.getByRole("button", { name: /Cancel download/ }).click();
 
       const status = controlPanel.getByTestId("readaloud-model-status");
-      await expect(status).toContainText("is not on this machine", { timeout: 20_000 });
+      await expect(status).toContainText("Download once to read offline", { timeout: 20_000 });
       await expect(
         controlPanel.getByRole("button", { name: /Download voice model/ })
       ).toBeVisible();
@@ -224,7 +222,7 @@ test.describe("read aloud page", () => {
       );
 
       const status = controlPanel.getByTestId("readaloud-model-status");
-      await expect(status).toContainText("on this machine");
+      await expect(status).toContainText("Ready offline");
       await expect(status).toContainText("MB");
       await expect(controlPanel.getByText("English only.")).toBeVisible();
 

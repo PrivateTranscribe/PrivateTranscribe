@@ -47,6 +47,7 @@ async function openReadAloud(controlPanel: Page): Promise<Locator> {
   // The picker only renders once the model status read comes back installed.
   const picker = controlPanel.getByTestId("readaloud-voice-picker");
   await expect(picker).toBeVisible({ timeout: 60_000 });
+  await picker.getByRole("button", { name: "Change voice", exact: true }).click();
   return picker;
 }
 
@@ -192,6 +193,7 @@ test.describe("read aloud voice picker", () => {
     await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
     picker = controlPanel.getByTestId("readaloud-voice-picker");
     await expect(picker).toBeVisible({ timeout: 60_000 });
+    await picker.getByRole("button", { name: "Change voice", exact: true }).click();
 
     expect(await storedVoice(controlPanel)).toBe("bm_fable");
     await expect(controlPanel.getByTestId("readaloud-voice-current")).toHaveText("Fable");
