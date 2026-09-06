@@ -170,11 +170,11 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
             <BetaBadge locked={!isUnlocked} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Add explicit fixes for common mishears, like{" "}
+            Optional. Save exact replacements for repeated mistakes, like{" "}
             <span className="font-mono text-foreground">cloud</span>
             {" → "}
-            <span className="font-mono text-primary">Claude</span>. Use this only when you want the
-            source phrase replaced automatically.
+            <span className="font-mono text-primary">Claude</span>. Saved corrections apply to
+            future dictations. You do not need this for everyday dictation.
           </p>
         </div>
       </div>
@@ -182,14 +182,10 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">It learns how you write</h3>
+          <h3 className="text-base font-semibold text-foreground">Optional correction tools</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Correction Memory captures phrase fixes you confirm - like{" "}
-            <span className="font-mono">use login error</span>
-            {" → "}
-            <span className="font-mono">useLoginError</span> - and applies them to every future
-            dictation automatically. The longer you use PrivateTranscribe, the sharper it gets. This
-            beta requires approved tester access.
+            These tools are being tested with approved early access users. Regular dictation and
+            your dictionary words work without them.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>
@@ -206,10 +202,13 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-foreground">Auto-learn corrections</h2>
+                <h2 className="text-base font-semibold text-foreground">
+                  Suggest corrections from copied edits
+                </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  After dictation, copy the corrected text once. PrivateTranscribe will offer to
-                  learn replacements from the difference.
+                  After dictating, edit the text and copy the corrected version within 30 seconds.
+                  We compare it with your dictation and ask before saving a replacement. Leave off
+                  if you do not want correction suggestions.
                 </p>
               </div>
               <Toggle
@@ -224,8 +223,8 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                   Learn phrase and sentence rewrites
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Off learns word fixes like cloud {"->"} Claude. On can also learn changed spans or
-                  full repeated sentence rewrites.
+                  Also suggest replacements for longer edits. Leave off for simple spelling fixes
+                  such as cloud {"→"} Claude. Requires correction suggestions above.
                 </p>
               </div>
               <Toggle

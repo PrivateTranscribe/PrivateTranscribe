@@ -2600,7 +2600,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Auto-paste transcription"
-                    description="Automatically paste text where your cursor is after transcribing"
+                    description="Recommended on. Click a text field, then dictate. Text is pasted when you finish."
                   >
                     <Toggle checked={autoPaste} onChange={setAutoPaste} />
                   </SettingsRow>
@@ -2608,7 +2608,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Copy to clipboard"
-                    description="Also save transcription to clipboard for manual pasting"
+                    description="Keep each dictation on the clipboard so you can paste it again. If automatic paste cannot be confirmed, we keep a copy even with this off."
                   >
                     <Toggle checked={copyToClipboard} onChange={setCopyToClipboard} />
                   </SettingsRow>
@@ -2683,7 +2683,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Success confirmation"
-                    description="Brief notification when transcription completes successfully"
+                    description="Show a text preview after each successful dictation. Leave off for quiet everyday use. Paste problems still show when you need to act."
                   >
                     <Toggle checked={successConfirmation} onChange={setSuccessConfirmation} />
                   </SettingsRow>
