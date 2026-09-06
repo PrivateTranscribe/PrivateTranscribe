@@ -17,7 +17,7 @@ test("dictation settings explain optional correction learning", async ({ control
   await unlockTesterAccess(controlPanel);
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();
   const learning = controlPanel.getByRole("heading", {
-    name: "Suggest corrections from copied edits",
+    name: "Learn corrections",
   });
   await learning.scrollIntoViewIfNeeded();
   await controlPanel.screenshot({ path: path.join(shots, `${phase}-corrections-off.png`) });

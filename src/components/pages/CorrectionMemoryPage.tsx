@@ -202,13 +202,9 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-foreground">
-                  Suggest corrections from copied edits
-                </h2>
+                <h2 className="text-base font-semibold text-foreground">Learn corrections</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  After dictating, edit the text and copy the corrected version within 30 seconds.
-                  We compare it with your dictation and ask before saving a replacement. Leave off
-                  if you do not want correction suggestions.
+                  Copy your corrected text within 30 seconds. We ask before saving.
                 </p>
               </div>
               <Toggle
@@ -223,8 +219,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                   Learn phrase and sentence rewrites
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Also suggest replacements for longer edits. Leave off for simple spelling fixes
-                  such as cloud {"→"} Claude. Requires correction suggestions above.
+                  Include phrase and sentence changes.
                 </p>
               </div>
               <Toggle
