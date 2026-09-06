@@ -918,8 +918,19 @@ class IPCHandlers {
         options,
       });
 
+      // File uploads that reach this handler through cloud fallback carry the
+      // same job id as the cloud request. Register it in the existing file-job
+      // map so the page's Cancel reaches the local HTTP request too. Dictation
+      // calls have no job id and keep their existing behavior.
+      const jobId = typeof options.jobId === "string" && options.jobId ? options.jobId : null;
+      const controller = jobId ? new AbortController() : null;
+      if (controller) this.fileTranscriptionJobs.set(jobId, controller);
+
       try {
-        const result = await this.whisperManager.transcribeLocalWhisper(audioBlob, options);
+        const result = await this.whisperManager.transcribeLocalWhisper(audioBlob, {
+          ...options,
+          ...(controller ? { signal: controller.signal } : {}),
+        });
 
         debugLogger.log("Whisper result", {
           success: result.success,
@@ -936,6 +947,10 @@ class IPCHandlers {
 
         return result;
       } catch (error) {
+        if (isCancelledError(error)) {
+          debugLogger.info("Local Whisper fallback cancelled", { jobId });
+          return { success: false, cancelled: true, jobId };
+        }
         debugLogger.error("Local Whisper transcription error", error);
         const errorMessage = error.message || "Unknown error";
 
@@ -986,6 +1001,10 @@ class IPCHandlers {
         }
 
         throw error;
+      } finally {
+        if (controller && this.fileTranscriptionJobs.get(jobId) === controller) {
+          this.fileTranscriptionJobs.delete(jobId);
+        }
       }
     });
 

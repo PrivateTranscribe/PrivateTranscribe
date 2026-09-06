@@ -563,6 +563,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     activeJobIdRef.current = null;
     setCancelling(true);
     try {
+      audioManagerRef.current?.abortActiveTranscriptionRequest();
       await window.electronAPI?.cancelFileTranscription?.(jobId);
     } catch {
       // The run is already disowned above; a failed cancel call cannot make the
@@ -598,7 +599,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setSelectedFileSize(file.size);
 
     try {
-      if (speakerLabelsEnabled && isUsingLocalDiarization && !diarizationReady) {
+      if (useLocalWhisper && speakerLabelsEnabled && isUsingLocalDiarization && !diarizationReady) {
         throw new Error(
           "Speaker label models need to be downloaded first. Enable speaker labels in settings to start the download."
         );
@@ -628,7 +629,11 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
           jobId,
         });
       } else {
-        result = await manager.processWithOpenAIAPI(file, metadata);
+        result = await manager.processWithOpenAIAPI(file, {
+          ...metadata,
+          language: requestedLanguage,
+          processingGeneration: jobId,
+        });
       }
 
       // The run was cancelled or replaced while the engine was working. Its
@@ -945,81 +950,86 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
               />
             </div>
 
-            <div className="h-px bg-border-subtle/40" />
+            {useLocalWhisper && (
+              <>
+                <div className="h-px bg-border-subtle/40" />
 
-            {/* Noise reduction + Speaker labels row */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <CheckboxField
-                id="file-noise-reduction"
-                label="Noise reduction"
-                description="Clean audio before transcription. Helps with calls, podcasts, and screen recordings."
-                checked={noiseReduction}
-                onChange={(event) => setNoiseReduction(event.target.checked)}
-              />
+                {/* Noise reduction + Speaker labels row */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <CheckboxField
+                    id="file-noise-reduction"
+                    label="Noise reduction"
+                    description="Clean audio before transcription. Helps with calls, podcasts, and screen recordings."
+                    checked={noiseReduction}
+                    onChange={(event) => setNoiseReduction(event.target.checked)}
+                  />
 
-              <CheckboxField
-                id="file-speaker-labels"
-                label="Speaker labels"
-                description="Identify and label different speakers in the transcript."
-                checked={speakerLabelsEnabled}
-                onChange={(event) => handleSpeakerLabelsToggle(event.target.checked)}
-              />
-            </div>
-
-            {/* Speaker count selector - only shown when speaker labels enabled */}
-            {speakerLabelsEnabled && (
-              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users size={14} className="text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Number of speakers</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Set the number of speakers for best results. Auto-detect may over-segment.
-                      </p>
-                    </div>
-                  </div>
-                  <Select value={expectedSpeakers} onValueChange={setExpectedSpeakers}>
-                    <SelectTrigger className="min-w-[160px] sm:w-[160px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SPEAKER_COUNT_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <CheckboxField
+                    id="file-speaker-labels"
+                    label="Speaker labels"
+                    description="Identify and label different speakers in the transcript."
+                    checked={speakerLabelsEnabled}
+                    onChange={(event) => handleSpeakerLabelsToggle(event.target.checked)}
+                  />
                 </div>
 
-                {/* Model status indicator */}
-                {needsModelDownload && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
-                    <AlertCircle size={13} className="shrink-0 text-warning" />
-                    <p className="text-xs text-warning">
-                      Speaker models not yet downloaded.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setModelDownloadDialogOpen(true)}
-                        className="font-medium text-primary hover:text-primary/80 underline underline-offset-2"
-                      >
-                        Download now
-                      </button>
-                    </p>
+                {/* Speaker count selector - only shown when speaker labels enabled */}
+                {speakerLabelsEnabled && (
+                  <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users size={14} className="text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Number of speakers</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Set the number of speakers for best results. Auto-detect may
+                            over-segment.
+                          </p>
+                        </div>
+                      </div>
+                      <Select value={expectedSpeakers} onValueChange={setExpectedSpeakers}>
+                        <SelectTrigger className="min-w-[160px] sm:w-[160px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SPEAKER_COUNT_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Model status indicator */}
+                    {needsModelDownload && (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                        <AlertCircle size={13} className="shrink-0 text-warning" />
+                        <p className="text-xs text-warning">
+                          Speaker models not yet downloaded.{" "}
+                          <button
+                            type="button"
+                            onClick={() => setModelDownloadDialogOpen(true)}
+                            className="font-medium text-primary hover:text-primary/80 underline underline-offset-2"
+                          >
+                            Download now
+                          </button>
+                        </p>
+                      </div>
+                    )}
+                    {speakerLabelsEnabled && !needsModelDownload && (
+                      <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
+                        <Info size={12} className="shrink-0" />
+                        <span>
+                          {diarizationReady
+                            ? "Using multilingual speaker detection. Works with any language."
+                            : "Using English speaker turn detection."}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {speakerLabelsEnabled && !needsModelDownload && (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
-                    <Info size={12} className="shrink-0" />
-                    <span>
-                      {diarizationReady
-                        ? "Using multilingual speaker detection. Works with any language."
-                        : "Using English speaker turn detection."}
-                    </span>
-                  </div>
-                )}
-              </div>
+              </>
             )}
           </div>
         )}
@@ -1151,9 +1161,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
             <h3 className="text-lg font-semibold text-foreground mb-1">Cancelled</h3>
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <p className="mb-5 max-w-md text-xs text-muted-foreground">
-              {processingElapsedSeconds > 0
-                ? `Stopped after ${elapsedLabel}. Nothing was transcribed and nothing was saved.`
-                : "Stopped before the transcript was finished. Nothing was saved."}
+              Choose a file to start again.
             </p>
             <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
               Choose a file

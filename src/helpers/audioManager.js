@@ -3180,7 +3180,7 @@ class AudioManager {
 
   async processWithOpenAIAPI(audioBlob, metadata = {}) {
     const timings = {};
-    const language = this.getTranscriptionSetting("preferredLanguage", "");
+    const language = metadata?.language ?? this.getTranscriptionSetting("preferredLanguage", "");
     const allowLocalFallback =
       this.getTranscriptionSetting("allowLocalFallback", "false") === "true";
     const fallbackModel = this.getTranscriptionSetting("fallbackWhisperModel", "base");
@@ -3189,6 +3189,9 @@ class AudioManager {
     const skipOptimizationByMetadata = metadata?.skipOptimization === true;
     const processingGeneration = metadata?.processingGeneration ?? null;
     const abortController = new AbortController();
+    if (processingGeneration !== null && processingGeneration !== undefined) {
+      this.setActiveTranscriptionAbortController(abortController, processingGeneration);
+    }
 
     try {
       const durationSeconds = metadata.durationSeconds ?? null;
@@ -3341,9 +3344,7 @@ class AudioManager {
       );
 
       const apiCallStart = performance.now();
-      if (processingGeneration !== null && processingGeneration !== undefined) {
-        this.setActiveTranscriptionAbortController(abortController, processingGeneration);
-      }
+      abortController.signal.throwIfAborted();
       const response = await fetch(endpoint, {
         method: "POST",
         headers,
@@ -3493,9 +3494,13 @@ class AudioManager {
       if (allowLocalFallback && isOpenAIMode) {
         try {
           const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
+          abortController.signal.throwIfAborted();
           const options = {
             model: fallbackModel,
           };
+          if (typeof processingGeneration === "string" && processingGeneration) {
+            options.jobId = processingGeneration;
+          }
           if (language && language !== "auto") {
             options.language = language;
           } else {
@@ -3507,6 +3512,12 @@ class AudioManager {
 
           const localFallbackStart = performance.now();
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
+          abortController.signal.throwIfAborted();
+          if (result?.cancelled) {
+            const cancellation = new Error("Transcription cancelled");
+            cancellation.name = "AbortError";
+            throw cancellation;
+          }
           timings.transcriptionProcessingDurationMs = Math.round(
             performance.now() - localFallbackStart
           );
@@ -3538,6 +3549,9 @@ class AudioManager {
           }
           throw error;
         } catch (fallbackError) {
+          if (fallbackError?.name === "AbortError") {
+            throw fallbackError;
+          }
           throw new Error(
             `OpenAI API failed: ${error.message}. Local fallback also failed: ${fallbackError.message}`
           );
