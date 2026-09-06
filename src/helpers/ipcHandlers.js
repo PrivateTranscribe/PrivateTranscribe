@@ -1445,7 +1445,8 @@ class IPCHandlers {
     });
 
     ipcMain.handle("readaloud-split", async (_event, text) => {
-      return requireKokoro().splitSentences(text);
+      const { splitReadableText } = require("./readAloudText");
+      return splitReadableText(text, (span) => requireKokoro().splitSentences(span));
     });
 
     ipcMain.handle(
