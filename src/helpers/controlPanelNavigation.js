@@ -2,6 +2,7 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "home",
   "history",
   "transcribe",
+  "dictation",
   "dictionary",
   "read-aloud",
   "ai-enhancement",
@@ -11,15 +12,7 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "settings",
 ]);
 
-const VALID_SETTINGS_TABS = new Set([
-  "general",
-  "preferences",
-  "transcription",
-  "permissions",
-  "pro",
-  "help",
-  "developer",
-]);
+const VALID_SETTINGS_TABS = new Set(["general", "permissions", "pro", "developer"]);
 
 /**
  * Keep renderer-provided navigation values inside the control panel's known routes.

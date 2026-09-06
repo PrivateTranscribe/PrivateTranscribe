@@ -8,19 +8,10 @@
  * the time. The overlay tells the main process when a read starts and ends
  * (`readaloud-playback-active`), which is the only thing that turns them on.
  *
- * Accelerator choice: Ctrl+Alt plus Space or an arrow. The AltGr hazard that
- * forced Shift into the trigger hotkey (AltGr = Ctrl+Alt, so Ctrl+Alt+<char>
- * is somebody typing) applies to CHARACTER keys only — Space and the arrows
- * produce nothing under AltGr on any layout, so these stay two-modifier and
- * rememberable, which was Kristian's complaint about the original
- * Ctrl+Alt+Shift set. Known conflict, accepted: legacy Intel graphics drivers
- * bound Ctrl+Alt+arrows to screen rotation (off by default on anything
- * modern), and these keys exist only while a read is playing. Escape is
- * deliberately not used - a global Escape would swallow the key in every
- * other app on the machine.
- *
- * Failing to register is not fatal: the overlay's own buttons do the same three
- * jobs, so a conflict is logged and playback carries on.
+ * The defaults use Ctrl+Alt with Space or an arrow. Users can replace each
+ * shortcut in Read Aloud settings. Changes during playback replace the held
+ * keys; capture mode temporarily releases them so they reach the input.
+ * Registration conflicts are logged and do not interrupt audio playback.
  *
  * `shortcuts` and `logger` are constructor-injectable because vitest cannot
  * mock a CommonJS `require("electron")` inside src/helpers - outside Electron
@@ -30,13 +21,12 @@
 
 const { globalShortcut } = require("electron");
 const debugLogger = require("./debugLogger");
+const DEFAULT_PLAYBACK_HOTKEYS = require("../config/readAloudPlaybackHotkeys.json");
 
 /** Accelerator -> the op sent to the overlay when it fires. */
-const PLAYBACK_ACCELERATORS = Object.freeze({
-  "Ctrl+Alt+Space": "toggle",
-  "Ctrl+Alt+Left": "back",
-  "Ctrl+Alt+Right": "forward",
-});
+const PLAYBACK_ACCELERATORS = Object.freeze(
+  Object.fromEntries(Object.entries(DEFAULT_PLAYBACK_HOTKEYS).map(([op, key]) => [key, op]))
+);
 
 const isDiagFlagEnabled = (name) => {
   const raw = String(process.env[name] || "")
@@ -58,6 +48,8 @@ class ReadAloudPlaybackKeys {
     this.registered = [];
     /** Whether the last apply() asked for them to be held. */
     this.active = false;
+    this.hotkeys = { ...DEFAULT_PLAYBACK_HOTKEYS };
+    this.suspended = false;
   }
 
   /**
@@ -65,8 +57,24 @@ class ReadAloudPlaybackKeys {
    * the overlay may call this on any state change, and only a transition costs
    * anything.
    */
-  apply({ active = false } = {}) {
+  apply({ active = false, hotkeys = this.hotkeys } = {}) {
     const want = Boolean(active);
+    const nextHotkeys = Object.fromEntries(
+      Object.entries(DEFAULT_PLAYBACK_HOTKEYS).map(([op, fallback]) => {
+        const value = hotkeys?.[op];
+        return [
+          op,
+          typeof value === "string" && value.trim() && value.length < 100 ? value.trim() : fallback,
+        ];
+      })
+    );
+    const changed = JSON.stringify(nextHotkeys) !== JSON.stringify(this.hotkeys);
+    this.hotkeys = nextHotkeys;
+
+    if (this.suspended) {
+      this.active = want;
+      return { active: want, registered: [] };
+    }
 
     if (!want) {
       this.unregister();
@@ -81,7 +89,14 @@ class ReadAloudPlaybackKeys {
       return { active: false, registered: [], reason: "diagnostic-flag" };
     }
 
-    if (this.active && this.registered.length > 0) {
+    if (
+      !changed &&
+      this.active &&
+      this.registered.length > 0 &&
+      this.registered.every(
+        (key) => !this.shortcuts?.isRegistered || this.shortcuts.isRegistered(key)
+      )
+    ) {
       return { active: true, registered: [...this.registered] };
     }
 
@@ -92,7 +107,7 @@ class ReadAloudPlaybackKeys {
 
     this.unregister();
 
-    for (const [accelerator, op] of Object.entries(PLAYBACK_ACCELERATORS)) {
+    for (const [op, accelerator] of Object.entries(this.hotkeys)) {
       try {
         const ok = this.shortcuts.register(accelerator, () => this.fire(op));
         if (ok) {
@@ -109,6 +124,17 @@ class ReadAloudPlaybackKeys {
 
     this.active = true;
     return { active: true, registered: [...this.registered] };
+  }
+
+  /** Release keys while a settings field records a replacement. */
+  suspend() {
+    this.suspended = true;
+    this.unregister();
+  }
+
+  resume() {
+    this.suspended = false;
+    return this.apply({ active: this.active });
   }
 
   /** Deliver one press. A throwing handler must never take the app down. */

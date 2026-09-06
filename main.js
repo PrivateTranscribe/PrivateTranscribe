@@ -134,6 +134,7 @@ let globeKeyManager = null;
 let windowsKeyManager = null;
 let actionEngineManager = null;
 let benchmarkManager = null;
+let ipcHandlers = null;
 let globeKeyAlertShown = false;
 let cudaAutoUpdateFailed = false;
 let cudaAutoUpdateError = null;
@@ -276,7 +277,7 @@ async function initializeManagers() {
   }
 
   // Initialize IPC handlers with all managers
-  const _ipcHandlers = new IPCHandlers({
+  ipcHandlers = new IPCHandlers({
     environmentManager,
     databaseManager,
     clipboardManager,
@@ -1036,6 +1037,9 @@ if (gotSingleInstanceLock) {
     }
     if (windowsKeyManager) {
       windowsKeyManager.stop();
+    }
+    if (ipcHandlers && ipcHandlers.agentModeHotkey) {
+      ipcHandlers.agentModeHotkey.unregister();
     }
     if (selectionCapture) {
       selectionCapture.stop();

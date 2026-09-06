@@ -1,5 +1,5 @@
 /**
- * ReadAloudHighlight - shows the sentence being read WHERE it is, in the app
+ * ReadAloudHighlight - shows the word being read WHERE it is, in the app
  * it was copied from, instead of only as a line on the overlay.
  *
  * Kristian, 2026-09-02: "it would be way better if it could show on the screen
@@ -18,7 +18,7 @@
  *      over those rectangles. It is a separate window rather than part of the
  *      overlay because the overlay is a fixed 400x500 box that follows the
  *      dictation button; the sentence can be anywhere on any monitor.
- *   3. The renderer's player owns playback, so it reports each sentence change
+ *   3. The renderer's player owns playback, so it reports each spoken word
  *      up to the main process (`readaloud-sentence`), and the main process
  *      tells the overlay when a highlight is actually on screen
  *      (`readaloud-highlight`), so the overlay can drop its own sentence line
@@ -36,8 +36,8 @@ const debugLogger = require("./debugLogger");
 
 const WORKER_FILENAME = "readaloud-highlight-worker.ps1";
 const COMMAND_TIMEOUT_MS = 4000;
-/** How often the last hit is re-measured while a read plays: the user may scroll. */
-const TRACK_INTERVAL_MS = 700;
+/** Delay after a completed geometry request. Requests never overlap. */
+const TRACK_INTERVAL_MS = 50;
 /** Breathing room around the sentence's rectangles, in DIPs. */
 const PAD = 3;
 
@@ -101,8 +101,7 @@ const HIGHLIGHT_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;background:transparent;overflow:hidden;pointer-events:none}
 #boxes{position:absolute;inset:0}
 .box{position:absolute;border-radius:4px;background:rgba(112,255,186,0.12);
-box-shadow:inset 0 0 0 1.5px rgba(112,255,186,0.9),0 0 0 1px rgba(0,0,0,0.18);
-transition:left 120ms ease-out,top 120ms ease-out,width 120ms ease-out,height 120ms ease-out}
+box-shadow:inset 0 0 0 1.5px rgba(112,255,186,0.9),0 0 0 1px rgba(0,0,0,0.18)}
 </style></head><body><div id="boxes"></div><script>
 window.__render=function(boxes){
   var host=document.getElementById('boxes');
@@ -137,6 +136,11 @@ class ReadAloudHighlight {
     this.lastIndex = -1;
     this.trackTimer = null;
     this.lastLayoutKey = "";
+    this.generation = 0;
+    this.target = null;
+    this.workerTargetKey = "";
+    this.refreshing = false;
+    this.wordGeometry = null;
   }
 
   resolveWorkerScript() {
@@ -188,6 +192,7 @@ class ReadAloudHighlight {
     let buffer = "";
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
+      if (this.worker !== child) return;
       buffer += chunk;
       let newline;
       while ((newline = buffer.indexOf("\n")) >= 0) {
@@ -233,6 +238,12 @@ class ReadAloudHighlight {
   /** Stop the worker and drop the window. Called on app quit. */
   stop() {
     this.isStopping = true;
+    this.generation++;
+    this.target = null;
+    this.wordGeometry = null;
+    this.anchored = false;
+    this.anchorPromise = null;
+    this.stopTracking();
     this.hide();
     if (this.worker) {
       try {
@@ -282,9 +293,10 @@ class ReadAloudHighlight {
       };
       this.pending.push(once);
       const timer = setTimeout(() => {
-        const index = this.pending.indexOf(once);
-        if (index >= 0) this.pending.splice(index, 1);
         once("ERR timeout");
+        // A late FIFO reply must never be mistaken for the next command.
+        // Retire the stalled worker and discard all of its queued replies.
+        this.stop();
       }, COMMAND_TIMEOUT_MS);
       try {
         this.worker.stdin.write(`${command}\n`);
@@ -304,6 +316,12 @@ class ReadAloudHighlight {
    */
   anchor() {
     if (!this.isSupported) return Promise.resolve(false);
+    const generation = ++this.generation;
+    this.target = null;
+    this.workerTargetKey = "";
+    this.wordGeometry = null;
+    this.stopTracking();
+    this.hide();
     this.lastIndex = -1;
     this.anchored = false;
     this.anchorPromise = (async () => {
@@ -314,8 +332,10 @@ class ReadAloudHighlight {
       // than giving up at the transport default (which it did, silently, on
       // the first read after launch - measured 2026-09-02).
       await this.waitForReady(8000);
+      if (generation !== this.generation) return false;
       const started = Date.now();
       const reply = await this.send("anchor");
+      if (generation !== this.generation) return false;
       const ok = reply.startsWith("OK");
       this.anchored = ok;
       debugLogger.debug("[ReadAloudHighlight] anchor", { reply, ms: Date.now() - started });
@@ -328,35 +348,99 @@ class ReadAloudHighlight {
    * The player moved to a sentence. `status` is the player's own word; only a
    * playing or paused read gets a highlight, everything else clears it.
    */
-  async onSentence({ status, index, sentence } = {}) {
+  async onSentence({ status, index, sentence, word } = {}) {
     if (!this.isSupported) return;
     // Between the copy and the first spoken word the player reports
     // splitting / loading-engine / synthesizing. Those are the read starting,
     // not ending: clearing on them threw the anchor away 400ms after it was
     // made, every time the engine was already warm (2026-09-02).
-    if (PREPARING_STATUSES.has(status)) return;
-    const reading = status === "playing" || status === "paused";
+    if (PREPARING_STATUSES.has(status) && !sentence?.trim()) {
+      this.target = null;
+      this.stopTracking();
+      this.hide();
+      return;
+    }
+    const preparing = PREPARING_STATUSES.has(status);
+    const reading = preparing || status === "playing" || status === "paused";
     if (!reading || typeof sentence !== "string" || !sentence.trim()) {
       this.clear();
       return;
     }
+    const generation = this.generation;
+    // Null means no spoken word. Geometry can still be prepared during the
+    // audio lead-in, without briefly highlighting the whole sentence.
+    if (
+      word &&
+      (!Number.isInteger(word.start) ||
+        !Number.isInteger(word.end) ||
+        word.start < 0 ||
+        word.end <= word.start ||
+        word.end > sentence.length)
+    )
+      return;
+    const payload = { index, sentence, ...(word ? { start: word.start, end: word.end } : {}) };
+    const target = {
+      key: JSON.stringify({ index, sentence }),
+      payload,
+      silent: preparing || word === null,
+    };
+    this.target = target;
+    if (target.silent) this.hide();
+    else if (this.wordGeometry?.key === target.key) this.paintCurrentWord();
     if (this.anchorPromise) {
       const ok = await this.anchorPromise;
       if (!ok) return;
     } else if (!this.anchored) {
       return;
     }
-    if (index === this.lastIndex) return;
+    if (generation !== this.generation || this.target !== target) return;
     this.lastIndex = index;
+    this.stopTracking();
+    await this.refresh();
+  }
 
-    const encoded = Buffer.from(sentence, "utf8").toString("base64");
-    const reply = await this.send(`find ${encoded}`);
-    // A later sentence may have overtaken this one while the worker was busy.
-    if (this.lastIndex !== index) return;
-    this.applyReply(reply);
+  /** Only one UIA request in flight; word changes replace queued work. */
+  async refresh() {
+    if (this.refreshing || !this.target || !this.anchored) return;
+    this.refreshing = true;
+    const target = this.target;
+    const generation = this.generation;
+    const command =
+      this.workerTargetKey === target.key
+        ? "rects"
+        : `locate ${Buffer.from(JSON.stringify(target.payload), "utf8").toString("base64")}`;
+    try {
+      const reply = await this.send(command);
+      if (generation !== this.generation) return;
+      this.workerTargetKey = reply.startsWith("ERR") ? "" : target.key;
+      if (this.target?.key === target.key) this.applyReply(reply);
+    } finally {
+      this.refreshing = false;
+      if (this.target && this.anchored) {
+        if (this.target.key !== target.key || generation !== this.generation) void this.refresh();
+        else this.startTracking();
+      }
+    }
   }
 
   applyReply(reply) {
+    if (reply.startsWith("WORDS ")) {
+      try {
+        const words = JSON.parse(reply.slice(6));
+        if (Array.isArray(words)) {
+          this.wordGeometry = { key: this.target.key, words };
+          this.paintCurrentWord();
+          return;
+        }
+      } catch {
+        /* Invalid geometry falls back to the overlay. */
+      }
+    }
+    if (this.target?.silent || this.target?.payload.start !== undefined) {
+      this.wordGeometry = null;
+      this.hide();
+      return;
+    }
     if (reply.startsWith("RECTS ")) {
       let rects = null;
       try {
@@ -366,7 +450,6 @@ class ReadAloudHighlight {
       }
       if (Array.isArray(rects) && rects.length) {
         this.show(rects);
-        this.startTracking();
         return;
       }
     }
@@ -374,20 +457,32 @@ class ReadAloudHighlight {
     this.hide();
   }
 
-  /** Keep the tint on the sentence when the user scrolls the source app. */
+  paintCurrentWord() {
+    if (!this.target || this.target.silent) {
+      this.hide();
+      return;
+    }
+    const words = this.wordGeometry?.words ?? [];
+    const rects =
+      this.target.payload.start === undefined
+        ? words.flatMap((word) => word.rects)
+        : words.find((word) => word.start === this.target.payload.start)?.rects;
+    if (rects?.length) this.show(rects);
+    else this.hide();
+  }
+
+  /** Re-measure cached word ranges, even while the source text is offscreen. */
   startTracking() {
     if (this.trackTimer) return;
-    this.trackTimer = setInterval(async () => {
-      if (!this.active || !this.anchored) return;
-      const reply = await this.send("rects");
-      if (!this.active) return;
-      this.applyReply(reply);
+    this.trackTimer = setTimeout(() => {
+      this.trackTimer = null;
+      void this.refresh();
     }, TRACK_INTERVAL_MS);
   }
 
   stopTracking() {
     if (this.trackTimer) {
-      clearInterval(this.trackTimer);
+      clearTimeout(this.trackTimer);
       this.trackTimer = null;
     }
   }
@@ -462,7 +557,6 @@ class ReadAloudHighlight {
   }
 
   hide() {
-    this.stopTracking();
     this.lastLayoutKey = "";
     if (this.window && !this.window.isDestroyed() && this.window.isVisible()) {
       this.window.hide();
@@ -475,11 +569,17 @@ class ReadAloudHighlight {
 
   /** The read ended: nothing to point at any more. */
   clear() {
+    const hadAnchor = this.anchored || this.anchorPromise;
+    this.generation++;
+    this.target = null;
+    this.workerTargetKey = "";
+    this.wordGeometry = null;
+    this.stopTracking();
     this.hide();
     this.lastIndex = -1;
-    if (this.anchored) {
-      this.anchored = false;
-      this.anchorPromise = null;
+    this.anchored = false;
+    this.anchorPromise = null;
+    if (hadAnchor) {
       void this.send("clear");
     }
   }
@@ -492,6 +592,7 @@ class ReadAloudHighlight {
       workerReady: this.workerReady,
       anchored: this.anchored,
       active: this.active,
+      target: this.target?.payload ?? null,
       bounds: win && this.active ? win.getBounds() : null,
     };
   }

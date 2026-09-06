@@ -1,5 +1,5 @@
 import { BookMarked, Trash2, Lock, Pencil } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -53,6 +53,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
     enablePhraseCorrectionLearning,
     setEnablePhraseCorrectionLearning,
   } = useSettings();
+  const formRef = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,42 +155,31 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
   return (
     <div className={embedded ? "space-y-6" : "p-8 max-w-5xl mx-auto space-y-6"}>
       {/* Header */}
-      <div className="flex items-start gap-3 mb-2">
-        <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
-        <div>
-          <div className="flex items-center gap-3">
-            {embedded ? (
-              <h2 className="text-base font-semibold text-foreground">Correction Memory</h2>
-            ) : (
+      {!embedded && (
+        <div className="flex items-start gap-3 mb-2">
+          <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
+          <div>
+            <div className="flex items-center gap-3">
               <h1 className="text-3xl font-semibold text-foreground tracking-tight">
                 Correction Memory
               </h1>
-            )}
-            {/* One pill, not two. Locked showed both "Beta" and "Approved
+              {/* One pill, not two. Locked showed both "Beta" and "Approved
                 testers only", which reads as two separate problems. */}
-            <BetaBadge locked={!isUnlocked} />
+              <BetaBadge locked={!isUnlocked} />
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Replace repeated mistakes, like cloud → Claude.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Add explicit fixes for common mishears, like{" "}
-            <span className="font-mono text-foreground">cloud</span>
-            {" → "}
-            <span className="font-mono text-primary">Claude</span>. Use this only when you want the
-            source phrase replaced automatically.
-          </p>
         </div>
-      </div>
+      )}
 
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">It learns how you write</h3>
+          <h3 className="text-base font-semibold text-foreground">Optional correction tools</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Correction Memory captures phrase fixes you confirm - like{" "}
-            <span className="font-mono">use login error</span>
-            {" → "}
-            <span className="font-mono">useLoginError</span> - and applies them to every future
-            dictation automatically. The longer you use PrivateTranscribe, the sharper it gets. This
-            beta requires approved tester access.
+            Requires beta access. Your dictionary works without it.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>
@@ -206,10 +196,9 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
           <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-foreground">Auto-learn corrections</h2>
+                <h2 className="text-base font-semibold text-foreground">Learn corrections</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  After dictation, copy the corrected text once. PrivateTranscribe will offer to
-                  learn replacements from the difference.
+                  Copy your corrected text within 30 seconds. We ask before saving.
                 </p>
               </div>
               <Toggle
@@ -224,8 +213,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                   Learn phrase and sentence rewrites
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Off learns word fixes like cloud {"->"} Claude. On can also learn changed spans or
-                  full repeated sentence rewrites.
+                  Include phrase and sentence changes.
                 </p>
               </div>
               <Toggle
@@ -237,7 +225,10 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
           </div>
 
           {/* Add correction */}
-          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
+          <div
+            ref={formRef}
+            className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3"
+          >
             <div>
               <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -352,7 +343,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                         onClick={() => {
                           setSource(r.source);
                           setTarget(r.target);
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          formRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
                         }}
                         className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
                         title="Edit correction"

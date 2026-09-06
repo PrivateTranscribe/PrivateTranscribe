@@ -73,20 +73,30 @@ async function captureSidebar(page: Page, fileName: string) {
   );
 }
 
-/** The sidebar entry drops its "Beta" badge once tester access is active. */
+/**
+ * Unlocked, Read Aloud sits in the sidebar. Locked, it is not listed there and
+ * the route runs through the Pro tab's feature card.
+ */
 async function openReadAloudPage(controlPanel: Page) {
-  await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
+  const entry = controlPanel.getByRole("button", { name: "Read Aloud", exact: true });
+  if ((await entry.count()) > 0) {
+    await entry.click();
+  } else {
+    await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
+    await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
+  }
   await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
 }
 
 test.describe("read aloud page", () => {
-  test("is in the sidebar with a Beta badge, and no longer a settings tab", async ({
+  test("stays out of the sidebar while locked, and is no longer a settings tab", async ({
     controlPanel,
   }) => {
-    // The whole point of the move: it is visible without opening Settings.
-    const entry = controlPanel.getByRole("button", { name: "Read Aloud Beta" });
-    await expect(entry).toBeVisible();
-    await expect(entry.getByText("Beta", { exact: true })).toBeVisible();
+    // Locked features are not listed; the one door is the early access row.
+    await expect(controlPanel.getByRole("button", { name: /^Read Aloud/ })).toHaveCount(0);
+    await expect(
+      controlPanel.getByRole("button", { name: "Beta features", exact: true })
+    ).toBeVisible();
 
     // It sits in SPEECH, beside Dictionary, not off in some unrelated group.
     await expect(
@@ -107,9 +117,7 @@ test.describe("read aloud page", () => {
     await openReadAloudPage(controlPanel);
 
     await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
-    await expect(
-      controlPanel.getByRole("button", { name: /Apply for early access/ })
-    ).toBeVisible();
+    await expect(controlPanel.getByRole("button", { name: /Apply for beta access/ })).toBeVisible();
     await expect(controlPanel.getByText("English only.")).toBeVisible();
 
     // Locked means locked: no download button is reachable from here.
@@ -126,7 +134,7 @@ test.describe("read aloud page", () => {
       await openReadAloudPage(controlPanel);
 
       const status = controlPanel.getByTestId("readaloud-model-status");
-      await expect(status).toContainText("is not on this machine");
+      await expect(status).toContainText("Download once to read offline");
       await expect(controlPanel.getByText("English only.")).toBeVisible();
 
       const downloadButton = controlPanel.getByRole("button", { name: /Download voice model/ });
@@ -136,7 +144,7 @@ test.describe("read aloud page", () => {
       // Sitting on the screen must not trigger a 326MB fetch. Nothing here
       // clicks anything for two seconds; the state has to be unchanged after.
       await controlPanel.waitForTimeout(2000);
-      await expect(status).toContainText("is not on this machine");
+      await expect(status).toContainText("Download once to read offline");
       await expect(controlPanel.getByTestId("readaloud-download-progress")).toHaveCount(0);
 
       const modelStatus = await controlPanel.evaluate(
@@ -177,7 +185,7 @@ test.describe("read aloud page", () => {
       await controlPanel.getByRole("button", { name: /Cancel download/ }).click();
 
       const status = controlPanel.getByTestId("readaloud-model-status");
-      await expect(status).toContainText("is not on this machine", { timeout: 20_000 });
+      await expect(status).toContainText("Download once to read offline", { timeout: 20_000 });
       await expect(
         controlPanel.getByRole("button", { name: /Download voice model/ })
       ).toBeVisible();
@@ -214,7 +222,7 @@ test.describe("read aloud page", () => {
       );
 
       const status = controlPanel.getByTestId("readaloud-model-status");
-      await expect(status).toContainText("on this machine");
+      await expect(status).toContainText("Ready offline");
       await expect(status).toContainText("MB");
       await expect(controlPanel.getByText("English only.")).toBeVisible();
 

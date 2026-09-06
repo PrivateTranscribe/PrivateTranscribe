@@ -42,6 +42,10 @@ const DEFAULT_DIAG_FLAGS: Record<string, string> = {
   // exercised: the module counts the calls it would have made and reports them
   // through the playback-active reply.
   PRIVATETRANSCRIBE_DIAG_DISABLE_AUDIO_DUCKING: "1",
+  // Agent Mode rewrites through the developer's own Claude Code login. A test
+  // run must never spend that subscription; the one spec that needs a rewrite
+  // points the spawn at tests/e2e/fixtures/claude-print-stub.cjs instead.
+  PRIVATETRANSCRIBE_DIAG_DISABLE_AGENT_REWRITE: "1",
 };
 
 export type ConsoleEntry = { type: string; text: string };

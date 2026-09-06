@@ -92,7 +92,10 @@ export async function waitForAudioContextRunning(ctx, { attempts = 10, delayMs =
   }
 
   try {
-    await ctx.resume?.();
+    // resume() can remain pending after startup or sleep. Poll state with a
+    // deadline instead of awaiting the operation that needs to time out.
+    // Consume late rejection even after the caller has replaced this context.
+    void Promise.resolve(ctx.resume?.()).catch(() => {});
   } catch {
     return false;
   }

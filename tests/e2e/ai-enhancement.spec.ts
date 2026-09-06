@@ -21,7 +21,7 @@ import type { Page } from "@playwright/test";
  * ReasoningService, getSystemPrompt — is the real shipped code.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = path.resolve("test-results/e2e");
 
 /** A screenshot that is present but blank would pass a bare existence check. */
 const MIN_SCREENSHOT_BYTES = 10_000;
@@ -101,10 +101,13 @@ test.describe("ai enhancement", () => {
     await openAiEnhancement(controlPanel);
 
     // ------------------------------------- its features are on this page
+    await controlPanel.getByText("Voice instructions", { exact: true }).click();
     const nameInput = controlPanel.getByTestId("agent-name-input");
     await expect(nameInput).toBeVisible();
-    // The trigger-phrase explainer and Prompt Studio came across too.
-    await expect(controlPanel.getByText(/switches from cleanup to instruction mode/)).toBeVisible();
+    // The trigger-phrase explainer and Prompt Studio came across too, inside
+    // their quieter disclosure rows.
+    await expect(controlPanel.getByText(/Say "Hey .*" before an instruction/)).toBeVisible();
+    await controlPanel.getByText("Prompt tools", { exact: true }).click();
     await expect(controlPanel.getByRole("button", { name: "Customize" })).toBeVisible();
 
     await nameInput.fill(AGENT_NAME);
@@ -140,6 +143,7 @@ test.describe("ai enhancement", () => {
 
     await unlockTesterAccessAfterRestart(panel);
     await openAiEnhancement(panel);
+    await panel.getByText("Voice instructions", { exact: true }).click();
     await expect(panel.getByTestId("agent-name-input")).toHaveValue(AGENT_NAME);
 
     // -------------------------------------- the name reaches the prompt
@@ -174,6 +178,7 @@ test.describe("ai enhancement", () => {
     await panel.getByRole("button", { name: "Home", exact: true }).click();
     await openAiEnhancement(panel);
 
+    await panel.getByText("Prompt tools", { exact: true }).click();
     await panel.getByRole("button", { name: "Test" }).click();
     // The preview line proves the stored name is what Prompt Studio is holding.
     await expect(panel.getByText(`Try addressing "${AGENT_NAME}"`)).toBeVisible();
@@ -184,9 +189,10 @@ test.describe("ai enhancement", () => {
     const captured: Array<{ url: string; body: string }> = await panel.evaluate(
       () => (window as any).__promptCapture ?? []
     );
-    expect(captured.length, "the reasoning call never reached the stubbed endpoint").toBeGreaterThan(
-      0
-    );
+    expect(
+      captured.length,
+      "the reasoning call never reached the stubbed endpoint"
+    ).toBeGreaterThan(0);
 
     // The model picker also probes the custom endpoint, and those requests carry
     // no body, so the reasoning call has to be picked out rather than assumed to
@@ -231,9 +237,14 @@ test.describe("ai enhancement", () => {
     await unlockTesterAccess(panel);
     await openAiEnhancement(panel);
 
+    await panel.getByText("Voice instructions", { exact: true }).click();
     await expect(panel.getByTestId("agent-name-input")).toHaveValue("LegacyAtlas");
     // Prompt Studio opens on its View tab, which renders the stored prompt with
     // the stored name filled in.
+    await expect(panel.locator("summary").filter({ hasText: "Prompt tools" })).toContainText(
+      "Custom"
+    );
+    await panel.getByText("Prompt tools", { exact: true }).click();
     await expect(panel.getByText("Custom prompt", { exact: true })).toBeVisible();
     await expect(panel.getByText(/Rewrite everything as haiku/)).toBeVisible();
     await expect(panel.getByText(/Address the user as LegacyAtlas/)).toBeVisible();

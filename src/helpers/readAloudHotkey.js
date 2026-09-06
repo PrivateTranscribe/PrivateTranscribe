@@ -19,32 +19,8 @@
 const { globalShortcut } = require("electron");
 const debugLogger = require("./debugLogger");
 
-/**
- * The default Read Aloud shortcut. Matches DEFAULT_READ_ALOUD_HOTKEY in
- * `src/utils/hotkeys.ts`, which is what the renderer stores.
- *
- * This used to be `Ctrl+Alt+R`, which was wrong twice over:
- *
- *  - Firefox binds Ctrl+Alt+R to Reader Mode. Pressing the Read Aloud key with
- *    a browser in front therefore also reformatted the page underneath, which
- *    is exactly the "it does something to pages" report that started this.
- *  - AltGr is Ctrl+Alt on every European layout, so `Ctrl+Alt+letter` is not a
- *    free namespace there — it is somebody's way of typing a character. On the
- *    Danish layout (00000406), measured through ToUnicodeEx, 13 keys produce a
- *    character under AltGr: E(€) M(µ) 2(@) 3(£) 4($) 5(€) 7({) 8([) 9(]) 0(})
- *    plus two OEM keys (| and \) and one dead key. R is not one of them on
- *    Danish, but other European layouts (Polish, for one) put letters there, so
- *    the whole Ctrl+Alt+letter class is avoided rather than audited per layout.
- *
- * `Ctrl+Alt+Shift+R` clears both: AltGr cannot synthesize Shift, so no layout
- * can produce this combination while typing. Nothing common claims it either —
- * browsers use Ctrl+Shift+R for a hard reload, and Xbox Game Bar records with
- * Win+Alt+R.
- *
- * Anyone still holding the old default is moved across by
- * `migrateHotkeySettings` in `src/utils/hotkeys.ts`.
- */
-const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+Shift+R";
+/** Default for new installs. Existing custom shortcuts are preserved. */
+const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
 const isDiagFlagEnabled = (name) => {
   const raw = String(process.env[name] || "")

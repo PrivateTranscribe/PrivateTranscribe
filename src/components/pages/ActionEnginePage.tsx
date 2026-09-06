@@ -37,6 +37,7 @@ import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { useActionEngine } from "../../hooks/useActionEngine";
 import { SectionLabel } from "../ui/SectionLabel";
+import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import type {
   Action,
   ActionConfig,
@@ -1003,78 +1004,21 @@ export default function ActionEnginePage() {
             <BetaBadge locked={!isUnlocked} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Trigger commands, shortcuts, and workflows with your voice.
+            Run an action when you say its trigger phrase.
           </p>
         </div>
       </div>
 
-      {/* ── Locked (Pro preview) ── */}
       {!isUnlocked && (
-        <>
-          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Example actions</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Define custom voice commands that trigger real actions on your computer.
-              </p>
-            </div>
-            <div className="space-y-2">
-              {[
-                {
-                  Icon: Terminal,
-                  name: "Open Terminal",
-                  trigger: '"open terminal"',
-                  desc: "Launch your default terminal application",
-                },
-                {
-                  Icon: Globe,
-                  name: "Search Web",
-                  trigger: '"search for…"',
-                  desc: "Open a browser search with your spoken query",
-                },
-                {
-                  Icon: FolderOpen,
-                  name: "Open Project",
-                  trigger: '"open project [name]"',
-                  desc: "Open a project folder in your editor",
-                },
-                {
-                  Icon: Mic,
-                  name: "Switch Mode",
-                  trigger: '"switch to code mode"',
-                  desc: "Change dictation mode with a voice command",
-                },
-              ].map(({ Icon, name, trigger, desc }) => (
-                <div
-                  key={name}
-                  className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-3 py-2.5 opacity-60"
-                >
-                  <div className="shrink-0 rounded-md bg-primary/10 p-2">
-                    <Icon size={16} className="text-primary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">{name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{trigger}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
-            <Lock size={24} className="mx-auto text-primary/60" />
-            <h3 className="text-base font-semibold text-foreground">Your voice, your commands</h3>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-              Say a phrase, trigger a real action. Open apps, run scripts, switch modes, or browse
-              to any URL - without touching the keyboard. Build a personal command vocabulary that
-              works exactly how you think. This beta requires approved tester access.
-            </p>
-            <BetaAccessLink className="text-sm" />
-          </div>
-        </>
+        <div className="rounded-xl border border-border-subtle/50 p-6 space-y-3">
+          <Lock size={24} className="text-muted-foreground" />
+          <h3 className="text-base font-semibold text-foreground">Action Engine is in beta</h3>
+          <p className="text-sm text-muted-foreground">
+            Open apps, visit websites, or run commands with your voice. Requires approved tester
+            access.
+          </p>
+          <BetaAccessLink className="text-sm" />
+        </div>
       )}
 
       {/* ── Unlocked ── */}
@@ -1100,8 +1044,8 @@ export default function ActionEnginePage() {
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {globalEnabled
-                  ? "Voice commands are being matched and executed during dictation."
-                  : "Voice command matching is suspended. Dictation will paste text as usual."}
+                  ? "Runs matching actions while you dictate."
+                  : "Actions are paused. Dictation still works."}
               </p>
             </div>
             <button
@@ -1174,22 +1118,6 @@ export default function ActionEnginePage() {
                     );
                   })}
                 </div>
-                <div className="flex items-center gap-3 pt-1">
-                  <div className="h-px flex-1 bg-border-subtle/30" />
-                  <span className="text-xs text-muted-foreground">or</span>
-                  <div className="h-px flex-1 bg-border-subtle/30" />
-                </div>
-                <div className="flex justify-center">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openCreateWithTemplate()}
-                    className="gap-1.5"
-                  >
-                    <Plus size={14} />
-                    Create from scratch
-                  </Button>
-                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1209,33 +1137,24 @@ export default function ActionEnginePage() {
             )}
           </div>
 
-          {/* How it works */}
-          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-5 space-y-3">
-            <p className="text-sm font-medium text-foreground">How triggers work</p>
-            <div className="space-y-2 text-xs text-muted-foreground leading-relaxed">
-              <p>
-                <strong className="text-foreground">Contains</strong> - matches if the transcribed
-                text includes the trigger phrase anywhere (case-insensitive). Best for natural
-                commands.
-              </p>
-              <p>
-                <strong className="text-foreground">Exact</strong> - the entire transcript must
-                equal the trigger phrase. Useful to avoid accidental triggers.
-              </p>
-              <p>
-                <strong className="text-foreground">Starts with</strong> - matches if the transcript
-                begins with the trigger phrase. Suitable for command prefixes.
-              </p>
-              <p>
-                <strong className="text-foreground">Regex</strong> - full JavaScript regular
-                expression (case-insensitive). For advanced use cases.
-              </p>
-              <p className="pt-1 border-t border-border-subtle">
-                Use the <Play size={11} className="inline" /> button to manually test any action at
-                any time.
-              </p>
-            </div>
-          </div>
+          <SettingsDisclosure
+            title="Trigger matching"
+            description="Choose how a phrase starts an action."
+          >
+            <dl className="grid gap-3 text-sm sm:grid-cols-[100px_1fr]">
+              <dt className="font-medium">Contains</dt>
+              <dd className="text-muted-foreground">The phrase can appear anywhere.</dd>
+              <dt className="font-medium">Exact</dt>
+              <dd className="text-muted-foreground">The whole dictation must match.</dd>
+              <dt className="font-medium">Starts with</dt>
+              <dd className="text-muted-foreground">The dictation begins with the phrase.</dd>
+              <dt className="font-medium">Regex</dt>
+              <dd className="text-muted-foreground">Match a custom text pattern. Advanced.</dd>
+            </dl>
+            <p className="text-xs text-muted-foreground">
+              Matching ignores capitalization. Use an action's play button to test it.
+            </p>
+          </SettingsDisclosure>
 
           {/* Run History */}
           <RunHistoryPanel

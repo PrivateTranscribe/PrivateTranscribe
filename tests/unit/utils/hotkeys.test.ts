@@ -417,6 +417,8 @@ describe("hotkeys (real module)", () => {
     };
 
     it("moves the old Read Aloud default to the new one", () => {
+      expect(DEFAULT_READ_ALOUD_HOTKEY).toBe("Ctrl+Alt+R");
+      expect(LEGACY_READ_ALOUD_HOTKEY).toBe("Shift+R");
       expect(
         migrateHotkeySettings({ readAloudHotkey: LEGACY_READ_ALOUD_HOTKEY }, defaults)
       ).toEqual({
@@ -425,6 +427,7 @@ describe("hotkeys (real module)", () => {
     });
 
     it("leaves a hotkey the user actually chose alone", () => {
+      expect(migrateHotkeySettings({ readAloudHotkey: "Ctrl+Alt+R" }, defaults)).toEqual({});
       expect(migrateHotkeySettings({ readAloudHotkey: "F9" }, defaults)).toEqual({});
       expect(migrateHotkeySettings({ dictationKey: "CommandOrControl+Shift+K" }, defaults)).toEqual(
         {}

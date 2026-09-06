@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { Download, RefreshCw, Loader2 } from "lucide-react";
 import AppSidebar, { PageId } from "./AppSidebar";
@@ -17,6 +17,7 @@ import ReadAloudPage from "./pages/ReadAloudPage";
 import AIEnhancementPage from "./pages/AIEnhancementPage";
 import ConversePage from "./pages/ConversePage";
 import ActionEnginePage from "./pages/ActionEnginePage";
+import DictationPage from "./pages/DictationPage";
 import SettingsPageWrapper from "./pages/SettingsPageWrapper";
 import type { SettingsSectionType } from "./SettingsPage";
 
@@ -24,6 +25,11 @@ import { AnalyticsConsentModal } from "./AnalyticsConsentModal";
 
 export default function ControlPanelShell() {
   const [activePage, setActivePage] = useState<PageId>("home");
+  const contentRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [activePage]);
   const [settingsTabRequest, setSettingsTabRequest] = useState<{
     section?: SettingsSectionType;
     requestId: number;
@@ -53,6 +59,7 @@ export default function ControlPanelShell() {
       "home",
       "history",
       "transcribe",
+      "dictation",
       "dictionary",
       "read-aloud",
       "ai-enhancement",
@@ -63,9 +70,7 @@ export default function ControlPanelShell() {
     ];
 
     if (validPages.includes(requestedPage as PageId)) {
-      setActivePage(
-        requestedPage === "correction-memory" ? "dictionary" : (requestedPage as PageId)
-      );
+      setActivePage(requestedPage as PageId);
     }
 
     localStorage.removeItem("controlPanelInitialPage");
@@ -73,8 +78,7 @@ export default function ControlPanelShell() {
 
   useEffect(() => {
     return window.electronAPI?.onControlPanelNavigate?.((destination) => {
-      const requestedPage =
-        destination.page === "correction-memory" ? "dictionary" : destination.page;
+      const requestedPage = destination.page;
       setActivePage(requestedPage);
       if (destination.settingsTab) {
         setSettingsTabRequest((current) => ({
@@ -137,7 +141,7 @@ export default function ControlPanelShell() {
         } else if (data?.recovered) {
           toast({
             title: "GPU transcription restored",
-            description: "The CUDA engine started successfully and is back in use.",
+            description: "The graphics card is back in use for dictation.",
             variant: "success",
             duration: 5000,
           });
@@ -296,13 +300,6 @@ export default function ControlPanelShell() {
     );
   };
 
-  /** Jump to a settings tab from inside another page, e.g. Transcribe's
-   *  missing-model error pointing at where models are installed. */
-  const openSettingsSection = (section: SettingsSectionType) => {
-    setActivePage("settings");
-    setSettingsTabRequest((current) => ({ section, requestId: current.requestId + 1 }));
-  };
-
   const renderPage = () => {
     switch (activePage) {
       case "home":
@@ -310,7 +307,9 @@ export default function ControlPanelShell() {
       case "history":
         return <HistoryPage />;
       case "transcribe":
-        return <TranscribePage onOpenModelSettings={() => openSettingsSection("transcription")} />;
+        return <TranscribePage onOpenModelSettings={() => setActivePage("dictation")} />;
+      case "dictation":
+        return <DictationPage />;
       case "dictionary":
         return <DictionaryPage />;
       case "read-aloud":
@@ -320,7 +319,7 @@ export default function ControlPanelShell() {
       case "converse":
         return <ConversePage />;
       case "correction-memory":
-        return <DictionaryPage />;
+        return <DictionaryPage showCorrections />;
       case "action-engine":
         return <ActionEnginePage />;
       case "settings":
@@ -362,12 +361,19 @@ export default function ControlPanelShell() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <AppSidebar
-          activePage={activePage}
+          activePage={activePage === "correction-memory" ? "dictionary" : activePage}
           onPageChange={setActivePage}
+          onOpenEarlyAccess={() => {
+            setActivePage("settings");
+            setSettingsTabRequest((current) => ({
+              section: "pro",
+              requestId: current.requestId + 1,
+            }));
+          }}
           updateSlot={renderUpdateNotice()}
         />
 
-        <main style={{ flex: 1, overflowY: "auto", scrollbarGutter: "stable" }}>
+        <main ref={contentRef} style={{ flex: 1, overflowY: "auto", scrollbarGutter: "stable" }}>
           {renderPage()}
         </main>
       </div>

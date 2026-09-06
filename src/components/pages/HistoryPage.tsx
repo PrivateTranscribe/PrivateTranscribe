@@ -67,7 +67,7 @@ export default function HistoryPage() {
   const transcriptions = useTranscriptions();
   const { toast } = useToast();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
-  const { historyLimit, dictationKey } = useSettings();
+  const { historyLimit, setHistoryLimit, dictationKey } = useSettings();
   const hotkeyLabel = formatHotkeyLabel(dictationKey);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -100,17 +100,14 @@ export default function HistoryPage() {
     async (text: string) => {
       try {
         await navigator.clipboard.writeText(text);
-        toast({
-          title: "Copied",
-          description: "Transcription copied to clipboard",
-          variant: "success",
-        });
+        return true;
       } catch {
         toast({
-          title: "Error",
-          description: "Failed to copy to clipboard",
+          title: "Copy failed",
+          description: "Your text is still here. Try copying again.",
           variant: "destructive",
         });
+        return false;
       }
     },
     [toast]
@@ -126,7 +123,8 @@ export default function HistoryPage() {
         variant: "destructive",
         onConfirm: async () => {
           try {
-            await window.electronAPI?.deleteTranscription?.(id);
+            const result = await window.electronAPI.deleteTranscription(id);
+            if (!result.success) throw new Error("Delete failed");
             toast({ title: "Deleted", description: "Transcription removed", variant: "success" });
           } catch {
             toast({
@@ -149,7 +147,8 @@ export default function HistoryPage() {
       variant: "destructive",
       onConfirm: async () => {
         try {
-          await window.electronAPI?.clearTranscriptions?.();
+          const result = await window.electronAPI.clearTranscriptions();
+          if (!result.success) throw new Error("Clear failed");
           toast({
             title: "History cleared",
             description: "All transcriptions have been removed",
@@ -224,14 +223,27 @@ export default function HistoryPage() {
               <Mic size={28} className="text-primary/60" />
             </div>
             <div className="text-center space-y-1.5">
-              <p className="text-lg font-medium text-foreground">No transcriptions yet</p>
-              <p className="text-sm text-muted-foreground max-w-xs">
-                Press{" "}
-                <kbd className="inline-flex items-center px-1.5 py-0.5 rounded border border-border-subtle bg-surface-1 text-xs font-mono text-foreground/70">
-                  {hotkeyLabel}
-                </kbd>{" "}
-                to start dictating
+              <p className="text-lg font-medium text-foreground">
+                {historyLimit === 0 ? "History is off" : "No transcriptions yet"}
               </p>
+              {historyLimit === 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Dictation works, but new text is not saved.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setHistoryLimit(50)}>
+                    Turn on history
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Press{" "}
+                  <kbd className="inline-flex items-center px-1.5 py-0.5 rounded border border-border-subtle bg-surface-1 text-xs font-mono text-foreground/70">
+                    {hotkeyLabel}
+                  </kbd>{" "}
+                  to start dictating
+                </p>
+              )}
             </div>
           </div>
         )}

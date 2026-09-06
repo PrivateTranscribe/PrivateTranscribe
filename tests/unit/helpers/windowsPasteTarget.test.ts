@@ -137,11 +137,41 @@ describe("parseWindowsFastPasteOutput", () => {
 
     expect(parseWindowsFastPasteOutput(output)).toEqual({
       pasted: true,
+      evidence: "absent",
       dispatched: true,
+      enterSent: false,
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
     });
+  });
+
+  // Agent Mode's spoken "send": the helper reports whether it pressed Enter,
+  // and a helper built before the field existed reads as "did not".
+  test("reads whether Enter was pressed after the paste", () => {
+    expect(
+      parseWindowsFastPasteOutput(
+        JSON.stringify({ pasted: true, evidence: "inserted", sendEnter: true, enterSent: true })
+      ).enterSent
+    ).toBe(true);
+    expect(
+      parseWindowsFastPasteOutput(
+        JSON.stringify({ pasted: false, evidence: "absent", sendEnter: true, enterSent: false })
+      ).enterSent
+    ).toBe(false);
+    expect(parseWindowsFastPasteOutput(JSON.stringify({ pasted: true })).enterSent).toBe(false);
+    expect(parseWindowsFastPasteOutput('{"enterSent":"true"}').enterSent).toBe(false);
+  });
+
+  test("carries enterSent onto the not-confirmed error for unobservable targets", () => {
+    try {
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, evidence: "none", dispatched: true, enterSent: true })
+      );
+      throw new Error("expected the helper output to be rejected");
+    } catch (error) {
+      expect((error as { enterSent?: boolean }).enterSent).toBe(true);
+    }
   });
 
   test("reads a successful ordinary paste", () => {
@@ -175,10 +205,48 @@ describe("parseWindowsFastPasteOutput", () => {
     ).toThrow("did not confirm text insertion");
   });
 
+  // The app stays quiet about a paste only when the helper explicitly says it
+  // could not read the target. An older helper predates the field entirely, and
+  // must not be read as "nothing to worry about".
+  test("keeps an unreadable target apart from a field it watched", () => {
+    const readNothing = parseWindowsFastPasteOutput(
+      JSON.stringify({ pasted: false, evidence: "none", dispatched: true, isTerminal: false })
+    );
+    expect(readNothing.evidence).toBe("none");
+
+    const watchedIt = parseWindowsFastPasteOutput(
+      JSON.stringify({ pasted: false, evidence: "absent", dispatched: true, isTerminal: false })
+    );
+    expect(watchedIt.evidence).toBe("absent");
+
+    const olderHelper = parseWindowsFastPasteOutput(
+      JSON.stringify({ pasted: false, dispatched: true, isTerminal: false })
+    );
+    expect(olderHelper.evidence).toBe("absent");
+  });
+
+  test("carries the evidence onto the thrown not-confirmed error", () => {
+    expect(() =>
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, evidence: "none", dispatched: true, isTerminal: false })
+      )
+    ).toThrow("did not confirm text insertion");
+
+    try {
+      assertWindowsFastPasteSucceeded(
+        JSON.stringify({ pasted: false, evidence: "none", dispatched: true, isTerminal: false })
+      );
+    } catch (error) {
+      expect((error as { evidence?: string }).evidence).toBe("none");
+    }
+  });
+
   test("degrades to a non-terminal result on unreadable output", () => {
     expect(parseWindowsFastPasteOutput("not json")).toEqual({
       pasted: false,
+      evidence: "absent",
       dispatched: false,
+      enterSent: false,
       isTerminal: false,
       windowClass: "",
       processName: "",

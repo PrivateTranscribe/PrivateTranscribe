@@ -20,6 +20,27 @@ describe("windows-fast-paste source contract", () => {
     expect(helperSource).toContain("focused.GetRuntimeId()");
     expect(helperSource).toContain("SameRuntimeId(textBefore.RuntimeId, textAfter.RuntimeId)");
   });
+
+  // Chromium exposes ValuePattern on a Document element and answers it with the
+  // document URL, which never changes when text is pasted. Reading that instead
+  // of the text made every paste into a contenteditable composer (Claude
+  // Desktop, Slack, Notion) report as unconfirmed.
+  // Separating the two lets the app stay quiet about a paste it could not see,
+  // instead of telling the user it failed.
+  test("separates a field it watched from one it could not read", () => {
+    expect(helperSource).toContain('EvidenceAbsent = "absent"');
+    expect(helperSource).toContain('EvidenceNone = "none"');
+    expect(helperSource).toContain("return watchedTheSameField ? EvidenceAbsent : EvidenceNone;");
+  });
+
+  test("reads the focused text through TextPattern before ValuePattern", () => {
+    const textPatternAt = helperSource.indexOf("TryGetCurrentPattern(TextPattern.Pattern");
+    const valuePatternAt = helperSource.indexOf("TryGetCurrentPattern(ValuePattern.Pattern");
+
+    expect(textPatternAt).toBeGreaterThan(-1);
+    expect(valuePatternAt).toBeGreaterThan(-1);
+    expect(textPatternAt).toBeLessThan(valuePatternAt);
+  });
 });
 
 // Exercises the compiled helper itself, which unit tests of the JS wrapper
@@ -53,9 +74,12 @@ describe.runIf(helperPath)("windows-fast-paste.exe", () => {
     expect(Object.keys(JSON.parse(result.stdout.trim())).sort()).toEqual([
       "chord",
       "dispatched",
+      "enterSent",
+      "evidence",
       "isTerminal",
       "pasted",
       "processName",
+      "sendEnter",
       "windowClass",
     ]);
   });

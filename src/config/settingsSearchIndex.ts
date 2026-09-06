@@ -15,19 +15,13 @@
 
 export type SettingsSearchPage =
   | "settings"
+  | "dictation"
   | "dictionary"
   | "read-aloud"
   | "converse"
   | "ai-enhancement";
 
-export type SettingsSearchSection =
-  | "general"
-  | "preferences"
-  | "transcription"
-  | "permissions"
-  | "pro"
-  | "help"
-  | "developer";
+export type SettingsSearchSection = "general" | "permissions" | "pro" | "developer";
 
 export interface SettingsSearchEntry {
   /** The exact label rendered on the row; also its `data-settings-label`. */
@@ -44,11 +38,11 @@ export interface SettingsSearchEntry {
 export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   // ── Settings › General ────────────────────────────────────────────────────
   {
-    label: "CUDA engine",
-    group: "CUDA Engine",
+    label: "GPU engine",
+    group: "GPU speed-up",
     page: "settings",
     section: "general",
-    keywords: ["gpu", "nvidia", "acceleration", "graphics card", "speed"],
+    keywords: ["cuda", "nvidia", "acceleration", "graphics card", "speed"],
   },
   {
     label: "Current version",
@@ -95,169 +89,183 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["mic", "microphone", "warm", "latency", "delay"],
   },
 
-  // ── Settings › Preferences ────────────────────────────────────────────────
+  // ── Settings › General (behaviour, notifications, privacy) ───────────────
   {
-    label: "Output language",
-    group: "Language",
-    page: "settings",
-    section: "preferences",
-    keywords: ["danish", "dansk", "english", "dictation language", "spoken"],
+    label: "Correction Memory",
+    group: "Dictionary",
+    page: "dictionary",
+    keywords: ["learn", "corrections", "rewrites", "mistakes", "replacement"],
   },
   {
     label: "Apply dictionary matching",
-    group: "Correction Memory",
-    page: "settings",
-    section: "preferences",
+    group: "Dictionary",
+    page: "dictionary",
     keywords: ["dictionary", "snapping", "terms", "replace"],
   },
   {
-    label: "Auto-learn corrections",
-    group: "Correction Memory",
-    page: "settings",
-    section: "preferences",
-    keywords: ["correction memory", "learning", "teach", "remember"],
-  },
-  {
-    label: "Learn phrase and sentence rewrites",
-    group: "Correction Memory",
-    page: "settings",
-    section: "preferences",
-    keywords: ["correction memory", "phrase", "sentence", "learning", "rewrite"],
-  },
-  {
     label: "While recording",
-    group: "Audio Ducking",
+    group: "Other audio",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["ducking", "volume", "mute other apps", "music"],
   },
   {
     label: "Volume while recording",
-    group: "Audio Ducking",
+    group: "Other audio",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["ducking", "volume", "quiet", "music"],
   },
   {
     label: "Pause media while recording",
-    group: "Audio Ducking",
+    group: "Other audio",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["ducking", "spotify", "music", "video", "playback"],
   },
   {
     label: "Auto-paste transcription",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["paste", "insert", "clipboard"],
   },
   {
     label: "Copy to clipboard",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["clipboard", "copy", "overwrite"],
   },
   {
     label: "Show control panel on error",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["error", "window", "popup"],
   },
   {
     label: "Snap overlay to taskbar",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["overlay", "dictation button", "position", "taskbar", "dock"],
   },
   {
     label: "Hide overlay",
     group: "Behavior",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["overlay", "dictation button", "bubble", "hide", "invisible"],
   },
   {
     label: "Audio feedback",
     group: "Notifications",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["sound", "beep", "chime"],
   },
   {
     label: "Error notifications",
     group: "Notifications",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["toast", "alert", "warning"],
   },
   {
     label: "Success confirmation",
     group: "Notifications",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["toast", "confirm", "done"],
   },
   {
     label: "Optional product analytics",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["telemetry", "tracking", "privacy", "opt out", "data"],
   },
   {
     label: "History limit",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["history", "transcriptions", "storage", "retention", "delete"],
   },
   {
     label: "Smart Context",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "active window", "app awareness"],
   },
   {
     label: "Active file context",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "file", "editor", "smart context"],
   },
   {
     label: "LLM Context Enhancement",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "ai", "reasoning", "smart context"],
   },
   {
     label: "Include active file content",
     group: "Privacy & History",
     page: "settings",
-    section: "preferences",
+    section: "general",
     keywords: ["context", "file", "content", "privacy", "smart context"],
   },
 
-  // ── Settings › Transcription ──────────────────────────────────────────────
+  // ── Dictation ─────────────────────────────────────────────────────────────
+  {
+    label: "Output language",
+    group: "Language",
+    page: "dictation",
+    keywords: ["danish", "dansk", "english", "dictation language", "spoken"],
+  },
   {
     label: "CPU threads",
     group: "Local Whisper performance",
-    page: "settings",
-    section: "transcription",
+    page: "dictation",
     keywords: ["whisper", "performance", "speed", "cores", "cpu"],
   },
   {
     label: "Idle shutdown (minutes)",
     group: "Local Whisper performance",
-    page: "settings",
-    section: "transcription",
+    page: "dictation",
     keywords: ["whisper server", "memory", "ram", "unload", "idle"],
+  },
+
+  // ── Dictation › Agent Mode ────────────────────────────────────────────────
+  {
+    label: "Agent Mode",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["claude code", "cursor", "codex", "prompt", "agent", "coding"],
+  },
+  {
+    label: "Agent Mode hotkey",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["right ctrl", "hotkey", "shortcut", "hold", "push to talk"],
+  },
+  {
+    label: "Rewrite with Claude Code",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["claude code", "rewrite", "cli", "login", "prompt", "haiku"],
+  },
+  {
+    label: "Prompts today",
+    group: "Agent Mode",
+    page: "dictation",
+    keywords: ["cap", "limit", "20", "pro", "daily", "usage"],
   },
 
   // ── Settings › Permissions ────────────────────────────────────────────────
@@ -269,12 +277,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["accessibility", "permission", "macos", "paste", "reset"],
   },
 
-  // ── Settings › Help & Support ─────────────────────────────────────────────
+  // ── Settings › General (help) ─────────────────────────────────────────────
   {
     label: "Contact & Feedback",
     group: "Help & Support",
     page: "settings",
-    section: "help",
+    section: "general",
     keywords: ["support", "email", "bug", "report", "help"],
   },
 
@@ -349,22 +357,28 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
 
   // ── Converse ──────────────────────────────────────────────────────────────
   {
-    label: "Agent",
-    group: "Converse",
-    page: "converse",
-    keywords: ["claude code", "agent", "assistant", "converse"],
-  },
-  {
     label: "Talk instead of typing",
     group: "Converse",
     page: "converse",
-    keywords: ["voice", "mic", "microphone", "hands free", "converse", "speak", "dictate"],
-  },
-  {
-    label: "Where your voice is transcribed",
-    group: "Converse",
-    page: "converse",
-    keywords: ["voice", "local", "cloud", "privacy", "whisper", "converse", "transcription"],
+    keywords: [
+      "voice",
+      "mic",
+      "microphone",
+      "hands free",
+      "converse",
+      "speak",
+      "dictate",
+      "claude code",
+      "agent",
+      "assistant",
+      "where your voice is transcribed",
+      "local",
+      "cloud",
+      "privacy",
+      "whisper",
+      "transcription provider",
+      "route",
+    ],
   },
   {
     label: "Pause that ends your turn",
@@ -373,10 +387,18 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["voice", "pause", "silence", "end of turn", "converse", "sensitivity"],
   },
   {
-    label: "Close my microphone while Claude Code speaks",
+    label: "Mute microphone during replies",
     group: "Converse",
     page: "converse",
-    keywords: ["mic", "mute", "converse", "claude code", "feedback", "echo"],
+    keywords: [
+      "mic",
+      "mute",
+      "converse",
+      "claude code",
+      "feedback",
+      "echo",
+      "close my microphone while claude code speaks",
+    ],
   },
   {
     label: "Voice",

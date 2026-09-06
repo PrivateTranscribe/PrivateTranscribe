@@ -13,9 +13,13 @@ const BETA_FEATURES = new Set([
   "smart-context",
   "action-engine",
   "ai-enhancement",
-  "converse",
   "read-aloud",
 ]);
+
+// Shipped Pro features: unlocked by the paid entitlement alone, no tester flag.
+// A paying customer who was never approved as a tester still gets these, and
+// everyone else sees the feature's own locked state rather than nothing.
+const PRO_FEATURES = new Set(["converse"]);
 
 // Subset of beta features that carry a visible badge in sidebar/page headers.
 // "correction-memory" is deliberately absent: it has no sidebar item of its
@@ -24,7 +28,6 @@ const BETA_FEATURES = new Set([
 // It stays in BETA_FEATURES above because the feature gate itself is alive.
 const SIDEBAR_BETA_ITEMS = new Set([
   "ai-enhancement",
-  "converse",
   "action-engine",
   // Read Aloud used to be a Settings tab, where nobody found it. It is a
   // sidebar page now, so it carries the same badge as every other beta item.
@@ -162,19 +165,23 @@ export function hasTesterAccess(): boolean {
 }
 
 /**
- * Whether to show a beta badge on a sidebar/page-header item.
- * Badges are hidden once approved tester access is active.
+ * Whether to show a locked badge on a sidebar/page-header item.
+ * Pro features badge until the paid entitlement is active; beta features badge
+ * until approved tester access is active.
  */
 export function shouldShowProBadge(featureId: string): boolean {
+  if (PRO_FEATURES.has(featureId)) return getEffectiveEntitlement() !== "pro";
   if (!SIDEBAR_BETA_ITEMS.has(featureId)) return false;
   return !hasTesterAccess();
 }
 
 /**
- * Whether a tester-gated feature is accessible.
- * Stable features always return true. Beta features require approved tester access.
+ * Whether a gated feature is accessible.
+ * Pro features require the paid entitlement. Beta features require approved
+ * tester access. Everything else is always true.
  */
 export function isFeatureUnlocked(featureId: string): boolean {
+  if (PRO_FEATURES.has(featureId)) return getEffectiveEntitlement() === "pro";
   if (!BETA_FEATURES.has(featureId)) return true;
   return hasTesterAccess();
 }

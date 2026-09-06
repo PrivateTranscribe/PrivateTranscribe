@@ -11,6 +11,11 @@
 // deliberately never read: titles routinely contain document names, URLs, and
 // other user content that this helper has no reason to see.
 //
+// With --send-enter (Agent Mode's spoken "send") it also presses Enter after the
+// paste, but only when the paste was seen to land or could not be observed at
+// all. A paste that was watched and never arrived gets no Enter: submitting an
+// input box the transcript is not in would send whatever else was sitting there.
+//
 // Terminal class/executable lists adapted from OpenWhispr's windows-fast-paste.c
 // (MIT License, Copyright (c) 2024 OpenWhispr Team).
 //
@@ -34,6 +39,15 @@ internal static class WindowsFastPaste
         public string Text;
         public int[] RuntimeId;
     }
+
+    // What the helper actually observed, which is not the same question as
+    // whether the paste worked. "absent" means it watched the focused field
+    // throughout and the text never arrived. "none" means it could not read the
+    // field at all, so it knows nothing either way and the caller must not
+    // report a failure it cannot back.
+    private const string EvidenceInserted = "inserted";
+    private const string EvidenceAbsent = "absent";
+    private const string EvidenceNone = "none";
 
     private static readonly string[] TerminalWindowClasses =
     {
@@ -70,6 +84,13 @@ internal static class WindowsFastPaste
     private const int VkLWin = 0x5B;
     private const int VkRWin = 0x5C;
     private const int VkV = 0x56;
+    private const int VkReturn = 0x0D;
+
+    // How long to let an unobservable target digest the paste before Enter
+    // follows it. Terminals and elevated windows give no accessible text, so
+    // there is nothing to wait on except time; too short and Enter lands before
+    // the pasted text and submits an empty line.
+    private const int EnterSettleMs = 150;
 
     // Modifiers the user may still be holding from the dictation hotkey. Any of
     // them left down would turn Ctrl+V into Ctrl+Alt+V (or similar) and the paste
@@ -87,6 +108,7 @@ internal static class WindowsFastPaste
     {
         Console.OutputEncoding = new UTF8Encoding(false);
         bool detectOnly = Array.IndexOf(args, "--detect-only") >= 0;
+        bool sendEnter = Array.IndexOf(args, "--send-enter") >= 0;
 
         IntPtr window = GetForegroundWindow();
         if (window == IntPtr.Zero)
@@ -101,12 +123,14 @@ internal static class WindowsFastPaste
 
         if (detectOnly)
         {
-            WriteResult(false, false, isTerminal, windowClass, processName);
+            WriteResult(EvidenceNone, false, isTerminal, windowClass, processName, sendEnter, false);
             return 0;
         }
 
         string clipboardText = ReadClipboardText();
-        AccessibleTextSnapshot textBefore = ReadFocusedAccessibleText();
+        // A cold or hung accessibility provider must not prevent Ctrl+V. UIA
+        // calls run off the input thread and only get a short observation budget.
+        AccessibleTextSnapshot textBefore = ObserveWithDeadline(ReadFocusedAccessibleText, 100);
 
         // Give the foreground window a moment to settle after the hotkey release.
         Thread.Sleep(10);
@@ -121,21 +145,57 @@ internal static class WindowsFastPaste
             return 1;
         }
 
-        bool confirmed = ConfirmAccessibleInsertion(textBefore, clipboardText);
-        WriteResult(confirmed, true, isTerminal, windowClass, processName);
+        string evidence = ObserveWithDeadline(
+            delegate { return ConfirmAccessibleInsertion(textBefore, clipboardText); }, 500)
+            ?? EvidenceNone;
+
+        bool enterSent = false;
+        if (sendEnter && evidence != EvidenceAbsent)
+        {
+            if (evidence == EvidenceNone)
+            {
+                Thread.Sleep(EnterSettleMs);
+            }
+            enterSent = SendEnterKey();
+        }
+
+        WriteResult(evidence, true, isTerminal, windowClass, processName, sendEnter, enterSent);
         return 0;
     }
 
+    // UI Automation crosses into another process and can block indefinitely.
+    // Use an MTA worker per observation, as recommended for UIA clients. A
+    // timed-out worker is background-only and dies when this short-lived helper
+    // exits. It can only read; it can never send a late paste or Enter.
+    private static T ObserveWithDeadline<T>(Func<T> observe, int timeoutMs) where T : class
+    {
+        T result = null;
+        Thread worker = new Thread(delegate()
+        {
+            try { result = observe(); }
+            catch { /* Observation is optional; delivery is not. */ }
+        });
+        worker.IsBackground = true;
+        worker.SetApartmentState(ApartmentState.MTA);
+        worker.Start();
+        return worker.Join(timeoutMs) ? result : null;
+    }
+
     private static void WriteResult(
-        bool pasted,
+        string evidence,
         bool dispatched,
         bool isTerminal,
         string windowClass,
-        string processName)
+        string processName,
+        bool sendEnter,
+        bool enterSent)
     {
         Console.Write(
-            "{\"pasted\":" + (pasted ? "true" : "false") +
+            "{\"pasted\":" + (evidence == EvidenceInserted ? "true" : "false") +
+            ",\"evidence\":\"" + evidence + "\"" +
             ",\"dispatched\":" + (dispatched ? "true" : "false") +
+            ",\"sendEnter\":" + (sendEnter ? "true" : "false") +
+            ",\"enterSent\":" + (enterSent ? "true" : "false") +
             ",\"isTerminal\":" + (isTerminal ? "true" : "false") +
             ",\"windowClass\":\"" + EscapeJson(windowClass) +
             "\",\"processName\":\"" + EscapeJson(processName) +
@@ -146,18 +206,24 @@ internal static class WindowsFastPaste
     // insertion only when the focused accessible text changes and contains the
     // clipboard text. Captured content stays in this process and is never
     // written to stdout, stderr, logs, analytics, or disk.
-    private static bool ConfirmAccessibleInsertion(
+    //
+    // A target that never gives a readable snapshot of the same focused element
+    // reports "none" rather than "absent". Elevated windows, protected fields
+    // and apps with no accessible text at all land there, and calling that a
+    // failed paste puts a false warning in front of the user.
+    private static string ConfirmAccessibleInsertion(
         AccessibleTextSnapshot textBefore,
         string clipboardText)
     {
         if (textBefore == null || string.IsNullOrEmpty(clipboardText))
         {
-            return false;
+            return EvidenceNone;
         }
 
         string normalizedBefore = NormalizeNewlines(textBefore.Text);
         string normalizedClipboard = NormalizeNewlines(clipboardText);
         int occurrencesBefore = CountOccurrences(normalizedBefore, normalizedClipboard);
+        bool watchedTheSameField = false;
         for (int attempt = 0; attempt < 12; attempt++)
         {
             Thread.Sleep(25);
@@ -167,14 +233,15 @@ internal static class WindowsFastPaste
                 continue;
             }
 
+            watchedTheSameField = true;
             string normalizedAfter = NormalizeNewlines(textAfter.Text);
             if (!string.Equals(normalizedAfter, normalizedBefore, StringComparison.Ordinal) &&
                 CountOccurrences(normalizedAfter, normalizedClipboard) > occurrencesBefore)
             {
-                return true;
+                return EvidenceInserted;
             }
         }
-        return false;
+        return watchedTheSameField ? EvidenceAbsent : EvidenceNone;
     }
 
     private static string ReadClipboardText()
@@ -208,15 +275,13 @@ internal static class WindowsFastPaste
             }
 
             object pattern;
-            if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out pattern))
-            {
-                return new AccessibleTextSnapshot
-                {
-                    Text = ((ValuePattern)pattern).Current.Value ?? string.Empty,
-                    RuntimeId = runtimeId,
-                };
-            }
 
+            // TextPattern is tried first because it is the only one that means
+            // the same thing everywhere. Chromium also exposes ValuePattern on a
+            // Document element, but there the value is the document URL, not the
+            // text, so a contenteditable composer (Claude Desktop, Slack, Notion)
+            // read the same before and after every paste and insertion was never
+            // confirmed. Where both exist on a plain input they agree.
             if (focused.TryGetCurrentPattern(TextPattern.Pattern, out pattern))
             {
                 // Bound the local read rather than retaining an arbitrary document.
@@ -225,6 +290,15 @@ internal static class WindowsFastPaste
                 return new AccessibleTextSnapshot
                 {
                     Text = ((TextPattern)pattern).DocumentRange.GetText(131072) ?? string.Empty,
+                    RuntimeId = runtimeId,
+                };
+            }
+
+            if (focused.TryGetCurrentPattern(ValuePattern.Pattern, out pattern))
+            {
+                return new AccessibleTextSnapshot
+                {
+                    Text = ((ValuePattern)pattern).Current.Value ?? string.Empty,
                     RuntimeId = runtimeId,
                 };
             }
@@ -397,6 +471,21 @@ internal static class WindowsFastPaste
             };
 
         return SendInputs(inputs);
+    }
+
+    // Same modifier hygiene as the paste chord: a Ctrl still held from the
+    // hotkey would turn Enter into Ctrl+Enter, which many editors bind to
+    // something else entirely.
+    private static bool SendEnterKey()
+    {
+        ushort[] heldModifiers = ReleaseHeldModifiers();
+        bool sent = SendInputs(new[]
+        {
+            KeyInput(VkReturn, 0),
+            KeyInput(VkReturn, KeyEventKeyUp),
+        });
+        RestoreHeldModifiers(heldModifiers);
+        return sent;
     }
 
     private static bool SendInputs(INPUT[] inputs)

@@ -215,10 +215,15 @@ test.describe("read aloud playback controls", () => {
 
     // A key nobody documents is a key nobody presses. The wording has to name
     // the actual accelerators, not gesture at "playback controls".
-    const help = controlPanel.getByText(/While a read is playing/);
-    await expect(help).toBeVisible();
-    await expect(help).toContainText("Ctrl+Alt+Space");
-    await expect(help).toContainText("Ctrl+Alt+←/→");
+    const help = controlPanel.getByTestId("readaloud-playback-shortcuts");
+    await expect(
+      controlPanel.getByText("Pause and skip shortcuts are active only during a read.")
+    ).toBeVisible();
+    await expect(help.getByRole("button", { name: "Pause or resume hotkey" })).toContainText(
+      "Space"
+    );
+    await expect(help.getByRole("button", { name: "Previous sentence hotkey" })).toBeVisible();
+    await expect(help.getByRole("button", { name: "Next sentence hotkey" })).toBeVisible();
 
     fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
     const filePath = path.join(EVIDENCE_DIR, "readaloud-playback-keys-help.png");

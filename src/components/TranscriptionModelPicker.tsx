@@ -725,8 +725,17 @@ export default function TranscriptionModelPicker({
         compareWhisperModelsForDisplay(a.model, b.model, recommendedLocalModel)
       );
 
+    const compactModelEntries = isOnboarding
+      ? getOnboardingCollapsedModelEntries()
+      : allModelEntries.filter(
+          (model) =>
+            model.model === selectedLocalModel ||
+            model.downloaded ||
+            isDownloadingModel(model.model) ||
+            model.model === (recommendedLocalModel || "turbo")
+        );
     const displayedModelEntries = sortForDisplay(
-      isOnboarding && !showAllLocalModels ? getOnboardingCollapsedModelEntries() : allModelEntries
+      showAllLocalModels ? allModelEntries : compactModelEntries
     );
 
     return (
@@ -767,7 +776,7 @@ export default function TranscriptionModelPicker({
             />
           );
         })}
-        {isOnboarding && (
+        {(isOnboarding || allModelEntries.length > compactModelEntries.length) && (
           <Button
             type="button"
             variant="ghost"
@@ -775,7 +784,7 @@ export default function TranscriptionModelPicker({
             onClick={() => setShowAllLocalModels((value) => !value)}
             className="mt-1 h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
           >
-            {showAllLocalModels ? "Hide advanced models" : "Show all models"}
+            {showAllLocalModels ? "Show fewer models" : "Show all models"}
           </Button>
         )}
       </div>

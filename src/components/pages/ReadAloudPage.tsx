@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Toggle } from "../ui/toggle";
 import { HotkeyInput } from "../ui/HotkeyInput";
-import { InfoBox } from "../ui/InfoBox";
 import { SettingsRow } from "../ui/SettingsSection";
 import { DownloadProgressBar } from "../ui/DownloadProgressBar";
 import { BetaBadge } from "../ui/BetaBadge";
@@ -13,6 +12,7 @@ import { useModelDownload } from "../../hooks/useModelDownload";
 import { useSettings } from "../../hooks/useSettings";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../../utils/hotkeys";
+import defaultPlaybackHotkeys from "../../config/readAloudPlaybackHotkeys.json";
 import {
   KOKORO_MODEL_DOWNLOAD_LABEL,
   KOKORO_MODEL_ID,
@@ -30,27 +30,7 @@ function Panel({ children }: { children: ReactNode }) {
 }
 
 function PanelRow({ children }: { children: ReactNode }) {
-  return <div className="px-5 py-4">{children}</div>;
-}
-
-/**
- * Said in every unlocked state, because the limit is not a footnote.
- *
- * The model itself ships 54 voices in nine languages. The phonemizer bundled
- * with it does not - it only knows English, and rejects every other language
- * id before synthesis starts. So the honest sentence is about the pronunciation
- * engine, not about the voices, and it promises nothing about other languages
- * arriving.
- */
-function EnglishOnlyNotice() {
-  return (
-    <InfoBox variant="muted" className="text-[13px] leading-relaxed text-muted-foreground">
-      <span className="font-medium text-foreground">English only.</span> All 28 voices are English.
-      The pronunciation engine that ships with the model knows no other language, so Danish and
-      other non-English text would come out garbled. Text that looks like another language is
-      skipped with a note instead of being mispronounced.
-    </InfoBox>
-  );
+  return <div className="px-5 py-3">{children}</div>;
 }
 
 /**
@@ -76,6 +56,8 @@ export default function ReadAloudPage() {
     setReadAloudDuckOthers,
     readAloudHotkey,
     setReadAloudHotkey,
+    readAloudPlaybackHotkeys,
+    setReadAloudPlaybackHotkeys,
     readAloudVoice,
     setReadAloudVoice,
     // Only read, to refuse a key one of these already owns.
@@ -118,6 +100,20 @@ export default function ReadAloudPage() {
   }, [isUnlocked, refreshModelStatus]);
 
   const installed = Boolean(modelStatus?.installed);
+  const playbackControls = [
+    {
+      op: "toggle",
+      label: "Pause or resume",
+    },
+    { op: "back", label: "Previous sentence" },
+    { op: "forward", label: "Next sentence" },
+  ] as const;
+  const playbackHotkeys = { ...defaultPlaybackHotkeys, ...readAloudPlaybackHotkeys };
+  const shortcutConflicts = [
+    { label: "Dictation", hotkey: dictationKey },
+    { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+    ...playbackControls.map(({ op, label }) => ({ label, hotkey: playbackHotkeys[op] })),
+  ];
 
   // The main process owns the global shortcut and refuses to bind it while the
   // model is missing, so every input to that decision re-syncs here.
@@ -131,24 +127,71 @@ export default function ReadAloudPage() {
 
   const modelDescription = () => {
     if (isDownloading) {
-      return "Downloading from Hugging Face. Nothing is spoken until it finishes.";
+      return "Downloading voice model…";
     }
     if (!statusChecked) {
-      return "Checking this machine for the voice model.";
+      return "Checking voice model…";
     }
     if (installed) {
       // Decimal MB, rounded — the download button says "326 MB", and the same
       // file must not appear to change size once it lands on disk.
       const mb = Math.round((modelStatus?.totalBytes ?? 0) / 1e6);
-      return `${KOKORO_MODEL_LABEL}, ${mb} MB on this machine. Runs on your CPU, offline.`;
+      return `${KOKORO_MODEL_LABEL} · ${mb} MB · Ready offline`;
     }
-    return `${KOKORO_MODEL_LABEL} is not on this machine. One ${KOKORO_MODEL_DOWNLOAD_LABEL} download, then Read Aloud works offline.`;
+    return "Download once to read offline on this device.";
   };
 
+  const modelPanel = (
+    <Panel>
+      <PanelRow>
+        <SettingsRow
+          label="Voice model"
+          description={<span data-testid="readaloud-model-status">{modelDescription()}</span>}
+        >
+          {isDownloading ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isCancelling}
+              onClick={() => void cancelDownload()}
+            >
+              {isCancelling ? "Cancelling" : "Cancel download"}
+            </Button>
+          ) : installed ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void deleteModel(KOKORO_MODEL_ID, refreshModelStatus)}
+            >
+              Delete model
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={!statusChecked}
+              onClick={() => void downloadModel(KOKORO_MODEL_ID)}
+            >
+              <Download size={14} aria-hidden />
+              Download voice model ({KOKORO_MODEL_DOWNLOAD_LABEL})
+            </Button>
+          )}
+        </SettingsRow>
+      </PanelRow>
+      {isDownloading && (
+        <div data-testid="readaloud-download-progress">
+          <DownloadProgressBar
+            modelName={KOKORO_MODEL_LABEL}
+            progress={downloadProgress}
+            isInstalling={isInstalling}
+          />
+        </div>
+      )}
+    </Panel>
+  );
+
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-start gap-3 mb-2">
+    <div data-testid="readaloud-page" className="p-8 max-w-4xl mx-auto space-y-4">
+      <div className="flex items-start gap-3">
         <AudioLines size={28} className="text-primary mt-0.5 shrink-0" />
         <div>
           <div className="flex items-center gap-3">
@@ -156,104 +199,29 @@ export default function ReadAloudPage() {
             <BetaBadge locked={!isUnlocked} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Select text in any app, press the Read Aloud hotkey, and PrivateTranscribe speaks it
-            back. The voice runs on this machine, so the text never leaves your PC.
+            Read selected text aloud, privately on this device.{" "}
+            <span className="text-foreground">English only.</span>
           </p>
         </div>
       </div>
 
       {!isUnlocked ? (
-        <>
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
-            <Lock size={24} className="mx-auto text-primary/60" />
+        <Panel>
+          <div className="p-6 space-y-3">
+            <Lock size={22} className="text-muted-foreground" />
             <h3 className="text-base font-semibold text-foreground">Hear it instead of reading</h3>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-              Select a paragraph anywhere - a long email, a PR description, a page of docs - press
-              the hotkey, and it is read back to you while you keep working. The voice is an 82M
-              model on your own CPU, so nothing you select is sent anywhere. This beta requires
-              approved tester access while it is still being built.
+            <p className="text-sm text-muted-foreground">
+              Read Aloud requires approved beta access. Nothing is downloaded until you choose.
             </p>
             <BetaAccessLink className="text-sm" />
           </div>
-
-          <Panel>
-            <PanelRow>
-              <SettingsRow
-                label="Read the selected text out loud"
-                badge={<BetaBadge locked />}
-                description="Nothing is downloaded and nothing is spoken until it is unlocked."
-              >
-                <Toggle checked={false} onChange={() => {}} disabled />
-              </SettingsRow>
-            </PanelRow>
-            <PanelRow>
-              <EnglishOnlyNotice />
-            </PanelRow>
-          </Panel>
-        </>
+        </Panel>
       ) : (
         <>
+          {!installed && modelPanel}
           <Panel>
             <PanelRow>
-              <SettingsRow
-                label="Voice model"
-                description={<span data-testid="readaloud-model-status">{modelDescription()}</span>}
-              >
-                {isDownloading ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isCancelling}
-                    onClick={() => void cancelDownload()}
-                  >
-                    {isCancelling ? "Cancelling" : "Cancel download"}
-                  </Button>
-                ) : installed ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void deleteModel(KOKORO_MODEL_ID, refreshModelStatus)}
-                  >
-                    Delete model
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    disabled={!statusChecked}
-                    onClick={() => void downloadModel(KOKORO_MODEL_ID)}
-                  >
-                    <Download size={14} aria-hidden />
-                    Download voice model ({KOKORO_MODEL_DOWNLOAD_LABEL})
-                  </Button>
-                )}
-              </SettingsRow>
-            </PanelRow>
-
-            {isDownloading && (
-              <div data-testid="readaloud-download-progress">
-                <DownloadProgressBar
-                  modelName={KOKORO_MODEL_LABEL}
-                  progress={downloadProgress}
-                  isInstalling={isInstalling}
-                />
-              </div>
-            )}
-
-            <PanelRow>
-              <EnglishOnlyNotice />
-            </PanelRow>
-          </Panel>
-
-          <Panel>
-            <PanelRow>
-              <SettingsRow
-                label="Read the selected text out loud"
-                description={
-                  installed
-                    ? "Binds the hotkey below across every app. Playback controls appear on the dictation overlay while it reads."
-                    : "Available once the voice model is on this machine."
-                }
-              >
+              <SettingsRow label="Read the selected text out loud">
                 <Toggle
                   checked={readAloudEnabled}
                   onChange={setReadAloudEnabled}
@@ -265,11 +233,7 @@ export default function ReadAloudPage() {
               <div data-testid="readaloud-duck-others-row">
                 <SettingsRow
                   label="Quiet other apps while reading"
-                  description={
-                    installed
-                      ? "Music and video drop to 30% for the length of the read, then go back to the volume they were at. The reading voice is not touched. Apps that start playing part-way through a read are left where they are."
-                      : "Available once the voice model is on this machine."
-                  }
+                  description="Lowers music and video to 30%, then restores the volume."
                 >
                   <Toggle
                     checked={readAloudDuckOthers}
@@ -279,42 +243,6 @@ export default function ReadAloudPage() {
                 </SettingsRow>
               </div>
             </PanelRow>
-            <PanelRow>
-              <SettingsRow
-                label="Read Aloud hotkey"
-                description={
-                  installed
-                    ? "Press this while text is selected in any app to start reading it."
-                    : "Available once the voice model is on this machine."
-                }
-              >
-                <HotkeyInput
-                  value={readAloudHotkey}
-                  onChange={setReadAloudHotkey}
-                  disabled={!installed}
-                  appliesToDictationHotkey={false}
-                  ariaLabel="Read Aloud hotkey"
-                  conflicts={[
-                    { label: "Dictation", hotkey: dictationKey },
-                    { label: "Mute my voice call", hotkey: voiceCallMuteKey },
-                  ]}
-                  onClear={() => setReadAloudHotkey(DEFAULT_READ_ALOUD_HOTKEY)}
-                />
-              </SettingsRow>
-
-              {/* The playback keys are bound only while something is being
-                  read, so they are documented here rather than given a row of
-                  their own next to keys that are always live. */}
-              {installed && (
-                <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
-                  While a read is playing, Ctrl+Alt+Space pauses and Ctrl+Alt+&larr;/&rarr; skip a
-                  sentence. Nothing is bound the rest of the time.
-                </p>
-              )}
-            </PanelRow>
-
-            {/* Same gate as the hotkey: nothing here can make a sound without
-                the model, and an inert list of 28 voices would only mislead. */}
             {installed && (
               <PanelRow>
                 <VoicePicker
@@ -322,10 +250,62 @@ export default function ReadAloudPage() {
                   onChange={setReadAloudVoice}
                   testIdPrefix="readaloud"
                   ariaLabel="Voice"
+                  collapsible
                 />
               </PanelRow>
             )}
           </Panel>
+
+          <Panel>
+            <div className="px-5 py-3">
+              <h2 className="text-sm font-semibold text-foreground">Keyboard shortcuts</h2>
+            </div>
+            <div
+              data-testid="readaloud-shortcuts"
+              className="px-5 divide-y divide-border-subtle/30"
+            >
+              <SettingsRow label="Read Aloud hotkey" className="py-2">
+                <HotkeyInput
+                  variant="shortcut"
+                  value={readAloudHotkey}
+                  onChange={setReadAloudHotkey}
+                  disabled={!installed}
+                  appliesToDictationHotkey={false}
+                  ariaLabel="Read Aloud hotkey"
+                  conflicts={shortcutConflicts}
+                  resetHotkey={DEFAULT_READ_ALOUD_HOTKEY}
+                />
+              </SettingsRow>
+              <div
+                data-testid="readaloud-playback-shortcuts"
+                className="divide-y divide-border-subtle/30"
+              >
+                {playbackControls.map(({ op, label }) => (
+                  <SettingsRow key={op} label={label} className="py-2">
+                    <HotkeyInput
+                      variant="shortcut"
+                      value={playbackHotkeys[op]}
+                      onChange={(hotkey) =>
+                        setReadAloudPlaybackHotkeys({ ...playbackHotkeys, [op]: hotkey })
+                      }
+                      resetHotkey={defaultPlaybackHotkeys[op]}
+                      disabled={!installed}
+                      appliesToDictationHotkey={false}
+                      ariaLabel={label + " hotkey"}
+                      conflicts={[
+                        ...shortcutConflicts.filter((entry) => entry.label !== label),
+                        { label: "Read Aloud", hotkey: readAloudHotkey },
+                      ]}
+                    />
+                  </SettingsRow>
+                ))}
+              </div>
+            </div>
+            <p className="px-5 py-3 text-[12px] text-muted-foreground">
+              Pause and skip shortcuts are active only during a read.
+            </p>
+          </Panel>
+          {installed && modelPanel}
         </>
       )}
     </div>

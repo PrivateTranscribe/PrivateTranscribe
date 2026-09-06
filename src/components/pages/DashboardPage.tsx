@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "../ui/button";
+import { useToast } from "../ui/Toast";
+import { useDialogs } from "../../hooks/useDialogs";
+import { ConfirmDialog } from "../ui/dialog";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, Command, Flame, Gauge, Settings, Timer, Upload } from "lucide-react";
 import { IconTile } from "../ui/IconTile";
 import { PageId } from "../AppSidebar";
@@ -147,11 +151,12 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     preferBuiltInMic,
     selectedMicDeviceId,
     historyLimit,
+    setHistoryLimit,
     dictationKey,
   } = useSettings();
 
-  const [copiedId, setCopiedId] = useState<number | null>(null);
-  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast } = useToast();
+  const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const [stats, setStats] = useState<AggregateStats>({
     total_words: 0,
     total_transcriptions: 0,
@@ -327,13 +332,13 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (whisperForceCpu || cudaStatus?.forceCpu) return "CPU";
 
     const engineStatus = cudaStatus?.engineStatus;
-    if (engineStatus?.fallback?.active) return "CPU fallback";
-    if (engineStatus?.effectiveEngine === "cuda") return "GPU - CUDA";
+    if (engineStatus?.fallback?.active) return "CPU, after a GPU failure";
+    if (engineStatus?.effectiveEngine === "cuda") return "GPU";
     if (engineStatus?.effectiveEngine === "cpu") return "CPU";
     if (engineStatus?.transition === "starting" && engineStatus.desiredMode === "gpu") {
-      return "GPU - CUDA starting";
+      return "GPU, starting";
     }
-    if (cudaStatus?.installed && cudaStatus.upToDate) return "GPU - CUDA ready";
+    if (cudaStatus?.installed && cudaStatus.upToDate) return "GPU, ready";
     if (cudaStatus?.supported === false) return "CPU";
     return "CPU";
   }, [useLocalWhisper, localTranscriptionProvider, whisperForceCpu, cudaStatus]);
@@ -346,37 +351,36 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      const item = transcriptions.find((t) => t.text === text);
-      if (item) {
-        setCopiedId(item.id);
-        if (copiedResetTimerRef.current) {
-          clearTimeout(copiedResetTimerRef.current);
-        }
-        copiedResetTimerRef.current = setTimeout(() => {
-          copiedResetTimerRef.current = null;
-          setCopiedId(null);
-        }, 2000);
-      }
+      return true;
     } catch {
-      // Silently fail
+      toast({
+        title: "Copy failed",
+        description: "Your text is still here. Try copying again.",
+        variant: "destructive",
+      });
+      return false;
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (copiedResetTimerRef.current) {
-        clearTimeout(copiedResetTimerRef.current);
-        copiedResetTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleDelete = async (id: number) => {
-    try {
-      await window.electronAPI?.deleteTranscription?.(id);
-    } catch {
-      // Silently fail
-    }
+  const handleDelete = (id: number) => {
+    showConfirmDialog({
+      title: "Delete transcription",
+      description: "This transcription will be permanently removed. This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+      onConfirm: async () => {
+        try {
+          const result = await window.electronAPI.deleteTranscription(id);
+          if (!result.success) throw new Error("Delete failed");
+        } catch {
+          toast({
+            title: "Delete failed",
+            description: "Your transcription is still here. Try again.",
+            variant: "destructive",
+          });
+        }
+      },
+    });
   };
 
   const configRows = [
@@ -388,6 +392,12 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
+      <ConfirmDialog
+        {...confirmDialog}
+        onOpenChange={(open) => {
+          if (!open) hideConfirmDialog();
+        }}
+      />
       <div className="p-8 space-y-8">
         {/* Welcome Header */}
         <div>
@@ -547,21 +557,36 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-surface-raised border border-border-subtle mb-5">
                 <Command size={24} className="text-primary" />
               </div>
-              <p className="text-sm font-medium text-foreground mb-1.5">Ready to dictate</p>
-              <p className="text-xs text-muted-foreground text-center max-w-[320px] mb-5">
-                Press{" "}
-                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
-                  {readableHotkey}
-                </kbd>{" "}
-                anywhere to start dictating. Your dictated text will appear here.
+              <p className="text-sm font-medium text-foreground mb-1.5">
+                {historyLimit === 0 ? "History is off" : "Ready to dictate"}
               </p>
-              <button
-                onClick={() => onNavigate("transcribe")}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background text-xs font-semibold hover:bg-primary/90 transition-colors duration-200"
-              >
-                <Upload size={14} />
-                Transcribe a file
-              </button>
+              {historyLimit === 0 ? (
+                <div className="text-center space-y-4">
+                  <p className="text-xs text-muted-foreground">
+                    Dictation works, but new text is not saved.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setHistoryLimit(50)}>
+                    Turn on history
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground text-center max-w-[320px] mb-5">
+                    Press{" "}
+                    <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
+                      {readableHotkey}
+                    </kbd>{" "}
+                    anywhere to start dictating. Your dictated text will appear here.
+                  </p>
+                  <button
+                    onClick={() => onNavigate("transcribe")}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background text-xs font-semibold hover:bg-primary/90 transition-colors duration-200"
+                  >
+                    <Upload size={14} />
+                    Transcribe a file
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -576,7 +601,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             Transcribe file
           </button>
           <button
-            onClick={() => onNavigate("settings")}
+            onClick={() => onNavigate("dictation")}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border-subtle bg-surface-raised text-sm font-medium text-foreground hover:bg-surface-raised/80 hover:border-primary/30 transition-all duration-200"
           >
             <Settings size={15} className="text-primary" />

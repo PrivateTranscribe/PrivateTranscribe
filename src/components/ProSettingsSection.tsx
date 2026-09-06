@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check, X, RefreshCw } from "lucide-react";
+import { Check, ChevronRight, X, RefreshCw } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/Toast";
@@ -13,8 +13,20 @@ import {
 } from "../services/LicensingService";
 import { setProPreview } from "../hooks/useProStatus";
 import { SectionLabel } from "./ui/SectionLabel";
+import type { ControlPanelDestination } from "../types/electron";
 
-const PRO_FEATURES_AVAILABLE = [
+const PRO_FEATURES_INCLUDED = [
+  {
+    name: "Converse",
+    desc: "Voice control for Claude Code runs you walk away from. Approve by voice, hear status, never reads code aloud.",
+  },
+  {
+    name: "Agent Mode",
+    desc: "Hold Right Ctrl, describe the bug, release. A prompt lands in Claude Code, Cursor or Codex. Unlimited on Pro.",
+  },
+];
+
+const PRO_FEATURES_BETA = [
   {
     name: "Correction Memory",
     desc: "Learns from your edits and automatically corrects recurring transcription errors",
@@ -33,11 +45,21 @@ const PRO_FEATURES_AVAILABLE = [
     name: "Read Aloud",
     desc: "Select text anywhere and hit the hotkey to hear it read back in a local voice",
   },
-  {
-    name: "Converse",
-    desc: "Talk to Claude Code about a project folder and hear its replies spoken back to you",
-  },
 ];
+
+/** Where each listed feature lives, so the card can open it. */
+const FEATURE_PAGES: Record<string, string> = {
+  "Correction Memory": "correction-memory",
+  "AI Enhancement": "ai-enhancement",
+  "Action Engine": "action-engine",
+  "Read Aloud": "read-aloud",
+  Converse: "converse",
+};
+
+/** Features that are a settings section rather than a page of their own. */
+const FEATURE_SETTINGS_DESTINATIONS: Record<string, ControlPanelDestination> = {
+  "Agent Mode": { page: "dictation" },
+};
 
 const PRO_FEATURES_COMING = [
   {
@@ -48,7 +70,12 @@ const PRO_FEATURES_COMING = [
 
 const licensingReady = isLicensingConfigured();
 
-export default function ProSettingsSection() {
+export default function ProSettingsSection({
+  onNavigate,
+}: {
+  /** Leaves Settings for a feature's own page. Cards are plain text without it. */
+  onNavigate?: (page: string) => void;
+} = {}) {
   const [status, setStatus] = useState<ProStatus>(getProStatus());
   const [keyInput, setKeyInput] = useState("");
   const [activating, setActivating] = useState(false);
@@ -142,6 +169,49 @@ export default function ProSettingsSection() {
       .slice(0, 16);
     const parts = clean.match(/.{1,4}/g) || [];
     setKeyInput(parts.join("-"));
+  };
+
+  const renderFeatureCard = (feature: { name: string; desc: string }) => {
+    const page = FEATURE_PAGES[feature.name];
+    const destination = FEATURE_SETTINGS_DESTINATIONS[feature.name];
+    const open = destination
+      ? () => void window.electronAPI?.openControlPanel?.(destination)
+      : page && onNavigate
+        ? () => onNavigate(page)
+        : null;
+
+    const body = (
+      <>
+        <Check size={14} className="shrink-0 text-pro" />
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium text-foreground">{feature.name}</span>
+          <p className="text-xs text-muted-foreground">{feature.desc}</p>
+        </div>
+      </>
+    );
+
+    if (!open) {
+      return (
+        <div
+          key={feature.name}
+          className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
+        >
+          {body}
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={feature.name}
+        type="button"
+        onClick={open}
+        className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3 text-left transition-colors hover:border-pro/40 hover:bg-background/60"
+      >
+        {body}
+        <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+      </button>
+    );
   };
 
   return (
@@ -285,29 +355,25 @@ export default function ProSettingsSection() {
       {/* Pro features overview */}
       <div className="space-y-3">
         <div>
+          <h3 className="text-base font-semibold text-foreground">What's included</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Pro is Converse and Agent Mode.</p>
+        </div>
+
+        {PRO_FEATURES_INCLUDED.map((feature) => renderFeatureCard(feature))}
+
+        <div className="pt-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-foreground">What's included</h3>
+            <h3 className="text-base font-semibold text-foreground">Beta features</h3>
             <Badge variant="warning" className="text-[10px]">
               Beta
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            These unfinished workflows are available only to approved testers while we refine them.
+            Beta access is separate from Pro and requires tester approval.
           </p>
         </div>
 
-        {PRO_FEATURES_AVAILABLE.map((feature) => (
-          <div
-            key={feature.name}
-            className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3"
-          >
-            <Check size={14} className="shrink-0 text-pro" />
-            <div className="min-w-0 flex-1">
-              <span className="text-sm font-medium text-foreground">{feature.name}</span>
-              <p className="text-xs text-muted-foreground">{feature.desc}</p>
-            </div>
-          </div>
-        ))}
+        {PRO_FEATURES_BETA.map((feature) => renderFeatureCard(feature))}
 
         {PRO_FEATURES_COMING.length > 0 && (
           <div className="mt-4 space-y-2">

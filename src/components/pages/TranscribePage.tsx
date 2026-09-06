@@ -142,6 +142,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFileSize, setSelectedFileSize] = useState(0);
   const [transcript, setTranscript] = useState("");
+  const [historySaveState, setHistorySaveState] = useState<"idle" | "saving" | "failed">("idle");
   const [srt, setSrt] = useState("");
   const [speakerCount, setSpeakerCount] = useState(0);
   // Whether speaker detection actually ran. Without it a count of 1 is
@@ -321,7 +322,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const missingModel = status === "error" && isMissingModelError(errorMessage);
 
   /**
-   * Local models are installed from Settings → Transcription, which is not on
+   * Local models are installed from the Dictation page, which is not on
    * this page and never was. The shell hands down the route; the main process
    * knows it too, so the button still works if this page is ever rendered
    * without the prop.
@@ -331,7 +332,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
       onOpenModelSettings();
       return;
     }
-    void window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "transcription" });
+    void window.electronAPI?.openControlPanel?.({ page: "dictation" });
   };
 
   useEffect(() => {
@@ -539,6 +540,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setSelectedFileName("");
     setSelectedFileSize(0);
     setTranscript("");
+    setHistorySaveState("idle");
     setSrt("");
     setSpeakerCount(0);
     setSpeakerDetectionActive(false);
@@ -563,6 +565,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     activeJobIdRef.current = null;
     setCancelling(true);
     try {
+      audioManagerRef.current?.abortActiveTranscriptionRequest();
       await window.electronAPI?.cancelFileTranscription?.(jobId);
     } catch {
       // The run is already disowned above; a failed cancel call cannot make the
@@ -592,13 +595,14 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setTranscriptionProgress(null);
     setErrorMessage("");
     setTranscript("");
+    setHistorySaveState("idle");
     setSpeakerDetectionActive(false);
     setCopied(false);
     setSelectedFileName(file.name);
     setSelectedFileSize(file.size);
 
     try {
-      if (speakerLabelsEnabled && isUsingLocalDiarization && !diarizationReady) {
+      if (useLocalWhisper && speakerLabelsEnabled && isUsingLocalDiarization && !diarizationReady) {
         throw new Error(
           "Speaker label models need to be downloaded first. Enable speaker labels in settings to start the download."
         );
@@ -628,7 +632,11 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
           jobId,
         });
       } else {
-        result = await manager.processWithOpenAIAPI(file, metadata);
+        result = await manager.processWithOpenAIAPI(file, {
+          ...metadata,
+          language: requestedLanguage,
+          processingGeneration: jobId,
+        });
       }
 
       // The run was cancelled or replaced while the engine was working. Its
@@ -671,9 +679,8 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
         }
       }
 
-      if (historyLimit !== 0) {
-        await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
-      }
+      // Make finished text usable while History saves. Only the current run
+      // may update its save status, even if the user opens another file.
       setTranscript(text);
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
@@ -682,13 +689,30 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
         buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
       );
       setStatus("success");
-      activeJobIdRef.current = null;
       setProcessingStartedAt(null);
-      toast({
-        title: "Transcription complete",
-        description: `${file.name} transcribed successfully.`,
-        variant: "success",
-      });
+      setHistorySaveState(historyLimit !== 0 ? "saving" : "idle");
+
+      let saveFailed = false;
+      if (historyLimit !== 0) {
+        try {
+          const saved = await window.electronAPI.saveTranscription(text, null, {
+            includeInStats: false,
+          });
+          saveFailed = saved?.success === false;
+        } catch {
+          saveFailed = true;
+        }
+      }
+      if (!isCurrentJob()) return;
+      setHistorySaveState(saveFailed ? "failed" : "idle");
+      activeJobIdRef.current = null;
+      if (!saveFailed) {
+        toast({
+          title: "Transcription complete",
+          description: `${file.name} transcribed successfully.`,
+          variant: "success",
+        });
+      }
     } catch (error) {
       if (!isCurrentJob()) return;
       const message = toErrorMessage(error);
@@ -945,81 +969,86 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
               />
             </div>
 
-            <div className="h-px bg-border-subtle/40" />
+            {useLocalWhisper && (
+              <>
+                <div className="h-px bg-border-subtle/40" />
 
-            {/* Noise reduction + Speaker labels row */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <CheckboxField
-                id="file-noise-reduction"
-                label="Noise reduction"
-                description="Clean audio before transcription. Helps with calls, podcasts, and screen recordings."
-                checked={noiseReduction}
-                onChange={(event) => setNoiseReduction(event.target.checked)}
-              />
+                {/* Noise reduction + Speaker labels row */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <CheckboxField
+                    id="file-noise-reduction"
+                    label="Noise reduction"
+                    description="Clean audio before transcription. Helps with calls, podcasts, and screen recordings."
+                    checked={noiseReduction}
+                    onChange={(event) => setNoiseReduction(event.target.checked)}
+                  />
 
-              <CheckboxField
-                id="file-speaker-labels"
-                label="Speaker labels"
-                description="Identify and label different speakers in the transcript."
-                checked={speakerLabelsEnabled}
-                onChange={(event) => handleSpeakerLabelsToggle(event.target.checked)}
-              />
-            </div>
-
-            {/* Speaker count selector - only shown when speaker labels enabled */}
-            {speakerLabelsEnabled && (
-              <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users size={14} className="text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Number of speakers</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Set the number of speakers for best results. Auto-detect may over-segment.
-                      </p>
-                    </div>
-                  </div>
-                  <Select value={expectedSpeakers} onValueChange={setExpectedSpeakers}>
-                    <SelectTrigger className="min-w-[160px] sm:w-[160px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SPEAKER_COUNT_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <CheckboxField
+                    id="file-speaker-labels"
+                    label="Speaker labels"
+                    description="Identify and label different speakers in the transcript."
+                    checked={speakerLabelsEnabled}
+                    onChange={(event) => handleSpeakerLabelsToggle(event.target.checked)}
+                  />
                 </div>
 
-                {/* Model status indicator */}
-                {needsModelDownload && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
-                    <AlertCircle size={13} className="shrink-0 text-warning" />
-                    <p className="text-xs text-warning">
-                      Speaker models not yet downloaded.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setModelDownloadDialogOpen(true)}
-                        className="font-medium text-primary hover:text-primary/80 underline underline-offset-2"
-                      >
-                        Download now
-                      </button>
-                    </p>
+                {/* Speaker count selector - only shown when speaker labels enabled */}
+                {speakerLabelsEnabled && (
+                  <div className="rounded-lg border border-border-subtle/60 bg-background/25 px-4 py-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users size={14} className="text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Number of speakers</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Set the number of speakers for best results. Auto-detect may
+                            over-segment.
+                          </p>
+                        </div>
+                      </div>
+                      <Select value={expectedSpeakers} onValueChange={setExpectedSpeakers}>
+                        <SelectTrigger className="min-w-[160px] sm:w-[160px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SPEAKER_COUNT_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Model status indicator */}
+                    {needsModelDownload && (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                        <AlertCircle size={13} className="shrink-0 text-warning" />
+                        <p className="text-xs text-warning">
+                          Speaker models not yet downloaded.{" "}
+                          <button
+                            type="button"
+                            onClick={() => setModelDownloadDialogOpen(true)}
+                            className="font-medium text-primary hover:text-primary/80 underline underline-offset-2"
+                          >
+                            Download now
+                          </button>
+                        </p>
+                      </div>
+                    )}
+                    {speakerLabelsEnabled && !needsModelDownload && (
+                      <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
+                        <Info size={12} className="shrink-0" />
+                        <span>
+                          {diarizationReady
+                            ? "Using multilingual speaker detection. Works with any language."
+                            : "Using English speaker turn detection."}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {speakerLabelsEnabled && !needsModelDownload && (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
-                    <Info size={12} className="shrink-0" />
-                    <span>
-                      {diarizationReady
-                        ? "Using multilingual speaker detection. Works with any language."
-                        : "Using English speaker turn detection."}
-                    </span>
-                  </div>
-                )}
-              </div>
+              </>
             )}
           </div>
         )}
@@ -1151,9 +1180,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
             <h3 className="text-lg font-semibold text-foreground mb-1">Cancelled</h3>
             <p className="text-sm text-muted-foreground mb-1">{selectedFileName}</p>
             <p className="mb-5 max-w-md text-xs text-muted-foreground">
-              {processingElapsedSeconds > 0
-                ? `Stopped after ${elapsedLabel}. Nothing was transcribed and nothing was saved.`
-                : "Stopped before the transcript was finished. Nothing was saved."}
+              Choose a file to start again.
             </p>
             <Button size="sm" variant="outline" onClick={handleBrowse} data-prevent-browse="true">
               Choose a file
@@ -1245,6 +1272,30 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
               </Button>
             </div>
           </div>
+
+          {historySaveState !== "idle" && (
+            <div
+              role="status"
+              className={`flex gap-2.5 border-b border-border-subtle/60 px-5 py-3 text-sm ${historySaveState === "failed" ? "bg-warning/5" : "bg-surface-raised"}`}
+              data-prevent-browse="true"
+            >
+              {historySaveState === "failed" ? (
+                <AlertCircle size={16} className="mt-0.5 shrink-0 text-warning" />
+              ) : (
+                <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+              )}
+              <div>
+                <p className="font-medium text-foreground">
+                  {historySaveState === "failed" ? "Not saved to History" : "Saving to History…"}
+                </p>
+                {historySaveState === "failed" && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Your transcript is ready. Copy or download it to keep it.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* whisper-server reports what it heard on every response, including
               the ones it was ordered to decode as something else. Shown, not

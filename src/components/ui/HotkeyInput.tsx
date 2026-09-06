@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import { Pencil } from "lucide-react";
 import { formatHotkeyLabel, normalizeHotkeyForComparison } from "../../utils/hotkeys";
 
 const CODE_TO_KEY: Record<string, string> = {
@@ -191,6 +192,8 @@ export interface HotkeyInputProps {
    * start dictating at all. Pass false to restore the existing hotkey instead.
    */
   appliesToDictationHotkey?: boolean;
+  /** Reset through the same validation as a recorded shortcut. */
+  resetHotkey?: string;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -248,7 +251,7 @@ export function mapMouseEventToHotkey(e: MouseEvent): string | null {
 }
 
 export interface HotkeyInputVariant {
-  variant?: "default" | "hero";
+  variant?: "default" | "hero" | "shortcut";
 }
 
 export function HotkeyInput({
@@ -261,6 +264,7 @@ export function HotkeyInput({
   onClear,
   ariaLabel,
   appliesToDictationHotkey = true,
+  resetHotkey,
   variant = "default",
 }: HotkeyInputProps & HotkeyInputVariant) {
   const [isCapturing, setIsCapturing] = useState(false);
@@ -314,13 +318,26 @@ export function HotkeyInput({
    */
   const commitCapture = useCallback(
     (hotkey: string) => {
+      if (!appliesToDictationHotkey) {
+        const parts = hotkey.split("+");
+        if (
+          parts.some((key) => /^(GLOBE|Mouse[345])$/.test(key)) ||
+          parts.every((key) =>
+            /^(CommandOrControl|Control|Ctrl|Alt|Shift|Super|Meta|Command)$/.test(key)
+          )
+        ) {
+          setConflictLabel("Use a keyboard key, with optional modifiers");
+          resetPressState();
+          return false;
+        }
+      }
       const normalized = normalizeHotkeyForComparison(hotkey);
       const conflict = (conflictsRef.current || []).find(
         (entry) => entry.hotkey && normalizeHotkeyForComparison(entry.hotkey) === normalized
       );
 
       if (conflict) {
-        setConflictLabel(conflict.label);
+        setConflictLabel(`Already used by ${conflict.label}`);
         resetPressState();
         return false;
       }
@@ -333,7 +350,7 @@ export function HotkeyInput({
       containerRef.current?.blur();
       return true;
     },
-    [onChange, resetPressState]
+    [onChange, resetPressState, appliesToDictationHotkey]
   );
 
   const handleKeyDown = useCallback(
@@ -350,6 +367,10 @@ export function HotkeyInput({
       if (NON_CAPTURABLE_CODES.clear.has(e.nativeEvent.code)) {
         // Without an onClear there is nothing sensible to reset to, so this
         // degrades to the same "leave it alone" behaviour as Escape.
+        if (resetHotkey) {
+          commitCapture(resetHotkey);
+          return;
+        }
         onClear?.();
         cancelCapture();
         return;
@@ -382,7 +403,7 @@ export function HotkeyInput({
       }
       // If no base key yet, modifiers are being held - don't finalize until keyup
     },
-    [disabled, isMac, isWindows, commitCapture, cancelCapture, onClear]
+    [disabled, isMac, isWindows, commitCapture, cancelCapture, onClear, resetHotkey]
   );
 
   const handleKeyUp = useCallback(
@@ -502,7 +523,7 @@ export function HotkeyInput({
 
   // The two ways out of capture are not discoverable from a field that only
   // says "Recording", so they are stated while it is listening.
-  const captureHint = onClear ? "Esc cancels · Backspace resets" : "Esc cancels";
+  const captureHint = onClear || resetHotkey ? "Esc cancels · Backspace resets" : "Esc cancels";
 
   const conflictNotice = conflictLabel ? (
     <span
@@ -510,7 +531,7 @@ export function HotkeyInput({
       data-testid="hotkey-conflict"
       className="text-xs font-medium text-destructive"
     >
-      Already used by {conflictLabel}
+      {conflictLabel}
     </span>
   ) : null;
 
@@ -522,6 +543,7 @@ export function HotkeyInput({
         tabIndex={disabled ? -1 : 0}
         role="button"
         aria-label={fieldLabel}
+        aria-disabled={disabled || undefined}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
         onFocus={handleFocus}
@@ -605,6 +627,61 @@ export function HotkeyInput({
     );
   }
 
+  // A stable field size keeps a table of shortcuts aligned during capture too.
+  if (variant === "shortcut") {
+    return (
+      <div
+        ref={containerRef}
+        tabIndex={disabled ? -1 : 0}
+        role="button"
+        aria-label={fieldLabel}
+        aria-disabled={disabled || undefined}
+        title={disabled ? undefined : "Click to change shortcut"}
+        onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        className={`flex h-10 w-60 items-center justify-center rounded-md border px-3 select-none outline-none transition-colors ${
+          disabled
+            ? "border-border-subtle bg-surface-1 opacity-40 cursor-not-allowed"
+            : isCapturing
+              ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+              : "border-border-subtle bg-surface-1 hover:border-border-hover hover:bg-surface-2 cursor-pointer"
+        }`}
+      >
+        {isCapturing ? (
+          <div className="min-w-0 text-center leading-tight">
+            <span className="text-xs font-medium text-primary">Recording…</span>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              {conflictLabel ? (
+                <span role="status" data-testid="hotkey-conflict" className="text-destructive">
+                  {conflictLabel}
+                </span>
+              ) : (
+                captureHint
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-1 items-center justify-center gap-1">
+              {(hotkeyParts.length ? hotkeyParts : value ? [displayValue] : []).map((part, i) => (
+                <React.Fragment key={`${part}-${i}`}>
+                  {i > 0 && <span className="text-[11px] text-muted-foreground/60">+</span>}
+                  <kbd className="min-w-6 rounded border border-border-subtle bg-surface-raised px-1.5 py-0.5 text-center font-mono text-xs font-medium text-foreground">
+                    {part}
+                  </kbd>
+                </React.Fragment>
+              ))}
+              {!value && <span className="text-xs text-muted-foreground">Set shortcut</span>}
+            </div>
+            <Pencil size={12} className="ml-2 shrink-0 text-muted-foreground" aria-hidden />
+          </>
+        )}
+      </div>
+    );
+  }
+
   // Default variant: compact inline display
   return (
     <div
@@ -612,6 +689,7 @@ export function HotkeyInput({
       tabIndex={disabled ? -1 : 0}
       role="button"
       aria-label={fieldLabel}
+      aria-disabled={disabled || undefined}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
       onFocus={handleFocus}

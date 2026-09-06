@@ -131,21 +131,34 @@ export function getDefaultHotkey(): string {
   return isMac ? "GLOBE" : "CommandOrControl+Space";
 }
 
-/**
- * The Read Aloud shortcut a fresh install gets.
- *
- * The reasoning behind this exact combination, and the survey of what else
- * binds nearby keys, lives above the matching constant in
- * `src/helpers/readAloudHotkey.js`. The two must stay equal: the renderer
- * stores this value and the main process registers it.
- */
-export const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+Shift+R";
+/** Default for new installs. Existing custom shortcuts are preserved. */
+export const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
 /**
- * The Read Aloud default that shipped before the survey above. Only used to
+ * The previous Read Aloud default. Only used to
  * recognise an untouched old default during migration.
  */
-export const LEGACY_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
+export const LEGACY_READ_ALOUD_HOTKEY = "Shift+R";
+
+/** Must equal DEFAULT_AGENT_MODE_HOTKEY in src/helpers/agentModeHotkey.js. */
+export const DEFAULT_AGENT_MODE_HOTKEY = "RightControl";
+
+/**
+ * The keys the Agent Mode picker offers, value first, label second.
+ *
+ * No F11 or F12: browsers and editors keep those for full screen and dev tools.
+ * No Left Ctrl or Left Alt: those sit under the hands that are typing.
+ */
+export const AGENT_MODE_HOTKEY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "RightControl", label: "Right Ctrl" },
+  { value: "RightAlt", label: "Right Alt" },
+  { value: "RightShift", label: "Right Shift" },
+  { value: "Pause", label: "Pause" },
+  { value: "ScrollLock", label: "Scroll Lock" },
+  { value: "F8", label: "F8" },
+  { value: "F9", label: "F9" },
+  { value: "F10", label: "F10" },
+];
 
 /**
  * Modifier spellings that mean the same physical key, mapped to one token each.
@@ -268,11 +281,9 @@ export interface HotkeyMigrationDefaults {
  *
  * Two repairs, both of them one-way:
  *
- *  - Read Aloud's old default `Ctrl+Alt+R` becomes the new one. A user who
- *    deliberately picked `Ctrl+Alt+R` is indistinguishable from one who never
- *    touched the default, so they are moved too. That is accepted: the reason
- *    for the move (Firefox's Reader Mode, and AltGr being Ctrl+Alt on European
- *    layouts) applies to them just as much.
+ *  - The previous Shift+R default becomes Ctrl+Alt+R. Other chosen shortcuts
+ *    are preserved. A manually chosen Shift+R is indistinguishable from the
+ *    previous default and is moved too.
  *  - A hotkey stored as Escape is a victim of the capture bug this shipped
  *    with, where pressing Esc to back out of the field bound Esc instead. There
  *    is no chance it was wanted, so it goes back to the field's default.

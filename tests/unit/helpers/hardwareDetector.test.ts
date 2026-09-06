@@ -86,15 +86,17 @@ describe("HardwareDetector.generateRecommendations", () => {
       expect(rec.transcriptionProvider).toBe("local");
     });
 
-    it("includes VRAM reasoning when VRAM >= 4GB", () => {
+    it("includes graphics memory reasoning when VRAM >= 4GB", () => {
       const rec = detector.generateRecommendations(nvidiaDetection(4096));
-      expect(rec.reasoning).toEqual(expect.arrayContaining([expect.stringContaining("VRAM")]));
+      expect(rec.reasoning).toEqual(
+        expect.arrayContaining([expect.stringContaining("plenty for local transcription")])
+      );
     });
 
-    it("does not include the 'excellent for local transcription' reasoning when VRAM < 4GB", () => {
+    it("does not include the 'plenty for local transcription' reasoning when VRAM < 4GB", () => {
       const rec = detector.generateRecommendations(nvidiaDetection(2048));
       const hasExcellentReasoning = (rec.reasoning as string[]).some((r) =>
-        r.includes("excellent for local transcription")
+        r.includes("plenty for local transcription")
       );
       expect(hasExcellentReasoning).toBe(false);
     });

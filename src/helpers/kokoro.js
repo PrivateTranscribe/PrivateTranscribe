@@ -21,6 +21,7 @@ const path = require("path");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 const { getModelsDirForService } = require("./modelDirUtils");
+const { synthesizeWithWordTimings } = require("./kokoroWordTimings");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
 
@@ -420,7 +421,10 @@ class KokoroManager {
     return [...splitter];
   }
 
-  async synthesize(text, { voice = DEFAULT_KOKORO_VOICE, speed = 1.0 } = {}) {
+  async synthesize(
+    text,
+    { voice = DEFAULT_KOKORO_VOICE, speed = 1.0, withWordTimings = false } = {}
+  ) {
     if (!this.tts) {
       await this.loadEngine();
     }
@@ -429,13 +433,17 @@ class KokoroManager {
     }
 
     const started = Date.now();
-    const audio = await this.tts.generate(String(text ?? ""), { voice, speed });
+    const source = String(text ?? "");
+    const { audio, wordTimings = [] } = withWordTimings
+      ? await synthesizeWithWordTimings(this.tts, source, { voice, speed })
+      : { audio: await this.tts.generate(source, { voice, speed }) };
     const synthMs = Date.now() - started;
 
     return {
       pcm: audio.audio,
       sampleRate: audio.sampling_rate,
       synthMs,
+      wordTimings,
     };
   }
 }

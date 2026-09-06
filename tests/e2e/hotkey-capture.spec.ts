@@ -35,10 +35,25 @@ async function seedHotkeys(
   await page.reload({ waitUntil: "domcontentloaded" });
 }
 
-/** Open Settings (General is the default tab) and focus the dictation field. */
+/**
+ * Reach a tester-only page. Unlocked, it sits in the sidebar; locked, it is
+ * not listed there and the route runs through the Pro tab's feature card.
+ */
+async function openFeaturePage(page: Page, name: string) {
+  const entry = page.getByRole("button", { name, exact: true });
+  if ((await entry.count()) > 0) {
+    await entry.click();
+  } else {
+    await page.getByRole("button", { name: "Beta features", exact: true }).click();
+    await page.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+  }
+  await expect(page.getByRole("heading", { name }).first()).toBeVisible();
+}
+
+/** Open the Dictation page and focus the hotkey field. */
 async function focusDictationHotkey(page: Page) {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Dictation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Dictation", exact: true })).toBeVisible();
 
   const field = page.getByRole("button", { name: "Dictation hotkey" });
   await field.click();
@@ -152,26 +167,24 @@ test.describe("hotkey capture", () => {
 });
 
 test.describe("read aloud default hotkey", () => {
-  test("a fresh install gets Ctrl+Alt+Shift+R", async ({ controlPanel }) => {
+  test("a fresh install gets Ctrl+Alt+R", async ({ controlPanel }) => {
     // Read Aloud is where the setting is owned, and mounting the page is what
     // makes useSettings persist its default.
-    await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
-    await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
+    await openFeaturePage(controlPanel, "Read Aloud");
 
-    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+Shift+R");
+    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+R");
   });
 
   test("the old default is migrated, a chosen key is left alone", async ({ controlPanel }) => {
-    await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
-    await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
+    await openFeaturePage(controlPanel, "Read Aloud");
 
-    await controlPanel.evaluate(() => localStorage.setItem("readAloudHotkey", "Ctrl+Alt+R"));
+    await controlPanel.evaluate(() => localStorage.setItem("readAloudHotkey", "Shift+R"));
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
-    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+Shift+R");
+    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+R");
 
     // Idempotent: a second startup does not keep rewriting it.
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
-    expect(await storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+Shift+R");
+    expect(await storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+R");
 
     // Anything the user actually picked survives untouched.
     await controlPanel.evaluate(() => localStorage.setItem("readAloudHotkey", "F9"));
@@ -195,8 +208,7 @@ test.describe("read aloud default hotkey", () => {
       });
 
       await unlockTesterAccess(controlPanel);
-      await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
-      await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
+      await openFeaturePage(controlPanel, "Read Aloud");
 
       // The field is only enabled once the model is on disk, which is the only
       // state where the default is visible to a user at all.

@@ -91,6 +91,7 @@ export interface UpdateResult {
 
 export interface AppVersionResult {
   version: string;
+  buildType: "development" | "unpacked" | "installed";
 }
 
 export interface WhisperDownloadProgressData {
@@ -190,6 +191,7 @@ export interface KokoroSynthResult {
   pcm: Float32Array;
   sampleRate: number;
   synthMs: number;
+  wordTimings?: { text: string; start: number; end: number; startTime: number; endTime: number }[];
 }
 
 /**
@@ -492,6 +494,7 @@ export type ControlPanelPage =
   | "home"
   | "history"
   | "transcribe"
+  | "dictation"
   | "dictionary"
   | "read-aloud"
   | "ai-enhancement"
@@ -499,14 +502,7 @@ export type ControlPanelPage =
   | "action-engine"
   | "settings";
 
-export type ControlPanelSettingsTab =
-  | "general"
-  | "preferences"
-  | "transcription"
-  | "permissions"
-  | "pro"
-  | "help"
-  | "developer";
+export type ControlPanelSettingsTab = "general" | "permissions" | "pro" | "developer";
 
 export interface ControlPanelDestination {
   page: ControlPanelPage;
@@ -759,6 +755,7 @@ declare global {
         text: string;
         voice?: string;
         speed?: number;
+        withWordTimings?: boolean;
       }) => Promise<KokoroSynthResult>;
       /**
        * Copy the foreground app's selection and push it to the overlay to speak.
@@ -804,7 +801,10 @@ declare global {
        */
       readAloudSetPlaybackActive: (
         active: boolean,
-        options?: { duckOthers?: boolean }
+        options?: {
+          duckOthers?: boolean;
+          hotkeys?: { toggle: string; back: string; forward: string };
+        }
       ) => Promise<{
         active: boolean;
         registered: string[];

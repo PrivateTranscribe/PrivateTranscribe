@@ -132,7 +132,7 @@ class KokoroClient {
    * @param {object} options voice/speed go to the engine; priority
    *   ("interactive" | "prefetch"), epoch and channel steer the queue only.
    */
-  synthesize(text, { voice, speed, priority, epoch, channel } = {}) {
+  synthesize(text, { voice, speed, priority, epoch, channel, withWordTimings } = {}) {
     const kind = priority === "prefetch" ? "prefetch" : "interactive";
     const chan = channel || "default";
 
@@ -147,7 +147,11 @@ class KokoroClient {
       }
     }
 
-    return this._enqueue("synth", { text, options: { voice, speed } }, { kind, chan, epoch });
+    return this._enqueue(
+      "synth",
+      { text, options: { voice, speed, withWordTimings } },
+      { kind, chan, epoch }
+    );
   }
 
   /** Kill the child outright; the next engine call spawns a fresh one. */

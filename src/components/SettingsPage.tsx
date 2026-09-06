@@ -1,3 +1,4 @@
+import { SettingsDisclosure } from "./ui/SettingsDisclosure";
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { IconTile } from "./ui/IconTile";
 import { Button } from "./ui/button";
@@ -42,7 +43,8 @@ import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
-import { isFeatureUnlocked } from "../hooks/useProStatus";
+import { getEffectiveEntitlement, isFeatureUnlocked } from "../hooks/useProStatus";
+import { readAgentModeUsage } from "../utils/agentModeUsage";
 import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { BetaBadge } from "./ui/BetaBadge";
 import { BetaAccessLink } from "./ui/BetaAccessLink";
@@ -54,7 +56,12 @@ import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 
 import { HotkeyInput } from "./ui/HotkeyInput";
-import { getDefaultHotkey } from "../utils/hotkeys";
+import {
+  AGENT_MODE_HOTKEY_OPTIONS,
+  getDefaultHotkey,
+  normalizeHotkeyForComparison,
+  parseHotkey,
+} from "../utils/hotkeys";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
@@ -77,14 +84,7 @@ import { setAgentName as persistAgentName } from "../utils/agentName";
  * "dictionary" and "aiModels" sections sat unreachable behind their own copies
  * of controls that had already moved to DictionaryPage and AIEnhancementPage.
  */
-export type SettingsSectionType =
-  | "general"
-  | "preferences"
-  | "transcription"
-  | "permissions"
-  | "help"
-  | "developer"
-  | "pro";
+export type SettingsSectionType = "general" | "dictation" | "permissions" | "developer" | "pro";
 
 const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
@@ -128,8 +128,74 @@ const readStoredCustomPrompt = (): string | undefined => {
   }
 };
 
+/**
+ * Agent Mode's two IPC calls, and the status they report.
+ *
+ * The main process owns the key listener, so it is the only thing that knows
+ * whether the hold key is really live, so the section asks it rather than
+ * inferring a state from the toggle. Declared here because the shared
+ * electronAPI type does not carry these two calls yet.
+ */
+interface AgentModeHotkeyStatus {
+  registered: boolean;
+  hotkey: string;
+  enabled?: boolean;
+  reason?: string;
+}
+
+interface AgentModeRewriteStatus {
+  available: boolean;
+  bin: string | null;
+  reason?: "not-found" | "diagnostic-flag";
+}
+
+interface AgentModeBridge {
+  agentModeSyncHotkey?: (settings: {
+    enabled: boolean;
+    hotkey: string;
+  }) => Promise<AgentModeHotkeyStatus>;
+  agentModeHotkeyStatus?: () => Promise<AgentModeHotkeyStatus>;
+  agentModeRewriteStatus?: () => Promise<AgentModeRewriteStatus>;
+}
+
+const agentModeBridge = (): AgentModeBridge =>
+  (window.electronAPI ?? {}) as unknown as AgentModeBridge;
+
+/** The modifier each right-hand Agent Mode key is, for conflict comparison. */
+const AGENT_MODE_MODIFIER_EQUIVALENTS: Record<string, string> = {
+  RightControl: "Ctrl",
+  RightAlt: "Alt",
+  RightShift: "Shift",
+};
+
+const agentModeKeyLabel = (value: string): string =>
+  AGENT_MODE_HOTKEY_OPTIONS.find((option) => option.value === value)?.label || value;
+
+/**
+ * Whether the Agent Mode key and the dictation key are the same physical key.
+ *
+ * A bare `RightControl` is Ctrl, so it only clashes with a dictation hotkey
+ * that is itself modifier-only; `Ctrl+Space` leaves Right Ctrl alone. Every
+ * other Agent Mode key is an ordinary key, compared on base key name.
+ */
+const isAgentModeKeySameAsDictation = (agentHotkey: string, dictationHotkey: string): boolean => {
+  const modifierEquivalent = AGENT_MODE_MODIFIER_EQUIVALENTS[agentHotkey];
+  if (modifierEquivalent) {
+    return (
+      normalizeHotkeyForComparison(dictationHotkey) ===
+      normalizeHotkeyForComparison(modifierEquivalent)
+    );
+  }
+
+  const agentBase = parseHotkey(agentHotkey).baseKey.trim().toUpperCase();
+  const dictationBase = parseHotkey(dictationHotkey).baseKey.trim().toUpperCase();
+  return agentBase.length > 0 && agentBase === dictationBase;
+};
+
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
+  /** Leaves Settings for another page, used by the Pro tab's feature cards. */
+  onNavigate?: (page: string) => void;
 }
 
 // ── Reusable layout primitives ──────────────────────────────────────
@@ -389,29 +455,29 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
   );
 
   const description = !isSupported
-    ? "CUDA engine downloads are available on Windows/Linux x64 with NVIDIA GPUs."
+    ? "Needs an NVIDIA graphics card on Windows or Linux. This computer runs local Whisper on the CPU."
     : downloadState === "downloading"
       ? downloadPhase === "installing"
-        ? "Installing the CUDA engine. This takes a moment for a package this size."
-        : `Downloading the CUDA engine — ${downloadProgress}%${byteLabel ? ` · ${byteLabel}` : ""}. Quitting PrivateTranscribe pauses it; it resumes from here next launch.`
+        ? "Installing the GPU engine. This takes a moment for a package this size."
+        : `Downloading the GPU engine, ${downloadProgress}%${byteLabel ? ` (${byteLabel})` : ""}. Quitting PrivateTranscribe pauses it and it resumes next launch.`
       : autoUpdateFailed
-        ? "Automatic CUDA engine update failed. Retry manually here."
+        ? "The automatic engine update did not finish. Retry it here."
         : needsUpdate
-          ? "A newer CUDA engine is available. Update before testing GPU transcription."
+          ? "A newer GPU engine matches this version of the app. Update it before you rely on GPU speed."
           : isUpToDate
             ? fallbackActive
-              ? "CUDA engine is current, but Whisper fell back to CPU after a GPU startup failure. It retries the GPU automatically; check diagnostics if it stays on CPU."
+              ? "Installed, but Whisper fell back to your CPU after the graphics card failed to start. It retries on its own."
               : newerEnginePublished
-                ? `CUDA engine is current for this app version. Engine ${latestPublished} is published and installs with the next PrivateTranscribe update.`
+                ? `Up to date for this version of the app. Engine ${latestPublished} arrives with the next PrivateTranscribe update.`
                 : engine === "cuda"
-                  ? "CUDA engine is current and currently active."
-                  : "CUDA engine is current. Run a transcription or benchmark to verify active GPU use."
-            : "CUDA engine is not installed. Download it to enable GPU Whisper acceleration.";
+                  ? "Installed and in use. Dictation runs on your graphics card."
+                  : "Installed. It starts with your next dictation."
+            : "Not installed. Dictation runs on your CPU until you download it (about 750 MB).";
 
   return (
     <SettingsPanel>
       <SettingsPanelRow>
-        <SettingsRow label="CUDA engine" description={description}>
+        <SettingsRow label="GPU engine" description={description}>
           <div className="flex items-center gap-2.5 flex-wrap justify-end">{badge}</div>
         </SettingsRow>
       </SettingsPanelRow>
@@ -420,21 +486,25 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-muted-foreground">
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <SectionLabel className="mb-1">Installed</SectionLabel>
-              <p className="text-foreground font-mono">{currentVersion}</p>
+              <SectionLabel className="mb-1">On this PC</SectionLabel>
+              <p className="text-foreground font-mono">
+                {isInstalled ? currentVersion : "nothing yet"}
+              </p>
             </div>
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <SectionLabel className="mb-1">Required</SectionLabel>
+              <SectionLabel className="mb-1">This app needs</SectionLabel>
               <p className="text-foreground font-mono">{expectedVersion}</p>
             </div>
             <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 px-3 py-2">
-              <SectionLabel className="mb-1">Backend</SectionLabel>
-              <p className="text-foreground font-mono">
+              <SectionLabel className="mb-1">Running on</SectionLabel>
+              <p className="text-foreground">
                 {engine === "cuda"
-                  ? "cuda active"
+                  ? "Graphics card"
                   : fallbackActive
-                    ? "cpu fallback"
-                    : engine || "idle"}
+                    ? "CPU, after a GPU failure"
+                    : engine === "cpu"
+                      ? "CPU"
+                      : "Not running right now"}
               </p>
             </div>
           </div>
@@ -499,12 +569,12 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
               >
                 <Download className="w-3.5 h-3.5" />
                 {autoUpdateFailed
-                  ? "Retry CUDA Update"
+                  ? "Retry update"
                   : needsUpdate
-                    ? "Update CUDA Engine"
+                    ? "Update GPU engine"
                     : needsInstall
-                      ? "Download CUDA Engine"
-                      : "Reinstall CUDA Engine"}
+                      ? "Download GPU engine"
+                      : "Reinstall GPU engine"}
               </Button>
             )}
             <Button onClick={refreshStatus} variant="ghost" size="sm" className="gap-1.5">
@@ -515,8 +585,7 @@ function CudaEngineUpdateCard({ compact = false }: { compact?: boolean }) {
 
           {!compact && (
             <p className="text-[13px] text-muted-foreground leading-relaxed">
-              This updates the separate Whisper CUDA runtime, not the main app. Use this before GPU
-              benchmark tests after installing a new PrivateTranscribe version.
+              This updates only the GPU engine, not the app itself.
             </p>
           )}
         </div>
@@ -773,7 +842,7 @@ function GpuStatusCard({
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Downloading CUDA engine… {downloadProgress}%</span>
+                        <span>Downloading the GPU engine, {downloadProgress}%</span>
                       </div>
                       <Button
                         onClick={handleCancelDownload}
@@ -802,10 +871,10 @@ function GpuStatusCard({
                     )}
                     <span>
                       {cudaEffectiveEngine === "cuda"
-                        ? "CUDA engine active - Whisper is using GPU acceleration."
+                        ? "Running on your graphics card."
                         : cudaFallbackActive
-                          ? "CUDA engine installed, but Whisper fell back to CPU. It retries the GPU automatically."
-                          : "CUDA engine installed - run a transcription or speed test to verify GPU use."}
+                          ? "GPU engine installed, but Whisper fell back to your CPU. It retries the graphics card on its own."
+                          : "GPU engine installed. It starts with your next dictation or speed test."}
                     </span>
                   </div>
                 ) : downloadState === "error" ? (
@@ -838,14 +907,14 @@ function GpuStatusCard({
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      {cudaAutoUpdateFailed ? "Retry" : "Update CUDA Engine"}
+                      {cudaAutoUpdateFailed ? "Retry" : "Update GPU engine"}
                     </Button>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border-subtle/50 bg-surface-raised/30 p-3 space-y-2">
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      GPU · Whisper requires the CUDA engine (~750 MB). Download it once to enable
-                      GPU-accelerated transcription.
+                      Your graphics card can run Whisper several times faster. One download of about
+                      750 MB, then dictation runs on the GPU.
                     </p>
                     <Button
                       onClick={handleDownloadCuda}
@@ -854,7 +923,7 @@ function GpuStatusCard({
                       className="h-7 gap-1.5 text-[11px]"
                     >
                       <Download className="w-3 h-3" />
-                      Download CUDA Engine
+                      Download GPU engine
                     </Button>
                   </div>
                 )}
@@ -882,7 +951,7 @@ function GpuStatusCard({
                     <p className="text-xs text-muted-foreground">
                       {detection.gpu.model ?? "GPU detected"}
                       {detection.gpu.vram
-                        ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} VRAM`
+                        ? ` · ${detection.gpu.vram >= 1024 ? `${(detection.gpu.vram / 1024).toFixed(1)} GB` : `${detection.gpu.vram} MB`} graphics memory`
                         : ""}
                     </p>
                   ) : (
@@ -969,9 +1038,8 @@ function GpuStatusCard({
                       <div className="mt-2 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2">
                         <AlertCircle className="w-3 h-3 text-warning mt-0.5 shrink-0" />
                         <p className="text-[10px] text-warning leading-relaxed">
-                          GPU acceleration may not be working. Your NVIDIA GPU might not be
-                          compatible with the current CUDA binary (RTX 50-series requires a newer
-                          build). A Blackwell-compatible update is in progress.
+                          The graphics card does not seem to be doing the work. Some newer cards
+                          (RTX 50-series) need a newer GPU engine than the one installed.
                         </p>
                       </div>
                     )}
@@ -1133,7 +1201,7 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
 
 // ── Main component ──────────────────────────────────────────────────
 
-export default function SettingsPage({ activeSection = "general" }: SettingsPageProps) {
+export default function SettingsPage({ activeSection = "general", onNavigate }: SettingsPageProps) {
   const {
     confirmDialog,
     alertDialog,
@@ -1245,10 +1313,118 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     readAloudEnabled,
     setReadAloudEnabled,
     readAloudHotkey,
+    readAloudPlaybackHotkeys,
+    setReadAloudPlaybackHotkeys,
     setReadAloudHotkey,
+    agentModeEnabled,
+    setAgentModeEnabled,
+    agentModeHotkey,
+    setAgentModeHotkey,
+    agentModeRewrite,
+    setAgentModeRewrite,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
+
+  const [agentModeStatus, setAgentModeStatus] = useState<AgentModeHotkeyStatus | null>(null);
+  const [agentModeRewriteStatus, setAgentModeRewriteStatus] =
+    useState<AgentModeRewriteStatus | null>(null);
+  const [agentModeUsage, setAgentModeUsage] = useState(() => readAgentModeUsage());
+  const [isAgentModePro, setIsAgentModePro] = useState(() => getEffectiveEntitlement() === "pro");
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const bridge = agentModeBridge();
+      await bridge
+        .agentModeSyncHotkey?.({ enabled: agentModeEnabled, hotkey: agentModeHotkey })
+        .catch(() => undefined);
+      const status = await bridge.agentModeHotkeyStatus?.().catch(() => undefined);
+      if (!cancelled && status) setAgentModeStatus(status);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentModeEnabled, agentModeHotkey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void agentModeBridge()
+      .agentModeHotkeyStatus?.()
+      .then((status) => {
+        if (!cancelled && status) setAgentModeStatus(status);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A prompt is spent in the overlay window, so the count is re-read whenever
+  // this window comes back to the front rather than only on mount.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshAgentModeUsage = () => {
+      setAgentModeUsage(readAgentModeUsage());
+      setIsAgentModePro(getEffectiveEntitlement() === "pro");
+      void agentModeBridge()
+        .agentModeRewriteStatus?.()
+        .then((status) => {
+          if (!cancelled && status) setAgentModeRewriteStatus(status);
+        })
+        .catch(() => undefined);
+    };
+    refreshAgentModeUsage();
+    window.addEventListener("focus", refreshAgentModeUsage);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshAgentModeUsage);
+    };
+  }, []);
+
+  // The toggle disables itself on not-found instead of hiding: a row that
+  // vanishes reads as a missing feature, a disabled one says what to install.
+  const agentModeRewriteBlocked =
+    agentModeRewriteStatus !== null && !agentModeRewriteStatus.available;
+  const agentModeRewriteLive =
+    agentModeRewrite && agentModeRewriteStatus !== null && agentModeRewriteStatus.available;
+
+  const agentModeRewriteDescription = (): string => {
+    if (!agentModeRewriteStatus) return "Checking for Claude Code...";
+    if (agentModeRewriteStatus.reason === "diagnostic-flag") {
+      return "Turned off by a diagnostic flag for this run.";
+    }
+    if (!agentModeRewriteStatus.available) {
+      return "Claude Code was not found on this PC. Prompts are pasted as spoken, with paths in backticks.";
+    }
+    if (agentModeRewrite) {
+      return "Rewrites prompts through your Claude Code login before pasting.";
+    }
+    return "Off. Prompts are pasted as spoken, with paths in backticks.";
+  };
+
+  const agentModeStatusDescription = (): string => {
+    if (!agentModeEnabled) return "Off. The dictation key works as before.";
+    if (!agentModeStatus) return "Checking the key...";
+    if (agentModeStatus.registered) {
+      return `Listening for ${agentModeKeyLabel(agentModeHotkey)} in every app. Hold it and talk.`;
+    }
+    switch (agentModeStatus.reason) {
+      case "disabled":
+        return "Off. The dictation key works as before.";
+      case "windows-only":
+        return "Windows only for now.";
+      case "diagnostic-flag":
+        return "Turned off by a diagnostic flag for this run.";
+      case "suspended":
+        return "Paused while a hotkey field is capturing.";
+      default:
+        return "The key listener could not start, so the hold key is not live. Restarting PrivateTranscribe usually fixes it.";
+    }
+  };
+
+  const agentModeKeyClashesWithDictation =
+    agentModeEnabled && isAgentModeKeySameAsDictation(agentModeHotkey, dictationKey);
 
   // Overlay visibility is owned by the main process; mirror it here and stay
   // in sync via the overlay-state-changed broadcast so this toggle can never
@@ -1271,7 +1447,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     };
   }, []);
 
-  const correctionMemoryUnlocked = isFeatureUnlocked("correction-memory");
   const smartContextUnlocked = isFeatureUnlocked("smart-context");
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -1284,7 +1459,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
     string | undefined
   >(undefined);
   useEffect(() => {
-    if (activeSection !== "transcription") return;
+    if (activeSection !== "dictation") return;
     window.electronAPI
       ?.detectHardware?.()
       .then((result) => {
@@ -1295,45 +1470,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       .catch(() => {});
   }, [activeSection]);
 
-  const [correctionCount, setCorrectionCount] = useState<number | null>(null);
-  const [clearConfirmPending, setClearConfirmPending] = useState(false);
-  const [isClearingCorrections, setIsClearingCorrections] = useState(false);
-
-  useEffect(() => {
-    if (!correctionMemoryUnlocked || !enableCorrectionLearning) {
-      setCorrectionCount(null);
-      return;
-    }
-    window.electronAPI
-      ?.getCorrectionMemory?.(1000)
-      .then((rows) => setCorrectionCount(Array.isArray(rows) ? rows.length : 0))
-      .catch(() => setCorrectionCount(0));
-  }, [correctionMemoryUnlocked, enableCorrectionLearning]);
-
   // Sync overlay taskbar-snap preference to main process on settings mount.
   // (Overlay visibility is main-process-owned and needs no push-sync.)
   useEffect(() => {
     window.electronAPI?.setOverlaySnapToTaskbar?.(overlaySnapToTaskbar).catch(() => {});
   }, [overlaySnapToTaskbar]);
-
-  const handleClearCorrections = useCallback(async () => {
-    if (!correctionMemoryUnlocked) return;
-    if (!clearConfirmPending) {
-      setClearConfirmPending(true);
-      return;
-    }
-    setIsClearingCorrections(true);
-    try {
-      const rows = (await window.electronAPI?.getCorrectionMemory?.(10000)) ?? [];
-      for (const row of rows) {
-        await window.electronAPI?.deleteCorrection?.(row.source);
-      }
-      setCorrectionCount(0);
-    } finally {
-      setIsClearingCorrections(false);
-      setClearConfirmPending(false);
-    }
-  }, [clearConfirmPending, correctionMemoryUnlocked]);
 
   // Whisper-server idle shutdown setting (minutes) has a draft state to avoid snapping
   // while typing (e.g. clearing the field).
@@ -1450,6 +1591,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
           // Read Aloud
           readAloudEnabled,
           readAloudHotkey,
+          readAloudPlaybackHotkeys,
+          // Agent Mode
+          agentModeEnabled,
+          agentModeHotkey,
+          agentModeRewrite,
           // Devices
           preferBuiltInMic,
           selectedMicDeviceId,
@@ -1525,6 +1671,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       overlaySnapToTaskbar,
       readAloudEnabled,
       readAloudHotkey,
+      readAloudPlaybackHotkeys,
+      agentModeEnabled,
+      agentModeHotkey,
+      agentModeRewrite,
       preferBuiltInMic,
       selectedMicDeviceId,
       customDictionary,
@@ -1715,11 +1865,36 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
       }
 
       if (typeof s.readAloudEnabled === "boolean") setReadAloudEnabled(s.readAloudEnabled);
+      if (s.readAloudPlaybackHotkeys && typeof s.readAloudPlaybackHotkeys === "object") {
+        const keys = s.readAloudPlaybackHotkeys;
+        if ([keys.toggle, keys.back, keys.forward].every(isSafeImportedIdentifier)) {
+          setReadAloudPlaybackHotkeys({
+            toggle: keys.toggle,
+            back: keys.back,
+            forward: keys.forward,
+          });
+        } else {
+          skipField("readAloudPlaybackHotkeys", "contains invalid shortcuts");
+        }
+      }
       if (s.readAloudHotkey !== undefined) {
         if (isSafeImportedIdentifier(s.readAloudHotkey)) {
           setReadAloudHotkey(s.readAloudHotkey);
         } else {
           skipField("readAloudHotkey", "contains unsafe path-like content");
+        }
+      }
+
+      if (typeof s.agentModeEnabled === "boolean") setAgentModeEnabled(s.agentModeEnabled);
+      if (typeof s.agentModeRewrite === "boolean") setAgentModeRewrite(s.agentModeRewrite);
+      if (s.agentModeHotkey !== undefined) {
+        if (
+          isSafeImportedIdentifier(s.agentModeHotkey) &&
+          AGENT_MODE_HOTKEY_OPTIONS.some((option) => option.value === s.agentModeHotkey)
+        ) {
+          setAgentModeHotkey(s.agentModeHotkey);
+        } else {
+          skipField("agentModeHotkey", "is not one of the Agent Mode keys");
         }
       }
 
@@ -2094,17 +2269,414 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const renderSectionContent = () => {
     switch (activeSection) {
       // ───────────────────────────────────────────────────
-      // GENERAL - Updates, Hotkey, Startup, Mic
+      // GENERAL - Updates, CUDA, Startup, Behavior, Notifications, Privacy, Help
       // ───────────────────────────────────────────────────
       case "general":
         return (
           <div className="space-y-8">
-            {/* Updates */}
+            {/* Behavior */}
+            <div>
+              <SectionHeader title="Dictation" description="Choose where your text goes" />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Auto-paste transcription"
+                    description="Paste into your text field when you finish speaking."
+                  >
+                    <Toggle checked={autoPaste} onChange={setAutoPaste} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Copy to clipboard"
+                    description="Keep a copy after each dictation. Failed pastes always keep a copy."
+                  >
+                    <Toggle checked={copyToClipboard} onChange={setCopyToClipboard} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Startup */}
+            {platform !== "linux" && (
+              <div>
+                <SectionHeader
+                  title="Startup"
+                  description="Have dictation ready when you sign in"
+                />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Launch PrivateTranscribe when you start your computer"
+                      description="Your dictation hotkey is ready to go the moment you log in."
+                    >
+                      <Toggle
+                        checked={autoStartEnabled}
+                        onChange={(checked: boolean) => handleAutoStartChange(checked)}
+                        disabled={autoStartLoading}
+                      />
+                    </SettingsRow>
+                    {autoStartError && (
+                      <p className="text-[13px] text-destructive mt-2 leading-relaxed">
+                        {autoStartError}
+                      </p>
+                    )}
+                  </SettingsPanelRow>
+
+                  {autoStartEnabled && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="At login, open as"
+                        description={
+                          autoStartLaunchMode === "tray"
+                            ? "Starts quietly in the tray."
+                            : autoStartLaunchMode === "minimized"
+                              ? "Starts minimized in the taskbar."
+                              : "Opens the control panel."
+                        }
+                      >
+                        <Select
+                          value={autoStartLaunchMode}
+                          onValueChange={(value) =>
+                            handleAutoStartLaunchModeChange(value as AutoStartLaunchMode)
+                          }
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="tray">Tray only</SelectItem>
+                            <SelectItem value="minimized">Minimized</SelectItem>
+                            <SelectItem value="window">Open window</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
+                </SettingsPanel>
+              </div>
+            )}
+            {/* Privacy & History */}
             <div>
               <SectionHeader
-                title="Updates"
-                description="Keep PrivateTranscribe up to date with the latest features and improvements"
+                title="Privacy & History"
+                description="Control what leaves your device and how long transcriptions are kept"
               />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Optional product analytics"
+                    description="Share setup milestones, feature usage, transcription speed, language and model settings, and CPU, GPU, or cloud mode using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
+                  >
+                    <Toggle checked={analyticsEnabled} onChange={handleAnalyticsEnabledChange} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="History limit"
+                    description="Number of transcriptions to keep. Set to 0 to disable history."
+                  >
+                    <HistoryLimitInput value={historyLimit} onChange={setHistoryLimit} />
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            <SettingsDisclosure
+              title="More settings"
+              description={`${overlayMode === "off" ? "Overlay hidden" : overlayMode === "snoozed" ? "Overlay snoozed" : "Overlay shown"} · ${musicDuckingMode === "duck" ? "Other audio lowered" : musicDuckingMode === "mute" ? "Other audio muted" : "Other audio unchanged"} · ${smartContextEnabled ? "App context on" : "App context off"}`}
+            >
+              <div>
+                <SectionHeader title="Overlay" />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Show control panel on error"
+                      description="Automatically open settings when transcription fails"
+                    >
+                      <Toggle checked={showPanelOnError} onChange={setShowPanelOnError} />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Snap overlay to taskbar"
+                      description="Keep the overlay along the taskbar edge."
+                    >
+                      <Toggle
+                        checked={overlaySnapToTaskbar}
+                        onChange={(checked) => {
+                          setOverlaySnapToTaskbar(checked);
+                          window.electronAPI?.setOverlaySnapToTaskbar?.(checked).catch(() => {});
+                        }}
+                      />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Hide overlay"
+                      description={
+                        overlayMode === "snoozed"
+                          ? "Temporarily hidden. Turn this on to keep it hidden."
+                          : "Hide the overlay. Your dictation hotkey still works."
+                      }
+                    >
+                      <Toggle
+                        checked={overlayMode === "off"}
+                        onChange={(checked) => {
+                          const mode = checked ? "off" : "shown";
+                          setOverlayMode(mode);
+                          window.electronAPI?.setOverlayMode?.(mode).catch(() => {});
+                        }}
+                      />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+              {/* Notifications */}
+              <div>
+                <SectionHeader
+                  title="Notifications"
+                  description="Configure alerts and feedback during dictation"
+                />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Audio feedback"
+                      description="Play sounds when starting and stopping recording"
+                    >
+                      <Toggle checked={audioFeedback} onChange={setAudioFeedback} />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Error notifications"
+                      description="Show system notifications when transcription fails"
+                    >
+                      <Toggle checked={errorNotifications} onChange={setErrorNotifications} />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Success confirmation"
+                      description="Show a text preview after each dictation."
+                    >
+                      <Toggle checked={successConfirmation} onChange={setSuccessConfirmation} />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                </SettingsPanel>
+              </div>
+
+              {/* Audio Ducking */}
+              <div>
+                <SectionHeader
+                  title="Other audio"
+                  description="Lower other audio while dictating"
+                />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="While recording"
+                      description="Choose what happens to system volume when you start dictating"
+                    >
+                      <div className="flex gap-1.5">
+                        {(["off", "duck", "mute"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() => setMusicDuckingMode(mode)}
+                            className={[
+                              "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                              musicDuckingMode === mode
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "bg-surface-raised border border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
+                            ].join(" ")}
+                          >
+                            {mode === "off" ? "Off" : mode === "duck" ? "Lower volume" : "Mute"}
+                          </button>
+                        ))}
+                      </div>
+                    </SettingsRow>
+                  </SettingsPanelRow>
+
+                  {musicDuckingMode === "duck" && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="Volume while recording"
+                        description={`Volume is reduced to ${Math.round(musicDuckLevel * 100)}% of your current level while recording`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Slider
+                            min={5}
+                            max={80}
+                            step={5}
+                            value={Math.round(musicDuckLevel * 100)}
+                            onChange={(e) => setMusicDuckLevel(parseInt(e.target.value, 10) / 100)}
+                            className="w-28"
+                            aria-label="Duck volume level"
+                          />
+                          <span className="text-xs tabular-nums text-muted-foreground w-8">
+                            {Math.round(musicDuckLevel * 100)}%
+                          </span>
+                        </div>
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Pause media while recording"
+                      description={
+                        platform === "win32"
+                          ? "Not yet available on Windows."
+                          : "Automatically pause playing media when you start recording"
+                      }
+                    >
+                      {platform === "win32" ? (
+                        <span className="text-[11px] text-muted-foreground/50 font-medium uppercase tracking-wide px-2 py-1 rounded border border-border-subtle">
+                          Soon
+                        </span>
+                      ) : (
+                        <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
+                      )}
+                    </SettingsRow>
+                  </SettingsPanelRow>
+                  {platform === "win32" && (
+                    <SettingsPanelRow>
+                      <VoiceCallMuteSettings
+                        enabled={muteVoiceCallOnRecord}
+                        onEnabledChange={setMuteVoiceCallOnRecord}
+                        muteKey={voiceCallMuteKey}
+                        onMuteKeyChange={setVoiceCallMuteKey}
+                        conflicts={[
+                          { label: "Dictation", hotkey: dictationKey },
+                          { label: "Read Aloud", hotkey: readAloudHotkey },
+                        ]}
+                      />
+                    </SettingsPanelRow>
+                  )}
+                </SettingsPanel>
+              </div>
+
+              <div>
+                <SectionHeader title="App context" />
+                <SettingsPanel>
+                  <SettingsPanelRow>
+                    <SettingsRow
+                      label="Smart Context"
+                      badge={smartContextUnlocked ? undefined : <BetaBadge locked />}
+                      description={
+                        smartContextUnlocked ? (
+                          "Use your app name and window title to improve local dictation."
+                        ) : (
+                          <>
+                            Requires beta access. Screen context stays off. <BetaAccessLink />
+                          </>
+                        )
+                      }
+                    >
+                      <Toggle
+                        checked={smartContextEnabled}
+                        onChange={setSmartContextEnabled}
+                        disabled={!smartContextUnlocked}
+                      />
+                    </SettingsRow>
+                  </SettingsPanelRow>
+
+                  {smartContextUnlocked && smartContextEnabled && (
+                    <SettingsPanelRow>
+                      <InfoBox variant="muted" className="text-xs leading-relaxed">
+                        <p className="font-medium text-foreground mb-1.5">
+                          What Smart Context reads, and what it protects
+                        </p>
+                        <ul className="space-y-1 text-muted-foreground list-disc pl-4">
+                          <li>
+                            Captures only the <span className="text-foreground">app name</span> and{" "}
+                            <span className="text-foreground">window title</span> of whatever you're
+                            typing into — never your keystrokes or screen contents.
+                          </li>
+                          <li>
+                            Stays <span className="text-foreground">on your device</span>. Nothing
+                            leaves your computer unless you turn on “LLM Context Enhancement” below.
+                          </li>
+                          <li>
+                            Automatically skips{" "}
+                            <span className="text-foreground">
+                              password managers, banking apps, and system login / UAC prompts
+                            </span>{" "}
+                            so sensitive windows are never read.
+                          </li>
+                        </ul>
+                      </InfoBox>
+                    </SettingsPanelRow>
+                  )}
+
+                  {smartContextUnlocked && smartContextEnabled && (
+                    <SettingsPanelRow>
+                      <SettingsRow
+                        label="Active file context"
+                        description="Reads variable and function names from your active file to improve code dictation accuracy. Local only - file content stays on your device."
+                      >
+                        <Toggle
+                          checked={enableFileIdentifiers}
+                          onChange={setEnableFileIdentifiers}
+                        />
+                      </SettingsRow>
+                    </SettingsPanelRow>
+                  )}
+
+                  {smartContextUnlocked && useReasoningModel && (
+                    <>
+                      <SettingsPanelRow>
+                        <SettingsRow
+                          label="LLM Context Enhancement"
+                          description={
+                            useReasoningModel && reasoningProvider !== "local"
+                              ? "Also sends context to the AI reasoning step. ⚠️ Context (app name, window title) will be sent to your cloud reasoning provider."
+                              : "Also sends context to the AI reasoning step. Context is processed by your local model only."
+                          }
+                        >
+                          <Toggle
+                            checked={llmContextEnhancement}
+                            onChange={setLlmContextEnhancement}
+                            disabled={!smartContextUnlocked}
+                          />
+                        </SettingsRow>
+                      </SettingsPanelRow>
+
+                      {llmContextEnhancement && (
+                        <SettingsPanelRow>
+                          <SettingsRow
+                            label="Include active file content"
+                            description={
+                              reasoningProvider !== "local"
+                                ? "Adds a truncated excerpt from your active file to the reasoning prompt. ⚠️ File content will be sent to your cloud reasoning provider."
+                                : "Adds a truncated excerpt from your active file to the reasoning prompt. Stays on-device when using a local reasoning model."
+                            }
+                          >
+                            <Toggle
+                              checked={includeFileContentInLlmContext}
+                              onChange={setIncludeFileContentInLlmContext}
+                            />
+                          </SettingsRow>
+                        </SettingsPanelRow>
+                      )}
+                    </>
+                  )}
+                </SettingsPanel>
+              </div>
+            </SettingsDisclosure>
+
+            {/* CUDA Engine Updates */}
+            <div>
+              <SectionHeader
+                title="GPU speed-up"
+                description="Run local Whisper faster on your NVIDIA graphics card"
+              />
+              <CudaEngineUpdateCard />
+            </div>
+
+            {/* Updates */}
+            <div>
+              <SectionHeader title="Updates" description="Check for app updates" />
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow
@@ -2275,20 +2847,50 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </SettingsPanel>
             </div>
 
-            {/* CUDA Engine Updates */}
-            <div>
+            {/* Help & Support */}
+            <div className="border-t border-border/30 pt-8">
               <SectionHeader
-                title="CUDA Engine"
-                description="Manage the separate GPU runtime used by local Whisper transcription"
+                title="Help & Support"
+                description="Report a problem or send feedback"
               />
-              <CudaEngineUpdateCard />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Contact & Feedback"
+                    description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
+                  >
+                    <div className="flex items-center gap-2">
+                      <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard?.writeText("support@privatetranscribe.com");
+                          setEmailCopied(true);
+                          setTimeout(() => setEmailCopied(false), 2000);
+                        }}
+                      >
+                        {emailCopied ? "✓ Copied!" : "Copy Email"}
+                      </Button>
+                    </div>
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
             </div>
+          </div>
+        );
 
+      // ───────────────────────────────────────────────────
+      // DICTATION (its own sidebar page, rendered through this section)
+      // ───────────────────────────────────────────────────
+      case "dictation":
+        return (
+          <div className="space-y-6">
             {/* Dictation Hotkey */}
             <div>
               <SectionHeader
-                title="Dictation Control"
-                description="Configure how you activate and control voice dictation"
+                title="Controls"
+                description="Choose your dictation key and how it works."
               />
               <SettingsPanel>
                 <SettingsPanelRow>
@@ -2320,80 +2922,53 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </SettingsPanel>
             </div>
 
-            {/* Startup */}
-            {platform !== "linux" && (
-              <div>
-                <SectionHeader
-                  title="Startup"
-                  description="Control whether PrivateTranscribe launches when you start your computer"
-                />
-                <SettingsPanel>
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Launch PrivateTranscribe when you start your computer"
-                      description="Your dictation hotkey is ready to go the moment you log in."
-                    >
-                      <Toggle
-                        checked={autoStartEnabled}
-                        onChange={(checked: boolean) => handleAutoStartChange(checked)}
-                        disabled={autoStartLoading}
-                      />
-                    </SettingsRow>
-                    {autoStartError && (
-                      <p className="text-[13px] text-destructive mt-2 leading-relaxed">
-                        {autoStartError}
-                      </p>
-                    )}
-                  </SettingsPanelRow>
+            <SectionHeader
+              title="Speech model"
+              description="Choose local or cloud transcription."
+            />
 
-                  {autoStartEnabled && (
-                    <SettingsPanelRow>
-                      <SettingsRow
-                        label="At login, open as"
-                        description={
-                          autoStartLaunchMode === "tray"
-                            ? "Recommended - starts quietly in the tray without opening a window."
-                            : autoStartLaunchMode === "minimized"
-                              ? "Shows a taskbar entry, but does not steal focus."
-                              : "Opens the control panel so the app is visible immediately."
-                        }
-                      >
-                        <Select
-                          value={autoStartLaunchMode}
-                          onValueChange={(value) =>
-                            handleAutoStartLaunchModeChange(value as AutoStartLaunchMode)
-                          }
-                        >
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="tray">Tray only</SelectItem>
-                            <SelectItem value="minimized">Minimized</SelectItem>
-                            <SelectItem value="window">Open window</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </SettingsRow>
-                    </SettingsPanelRow>
-                  )}
-                </SettingsPanel>
-              </div>
-            )}
-          </div>
-        );
+            <TranscriptionModelPicker
+              selectedCloudProvider={cloudTranscriptionProvider}
+              onCloudProviderSelect={(provider) =>
+                updateTranscriptionSettings({ cloudTranscriptionProvider: provider })
+              }
+              selectedCloudModel={cloudTranscriptionModel}
+              onCloudModelSelect={(model) =>
+                updateTranscriptionSettings({ cloudTranscriptionModel: model })
+              }
+              selectedLocalModel={whisperModel}
+              onLocalModelSelect={(modelId) => {
+                updateTranscriptionSettings({ whisperModel: modelId });
+              }}
+              selectedLocalProvider={localTranscriptionProvider}
+              onLocalProviderSelect={(providerId) => {
+                updateTranscriptionSettings({ localTranscriptionProvider: providerId });
+              }}
+              whisperForceCpu={whisperForceCpu}
+              onWhisperForceCpuChange={(forceCpu) =>
+                updateTranscriptionSettings({ whisperForceCpu: forceCpu })
+              }
+              gpuSupported={gpuSupportedForPicker}
+              recommendedLocalModel={recommendedWhisperModelForPicker}
+              preferredLanguage={resolveRatingLanguage(preferredLanguage, spokenLanguages)}
+              useLocalWhisper={useLocalWhisper}
+              onModeChange={(isLocal) => {
+                updateTranscriptionSettings({ useLocalWhisper: isLocal });
+              }}
+              openaiApiKey={openaiApiKey}
+              setOpenaiApiKey={setOpenaiApiKey}
+              groqApiKey={groqApiKey}
+              setGroqApiKey={setGroqApiKey}
+              customTranscriptionApiKey={customTranscriptionApiKey}
+              setCustomTranscriptionApiKey={setCustomTranscriptionApiKey}
+              cloudTranscriptionBaseUrl={cloudTranscriptionBaseUrl}
+              setCloudTranscriptionBaseUrl={setCloudTranscriptionBaseUrl}
+              variant="settings"
+            />
 
-      // ───────────────────────────────────────────────────
-      // PREFERENCES - New section with additional options
-      // ───────────────────────────────────────────────────
-      case "preferences":
-        return (
-          <div className="space-y-8">
             {/* Language */}
             <div>
-              <SectionHeader
-                title="Language"
-                description="Configure speech recognition language and translation"
-              />
+              <SectionHeader title="Languages" description="Choose spoken and output languages." />
               <SettingsPanel>
                 <SettingsPanelRow>
                   {/* Stacked rather than a SettingsRow: the picker needs the
@@ -2475,500 +3050,134 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               </SettingsPanel>
             </div>
 
-            {/* Correction Memory */}
-            <div className="border-t border-border/30 pt-8">
-              <SectionHeader
-                title="Correction Memory"
-                description="Apply your saved corrections and learn new ones from edits"
-                badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
-              />
+            {/* Agent Mode */}
+            <SettingsDisclosure
+              title="Agent Mode"
+              settingsLabel="Agent Mode"
+              description="Hold a second key to dictate coding prompts."
+              status={
+                !agentModeEnabled
+                  ? "Off"
+                  : !agentModeStatus
+                    ? "Checking…"
+                    : agentModeStatus.registered
+                      ? agentModeKeyLabel(agentModeHotkey)
+                      : "Unavailable"
+              }
+            >
               <SettingsPanel>
                 <SettingsPanelRow>
-                  <SettingsRow
-                    label="Apply dictionary matching"
-                    description={
-                      correctionMemoryUnlocked
-                        ? "Use dictionary entries and approved-tester correction memory while transcribing."
-                        : "Use dictionary entries while transcribing. The Correction Memory half stays off until tester access is approved."
-                    }
-                  >
-                    <Toggle
-                      checked={enableVariableSnapping}
-                      onChange={(checked: boolean) => setEnableVariableSnapping(checked)}
-                    />
+                  <SettingsRow label="Agent Mode" description={agentModeStatusDescription()}>
+                    <Toggle checked={agentModeEnabled} onChange={setAgentModeEnabled} />
                   </SettingsRow>
                 </SettingsPanelRow>
+
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Auto-learn corrections"
-                    badge={correctionMemoryUnlocked ? undefined : <BetaBadge locked />}
-                    description={
-                      correctionMemoryUnlocked ? (
-                        "After dictation, copy the corrected text once. PrivateTranscribe will offer to learn replacements from the difference."
-                      ) : (
-                        <>
-                          Still being built, so it is limited to approved testers for now. Nothing
-                          here is running in the background. <BetaAccessLink />
-                        </>
-                      )
-                    }
+                    label="Agent Mode hotkey"
+                    description="Hold this key while you speak."
                   >
-                    <Toggle
-                      checked={enableCorrectionLearning}
-                      onChange={(checked: boolean) => setEnableCorrectionLearning(checked)}
-                      disabled={!correctionMemoryUnlocked}
-                    />
+                    <Select
+                      value={agentModeHotkey}
+                      onValueChange={setAgentModeHotkey}
+                      disabled={!agentModeEnabled}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGENT_MODE_HOTKEY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </SettingsRow>
-                  {enableCorrectionLearning && correctionMemoryUnlocked && (
-                    <div className="mt-2 flex items-center justify-between">
-                      <p
-                        className={
-                          correctionCount !== null && correctionCount > 0
-                            ? "text-xs text-success"
-                            : "text-xs text-muted-foreground"
-                        }
-                      >
-                        {correctionCount === null
-                          ? ""
-                          : correctionCount > 0
-                            ? `✓ Learning - ${correctionCount} correction${correctionCount === 1 ? "" : "s"} stored`
-                            : "Listening for corrections..."}
-                      </p>
-                      {correctionCount !== null && correctionCount > 0 && (
-                        <div className="flex items-center gap-2">
-                          {clearConfirmPending && (
-                            <span className="text-xs text-muted-foreground">Are you sure?</span>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleClearCorrections}
-                            disabled={isClearingCorrections}
-                            className={
-                              clearConfirmPending
-                                ? "border-destructive text-destructive hover:bg-destructive/10"
-                                : ""
-                            }
-                          >
-                            {isClearingCorrections
-                              ? "Clearing..."
-                              : clearConfirmPending
-                                ? "Yes, clear all"
-                                : "Clear all corrections"}
-                          </Button>
-                          {clearConfirmPending && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setClearConfirmPending(false)}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                  {agentModeKeyClashesWithDictation && (
+                    <p className="text-[11px] text-warning leading-relaxed mt-2">
+                      Same key as dictation. Pick another one.
+                    </p>
                   )}
                 </SettingsPanelRow>
+
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Learn phrase and sentence rewrites"
-                    description="Off learns word fixes like cloud -> Claude. On can also learn changed spans or full repeated sentence rewrites."
+                    label="Rewrite with Claude Code"
+                    description={agentModeRewriteDescription()}
                   >
                     <Toggle
-                      checked={enablePhraseCorrectionLearning}
-                      onChange={(checked: boolean) => setEnablePhraseCorrectionLearning(checked)}
-                      disabled={!correctionMemoryUnlocked || !enableCorrectionLearning}
+                      checked={agentModeRewrite}
+                      onChange={setAgentModeRewrite}
+                      disabled={!agentModeEnabled || agentModeRewriteBlocked}
                     />
                   </SettingsRow>
                 </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
 
-            {/* Audio Ducking */}
-            <div className="border-t border-border/30 pt-8">
-              <SectionHeader
-                title="Audio Ducking"
-                description="Automatically lower or mute system audio while you are dictating"
-              />
-              <SettingsPanel>
                 <SettingsPanelRow>
-                  <SettingsRow
-                    label="While recording"
-                    description="Choose what happens to system volume when you start dictating"
-                  >
-                    <div className="flex gap-1.5">
-                      {(["off", "duck", "mute"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => setMusicDuckingMode(mode)}
-                          className={[
-                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                            musicDuckingMode === mode
-                              ? "bg-primary text-primary-foreground shadow-sm"
-                              : "bg-surface-raised border border-border-subtle text-muted-foreground hover:text-foreground hover:border-border",
-                          ].join(" ")}
-                        >
-                          {mode === "off" ? "Off" : mode === "duck" ? "Lower volume" : "Mute"}
-                        </button>
-                      ))}
-                    </div>
-                  </SettingsRow>
+                  <p className="text-xs text-muted-foreground">
+                    Say "new line" for a line break or end with "send" to press Enter.
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {useLocalWhisper
+                      ? "Audio is transcribed on this PC."
+                      : "Audio is sent to your selected transcription service."}
+                    {agentModeRewriteLive &&
+                      " Rewriting sends text through your Claude Code login."}
+                  </p>
                 </SettingsPanelRow>
 
-                {musicDuckingMode === "duck" && (
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Volume while recording"
-                      description={`Volume is reduced to ${Math.round(musicDuckLevel * 100)}% of your current level while recording`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Slider
-                          min={5}
-                          max={80}
-                          step={5}
-                          value={Math.round(musicDuckLevel * 100)}
-                          onChange={(e) => setMusicDuckLevel(parseInt(e.target.value, 10) / 100)}
-                          className="w-28"
-                          aria-label="Duck volume level"
-                        />
-                        <span className="text-xs tabular-nums text-muted-foreground w-8">
-                          {Math.round(musicDuckLevel * 100)}%
-                        </span>
-                      </div>
-                    </SettingsRow>
-                  </SettingsPanelRow>
-                )}
                 <SettingsPanelRow>
                   <SettingsRow
-                    label="Pause media while recording"
+                    label="Prompts today"
                     description={
-                      platform === "win32"
-                        ? "Coming soon on Windows - media session control is being reworked for reliability"
-                        : "Automatically pause playing media when you start recording"
-                    }
-                  >
-                    {platform === "win32" ? (
-                      <span className="text-[11px] text-muted-foreground/50 font-medium uppercase tracking-wide px-2 py-1 rounded border border-border-subtle">
-                        Soon
-                      </span>
-                    ) : (
-                      <Toggle checked={pauseMediaOnRecord} onChange={setPauseMediaOnRecord} />
-                    )}
-                  </SettingsRow>
-                </SettingsPanelRow>
-                {platform === "win32" && (
-                  <SettingsPanelRow>
-                    <VoiceCallMuteSettings
-                      enabled={muteVoiceCallOnRecord}
-                      onEnabledChange={setMuteVoiceCallOnRecord}
-                      muteKey={voiceCallMuteKey}
-                      onMuteKeyChange={setVoiceCallMuteKey}
-                      conflicts={[
-                        { label: "Dictation", hotkey: dictationKey },
-                        { label: "Read Aloud", hotkey: readAloudHotkey },
-                      ]}
-                    />
-                  </SettingsPanelRow>
-                )}
-              </SettingsPanel>
-            </div>
-
-            {/* Behavior */}
-            <div>
-              <SectionHeader
-                title="Behavior"
-                description="Customize how PrivateTranscribe responds after transcription"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Auto-paste transcription"
-                    description="Automatically paste text where your cursor is after transcribing"
-                  >
-                    <Toggle checked={autoPaste} onChange={setAutoPaste} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Copy to clipboard"
-                    description="Also save transcription to clipboard for manual pasting"
-                  >
-                    <Toggle checked={copyToClipboard} onChange={setCopyToClipboard} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Show control panel on error"
-                    description="Automatically open settings when transcription fails"
-                  >
-                    <Toggle checked={showPanelOnError} onChange={setShowPanelOnError} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Snap overlay to taskbar"
-                    description="Keep the overlay aligned with the taskbar edge. You can still drag it along the taskbar and onto another monitor."
-                  >
-                    <Toggle
-                      checked={overlaySnapToTaskbar}
-                      onChange={(checked) => {
-                        setOverlaySnapToTaskbar(checked);
-                        window.electronAPI?.setOverlaySnapToTaskbar?.(checked).catch(() => {});
-                      }}
-                    />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Hide overlay"
-                    description={
-                      overlayMode === "snoozed"
-                        ? "The overlay is temporarily hidden from its right-click menu and will come back on its own. Turning this on hides it permanently instead."
-                        : "Completely hide the dictation panel. Dictation still works in the background when you press your hotkey. Useful for gaming or fullscreen apps to prevent lag."
-                    }
-                  >
-                    <Toggle
-                      checked={overlayMode === "off"}
-                      onChange={(checked) => {
-                        const mode = checked ? "off" : "shown";
-                        setOverlayMode(mode);
-                        window.electronAPI?.setOverlayMode?.(mode).catch(() => {});
-                      }}
-                    />
-                  </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
-            {/* Notifications */}
-            <div>
-              <SectionHeader
-                title="Notifications"
-                description="Configure alerts and feedback during dictation"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Audio feedback"
-                    description="Play sounds when starting and stopping recording"
-                  >
-                    <Toggle checked={audioFeedback} onChange={setAudioFeedback} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Error notifications"
-                    description="Show system notifications when transcription fails"
-                  >
-                    <Toggle checked={errorNotifications} onChange={setErrorNotifications} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Success confirmation"
-                    description="Brief notification when transcription completes successfully"
-                  >
-                    <Toggle checked={successConfirmation} onChange={setSuccessConfirmation} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-
-            {/* Privacy & History */}
-            <div className="border-t border-border/30 pt-8">
-              <SectionHeader
-                title="Privacy & History"
-                description="Control what leaves your device and how long transcriptions are kept"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Optional product analytics"
-                    description="Share setup milestones, feature usage, transcription speed, language and model settings, and CPU, GPU, or cloud mode using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
-                  >
-                    <Toggle checked={analyticsEnabled} onChange={handleAnalyticsEnabledChange} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="History limit"
-                    description="Number of transcriptions to keep. Set to 0 to disable history."
-                  >
-                    <HistoryLimitInput value={historyLimit} onChange={setHistoryLimit} />
-                  </SettingsRow>
-                </SettingsPanelRow>
-
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Smart Context"
-                    badge={smartContextUnlocked ? undefined : <BetaBadge locked />}
-                    description={
-                      smartContextUnlocked ? (
-                        "Feed frontmost app name and window title to Whisper for better accuracy. Always local - never sent to cloud."
+                      isAgentModePro ? (
+                        "Unlimited on this license."
                       ) : (
                         <>
-                          Still being built, so it is limited to approved testers for now. Nothing
-                          about your screen is being read. <BetaAccessLink />
+                          Starter includes {agentModeUsage.limit} a day. Resets at midnight.{" "}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void window.electronAPI?.openControlPanel?.({
+                                page: "settings",
+                                settingsTab: "pro",
+                              })
+                            }
+                            className="text-primary underline-offset-2 hover:underline"
+                          >
+                            Unlimited with Pro
+                          </button>
                         </>
                       )
                     }
                   >
-                    <Toggle
-                      checked={smartContextEnabled}
-                      onChange={setSmartContextEnabled}
-                      disabled={!smartContextUnlocked}
-                    />
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
+                        {isAgentModePro
+                          ? "Unlimited"
+                          : `${agentModeUsage.usesToday} of ${agentModeUsage.limit}`}
+                      </span>
+                      {isAgentModePro && <Badge variant="pro">Pro</Badge>}
+                    </div>
                   </SettingsRow>
                 </SettingsPanelRow>
-
-                {smartContextUnlocked && smartContextEnabled && (
-                  <SettingsPanelRow>
-                    <InfoBox variant="muted" className="text-xs leading-relaxed">
-                      <p className="font-medium text-foreground mb-1.5">
-                        What Smart Context reads, and what it protects
-                      </p>
-                      <ul className="space-y-1 text-muted-foreground list-disc pl-4">
-                        <li>
-                          Captures only the <span className="text-foreground">app name</span> and{" "}
-                          <span className="text-foreground">window title</span> of whatever you're
-                          typing into — never your keystrokes or screen contents.
-                        </li>
-                        <li>
-                          Stays <span className="text-foreground">on your device</span>. Nothing
-                          leaves your computer unless you turn on “LLM Context Enhancement” below.
-                        </li>
-                        <li>
-                          Automatically skips{" "}
-                          <span className="text-foreground">
-                            password managers, banking apps, and system login / UAC prompts
-                          </span>{" "}
-                          so sensitive windows are never read.
-                        </li>
-                      </ul>
-                    </InfoBox>
-                  </SettingsPanelRow>
-                )}
-
-                {smartContextUnlocked && smartContextEnabled && (
-                  <SettingsPanelRow>
-                    <SettingsRow
-                      label="Active file context"
-                      description="Reads variable and function names from your active file to improve code dictation accuracy. Local only - file content stays on your device."
-                    >
-                      <Toggle checked={enableFileIdentifiers} onChange={setEnableFileIdentifiers} />
-                    </SettingsRow>
-                  </SettingsPanelRow>
-                )}
-
-                {smartContextUnlocked && useReasoningModel && (
-                  <>
-                    <SettingsPanelRow>
-                      <SettingsRow
-                        label="LLM Context Enhancement"
-                        description={
-                          useReasoningModel && reasoningProvider !== "local"
-                            ? "Also sends context to the AI reasoning step. ⚠️ Context (app name, window title) will be sent to your cloud reasoning provider."
-                            : "Also sends context to the AI reasoning step. Context is processed by your local model only."
-                        }
-                      >
-                        <Toggle
-                          checked={llmContextEnhancement}
-                          onChange={setLlmContextEnhancement}
-                          disabled={!smartContextUnlocked}
-                        />
-                      </SettingsRow>
-                    </SettingsPanelRow>
-
-                    {llmContextEnhancement && (
-                      <SettingsPanelRow>
-                        <SettingsRow
-                          label="Include active file content"
-                          description={
-                            reasoningProvider !== "local"
-                              ? "Adds a truncated excerpt from your active file to the reasoning prompt. ⚠️ File content will be sent to your cloud reasoning provider."
-                              : "Adds a truncated excerpt from your active file to the reasoning prompt. Stays on-device when using a local reasoning model."
-                          }
-                        >
-                          <Toggle
-                            checked={includeFileContentInLlmContext}
-                            onChange={setIncludeFileContentInLlmContext}
-                          />
-                        </SettingsRow>
-                      </SettingsPanelRow>
-                    )}
-                  </>
-                )}
               </SettingsPanel>
-            </div>
-          </div>
-        );
-
-      // ───────────────────────────────────────────────────
-      // TRANSCRIPTION
-      // ───────────────────────────────────────────────────
-      case "transcription":
-        return (
-          <div className="space-y-6">
-            <SectionHeader
-              title="Speech Recognition"
-              description="Choose between cloud-based services for speed or local models for privacy"
-            />
-
-            <TranscriptionModelPicker
-              selectedCloudProvider={cloudTranscriptionProvider}
-              onCloudProviderSelect={(provider) =>
-                updateTranscriptionSettings({ cloudTranscriptionProvider: provider })
-              }
-              selectedCloudModel={cloudTranscriptionModel}
-              onCloudModelSelect={(model) =>
-                updateTranscriptionSettings({ cloudTranscriptionModel: model })
-              }
-              selectedLocalModel={whisperModel}
-              onLocalModelSelect={(modelId) => {
-                updateTranscriptionSettings({ whisperModel: modelId });
-              }}
-              selectedLocalProvider={localTranscriptionProvider}
-              onLocalProviderSelect={(providerId) => {
-                updateTranscriptionSettings({ localTranscriptionProvider: providerId });
-              }}
-              whisperForceCpu={whisperForceCpu}
-              onWhisperForceCpuChange={(forceCpu) =>
-                updateTranscriptionSettings({ whisperForceCpu: forceCpu })
-              }
-              gpuSupported={gpuSupportedForPicker}
-              recommendedLocalModel={recommendedWhisperModelForPicker}
-              preferredLanguage={resolveRatingLanguage(preferredLanguage, spokenLanguages)}
-              useLocalWhisper={useLocalWhisper}
-              onModeChange={(isLocal) => {
-                updateTranscriptionSettings({ useLocalWhisper: isLocal });
-              }}
-              openaiApiKey={openaiApiKey}
-              setOpenaiApiKey={setOpenaiApiKey}
-              groqApiKey={groqApiKey}
-              setGroqApiKey={setGroqApiKey}
-              customTranscriptionApiKey={customTranscriptionApiKey}
-              setCustomTranscriptionApiKey={setCustomTranscriptionApiKey}
-              cloudTranscriptionBaseUrl={cloudTranscriptionBaseUrl}
-              setCloudTranscriptionBaseUrl={setCloudTranscriptionBaseUrl}
-              variant="settings"
-            />
+            </SettingsDisclosure>
 
             {useLocalWhisper && localTranscriptionProvider === "whisper" && (
-              <div className="mt-6">
-                <SectionHeader
-                  title="Local Whisper performance"
-                  description="How much of the CPU local Whisper may use, and when it shuts itself down"
-                />
+              <SettingsDisclosure
+                title="Local performance settings"
+                status={whisperThreads > 0 ? `${whisperThreads} threads` : "Automatic"}
+              >
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
                       label="CPU threads"
                       description={
                         cpuThreadInfo
-                          ? `Auto uses ${cpuThreadInfo.autoThreads} of your ${cpuThreadInfo.logicalCores} threads (${cpuThreadInfo.physicalCores} cores). It holds some back on purpose so the rest of the machine stays responsive while transcribing. Raise it for more speed and less headroom. Leave empty for auto.`
-                          : "How many CPU threads local Whisper may use. Auto holds some back on purpose so the rest of the machine stays responsive while transcribing. Leave empty for auto."
+                          ? `Auto uses ${cpuThreadInfo.autoThreads} of your ${cpuThreadInfo.logicalCores} threads and leaves the rest so your PC stays responsive while it transcribes. Raise it for more speed. Leave empty for auto.`
+                          : "How much of the processor local Whisper may use. Auto leaves some free so your PC stays responsive while it transcribes. Leave empty for auto."
                       }
                     >
                       <div className="flex items-center gap-2">
@@ -3004,7 +3213,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                   <SettingsPanelRow>
                     <SettingsRow
                       label="Idle shutdown (minutes)"
-                      description="Stops the local Whisper server after being idle to free memory. GPU mode may also free VRAM. Set to 0 to keep it running."
+                      description="Switches the local speech engine off after this many quiet minutes to free memory. 0 keeps it running."
                     >
                       <div className="flex items-center gap-2">
                         <Input
@@ -3038,7 +3247,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     </SettingsRow>
                   </SettingsPanelRow>
                 </SettingsPanel>
-              </div>
+              </SettingsDisclosure>
             )}
 
             {/* GPU Status - always visible in Transcription tab for local users */}
@@ -3046,7 +3255,7 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
               <div className="mt-6">
                 <SectionHeader
                   title="Performance"
-                  description="Hardware detection, CUDA setup, and transcription speed benchmarks"
+                  description="What this PC runs on, and how fast it transcribes"
                 />
                 <GpuStatusCard
                   activeProvider={localTranscriptionProvider}
@@ -3064,8 +3273,12 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         return (
           <div className="space-y-6">
             <SectionHeader
-              title="System Permissions"
-              description="Grant access to microphone, accessibility features, and other system capabilities"
+              title={platform === "darwin" ? "Microphone & Accessibility" : "Microphone"}
+              description={
+                platform === "darwin"
+                  ? "Allow access, pick the device, and check that it hears you"
+                  : "Allow access, pick the device you dictate with, and check that it hears you"
+              }
             />
 
             {/* Permission Cards - matching onboarding style */}
@@ -3105,10 +3318,6 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
             {/* Audio input - the other half of "can it hear me", so it lives
                 beside the permission rather than buried in General. */}
             <div>
-              <SectionHeader
-                title="Audio Input"
-                description="Choose which microphone dictation records from, and check that it hears you"
-              />
               <SettingsPanel>
                 <SettingsPanelRow>
                   <MicrophoneSettings
@@ -3159,74 +3368,16 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
         );
 
       // ───────────────────────────────────────────────────
-      // HELP & SUPPORT
-      // ───────────────────────────────────────────────────
-      case "help": {
-        return (
-          <div className="space-y-6">
-            <SectionHeader
-              title="Help & Support"
-              description="Get assistance with PrivateTranscribe and report issues"
-            />
-
-            <SettingsPanel>
-              <SettingsPanelRow>
-                <SettingsRow
-                  label="Contact & Feedback"
-                  description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
-                >
-                  <div className="flex items-center gap-2">
-                    <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard?.writeText("support@privatetranscribe.com");
-                        setEmailCopied(true);
-                        setTimeout(() => setEmailCopied(false), 2000);
-                      }}
-                    >
-                      {emailCopied ? "✓ Copied!" : "Copy Email"}
-                    </Button>
-                  </div>
-                </SettingsRow>
-              </SettingsPanelRow>
-            </SettingsPanel>
-
-            <div>
-              <p className="text-[13px] font-medium text-foreground mb-3">Version Information</p>
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <SettingsRow
-                    label="Current version"
-                    description={
-                      updateStatus.isDevelopment
-                        ? "Running in development mode"
-                        : "Installed version of PrivateTranscribe"
-                    }
-                  >
-                    <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
-                      {currentVersion || "..."}
-                    </span>
-                  </SettingsRow>
-                </SettingsPanelRow>
-              </SettingsPanel>
-            </div>
-          </div>
-        );
-      }
-
-      // ───────────────────────────────────────────────────
       // PRO
       // ───────────────────────────────────────────────────
       case "pro":
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="PrivateTranscribe Pro"
-              description="Unlock advanced features with a one-time license"
+              title="Pro & Beta"
+              description="Manage your Pro license and beta access"
             />
-            <ProSettingsSection />
+            <ProSettingsSection onNavigate={onNavigate} />
           </div>
         );
 

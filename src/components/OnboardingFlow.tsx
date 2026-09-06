@@ -151,12 +151,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const canConfigureAutoStart = platform !== "linux";
   const [isVerifyingHotkey, setIsVerifyingHotkey] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
-  const [micTestState, setMicTestState] = useState<"idle" | "recording" | "success" | "error">(
-    "idle"
-  );
-  const [micTestCountdown, setMicTestCountdown] = useState<number | null>(null);
-  const [micTestLevel, setMicTestLevel] = useState(0);
-  const [micTestError, setMicTestError] = useState<string | null>(null);
   const { toast } = useToast();
   const readableHotkey = formatHotkeyLabel(hotkey);
   const { alertDialog, confirmDialog, showAlertDialog, hideAlertDialog, hideConfirmDialog } =
@@ -165,12 +159,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const autoRegisterInFlightRef = useRef(false);
   const hotkeyStepInitializedRef = useRef(false);
   const hotkeyRegistrationCounterRef = useRef(0);
-  const micTestTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-  const micTestIntervalRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
-  const micTestRafRef = useRef<number | null>(null);
-  const micTestStreamRef = useRef<MediaStream | null>(null);
-  const micTestAudioContextRef = useRef<AudioContext | null>(null);
-  const micTestSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const pendingStatusChecksRef = useRef(0);
 
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
@@ -509,6 +497,15 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     toast,
   ]);
 
+  /** Local Whisper on a CUDA-capable machine that has no usable GPU engine yet. */
+  const gpuEngineWanted =
+    useLocalWhisper &&
+    isModelDownloaded &&
+    !skippedModelSetup &&
+    !whisperForceCpu &&
+    !!cudaStatus?.supported &&
+    !(cudaStatus?.installed && cudaStatus.upToDate);
+
   const nextStep = useCallback(async () => {
     if (currentStep >= steps.length - 1) {
       return;
@@ -567,123 +564,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       setOnboardingError("Something went wrong. Please try again.");
     }
   }, [saveSettings, removeCurrentStep, onComplete, steps.length]);
-
-  const cleanupMicTestResources = useCallback(() => {
-    if (micTestRafRef.current !== null) {
-      window.cancelAnimationFrame(micTestRafRef.current);
-      micTestRafRef.current = null;
-    }
-
-    if (micTestTimeoutRef.current) {
-      window.clearTimeout(micTestTimeoutRef.current);
-      micTestTimeoutRef.current = null;
-    }
-
-    if (micTestIntervalRef.current) {
-      window.clearInterval(micTestIntervalRef.current);
-      micTestIntervalRef.current = null;
-    }
-
-    micTestSourceRef.current?.disconnect();
-    micTestSourceRef.current = null;
-
-    micTestStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micTestStreamRef.current = null;
-
-    const audioContext = micTestAudioContextRef.current;
-    micTestAudioContextRef.current = null;
-    if (audioContext) {
-      void audioContext.close();
-    }
-  }, []);
-
-  const handleMicTest = useCallback(async () => {
-    cleanupMicTestResources();
-    setMicTestError(null);
-    setMicTestLevel(0);
-    setMicTestCountdown(3);
-    setMicTestState("recording");
-
-    try {
-      // Test the microphone dictation will actually open. A plain
-      // `{ audio: true }` test can pass on the system default while dictation
-      // records silence from the device the settings point at.
-      let audioInputs: MediaDeviceInfo[] = [];
-      try {
-        audioInputs = (await navigator.mediaDevices.enumerateDevices()).filter(
-          (device) => device.kind === "audioinput"
-        );
-      } catch {
-        audioInputs = [];
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia(
-        buildMicrophoneConstraints(audioInputs, { preferBuiltInMic, selectedMicDeviceId })
-      );
-      micTestStreamRef.current = stream;
-
-      const AudioContextCtor = window.AudioContext;
-      if (!AudioContextCtor) {
-        throw new Error("AudioContext is not available in this environment.");
-      }
-      const audioContext = new AudioContextCtor();
-      micTestAudioContextRef.current = audioContext;
-
-      const source = audioContext.createMediaStreamSource(stream);
-      micTestSourceRef.current = source;
-
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      const sampleBuffer = new Uint8Array(analyser.fftSize);
-
-      const updateLevel = () => {
-        analyser.getByteTimeDomainData(sampleBuffer);
-        let sum = 0;
-        for (let i = 0; i < sampleBuffer.length; i += 1) {
-          const normalized = (sampleBuffer[i] - 128) / 128;
-          sum += normalized * normalized;
-        }
-        const rms = Math.sqrt(sum / sampleBuffer.length);
-        setMicTestLevel(Math.min(1, Math.max(0.08, rms * 6)));
-        micTestRafRef.current = window.requestAnimationFrame(updateLevel);
-      };
-
-      updateLevel();
-
-      micTestIntervalRef.current = window.setInterval(() => {
-        setMicTestCountdown((previous) => {
-          if (previous === null || previous <= 1) {
-            return 1;
-          }
-          return previous - 1;
-        });
-      }, 1000);
-
-      micTestTimeoutRef.current = window.setTimeout(() => {
-        cleanupMicTestResources();
-        setMicTestLevel(0);
-        setMicTestCountdown(null);
-        setMicTestState("success");
-      }, 3000);
-    } catch (error) {
-      cleanupMicTestResources();
-      setMicTestLevel(0);
-      setMicTestCountdown(null);
-      setMicTestState("error");
-      setMicTestError(
-        error instanceof Error
-          ? error.message
-          : "PrivateTranscribe couldn't access your microphone. Check system permissions and try again."
-      );
-    }
-  }, [cleanupMicTestResources, preferBuiltInMic, selectedMicDeviceId]);
-
-  useEffect(() => {
-    return () => {
-      cleanupMicTestResources();
-    };
-  }, [cleanupMicTestResources]);
 
   useEffect(() => {
     if (!useLocalWhisper) {
@@ -883,25 +763,28 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             {shouldShowCudaDownload && (
               <div className="rounded-lg border border-border-subtle bg-surface-1 overflow-hidden">
                 <div className="p-3 border-b border-border-subtle">
-                  <h3 className="text-sm font-medium text-foreground">GPU Engine</h3>
+                  <h3 className="text-sm font-medium text-foreground">GPU engine</h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Download the GPU engine (faster transcription) to keep acceleration enabled.
+                    {cudaDownloadState === "downloading"
+                      ? "Downloading in the background. Keep going, dictation runs on your CPU until it finishes and then switches to the GPU on its own."
+                      : cudaDownloadState === "error"
+                        ? "The download did not finish. Dictation still works on your CPU. Try again here, or later from Settings."
+                        : "Your graphics card can run Whisper several times faster. Download the engine now, about 750 MB, and keep going while it installs, or stay on your CPU. Dictation works either way."}
                   </p>
                 </div>
 
                 {cudaDownloadState === "downloading" && (
-                  <DownloadProgressBar modelName="GPU Engine" progress={cudaDownloadProgress} />
+                  <DownloadProgressBar modelName="GPU engine" progress={cudaDownloadProgress} />
                 )}
 
                 <div className="p-3 space-y-2">
-                  {cudaDownloadState !== "downloading" && (
+                  {cudaDownloadState === "idle" && (
                     <Button
                       type="button"
-                      variant="outline"
                       className="w-full"
                       onClick={() => void handleDownloadCuda()}
                     >
-                      Download GPU Engine (~750 MB)
+                      Download GPU engine (about 750 MB)
                     </Button>
                   )}
                   {cudaDownloadState === "downloading" && (
@@ -911,11 +794,23 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                       className="w-full"
                       onClick={() => void handleCancelCudaDownload()}
                     >
-                      Cancel Download
+                      Cancel download
                     </Button>
                   )}
-                  {cudaDownloadError && (
-                    <p className="text-xs text-destructive">{cudaDownloadError}</p>
+                  {cudaDownloadState === "error" && (
+                    <>
+                      {cudaDownloadError && (
+                        <p className="text-xs text-destructive">{cudaDownloadError}</p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => void handleDownloadCuda()}
+                      >
+                        Try the download again
+                      </Button>
+                    </>
                   )}
                   <Button
                     type="button"
@@ -923,7 +818,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     onClick={handleSkipCudaAndUseCpu}
                     className="h-8 px-4 text-xs w-full"
                   >
-                    Skip - use your CPU
+                    Use my CPU only
                   </Button>
                 </div>
               </div>
@@ -1174,65 +1069,32 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 </p>
                 {useLocalWhisper && skippedModelSetup && (
                   <p className="text-xs text-muted-foreground">
-                    Local model setup was skipped. You can configure it later in Settings.
+                    Local model setup was skipped. You can configure it later on the Dictation page.
                   </p>
                 )}
-              </div>
-
-              <div className="space-y-3 text-left">
-                <h3 className="text-sm font-medium">Test your microphone</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleMicTest()}
-                  disabled={micTestState === "recording"}
-                  className="h-9 px-4"
-                >
-                  <Mic className="w-4 h-4" />
-                  {micTestState === "recording"
-                    ? `${micTestCountdown ?? 3}...`
-                    : "Test your microphone"}
-                </Button>
-
-                <div className="flex items-center gap-1.5">
-                  {Array.from({ length: 5 }, (_, index) => {
-                    const activeBars = Math.ceil(micTestLevel * 5);
-                    const isActive = index < activeBars;
-                    return (
-                      <div
-                        key={index}
-                        className={`h-2 w-2 rounded transition-colors duration-200 ${
-                          isActive ? "bg-primary" : "bg-muted"
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-
-                {micTestState === "success" && (
-                  <p className="text-sm text-primary font-medium">Microphone working! ✓</p>
+                {gpuEngineWanted && cudaDownloadState === "idle" && (
+                  <p className="text-xs text-muted-foreground">
+                    Your graphics card can make this faster. Download the GPU engine any time under
+                    Settings, General, GPU speed-up.
+                  </p>
                 )}
-
-                {micTestState === "error" && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                    <p className="text-xs text-destructive">
-                      {micTestError ||
-                        "PrivateTranscribe couldn't access your microphone. Check permissions and try again."}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="mt-2 h-7 text-xs"
-                      onClick={() => void handleMicTest()}
-                    >
-                      Retry microphone test
-                    </Button>
-                  </div>
+                {cudaDownloadState === "downloading" && (
+                  <p className="text-xs text-muted-foreground">
+                    GPU engine download at {Math.round(cudaDownloadProgress.percentage)}%. Dictation
+                    runs on your CPU until it finishes, then switches to the GPU on its own.
+                  </p>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  We&apos;ll listen for 3 seconds to confirm your microphone is working.
-                </p>
+                {cudaDownloadState === "done" && (
+                  <p className="text-xs text-primary">
+                    GPU engine installed. Dictation runs on your graphics card.
+                  </p>
+                )}
+                {cudaDownloadState === "error" && (
+                  <p className="text-xs text-muted-foreground">
+                    The GPU engine download did not finish. Dictation runs on your CPU. You can
+                    retry under Settings, General, GPU speed-up.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -1263,13 +1125,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             return false;
           }
 
-          if (!skippedModelSetup && !whisperForceCpu) {
-            if (!cudaStatus) {
-              return false;
-            }
-            if (cudaStatus.supported && (!cudaStatus.installed || !cudaStatus.upToDate)) {
-              return false;
-            }
+          // The GPU engine never blocks the step. When it is missing, Next
+          // starts the download in the background (see nextStep) and dictation
+          // runs on the CPU until it lands. Only wait for the status itself.
+          if (!skippedModelSetup && !whisperForceCpu && !cudaStatus) {
+            return false;
           }
           return true;
         } else {
@@ -1319,12 +1179,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           ? "Checking setup status..."
           : !skippedModelSetup && !isModelDownloaded
             ? "Download a model, or skip for now"
-            : !skippedModelSetup &&
-                !whisperForceCpu &&
-                cudaStatus?.supported &&
-                (!cudaStatus.installed || !cudaStatus.upToDate)
-              ? "Download GPU engine, or switch to CPU mode"
-              : "Select a setup option to continue"
+            : "Select a setup option to continue"
       : null;
 
   return (

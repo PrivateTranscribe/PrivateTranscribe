@@ -120,10 +120,13 @@ test.describe("beta access offline", () => {
     );
     // ...and the real control is present, so the assertion above is not passing
     // because the page failed to render at all.
+    await controlPanel.locator("summary").filter({ hasText: "Voice instructions" }).click();
     await expect(controlPanel.getByTestId("agent-name-input")).toBeVisible();
 
     const probe = await readProbe(controlPanel);
-    expect(probe.rejected, "the offline stub never intercepted a licensing call").toBeGreaterThan(0);
+    expect(probe.rejected, "the offline stub never intercepted a licensing call").toBeGreaterThan(
+      0
+    );
     expect(probe.succeeded, "a licensing round-trip succeeded; this was not an offline run").toBe(
       0
     );
@@ -180,8 +183,12 @@ test.describe("beta access offline", () => {
       )
     ).toBe(false);
 
-    // Same re-render note as above: the badge is read at render time.
+    // Same re-render note as above: the gate is read at render time. Locked
+    // again means the entry is gone and the early access row is back.
     await controlPanel.getByRole("button", { name: "Home", exact: true }).click();
-    await expect(controlPanel.getByRole("button", { name: "AI Enhancement Beta" })).toBeVisible();
+    await expect(controlPanel.getByRole("button", { name: /^AI Enhancement/ })).toHaveCount(0);
+    await expect(
+      controlPanel.getByRole("button", { name: "Beta features", exact: true })
+    ).toBeVisible();
   });
 });

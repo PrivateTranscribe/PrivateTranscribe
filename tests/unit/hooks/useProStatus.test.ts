@@ -19,6 +19,7 @@ import {
   getEffectiveEntitlement,
   getProPreview,
   isFeatureUnlocked,
+  shouldShowProBadge,
 } from "../../../src/hooks/useProStatus";
 
 function installLocalStorage() {
@@ -145,5 +146,73 @@ describe("useProStatus entitlement overrides", () => {
 
     expect(isFeatureUnlocked("ai-enhancement")).toBe(true);
     expect(isFeatureUnlocked("action-engine")).toBe(true);
+  });
+});
+
+describe("Converse is a Pro feature", () => {
+  beforeEach(() => {
+    installLocalStorage();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  function stubLicense({ isPro, betaAccess }: { isPro: boolean; betaAccess: boolean }) {
+    vi.mocked(_verifyToken).mockReturnValue(true);
+    vi.mocked(getProStatus).mockReturnValue({
+      isPro,
+      betaAccess,
+      licenseKey: isPro ? "PAID-PAID-PAID-PAID" : null,
+      expiresAt: null,
+      offlineGrace: false,
+      error: null,
+      _t: Math.floor(Date.now() / 60000) * 7 + 42,
+    });
+  }
+
+  it("unlocks for a regular paid Pro license without tester access", () => {
+    vi.stubEnv("PROD", true);
+    stubLicense({ isPro: true, betaAccess: false });
+
+    expect(isFeatureUnlocked("converse")).toBe(true);
+    expect(shouldShowProBadge("converse")).toBe(false);
+  });
+
+  it("does not widen the tester gate for the other beta workflows", () => {
+    vi.stubEnv("PROD", true);
+    stubLicense({ isPro: true, betaAccess: false });
+
+    expect(isFeatureUnlocked("ai-enhancement")).toBe(false);
+  });
+
+  it("stays locked and badged on a free install", () => {
+    vi.stubEnv("PROD", true);
+    stubLicense({ isPro: false, betaAccess: false });
+
+    expect(getEffectiveEntitlement()).toBe("free");
+    expect(isFeatureUnlocked("converse")).toBe(false);
+    expect(shouldShowProBadge("converse")).toBe(true);
+  });
+
+  it("unlocks for an approved tester", () => {
+    vi.stubEnv("PROD", true);
+    stubLicense({ isPro: true, betaAccess: true });
+
+    expect(isFeatureUnlocked("converse")).toBe(true);
+    expect(shouldShowProBadge("converse")).toBe(false);
+  });
+
+  it("locks under the Starter Pro Preview override", () => {
+    vi.stubEnv("PROD", false);
+    vi.stubEnv("DEV", true);
+    stubLicense({ isPro: true, betaAccess: true });
+
+    localStorage.setItem("privatetranscribe_pro_preview", "free");
+
+    expect(isFeatureUnlocked("converse")).toBe(false);
+    expect(shouldShowProBadge("converse")).toBe(true);
   });
 });

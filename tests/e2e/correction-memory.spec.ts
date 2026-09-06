@@ -206,7 +206,8 @@ async function dictateFixture(app: ElectronApplication, overlay: Page): Promise<
 
 async function openDictionaryPage(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Dictionary", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Correction Memory", exact: true })).toBeVisible();
+  await page.locator("summary").filter({ hasText: "Correction Memory" }).click();
+  await expect(page.locator("summary").filter({ hasText: "Correction Memory" })).toBeVisible();
 }
 
 test.describe("Correction Memory", () => {

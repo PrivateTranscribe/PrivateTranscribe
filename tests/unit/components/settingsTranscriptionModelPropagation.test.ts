@@ -36,7 +36,7 @@ describe("Settings transcription model propagation", () => {
   it("defers expensive diagnostics until their settings sections are visible", () => {
     const contents = readSettingsPage();
 
-    expect(contents).toContain('if (activeSection !== "transcription") return;');
+    expect(contents).toContain('if (activeSection !== "dictation") return;');
     expect(contents).toContain('if (activeSection !== "permissions") return;');
     expect(contents).toContain("checkPasteToolsOnMount: false");
     expect(contents).not.toContain("useWhisper()");

@@ -21,6 +21,7 @@ import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
+import { VOICE_BAR_HEIGHTS, voiceBarScale } from "./utils/voiceBars";
 import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
@@ -142,6 +143,35 @@ const OVERLAY_COLUMN_W = 352;
  * are exactly the button's arc. One rule, the whole family.
  */
 const OVERLAY_RADIUS = 22;
+
+/**
+ * The resting line. When nothing is happening the button is not a 44px disc
+ * on top of whatever the user is reading, it is this: a short dark line with
+ * nothing in it. It grows into the circle, mostly upward, the moment there is
+ * something to show - a hover, a recording, a decode, the menu, or a row
+ * docked above it. The 44px hit box underneath never changes size, so the
+ * anchor the column and the taskbar snap are measured from stays put.
+ */
+const OVERLAY_REST_W = 28;
+const OVERLAY_REST_H = 6;
+
+/**
+ * Where the line rests, measured up from the bottom of the hit box. On the
+ * circle's centre (19) it floated well clear of the taskbar; on the circle's
+ * bottom edge (0) it hugged it. Kristian looked at both on the desktop and
+ * asked for the middle, so the circle grows mostly upward from the line.
+ */
+const OVERLAY_REST_LIFT = 10;
+
+/** Open and close time. Push-to-talk starts before this ends, so it stays short. */
+const OVERLAY_OPEN_MS = 180;
+
+/**
+ * How long the pointer has to rest on the line before it opens. A mouse on
+ * its way to the taskbar crosses the line in a few milliseconds; this keeps
+ * that pass-by from popping the circle open. Closing has no delay.
+ */
+const OVERLAY_HOVER_OPEN_DELAY_MS = 120;
 
 /** Between stacked rows. Small enough to read as one column, not two cards. */
 const OVERLAY_ROW_GAP = 6;
@@ -310,38 +340,29 @@ const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
 /**
  * VoiceBars - voice-reactive bar visualiser rendered inside the recording button.
  *
- * Five bars, heights matching logo proportions, driven by micLevel (0-1). Each bar
- * has a subtle phase offset for a natural "breathing" feel when level is low.
- * Colors are dark (primary-foreground) since the button background is mint.
+ * Five bars, heights matching logo proportions, driven by micLevel (0-1). They
+ * hold the logo shape exactly while nothing is being said, so any movement means
+ * the microphone heard something. Colors are dark (primary-foreground) since the
+ * button background is mint.
  */
 const VoiceBars = ({ micLevel }) => {
-  // Phase offsets so bars don't move in perfect unison at low levels
-  const phases = [0, Math.PI * 0.5, Math.PI * 0.9, Math.PI * 0.4, Math.PI * 0.7];
-  // Resting heights derived from logo proportions (tallest bar = 9px)
-  const restingHeights = [2.8, 5.3, 9.0, 6.6, 4.0];
-  // Center bar grows most; outer bars grow less
-  const growthFactors = [8, 11, 16, 12, 9];
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-
-  // Bar height: resting floor (with subtle breathing) + mic-driven component
-  const barHeights = phases.map((phase, i) => {
-    const breathing = Math.sin((now / 1000) * 1.2 * Math.PI + phase) * 0.8;
-    const driven = micLevel * growthFactors[i];
-    return Math.max(2, restingHeights[i] + breathing + driven);
-  });
-
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2.5, pointerEvents: "none" }}>
-      {barHeights.map((h, i) => (
+      {VOICE_BAR_HEIGHTS.map((laidOutHeight, i) => (
         <div
           key={i}
           style={{
             width: 2,
-            height: h,
+            // Fixed height, driven by transform. See src/utils/voiceBars.js for
+            // why the level must not reach the screen through layout.
+            height: laidOutHeight,
             borderRadius: 2,
             backgroundColor: "var(--color-background)",
+            transform: `scaleY(${voiceBarScale(i, micLevel)})`,
+            transformOrigin: "center",
+            willChange: "transform",
             // Fast transition keeps it responsive; easing keeps it elegant
-            transition: "height 60ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            transition: "transform 60ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
           }}
         />
       ))}
@@ -507,10 +528,17 @@ export default function App() {
     // The pause/skip shortcuts exist only while a read does. This is the one
     // place that knows when that starts and stops, so it is what tells the main
     // process — and only on the edges, never on the poll tick in between.
-    const syncPlaybackKeys = (active) => {
-      if (readAloudKeysActiveRef.current === active) return;
+    const syncPlaybackKeys = (active, force = false) => {
+      if (!force && readAloudKeysActiveRef.current === active) return;
       readAloudKeysActiveRef.current = active;
+      let hotkeys;
+      try {
+        hotkeys = JSON.parse(localStorage.getItem("readAloudPlaybackHotkeys") || "null");
+      } catch {
+        /* Use playback defaults if stored settings cannot be read. */
+      }
       void window.electronAPI?.readAloudSetPlaybackActive?.(active, {
+        hotkeys,
         // Read fresh on every edge rather than captured once: the toggle lives
         // in the control panel's localStorage and the overlay is long-lived, so
         // a value read at mount would be stale for the rest of the session.
@@ -519,23 +547,42 @@ export default function App() {
       });
     };
 
-    // Tell the main process which sentence is on, so the in-place highlight
-    // can follow. Only on a change of sentence or status, never per tick.
+    const syncStoredPlaybackKeys = (event) => {
+      if (event.key === "readAloudPlaybackHotkeys") {
+        syncPlaybackKeys(Boolean(readAloudKeysActiveRef.current), true);
+      }
+    };
+    window.addEventListener("storage", syncStoredPlaybackKeys);
+
+    // Report word boundaries from the audio clock. Geometry is cached in the
+    // main process; unchanged ticks do not send IPC or re-render the capsule.
     const reportSentence = (state) => {
-      const key = `${state.status}:${state.index}`;
+      const key = `${state.status}:${state.index}:${state.currentWord?.start ?? -1}`;
       if (readAloudReportedRef.current === key) return;
       readAloudReportedRef.current = key;
       void window.electronAPI?.readAloudReportSentence?.({
         status: state.status,
         index: state.index,
         sentence: state.currentSentence ?? null,
+        word: state.currentWord ?? null,
       });
     };
 
     const sync = () => {
       const state = player.getState();
       const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
-      setReadAloudState(visible ? state : null);
+      setReadAloudState((previous) => {
+        if (!visible) return null;
+        if (
+          previous?.status === state.status &&
+          previous?.index === state.index &&
+          previous?.currentWord?.start === state.currentWord?.start &&
+          previous?.sentenceCount === state.sentenceCount &&
+          previous?.error === state.error
+        )
+          return previous;
+        return state;
+      });
       reportSentence(state);
       // An errored read has controls to press but nothing to control, so the
       // shortcuts go back to the rest of the machine along with the buttons.
@@ -550,7 +597,7 @@ export default function App() {
     };
     const startPolling = () => {
       sync();
-      if (!pollTimer) pollTimer = setInterval(sync, 250);
+      if (!pollTimer) pollTimer = setInterval(sync, 40);
     };
 
     readAloudRef.current = { player, sync: startPolling };
@@ -630,6 +677,13 @@ export default function App() {
       hotkey: localStorage.getItem("readAloudHotkey") || DEFAULT_READ_ALOUD_HOTKEY,
     });
 
+    // Agent Mode defaults to on, unlike Read Aloud: it needs no model, and
+    // Right Ctrl held on its own does nothing else.
+    void window.electronAPI?.agentModeSyncHotkey?.({
+      enabled: localStorage.getItem("agentModeEnabled") !== "false",
+      hotkey: localStorage.getItem("agentModeHotkey") || "RightControl",
+    });
+
     const teardown = () => {
       stopPolling();
       clearNotice();
@@ -639,6 +693,7 @@ export default function App() {
       if (typeof unsubscribeHighlight === "function") unsubscribeHighlight();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       if (typeof unsubscribeControl === "function") unsubscribeControl();
+      window.removeEventListener("storage", syncStoredPlaybackKeys);
       player.dispose();
     };
 
@@ -900,6 +955,8 @@ export default function App() {
   const {
     isRecording,
     isProcessing,
+    isAgentSession,
+    isRewriting,
     transcript,
     toggleListening,
     cancelRecording,
@@ -1077,7 +1134,7 @@ export default function App() {
           } else {
             closeContextMenu();
           }
-        } else if (isRecording || isProcessing) {
+        } else if (isRecording || isProcessing || isRewriting) {
           // Cancel the active recording/processing rather than hiding the overlay.
           // Hiding while recording would leave the audio pipeline running invisibly.
           if (isRecording) {
@@ -1107,6 +1164,7 @@ export default function App() {
     handlePasteLastTranscript,
     isRecording,
     isProcessing,
+    isRewriting,
     cancelRecording,
     cancelProcessing,
     isDragging,
@@ -1218,30 +1276,67 @@ export default function App() {
 
   const getMicState = () => {
     if (isRecording) return "recording";
-    if (isProcessing) return "processing";
-    if (isHovered && !isRecording && !isProcessing) return "hover";
+    if (isProcessing || isRewriting) return "processing";
+    // A drag counts as a hover. The window follows the mouse a frame or two
+    // behind, so the pointer can leave the button mid-drag and take the hover
+    // with it; the button being carried must not close in the user's hand.
+    if ((isHovered || isDragging) && !isRecording && !isProcessing) return "hover";
     return "idle";
   };
 
   const micState = getMicState();
 
-  // The anchor of the column. It keeps the column's geometry - OVERLAY_RADIUS
-  // resolving to a circle at 44px - but not the rows' near-solid fill: the
-  // button stays the lighter, translucent pill it has always been, so the thing
-  // sitting on the desktop all day does not read as a solid slab.
-  const getMicButtonStyles = () => {
+  // Open whenever there is something to show. Idle with nothing docked above
+  // it, the button rests as the line.
+  const isOverlayOpen =
+    micState !== "idle" ||
+    isCommandMenuOpen ||
+    Boolean(readAloudState) ||
+    Boolean(readAloudNotice) ||
+    Boolean(converseState);
+
+  // The hit box: always 44px, always transparent. Hover, click, drag and the
+  // context menu land on this, so the line is as easy to hit as the circle,
+  // and the geometry everything else is measured from never moves.
+  const getMicButtonStyles = () => ({
+    width: 44,
+    height: 44,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    padding: 0,
+    border: "none",
+    background: "transparent",
+  });
+
+  // The visible shell inside the hit box. It is the anchor of the column and
+  // keeps the column's geometry - OVERLAY_RADIUS resolving to a circle at 44px
+  // and to a pill at the resting 6px - but not the rows' near-solid fill: the
+  // button stays the lighter, translucent surface it has always been, so the
+  // thing sitting on the desktop all day does not read as a solid slab.
+  const getMicShellStyles = () => {
     const base = {
+      position: "absolute",
+      // Anchored to the bottom of the hit box. The circle fills it; the line
+      // rests OVERLAY_REST_LIFT above its bottom edge, so the circle grows
+      // mostly upward from the line into the spot it has always had.
+      bottom: isOverlayOpen ? 0 : OVERLAY_REST_LIFT,
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: isOverlayOpen ? 44 : OVERLAY_REST_W,
+      height: isOverlayOpen ? 44 : OVERLAY_REST_H,
       borderRadius: OVERLAY_RADIUS,
-      width: 44,
-      height: 44,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      position: "relative",
       overflow: "hidden",
-      transition:
-        "background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease, transform 180ms ease",
+      transition: `width ${OVERLAY_OPEN_MS}ms ease-out, height ${OVERLAY_OPEN_MS}ms ease-out, bottom ${OVERLAY_OPEN_MS}ms ease-out, background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease`,
+      // Only a hover waits before opening; everything else, and every close,
+      // happens at once.
+      transitionDelay: micState === "hover" ? `${OVERLAY_HOVER_OPEN_DELAY_MS}ms` : "0ms",
       backdropFilter: "blur(12px)",
+      pointerEvents: "none",
     };
 
     switch (micState) {
@@ -1436,6 +1531,11 @@ export default function App() {
           0%, 100% { opacity: 0.35; }
           50% { opacity: 1; }
         }
+        @media (prefers-reduced-motion: reduce) {
+          .overlay-shell, .overlay-shell > * {
+            transition-duration: 0ms !important;
+          }
+        }
       `}</style>
 
       {/*
@@ -1553,34 +1653,67 @@ export default function App() {
                   micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
               }}
             >
-              {micState === "idle" ? (
-                <VoiceWaveIndicator isListening={false} />
-              ) : micState === "hover" ? (
-                <VoiceWaveIndicator isListening={false} />
-              ) : micState === "recording" ? (
-                <VoiceBars micLevel={micLevel} />
-              ) : micState === "processing" ? (
-                <VoiceWaveIndicator isListening={true} />
-              ) : null}
-
-              {micState === "recording" && (
+              <div className="overlay-shell" style={getMicShellStyles()}>
+                {/* The bars fade as the shell closes, so the line is empty, not a clipped logo. */}
                 <div
-                  className="absolute inset-0 rounded-full"
                   style={{
-                    border: `1.5px solid rgba(112,255,186,${0.25 + micLevel * 0.4})`,
-                    // Subtle scale-pulse at baseline; micLevel adds static lift on top
-                    animation: "ring-pulse 2.4s ease-in-out infinite",
-                    // Translate ring-pulse scale relative to current halo scale
-                    transformOrigin: "center",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: isOverlayOpen ? 1 : 0,
+                    transition: `opacity ${OVERLAY_OPEN_MS}ms ease-out`,
+                    transitionDelay:
+                      micState === "hover" ? `${OVERLAY_HOVER_OPEN_DELAY_MS}ms` : "0ms",
                   }}
-                />
-              )}
+                >
+                  {micState === "idle" ? (
+                    <VoiceWaveIndicator isListening={false} />
+                  ) : micState === "hover" ? (
+                    <VoiceWaveIndicator isListening={false} />
+                  ) : micState === "recording" ? (
+                    <VoiceBars micLevel={micLevel} />
+                  ) : micState === "processing" ? (
+                    <VoiceWaveIndicator isListening={true} />
+                  ) : null}
+                </div>
 
-              {micState === "processing" && (
-                <div className="absolute inset-0 rounded-full border border-primary/15" />
-              )}
+                {micState === "recording" && (
+                  <div
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      border: `1.5px solid rgba(112,255,186,${0.25 + micLevel * 0.4})`,
+                      // Subtle scale-pulse at baseline; micLevel adds static lift on top
+                      animation: "ring-pulse 2.4s ease-in-out infinite",
+                      // Translate ring-pulse scale relative to current halo scale
+                      transformOrigin: "center",
+                    }}
+                  />
+                )}
+
+                {micState === "processing" && (
+                  <div className="absolute inset-0 rounded-full border border-primary/15" />
+                )}
+              </div>
             </button>
           </div>
+
+          {/* Agent Mode badge - shown only while an Agent Mode session is live */}
+          {/* The session flag is already cleared when the rewrite runs (the
+              completion callback clears it first), so the rewrite shows on its
+              own flag rather than on the session. */}
+          {((isAgentSession && (isRecording || isProcessing)) || isRewriting) && (
+            <div
+              className={`px-2 py-1 text-[10px] font-medium text-white/55 whitespace-nowrap ${OVERLAY_SURFACE_CLASS}`}
+              style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
+              title={
+                isRewriting
+                  ? "Your words are going through your Claude Code login"
+                  : "Dictating a prompt for your coding agent"
+              }
+            >
+              {isRewriting ? "Rewriting with Claude Code" : "Agent Mode"}
+            </div>
+          )}
 
           {/* Active dictation mode badge - shown when an Action Engine mode override is in effect */}
           {activeDictationMode && !isRecording && !isProcessing && (
@@ -1909,9 +2042,7 @@ export default function App() {
                   icon={Settings}
                   label="More languages in settings"
                   trailing="chevron"
-                  onClick={() =>
-                    void openControlPanel({ page: "settings", settingsTab: "preferences" })
-                  }
+                  onClick={() => void openControlPanel({ page: "dictation" })}
                 />
               </>
             )}

@@ -29,7 +29,7 @@ describe("Pro branding", () => {
     expect(source).not.toMatch(/\b(bg|text|border)-green-\d{3}\b/);
   });
 
-  it("keeps page and sidebar Pro badges purple", () => {
+  it("distinguishes locked Beta badges from purple Pro badges", () => {
     // VoiceAssistantPage was merged into AIEnhancementPage, so the badge it
     // used to carry is now the one on the merged page.
     const files = [
@@ -43,13 +43,10 @@ describe("Pro branding", () => {
     for (const file of files) {
       expect(readSource(file), file).toContain("<BetaBadge locked");
     }
-    expect(readSource("src/components/ui/BetaBadge.tsx")).toContain('variant={locked ? "pro"');
+    expect(readSource("src/components/ui/BetaBadge.tsx")).toContain('variant={locked ? "warning"');
 
-    // The sidebar renders its badges through the shared Badge component rather
-    // than an inline-styled span, and routes the pro variant to the pro token.
-    const sidebar = readSource("src/components/AppSidebar.tsx");
-    expect(sidebar).toContain('from "./ui/badge"');
-    expect(sidebar).toMatch(/badgeVariant === "pro"\s*\?\s*"pro"/);
+    // The sidebar no longer badges anything: locked features are not listed
+    // there at all, so the pro token only has to exist in the shared badge.
     expect(readSource("src/components/ui/badge.tsx")).toContain("bg-pro/15");
   });
 

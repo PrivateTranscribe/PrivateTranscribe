@@ -1,4 +1,4 @@
-import { Check, Loader2, Play, Square } from "lucide-react";
+import { Check, ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./button";
 import { cn } from "../lib/utils";
@@ -165,9 +165,18 @@ export type VoicePickerProps = {
   /** Prefixes every data-testid: "readaloud", "converse". */
   testIdPrefix: string;
   ariaLabel: string;
+  /** Show the current voice first, with the audition list available on demand. */
+  collapsible?: boolean;
 };
 
-export function VoicePicker({ value, onChange, testIdPrefix, ariaLabel }: VoicePickerProps) {
+export function VoicePicker({
+  value,
+  onChange,
+  testIdPrefix,
+  ariaLabel,
+  collapsible = false,
+}: VoicePickerProps) {
+  const [expanded, setExpanded] = useState(!collapsible);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -204,7 +213,7 @@ export function VoicePicker({ value, onChange, testIdPrefix, ariaLabel }: VoiceP
       0,
       list.scrollTop + delta - (list.clientHeight - row.offsetHeight) / 2
     );
-  }, [selected.id]);
+  }, [selected.id, expanded]);
 
   const stopPlayback = useCallback(() => {
     const source = sourceRef.current;
@@ -332,51 +341,89 @@ export function VoicePicker({ value, onChange, testIdPrefix, ariaLabel }: VoiceP
 
   return (
     <div data-testid={`${testIdPrefix}-voice-picker`}>
-      <div className="flex items-baseline gap-2">
-        <p className="text-sm font-medium text-foreground">Voice</p>
-        <span className="text-muted-foreground/60" aria-hidden>
-          ·
-        </span>
-        <span data-testid={`${testIdPrefix}-voice-current`} className="text-sm text-foreground">
-          {selected.name}
-        </span>
-      </div>
-      {/* Said on both pages, because the value is the same on both pages: a
+      {collapsible ? (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">Voice</p>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              <span data-testid={`${testIdPrefix}-voice-current`} className="text-foreground">
+                {selected.name}
+              </span>
+              {` · ${selected.accent} · ${testIdPrefix === "converse" ? "Also used in Read Aloud" : "Also used in Converse"}`}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={expanded}
+            aria-controls={`${testIdPrefix}-voice-options`}
+            onClick={() => {
+              if (expanded) {
+                generationRef.current += 1;
+                stopPlayback();
+                setPreviewingId(null);
+                setPreviewStatus("idle");
+              }
+              scrolledToSelection.current = false;
+              setExpanded(!expanded);
+            }}
+          >
+            {expanded ? "Done" : "Change voice"}
+            <ChevronDown size={14} className={expanded ? "rotate-180" : ""} aria-hidden />
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-2">
+            <p className="text-sm font-medium text-foreground">Voice</p>
+            <span className="text-muted-foreground/60" aria-hidden>
+              ·
+            </span>
+            <span data-testid={`${testIdPrefix}-voice-current`} className="text-sm text-foreground">
+              {selected.name}
+            </span>
+          </div>
+          {/* Said on both pages, because the value is the same on both pages: a
           picker that looked local would make changing it here feel safe. */}
-      <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
-        Everything PrivateTranscribe speaks — the Read Aloud hotkey and Claude Code&apos;s replies
-        in Converse — uses {describeVoice(selected)}. Previews are synthesized on this machine, so
-        the first one for each voice takes a moment.
-      </p>
+          <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
+            Everything PrivateTranscribe speaks — the Read Aloud hotkey and Claude Code&apos;s
+            replies in Converse — uses {describeVoice(selected)}. Previews are synthesized on this
+            machine, so the first one for each voice takes a moment.
+          </p>
+        </>
+      )}
 
-      <div
-        ref={listRef}
-        role="radiogroup"
-        aria-label={ariaLabel}
-        data-testid={`${testIdPrefix}-voice-list`}
-        className="mt-3 max-h-[17.5rem] overflow-y-auto rounded-lg border border-border-subtle bg-surface-1 divide-y divide-border-subtle/50"
-      >
-        {/* Flat children rather than a wrapper per accent: the headings can only
+      {expanded && (
+        <div
+          id={`${testIdPrefix}-voice-options`}
+          ref={listRef}
+          role="radiogroup"
+          aria-label={ariaLabel}
+          data-testid={`${testIdPrefix}-voice-list`}
+          className="mt-3 max-h-[17.5rem] overflow-y-auto rounded-lg border border-border-subtle bg-surface-1 divide-y divide-border-subtle/50"
+        >
+          {/* Flat children rather than a wrapper per accent: the headings can only
             stick to the scroller if the scroller is their offset parent, and the
             rows have to stay direct children for the same measurement to work. */}
-        {KOKORO_ACCENTS.map((accent) => {
-          const voices = SORTED_KOKORO_VOICES.filter((voice) => voice.accent === accent);
-          return [
-            <AccentHeading key={`heading-${accent}`} accent={accent} count={voices.length} />,
-            ...voices.map((voice) => (
-              <VoiceRow
-                key={voice.id}
-                voice={voice}
-                selected={voice.id === selected.id}
-                previewStatus={previewingId === voice.id ? previewStatus : "idle"}
-                testIdPrefix={testIdPrefix}
-                onSelect={onChange}
-                onPreview={(v) => void playPreview(v)}
-              />
-            )),
-          ];
-        })}
-      </div>
+          {KOKORO_ACCENTS.map((accent) => {
+            const voices = SORTED_KOKORO_VOICES.filter((voice) => voice.accent === accent);
+            return [
+              <AccentHeading key={`heading-${accent}`} accent={accent} count={voices.length} />,
+              ...voices.map((voice) => (
+                <VoiceRow
+                  key={voice.id}
+                  voice={voice}
+                  selected={voice.id === selected.id}
+                  previewStatus={previewingId === voice.id ? previewStatus : "idle"}
+                  testIdPrefix={testIdPrefix}
+                  onSelect={onChange}
+                  onPreview={(v) => void playPreview(v)}
+                />
+              )),
+            ];
+          })}
+        </div>
+      )}
 
       {previewError && (
         <p

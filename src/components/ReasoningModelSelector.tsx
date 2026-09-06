@@ -1,3 +1,4 @@
+import { Toggle } from "./ui/toggle";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -494,23 +495,12 @@ export default function ReasoningModelSelector({
     <div className="space-y-6">
       <div className="flex items-center justify-between p-4 bg-card border border-border rounded-xl">
         <div>
-          <label className="text-sm font-medium text-foreground">Enable AI Text Enhancement</label>
+          <label className="text-sm font-medium text-foreground">AI enhancement</label>
           <p className="text-xs text-muted-foreground">
-            Use AI to automatically improve transcription quality
+            Clean up each transcription before it is pasted.
           </p>
         </div>
-        <button
-          onClick={() => setUseReasoningModel(!useReasoningModel)}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
-            useReasoningModel ? "bg-primary" : "bg-muted-foreground/25"
-          }`}
-        >
-          <span
-            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 ${
-              useReasoningModel ? "translate-x-4.5" : "translate-x-0.75"
-            }`}
-          />
-        </button>
+        <Toggle checked={useReasoningModel} onChange={setUseReasoningModel} />
       </div>
 
       {useReasoningModel && (
@@ -525,8 +515,8 @@ export default function ReasoningModelSelector({
             />
             <p className="text-xs text-muted-foreground text-center">
               {selectedMode === "local"
-                ? "Runs on your device. Complete privacy, works offline."
-                : "Advanced models via API. Fast and capable, requires internet."}
+                ? "Runs on this PC and works offline."
+                : "Sends transcription text to the selected provider."}
             </p>
           </div>
 

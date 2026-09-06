@@ -17,6 +17,12 @@ function revealSettingsRow(label: string) {
     const row = document.querySelector<HTMLElement>(`[data-settings-label="${escaped}"]`);
     if (!row) return;
 
+    // Search must reveal settings inside collapsed optional sections too.
+    let disclosure = row.closest("details");
+    while (disclosure) {
+      disclosure.open = true;
+      disclosure = disclosure.parentElement?.closest("details") ?? null;
+    }
     row.scrollIntoView({ block: "center", behavior: "smooth" });
     // A short ring, not a pulse: it answers "which one" and then gets out of
     // the way, which is the only job motion has in a dense settings screen.
@@ -32,11 +38,8 @@ type SettingsTab = {
 
 const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
-  { id: "preferences", label: "Preferences" },
-  { id: "transcription", label: "Transcription" },
   { id: "permissions", label: "Microphone & Permissions" },
-  { id: "pro", label: "PrivateTranscribe Pro" },
-  { id: "help", label: "Help & Support" },
+  { id: "pro", label: "Pro & Beta" },
   { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },
 ];
 
@@ -80,15 +83,7 @@ export default function SettingsPageWrapper({
       return;
     }
 
-    const validSections: SettingsSectionType[] = [
-      "general",
-      "preferences",
-      "transcription",
-      "permissions",
-      "pro",
-      "help",
-      "developer",
-    ];
+    const validSections: SettingsSectionType[] = ["general", "permissions", "pro", "developer"];
 
     if (validSections.includes(requestedSection as SettingsSectionType)) {
       setActiveTab(requestedSection as SettingsSectionType);
@@ -105,9 +100,7 @@ export default function SettingsPageWrapper({
           <Settings size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Settings</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Configure transcription, hotkeys, permissions, and advanced options
-        </p>
+        <p className="text-sm text-muted-foreground">Make dictation work your way.</p>
       </div>
 
       {/* Search sits above the tabs because it crosses them - and crosses out
@@ -140,16 +133,6 @@ export default function SettingsPageWrapper({
                   marginBottom: "-1px",
                   fontFamily: "inherit",
                 }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.color = "var(--color-foreground-subtle)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.color = "var(--color-muted-foreground)";
-                  }
-                }}
               >
                 {tab.label}
               </button>
@@ -159,7 +142,7 @@ export default function SettingsPageWrapper({
       </div>
 
       {/* Settings content */}
-      <SettingsPage activeSection={activeTab} />
+      <SettingsPage activeSection={activeTab} onNavigate={onNavigate} />
     </div>
   );
 }

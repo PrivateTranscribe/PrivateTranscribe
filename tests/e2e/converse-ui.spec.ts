@@ -9,7 +9,7 @@ import type { Page } from "@playwright/test";
  * Ledger gate `converse-ui`: the Converse page and the overlay's conversation
  * state exist, are beta gated, and survive a blind design review.
  *
- * Every state the UI can be in gets a screenshot in docs/goal-evidence/,
+ * Every state the UI can be in gets a screenshot in test-results/e2e/,
  * because a critic reads them afterwards and a state with no picture is a state
  * nobody judged: locked, no project chosen, a project chosen but not started,
  * and then the live session in idle / thinking / speaking / after-interrupt,
@@ -25,7 +25,7 @@ import type { Page } from "@playwright/test";
  * the splitter, the queue player, the state machine — is the real one.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = path.resolve("test-results/e2e");
 const STUB_PATH = path.join(__dirname, "fixtures", "claude-stub.cjs");
 
 /** A screenshot that is present but blank would pass a bare existence check. */
@@ -133,13 +133,22 @@ async function expectStatusMatchesSession(controlPanel: Page, expected: string) 
 }
 
 test.describe("converse ui", () => {
-  test("shows the locked beta state with a way out", async ({ controlPanel }) => {
-    await openConversePage(controlPanel);
+  test("shows the locked Pro state with the way to buy", async ({ controlPanel }) => {
+    await controlPanel.evaluate(() => {
+      localStorage.setItem("PRO_ENFORCEMENT", "true");
+    });
+    await controlPanel.reload({ waitUntil: "domcontentloaded" });
 
-    await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
+    // The sidebar entry carries the Pro badge while it is locked, so it cannot
+    // go through openConversePage's tester-state name.
+    await controlPanel.getByRole("button", { name: /^Converse( Pro)?$/ }).click();
+    await expect(controlPanel.getByRole("heading", { name: "Converse" })).toBeVisible();
+
+    await expect(controlPanel.getByText("Pro", { exact: true }).first()).toBeVisible();
     await expect(
-      controlPanel.getByRole("button", { name: /Apply for early access/ })
+      controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" })
     ).toBeVisible();
+    await expect(controlPanel.getByText("Apply for beta access")).toHaveCount(0);
 
     // Locked means locked: no folder picker and no session controls are
     // reachable from here.
@@ -149,6 +158,14 @@ test.describe("converse ui", () => {
     await expect(controlPanel.getByRole("button", { name: "Start session" })).toHaveCount(0);
 
     await captureEvidence(controlPanel, "converse-page-locked.png");
+
+    await controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" }).click();
+    await expect(controlPanel.getByRole("heading", { name: "Converse" })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      controlPanel.getByText("PrivateTranscribe Pro", { exact: false }).first()
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("explains itself before a folder is chosen", async ({ controlPanel }) => {
@@ -159,7 +176,7 @@ test.describe("converse ui", () => {
       controlPanel.getByRole("button", { name: /Choose a project folder/ })
     ).toBeVisible();
     await expect(
-      controlPanel.getByText(/Claude Code runs inside the folder you choose/)
+      controlPanel.getByText("Choose the project Claude Code should work on.", { exact: true })
     ).toBeVisible();
 
     // Nothing has been chosen yet, so there is nothing to remember.
@@ -217,7 +234,17 @@ test.describe("converse ui", () => {
       // ---------------------------------------------------- project chosen
       await controlPanel.getByTestId("converse-recent-project").first().click();
       await expect(controlPanel.getByTestId("converse-project-path")).toHaveText(projectDir);
-      await expect(controlPanel.getByText(/Headphones recommended/)).toBeVisible();
+
+      const voiceOptions = controlPanel.locator("summary").filter({ hasText: "Voice options" });
+      await expect(voiceOptions).toBeVisible();
+      await expect(
+        controlPanel.locator('[data-settings-label="Mute microphone during replies"]')
+      ).toBeHidden();
+      await voiceOptions.click();
+      await expect(
+        controlPanel.locator('[data-settings-label="Mute microphone during replies"]')
+      ).toBeVisible();
+      await expect(controlPanel.getByText(/Use headphones so replies/)).toHaveCount(0);
 
       // Mute-while-speaking ships on, and the stored preference has to say so.
       expect(

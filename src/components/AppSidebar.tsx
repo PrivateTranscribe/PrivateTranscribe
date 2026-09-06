@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Clock,
   Upload,
+  Mic,
   BookOpen,
   Brain,
   MessageSquare,
@@ -10,17 +11,19 @@ import {
   AudioLines,
   Zap,
   Settings,
+  FlaskConical,
 } from "lucide-react";
-import { shouldShowProBadge } from "../hooks/useProStatus";
+import { hasTesterAccess, isFeatureUnlocked, shouldShowProBadge } from "../hooks/useProStatus";
+import { Badge } from "./ui/badge";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import FeedbackDialog from "./FeedbackDialog";
-import { Badge } from "./ui/badge";
 
 export type PageId =
   | "home"
   | "history"
   | "transcribe"
+  | "dictation"
   | "dictionary"
   | "read-aloud"
   | "ai-enhancement"
@@ -33,8 +36,12 @@ interface NavItem {
   id: PageId;
   label: string;
   icon: typeof LayoutDashboard;
-  badge?: string;
-  badgeVariant?: "new" | "soon" | "pro";
+  /**
+   * Sold rather than hidden: the item stays in the sidebar when it is locked
+   * and carries a Pro badge, because its page is the locked state that says
+   * what Pro buys. Tester-only items are filtered out instead.
+   */
+  proGated?: boolean;
 }
 
 interface NavGroup {
@@ -42,6 +49,12 @@ interface NavGroup {
   items: NavItem[];
 }
 
+/**
+ * Every feature the app has. Entries whose feature is still tester-only are
+ * filtered out at render time for everyone without tester access, so a new
+ * install sees only what it can open. The "Early access features" row below
+ * the groups is the one door to the rest.
+ */
 const navGroups: NavGroup[] = [
   {
     items: [
@@ -53,46 +66,21 @@ const navGroups: NavGroup[] = [
   {
     label: "SPEECH",
     items: [
+      { id: "dictation", label: "Dictation", icon: Mic },
       { id: "dictionary", label: "Dictionary", icon: BookOpen },
-      {
-        id: "read-aloud",
-        label: "Read Aloud",
-        icon: AudioLines,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
+      { id: "read-aloud", label: "Read Aloud", icon: AudioLines },
     ],
   },
   {
     label: "INTELLIGENCE",
     items: [
-      {
-        id: "ai-enhancement",
-        label: "AI Enhancement",
-        icon: Brain,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
-      {
-        id: "converse",
-        label: "Converse",
-        icon: MessagesSquare,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
+      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
+      { id: "converse", label: "Converse", icon: MessagesSquare, proGated: true },
     ],
   },
   {
     label: "ADVANCED",
-    items: [
-      {
-        id: "action-engine",
-        label: "Action Engine",
-        icon: Zap,
-        badge: "Beta",
-        badgeVariant: "pro",
-      },
-    ],
+    items: [{ id: "action-engine", label: "Action Engine", icon: Zap }],
   },
 ];
 
@@ -105,14 +93,22 @@ interface AppSidebarProps {
    * instead of competing with the brand in the title bar.
    */
   updateSlot?: React.ReactNode;
+  /** Opens the Pro tab, where the tester-only features are listed. */
+  onOpenEarlyAccess?: () => void;
 }
 
-export default function AppSidebar({ activePage, onPageChange, updateSlot }: AppSidebarProps) {
+export default function AppSidebar({
+  activePage,
+  onPageChange,
+  updateSlot,
+  onOpenEarlyAccess,
+}: AppSidebarProps) {
   const [hotkey] = useLocalStorage("dictationKey", "", {
     serialize: String,
     deserialize: String,
   });
   const [currentVersion, setCurrentVersion] = useState("");
+  const [buildLabel, setBuildLabel] = useState("");
   // Re-render when the Pro preview toggle changes so badges update immediately.
   const [, forceUpdate] = useState(0);
   useEffect(() => {
@@ -125,11 +121,30 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
     const getVersion = async () => {
       try {
         const result = await window.electronAPI?.getAppVersion?.();
-        if (result && result.version) setCurrentVersion(result.version);
+        if (result && result.version) {
+          setCurrentVersion(result.version);
+          setBuildLabel(
+            result.buildType === "development"
+              ? "Development build"
+              : result.buildType === "unpacked"
+                ? "Unpacked build"
+                : result.buildType === "installed"
+                  ? "Installed build"
+                  : ""
+          );
+        }
       } catch {}
     };
     getVersion();
   }, []);
+
+  const testerAccess = hasTesterAccess();
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.proGated || isFeatureUnlocked(item.id)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <div
@@ -149,8 +164,8 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
 
       {/* Navigation */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
-        {navGroups.map((group, gi) => (
-          <div key={gi} style={{ marginBottom: gi < navGroups.length - 1 ? "6px" : 0 }}>
+        {visibleGroups.map((group, gi) => (
+          <div key={gi} style={{ marginBottom: gi < visibleGroups.length - 1 ? "6px" : 0 }}>
             {group.label && (
               <p
                 style={{
@@ -216,18 +231,9 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
                     }}
                   />
                   <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.badge && (item.badgeVariant !== "pro" || shouldShowProBadge(item.id)) && (
-                    <Badge
-                      variant={
-                        item.badgeVariant === "new"
-                          ? "default"
-                          : item.badgeVariant === "pro"
-                            ? "pro"
-                            : "outline"
-                      }
-                      className="rounded px-1.5 py-px text-[9px] font-semibold tracking-[0.02em]"
-                    >
-                      {item.badge}
+                  {item.proGated && shouldShowProBadge(item.id) && (
+                    <Badge variant="pro" className="px-1.5 py-px text-[9px] font-semibold">
+                      Pro
                     </Badge>
                   )}
                 </button>
@@ -235,6 +241,43 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
             })}
           </div>
         ))}
+
+        {/* The one door to the tester-only features, for people who cannot open them yet */}
+        {!testerAccess && (
+          <button
+            type="button"
+            onClick={() => onOpenEarlyAccess?.()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              width: "100%",
+              padding: "8px 12px",
+              marginTop: "6px",
+              backgroundColor: "transparent",
+              color: "var(--color-foreground-faint)",
+              border: "none",
+              borderRadius: "8px",
+              borderLeft: "2px solid transparent",
+              cursor: "pointer",
+              fontSize: "12px",
+              textAlign: "left",
+              transition: "all 0.15s ease",
+              fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--color-popover)";
+              e.currentTarget.style.color = "var(--color-foreground-subtle)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = "var(--color-foreground-faint)";
+            }}
+          >
+            <FlaskConical size={15} style={{ opacity: 0.6, flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>Beta features</span>
+          </button>
+        )}
 
         {/* Divider */}
         <div
@@ -359,7 +402,7 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
           }
         />
 
-        {/* Version / early access marker */}
+        {/* Version and runtime build, separate from feature access. */}
         {currentVersion && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <p
@@ -374,17 +417,10 @@ export default function AppSidebar({ activePage, onPageChange, updateSlot }: App
             <span
               style={{
                 fontSize: "9px",
-                color: "var(--color-primary)",
-                backgroundColor: "rgba(112,255,186,0.08)",
-                border: "1px solid rgba(112,255,186,0.16)",
-                borderRadius: "999px",
-                padding: "2px 6px",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                fontWeight: 700,
+                color: "var(--color-muted-foreground)",
               }}
             >
-              Early access
+              {buildLabel}
             </span>
           </div>
         )}

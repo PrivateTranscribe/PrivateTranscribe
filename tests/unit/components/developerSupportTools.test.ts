@@ -38,7 +38,7 @@ describe("Settings support and diagnostics tools", () => {
       "utf8"
     );
 
-    expect(appSidebar).toContain("Early access");
+    expect(appSidebar).toContain("buildLabel");
     expect(appSidebar).toContain("Send Feedback");
     expect(appSidebar).toContain("FeedbackDialog");
   });

@@ -21,6 +21,9 @@
 #   -> rects                     re-read the last hit's rectangles (the user may
 #                                have scrolled)
 #   <- RECTS ... | NONE ...
+#   -> locate <base64 json>      {index,sentence,start,end}; cache source word ranges
+#   <- WORDS <json array>        [{start,rects:[{x,y,w,h},...]}]; also returned by
+#                                rects so word changes paint without a UIA wait
 #   -> clear                     forget the anchor
 #   <- OK
 #   -> ping / <- PONG            prices the line protocol
@@ -32,6 +35,9 @@ Add-Type -AssemblyName UIAutomationTypes
 
 $script:range = $null
 $script:last = $null
+$script:lastSentence = $null
+$script:sentences = @{}
+$script:wordRanges = $null
 $script:windowName = ""
 
 function Get-Anchor {
@@ -69,6 +75,9 @@ function Get-Anchor {
           if ($text.Trim().Length -gt 0) {
             $script:range = $sel[0].Clone()
             $script:last = $null
+            $script:lastSentence = $null
+            $script:sentences = @{}
+            $script:wordRanges = $null
             $script:windowName = $root.Current.Name
             return $text.Length
           }
@@ -90,6 +99,50 @@ function Rects-Json($r) {
   return '[' + ($out -join ',') + ']'
 }
 
+function Get-SourceWords([string]$text) {
+  # Clipboard list markers can be absent from UIA, or exposed as a different
+  # glyph. Mask them rather than deleting them: playback uses copied offsets.
+  $markers = '(?m)^[\t ]*(?:[-+*]|[\u2022\u25E6\u25AA\u2023\u2043]|\d{1,4}[.)])[\t ]+'
+  $masked = [regex]::Replace($text, $markers, { param($m) ' ' * $m.Length })
+  return [regex]::Matches($masked, '\S+')
+}
+
+function Find-WordSequence($scope, $words) {
+  if ($words.Count -eq 0) { return $null }
+  $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
+  $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
+  $search = $scope.Clone()
+  # Retry repeated first words, but bound calls into another app's UIA provider.
+  for ($attempt = 0; $attempt -lt 64; $attempt++) {
+    $first = $search.FindText($words[0].Value, $false, $true)
+    if (-not $first) { return $null }
+    $rest = $scope.Clone()
+    $rest.MoveEndpointByRange($start, $first, $end)
+    $last = $first
+    $matched = $true
+    for ($i = 1; $i -lt $words.Count; $i++) {
+      $next = $rest.FindText($words[$i].Value, $false, $true)
+      if (-not $next) { $matched = $false; break }
+      $gap = $rest.Clone()
+      $gap.MoveEndpointByRange($end, $next, $start)
+      # Only whitespace and list markers may separate consecutive words.
+      # Never span unrelated text just because the first/last words occur.
+      if (@(Get-SourceWords $gap.GetText(-1)).Count -gt 0) {
+        $matched = $false; break
+      }
+      $last = $next
+      $rest.MoveEndpointByRange($start, $next, $end)
+    }
+    if ($matched) {
+      $span = $first.Clone()
+      $span.MoveEndpointByRange($end, $last, $end)
+      return $span
+    }
+    $search.MoveEndpointByRange($start, $first, $end)
+  }
+  return $null
+}
+
 function Find-Sentence($text) {
   if (-not $script:range) { throw "not anchored" }
   $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
@@ -98,37 +151,59 @@ function Find-Sentence($text) {
   # Forward from the last hit first, so "Yes. Yes. Yes." resolves in order;
   # then the whole selection, which is where a skip backwards lands.
   $scopes = @()
-  if ($script:last) {
+  if ($script:lastSentence) {
     $after = $script:range.Clone()
-    $after.MoveEndpointByRange($start, $script:last, $end)
+    $after.MoveEndpointByRange($start, $script:lastSentence, $end)
     $scopes += $after
   }
   $scopes += $script:range
 
+  $words = @(Get-SourceWords $text)
   foreach ($scope in $scopes) {
     $hit = $scope.FindText($text, $false, $true)
     if ($hit) { return $hit }
-  }
-
-  # The copied text and the on-screen text can differ in whitespace (a hard
-  # line break inside a sentence, a wrapped heading). Pin the sentence by its
-  # first and last words instead and span the two.
-  $words = $text -split '\s+' | Where-Object { $_.Length -gt 0 }
-  if ($words.Count -lt 3) { return $null }
-  $head = ($words[0..([math]::Min(3, $words.Count - 1))]) -join ' '
-  $tail = ($words[([math]::Max(0, $words.Count - 4))..($words.Count - 1)]) -join ' '
-  foreach ($scope in $scopes) {
-    $h1 = $scope.FindText($head, $false, $true)
-    if (-not $h1) { continue }
-    $rest = $scope.Clone()
-    $rest.MoveEndpointByRange($start, $h1, $end)
-    $h2 = $rest.FindText($tail, $false, $true)
-    if (-not $h2) { continue }
-    $span = $h1.Clone()
-    $span.MoveEndpointByRange($end, $h2, $end)
-    return $span
+    $hit = Find-WordSequence $scope $words
+    if ($hit) { return $hit }
   }
   return $null
+}
+
+# Cache each sentence and its word ranges. Source character offsets identify
+# repeated words unambiguously; UIA FindText tolerates different line endings.
+function Locate-Word($payload) {
+  $script:wordRanges = $null
+  $key = [string]$payload.index
+  $cached = $script:sentences[$key]
+  if (-not $cached -or $cached.text -ne $payload.sentence) {
+    $hit = Find-Sentence $payload.sentence
+    if (-not $hit) { return $null }
+    $script:lastSentence = $hit
+    $words = @{}
+    $rest = $hit.Clone()
+    $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
+    $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
+    foreach ($match in @(Get-SourceWords $payload.sentence)) {
+      $word = $rest.FindText($match.Value, $false, $true)
+      if (-not $word) { break }
+      $words[[string]$match.Index] = $word
+      $rest.MoveEndpointByRange($start, $word, $end)
+    }
+    $cached = @{ text = $payload.sentence; range = $hit; words = $words }
+    $script:sentences[$key] = $cached
+  }
+  $script:wordRanges = $cached.words
+  if ($null -eq $payload.start) { return $cached.range }
+  return $cached.words[[string]$payload.start]
+}
+
+function Words-Json {
+  $out = @()
+  foreach ($key in $script:wordRanges.Keys) {
+    $rects = Rects-Json $script:wordRanges[$key]
+    if (-not $rects) { $rects = '[]' }
+    $out += ('{"start":' + $key + ',"rects":' + $rects + '}')
+  }
+  return '[' + ($out -join ',') + ']'
 }
 
 Write-Output "READY"
@@ -142,17 +217,30 @@ while ($true) {
       Write-Output ("OK chars=" + $chars + " window=" + $script:windowName)
     }
     elseif ($line.StartsWith("find ")) {
+      $script:wordRanges = $null
       $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($line.Substring(5)))
       $hit = Find-Sentence $text
       if (-not $hit) { Write-Output "NONE not-in-selection" }
       else {
         $script:last = $hit
+        $script:lastSentence = $hit
         $json = Rects-Json $hit
         if ($json) { Write-Output ("RECTS " + $json) } else { Write-Output "NONE off-screen" }
       }
     }
+    elseif ($line.StartsWith("locate ")) {
+      $payload = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($line.Substring(7))) | ConvertFrom-Json
+      $script:last = Locate-Word $payload
+      if ($script:wordRanges) { Write-Output ("WORDS " + (Words-Json)) }
+      elseif (-not $script:last) { Write-Output "NONE not-in-selection" }
+      else {
+        $json = Rects-Json $script:last
+        if ($json) { Write-Output ("RECTS " + $json) } else { Write-Output "NONE off-screen" }
+      }
+    }
     elseif ($line -eq "rects") {
-      if (-not $script:last) { Write-Output "NONE no-hit" }
+      if ($script:wordRanges) { Write-Output ("WORDS " + (Words-Json)) }
+      elseif (-not $script:last) { Write-Output "NONE no-hit" }
       else {
         $json = Rects-Json $script:last
         if ($json) { Write-Output ("RECTS " + $json) } else { Write-Output "NONE off-screen" }
@@ -161,6 +249,9 @@ while ($true) {
     elseif ($line -eq "clear") {
       $script:range = $null
       $script:last = $null
+      $script:lastSentence = $null
+      $script:sentences = @{}
+      $script:wordRanges = $null
       $script:windowName = ""
       Write-Output "OK"
     }

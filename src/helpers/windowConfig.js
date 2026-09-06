@@ -47,6 +47,12 @@ const MAIN_WINDOW_CONFIG = {
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
+    // The overlay is never the focused window during a dictation, and Chromium
+    // treats an unfocused or occluded window as hidden: requestAnimationFrame
+    // stops and setTimeout drops to about once a second. The level meter is
+    // driven by requestAnimationFrame, so throttling freezes the bars mid
+    // dictation while the recording itself carries on in the main process.
+    backgroundThrottling: false,
   },
   frame: false,
   alwaysOnTop: true,
@@ -259,9 +265,43 @@ class WindowPositionUtil {
   }
 }
 
+/**
+ * Decides whether a `moved` event on the overlay window is the user's choice,
+ * worth remembering, or the operating system's doing, which is not.
+ *
+ * Windows moves every window off a monitor the moment it drops - a screen
+ * that powers down, a cable, a dock. That move used to be saved as if the
+ * user had dragged the overlay there, so when the monitor came back the app
+ * faithfully restored the wrong screen. Kristian saw it as the overlay stuck
+ * on his 1080p side screen after his 1440p main screen blinked off and on.
+ *
+ * The user can only move the overlay by dragging it, so a move that is not a
+ * drag and lands on a different display than the last spot the user chose is
+ * the OS. So is any move inside the quiet window that a display change opens.
+ */
+function shouldPersistOverlayMove({
+  isDragging = false,
+  now = Date.now(),
+  ignoreUntil = 0,
+  previousDisplayId = null,
+  nextDisplayId = null,
+} = {}) {
+  if (isDragging) {
+    return { persist: true, reason: "drag" };
+  }
+  if (now < ignoreUntil) {
+    return { persist: false, reason: "display-change-quiet-window" };
+  }
+  if (previousDisplayId !== null && nextDisplayId !== null && previousDisplayId !== nextDisplayId) {
+    return { persist: false, reason: "os-moved-to-other-display" };
+  }
+  return { persist: true, reason: "same-display" };
+}
+
 module.exports = {
   MAIN_WINDOW_CONFIG,
   CONTROL_PANEL_CONFIG,
+  shouldPersistOverlayMove,
   CONTAINER_W,
   CONTAINER_H,
   BUTTON_OFFSET_X,

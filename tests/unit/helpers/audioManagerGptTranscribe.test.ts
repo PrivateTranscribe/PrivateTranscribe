@@ -21,7 +21,10 @@ vi.mock("../../../src/utils/languageCompat", () => ({
 }));
 
 import AudioManager from "../../../src/helpers/audioManager";
-import { getTranscriptionModels, getDefaultTranscriptionModel } from "../../../src/models/ModelRegistry";
+import {
+  getTranscriptionModels,
+  getDefaultTranscriptionModel,
+} from "../../../src/models/ModelRegistry";
 
 describe("OpenAI GPT Transcribe integration", () => {
   beforeEach(() => {
@@ -32,6 +35,7 @@ describe("OpenAI GPT Transcribe integration", () => {
       configurable: true,
     });
     localStorageMock.clear();
+    (globalThis.window as any).electronAPI = undefined;
     vi.restoreAllMocks();
   });
 
@@ -55,7 +59,7 @@ describe("OpenAI GPT Transcribe integration", () => {
     expect(manager.shouldStreamTranscription("gpt-transcribe", "openai")).toBe(true);
   });
 
-  it("sends the new languages[] hint instead of the legacy language field", async () => {
+  it("uses the global preferred language when metadata has no language override", async () => {
     const manager = new AudioManager();
     vi.spyOn(manager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
     vi.spyOn(manager, "getAPIKey").mockResolvedValue("sk-test-key");
@@ -92,6 +96,177 @@ describe("OpenAI GPT Transcribe integration", () => {
     expect(body.get("model")).toBe("gpt-transcribe");
   });
 
+  it.each([
+    { override: "sv", expectedHints: ["sv"] },
+    { override: "auto", expectedHints: [] },
+  ])(
+    "prefers the explicit $override file-language override over the global preference",
+    async ({ override, expectedHints }) => {
+      const manager = new AudioManager();
+      vi.spyOn(manager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
+      vi.spyOn(manager, "getAPIKey").mockResolvedValue("sk-test-key");
+      vi.spyOn(manager, "getTranscriptionEndpoint").mockReturnValue(
+        "https://api.openai.com/v1/audio/transcriptions"
+      );
+      vi.spyOn(manager, "shouldStreamTranscription").mockReturnValue(false);
+      vi.spyOn(manager, "getTranscriptionSetting").mockImplementation((key, fallback) => {
+        const values: Record<string, string> = {
+          preferredLanguage: "da",
+          allowLocalFallback: "false",
+          fallbackWhisperModel: "base",
+          cloudTranscriptionProvider: "openai",
+        };
+        return values[key] ?? fallback;
+      });
+
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: "Hej verden" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await manager.processWithOpenAIAPI(new Blob(["audio"], { type: "audio/webm" }), {
+        durationSeconds: 1,
+        language: override,
+      });
+
+      const request = fetchMock.mock.calls[0][1];
+      const body = request.body as FormData;
+      expect(body.getAll("languages[]")).toEqual(expectedHints);
+      expect(body.has("language")).toBe(false);
+    }
+  );
+
+  it("cancels while the API key is loading without starting fetch", async () => {
+    const manager = new AudioManager();
+    vi.spyOn(manager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
+    let resolveApiKey!: (value: string) => void;
+    vi.spyOn(manager, "getAPIKey").mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveApiKey = resolve;
+      })
+    );
+    vi.spyOn(manager, "getTranscriptionEndpoint").mockReturnValue(
+      "https://api.openai.com/v1/audio/transcriptions"
+    );
+    vi.spyOn(manager, "shouldStreamTranscription").mockReturnValue(false);
+    vi.spyOn(manager, "getTranscriptionSetting").mockImplementation((key, fallback) => {
+      const values: Record<string, string> = {
+        preferredLanguage: "auto",
+        allowLocalFallback: "true",
+        fallbackWhisperModel: "base",
+        cloudTranscriptionProvider: "openai",
+        useLocalWhisper: "false",
+      };
+      return values[key] ?? fallback;
+    });
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transcription = manager.processWithOpenAIAPI(
+      new Blob(["audio"], { type: "audio/webm" }),
+      { durationSeconds: 1, processingGeneration: "file-job-before-fetch" }
+    );
+    manager.abortActiveTranscriptionRequest();
+    resolveApiKey("sk-test-key");
+
+    await expect(transcription).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts an active fetch without starting local fallback", async () => {
+    const manager = new AudioManager();
+    vi.spyOn(manager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
+    vi.spyOn(manager, "getAPIKey").mockResolvedValue("sk-test-key");
+    vi.spyOn(manager, "getTranscriptionEndpoint").mockReturnValue(
+      "https://api.openai.com/v1/audio/transcriptions"
+    );
+    vi.spyOn(manager, "shouldStreamTranscription").mockReturnValue(false);
+    vi.spyOn(manager, "getTranscriptionSetting").mockImplementation((key, fallback) => {
+      const values: Record<string, string> = {
+        preferredLanguage: "auto",
+        allowLocalFallback: "true",
+        fallbackWhisperModel: "base",
+        cloudTranscriptionProvider: "openai",
+        useLocalWhisper: "false",
+      };
+      return values[key] ?? fallback;
+    });
+
+    const localFallback = vi.fn();
+    (window as any).electronAPI = { transcribeLocalWhisper: localFallback };
+    let requestSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), {
+          once: true,
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transcription = manager.processWithOpenAIAPI(
+      new Blob(["audio"], { type: "audio/webm" }),
+      { durationSeconds: 1, processingGeneration: "file-job-in-fetch" }
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    manager.abortActiveTranscriptionRequest();
+
+    await expect(transcription).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestSignal?.aborted).toBe(true);
+    expect(localFallback).not.toHaveBeenCalled();
+  });
+
+  it("cancels a cloud-to-local fallback under the same file job", async () => {
+    const manager = new AudioManager();
+    vi.spyOn(manager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
+    vi.spyOn(manager, "getAPIKey").mockResolvedValue("sk-test-key");
+    vi.spyOn(manager, "getTranscriptionEndpoint").mockReturnValue(
+      "https://api.openai.com/v1/audio/transcriptions"
+    );
+    vi.spyOn(manager, "shouldStreamTranscription").mockReturnValue(false);
+    vi.spyOn(manager, "getTranscriptionSetting").mockImplementation((key, fallback) => {
+      const values: Record<string, string> = {
+        preferredLanguage: "auto",
+        allowLocalFallback: "true",
+        fallbackWhisperModel: "base",
+        cloudTranscriptionProvider: "openai",
+        useLocalWhisper: "false",
+      };
+      return values[key] ?? fallback;
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Cloud unavailable")));
+
+    let resolveFallback!: (value: { success: false; cancelled: true }) => void;
+    const localFallback = vi.fn(
+      () =>
+        new Promise<{ success: false; cancelled: true }>((resolve) => {
+          resolveFallback = resolve;
+        })
+    );
+    (window as any).electronAPI = { transcribeLocalWhisper: localFallback };
+
+    const transcription = manager.processWithOpenAIAPI(
+      new Blob(["audio"], { type: "audio/webm" }),
+      { durationSeconds: 1, processingGeneration: "file-job-fallback" }
+    );
+    await vi.waitFor(() => expect(localFallback).toHaveBeenCalledOnce());
+    expect(localFallback.mock.calls[0][1]).toMatchObject({
+      model: "base",
+      jobId: "file-job-fallback",
+    });
+
+    manager.abortActiveTranscriptionRequest();
+    resolveFallback({ success: false, cancelled: true });
+
+    await expect(transcription).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("parses GPT Transcribe file-stream delta and done events", async () => {
     const manager = new AudioManager();
     vi.spyOn(manager, "getTranscriptionModel").mockReturnValue("gpt-transcribe");
@@ -124,10 +299,10 @@ describe("OpenAI GPT Transcribe integration", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await manager.processWithOpenAIAPI(
-      new Blob(["audio"], { type: "audio/webm" }),
-      { durationSeconds: 1, skipPostProcessing: true }
-    );
+    const result = await manager.processWithOpenAIAPI(new Blob(["audio"], { type: "audio/webm" }), {
+      durationSeconds: 1,
+      skipPostProcessing: true,
+    });
 
     expect(result).toMatchObject({ success: true, text: "Hej verden", source: "openai" });
     const body = fetchMock.mock.calls[0][1].body as FormData;

@@ -109,8 +109,34 @@ describe("AudioManager recorder lifecycle", () => {
     const manager = new AudioManager();
     manager.setCallbacks({ onStateChange: vi.fn(), onError, onTranscriptionComplete: vi.fn() });
 
-    await expect(manager.safePaste("recoverable text")).resolves.toBe(false);
+    await expect(manager.safePaste("recoverable text")).resolves.toEqual({
+      delivered: false,
+      evidence: null,
+      dispatched: false,
+    });
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  // The evidence decides whether the app warns about the paste, so it has to
+  // survive the trip from the main process rather than collapse to a boolean.
+  it("reports an unreadable paste target separately from a failed paste", async () => {
+    (window as any).electronAPI = {
+      pasteText: vi
+        .fn()
+        .mockResolvedValue({ delivered: false, evidence: "none", dispatched: true }),
+    };
+    const manager = new AudioManager();
+    manager.setCallbacks({
+      onStateChange: vi.fn(),
+      onError: vi.fn(),
+      onTranscriptionComplete: vi.fn(),
+    });
+
+    await expect(manager.safePaste("unverifiable text")).resolves.toEqual({
+      delivered: false,
+      evidence: "none",
+      dispatched: true,
+    });
   });
 
   it("does not force-process partial recorder chunks after only 2.5 seconds", async () => {

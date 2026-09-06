@@ -13,6 +13,8 @@ const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
+const AgentModeHotkey = require("./agentModeHotkey");
+const { AgentPromptRewriter } = require("./agentPromptRewriter");
 const ReadAloudPlaybackKeys = require("./readAloudPlaybackKeys");
 const ReadAloudDucking = require("./readAloudDucking");
 const { buildExcludedPids } = require("./readAloudDucking");
@@ -283,6 +285,34 @@ class IPCHandlers {
     // (readaloud-sync-hotkey) because the toggle and the accelerator live in
     // localStorage, which the main process cannot read.
     this.readAloudHotkey = new ReadAloudHotkey(() => this.readSelectionAndSpeak());
+    // Agent Mode's hold-to-talk key. Same reason the registration is renderer
+    // driven: the toggle and the key live in localStorage.
+    this.agentModeHoldActive = false;
+    this.agentPromptRewriter = new AgentPromptRewriter();
+    this.agentModeHotkey = new AgentModeHotkey({
+      onHoldStart: () => {
+        this.agentModeHoldActive = true;
+        return Promise.resolve(this.windowManager.sendStartAgentDictation())
+          .then(() => {
+            // The key can be released while a hidden overlay is still loading.
+            // Re-send stop after startup completes so audio cannot stay ducked.
+            if (!this.agentModeHoldActive) {
+              this.windowManager.sendStopAgentDictation();
+            }
+          })
+          .catch((error) => {
+            this.agentModeHoldActive = false;
+            this.windowManager.sendStopAgentDictation();
+            debugLogger.warn("[AgentMode] Failed to start hold dictation", {
+              error: error?.message || String(error),
+            });
+          });
+      },
+      onHoldEnd: () => {
+        this.agentModeHoldActive = false;
+        this.windowManager.sendStopAgentDictation();
+      },
+    });
     // Pause and skip, held only while a read is on screen. The overlay owns
     // playback, so a press is forwarded to it rather than acted on here.
     this.readAloudPlaybackKeys = new ReadAloudPlaybackKeys((op) => this.sendReadAloudControl(op));
@@ -812,8 +842,8 @@ class IPCHandlers {
     });
 
     // Clipboard handlers
-    ipcMain.handle("paste-text", async (event, text) => {
-      return this.clipboardManager.pasteText(text);
+    ipcMain.handle("paste-text", async (event, text, options) => {
+      return this.clipboardManager.pasteText(text, options);
     });
 
     ipcMain.handle("read-clipboard", async (event) => {
@@ -888,8 +918,19 @@ class IPCHandlers {
         options,
       });
 
+      // File uploads that reach this handler through cloud fallback carry the
+      // same job id as the cloud request. Register it in the existing file-job
+      // map so the page's Cancel reaches the local HTTP request too. Dictation
+      // calls have no job id and keep their existing behavior.
+      const jobId = typeof options.jobId === "string" && options.jobId ? options.jobId : null;
+      const controller = jobId ? new AbortController() : null;
+      if (controller) this.fileTranscriptionJobs.set(jobId, controller);
+
       try {
-        const result = await this.whisperManager.transcribeLocalWhisper(audioBlob, options);
+        const result = await this.whisperManager.transcribeLocalWhisper(audioBlob, {
+          ...options,
+          ...(controller ? { signal: controller.signal } : {}),
+        });
 
         debugLogger.log("Whisper result", {
           success: result.success,
@@ -906,6 +947,10 @@ class IPCHandlers {
 
         return result;
       } catch (error) {
+        if (isCancelledError(error)) {
+          debugLogger.info("Local Whisper fallback cancelled", { jobId });
+          return { success: false, cancelled: true, jobId };
+        }
         debugLogger.error("Local Whisper transcription error", error);
         const errorMessage = error.message || "Unknown error";
 
@@ -956,6 +1001,10 @@ class IPCHandlers {
         }
 
         throw error;
+      } finally {
+        if (controller && this.fileTranscriptionJobs.get(jobId) === controller) {
+          this.fileTranscriptionJobs.delete(jobId);
+        }
       }
     });
 
@@ -1401,11 +1450,18 @@ class IPCHandlers {
 
     ipcMain.handle(
       "readaloud-synth",
-      async (_event, { text, voice, speed, priority, epoch, channel } = {}) => {
+      async (_event, { text, voice, speed, priority, epoch, channel, withWordTimings } = {}) => {
         // priority/epoch/channel steer the client's queue (interactive synths
         // jump queued prefetch, stale epochs are dropped); the engine itself
         // only ever sees text, voice and speed.
-        return requireKokoro().synthesize(text, { voice, speed, priority, epoch, channel });
+        return requireKokoro().synthesize(text, {
+          voice,
+          speed,
+          priority,
+          epoch,
+          channel,
+          withWordTimings,
+        });
       }
     );
 
@@ -1482,6 +1538,21 @@ class IPCHandlers {
     });
 
     /**
+     * Bring the Agent Mode hold key in line with the renderer's saved settings.
+     * No model check, unlike Read Aloud: the rules pass runs on the transcript
+     * and needs nothing downloaded.
+     */
+    ipcMain.handle("agent-mode-sync-hotkey", (_event, { enabled, hotkey } = {}) =>
+      this.agentModeHotkey.apply({ enabled, hotkey })
+    );
+
+    ipcMain.handle("agent-mode-hotkey-status", () => this.agentModeHotkey.getStatus());
+
+    ipcMain.handle("agent-mode-rewrite-status", () => this.agentPromptRewriter.getStatus());
+
+    ipcMain.handle("agent-mode-rewrite", (_event, text) => this.agentPromptRewriter.rewrite(text));
+
+    /**
      * The overlay reporting whether a read is on screen right now.
      *
      * This is what makes the playback keys transient: they are bound while
@@ -1492,7 +1563,10 @@ class IPCHandlers {
      */
     ipcMain.handle("readaloud-playback-active", async (_event, active, options = {}) => {
       const isActive = Boolean(active);
-      const result = this.readAloudPlaybackKeys.apply({ active: isActive });
+      const result = this.readAloudPlaybackKeys.apply({
+        active: isActive,
+        hotkeys: options?.hotkeys,
+      });
 
       // The "Quiet other apps while reading" toggle lives in localStorage, so
       // the renderer carries its value in on the same edge that starts and ends
@@ -1706,6 +1780,11 @@ class IPCHandlers {
       // the process, so Read Aloud has to be put back or it dies silently the
       // first time the user edits their dictation key.
       this.readAloudHotkey.reapply();
+      this.readAloudPlaybackKeys.apply({ active: this.readAloudPlaybackKeys.active });
+      // Agent Mode runs its own listener process, so today's dictation path
+      // cannot drop it. Reapplied here anyway so a future change to that path
+      // cannot silently take the key away.
+      this.agentModeHotkey.reapply();
       return result;
     });
 
@@ -1721,6 +1800,8 @@ class IPCHandlers {
       );
 
       if (enabled) {
+        this.readAloudHotkey.unregister();
+        this.readAloudPlaybackKeys.suspend();
         // Entering capture mode - unregister globalShortcut so it doesn't consume key events
         // Note: mouse side-buttons (Mouse4/Mouse5) are not valid Electron accelerators.
         const currentHotkey = hotkeyManager.getCurrentHotkey();
@@ -1741,6 +1822,10 @@ class IPCHandlers {
           debugLogger.log("[IPC] Stopping Windows key listener for hotkey capture mode");
           this.windowsKeyManager.stop();
         }
+
+        // While the settings hotkey field is capturing, a held Right Ctrl must
+        // not start a recording behind the dialog.
+        this.agentModeHotkey.suspend();
 
         // On GNOME Wayland, unregister the keybinding during capture
         if (hotkeyManager.isUsingGnome() && hotkeyManager.gnomeManager) {
@@ -1796,6 +1881,15 @@ class IPCHandlers {
             hotkeyManager.currentHotkey = effectiveHotkey;
           }
         }
+      }
+
+      if (!enabled) {
+        this.readAloudHotkey.reapply();
+        this.readAloudPlaybackKeys.resume();
+        // Outside the branch above on purpose: that one is skipped when the
+        // dictation hotkey is switched off for the session, and a suspended
+        // Agent Mode key that never comes back would be silent breakage.
+        this.agentModeHotkey.reapply();
       }
 
       return { success: true };

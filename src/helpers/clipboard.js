@@ -4,6 +4,7 @@ const { killProcess } = require("../utils/process");
 const debugLogger = require("./debugLogger");
 const {
   assertWindowsFastPasteSucceeded,
+  PASTE_EVIDENCE_ABSENT,
   getWindowsPasteShortcut,
   resolveWindowsFastPasteExecutable,
 } = require("./windowsPasteTarget");
@@ -185,9 +186,16 @@ class ClipboardManager {
     });
   }
 
-  async pasteText(text) {
+  /**
+   * @param {string} text
+   * @param {{ sendEnter?: boolean }} [options] `sendEnter` presses Enter after
+   *   the paste (Agent Mode's spoken "send"). Windows only; the other platforms
+   *   paste as before and report `enterSent: false`.
+   */
+  async pasteText(text, options = {}) {
     const startTime = Date.now();
     const platform = process.platform;
+    const sendEnter = options?.sendEnter === true;
     let method = "unknown";
     let deliveryResult = null;
 
@@ -220,14 +228,14 @@ class ClipboardManager {
 
         this.safeLog("✅ Permissions granted, attempting to paste...");
         await this.pasteMacOS(originalClipboard);
-        deliveryResult = { delivered: true, method };
+        deliveryResult = { delivered: true, method, enterSent: false };
       } else if (platform === "win32") {
         method = "windows-fast-paste";
-        deliveryResult = await this.pasteWindows(originalClipboard);
+        deliveryResult = await this.pasteWindows(originalClipboard, { sendEnter });
       } else {
         method = "linux-tools";
         await this.pasteLinux(originalClipboard);
-        deliveryResult = { delivered: true, method };
+        deliveryResult = { delivered: true, method, enterSent: false };
       }
 
       // Log successful paste operation timing
@@ -236,8 +244,10 @@ class ClipboardManager {
         method,
         elapsedMs: Date.now() - startTime,
         textLength: text.length,
+        sendEnter,
+        enterSent: deliveryResult?.enterSent === true,
       });
-      return deliveryResult || { delivered: true, method };
+      return deliveryResult || { delivered: true, method, enterSent: false };
     } catch (error) {
       this.safeLog("❌ Paste operation failed", {
         platform,
@@ -306,7 +316,7 @@ class ClipboardManager {
     });
   }
 
-  async pasteWindows(originalClipboard) {
+  async pasteWindows(originalClipboard, options = {}) {
     // The native helper detects the target window and sends the matching paste
     // chord in one step. It replaced an inline PowerShell probe, which tripped
     // antivirus heuristics because PowerShell submits evaluated script blocks to
@@ -317,14 +327,17 @@ class ClipboardManager {
       this.safeLog("Windows paste helper not found; keeping text on the clipboard");
       return {
         delivered: false,
+        // Nothing was sent, so the text is definitely not in the target field.
+        evidence: PASTE_EVIDENCE_ABSENT,
         dispatched: false,
+        enterSent: false,
         fallback: "clipboard",
         method: "windows-fast-paste",
       };
     }
 
     try {
-      return await this.pasteWithFastPaste(fastPastePath, originalClipboard);
+      return await this.pasteWithFastPaste(fastPastePath, originalClipboard, options);
     } catch (error) {
       const notConfirmed = error?.code === "WINDOWS_PASTE_NOT_CONFIRMED";
       this.safeLog(
@@ -335,16 +348,23 @@ class ClipboardManager {
       );
       return {
         delivered: false,
+        // A helper that could not read the target reports "none", and the app
+        // must then stay quiet rather than claim a paste failure it cannot see.
+        evidence: notConfirmed ? error.evidence : PASTE_EVIDENCE_ABSENT,
         dispatched: notConfirmed && error.dispatched === true,
+        // An unobservable target (evidence "none") still gets its Enter, so a
+        // terminal that could not be read reports what the helper actually did.
+        enterSent: notConfirmed && error.enterSent === true,
         fallback: "clipboard",
         method: "windows-fast-paste",
       };
     }
   }
 
-  async pasteWithFastPaste(fastPastePath, originalClipboard) {
+  async pasteWithFastPaste(fastPastePath, originalClipboard, options = {}) {
     return new Promise((resolve, reject) => {
       const pasteDelay = PASTE_DELAYS.win32_fastpaste;
+      const helperArgs = options?.sendEnter === true ? ["--send-enter"] : [];
 
       setTimeout(() => {
         let hasTimedOut = false;
@@ -352,11 +372,11 @@ class ClipboardManager {
         let stderr = "";
         const startTime = Date.now();
 
-        this.safeLog(`⚡ Fast paste starting (delay: ${pasteDelay}ms)`);
+        this.safeLog(`⚡ Fast paste starting (delay: ${pasteDelay}ms)`, { helperArgs });
 
         let pasteProcess;
         try {
-          pasteProcess = this._spawnFastPaste(fastPastePath);
+          pasteProcess = this._spawnFastPaste(fastPastePath, helperArgs);
         } catch (error) {
           reject(new Error(`Fast paste helper could not start: ${error.message}`));
           return;
@@ -402,10 +422,15 @@ class ClipboardManager {
             windowClass: result.windowClass || "unknown",
             processName: result.processName || "unknown",
             restoreDelayMs: restoreDelay,
+            enterSent: result.enterSent,
           });
 
           this._restoreClipboardAfter(originalClipboard, restoreDelay).then(() =>
-            resolve({ delivered: true, method: "windows-fast-paste" })
+            resolve({
+              delivered: true,
+              method: "windows-fast-paste",
+              enterSent: result.enterSent === true,
+            })
           );
         });
 
@@ -425,8 +450,8 @@ class ClipboardManager {
     });
   }
 
-  _spawnFastPaste(fastPastePath) {
-    return spawn(fastPastePath, [], { windowsHide: true });
+  _spawnFastPaste(fastPastePath, args = []) {
+    return spawn(fastPastePath, args, { windowsHide: true });
   }
 
   async pasteLinux(originalClipboard) {

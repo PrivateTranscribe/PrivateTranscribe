@@ -275,8 +275,9 @@ class AudioManager {
     this._checkBetaFeatureAccess = null;
     this._deviceChangeHandler = null;
 
-    // Pre-warm device cache and keep it fresh
-    if (navigator.mediaDevices) {
+    // Pre-warm device cache and keep it fresh. `typeof` guard: under Vitest on
+    // Node 20 there is no global navigator at all, and a bare reference throws.
+    if (typeof navigator !== "undefined" && navigator.mediaDevices) {
       this._warmDeviceCache();
       this._deviceChangeHandler = () => {
         this._warmDeviceCache();
@@ -3179,7 +3180,7 @@ class AudioManager {
 
   async processWithOpenAIAPI(audioBlob, metadata = {}) {
     const timings = {};
-    const language = this.getTranscriptionSetting("preferredLanguage", "");
+    const language = metadata?.language ?? this.getTranscriptionSetting("preferredLanguage", "");
     const allowLocalFallback =
       this.getTranscriptionSetting("allowLocalFallback", "false") === "true";
     const fallbackModel = this.getTranscriptionSetting("fallbackWhisperModel", "base");
@@ -3188,6 +3189,9 @@ class AudioManager {
     const skipOptimizationByMetadata = metadata?.skipOptimization === true;
     const processingGeneration = metadata?.processingGeneration ?? null;
     const abortController = new AbortController();
+    if (processingGeneration !== null && processingGeneration !== undefined) {
+      this.setActiveTranscriptionAbortController(abortController, processingGeneration);
+    }
 
     try {
       const durationSeconds = metadata.durationSeconds ?? null;
@@ -3340,9 +3344,7 @@ class AudioManager {
       );
 
       const apiCallStart = performance.now();
-      if (processingGeneration !== null && processingGeneration !== undefined) {
-        this.setActiveTranscriptionAbortController(abortController, processingGeneration);
-      }
+      abortController.signal.throwIfAborted();
       const response = await fetch(endpoint, {
         method: "POST",
         headers,
@@ -3492,9 +3494,13 @@ class AudioManager {
       if (allowLocalFallback && isOpenAIMode) {
         try {
           const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
+          abortController.signal.throwIfAborted();
           const options = {
             model: fallbackModel,
           };
+          if (typeof processingGeneration === "string" && processingGeneration) {
+            options.jobId = processingGeneration;
+          }
           if (language && language !== "auto") {
             options.language = language;
           } else {
@@ -3506,6 +3512,12 @@ class AudioManager {
 
           const localFallbackStart = performance.now();
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
+          abortController.signal.throwIfAborted();
+          if (result?.cancelled) {
+            const cancellation = new Error("Transcription cancelled");
+            cancellation.name = "AbortError";
+            throw cancellation;
+          }
           timings.transcriptionProcessingDurationMs = Math.round(
             performance.now() - localFallbackStart
           );
@@ -3537,6 +3549,9 @@ class AudioManager {
           }
           throw error;
         } catch (fallbackError) {
+          if (fallbackError?.name === "AbortError") {
+            throw fallbackError;
+          }
           throw new Error(
             `OpenAI API failed: ${error.message}. Local fallback also failed: ${fallbackError.message}`
           );
@@ -3759,19 +3774,24 @@ class AudioManager {
     }
   }
 
-  async safePaste(text) {
+  /**
+   * Preserve dispatch separately from text observation. Browser editors can
+   * accept a paste while their accessible text remains unchanged or stale.
+   */
+  async safePaste(text, options = {}) {
     try {
-      const result = await window.electronAPI.pasteText(text);
-      if (result?.delivered === false) {
-        return false;
-      }
-      return true;
+      const result = await window.electronAPI.pasteText(text, options);
+      return {
+        delivered: result?.delivered !== false,
+        evidence: result?.evidence ?? null,
+        dispatched: result?.dispatched === true,
+      };
     } catch (error) {
       this.onError?.({
         title: "Paste Error",
         description: `Failed to paste text. Please check accessibility permissions. ${error.message}`,
       });
-      return false;
+      return { delivered: false, evidence: "absent" };
     }
   }
 
@@ -3840,7 +3860,7 @@ class AudioManager {
     // Force-release the warm mic stream on teardown. Otherwise the "always ready" setting
     // (no release timer) would leave the device open after the window/manager is gone.
     this._clearPooledStream();
-    if (navigator.mediaDevices && this._deviceChangeHandler) {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices && this._deviceChangeHandler) {
       navigator.mediaDevices.removeEventListener("devicechange", this._deviceChangeHandler);
       this._deviceChangeHandler = null;
     }

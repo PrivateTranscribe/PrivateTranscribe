@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button } from "./button";
-import { Copy, Trash2, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Copy, Trash2, ChevronDown, ChevronUp, Check, Loader2 } from "lucide-react";
 import type { TranscriptionItem as TranscriptionItemType } from "../../types/electron";
-import { cn } from "../lib/utils";
 
 interface TranscriptionItemProps {
   item: TranscriptionItemType;
   index: number;
   total: number;
   searchQuery?: string;
-  onCopy: (text: string) => void;
+  onCopy: (text: string) => Promise<boolean>;
   onDelete: (id: number) => void;
 }
 
@@ -61,9 +60,30 @@ export default function TranscriptionItem({
 }: TranscriptionItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const textRef = useRef<HTMLParagraphElement>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    },
+    []
+  );
+
+  const copyText = async () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    setIsCopied(false);
+    setIsCopying(true);
+    try {
+      if (await onCopy(item.text)) {
+        setIsCopied(true);
+        copiedTimer.current = setTimeout(() => setIsCopied(false), 2000);
+      }
+    } finally {
+      setIsCopying(false);
+    }
+  };
 
   const timestampSource = item.timestamp.endsWith("Z") ? item.timestamp : `${item.timestamp}Z`;
   const timestampDate = new Date(timestampSource);
@@ -105,11 +125,7 @@ export default function TranscriptionItem({
   const canToggle = (isOverflowing || isExpanded) && !searchQuery;
 
   return (
-    <div
-      className="group relative px-6 py-5 transition-all duration-300 hover:bg-primary/5"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="group relative px-6 py-5 transition-all duration-300 hover:bg-primary/5">
       <div className="flex items-start gap-5">
         {/* Number badge - luxury pill with glow */}
         <div className="flex-shrink-0 mt-1">
@@ -162,25 +178,21 @@ export default function TranscriptionItem({
           </div>
         </div>
 
-        {/* Actions - fade in on hover with scale */}
-        <div
-          className={cn(
-            "flex items-center gap-1 flex-shrink-0 transition-all duration-300",
-            isHovered ? "opacity-100 scale-100" : "opacity-0 scale-95"
-          )}
-        >
+        {/* Keep actions discoverable with both pointer and keyboard. */}
+        <div className="flex items-center gap-1 flex-shrink-0">
           <Button
             size="icon"
             variant="ghost"
-            onClick={() => {
-              onCopy(item.text);
-              setIsCopied(true);
-              setTimeout(() => setIsCopied(false), 2000);
-            }}
+            onClick={copyText}
+            disabled={isCopying}
+            aria-label={isCopied ? "Copied" : isCopying ? "Copying" : "Copy transcription"}
+            title={isCopied ? "Copied" : "Copy transcription"}
             className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all duration-200"
           >
-            {isCopied ? (
-              <Check size={14} className="text-primary animate-in zoom-in spin-in duration-300" />
+            {isCopying ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : isCopied ? (
+              <Check size={14} className="text-primary" />
             ) : (
               <Copy size={14} />
             )}
@@ -189,6 +201,8 @@ export default function TranscriptionItem({
             size="icon"
             variant="ghost"
             onClick={() => onDelete(item.id)}
+            aria-label="Delete transcription"
+            title="Delete transcription"
             className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
           >
             <Trash2 size={14} />
