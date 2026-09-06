@@ -148,7 +148,7 @@ test.describe("converse ui", () => {
     await expect(
       controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" })
     ).toBeVisible();
-    await expect(controlPanel.getByText("Apply for early access")).toHaveCount(0);
+    await expect(controlPanel.getByText("Apply for beta access")).toHaveCount(0);
 
     // Locked means locked: no folder picker and no session controls are
     // reachable from here.

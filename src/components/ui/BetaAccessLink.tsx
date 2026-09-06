@@ -19,7 +19,7 @@ export function BetaAccessLink({ className }: { className?: string }) {
         className
       )}
     >
-      Apply for early access
+      Apply for beta access
       <ArrowUpRight className="h-3 w-3" aria-hidden />
     </button>
   );

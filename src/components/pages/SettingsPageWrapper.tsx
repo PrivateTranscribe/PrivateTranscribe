@@ -33,7 +33,7 @@ type SettingsTab = {
 const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
   { id: "permissions", label: "Microphone & Permissions" },
-  { id: "pro", label: "PrivateTranscribe Pro" },
+  { id: "pro", label: "Pro & Beta" },
   { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },
 ];
 

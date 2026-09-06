@@ -363,13 +363,13 @@ export default function ProSettingsSection({
 
         <div className="pt-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-foreground">Early access workflows</h3>
+            <h3 className="text-base font-semibold text-foreground">Beta features</h3>
             <Badge variant="warning" className="text-[10px]">
               Beta
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            These unfinished workflows are available only to approved testers while we refine them.
+            Beta access is separate from Pro and requires tester approval.
           </p>
         </div>
 

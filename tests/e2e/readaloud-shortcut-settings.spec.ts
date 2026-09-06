@@ -65,7 +65,7 @@ test.describe("installed voice model", () => {
 
 test("locked and missing-model states", async ({ controlPanel }) => {
   fs.mkdirSync(evidence, { recursive: true });
-  await controlPanel.getByRole("button", { name: "Early access features", exact: true }).click();
+  await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
   await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
   await expect(
     controlPanel.getByRole("heading", { name: "Hear it instead of reading" })

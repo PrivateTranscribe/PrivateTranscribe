@@ -82,7 +82,7 @@ async function openReadAloudPage(controlPanel: Page) {
   if ((await entry.count()) > 0) {
     await entry.click();
   } else {
-    await controlPanel.getByRole("button", { name: "Early access features", exact: true }).click();
+    await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
     await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
   }
   await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
@@ -95,7 +95,7 @@ test.describe("read aloud page", () => {
     // Locked features are not listed; the one door is the early access row.
     await expect(controlPanel.getByRole("button", { name: /^Read Aloud/ })).toHaveCount(0);
     await expect(
-      controlPanel.getByRole("button", { name: "Early access features", exact: true })
+      controlPanel.getByRole("button", { name: "Beta features", exact: true })
     ).toBeVisible();
 
     // It sits in SPEECH, beside Dictionary, not off in some unrelated group.
@@ -118,7 +118,7 @@ test.describe("read aloud page", () => {
 
     await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
     await expect(
-      controlPanel.getByRole("button", { name: /Apply for early access/ })
+      controlPanel.getByRole("button", { name: /Apply for beta access/ })
     ).toBeVisible();
     await expect(controlPanel.getByText("English only.")).toBeVisible();
 

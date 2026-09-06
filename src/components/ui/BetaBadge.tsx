@@ -18,7 +18,7 @@ import { cn } from "../lib/utils";
 export function BetaBadge({ locked = false, className }: { locked?: boolean; className?: string }) {
   return (
     <Badge
-      variant={locked ? "pro" : "outline"}
+      variant={locked ? "warning" : "outline"}
       className={cn(
         "gap-1 rounded px-1.5 py-px text-[9px] font-semibold tracking-[0.02em]",
         className

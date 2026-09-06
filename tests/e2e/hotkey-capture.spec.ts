@@ -44,7 +44,7 @@ async function openFeaturePage(page: Page, name: string) {
   if ((await entry.count()) > 0) {
     await entry.click();
   } else {
-    await page.getByRole("button", { name: "Early access features", exact: true }).click();
+    await page.getByRole("button", { name: "Beta features", exact: true }).click();
     await page.getByRole("button", { name: new RegExp(`^${name}`) }).click();
   }
   await expect(page.getByRole("heading", { name }).first()).toBeVisible();

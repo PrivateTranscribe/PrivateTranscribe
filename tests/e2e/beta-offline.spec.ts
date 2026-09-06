@@ -187,7 +187,7 @@ test.describe("beta access offline", () => {
     await controlPanel.getByRole("button", { name: "Home", exact: true }).click();
     await expect(controlPanel.getByRole("button", { name: /^AI Enhancement/ })).toHaveCount(0);
     await expect(
-      controlPanel.getByRole("button", { name: "Early access features", exact: true })
+      controlPanel.getByRole("button", { name: "Beta features", exact: true })
     ).toBeVisible();
   });
 });

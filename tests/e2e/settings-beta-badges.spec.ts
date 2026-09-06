@@ -25,12 +25,12 @@ test.describe("beta feature labelling", () => {
     await expect(row.getByText("Beta", { exact: true })).toBeVisible();
 
     // The row also offers the way out, so it holds two buttons now.
-    await expect(row.getByRole("button", { name: /Apply for early access/ })).toBeVisible();
+    await expect(row.getByRole("button", { name: /Apply for beta access/ })).toBeVisible();
 
     // Labelling is not enforcement: the control is genuinely unavailable too.
     // The toggle is a bare button with no accessible name, so it is the one
     // that is not the link.
-    const toggle = row.locator("button").filter({ hasNotText: "Apply for early access" });
+    const toggle = row.locator("button").filter({ hasNotText: "Apply for beta access" });
     await expect(toggle).toBeDisabled();
 
     // The badge carries the word, so the description explains the state
@@ -45,7 +45,7 @@ test.describe("beta feature labelling", () => {
 
   test("uses one word for the locked state on a beta page", async ({ controlPanel }) => {
     // Locked features are not in the sidebar; the Pro tab's card is the way in.
-    await controlPanel.getByRole("button", { name: "Early access features", exact: true }).click();
+    await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
     await controlPanel.getByRole("button", { name: /^AI Enhancement/ }).click();
     await expect(
       controlPanel.getByRole("heading", { name: "AI Enhancement" }).first()
@@ -58,7 +58,7 @@ test.describe("beta feature labelling", () => {
     // Naming what the user is missing without offering a way to get it is
     // the worst of both options.
     await expect(
-      controlPanel.getByRole("button", { name: /Apply for early access/ })
+      controlPanel.getByRole("button", { name: /Apply for beta access/ })
     ).toBeVisible();
 
     await controlPanel.screenshot({

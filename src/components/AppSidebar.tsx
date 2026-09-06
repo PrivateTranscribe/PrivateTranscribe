@@ -275,7 +275,7 @@ export default function AppSidebar({
             }}
           >
             <FlaskConical size={15} style={{ opacity: 0.6, flexShrink: 0 }} />
-            <span style={{ flex: 1 }}>Early access features</span>
+            <span style={{ flex: 1 }}>Beta features</span>
           </button>
         )}
 

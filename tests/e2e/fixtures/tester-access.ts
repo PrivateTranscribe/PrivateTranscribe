@@ -24,7 +24,7 @@ async function stubLicensingServer(controlPanel: Page): Promise<void> {
 /** The Pro settings screen, reached the way a user reaches it. */
 async function openProSettings(controlPanel: Page): Promise<void> {
   await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
-  await controlPanel.getByRole("button", { name: "PrivateTranscribe Pro", exact: true }).click();
+  await controlPanel.getByRole("button", { name: "Pro & Beta", exact: true }).click();
 }
 
 /**

@@ -3369,8 +3369,8 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
         return (
           <div className="space-y-8">
             <SectionHeader
-              title="PrivateTranscribe Pro"
-              description="Unlock advanced features with a one-time license"
+              title="Pro & Beta"
+              description="Manage your Pro license and beta access"
             />
             <ProSettingsSection onNavigate={onNavigate} />
           </div>
