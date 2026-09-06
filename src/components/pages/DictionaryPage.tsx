@@ -1,4 +1,7 @@
-import { useState, useCallback } from "react";
+import { SettingsDisclosure } from "../ui/SettingsDisclosure";
+import { BetaBadge } from "../ui/BetaBadge";
+import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { BookOpen } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -21,12 +24,24 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
   return <div className="px-5 py-4">{children}</div>;
 }
 
-export default function DictionaryPage() {
+export default function DictionaryPage({ showCorrections = false }: { showCorrections?: boolean }) {
+  const correctionsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showCorrections) return;
+    const frame = requestAnimationFrame(() => {
+      const details = correctionsRef.current?.querySelector("details");
+      if (!details) return;
+      details.open = true;
+      details.querySelector("summary")?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showCorrections]);
   const {
     customDictionary,
     setCustomDictionary,
     enableVariableSnapping,
     setEnableVariableSnapping,
+    enableCorrectionLearning,
   } = useSettings();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const [newWord, setNewWord] = useState("");
@@ -69,7 +84,7 @@ export default function DictionaryPage() {
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Dictionary</h1>
           {customDictionary.length > 0 && (
             <span className="text-sm text-muted-foreground/50 font-mono">
-              {customDictionary.length} words
+              {customDictionary.length} {customDictionary.length === 1 ? "word" : "words"}
             </span>
           )}
         </div>
@@ -173,10 +188,10 @@ export default function DictionaryPage() {
           </SettingsPanel>
         ) : customDictionary.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border-subtle py-10 flex flex-col items-center justify-center text-center">
-            <BookOpen size={32} className="text-muted-foreground/20 mb-3" />
-            <p className="text-[12px] text-muted-foreground/50">No words added yet</p>
-            <p className="text-[11px] text-muted-foreground/30 mt-1">
-              Words you add will appear here
+            <BookOpen size={32} className="text-muted-foreground/50 mb-3" />
+            <p className="text-[12px] text-muted-foreground">No words added yet</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Add names or terms you use often.
             </p>
           </div>
         ) : (
@@ -186,18 +201,38 @@ export default function DictionaryPage() {
         )}
       </div>
 
-      <div className="mb-8">
-        <CorrectionMemoryPage embedded />
+      <div ref={correctionsRef} className="mb-5">
+        <SettingsDisclosure
+          title="Correction Memory"
+          settingsLabel="Correction Memory"
+          description="Optional replacements for repeated mistakes."
+          status={
+            isFeatureUnlocked("correction-memory") ? (
+              enableCorrectionLearning ? (
+                "Learning on"
+              ) : (
+                "Learning off"
+              )
+            ) : (
+              <BetaBadge locked />
+            )
+          }
+        >
+          <CorrectionMemoryPage embedded />
+        </SettingsDisclosure>
       </div>
 
       {/* How it works */}
-      <div className="mt-8">
-        <p className="text-[13px] font-medium text-foreground mb-3">How it works</p>
+      <SettingsDisclosure
+        title="Dictionary settings"
+        description="Matching and spelling help."
+        status={enableVariableSnapping ? "Matching on" : "Matching off"}
+      >
         <SettingsPanel>
           <SettingsPanelRow>
             <SettingsRow
               label="Apply dictionary matching"
-              description="Hand your words to the model before it starts and repair casing and splits afterwards. Correction Memory replacements use the same switch."
+              description="Apply your spellings and saved corrections to dictation."
             >
               <Toggle
                 checked={enableVariableSnapping}
@@ -229,7 +264,7 @@ export default function DictionaryPage() {
             </p>
           </SettingsPanelRow>
         </SettingsPanel>
-      </div>
+      </SettingsDisclosure>
     </div>
   );
 }

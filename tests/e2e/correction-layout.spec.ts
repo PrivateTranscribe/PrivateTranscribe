@@ -4,10 +4,11 @@ import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
 test("correction toggles keep their shape beside explanatory text", async ({ controlPanel }) => {
-  const shots = path.resolve("docs/qa-correction-layout");
+  const shots = path.resolve("docs/qa-settings-clarity/toggle-layout");
   fs.mkdirSync(shots, { recursive: true });
   await unlockTesterAccess(controlPanel);
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();
+  await controlPanel.locator("summary").filter({ hasText: "Correction Memory" }).click();
   const heading = controlPanel.getByRole("heading", {
     name: "Learn corrections",
   });

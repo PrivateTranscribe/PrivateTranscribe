@@ -3,19 +3,22 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
-const shots = path.resolve("docs/qa-0.17.1");
+const shots = path.resolve("docs/qa-settings-clarity/dictation");
 const phase = "after";
 
 test("dictation settings explain optional correction learning", async ({ controlPanel }) => {
   fs.mkdirSync(shots, { recursive: true });
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();
+  await controlPanel.locator("summary").filter({ hasText: "Correction Memory" }).click();
   await controlPanel
-    .getByRole("heading", { name: "Correction Memory", exact: true })
+    .locator("summary")
+    .filter({ hasText: "Correction Memory" })
     .scrollIntoViewIfNeeded();
   await controlPanel.screenshot({ path: path.join(shots, `${phase}-corrections-locked.png`) });
 
   await unlockTesterAccess(controlPanel);
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();
+  await controlPanel.locator("summary").filter({ hasText: "Correction Memory" }).click();
   const learning = controlPanel.getByRole("heading", {
     name: "Learn corrections",
   });
@@ -46,6 +49,7 @@ test("dictation settings explain optional correction learning", async ({ control
     .getByText("Auto-paste transcription", { exact: true })
     .scrollIntoViewIfNeeded();
   await controlPanel.screenshot({ path: path.join(shots, `${phase}-delivery-settings.png`) });
+  await controlPanel.locator("summary").filter({ hasText: "More settings" }).click();
   await controlPanel.getByText("Success confirmation", { exact: true }).scrollIntoViewIfNeeded();
   await controlPanel.screenshot({ path: path.join(shots, `${phase}-notification-settings.png`) });
 });

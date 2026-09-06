@@ -49,7 +49,7 @@ const PRO_FEATURES_BETA = [
 
 /** Where each listed feature lives, so the card can open it. */
 const FEATURE_PAGES: Record<string, string> = {
-  "Correction Memory": "dictionary",
+  "Correction Memory": "correction-memory",
   "AI Enhancement": "ai-enhancement",
   "Action Engine": "action-engine",
   "Read Aloud": "read-aloud",

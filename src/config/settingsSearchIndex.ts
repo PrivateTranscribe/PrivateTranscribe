@@ -91,6 +91,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
 
   // ── Settings › General (behaviour, notifications, privacy) ───────────────
   {
+    label: "Correction Memory",
+    group: "Dictionary",
+    page: "dictionary",
+    keywords: ["learn", "corrections", "rewrites", "mistakes", "replacement"],
+  },
+  {
     label: "Apply dictionary matching",
     group: "Dictionary",
     page: "dictionary",
@@ -98,21 +104,21 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     label: "While recording",
-    group: "Audio Ducking",
+    group: "Other audio",
     page: "settings",
     section: "general",
     keywords: ["ducking", "volume", "mute other apps", "music"],
   },
   {
     label: "Volume while recording",
-    group: "Audio Ducking",
+    group: "Other audio",
     page: "settings",
     section: "general",
     keywords: ["ducking", "volume", "quiet", "music"],
   },
   {
     label: "Pause media while recording",
-    group: "Audio Ducking",
+    group: "Other audio",
     page: "settings",
     section: "general",
     keywords: ["ducking", "spotify", "music", "video", "playback"],

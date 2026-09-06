@@ -17,6 +17,12 @@ function revealSettingsRow(label: string) {
     const row = document.querySelector<HTMLElement>(`[data-settings-label="${escaped}"]`);
     if (!row) return;
 
+    // Search must reveal settings inside collapsed optional sections too.
+    let disclosure = row.closest("details");
+    while (disclosure) {
+      disclosure.open = true;
+      disclosure = disclosure.parentElement?.closest("details") ?? null;
+    }
     row.scrollIntoView({ block: "center", behavior: "smooth" });
     // A short ring, not a pulse: it answers "which one" and then gets out of
     // the way, which is the only job motion has in a dense settings screen.
@@ -94,10 +100,7 @@ export default function SettingsPageWrapper({
           <Settings size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Settings</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Updates, startup, permissions, and advanced options. Model, language, and hotkey live on
-          the Dictation page.
-        </p>
+        <p className="text-sm text-muted-foreground">Make dictation work your way.</p>
       </div>
 
       {/* Search sits above the tabs because it crosses them - and crosses out
@@ -129,16 +132,6 @@ export default function SettingsPageWrapper({
                   transition: "all 0.15s ease",
                   marginBottom: "-1px",
                   fontFamily: "inherit",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.color = "var(--color-foreground-subtle)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.color = "var(--color-muted-foreground)";
-                  }
                 }}
               >
                 {tab.label}

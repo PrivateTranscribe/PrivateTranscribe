@@ -15,6 +15,8 @@ test.describe("beta feature labelling", () => {
   }) => {
     await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
 
+    await controlPanel.locator("summary").filter({ hasText: "More settings" }).click();
+
     // Walk up from the label to the SettingsRow that owns it, so the badge
     // and the control are asserted on the same row rather than on the page.
     const row = controlPanel
@@ -57,9 +59,7 @@ test.describe("beta feature labelling", () => {
 
     // Naming what the user is missing without offering a way to get it is
     // the worst of both options.
-    await expect(
-      controlPanel.getByRole("button", { name: /Apply for beta access/ })
-    ).toBeVisible();
+    await expect(controlPanel.getByRole("button", { name: /Apply for beta access/ })).toBeVisible();
 
     await controlPanel.screenshot({
       path: "test-results/e2e/beta-page-header.png",

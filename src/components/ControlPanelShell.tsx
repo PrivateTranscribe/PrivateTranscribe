@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { Download, RefreshCw, Loader2 } from "lucide-react";
 import AppSidebar, { PageId } from "./AppSidebar";
@@ -25,6 +25,11 @@ import { AnalyticsConsentModal } from "./AnalyticsConsentModal";
 
 export default function ControlPanelShell() {
   const [activePage, setActivePage] = useState<PageId>("home");
+  const contentRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [activePage]);
   const [settingsTabRequest, setSettingsTabRequest] = useState<{
     section?: SettingsSectionType;
     requestId: number;
@@ -65,9 +70,7 @@ export default function ControlPanelShell() {
     ];
 
     if (validPages.includes(requestedPage as PageId)) {
-      setActivePage(
-        requestedPage === "correction-memory" ? "dictionary" : (requestedPage as PageId)
-      );
+      setActivePage(requestedPage as PageId);
     }
 
     localStorage.removeItem("controlPanelInitialPage");
@@ -75,8 +78,7 @@ export default function ControlPanelShell() {
 
   useEffect(() => {
     return window.electronAPI?.onControlPanelNavigate?.((destination) => {
-      const requestedPage =
-        destination.page === "correction-memory" ? "dictionary" : destination.page;
+      const requestedPage = destination.page;
       setActivePage(requestedPage);
       if (destination.settingsTab) {
         setSettingsTabRequest((current) => ({
@@ -317,7 +319,7 @@ export default function ControlPanelShell() {
       case "converse":
         return <ConversePage />;
       case "correction-memory":
-        return <DictionaryPage />;
+        return <DictionaryPage showCorrections />;
       case "action-engine":
         return <ActionEnginePage />;
       case "settings":
@@ -359,7 +361,7 @@ export default function ControlPanelShell() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <AppSidebar
-          activePage={activePage}
+          activePage={activePage === "correction-memory" ? "dictionary" : activePage}
           onPageChange={setActivePage}
           onOpenEarlyAccess={() => {
             setActivePage("settings");
@@ -371,7 +373,7 @@ export default function ControlPanelShell() {
           updateSlot={renderUpdateNotice()}
         />
 
-        <main style={{ flex: 1, overflowY: "auto", scrollbarGutter: "stable" }}>
+        <main ref={contentRef} style={{ flex: 1, overflowY: "auto", scrollbarGutter: "stable" }}>
           {renderPage()}
         </main>
       </div>

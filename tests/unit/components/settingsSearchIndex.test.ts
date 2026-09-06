@@ -24,6 +24,7 @@ const SOURCES = [
   "src/components/pages/ConversePage.tsx",
   "src/components/pages/ReadAloudPage.tsx",
   "src/components/pages/DictionaryPage.tsx",
+  "src/components/pages/CorrectionMemoryPage.tsx",
   "src/components/ui/MicrophoneSettings.tsx",
 ];
 
@@ -33,6 +34,8 @@ function extractRowLabels(relativePath: string): string[] {
   const labels: string[] = [];
 
   for (let i = 0; i < lines.length; i += 1) {
+    const anchor = lines[i].match(/settingsLabel="([^"]+)"/);
+    if (anchor) labels.push(anchor[1]);
     if (!/<SettingsRow\b/.test(lines[i])) continue;
     for (let j = i; j < Math.min(i + 6, lines.length); j += 1) {
       const match = lines[j].match(/\blabel="([^"]+)"/);

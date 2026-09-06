@@ -1,5 +1,5 @@
 import { BookMarked, Trash2, Lock, Pencil } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -53,6 +53,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
     enablePhraseCorrectionLearning,
     setEnablePhraseCorrectionLearning,
   } = useSettings();
+  const formRef = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<CorrectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,38 +155,31 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
   return (
     <div className={embedded ? "space-y-6" : "p-8 max-w-5xl mx-auto space-y-6"}>
       {/* Header */}
-      <div className="flex items-start gap-3 mb-2">
-        <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
-        <div>
-          <div className="flex items-center gap-3">
-            {embedded ? (
-              <h2 className="text-base font-semibold text-foreground">Correction Memory</h2>
-            ) : (
+      {!embedded && (
+        <div className="flex items-start gap-3 mb-2">
+          <BookMarked size={28} className="text-primary mt-0.5 shrink-0" />
+          <div>
+            <div className="flex items-center gap-3">
               <h1 className="text-3xl font-semibold text-foreground tracking-tight">
                 Correction Memory
               </h1>
-            )}
-            {/* One pill, not two. Locked showed both "Beta" and "Approved
+              {/* One pill, not two. Locked showed both "Beta" and "Approved
                 testers only", which reads as two separate problems. */}
-            <BetaBadge locked={!isUnlocked} />
+              <BetaBadge locked={!isUnlocked} />
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Replace repeated mistakes, like cloud → Claude.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Optional. Save exact replacements for repeated mistakes, like{" "}
-            <span className="font-mono text-foreground">cloud</span>
-            {" → "}
-            <span className="font-mono text-primary">Claude</span>. Saved corrections apply to
-            future dictations. You do not need this for everyday dictation.
-          </p>
         </div>
-      </div>
+      )}
 
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
           <h3 className="text-base font-semibold text-foreground">Optional correction tools</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            These tools are being tested with approved early access users. Regular dictation and
-            your dictionary words work without them.
+            Requires beta access. Your dictionary works without it.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>
@@ -231,7 +225,10 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
           </div>
 
           {/* Add correction */}
-          <div className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3">
+          <div
+            ref={formRef}
+            className="rounded-xl border border-border-subtle/50 bg-surface-raised/30 p-6 space-y-3"
+          >
             <div>
               <h2 className="text-base font-semibold text-foreground">Add a correction</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -346,7 +343,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                         onClick={() => {
                           setSource(r.source);
                           setTarget(r.target);
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          formRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
                         }}
                         className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
                         title="Edit correction"
