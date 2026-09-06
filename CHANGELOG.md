@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.18.0 - 2026-09-06
+
+### Added
+
+- Agent Mode turns a spoken draft into a clearer prompt through Claude Code, then pastes and submits it. It has its own hold key and daily allowance. Regular dictation continues to paste without submitting.
+- Read Aloud follows individual words in compatible Windows apps and updates their position more frequently while scrolling. This requires the new local timestamp-enabled voice model download, about 326 MB. Existing voice choices are preserved.
+- Read Aloud playback shortcuts can be changed. New installs use Ctrl+Alt+R to start reading, with separate controls for pause, resume, and sentence navigation.
+
+### Changed
+
+- Converse is included with Pro. Tester-only tools remain separate from paid Pro access.
+- Dictation has its own page. Settings, AI Enhancement, Converse, and Action Engine show essential controls first, with advanced options available on demand.
+- The overlay rests as a compact line, stays open during dragging, and returns to a visible display after monitor changes.
+- Onboarding can continue while the GPU engine downloads, and microphone testing is requested once.
+
+### Fixed
+
+- Windows paste no longer waits indefinitely for an app's text inspection. Transcripts remain available when delivery cannot be confirmed.
+- Microphone level bars recover when the audio context is suspended without restarting the recording.
+- Cloud file transcription uses the selected language. Cancel also stops a local fallback, and completed transcripts stay available if History is slow or fails to save.
+- Copy success appears only after copying succeeds. Deletion asks for confirmation where needed and keeps text available when deletion fails.
+- History explains when saving is disabled. Correction settings keep their saved values, and settings search opens collapsed options.
+- Read Aloud matches copied bullet and numbered list items even when the source app exposes their markers differently.
+- Build information identifies the running app, including when a development checkout differs from the installed release.
+
 ## 0.17.1 - 2026-09-05
 
 ### Changed
