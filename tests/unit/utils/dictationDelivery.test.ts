@@ -32,6 +32,7 @@ describe("deliverDictation", () => {
       persisted: true,
       pasteConfirmed: false,
       pasteEvidence: null,
+      pasteDispatched: false,
       copied: true,
       outputAction: "copy-fallback",
       recoverable: true,
@@ -74,6 +75,21 @@ describe("deliverDictation", () => {
     expect(result.pasteConfirmed).toBe(true);
     expect(result.pasteEvidence).toBe(null);
     expect(result.outputAction).toBe("paste");
+  });
+
+  test("preserves dispatch despite stale accessible text and keeps a recovery copy", async () => {
+    const copy = vi.fn(async () => {});
+    const result = await deliverDictation({
+      text: "Text that landed in a browser editor",
+      shouldPersist: true,
+      shouldPaste: true,
+      shouldCopy: false,
+      persist: vi.fn(async () => true),
+      paste: vi.fn(async () => ({ delivered: false, dispatched: true, evidence: "absent" })),
+      copy,
+    });
+    expect(result).toMatchObject({ pasteConfirmed: false, pasteDispatched: true, copied: true });
+    expect(copy).toHaveBeenCalledOnce();
   });
 
   test("reports when every durable delivery path failed", async () => {

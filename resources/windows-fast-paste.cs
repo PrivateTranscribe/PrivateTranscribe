@@ -128,7 +128,9 @@ internal static class WindowsFastPaste
         }
 
         string clipboardText = ReadClipboardText();
-        AccessibleTextSnapshot textBefore = ReadFocusedAccessibleText();
+        // A cold or hung accessibility provider must not prevent Ctrl+V. UIA
+        // calls run off the input thread and only get a short observation budget.
+        AccessibleTextSnapshot textBefore = ObserveWithDeadline(ReadFocusedAccessibleText, 100);
 
         // Give the foreground window a moment to settle after the hotkey release.
         Thread.Sleep(10);
@@ -143,7 +145,9 @@ internal static class WindowsFastPaste
             return 1;
         }
 
-        string evidence = ConfirmAccessibleInsertion(textBefore, clipboardText);
+        string evidence = ObserveWithDeadline(
+            delegate { return ConfirmAccessibleInsertion(textBefore, clipboardText); }, 500)
+            ?? EvidenceNone;
 
         bool enterSent = false;
         if (sendEnter && evidence != EvidenceAbsent)
@@ -157,6 +161,24 @@ internal static class WindowsFastPaste
 
         WriteResult(evidence, true, isTerminal, windowClass, processName, sendEnter, enterSent);
         return 0;
+    }
+
+    // UI Automation crosses into another process and can block indefinitely.
+    // Use an MTA worker per observation, as recommended for UIA clients. A
+    // timed-out worker is background-only and dies when this short-lived helper
+    // exits. It can only read; it can never send a late paste or Enter.
+    private static T ObserveWithDeadline<T>(Func<T> observe, int timeoutMs) where T : class
+    {
+        T result = null;
+        Thread worker = new Thread(delegate()
+        {
+            try { result = observe(); }
+            catch { /* Observation is optional; delivery is not. */ }
+        });
+        worker.IsBackground = true;
+        worker.SetApartmentState(ApartmentState.MTA);
+        worker.Start();
+        return worker.Join(timeoutMs) ? result : null;
     }
 
     private static void WriteResult(

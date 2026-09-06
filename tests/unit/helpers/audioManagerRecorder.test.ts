@@ -112,6 +112,7 @@ describe("AudioManager recorder lifecycle", () => {
     await expect(manager.safePaste("recoverable text")).resolves.toEqual({
       delivered: false,
       evidence: null,
+      dispatched: false,
     });
     expect(onError).not.toHaveBeenCalled();
   });
@@ -120,7 +121,9 @@ describe("AudioManager recorder lifecycle", () => {
   // survive the trip from the main process rather than collapse to a boolean.
   it("reports an unreadable paste target separately from a failed paste", async () => {
     (window as any).electronAPI = {
-      pasteText: vi.fn().mockResolvedValue({ delivered: false, evidence: "none" }),
+      pasteText: vi
+        .fn()
+        .mockResolvedValue({ delivered: false, evidence: "none", dispatched: true }),
     };
     const manager = new AudioManager();
     manager.setCallbacks({
@@ -132,6 +135,7 @@ describe("AudioManager recorder lifecycle", () => {
     await expect(manager.safePaste("unverifiable text")).resolves.toEqual({
       delivered: false,
       evidence: "none",
+      dispatched: true,
     });
   });
 

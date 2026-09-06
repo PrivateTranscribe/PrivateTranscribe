@@ -24,7 +24,7 @@ import { expect, test } from "./fixtures/electron-app";
  */
 
 const FIXTURE_DIR = path.resolve(__dirname, "..", "fixtures", "dictation");
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "qa-0.17.1");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Fixture speech plus a cold whisper model load, with slack. */
@@ -72,7 +72,13 @@ async function configureDictation(overlay: Page): Promise<void> {
   await expect(overlay.getByRole("button", { name: "Dictation overlay" })).toBeVisible();
 }
 
-type DeliveryFailure = "paste" | "paste-unreadable" | "paste-and-clipboard" | "everything";
+type DeliveryFailure =
+  | "paste"
+  | "paste-unreadable"
+  | "paste-stale"
+  | "paste-confirmed"
+  | "paste-and-clipboard"
+  | "everything";
 
 /**
  * Re-register the main-process delivery handlers to fail like their real
@@ -83,15 +89,18 @@ async function breakDelivery(app: ElectronApplication, failure: DeliveryFailure)
   await app.evaluate(({ ipcMain }, mode) => {
     ipcMain.removeHandler("paste-text");
     ipcMain.handle("paste-text", async () => ({
-      delivered: false,
+      delivered: mode === "paste-confirmed",
       // "none" is the helper saying it could not read the target at all, which
       // is not the same as the text failing to arrive.
       evidence: mode === "paste-unreadable" ? "none" : "absent",
-      dispatched: mode === "paste-unreadable",
+      dispatched: ["paste-unreadable", "paste-stale", "paste-confirmed"].includes(mode),
       fallback: "clipboard",
     }));
 
-    if (mode !== "paste" && mode !== "paste-unreadable") {
+    // Never overwrite the developer's real clipboard during delivery tests.
+    ipcMain.removeHandler("write-clipboard");
+    ipcMain.handle("write-clipboard", async () => true);
+    if (mode === "paste-and-clipboard" || mode === "everything") {
       ipcMain.removeHandler("write-clipboard");
       ipcMain.handle("write-clipboard", async () => {
         throw new Error("e2e: clipboard unavailable");
@@ -141,44 +150,49 @@ test.describe("dictation delivery feedback", () => {
     await breakDelivery(electronApp, "paste");
     await dictate(electronApp, overlayWindow);
 
-    await expect(overlayWindow.getByText("Copied instead of pasted")).toBeVisible({
+    await expect(overlayWindow.getByText("Text copied", { exact: true })).toBeVisible({
       timeout: TOAST_TIMEOUT_MS,
     });
-    await expect(overlayWindow.getByText(/press Ctrl\+V to insert it/)).toBeVisible();
-    await captureEvidence(overlayWindow, "dictation-feedback-copy-fallback.png");
+    await expect(overlayWindow.getByText(/press Ctrl\+V/)).toBeVisible();
+    await captureEvidence(overlayWindow, "after-paste-unavailable.png");
   });
 
   // Elevated windows, password fields and fullscreen games give the helper
   // nothing to read. Warning there put a false "it did not paste" in front of
   // people whose paste had worked, so an unreadable target now says nothing and
   // leaves the text on the clipboard.
-  test("a paste it could not verify stays quiet", async ({ electronApp, overlayWindow }) => {
-    await configureDictation(overlayWindow);
-    await breakDelivery(electronApp, "paste-unreadable");
-    await dictate(electronApp, overlayWindow);
+  for (const mode of ["paste-unreadable", "paste-stale", "paste-confirmed"] as const) {
+    test(`a ${mode} result stays quiet`, async ({ electronApp, overlayWindow }) => {
+      await configureDictation(overlayWindow);
+      await breakDelivery(electronApp, mode);
+      await dictate(electronApp, overlayWindow);
 
-    // Delivery persists to history before it pastes, so a saved transcript means
-    // the toast has already had its chance. Waiting out the full toast timeout
-    // instead would spend the whole test budget.
-    await expect
-      .poll(
-        () =>
-          overlayWindow.evaluate(async () => {
-            const rows = await (
-              window as unknown as { electronAPI: any }
-            ).electronAPI.getTranscriptions(1);
-            return Array.isArray(rows) ? rows.length : 0;
-          }),
-        { timeout: 60_000 }
-      )
-      .toBeGreaterThan(0);
-    await overlayWindow.waitForTimeout(2_000);
+      // Delivery persists to history before it pastes, so a saved transcript means
+      // the toast has already had its chance. Waiting out the full toast timeout
+      // instead would spend the whole test budget.
+      await expect
+        .poll(
+          () =>
+            overlayWindow.evaluate(async () => {
+              const rows = await (
+                window as unknown as { electronAPI: any }
+              ).electronAPI.getTranscriptions(1);
+              return Array.isArray(rows) ? rows.length : 0;
+            }),
+          { timeout: 60_000 }
+        )
+        .toBeGreaterThan(0);
+      await overlayWindow.waitForTimeout(2_000);
 
-    await expect(overlayWindow.getByText("Copied instead of pasted")).toHaveCount(0);
-    await expect(overlayWindow.getByText("Saved to History only")).toHaveCount(0);
-    await expect(overlayWindow.getByText("Dictation could not be delivered")).toHaveCount(0);
-    await captureEvidence(overlayWindow, "dictation-feedback-unverified-quiet.png");
-  });
+      await expect(overlayWindow.getByText("Text copied", { exact: true })).toHaveCount(0);
+      await expect(overlayWindow.getByText("Transcription complete", { exact: true })).toHaveCount(
+        0
+      );
+      await expect(overlayWindow.getByText("Saved to History only")).toHaveCount(0);
+      await expect(overlayWindow.getByText("Dictation could not be delivered")).toHaveCount(0);
+      await captureEvidence(overlayWindow, `after-${mode}-quiet.png`);
+    });
+  }
 
   test("paste and clipboard both failing points at History", async ({
     electronApp,

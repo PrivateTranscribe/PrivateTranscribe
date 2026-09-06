@@ -3761,9 +3761,8 @@ class AudioManager {
   }
 
   /**
-   * Returns what happened rather than a plain boolean, because "the text did
-   * not arrive" and "the target could not be read at all" need different
-   * handling. Only the first is worth telling the user about.
+   * Preserve dispatch separately from text observation. Browser editors can
+   * accept a paste while their accessible text remains unchanged or stale.
    */
   async safePaste(text, options = {}) {
     try {
@@ -3771,6 +3770,7 @@ class AudioManager {
       return {
         delivered: result?.delivered !== false,
         evidence: result?.evidence ?? null,
+        dispatched: result?.dispatched === true,
       };
     } catch (error) {
       this.onError?.({

@@ -7,9 +7,9 @@ const FAST_PASTE_EXECUTABLE = "windows-fast-paste.exe";
 
 /**
  * What the helper observed, which is a different question from whether the
- * paste worked. "absent" means it watched the focused field and the text never
- * arrived. "none" means it could not read the field at all, so nothing about
- * the paste can be claimed in either direction.
+ * paste worked. "absent" means a readable snapshot did not show insertion;
+ * stale snapshots and reformatted text can also cause this. "none" means the
+ * field could not be read. Neither proves a dispatched shortcut failed.
  */
 const PASTE_EVIDENCE_ABSENT = "absent";
 const PASTE_EVIDENCE_NONE = "none";

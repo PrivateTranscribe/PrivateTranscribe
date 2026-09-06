@@ -651,17 +651,16 @@ export const useAudioRecording = (toast, options = {}) => {
               variant: "destructive",
               duration: 8000,
             });
-          } else if (delivery.pasteEvidence !== "none") {
-            // "none" means the target gave no readable text either before or
-            // after the paste, so the app has no idea whether it landed.
-            // Elevated windows, protected fields and games all read that way,
-            // and telling someone their paste failed when it did not is worse
-            // than saying nothing. The clipboard already holds the text.
+          } else if (!delivery.pasteDispatched && delivery.pasteEvidence !== "none") {
+            // A dispatched shortcut can land even when accessible text is stale,
+            // reformatted, truncated, or unchanged by replacing the selection.
+            // Only report a fallback when dispatch itself failed. Unconfirmed
+            // attempts still keep the transcript on the clipboard and in History.
             const pasteKey =
               (window.electronAPI?.getPlatform?.() ?? "win32") === "darwin" ? "Cmd+V" : "Ctrl+V";
             toastRef.current?.({
-              title: "Copied instead of pasted",
-              description: `The text could not be typed into the app you were in. It is on your clipboard - press ${pasteKey} to insert it.`,
+              title: "Text copied",
+              description: `Automatic paste was unavailable. Click your text field and press ${pasteKey}.`,
               variant: "default",
               duration: 6000,
             });
