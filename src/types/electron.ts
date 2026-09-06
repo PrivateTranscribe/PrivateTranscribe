@@ -191,6 +191,7 @@ export interface KokoroSynthResult {
   pcm: Float32Array;
   sampleRate: number;
   synthMs: number;
+  wordTimings?: { text: string; start: number; end: number; startTime: number; endTime: number }[];
 }
 
 /**
@@ -754,6 +755,7 @@ declare global {
         text: string;
         voice?: string;
         speed?: number;
+        withWordTimings?: boolean;
       }) => Promise<KokoroSynthResult>;
       /**
        * Copy the foreground app's selection and push it to the overlay to speak.

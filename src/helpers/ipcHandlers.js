@@ -1450,11 +1450,18 @@ class IPCHandlers {
 
     ipcMain.handle(
       "readaloud-synth",
-      async (_event, { text, voice, speed, priority, epoch, channel } = {}) => {
+      async (_event, { text, voice, speed, priority, epoch, channel, withWordTimings } = {}) => {
         // priority/epoch/channel steer the client's queue (interactive synths
         // jump queued prefetch, stale epochs are dropped); the engine itself
         // only ever sees text, voice and speed.
-        return requireKokoro().synthesize(text, { voice, speed, priority, epoch, channel });
+        return requireKokoro().synthesize(text, {
+          voice,
+          speed,
+          priority,
+          epoch,
+          channel,
+          withWordTimings,
+        });
       }
     );
 

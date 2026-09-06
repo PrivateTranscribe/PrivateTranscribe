@@ -21,6 +21,9 @@
 #   -> rects                     re-read the last hit's rectangles (the user may
 #                                have scrolled)
 #   <- RECTS ... | NONE ...
+#   -> locate <base64 json>      {index,sentence,start,end}; cache source word ranges
+#   <- WORDS <json array>        [{start,rects:[{x,y,w,h},...]}]; also returned by
+#                                rects so word changes paint without a UIA wait
 #   -> clear                     forget the anchor
 #   <- OK
 #   -> ping / <- PONG            prices the line protocol
@@ -32,6 +35,9 @@ Add-Type -AssemblyName UIAutomationTypes
 
 $script:range = $null
 $script:last = $null
+$script:lastSentence = $null
+$script:sentences = @{}
+$script:wordRanges = $null
 $script:windowName = ""
 
 function Get-Anchor {
@@ -69,6 +75,9 @@ function Get-Anchor {
           if ($text.Trim().Length -gt 0) {
             $script:range = $sel[0].Clone()
             $script:last = $null
+            $script:lastSentence = $null
+            $script:sentences = @{}
+            $script:wordRanges = $null
             $script:windowName = $root.Current.Name
             return $text.Length
           }
@@ -98,9 +107,9 @@ function Find-Sentence($text) {
   # Forward from the last hit first, so "Yes. Yes. Yes." resolves in order;
   # then the whole selection, which is where a skip backwards lands.
   $scopes = @()
-  if ($script:last) {
+  if ($script:lastSentence) {
     $after = $script:range.Clone()
-    $after.MoveEndpointByRange($start, $script:last, $end)
+    $after.MoveEndpointByRange($start, $script:lastSentence, $end)
     $scopes += $after
   }
   $scopes += $script:range
@@ -131,6 +140,44 @@ function Find-Sentence($text) {
   return $null
 }
 
+# Cache each sentence and its word ranges. Source character offsets identify
+# repeated words unambiguously; UIA FindText tolerates different line endings.
+function Locate-Word($payload) {
+  $script:wordRanges = $null
+  $key = [string]$payload.index
+  $cached = $script:sentences[$key]
+  if (-not $cached -or $cached.text -ne $payload.sentence) {
+    $hit = Find-Sentence $payload.sentence
+    if (-not $hit) { return $null }
+    $script:lastSentence = $hit
+    $words = @{}
+    $rest = $hit.Clone()
+    $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
+    $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
+    foreach ($match in [regex]::Matches($payload.sentence, '\S+')) {
+      $word = $rest.FindText($match.Value, $false, $true)
+      if (-not $word) { break }
+      $words[[string]$match.Index] = $word
+      $rest.MoveEndpointByRange($start, $word, $end)
+    }
+    $cached = @{ text = $payload.sentence; range = $hit; words = $words }
+    $script:sentences[$key] = $cached
+  }
+  $script:wordRanges = $cached.words
+  if ($null -eq $payload.start) { return $cached.range }
+  return $cached.words[[string]$payload.start]
+}
+
+function Words-Json {
+  $out = @()
+  foreach ($key in $script:wordRanges.Keys) {
+    $rects = Rects-Json $script:wordRanges[$key]
+    if (-not $rects) { $rects = '[]' }
+    $out += ('{"start":' + $key + ',"rects":' + $rects + '}')
+  }
+  return '[' + ($out -join ',') + ']'
+}
+
 Write-Output "READY"
 while ($true) {
   $line = [Console]::In.ReadLine()
@@ -142,17 +189,30 @@ while ($true) {
       Write-Output ("OK chars=" + $chars + " window=" + $script:windowName)
     }
     elseif ($line.StartsWith("find ")) {
+      $script:wordRanges = $null
       $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($line.Substring(5)))
       $hit = Find-Sentence $text
       if (-not $hit) { Write-Output "NONE not-in-selection" }
       else {
         $script:last = $hit
+        $script:lastSentence = $hit
         $json = Rects-Json $hit
         if ($json) { Write-Output ("RECTS " + $json) } else { Write-Output "NONE off-screen" }
       }
     }
+    elseif ($line.StartsWith("locate ")) {
+      $payload = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($line.Substring(7))) | ConvertFrom-Json
+      $script:last = Locate-Word $payload
+      if ($script:wordRanges) { Write-Output ("WORDS " + (Words-Json)) }
+      elseif (-not $script:last) { Write-Output "NONE not-in-selection" }
+      else {
+        $json = Rects-Json $script:last
+        if ($json) { Write-Output ("RECTS " + $json) } else { Write-Output "NONE off-screen" }
+      }
+    }
     elseif ($line -eq "rects") {
-      if (-not $script:last) { Write-Output "NONE no-hit" }
+      if ($script:wordRanges) { Write-Output ("WORDS " + (Words-Json)) }
+      elseif (-not $script:last) { Write-Output "NONE no-hit" }
       else {
         $json = Rects-Json $script:last
         if ($json) { Write-Output ("RECTS " + $json) } else { Write-Output "NONE off-screen" }
@@ -161,6 +221,9 @@ while ($true) {
     elseif ($line -eq "clear") {
       $script:range = $null
       $script:last = $null
+      $script:lastSentence = $null
+      $script:sentences = @{}
+      $script:wordRanges = $null
       $script:windowName = ""
       Write-Output "OK"
     }

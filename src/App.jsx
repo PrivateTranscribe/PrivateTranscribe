@@ -554,23 +554,35 @@ export default function App() {
     };
     window.addEventListener("storage", syncStoredPlaybackKeys);
 
-    // Tell the main process which sentence is on, so the in-place highlight
-    // can follow. Only on a change of sentence or status, never per tick.
+    // Report word boundaries from the audio clock. Geometry is cached in the
+    // main process; unchanged ticks do not send IPC or re-render the capsule.
     const reportSentence = (state) => {
-      const key = `${state.status}:${state.index}`;
+      const key = `${state.status}:${state.index}:${state.currentWord?.start ?? -1}`;
       if (readAloudReportedRef.current === key) return;
       readAloudReportedRef.current = key;
       void window.electronAPI?.readAloudReportSentence?.({
         status: state.status,
         index: state.index,
         sentence: state.currentSentence ?? null,
+        word: state.currentWord ?? null,
       });
     };
 
     const sync = () => {
       const state = player.getState();
       const visible = READ_ALOUD_VISIBLE_STATUSES.has(state.status);
-      setReadAloudState(visible ? state : null);
+      setReadAloudState((previous) => {
+        if (!visible) return null;
+        if (
+          previous?.status === state.status &&
+          previous?.index === state.index &&
+          previous?.currentWord?.start === state.currentWord?.start &&
+          previous?.sentenceCount === state.sentenceCount &&
+          previous?.error === state.error
+        )
+          return previous;
+        return state;
+      });
       reportSentence(state);
       // An errored read has controls to press but nothing to control, so the
       // shortcuts go back to the rest of the machine along with the buttons.
@@ -585,7 +597,7 @@ export default function App() {
     };
     const startPolling = () => {
       sync();
-      if (!pollTimer) pollTimer = setInterval(sync, 250);
+      if (!pollTimer) pollTimer = setInterval(sync, 40);
     };
 
     readAloudRef.current = { player, sync: startPolling };

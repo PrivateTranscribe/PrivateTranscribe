@@ -52,6 +52,8 @@ export class ReadAloudPlayer {
      * sentence line and seek all stay sentence-based.
      */
     this.firstChunks = null;
+    this.chunkTailAt = null;
+    this.playbackWords = [];
     this.chunkCache = new Map();
     this.chunkInflight = new Map();
     /** Chunk B, scheduled ahead on the audio timeline while chunk A plays. */
@@ -89,6 +91,22 @@ export class ReadAloudPlayer {
   // ------------------------------------------------------------------ state
 
   getState() {
+    const ctx = this.playing ? this.getContext() : null;
+    const outputTime = this.playing ? ctx?.getOutputTimestamp?.().contextTime : null;
+    const elapsed =
+      outputTime > 0
+        ? outputTime - this.startedAt + this.offset
+        : this.playing
+          ? this.elapsed()
+          : this.offset;
+    const currentWord =
+      this.status === "playing" || this.status === "paused"
+        ? (this.playbackWords.find(
+            (word, index) =>
+              (elapsed >= word.startTime || (this.status === "paused" && index === 0)) &&
+              elapsed < (this.playbackWords[index + 1]?.startTime ?? word.endTime)
+          ) ?? null)
+        : null;
     return {
       status: this.status,
       // The voice this player will speak with right now. The overlay rewrites
@@ -101,6 +119,7 @@ export class ReadAloudPlayer {
       // a read has a visible place in the text rather than only a counter;
       // null before a split has produced anything to say.
       currentSentence: this.sentences[this.index] ?? null,
+      currentWord,
       offset: this.offset,
       playing: this.playing,
       ttfaMs: this.ttfaMs,
@@ -210,9 +229,10 @@ export class ReadAloudPlayer {
           priority,
           epoch,
           channel: "readaloud",
+          withWordTimings: true,
         });
       })
-      .then(({ pcm, sampleRate, synthMs }) => {
+      .then(({ pcm, sampleRate, synthMs, wordTimings = [] }) => {
         const ctx = this.getContext();
         if (!ctx) throw new Error("No AudioContext available");
 
@@ -220,7 +240,7 @@ export class ReadAloudPlayer {
         const buffer = ctx.createBuffer(1, samples.length, sampleRate);
         buffer.copyToChannel(samples, 0);
 
-        const entry = { buffer, synthMs, seconds: samples.length / sampleRate };
+        const entry = { buffer, synthMs, seconds: samples.length / sampleRate, wordTimings };
         // A synth started before the cache was invalidated must not repopulate it.
         if (epoch === this.epoch) this.cache.set(i, entry);
         this.inflight.delete(i);
@@ -273,9 +293,10 @@ export class ReadAloudPlayer {
           priority: key === "head" ? "interactive" : "prefetch",
           epoch,
           channel: "readaloud",
+          withWordTimings: true,
         });
       })
-      .then(({ pcm, sampleRate, synthMs }) => {
+      .then(({ pcm, sampleRate, synthMs, wordTimings = [] }) => {
         const ctx = this.getContext();
         if (!ctx) throw new Error("No AudioContext available");
 
@@ -297,7 +318,21 @@ export class ReadAloudPlayer {
         const buffer = ctx.createBuffer(1, samples.length, sampleRate);
         buffer.copyToChannel(samples, 0);
 
-        const entry = { buffer, synthMs, seconds: samples.length / sampleRate };
+        const trimmedLead =
+          (samples.byteOffset - raw.byteOffset) / Float32Array.BYTES_PER_ELEMENT / sampleRate;
+        const seconds = samples.length / sampleRate;
+        const entry = {
+          buffer,
+          synthMs,
+          seconds,
+          wordTimings: wordTimings
+            .map((word) => ({
+              ...word,
+              startTime: Math.max(0, word.startTime - trimmedLead),
+              endTime: Math.min(seconds, word.endTime - trimmedLead),
+            }))
+            .filter((word) => word.endTime > word.startTime),
+        };
         if (epoch === this.epoch) this.chunkCache.set(key, entry);
         this.chunkInflight.delete(key);
         if (recordTimings) this.lastSynthMs = synthMs;
@@ -318,6 +353,36 @@ export class ReadAloudPlayer {
         // Prefetch failures surface when that sentence is actually reached.
       });
     }
+  }
+
+  /** Resume exactly the same first-sentence audio, including its chunk seam. */
+  cacheFirstSentence(head, tail) {
+    const ctx = this.getContext();
+    const tailAt = this.chunkTailAt ?? head.seconds;
+    const rate = head.buffer.sampleRate;
+    const tailSample = Math.round(tailAt * rate);
+    const buffer = ctx.createBuffer(1, tailSample + tail.buffer.length, rate);
+    buffer.copyToChannel(head.buffer.getChannelData(0), 0);
+    buffer.copyToChannel(tail.buffer.getChannelData(0), 0, tailSample);
+    const textStart = this.sentences[0].length - this.firstChunks.tail.length;
+    const wordTimings = [
+      ...head.wordTimings,
+      ...tail.wordTimings.map((word) => ({
+        ...word,
+        start: word.start + textStart,
+        end: word.end + textStart,
+        startTime: word.startTime + tailAt,
+        endTime: word.endTime + tailAt,
+      })),
+    ];
+    const entry = {
+      buffer,
+      wordTimings,
+      seconds: buffer.duration,
+      synthMs: head.synthMs + tail.synthMs,
+    };
+    this.cache.set(0, entry);
+    return entry;
   }
 
   // --------------------------------------------------------------- playback
@@ -381,6 +446,7 @@ export class ReadAloudPlayer {
     this.offset = 0;
     this.playing = true;
     this.status = "playing";
+    this.playbackWords = head.wordTimings;
 
     if (this.ttfaMark) {
       this.ttfaMs = Date.now() - this.ttfaMark;
@@ -405,7 +471,10 @@ export class ReadAloudPlayer {
         // round-trip, so the seam is a continuation rather than a click.
         // Math.max only matters if synthesis overran the head, which is the
         // one case a gap is unavoidable.
-        tailSrc.start(Math.max(ctx.currentTime, tailStartsAt));
+        const actualStart = Math.max(ctx.currentTime, tailStartsAt);
+        this.chunkTailAt = actualStart - this.startedAt;
+        this.playbackWords = this.cacheFirstSentence(head, tail).wordTimings;
+        tailSrc.start(actualStart);
         this.pendingSource = tailSrc;
       })
       .catch((err) => {
@@ -423,6 +492,8 @@ export class ReadAloudPlayer {
     this.done = false;
     const gen = ++this.generation;
     this.stopSource();
+    this.playing = false;
+    this.playbackWords = [];
 
     if (i >= this.sentences.length) {
       this.finish();
@@ -449,9 +520,8 @@ export class ReadAloudPlayer {
 
     if (!this.cache.has(this.index)) this.status = "synthesizing";
 
-    // Chunking exists for the first press only. A seek or a resume back into
-    // sentence 0 arrives without this flag and speaks the whole sentence, so
-    // the seam can never appear anywhere the listener navigated to by hand.
+    // Start the first head immediately. Resumes use the cached combined audio
+    // below, keeping offsets and word timings on that same waveform.
     if (useFirstChunks && this.firstChunks && this.index === 0 && this.offset === 0) {
       if (await this.playFirstChunks(gen, ctx)) return;
       if (gen !== this.generation) return;
@@ -461,7 +531,14 @@ export class ReadAloudPlayer {
 
     let entry;
     try {
-      entry = await this.ensure(this.index);
+      if (this.index === 0 && this.firstChunks && !this.cache.has(0)) {
+        const head = await this.ensureChunk("head", this.firstChunks.head);
+        const tail = await this.ensureChunk("tail", this.firstChunks.tail);
+        if (gen !== this.generation) return;
+        entry = this.cacheFirstSentence(head, tail);
+      } else {
+        entry = await this.ensure(this.index);
+      }
     } catch {
       return; // status/error already set by ensure()
     }
@@ -480,6 +557,7 @@ export class ReadAloudPlayer {
     this.startedAt = ctx.currentTime;
     this.playing = true;
     this.status = "playing";
+    this.playbackWords = entry.wordTimings ?? [];
 
     if (this.ttfaMark) {
       this.ttfaMs = Date.now() - this.ttfaMark;
@@ -502,6 +580,8 @@ export class ReadAloudPlayer {
     this.cache.clear();
     this.inflight.clear();
     this.firstChunks = null;
+    this.chunkTailAt = null;
+    this.playbackWords = [];
     this.chunkCache.clear();
     this.chunkInflight.clear();
     this.error = null;
@@ -530,6 +610,7 @@ export class ReadAloudPlayer {
   pause() {
     if (!this.playing) return;
     this.offset = this.elapsed();
+    this.generation++;
     this.playing = false;
     this.stopSource();
     this.status = "paused";
@@ -554,7 +635,13 @@ export class ReadAloudPlayer {
     } else {
       this.index = target;
       this.offset = 0;
-      this.ensure(this.index)?.catch?.(() => {});
+      this.playbackWords = this.cache.get(target)?.wordTimings ?? [];
+      const gen = ++this.generation;
+      this.ensure(this.index)
+        ?.then?.((entry) => {
+          if (gen === this.generation) this.playbackWords = entry.wordTimings;
+        })
+        .catch?.(() => {});
       this.prefetch();
     }
   }
@@ -581,6 +668,8 @@ export class ReadAloudPlayer {
     this.cache.clear();
     this.inflight.clear();
     this.firstChunks = null;
+    this.chunkTailAt = null;
+    this.playbackWords = [];
     this.chunkCache.clear();
     this.chunkInflight.clear();
   }
