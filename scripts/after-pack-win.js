@@ -7,12 +7,38 @@ module.exports = async function afterPack(context) {
     return;
   }
 
+  // Probe the packaged copies, with only their own runtime directory added.
+  // Source tests can find a working engine in the user's cache and miss stale
+  // DLLs in resources/bin. Help must work before signing or publishing a build.
+  const binDir = path.join(context.appOutDir, "resources", "bin");
+  for (const name of ["whisper-server-win32-x64.exe", "llama-server-win32-x64.exe"]) {
+    try {
+      execFileSync(path.join(binDir, name), ["--help"], {
+        cwd: binDir,
+        windowsHide: true,
+        timeout: 15000,
+        stdio: "pipe",
+      });
+    } catch (error) {
+      throw new Error(
+        `Packaged ${name} cannot start (exit ${error.status ?? "unknown"}). ` +
+          "Refresh its CPU binary and matching runtime libraries before rebuilding."
+      );
+    }
+  }
+
   const appInfo = context.packager.appInfo;
   const productFilename = appInfo.productFilename;
   const exePath = path.join(context.appOutDir, `${productFilename}.exe`);
   const projectDir = context.packager.projectDir;
   const iconPath = path.join(projectDir, "src", "assets", "icon.ico");
-  const rceditPath = path.join(projectDir, "node_modules", "electron-winstaller", "vendor", "rcedit.exe");
+  const rceditPath = path.join(
+    projectDir,
+    "node_modules",
+    "electron-winstaller",
+    "vendor",
+    "rcedit.exe"
+  );
 
   if (!existsSync(exePath)) {
     throw new Error(`[after-pack-win] Executable not found: ${exePath}`);

@@ -92,6 +92,15 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
     if (fs.existsSync(binaryPath)) {
       fs.copyFileSync(binaryPath, outputPath);
       setExecutable(outputPath);
+      // The CPU archive includes the Visual C++ runtime. A developer PC can
+      // hide missing DLLs that prevent the packaged engine starting elsewhere.
+      if (platformArch === "win32-x64") {
+        for (const name of fs.readdirSync(extractDir)) {
+          if (name.toLowerCase().endsWith(".dll")) {
+            fs.copyFileSync(path.join(extractDir, name), path.join(BIN_DIR, name));
+          }
+        }
+      }
       console.log(`  [server] ${platformArch}: Extracted to ${config.outputName}`);
     } else {
       console.error(`  [server] ${platformArch}: Binary not found in archive`);
@@ -137,7 +146,12 @@ async function main() {
     }
 
     console.log(`Downloading for target platform (${args.platformArch}):`);
-    const ok = await downloadBinary(args.platformArch, BINARIES[args.platformArch], release, args.isForce);
+    const ok = await downloadBinary(
+      args.platformArch,
+      BINARIES[args.platformArch],
+      release,
+      args.isForce
+    );
     if (!ok) {
       console.error(`Failed to download binaries for ${args.platformArch}`);
       process.exitCode = 1;

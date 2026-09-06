@@ -159,8 +159,9 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
           const libName = path.basename(libPath);
           const destPath = path.join(BIN_DIR, libName);
 
-          // Only copy if not already exists (libraries are shared across architectures on same OS)
-          if (!fs.existsSync(destPath)) {
+          // A forced refresh must replace the matching runtime too. Keeping
+          // old ggml/llama DLLs beside a new launcher can prevent it starting.
+          if (isForce || !fs.existsSync(destPath)) {
             fs.copyFileSync(libPath, destPath);
             setExecutable(destPath);
             console.log(`  ${platformArch}: Copied library ${libName}`);
