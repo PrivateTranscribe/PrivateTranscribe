@@ -23,6 +23,7 @@ import { SectionLabel } from "./SectionLabel";
 
 interface PromptStudioProps {
   className?: string;
+  onCustomPromptChange?: (custom: boolean) => void;
 }
 
 type ProviderConfig = {
@@ -55,7 +56,7 @@ function getCurrentPrompt(): string {
   return UNIFIED_SYSTEM_PROMPT;
 }
 
-export default function PromptStudio({ className = "" }: PromptStudioProps) {
+export default function PromptStudio({ className = "", onCustomPromptChange }: PromptStudioProps) {
   const [activeTab, setActiveTab] = useState<"current" | "edit" | "test">("current");
   const [editedPrompt, setEditedPrompt] = useState(UNIFIED_SYSTEM_PROMPT);
   const [testText, setTestText] = useState(
@@ -90,10 +91,12 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
         console.error("Failed to load custom prompt:", error);
       }
     }
-  }, []);
+    onCustomPromptChange?.(getCurrentPrompt() !== UNIFIED_SYSTEM_PROMPT);
+  }, [onCustomPromptChange]);
 
   const savePrompt = () => {
     localStorage.setItem("customUnifiedPrompt", JSON.stringify(editedPrompt));
+    onCustomPromptChange?.(editedPrompt !== UNIFIED_SYSTEM_PROMPT);
     showAlertDialog({
       title: "Prompt Saved",
       description: "Your custom prompt will be used for all future AI processing.",
@@ -103,6 +106,7 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
   const resetToDefault = () => {
     setEditedPrompt(UNIFIED_SYSTEM_PROMPT);
     localStorage.removeItem("customUnifiedPrompt");
+    onCustomPromptChange?.(false);
     showAlertDialog({
       title: "Reset Complete",
       description: "Prompt has been reset to the default value.",
@@ -139,12 +143,12 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
       );
 
       if (!useReasoningModel) {
-        setTestResult("AI text enhancement is disabled. Enable it in AI Models to test prompts.");
+        setTestResult("Enable AI Enhancement above to test prompts.");
         return;
       }
 
       if (!reasoningModel) {
-        setTestResult("No reasoning model selected. Choose one in AI Models settings.");
+        setTestResult("Choose an AI model above to test prompts.");
         return;
       }
 
@@ -155,7 +159,9 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
       if (providerConfig.baseStorageKey) {
         const baseUrl = (localStorage.getItem(providerConfig.baseStorageKey) || "").trim();
         if (!baseUrl) {
-          setTestResult(`${providerConfig.label} base URL missing. Add it in AI Models settings.`);
+          setTestResult(
+            `${providerConfig.label} base URL missing. Add it in the model settings above.`
+          );
           return;
         }
       }
@@ -363,8 +369,8 @@ export default function PromptStudio({ className = "" }: PromptStudioProps) {
                         <AlertTriangle className="w-3.5 h-3.5 text-warning mt-0.5 shrink-0" />
                         <p className="text-[12px] text-muted-foreground leading-relaxed">
                           AI text enhancement is disabled. Enable it in{" "}
-                          <span className="font-medium text-foreground">AI Models</span> to test
-                          prompts.
+                          <span className="font-medium text-foreground">AI Enhancement</span> to
+                          test prompts.
                         </p>
                       </div>
                     </div>

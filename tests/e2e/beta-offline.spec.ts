@@ -120,6 +120,7 @@ test.describe("beta access offline", () => {
     );
     // ...and the real control is present, so the assertion above is not passing
     // because the page failed to render at all.
+    await controlPanel.locator("summary").filter({ hasText: "Voice instructions" }).click();
     await expect(controlPanel.getByTestId("agent-name-input")).toBeVisible();
 
     const probe = await readProbe(controlPanel);
