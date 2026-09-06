@@ -6,7 +6,7 @@ import ReasoningService from "../services/ReasoningService";
 import { getModelProvider, modelRegistry, getCloudModel } from "../models/ModelRegistry";
 
 const SAMPLE =
-  "um can you send the draft on Tuesday no sorry Thursday and keep the budget at fifty kroner";
+  "um hey Alex I can't attend the meeting tomorrow could you could you send me the notes afterwards and uh I'll I'll catch up on Friday thanks";
 
 export function EnhancementTest({
   model,
@@ -83,7 +83,8 @@ export function EnhancementTest({
           Try cleanup
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Edit the sample or paste your own dictation. This test never pastes into another app.
+          Check how the model handles fillers, repeated words, and punctuation. This test never
+          pastes into another app.
         </p>
       </div>
       <Textarea
