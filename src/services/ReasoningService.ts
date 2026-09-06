@@ -16,9 +16,59 @@ export interface ReasoningConfig {
   maxTokens?: number;
   temperature?: number;
   contextSize?: number;
+  promptTemplate?: string;
+  /** Fully resolved renderer prompt used only across the Electron IPC boundary. */
+  customSystemPrompt?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
   dictationMode?: string;
   preferredLanguage?: string | null;
   smartContext?: Record<string, unknown> | null;
+}
+
+function normalizePositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+function normalizeRetryCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+function createRequestTimeout(timeoutMs: unknown, providerName: string) {
+  const durationMs = normalizePositiveInteger(timeoutMs);
+  if (!durationMs) {
+    return { signal: undefined, clear: () => {}, timeoutError: () => null };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), durationMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+    timeoutError: () =>
+      controller.signal.aborted
+        ? new Error(`${providerName} request timed out after ${durationMs} ms`)
+        : null,
+  };
+}
+
+function getApiRetryOptions(config: ReasoningConfig, signal?: AbortSignal) {
+  const strategy = createApiRetryStrategy();
+  const maxRetries = normalizeRetryCount(config.maxRetries);
+  return {
+    ...strategy,
+    ...(maxRetries === undefined ? {} : { maxRetries }),
+    shouldRetry: (error: any) => !signal?.aborted && strategy.shouldRetry(error),
+  };
+}
+
+function truncateErrorMessage(value: unknown, maxLength = 500): string {
+  const message = typeof value === "string" ? value : String(value ?? "");
+  return message.length > maxLength ? `${message.slice(0, maxLength)}...` : message;
 }
 
 function getTextLength(value: unknown): number | undefined {
@@ -131,13 +181,15 @@ class ReasoningService {
   private getSystemPrompt(
     agentName: string | null,
     dictationMode?: string,
-    preferredLanguage?: string | null
+    preferredLanguage?: string | null,
+    customSystemPrompt?: string
   ): string {
     return buildSystemPrompt(
       agentName,
       this.getCustomDictionary(),
       dictationMode,
-      preferredLanguage
+      preferredLanguage,
+      customSystemPrompt
     );
   }
 
@@ -472,7 +524,8 @@ class ReasoningService {
     const systemPrompt = this.getSystemPrompt(
       agentName,
       config.dictationMode,
-      config.preferredLanguage
+      config.preferredLanguage,
+      config.promptTemplate
     );
     const userPrompt = await this.buildUserPrompt(text, config);
 
@@ -498,10 +551,14 @@ class ReasoningService {
         ),
     };
 
-    // Disable thinking for Groq Qwen models
+    // Groq exposes reasoning controls through its OpenAI-compatible chat API.
     const modelDef = getCloudModel(model);
-    if (modelDef?.disableThinking && providerName.toLowerCase() === "groq") {
-      requestBody.reasoning_effort = "none";
+    if (providerName.toLowerCase() === "groq") {
+      if (modelDef?.reasoningEffort) {
+        requestBody.reasoning_effort = modelDef.reasoningEffort;
+      } else if (modelDef?.disableThinking) {
+        requestBody.reasoning_effort = "none";
+      }
     }
 
     logger.logReasoning(`${providerName.toUpperCase()}_REQUEST`, {
@@ -511,50 +568,62 @@ class ReasoningService {
       request: summarizeRequestBodyForLog(requestBody),
     });
 
-    const response = await withRetry(async () => {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+    const requestTimeout = createRequestTimeout(config.timeoutMs, providerName);
+    let response: any;
+    try {
+      response = await withRetry(
+        async () => {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+            signal: requestTimeout.signal,
+          });
+
+          if (!res.ok) {
+            const errorText = await res.text();
+            let errorData: any = { error: res.statusText };
+
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText || res.statusText };
+            }
+
+            logger.logReasoning(`${providerName.toUpperCase()}_API_ERROR_DETAIL`, {
+              status: res.status,
+              statusText: res.statusText,
+              error: summarizeApiErrorForLog(errorData),
+              hasErrorMessage: !!(errorData.error?.message || errorData.message || errorData.error),
+              responseBodyLength: errorText.length,
+            });
+
+            const errorMessage =
+              errorData.error?.message ||
+              errorData.message ||
+              errorData.error ||
+              `${providerName} API error: ${res.status}`;
+            throw new Error(truncateErrorMessage(errorMessage));
+          }
+
+          const jsonResponse = await res.json();
+
+          logger.logReasoning(`${providerName.toUpperCase()}_RAW_RESPONSE`, {
+            ...summarizeResponseForLog(jsonResponse),
+          });
+
+          return jsonResponse;
         },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        let errorData: any = { error: res.statusText };
-
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { error: errorText || res.statusText };
-        }
-
-        logger.logReasoning(`${providerName.toUpperCase()}_API_ERROR_DETAIL`, {
-          status: res.status,
-          statusText: res.statusText,
-          error: summarizeApiErrorForLog(errorData),
-          hasErrorMessage: !!(errorData.error?.message || errorData.message || errorData.error),
-          responseBodyLength: errorText.length,
-        });
-
-        const errorMessage =
-          errorData.error?.message ||
-          errorData.message ||
-          errorData.error ||
-          `${providerName} API error: ${res.status}`;
-        throw new Error(errorMessage);
-      }
-
-      const jsonResponse = await res.json();
-
-      logger.logReasoning(`${providerName.toUpperCase()}_RAW_RESPONSE`, {
-        ...summarizeResponseForLog(jsonResponse),
-      });
-
-      return jsonResponse;
-    }, createApiRetryStrategy());
+        getApiRetryOptions(config, requestTimeout.signal)
+      );
+    } catch (error) {
+      throw requestTimeout.timeoutError() || error;
+    } finally {
+      requestTimeout.clear();
+    }
 
     if (!response.choices || !response.choices[0]) {
       logger.logReasoning(`${providerName.toUpperCase()}_RESPONSE_ERROR`, {
@@ -694,7 +763,8 @@ class ReasoningService {
       const systemPrompt = this.getSystemPrompt(
         agentName,
         config.dictationMode,
-        config.preferredLanguage
+        config.preferredLanguage,
+        config.promptTemplate
       );
       const userPrompt = await this.buildUserPrompt(text, config);
 
@@ -726,70 +796,94 @@ class ReasoningService {
         });
       }
 
-      const response = await withRetry(async () => {
-        let lastError: Error | null = null;
+      const requestTimeout = createRequestTimeout(config.timeoutMs, "OpenAI");
+      let response: any;
+      try {
+        response = await withRetry(
+          async () => {
+            let lastError: Error | null = null;
 
-        for (const { url: endpoint, type } of endpointCandidates) {
-          try {
-            const requestBody: any = { model };
+            for (const { url: endpoint, type } of endpointCandidates) {
+              try {
+                const requestBody: any = { model };
 
-            if (type === "responses") {
-              requestBody.input = messages;
-              requestBody.store = false;
-            } else {
-              requestBody.messages = messages;
-              if (isOlderModel) {
-                requestBody.temperature = config.temperature || 0.3;
-              }
-            }
+                if (type === "responses") {
+                  requestBody.input = messages;
+                  requestBody.store = false;
+                } else {
+                  requestBody.messages = messages;
+                  if (isOlderModel) {
+                    requestBody.temperature = config.temperature || 0.3;
+                  }
+                }
 
-            const res = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify(requestBody),
-            });
+                const modelDef = getCloudModel(model);
+                if (!isCustomProvider && modelDef?.reasoningEffort) {
+                  if (type === "responses") {
+                    requestBody.reasoning = { effort: modelDef.reasoningEffort };
+                  } else {
+                    requestBody.reasoning_effort = modelDef.reasoningEffort;
+                  }
+                }
 
-            if (!res.ok) {
-              const errorData = await res.json().catch(() => ({ error: res.statusText }));
-              const errorMessage =
-                errorData.error?.message || errorData.message || `OpenAI API error: ${res.status}`;
-
-              const isUnsupportedEndpoint =
-                (res.status === 404 || res.status === 405) && type === "responses";
-
-              if (isUnsupportedEndpoint) {
-                lastError = new Error(errorMessage);
-                this.rememberOpenAiPreference(openAiBase, "chat");
-                logger.logReasoning("OPENAI_ENDPOINT_FALLBACK", {
-                  attemptedEndpoint: endpoint,
-                  error: errorMessage,
+                const res = await fetch(endpoint, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${apiKey}`,
+                  },
+                  body: JSON.stringify(requestBody),
+                  signal: requestTimeout.signal,
                 });
-                continue;
+
+                if (!res.ok) {
+                  const errorData = await res.json().catch(() => ({ error: res.statusText }));
+                  const errorMessage = truncateErrorMessage(
+                    errorData.error?.message ||
+                      errorData.message ||
+                      `OpenAI API error: ${res.status}`
+                  );
+
+                  const isUnsupportedEndpoint =
+                    (res.status === 404 || res.status === 405) && type === "responses";
+
+                  if (isUnsupportedEndpoint) {
+                    lastError = new Error(errorMessage);
+                    this.rememberOpenAiPreference(openAiBase, "chat");
+                    logger.logReasoning("OPENAI_ENDPOINT_FALLBACK", {
+                      attemptedEndpoint: endpoint,
+                      error: errorMessage,
+                    });
+                    continue;
+                  }
+
+                  throw new Error(errorMessage);
+                }
+
+                this.rememberOpenAiPreference(openAiBase, type);
+                return res.json();
+              } catch (error) {
+                lastError = error as Error;
+                if (type === "responses") {
+                  logger.logReasoning("OPENAI_ENDPOINT_FALLBACK", {
+                    attemptedEndpoint: endpoint,
+                    error: truncateErrorMessage((error as Error).message),
+                  });
+                  continue;
+                }
+                throw error;
               }
-
-              throw new Error(errorMessage);
             }
 
-            this.rememberOpenAiPreference(openAiBase, type);
-            return res.json();
-          } catch (error) {
-            lastError = error as Error;
-            if (type === "responses") {
-              logger.logReasoning("OPENAI_ENDPOINT_FALLBACK", {
-                attemptedEndpoint: endpoint,
-                error: (error as Error).message,
-              });
-              continue;
-            }
-            throw error;
-          }
-        }
-
-        throw lastError || new Error("No OpenAI endpoint responded");
-      }, createApiRetryStrategy());
+            throw lastError || new Error("No OpenAI endpoint responded");
+          },
+          getApiRetryOptions(config, requestTimeout.signal)
+        );
+      } catch (error) {
+        throw requestTimeout.timeoutError() || error;
+      } finally {
+        requestTimeout.clear();
+      }
 
       const isResponsesApi = Array.isArray(response?.output);
       const isChatCompletions = Array.isArray(response?.choices);
@@ -905,17 +999,21 @@ class ReasoningService {
       const startTime = Date.now();
 
       try {
+        const customSystemPrompt = this.getSystemPrompt(
+          agentName,
+          config.dictationMode,
+          config.preferredLanguage,
+          config.promptTemplate
+        );
         logger.logReasoning("ANTHROPIC_IPC_CALL", {
           model,
           textLength: text.length,
         });
 
-        const result = await window.electronAPI.processAnthropicReasoning(
-          text,
-          model,
-          agentName,
-          config
-        );
+        const result = await window.electronAPI.processAnthropicReasoning(text, model, agentName, {
+          ...config,
+          customSystemPrompt,
+        });
 
         const processingTime = Date.now() - startTime;
 
@@ -968,17 +1066,21 @@ class ReasoningService {
       const startTime = Date.now();
 
       try {
+        const customSystemPrompt = this.getSystemPrompt(
+          agentName,
+          config.dictationMode,
+          config.preferredLanguage,
+          config.promptTemplate
+        );
         logger.logReasoning("LOCAL_IPC_CALL", {
           model,
           textLength: text.length,
         });
 
-        const result = await window.electronAPI.processLocalReasoning(
-          text,
-          model,
-          agentName,
-          config
-        );
+        const result = await window.electronAPI.processLocalReasoning(text, model, agentName, {
+          ...config,
+          customSystemPrompt,
+        });
 
         const processingTime = Date.now() - startTime;
 
@@ -1038,11 +1140,12 @@ class ReasoningService {
       const systemPrompt = this.getSystemPrompt(
         agentName,
         config.dictationMode,
-        config.preferredLanguage
+        config.preferredLanguage,
+        config.promptTemplate
       );
       const userPrompt = await this.buildUserPrompt(text, config);
 
-      const requestBody = {
+      const requestBody: any = {
         contents: [
           {
             parts: [
@@ -1068,65 +1171,83 @@ class ReasoningService {
         },
       };
 
+      const modelDef = getCloudModel(model);
+      if (modelDef?.thinkingLevel) {
+        requestBody.generationConfig.thinkingConfig = {
+          thinkingLevel: modelDef.thinkingLevel,
+        };
+      }
+
       let response: any;
+      const requestTimeout = createRequestTimeout(config.timeoutMs, "Gemini");
       try {
-        response = await withRetry(async () => {
-          logger.logReasoning("GEMINI_REQUEST", {
-            endpoint: `${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`,
-            model,
-            hasApiKey: !!apiKey,
-            request: summarizeRequestBodyForLog(requestBody),
-          });
-
-          const res = await fetch(`${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-goog-api-key": apiKey,
-            },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!res.ok) {
-            const errorText = await res.text();
-            let errorData: any = { error: res.statusText };
-
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { error: errorText || res.statusText };
-            }
-
-            logger.logReasoning("GEMINI_API_ERROR_DETAIL", {
-              status: res.status,
-              statusText: res.statusText,
-              error: summarizeApiErrorForLog(errorData),
-              hasErrorMessage: !!(errorData.error?.message || errorData.message || errorData.error),
-              responseBodyLength: errorText.length,
+        response = await withRetry(
+          async () => {
+            logger.logReasoning("GEMINI_REQUEST", {
+              endpoint: `${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`,
+              model,
+              hasApiKey: !!apiKey,
+              request: summarizeRequestBodyForLog(requestBody),
             });
 
-            const errorMessage =
-              errorData.error?.message ||
-              errorData.message ||
-              errorData.error ||
-              `Gemini API error: ${res.status}`;
-            throw new Error(errorMessage);
-          }
+            const res = await fetch(`${API_ENDPOINTS.GEMINI}/models/${model}:generateContent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": apiKey,
+              },
+              body: JSON.stringify(requestBody),
+              signal: requestTimeout.signal,
+            });
 
-          const jsonResponse = await res.json();
+            if (!res.ok) {
+              const errorText = await res.text();
+              let errorData: any = { error: res.statusText };
 
-          logger.logReasoning("GEMINI_RAW_RESPONSE", {
-            ...summarizeResponseForLog(jsonResponse),
-          });
+              try {
+                errorData = JSON.parse(errorText);
+              } catch {
+                errorData = { error: errorText || res.statusText };
+              }
 
-          return jsonResponse;
-        }, createApiRetryStrategy());
+              logger.logReasoning("GEMINI_API_ERROR_DETAIL", {
+                status: res.status,
+                statusText: res.statusText,
+                error: summarizeApiErrorForLog(errorData),
+                hasErrorMessage: !!(
+                  errorData.error?.message ||
+                  errorData.message ||
+                  errorData.error
+                ),
+                responseBodyLength: errorText.length,
+              });
+
+              const errorMessage =
+                errorData.error?.message ||
+                errorData.message ||
+                errorData.error ||
+                `Gemini API error: ${res.status}`;
+              throw new Error(truncateErrorMessage(errorMessage));
+            }
+
+            const jsonResponse = await res.json();
+
+            logger.logReasoning("GEMINI_RAW_RESPONSE", {
+              ...summarizeResponseForLog(jsonResponse),
+            });
+
+            return jsonResponse;
+          },
+          getApiRetryOptions(config, requestTimeout.signal)
+        );
       } catch (fetchError) {
         logger.logReasoning("GEMINI_FETCH_ERROR", {
           error: (fetchError as Error).message,
           errorType: (fetchError as Error).name,
         });
-        throw fetchError;
+        throw requestTimeout.timeoutError() || fetchError;
+      } finally {
+        requestTimeout.clear();
       }
 
       if (!response.candidates || !response.candidates[0]) {

@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 const llamaServerModule: any = await import("../../../src/helpers/llamaServer");
 const extractCompletionText =
   llamaServerModule.extractCompletionText || llamaServerModule.default?.extractCompletionText;
+const buildInferenceRequestBody =
+  llamaServerModule.buildInferenceRequestBody ||
+  llamaServerModule.default?.buildInferenceRequestBody;
 
 describe("llama-server completion integrity", () => {
   it("rejects partial cleanup output stopped by the token limit", () => {
@@ -24,5 +27,44 @@ describe("llama-server completion integrity", () => {
         choices: [{ finish_reason: "stop", message: { content: " complete transcript " } }],
       })
     ).toBe("complete transcript");
+  });
+
+  it("strips only a complete leading thinking block", () => {
+    expect(
+      extractCompletionText({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { content: "<think>private reasoning</think>Clean transcript" },
+          },
+        ],
+      })
+    ).toBe("Clean transcript");
+
+    expect(
+      extractCompletionText({
+        choices: [
+          { finish_reason: "stop", message: { content: "Keep <think>this literal text</think>" } },
+        ],
+      })
+    ).toBe("Keep <think>this literal text</think>");
+  });
+
+  it("rejects an unfinished leading thinking block", () => {
+    expect(() =>
+      extractCompletionText({
+        choices: [
+          { finish_reason: "stop", message: { content: "<think>unfinished private reasoning" } },
+        ],
+      })
+    ).toThrow("unfinished thinking block");
+  });
+
+  it("disables thinking only when the caller requests it", () => {
+    const messages = [{ role: "user", content: "Clean this" }];
+    expect(buildInferenceRequestBody(messages, { disableThinking: true })).toMatchObject({
+      chat_template_kwargs: { enable_thinking: false },
+    });
+    expect(buildInferenceRequestBody(messages, {})).not.toHaveProperty("chat_template_kwargs");
   });
 });

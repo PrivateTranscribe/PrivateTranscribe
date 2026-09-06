@@ -48,7 +48,8 @@ function getCurrentPrompt(): string {
   const customPrompt = localStorage.getItem("customUnifiedPrompt");
   if (customPrompt) {
     try {
-      return JSON.parse(customPrompt);
+      const parsed = JSON.parse(customPrompt);
+      return typeof parsed === "string" ? parsed : UNIFIED_SYSTEM_PROMPT;
     } catch {
       return UNIFIED_SYSTEM_PROMPT;
     }
@@ -74,7 +75,7 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
     if (legacyPrompts && !localStorage.getItem("customUnifiedPrompt")) {
       try {
         const parsed = JSON.parse(legacyPrompts);
-        if (parsed.agent) {
+        if (typeof parsed.agent === "string") {
           localStorage.setItem("customUnifiedPrompt", JSON.stringify(parsed.agent));
           localStorage.removeItem("customPrompts");
         }
@@ -86,7 +87,8 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
     const customPrompt = localStorage.getItem("customUnifiedPrompt");
     if (customPrompt) {
       try {
-        setEditedPrompt(JSON.parse(customPrompt));
+        const parsed = JSON.parse(customPrompt);
+        if (typeof parsed === "string") setEditedPrompt(parsed);
       } catch (error) {
         console.error("Failed to load custom prompt:", error);
       }
@@ -166,39 +168,14 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
         }
       }
 
-      const currentCustomPrompt = localStorage.getItem("customUnifiedPrompt");
-      localStorage.setItem("customUnifiedPrompt", JSON.stringify(editedPrompt));
-
-      try {
-        if (reasoningProvider === "local") {
-          const result = await window.electronAPI.processLocalReasoning(
-            testText,
-            reasoningModel,
-            agentName,
-            {}
-          );
-
-          if (result.success) {
-            setTestResult(result.text || "");
-          } else {
-            setTestResult(`Local model error: ${result.error}`);
-          }
-        } else {
-          const result = await ReasoningService.processText(
-            testText,
-            reasoningModel,
-            agentName,
-            {}
-          );
-          setTestResult(result);
-        }
-      } finally {
-        if (currentCustomPrompt) {
-          localStorage.setItem("customUnifiedPrompt", currentCustomPrompt);
-        } else {
-          localStorage.removeItem("customUnifiedPrompt");
-        }
-      }
+      const result = await ReasoningService.processText(testText, reasoningModel, agentName, {
+        promptTemplate: editedPrompt,
+        preferredLanguage: localStorage.getItem("preferredLanguage") || "auto",
+        timeoutMs: 30000,
+        maxRetries: 0,
+        smartContext: null,
+      });
+      setTestResult(result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error("PromptStudio test failed", { error: errorMessage }, "prompt-studio");

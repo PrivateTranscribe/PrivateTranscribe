@@ -7,16 +7,21 @@ export function getSystemPrompt(
   agentName: string | null,
   customDictionary?: string[],
   dictationMode?: string,
-  preferredLanguage?: string | null
+  preferredLanguage?: string | null,
+  customSystemPrompt?: string
 ): string {
   const name = agentName?.trim() || "Assistant";
 
-  let promptTemplate = UNIFIED_SYSTEM_PROMPT;
-  if (typeof window !== "undefined" && window.localStorage) {
+  let promptTemplate =
+    typeof customSystemPrompt === "string" ? customSystemPrompt : UNIFIED_SYSTEM_PROMPT;
+  if (customSystemPrompt === undefined && typeof window !== "undefined" && window.localStorage) {
     const customPrompt = window.localStorage.getItem("customUnifiedPrompt");
     if (customPrompt) {
       try {
-        promptTemplate = JSON.parse(customPrompt);
+        const parsed = JSON.parse(customPrompt);
+        if (typeof parsed === "string") {
+          promptTemplate = parsed;
+        }
       } catch {
         // Use default if parsing fails
       }
