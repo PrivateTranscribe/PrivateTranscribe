@@ -167,24 +167,24 @@ test.describe("hotkey capture", () => {
 });
 
 test.describe("read aloud default hotkey", () => {
-  test("a fresh install gets Shift+R", async ({ controlPanel }) => {
+  test("a fresh install gets Ctrl+Alt+R", async ({ controlPanel }) => {
     // Read Aloud is where the setting is owned, and mounting the page is what
     // makes useSettings persist its default.
     await openFeaturePage(controlPanel, "Read Aloud");
 
-    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Shift+R");
+    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+R");
   });
 
   test("the old default is migrated, a chosen key is left alone", async ({ controlPanel }) => {
     await openFeaturePage(controlPanel, "Read Aloud");
 
-    await controlPanel.evaluate(() => localStorage.setItem("readAloudHotkey", "Ctrl+Alt+R"));
+    await controlPanel.evaluate(() => localStorage.setItem("readAloudHotkey", "Shift+R"));
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
-    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Shift+R");
+    await expect.poll(() => storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+R");
 
     // Idempotent: a second startup does not keep rewriting it.
     await controlPanel.reload({ waitUntil: "domcontentloaded" });
-    expect(await storedHotkey(controlPanel, "readAloudHotkey")).toBe("Shift+R");
+    expect(await storedHotkey(controlPanel, "readAloudHotkey")).toBe("Ctrl+Alt+R");
 
     // Anything the user actually picked survives untouched.
     await controlPanel.evaluate(() => localStorage.setItem("readAloudHotkey", "F9"));

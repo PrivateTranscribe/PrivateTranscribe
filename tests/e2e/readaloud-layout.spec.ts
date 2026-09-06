@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
-const evidence = path.resolve("docs/qa-readaloud-layout");
+const evidence = path.resolve(process.env.PT_READALOUD_EVIDENCE_DIR || "docs/qa-readaloud-layout");
 test.use({ useThrowawayHome: true, seedKokoroModel: true });
 
 test("Read Aloud layout", async ({ controlPanel }) => {
@@ -48,7 +48,7 @@ test("Read Aloud layout", async ({ controlPanel }) => {
     animations: "disabled",
     path: path.join(evidence, "after-invalid-key.png"),
   });
-  await controlPanel.keyboard.press("Shift+R");
+  await controlPanel.keyboard.press("Control+Alt+R");
   await expect(controlPanel.getByTestId("hotkey-conflict")).toContainText(
     "Already used by Read Aloud"
   );

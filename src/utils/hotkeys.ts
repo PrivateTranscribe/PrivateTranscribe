@@ -132,13 +132,13 @@ export function getDefaultHotkey(): string {
 }
 
 /** Default for new installs. Existing custom shortcuts are preserved. */
-export const DEFAULT_READ_ALOUD_HOTKEY = "Shift+R";
+export const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
 /**
- * The original Read Aloud default. Only used to
+ * The previous Read Aloud default. Only used to
  * recognise an untouched old default during migration.
  */
-export const LEGACY_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
+export const LEGACY_READ_ALOUD_HOTKEY = "Shift+R";
 
 /** Must equal DEFAULT_AGENT_MODE_HOTKEY in src/helpers/agentModeHotkey.js. */
 export const DEFAULT_AGENT_MODE_HOTKEY = "RightControl";
@@ -281,11 +281,9 @@ export interface HotkeyMigrationDefaults {
  *
  * Two repairs, both of them one-way:
  *
- *  - Read Aloud's old default `Ctrl+Alt+R` becomes the new one. A user who
- *    deliberately picked `Ctrl+Alt+R` is indistinguishable from one who never
- *    touched the default, so they are moved too. That is accepted: the reason
- *    for the move (Firefox's Reader Mode, and AltGr being Ctrl+Alt on European
- *    layouts) applies to them just as much.
+ *  - The previous Shift+R default becomes Ctrl+Alt+R. Other chosen shortcuts
+ *    are preserved. A manually chosen Shift+R is indistinguishable from the
+ *    previous default and is moved too.
  *  - A hotkey stored as Escape is a victim of the capture bug this shipped
  *    with, where pressing Esc to back out of the field bound Esc instead. There
  *    is no chance it was wanted, so it goes back to the field's default.

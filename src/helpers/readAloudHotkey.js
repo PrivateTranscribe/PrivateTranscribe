@@ -20,7 +20,7 @@ const { globalShortcut } = require("electron");
 const debugLogger = require("./debugLogger");
 
 /** Default for new installs. Existing custom shortcuts are preserved. */
-const DEFAULT_READ_ALOUD_HOTKEY = "Shift+R";
+const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";
 
 const isDiagFlagEnabled = (name) => {
   const raw = String(process.env[name] || "")

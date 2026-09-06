@@ -13,8 +13,8 @@ test.describe("installed voice model", () => {
     await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
     const field = controlPanel.getByRole("button", { name: "Read Aloud hotkey", exact: true });
     await expect(field).toBeEnabled();
-    await expect(field).toContainText("Shift");
-    await expect(field).not.toContainText("Ctrl");
+    await expect(field).toContainText("Alt");
+    await expect(field).toContainText("Ctrl");
     const shortcuts = controlPanel.getByTestId("readaloud-playback-shortcuts");
     await shortcuts.scrollIntoViewIfNeeded();
     await controlPanel.screenshot({ path: path.join(evidence, "after-defaults.png") });
@@ -26,7 +26,7 @@ test.describe("installed voice model", () => {
     await expect(controlPanel.getByTestId("hotkey-conflict")).toHaveText(
       "Use a keyboard key, with optional modifiers"
     );
-    await controlPanel.keyboard.press("Shift+R");
+    await controlPanel.keyboard.press("Control+Alt+R");
     await expect(controlPanel.getByTestId("hotkey-conflict")).toHaveText(
       "Already used by Read Aloud"
     );
