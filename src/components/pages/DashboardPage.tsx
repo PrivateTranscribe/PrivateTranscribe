@@ -1,7 +1,8 @@
+import { Button } from "../ui/button";
+import { useToast } from "../ui/Toast";
 import { useDialogs } from "../../hooks/useDialogs";
 import { ConfirmDialog } from "../ui/dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useToast } from "../ui/Toast";
 import { Activity, Command, Flame, Gauge, Settings, Timer, Upload } from "lucide-react";
 import { IconTile } from "../ui/IconTile";
 import { PageId } from "../AppSidebar";
@@ -150,6 +151,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     preferBuiltInMic,
     selectedMicDeviceId,
     historyLimit,
+    setHistoryLimit,
     dictationKey,
   } = useSettings();
 
@@ -555,21 +557,36 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
               <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-surface-raised border border-border-subtle mb-5">
                 <Command size={24} className="text-primary" />
               </div>
-              <p className="text-sm font-medium text-foreground mb-1.5">Ready to dictate</p>
-              <p className="text-xs text-muted-foreground text-center max-w-[320px] mb-5">
-                Press{" "}
-                <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
-                  {readableHotkey}
-                </kbd>{" "}
-                anywhere to start dictating. Your dictated text will appear here.
+              <p className="text-sm font-medium text-foreground mb-1.5">
+                {historyLimit === 0 ? "History is off" : "Ready to dictate"}
               </p>
-              <button
-                onClick={() => onNavigate("transcribe")}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background text-xs font-semibold hover:bg-primary/90 transition-colors duration-200"
-              >
-                <Upload size={14} />
-                Transcribe a file
-              </button>
+              {historyLimit === 0 ? (
+                <div className="text-center space-y-4">
+                  <p className="text-xs text-muted-foreground">
+                    Dictation works, but new text is not saved.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setHistoryLimit(50)}>
+                    Turn on history
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground text-center max-w-[320px] mb-5">
+                    Press{" "}
+                    <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted/50 text-foreground font-mono text-[11px]">
+                      {readableHotkey}
+                    </kbd>{" "}
+                    anywhere to start dictating. Your dictated text will appear here.
+                  </p>
+                  <button
+                    onClick={() => onNavigate("transcribe")}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-background text-xs font-semibold hover:bg-primary/90 transition-colors duration-200"
+                  >
+                    <Upload size={14} />
+                    Transcribe a file
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
