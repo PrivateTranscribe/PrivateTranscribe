@@ -142,6 +142,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFileSize, setSelectedFileSize] = useState(0);
   const [transcript, setTranscript] = useState("");
+  const [historySaveState, setHistorySaveState] = useState<"idle" | "saving" | "failed">("idle");
   const [srt, setSrt] = useState("");
   const [speakerCount, setSpeakerCount] = useState(0);
   // Whether speaker detection actually ran. Without it a count of 1 is
@@ -539,6 +540,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setSelectedFileName("");
     setSelectedFileSize(0);
     setTranscript("");
+    setHistorySaveState("idle");
     setSrt("");
     setSpeakerCount(0);
     setSpeakerDetectionActive(false);
@@ -593,6 +595,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setTranscriptionProgress(null);
     setErrorMessage("");
     setTranscript("");
+    setHistorySaveState("idle");
     setSpeakerDetectionActive(false);
     setCopied(false);
     setSelectedFileName(file.name);
@@ -676,9 +679,8 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
         }
       }
 
-      if (historyLimit !== 0) {
-        await window.electronAPI.saveTranscription(text, null, { includeInStats: false });
-      }
+      // Make finished text usable while History saves. Only the current run
+      // may update its save status, even if the user opens another file.
       setTranscript(text);
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
@@ -687,13 +689,30 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
         buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
       );
       setStatus("success");
-      activeJobIdRef.current = null;
       setProcessingStartedAt(null);
-      toast({
-        title: "Transcription complete",
-        description: `${file.name} transcribed successfully.`,
-        variant: "success",
-      });
+      setHistorySaveState(historyLimit !== 0 ? "saving" : "idle");
+
+      let saveFailed = false;
+      if (historyLimit !== 0) {
+        try {
+          const saved = await window.electronAPI.saveTranscription(text, null, {
+            includeInStats: false,
+          });
+          saveFailed = saved?.success === false;
+        } catch {
+          saveFailed = true;
+        }
+      }
+      if (!isCurrentJob()) return;
+      setHistorySaveState(saveFailed ? "failed" : "idle");
+      activeJobIdRef.current = null;
+      if (!saveFailed) {
+        toast({
+          title: "Transcription complete",
+          description: `${file.name} transcribed successfully.`,
+          variant: "success",
+        });
+      }
     } catch (error) {
       if (!isCurrentJob()) return;
       const message = toErrorMessage(error);
@@ -1253,6 +1272,30 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
               </Button>
             </div>
           </div>
+
+          {historySaveState !== "idle" && (
+            <div
+              role="status"
+              className={`flex gap-2.5 border-b border-border-subtle/60 px-5 py-3 text-sm ${historySaveState === "failed" ? "bg-warning/5" : "bg-surface-raised"}`}
+              data-prevent-browse="true"
+            >
+              {historySaveState === "failed" ? (
+                <AlertCircle size={16} className="mt-0.5 shrink-0 text-warning" />
+              ) : (
+                <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+              )}
+              <div>
+                <p className="font-medium text-foreground">
+                  {historySaveState === "failed" ? "Not saved to History" : "Saving to History…"}
+                </p>
+                {historySaveState === "failed" && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Your transcript is ready. Copy or download it to keep it.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* whisper-server reports what it heard on every response, including
               the ones it was ordered to decode as something else. Shown, not
