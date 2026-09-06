@@ -798,7 +798,10 @@ declare global {
        */
       readAloudSetPlaybackActive: (
         active: boolean,
-        options?: { duckOthers?: boolean }
+        options?: {
+          duckOthers?: boolean;
+          hotkeys?: { toggle: string; back: string; forward: string };
+        }
       ) => Promise<{
         active: boolean;
         registered: string[];

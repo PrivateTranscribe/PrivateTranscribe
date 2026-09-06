@@ -1312,6 +1312,8 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     readAloudEnabled,
     setReadAloudEnabled,
     readAloudHotkey,
+    readAloudPlaybackHotkeys,
+    setReadAloudPlaybackHotkeys,
     setReadAloudHotkey,
     agentModeEnabled,
     setAgentModeEnabled,
@@ -1588,6 +1590,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           // Read Aloud
           readAloudEnabled,
           readAloudHotkey,
+          readAloudPlaybackHotkeys,
           // Agent Mode
           agentModeEnabled,
           agentModeHotkey,
@@ -1667,6 +1670,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       overlaySnapToTaskbar,
       readAloudEnabled,
       readAloudHotkey,
+      readAloudPlaybackHotkeys,
       agentModeEnabled,
       agentModeHotkey,
       agentModeRewrite,
@@ -1860,6 +1864,18 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       }
 
       if (typeof s.readAloudEnabled === "boolean") setReadAloudEnabled(s.readAloudEnabled);
+      if (s.readAloudPlaybackHotkeys && typeof s.readAloudPlaybackHotkeys === "object") {
+        const keys = s.readAloudPlaybackHotkeys;
+        if ([keys.toggle, keys.back, keys.forward].every(isSafeImportedIdentifier)) {
+          setReadAloudPlaybackHotkeys({
+            toggle: keys.toggle,
+            back: keys.back,
+            forward: keys.forward,
+          });
+        } else {
+          skipField("readAloudPlaybackHotkeys", "contains invalid shortcuts");
+        }
+      }
       if (s.readAloudHotkey !== undefined) {
         if (isSafeImportedIdentifier(s.readAloudHotkey)) {
           setReadAloudHotkey(s.readAloudHotkey);

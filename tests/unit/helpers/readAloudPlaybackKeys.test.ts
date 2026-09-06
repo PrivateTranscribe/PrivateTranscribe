@@ -35,6 +35,35 @@ function makeDeps() {
 }
 
 describe("ReadAloudPlaybackKeys", () => {
+  it("replaces active shortcuts and routes custom keys to the right action", async () => {
+    const ReadAloudPlaybackKeys = await loadPlaybackKeys();
+    const onControl = vi.fn();
+    const keys = new ReadAloudPlaybackKeys(onControl, makeDeps());
+    keys.apply({ active: true });
+    register.mockClear();
+    const hotkeys = { toggle: "F8", back: "F9", forward: "F10" };
+    expect(keys.apply({ active: true, hotkeys }).registered).toEqual(Object.values(hotkeys));
+    expect(unregister.mock.calls.map((call) => call[0])).toEqual(ACCELERATORS);
+    for (const call of register.mock.calls) (call[1] as () => void)();
+    expect(onControl.mock.calls.map((call) => call[0])).toEqual(["toggle", "back", "forward"]);
+    keys.apply({ active: false });
+    expect(keys.apply({ active: true }).registered).toEqual(Object.values(hotkeys));
+  });
+
+  it("keeps capture unbound, then restores the latest choice while paused", async () => {
+    const ReadAloudPlaybackKeys = await loadPlaybackKeys();
+    const keys = new ReadAloudPlaybackKeys(() => {}, makeDeps());
+    keys.apply({ active: true });
+    keys.suspend();
+    register.mockClear();
+    keys.apply({ active: true, hotkeys: { toggle: "F8", back: "F9", forward: "F10" } });
+    expect(register).not.toHaveBeenCalled();
+    expect(keys.resume().registered).toEqual(["F8", "F9", "F10"]);
+    keys.suspend();
+    keys.apply({ active: false });
+    expect(keys.resume().registered).toEqual([]);
+  });
+
   beforeEach(() => {
     delete process.env.PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT;
   });

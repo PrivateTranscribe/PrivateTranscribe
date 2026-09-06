@@ -1537,7 +1537,10 @@ class IPCHandlers {
      */
     ipcMain.handle("readaloud-playback-active", async (_event, active, options = {}) => {
       const isActive = Boolean(active);
-      const result = this.readAloudPlaybackKeys.apply({ active: isActive });
+      const result = this.readAloudPlaybackKeys.apply({
+        active: isActive,
+        hotkeys: options?.hotkeys,
+      });
 
       // The "Quiet other apps while reading" toggle lives in localStorage, so
       // the renderer carries its value in on the same edge that starts and ends
@@ -1751,6 +1754,7 @@ class IPCHandlers {
       // the process, so Read Aloud has to be put back or it dies silently the
       // first time the user edits their dictation key.
       this.readAloudHotkey.reapply();
+      this.readAloudPlaybackKeys.apply({ active: this.readAloudPlaybackKeys.active });
       // Agent Mode runs its own listener process, so today's dictation path
       // cannot drop it. Reapplied here anyway so a future change to that path
       // cannot silently take the key away.
@@ -1770,6 +1774,8 @@ class IPCHandlers {
       );
 
       if (enabled) {
+        this.readAloudHotkey.unregister();
+        this.readAloudPlaybackKeys.suspend();
         // Entering capture mode - unregister globalShortcut so it doesn't consume key events
         // Note: mouse side-buttons (Mouse4/Mouse5) are not valid Electron accelerators.
         const currentHotkey = hotkeyManager.getCurrentHotkey();
@@ -1852,6 +1858,8 @@ class IPCHandlers {
       }
 
       if (!enabled) {
+        this.readAloudHotkey.reapply();
+        this.readAloudPlaybackKeys.resume();
         // Outside the branch above on purpose: that one is skipped when the
         // dictation hotkey is switched off for the session, and a suspended
         // Agent Mode key that never comes back would be silent breakage.

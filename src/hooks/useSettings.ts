@@ -1,3 +1,4 @@
+import defaultReadAloudPlaybackHotkeys from "../config/readAloudPlaybackHotkeys.json";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import {
@@ -891,6 +892,10 @@ export function useSettings() {
   // Stored raw like dictationKey, so the main process reads the accelerator
   // rather than a JSON-quoted copy of it. The default and the reasoning behind
   // it live in src/helpers/readAloudHotkey.js.
+  const [readAloudPlaybackHotkeys, setReadAloudPlaybackHotkeys] = useLocalStorage(
+    "readAloudPlaybackHotkeys",
+    defaultReadAloudPlaybackHotkeys
+  );
   const [readAloudHotkey, setReadAloudHotkey] = useLocalStorage(
     "readAloudHotkey",
     DEFAULT_READ_ALOUD_HOTKEY,
@@ -1225,6 +1230,8 @@ export function useSettings() {
     readAloudDuckOthers,
     setReadAloudDuckOthers,
     readAloudHotkey,
+    readAloudPlaybackHotkeys,
+    setReadAloudPlaybackHotkeys,
     setReadAloudHotkey,
     readAloudVoice,
     setReadAloudVoice,

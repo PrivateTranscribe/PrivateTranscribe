@@ -191,6 +191,8 @@ export interface HotkeyInputProps {
    * start dictating at all. Pass false to restore the existing hotkey instead.
    */
   appliesToDictationHotkey?: boolean;
+  /** Reset through the same validation as a recorded shortcut. */
+  resetHotkey?: string;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -261,6 +263,7 @@ export function HotkeyInput({
   onClear,
   ariaLabel,
   appliesToDictationHotkey = true,
+  resetHotkey,
   variant = "default",
 }: HotkeyInputProps & HotkeyInputVariant) {
   const [isCapturing, setIsCapturing] = useState(false);
@@ -314,13 +317,26 @@ export function HotkeyInput({
    */
   const commitCapture = useCallback(
     (hotkey: string) => {
+      if (!appliesToDictationHotkey) {
+        const parts = hotkey.split("+");
+        if (
+          parts.some((key) => /^(GLOBE|Mouse[345])$/.test(key)) ||
+          parts.every((key) =>
+            /^(CommandOrControl|Control|Ctrl|Alt|Shift|Super|Meta|Command)$/.test(key)
+          )
+        ) {
+          setConflictLabel("Use a keyboard key, with optional modifiers");
+          resetPressState();
+          return false;
+        }
+      }
       const normalized = normalizeHotkeyForComparison(hotkey);
       const conflict = (conflictsRef.current || []).find(
         (entry) => entry.hotkey && normalizeHotkeyForComparison(entry.hotkey) === normalized
       );
 
       if (conflict) {
-        setConflictLabel(conflict.label);
+        setConflictLabel(`Already used by ${conflict.label}`);
         resetPressState();
         return false;
       }
@@ -333,7 +349,7 @@ export function HotkeyInput({
       containerRef.current?.blur();
       return true;
     },
-    [onChange, resetPressState]
+    [onChange, resetPressState, appliesToDictationHotkey]
   );
 
   const handleKeyDown = useCallback(
@@ -350,6 +366,10 @@ export function HotkeyInput({
       if (NON_CAPTURABLE_CODES.clear.has(e.nativeEvent.code)) {
         // Without an onClear there is nothing sensible to reset to, so this
         // degrades to the same "leave it alone" behaviour as Escape.
+        if (resetHotkey) {
+          commitCapture(resetHotkey);
+          return;
+        }
         onClear?.();
         cancelCapture();
         return;
@@ -382,7 +402,7 @@ export function HotkeyInput({
       }
       // If no base key yet, modifiers are being held - don't finalize until keyup
     },
-    [disabled, isMac, isWindows, commitCapture, cancelCapture, onClear]
+    [disabled, isMac, isWindows, commitCapture, cancelCapture, onClear, resetHotkey]
   );
 
   const handleKeyUp = useCallback(
@@ -502,7 +522,7 @@ export function HotkeyInput({
 
   // The two ways out of capture are not discoverable from a field that only
   // says "Recording", so they are stated while it is listening.
-  const captureHint = onClear ? "Esc cancels · Backspace resets" : "Esc cancels";
+  const captureHint = onClear || resetHotkey ? "Esc cancels · Backspace resets" : "Esc cancels";
 
   const conflictNotice = conflictLabel ? (
     <span
@@ -510,7 +530,7 @@ export function HotkeyInput({
       data-testid="hotkey-conflict"
       className="text-xs font-medium text-destructive"
     >
-      Already used by {conflictLabel}
+      {conflictLabel}
     </span>
   ) : null;
 
@@ -522,6 +542,7 @@ export function HotkeyInput({
         tabIndex={disabled ? -1 : 0}
         role="button"
         aria-label={fieldLabel}
+        aria-disabled={disabled || undefined}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
         onFocus={handleFocus}
@@ -612,6 +633,7 @@ export function HotkeyInput({
       tabIndex={disabled ? -1 : 0}
       role="button"
       aria-label={fieldLabel}
+      aria-disabled={disabled || undefined}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
       onFocus={handleFocus}

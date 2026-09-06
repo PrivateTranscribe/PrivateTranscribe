@@ -225,6 +225,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAloudSetPlaybackActive: (active, options = {}) =>
     ipcRenderer.invoke("readaloud-playback-active", Boolean(active), {
       duckOthers: options?.duckOthers !== false,
+      hotkeys: options?.hotkeys,
     }),
   onReadAloudSpeak: registerListener("readaloud-speak"),
   /** Fired instead of `readaloud-speak` when a capture produced nothing to read. */

@@ -13,6 +13,7 @@ import { useModelDownload } from "../../hooks/useModelDownload";
 import { useSettings } from "../../hooks/useSettings";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../../utils/hotkeys";
+import defaultPlaybackHotkeys from "../../config/readAloudPlaybackHotkeys.json";
 import {
   KOKORO_MODEL_DOWNLOAD_LABEL,
   KOKORO_MODEL_ID,
@@ -76,6 +77,8 @@ export default function ReadAloudPage() {
     setReadAloudDuckOthers,
     readAloudHotkey,
     setReadAloudHotkey,
+    readAloudPlaybackHotkeys,
+    setReadAloudPlaybackHotkeys,
     readAloudVoice,
     setReadAloudVoice,
     // Only read, to refuse a key one of these already owns.
@@ -118,6 +121,21 @@ export default function ReadAloudPage() {
   }, [isUnlocked, refreshModelStatus]);
 
   const installed = Boolean(modelStatus?.installed);
+  const playbackControls = [
+    {
+      op: "toggle",
+      label: "Pause or resume",
+      description: "Pause reading, or continue where you left off.",
+    },
+    { op: "back", label: "Previous sentence", description: "Go back one sentence." },
+    { op: "forward", label: "Next sentence", description: "Skip ahead one sentence." },
+  ] as const;
+  const playbackHotkeys = { ...defaultPlaybackHotkeys, ...readAloudPlaybackHotkeys };
+  const shortcutConflicts = [
+    { label: "Dictation", hotkey: dictationKey },
+    { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+    ...playbackControls.map(({ op, label }) => ({ label, hotkey: playbackHotkeys[op] })),
+  ];
 
   // The main process owns the global shortcut and refuses to bind it while the
   // model is missing, so every input to that decision re-syncs here.
@@ -294,23 +312,35 @@ export default function ReadAloudPage() {
                   disabled={!installed}
                   appliesToDictationHotkey={false}
                   ariaLabel="Read Aloud hotkey"
-                  conflicts={[
-                    { label: "Dictation", hotkey: dictationKey },
-                    { label: "Mute my voice call", hotkey: voiceCallMuteKey },
-                  ]}
-                  onClear={() => setReadAloudHotkey(DEFAULT_READ_ALOUD_HOTKEY)}
+                  conflicts={shortcutConflicts}
+                  resetHotkey={DEFAULT_READ_ALOUD_HOTKEY}
                 />
               </SettingsRow>
-
-              {/* The playback keys are bound only while something is being
-                  read, so they are documented here rather than given a row of
-                  their own next to keys that are always live. */}
-              {installed && (
-                <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
-                  While a read is playing, Ctrl+Alt+Space pauses and Ctrl+Alt+&larr;/&rarr; skip a
-                  sentence. Nothing is bound the rest of the time.
+            </PanelRow>
+            <PanelRow>
+              <div data-testid="readaloud-playback-shortcuts" className="space-y-4">
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  These shortcuts work while reading or paused. They are released when reading ends.
                 </p>
-              )}
+                {playbackControls.map(({ op, label, description }) => (
+                  <SettingsRow key={op} label={label} description={description}>
+                    <HotkeyInput
+                      value={playbackHotkeys[op]}
+                      onChange={(hotkey) =>
+                        setReadAloudPlaybackHotkeys({ ...playbackHotkeys, [op]: hotkey })
+                      }
+                      resetHotkey={defaultPlaybackHotkeys[op]}
+                      disabled={!installed}
+                      appliesToDictationHotkey={false}
+                      ariaLabel={`${label} hotkey`}
+                      conflicts={[
+                        ...shortcutConflicts.filter((entry) => entry.label !== label),
+                        { label: "Read Aloud", hotkey: readAloudHotkey },
+                      ]}
+                    />
+                  </SettingsRow>
+                ))}
+              </div>
             </PanelRow>
 
             {/* Same gate as the hotkey: nothing here can make a sound without

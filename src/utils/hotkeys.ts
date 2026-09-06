@@ -131,18 +131,11 @@ export function getDefaultHotkey(): string {
   return isMac ? "GLOBE" : "CommandOrControl+Space";
 }
 
-/**
- * The Read Aloud shortcut a fresh install gets.
- *
- * The reasoning behind this exact combination, and the survey of what else
- * binds nearby keys, lives above the matching constant in
- * `src/helpers/readAloudHotkey.js`. The two must stay equal: the renderer
- * stores this value and the main process registers it.
- */
-export const DEFAULT_READ_ALOUD_HOTKEY = "Ctrl+Alt+Shift+R";
+/** Default for new installs. Existing custom shortcuts are preserved. */
+export const DEFAULT_READ_ALOUD_HOTKEY = "Shift+R";
 
 /**
- * The Read Aloud default that shipped before the survey above. Only used to
+ * The original Read Aloud default. Only used to
  * recognise an untouched old default during migration.
  */
 export const LEGACY_READ_ALOUD_HOTKEY = "Ctrl+Alt+R";

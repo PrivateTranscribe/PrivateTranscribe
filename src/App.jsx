@@ -528,10 +528,17 @@ export default function App() {
     // The pause/skip shortcuts exist only while a read does. This is the one
     // place that knows when that starts and stops, so it is what tells the main
     // process — and only on the edges, never on the poll tick in between.
-    const syncPlaybackKeys = (active) => {
-      if (readAloudKeysActiveRef.current === active) return;
+    const syncPlaybackKeys = (active, force = false) => {
+      if (!force && readAloudKeysActiveRef.current === active) return;
       readAloudKeysActiveRef.current = active;
+      let hotkeys;
+      try {
+        hotkeys = JSON.parse(localStorage.getItem("readAloudPlaybackHotkeys") || "null");
+      } catch {
+        /* Use playback defaults if stored settings cannot be read. */
+      }
       void window.electronAPI?.readAloudSetPlaybackActive?.(active, {
+        hotkeys,
         // Read fresh on every edge rather than captured once: the toggle lives
         // in the control panel's localStorage and the overlay is long-lived, so
         // a value read at mount would be stale for the rest of the session.
@@ -539,6 +546,13 @@ export default function App() {
         duckOthers: localStorage.getItem("readAloudDuckOthers") !== "false",
       });
     };
+
+    const syncStoredPlaybackKeys = (event) => {
+      if (event.key === "readAloudPlaybackHotkeys") {
+        syncPlaybackKeys(Boolean(readAloudKeysActiveRef.current), true);
+      }
+    };
+    window.addEventListener("storage", syncStoredPlaybackKeys);
 
     // Tell the main process which sentence is on, so the in-place highlight
     // can follow. Only on a change of sentence or status, never per tick.
@@ -667,6 +681,7 @@ export default function App() {
       if (typeof unsubscribeHighlight === "function") unsubscribeHighlight();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       if (typeof unsubscribeControl === "function") unsubscribeControl();
+      window.removeEventListener("storage", syncStoredPlaybackKeys);
       player.dispose();
     };
 
