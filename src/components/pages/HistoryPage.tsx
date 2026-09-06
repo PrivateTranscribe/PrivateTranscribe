@@ -123,7 +123,8 @@ export default function HistoryPage() {
         variant: "destructive",
         onConfirm: async () => {
           try {
-            await window.electronAPI?.deleteTranscription?.(id);
+            const result = await window.electronAPI.deleteTranscription(id);
+            if (!result.success) throw new Error("Delete failed");
             toast({ title: "Deleted", description: "Transcription removed", variant: "success" });
           } catch {
             toast({
@@ -146,7 +147,8 @@ export default function HistoryPage() {
       variant: "destructive",
       onConfirm: async () => {
         try {
-          await window.electronAPI?.clearTranscriptions?.();
+          const result = await window.electronAPI.clearTranscriptions();
+          if (!result.success) throw new Error("Clear failed");
           toast({
             title: "History cleared",
             description: "All transcriptions have been removed",

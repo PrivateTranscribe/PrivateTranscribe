@@ -1,3 +1,5 @@
+import { useDialogs } from "../../hooks/useDialogs";
+import { ConfirmDialog } from "../ui/dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "../ui/Toast";
 import { Activity, Command, Flame, Gauge, Settings, Timer, Upload } from "lucide-react";
@@ -152,6 +154,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   } = useSettings();
 
   const { toast } = useToast();
+  const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
   const [stats, setStats] = useState<AggregateStats>({
     total_words: 0,
     total_transcriptions: 0,
@@ -357,12 +360,25 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    try {
-      await window.electronAPI?.deleteTranscription?.(id);
-    } catch {
-      // Silently fail
-    }
+  const handleDelete = (id: number) => {
+    showConfirmDialog({
+      title: "Delete transcription",
+      description: "This transcription will be permanently removed. This action cannot be undone.",
+      confirmText: "Delete",
+      variant: "destructive",
+      onConfirm: async () => {
+        try {
+          const result = await window.electronAPI.deleteTranscription(id);
+          if (!result.success) throw new Error("Delete failed");
+        } catch {
+          toast({
+            title: "Delete failed",
+            description: "Your transcription is still here. Try again.",
+            variant: "destructive",
+          });
+        }
+      },
+    });
   };
 
   const configRows = [
@@ -374,6 +390,12 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
+      <ConfirmDialog
+        {...confirmDialog}
+        onOpenChange={(open) => {
+          if (!open) hideConfirmDialog();
+        }}
+      />
       <div className="p-8 space-y-8">
         {/* Welcome Header */}
         <div>
