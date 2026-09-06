@@ -7,11 +7,7 @@ test("AI setup leads with its switch and keeps advanced tools usable", async ({
 }) => {
   await unlockTesterAccess(page);
   await page.getByRole("button", { name: "AI Enhancement", exact: true }).click();
-  const toggle = page
-    .getByText("AI enhancement", { exact: true })
-    .locator("..")
-    .locator("..")
-    .getByRole("button");
+  const toggle = page.getByRole("button", { name: "Enable AI enhancement", exact: true });
   await expect(toggle).toBeInViewport();
   await expect(toggle).toHaveCSS("width", "32px");
   await expect(page.getByTestId("agent-name-input")).toBeHidden();
@@ -22,12 +18,9 @@ test("AI setup leads with its switch and keeps advanced tools usable", async ({
     page.getByText("Sends transcription text to the selected provider.", { exact: true })
   ).toBeVisible();
   await capture(page, "ai-enabled");
-  const example = disclosure(page, "See an example");
-  await example.click();
-  await expect(page.getByText("You say", { exact: true })).toBeVisible();
-  await example.scrollIntoViewIfNeeded();
-  await capture(page, "ai-example-open");
-  await example.click();
+  await expect(page.getByText("GPT-5.6 Luna", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Try cleanup" })).toBeVisible();
+  await disclosure(page, "Advanced settings").click();
   const voice = disclosure(page, "Voice instructions");
   await voice.click();
   await page.getByTestId("agent-name-input").fill("Atlas");
@@ -43,7 +36,11 @@ test("AI setup leads with its switch and keeps advanced tools usable", async ({
   await capture(page, "ai-prompt-open");
   const promptTools = disclosure(page, "Prompt tools");
   await expect(promptTools).toContainText("Default");
-  await page.locator("textarea").filter({ visible: true }).fill("Use short, clear sentences.");
+  await page
+    .locator("textarea")
+    .filter({ visible: true })
+    .last()
+    .fill("Use short, clear sentences.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "OK", exact: true }).click();
   await expect(promptTools).toContainText("Custom");
@@ -78,6 +75,9 @@ test("local AI performance options save without leaving the page", async ({
   await page.getByRole("button", { name: "Local", exact: true }).click();
   await expect(page.getByText("Runs on this PC and works offline.", { exact: true })).toBeVisible();
   const options = disclosure(page, "Local performance settings");
+  await expect(page.getByText("Qwen3.8 2B Distill", { exact: true })).toBeVisible();
+  await expect(page.getByText("Qwen3 8B", { exact: true })).toBeHidden();
+  await disclosure(page, "Advanced settings").click();
   const idle = page.getByRole("spinbutton", { name: "Llama server idle shutdown minutes" });
   await expect(idle).toBeHidden();
   await options.evaluate((el) => el.scrollIntoView({ block: "start" }));
