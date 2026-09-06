@@ -282,8 +282,8 @@ function liveDotStyle({ live, pulse, warn = false }) {
  * position stays on the element as data for the specs and as an aria value
  * for anyone who cannot see the bar.
  */
-const OverlayProgress = ({ index, total, label, testId }) => {
-  if (!(total > 0)) return null;
+const OverlayProgress = ({ index, total, label, testId, inset = false, pending = false }) => {
+  if (!(total > 0) && !pending) return null;
   const position = Math.min(index + 1, total);
   return (
     <span
@@ -291,14 +291,14 @@ const OverlayProgress = ({ index, total, label, testId }) => {
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={total}
-      aria-valuenow={position}
+      aria-valuenow={pending ? undefined : position}
       data-testid={testId}
       data-position={`${position}/${total}`}
-      className="relative ml-1 h-[2px] w-11 shrink-0 overflow-hidden rounded-full bg-white/25"
+      className={`relative block h-[2px] shrink-0 overflow-hidden rounded-full bg-white/25 ${inset ? "w-full" : "ml-1 w-11"}`}
     >
       <span
         className="absolute inset-y-0 left-0 rounded-full bg-primary/85 transition-[width] duration-300 ease-out"
-        style={{ width: `${(position / total) * 100}%` }}
+        style={{ width: pending ? "0%" : `${(position / total) * 100}%` }}
       />
     </span>
   );
@@ -1790,44 +1790,55 @@ export default function App() {
               <div
                 ref={readAloudPillRef}
                 data-testid="readaloud-overlay-player"
-                className={`flex flex-col gap-1.5 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({ interactive: true, status: true })}
+                className={`flex items-center gap-2 pl-3 pr-1.5 ${OVERLAY_SURFACE_CLASS}`}
+                style={{
+                  ...overlayRowStyle({ interactive: true, status: true }),
+                  paddingTop: 4,
+                  paddingBottom: 4,
+                }}
               >
-                <div className="flex items-center gap-2">
-                  <span style={readAloudDotStyle(readAloudState)} aria-hidden />
-                  {/* A fixed label width, sized to the longest state, so
-                      "Reading aloud" becoming "Paused" never moves the pause
-                      button out from under the cursor that just pressed it. */}
-                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} w-[7.25rem] whitespace-nowrap`}>
+                <span style={readAloudDotStyle(readAloudState)} aria-hidden />
+                {/* Progress occupies the status column, giving the reserved
+                    label space a purpose without moving the controls on pause. */}
+                <div
+                  className={`flex shrink-0 flex-col gap-[5px] ${readAloudState.status === "error" ? "w-[126px]" : "w-[100px]"}`}
+                >
+                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} whitespace-nowrap`}>
                     {readAloudLabel}
                   </span>
-
                   {readAloudState.status !== "error" && (
-                    <>
-                      <OverlayProgress
-                        index={readAloudState.index}
-                        total={readAloudState.sentenceCount}
-                        label="Read progress"
-                        testId="readaloud-progress"
-                      />
-                      <button
-                        aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
-                        onClick={handleReadAloudToggle}
-                        className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 ml-1`}
-                      >
-                        {readAloudPlaying ? (
-                          <Pause size={10} fill="currentColor" strokeWidth={0} />
-                        ) : (
-                          <Play size={10} fill="currentColor" strokeWidth={0} />
-                        )}
-                      </button>
-                    </>
+                    <OverlayProgress
+                      index={readAloudState.index}
+                      total={readAloudState.sentenceCount}
+                      label="Read progress"
+                      testId="readaloud-progress"
+                      inset
+                      pending={["splitting", "loading-engine", "synthesizing"].includes(
+                        readAloudState.status
+                      )}
+                    />
                   )}
-
+                </div>
+                <div className="flex items-center gap-0.5">
+                  {readAloudState.status !== "error" && (
+                    <button
+                      aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
+                      onClick={handleReadAloudToggle}
+                      className={`${OVERLAY_STATUS_CONTROL_CLASS} focus-visible:ring-1 focus-visible:ring-primary`}
+                      style={{ width: 24, height: 24 }}
+                    >
+                      {readAloudPlaying ? (
+                        <Pause size={10} fill="currentColor" strokeWidth={0} />
+                      ) : (
+                        <Play size={10} fill="currentColor" strokeWidth={0} />
+                      )}
+                    </button>
+                  )}
                   <button
                     aria-label="Stop reading"
                     onClick={handleReadAloudStop}
-                    className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 -mr-0.5 ${readAloudState.status === "error" ? "ml-1" : ""}`}
+                    className={`${OVERLAY_STATUS_CONTROL_CLASS} focus-visible:ring-1 focus-visible:ring-primary`}
+                    style={{ width: 24, height: 24 }}
                   >
                     {/* The same tinted disc as the Converse capsule's stop: one
                         function, one look. Filled, because an outlined square
