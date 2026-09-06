@@ -7,7 +7,7 @@ module.exports = async function afterPack(context) {
     return;
   }
 
-  // Probe the packaged copies, with only their own runtime directory added.
+  // Probe the packaged copies from their own runtime directory.
   // Source tests can find a working engine in the user's cache and miss stale
   // DLLs in resources/bin. Help must work before signing or publishing a build.
   const binDir = path.join(context.appOutDir, "resources", "bin");

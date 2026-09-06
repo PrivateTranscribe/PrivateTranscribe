@@ -18,6 +18,7 @@
 ### Fixed
 
 - Windows paste no longer waits indefinitely for an app's text inspection. Transcripts remain available when delivery cannot be confirmed.
+- Windows CPU engine downloads include their required runtime libraries, and packaging rejects engines that cannot start.
 - Microphone level bars recover when the audio context is suspended without restarting the recording.
 - Cloud file transcription uses the selected language. Cancel also stops a local fallback, and completed transcripts stay available if History is slow or fails to save.
 - Copy success appears only after copying succeeds. Deletion asks for confirmation where needed and keeps text available when deletion fails.
