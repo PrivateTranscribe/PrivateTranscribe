@@ -332,6 +332,9 @@ function setExecutable(filePath) {
 function cleanupFiles(binDir, prefix, keepPrefix) {
   const files = fs.readdirSync(binDir).filter((f) => f.startsWith(prefix));
   files.forEach((file) => {
+    // Runtime libraries can share the engine prefix without its platform
+    // suffix (for example llama-server-impl.dll). CI cleanup must retain them.
+    if (/\.(?:dll|dylib|so(?:\.\d+)*)$/i.test(file)) return;
     if (!file.startsWith(keepPrefix)) {
       const filePath = path.join(binDir, file);
       console.log(`Removing old binary: ${file}`);
