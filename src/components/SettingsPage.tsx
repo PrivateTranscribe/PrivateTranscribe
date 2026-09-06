@@ -1398,7 +1398,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       return "Claude Code was not found on this PC. Prompts are pasted as spoken, with paths in backticks.";
     }
     if (agentModeRewrite) {
-      return "Your words go through your own Claude Code login before they are pasted. Nothing else leaves this PC.";
+      return "Rewrites prompts through your Claude Code login before pasting.";
     }
     return "Off. Prompts are pasted as spoken, with paths in backticks.";
   };
@@ -2886,9 +2886,45 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       case "dictation":
         return (
           <div className="space-y-6">
+            {/* Dictation Hotkey */}
+            <div>
+              <SectionHeader
+                title="Controls"
+                description="Choose your dictation key and how it works."
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <HotkeyInput
+                    value={dictationKey}
+                    onChange={async (newHotkey) => {
+                      await registerHotkey(newHotkey);
+                    }}
+                    disabled={isHotkeyRegistering}
+                    ariaLabel="Dictation hotkey"
+                    conflicts={[
+                      { label: "Read Aloud", hotkey: readAloudHotkey },
+                      { label: "Mute my voice call", hotkey: voiceCallMuteKey },
+                    ]}
+                    onClear={() => {
+                      void registerHotkey(getDefaultHotkey());
+                    }}
+                  />
+                </SettingsPanelRow>
+
+                {!isUsingGnomeHotkeys && (
+                  <SettingsPanelRow>
+                    <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
+                      Activation Mode
+                    </p>
+                    <ActivationModeSelector value={activationMode} onChange={setActivationMode} />
+                  </SettingsPanelRow>
+                )}
+              </SettingsPanel>
+            </div>
+
             <SectionHeader
-              title="Speech Recognition"
-              description="Choose between cloud-based services for speed or local models for privacy"
+              title="Speech model"
+              description="Choose local or cloud transcription."
             />
 
             <TranscriptionModelPicker
@@ -2932,10 +2968,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
 
             {/* Language */}
             <div>
-              <SectionHeader
-                title="Language"
-                description="Configure speech recognition language and translation"
-              />
+              <SectionHeader title="Languages" description="Choose spoken and output languages." />
               <SettingsPanel>
                 <SettingsPanelRow>
                   {/* Stacked rather than a SettingsRow: the picker needs the
@@ -3017,48 +3050,21 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
               </SettingsPanel>
             </div>
 
-            {/* Dictation Hotkey */}
-            <div>
-              <SectionHeader
-                title="Dictation Control"
-                description="Configure how you activate and control voice dictation"
-              />
-              <SettingsPanel>
-                <SettingsPanelRow>
-                  <HotkeyInput
-                    value={dictationKey}
-                    onChange={async (newHotkey) => {
-                      await registerHotkey(newHotkey);
-                    }}
-                    disabled={isHotkeyRegistering}
-                    ariaLabel="Dictation hotkey"
-                    conflicts={[
-                      { label: "Read Aloud", hotkey: readAloudHotkey },
-                      { label: "Mute my voice call", hotkey: voiceCallMuteKey },
-                    ]}
-                    onClear={() => {
-                      void registerHotkey(getDefaultHotkey());
-                    }}
-                  />
-                </SettingsPanelRow>
-
-                {!isUsingGnomeHotkeys && (
-                  <SettingsPanelRow>
-                    <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
-                      Activation Mode
-                    </p>
-                    <ActivationModeSelector value={activationMode} onChange={setActivationMode} />
-                  </SettingsPanelRow>
-                )}
-              </SettingsPanel>
-            </div>
-
             {/* Agent Mode */}
-            <div>
-              <SectionHeader
-                title="Agent Mode"
-                description="Hold a second key, describe the bug, release. A cleaned-up prompt lands in Claude Code, Cursor or Codex."
-              />
+            <SettingsDisclosure
+              title="Agent Mode"
+              settingsLabel="Agent Mode"
+              description="Hold a second key to dictate coding prompts."
+              status={
+                !agentModeEnabled
+                  ? "Off"
+                  : !agentModeStatus
+                    ? "Checking…"
+                    : agentModeStatus.registered
+                      ? agentModeKeyLabel(agentModeHotkey)
+                      : "Unavailable"
+              }
+            >
               <SettingsPanel>
                 <SettingsPanelRow>
                   <SettingsRow label="Agent Mode" description={agentModeStatusDescription()}>
@@ -3069,7 +3075,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Agent Mode hotkey"
-                    description="Hold it while you talk. Right Ctrl is free in every editor we checked."
+                    description="Hold this key while you speak."
                   >
                     <Select
                       value={agentModeHotkey}
@@ -3109,27 +3115,15 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 </SettingsPanelRow>
 
                 <SettingsPanelRow>
-                  <p className="text-[11px] font-medium text-muted-foreground/80 mb-2">
-                    What it does to your words
+                  <p className="text-xs text-muted-foreground">
+                    Say "new line" for a line break or end with "send" to press Enter.
                   </p>
-                  <ul className="text-[12px] leading-relaxed text-muted-foreground space-y-1">
-                    <li>
-                      Turns the ramble into a prompt a coding agent can act on: outcome first,
-                      changes of mind resolved, your technical details kept word for word.
-                    </li>
-                    <li>
-                      Formats paths and identifiers as code, like{" "}
-                      <code className="font-mono">auth/login.ts</code> and{" "}
-                      <code className="font-mono">user_id</code>.
-                    </li>
-                    <li>
-                      Turns a spoken "new line" into a line break and a trailing "send" into Enter.
-                    </li>
-                  </ul>
-                  <p className="text-[12px] leading-relaxed text-muted-foreground mt-2">
-                    {agentModeRewriteLive
-                      ? "The rewrite goes through your Claude Code login. Everything else runs on this PC."
-                      : "Everything runs on this PC. No text leaves it."}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {useLocalWhisper
+                      ? "Audio is transcribed on this PC."
+                      : "Audio is sent to your selected transcription service."}
+                    {agentModeRewriteLive &&
+                      " Rewriting sends text through your Claude Code login."}
                   </p>
                 </SettingsPanelRow>
 
@@ -3169,14 +3163,13 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                   </SettingsRow>
                 </SettingsPanelRow>
               </SettingsPanel>
-            </div>
+            </SettingsDisclosure>
 
             {useLocalWhisper && localTranscriptionProvider === "whisper" && (
-              <div className="mt-6">
-                <SectionHeader
-                  title="Local Whisper performance"
-                  description="How much of your processor local Whisper may use, and when it switches itself off"
-                />
+              <SettingsDisclosure
+                title="Local performance settings"
+                status={whisperThreads > 0 ? `${whisperThreads} threads` : "Automatic"}
+              >
                 <SettingsPanel>
                   <SettingsPanelRow>
                     <SettingsRow
@@ -3254,7 +3247,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                     </SettingsRow>
                   </SettingsPanelRow>
                 </SettingsPanel>
-              </div>
+              </SettingsDisclosure>
             )}
 
             {/* GPU Status - always visible in Transcription tab for local users */}

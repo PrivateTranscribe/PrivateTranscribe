@@ -29,7 +29,6 @@ describe("Agent Mode settings wiring", () => {
     expect(page).toContain("agentModeSyncHotkey");
     expect(page).toContain("agentModeHotkeyStatus");
     expect(page).toContain("readAgentModeUsage");
-    expect(page).toContain("Everything runs on this PC. No text leaves it.");
   });
 
   it("asks the main process whether Claude Code is there and says so honestly", () => {
@@ -39,12 +38,10 @@ describe("Agent Mode settings wiring", () => {
     expect(page).toContain(
       "Claude Code was not found on this PC. Prompts are pasted as spoken, with paths in backticks."
     );
-    expect(page).toContain(
-      "Your words go through your own Claude Code login before they are pasted. Nothing else leaves this PC."
-    );
-    expect(page).toContain(
-      "The rewrite goes through your Claude Code login. Everything else runs on this PC."
-    );
+    expect(page).toContain("Rewrites prompts through your Claude Code login before pasting.");
+    expect(page).toContain("Rewriting sends text through your Claude Code login.");
+    expect(page).toContain("Audio is transcribed on this PC.");
+    expect(page).toContain("Audio is sent to your selected transcription service.");
   });
 
   it("stores the settings with the defaults the overlay reads raw", () => {

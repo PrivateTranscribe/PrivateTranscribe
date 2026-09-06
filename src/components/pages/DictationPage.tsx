@@ -16,8 +16,7 @@ export default function DictationPage() {
         <div>
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Dictation</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Press the hotkey, speak, and the text lands where your cursor is. Pick the speech model,
-            the languages you speak, and the key that starts it.
+            Choose how dictation listens, transcribes, and pastes.
           </p>
         </div>
       </div>

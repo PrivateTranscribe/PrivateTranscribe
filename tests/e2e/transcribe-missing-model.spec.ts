@@ -14,13 +14,7 @@ import { expect, test } from "./fixtures/electron-app";
  */
 test.use({ useThrowawayHome: true });
 
-const CONTROL_WAV = path.resolve(
-  __dirname,
-  "..",
-  "fixtures",
-  "multispeaker",
-  "control.wav"
-);
+const CONTROL_WAV = path.resolve(__dirname, "..", "fixtures", "multispeaker", "control.wav");
 
 async function uploadControlWav(page: import("@playwright/test").Page) {
   await page.evaluate(() => {
@@ -37,9 +31,9 @@ test.describe("Transcribe page with no model installed", () => {
   test("says the model is missing rather than blaming the file", async ({ controlPanel }) => {
     await uploadControlWav(controlPanel);
 
-    await expect(
-      controlPanel.getByRole("heading", { name: "Transcription failed" })
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(controlPanel.getByRole("heading", { name: "Transcription failed" })).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(
       controlPanel.getByText(/Whisper model "base" not downloaded/).first()
     ).toBeVisible();
@@ -55,7 +49,7 @@ test.describe("Transcribe page with no model installed", () => {
       fullPage: true,
     });
     await controlPanel.screenshot({
-      path: "docs/goal-evidence/transcribe-missing-model-cta.png",
+      path: "test-results/e2e/transcribe-missing-model-cta.png",
       fullPage: true,
     });
   });
@@ -79,13 +73,13 @@ test.describe("Transcribe page with no model installed", () => {
 
     await modelButton.click();
 
-    await expect(controlPanel.getByRole("heading", { name: "Settings" })).toBeVisible();
-    await expect(controlPanel.getByText("Speech Recognition")).toBeVisible();
+    await expect(controlPanel.getByRole("heading", { name: "Dictation" })).toBeVisible();
+    await expect(controlPanel.getByText("Speech model")).toBeVisible();
     // The picker that can put the model on disk, on the tab the button chose.
     await expect(controlPanel.getByText(/Local|Whisper/).first()).toBeVisible();
 
     await controlPanel.screenshot({
-      path: "docs/goal-evidence/transcribe-missing-model-destination.png",
+      path: "test-results/e2e/transcribe-missing-model-destination.png",
       fullPage: true,
     });
   });
