@@ -21,7 +21,7 @@ import { expect, test } from "./fixtures/electron-app";
  */
 
 const FIXTURE_DIR = path.resolve(__dirname, "..", "fixtures", "dictation");
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = path.resolve("test-results/agent-mode");
 const STUB_PATH = path.resolve(__dirname, "fixtures", "claude-print-stub.cjs");
 const MIN_SCREENSHOT_BYTES = 1_000;
 

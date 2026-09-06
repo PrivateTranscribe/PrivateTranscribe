@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess, unlockTesterAccessAfterRestart } from "./fixtures/tester-access";
 
-const evidence = path.resolve("docs/qa-readaloud-shortcuts");
+const evidence = path.resolve("test-results/qa-readaloud-shortcuts");
 test.use({ useThrowawayHome: true });
 test.describe("installed voice model", () => {
   test.use({ seedKokoroModel: true });
