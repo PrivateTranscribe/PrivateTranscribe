@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { promises: fsPromises } = require("fs");
 const { app } = require("electron");
 const { downloadFile: sharedDownloadFile, createDownloadSignal } = require("./downloadUtils");
@@ -26,6 +27,49 @@ class ModelError extends Error {
 class ModelNotFoundError extends ModelError {
   constructor(modelId) {
     super(`Model ${modelId} not found`, "MODEL_NOT_FOUND", { modelId });
+  }
+}
+
+function throwIfDownloadCancelled(signal) {
+  if (signal?.aborted) {
+    throw Object.assign(new Error("Download cancelled"), { isAbort: true });
+  }
+}
+
+async function verifyModelDownload(filePath, model, signal) {
+  throwIfDownloadCancelled(signal);
+  const stats = await fsPromises.stat(filePath);
+
+  if (Number.isFinite(model.sizeBytes) && stats.size !== model.sizeBytes) {
+    throw new ModelError(
+      "Downloaded model size does not match the expected artifact",
+      "DOWNLOAD_CORRUPTED",
+      {
+        expectedSize: model.sizeBytes,
+        actualSize: stats.size,
+      }
+    );
+  }
+
+  if (!model.sha256) return;
+
+  const hash = crypto.createHash("sha256");
+  for await (const chunk of fs.createReadStream(filePath)) {
+    throwIfDownloadCancelled(signal);
+    hash.update(chunk);
+  }
+  throwIfDownloadCancelled(signal);
+
+  const actualSha256 = hash.digest("hex");
+  if (actualSha256.toLowerCase() !== model.sha256.toLowerCase()) {
+    throw new ModelError(
+      "Downloaded model checksum does not match the expected artifact",
+      "DOWNLOAD_CORRUPTED",
+      {
+        expectedSha256: model.sha256,
+        actualSha256,
+      }
+    );
   }
 }
 
@@ -145,6 +189,10 @@ class ModelManager {
   async checkModelValid(filePath) {
     try {
       const stats = await fsPromises.stat(filePath);
+      const model = getLocalProviders()
+        .flatMap((provider) => provider.models)
+        .find((entry) => entry.fileName === path.basename(filePath));
+      if (model?.sha256) return stats.size === model.sizeBytes;
       return stats.size > MIN_FILE_SIZE;
     } catch {
       return false;
@@ -215,6 +263,15 @@ class ModelManager {
         );
       }
 
+      if (model.sha256) {
+        try {
+          await verifyModelDownload(modelPath, model, signal);
+        } catch (error) {
+          await fsPromises.unlink(modelPath).catch(() => {});
+          throw error;
+        }
+      }
+
       return modelPath;
     } catch (error) {
       if (error.isAbort) {
@@ -240,7 +297,8 @@ class ModelManager {
 
   getDownloadUrl(provider, model) {
     const baseUrl = provider.baseUrl || "https://huggingface.co";
-    return `${baseUrl}/${model.hfRepo}/resolve/main/${model.fileName}`;
+    const revision = model.hfRevision || "main";
+    return `${baseUrl}/${model.hfRepo}/resolve/${revision}/${model.fileName}`;
   }
 
   cancelDownload(modelId) {
@@ -389,6 +447,8 @@ class ModelManager {
       const result = await this.serverManager.inference(messages, {
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 512,
+        disableThinking: options.disableThinking,
+        timeoutMs: options.timeoutMs,
       });
 
       const totalTime = Date.now() - startTime;
@@ -457,4 +517,5 @@ module.exports = {
   default: new ModelManager(),
   ModelError,
   ModelNotFoundError,
+  verifyModelDownload,
 };

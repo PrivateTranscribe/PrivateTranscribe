@@ -4,6 +4,12 @@
  */
 
 import { describe, it, expect } from "vitest";
+import {
+  REASONING_PROVIDERS,
+  getCloudModel as getRegisteredCloudModel,
+  getModelProvider as getRegisteredModelProvider,
+  modelRegistry,
+} from "../../../src/models/ModelRegistry";
 
 // Mock model data structure for testing
 // This mirrors the logic in src/models/ModelRegistry.ts
@@ -305,6 +311,46 @@ describe("ModelRegistry", () => {
     it("returns fallback for non-existent provider", () => {
       expect(getDefaultTranscriptionModel("nonexistent")).toBe("gpt-transcribe");
     });
+  });
+});
+
+describe("current reasoning model registry", () => {
+  it("recommends Luna first and preserves its non-reasoning request metadata", () => {
+    const [luna] = REASONING_PROVIDERS.openai.models;
+
+    expect(luna).toMatchObject({
+      value: "gpt-5.6-luna",
+      recommended: true,
+      reasoningEffort: "none",
+    });
+    expect(getRegisteredModelProvider("gpt-6-unknown")).toBe("openai");
+  });
+
+  it("retains retired cloud IDs for routing while exposing their replacements", () => {
+    expect(getRegisteredCloudModel("qwen/qwen3-32b")).toMatchObject({
+      deprecated: true,
+      replacementId: "qwen/qwen3.8-27b",
+    });
+    expect(getRegisteredCloudModel("gemini-3-pro-preview")).toMatchObject({
+      deprecated: true,
+      replacementId: "gemini-3.1-pro-preview",
+    });
+  });
+
+  it("pins the recommended local cleanup model to its immutable artifact", () => {
+    const provider = modelRegistry.getProvider("qwen");
+    const model = provider?.models[0];
+
+    expect(model).toMatchObject({
+      id: "qwen3.8-2b-distill-q4_k_m",
+      recommended: true,
+      sizeBytes: 1312164224,
+      hfRevision: "f4f73582d0b149595450c719b9a7521a03894f9c",
+      sha256: "4aa0fb13c431514262f259d420ecc95a8714df58ac2a2384514e20b93983f0ff",
+    });
+    expect(provider?.getDownloadUrl(model!)).toBe(
+      "https://huggingface.co/empero-ai/Qwen3.8-2B-Distill-GGUF/resolve/f4f73582d0b149595450c719b9a7521a03894f9c/Qwen3.8-2B-Q4_K_M.gguf"
+    );
   });
 });
 
