@@ -84,6 +84,10 @@
   "extraResources": [
     "src/assets/**/*",
     {
+      "from": "THIRD_PARTY_NOTICES.md",
+      "to": "THIRD_PARTY_NOTICES.md"
+    },
+    {
       "from": "resources/readaloud-copy-worker.ps1",
       "to": "readaloud-copy-worker.ps1"
     },
