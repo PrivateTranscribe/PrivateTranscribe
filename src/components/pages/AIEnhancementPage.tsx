@@ -14,10 +14,8 @@ import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { modelRegistry } from "../../models/ModelRegistry";
-import { usePromptProfile } from "../../hooks/usePromptProfile";
 
 export default function AIEnhancementPage() {
-  const { profile } = usePromptProfile();
   const isUnlocked = isFeatureUnlocked("ai-enhancement");
   const {
     preferredLanguage,
@@ -130,13 +128,7 @@ export default function AIEnhancementPage() {
             <SettingsDisclosure
               title="Advanced settings"
               description="Custom prompts, spoken commands, and memory use."
-              status={
-                profile === "experimental"
-                  ? "Experimental prompt"
-                  : hasCustomPrompt
-                    ? "Custom prompt"
-                    : undefined
-              }
+              status={hasCustomPrompt ? "Custom prompt" : undefined}
             >
               {/* Local llama-server idle shutdown - only relevant when local provider is selected */}
               {(reasoningProvider === "local" || modelRegistry.getProvider(reasoningProvider)) && (
@@ -236,14 +228,8 @@ export default function AIEnhancementPage() {
               <div className="space-y-3">
                 <SettingsDisclosure
                   title="Prompt tools"
-                  description="Choose, edit, or test the cleanup prompt."
-                  status={
-                    profile === "experimental"
-                      ? "Experimental"
-                      : hasCustomPrompt
-                        ? "Custom"
-                        : "Current"
-                  }
+                  description="View, edit, or test the cleanup prompt."
+                  status={hasCustomPrompt ? "Custom" : "Default"}
                 >
                   <PromptStudio onCustomPromptChange={setHasCustomPrompt} />
                 </SettingsDisclosure>

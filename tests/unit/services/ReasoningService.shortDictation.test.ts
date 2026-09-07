@@ -20,38 +20,6 @@ beforeEach(() => {
 });
 
 describe("short dictation survives empty enhancement", () => {
-  it.each(["Maren", "year", "Okay", "Thank you", "Not yet", "mange tak"])(
-    "experimental keeps %s without calling a model",
-    async (text) => {
-      localStorageMock.setItem("enhancementPromptProfile", "experimental");
-      expect(await ReasoningService.processText(text, "qwen3-4b")).toBe(text);
-      expect(window.electronAPI.processLocalReasoning).not.toHaveBeenCalled();
-    }
-  );
-  it("honors an explicit comparison choice instead of the active profile", async () => {
-    localStorageMock.setItem("enhancementPromptProfile", "experimental");
-    vi.mocked(window.electronAPI.processLocalReasoning).mockResolvedValue({
-      success: true,
-      text: "Model result",
-    });
-    expect(
-      await ReasoningService.processText("Maren", "qwen3-4b", null, {
-        preserveShortDictation: false,
-      })
-    ).toBe("Model result");
-    expect(window.electronAPI.processLocalReasoning).toHaveBeenCalledOnce();
-  });
-  it("still sends longer experimental dictation to the model", async () => {
-    localStorageMock.setItem("enhancementPromptProfile", "experimental");
-    vi.mocked(window.electronAPI.processLocalReasoning).mockResolvedValue({
-      success: true,
-      text: "Send the notes.",
-    });
-    expect(await ReasoningService.processText("please send the notes", "qwen3-4b")).toBe(
-      "Send the notes."
-    );
-    expect(window.electronAPI.processLocalReasoning).toHaveBeenCalledOnce();
-  });
   it.each(["Maren", "year", "Okay", "Thank you", "Not yet", "42", "mange tak", "東京"])(
     "preserves %s through local IPC",
     async (text) => {

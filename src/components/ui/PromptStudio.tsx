@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "./button";
 import { Textarea } from "./textarea";
 import {
@@ -18,17 +18,8 @@ import { useAgentName } from "../../utils/agentName";
 import ReasoningService from "../../services/ReasoningService";
 import { getModelProvider } from "../../models/ModelRegistry";
 import logger from "../../utils/logger";
-import {
-  getDefaultProfilePrompt,
-  getProfilePrompt,
-  getProfileTemplate,
-  getPromptStorageKey,
-  savePromptPreference,
-  withWritingStyle,
-} from "../../config/promptProfiles";
-import { usePromptProfile } from "../../hooks/usePromptProfile";
+import { UNIFIED_SYSTEM_PROMPT } from "../../config/prompts";
 import { SectionLabel } from "./SectionLabel";
-import { EnhancementProfile } from "../EnhancementProfile";
 
 interface PromptStudioProps {
   className?: string;
@@ -54,41 +45,30 @@ const PROVIDER_CONFIG: Record<string, ProviderConfig> = {
 };
 
 function getCurrentPrompt(): string {
-  return getProfilePrompt();
+  const customPrompt = localStorage.getItem("customUnifiedPrompt");
+  if (customPrompt) {
+    try {
+      const parsed = JSON.parse(customPrompt);
+      return typeof parsed === "string" ? parsed : UNIFIED_SYSTEM_PROMPT;
+    } catch {
+      return UNIFIED_SYSTEM_PROMPT;
+    }
+  }
+  return UNIFIED_SYSTEM_PROMPT;
 }
 
 export default function PromptStudio({ className = "", onCustomPromptChange }: PromptStudioProps) {
-  const { profile, currentTemplate, experimentalTemplate } = usePromptProfile();
-  const defaultPrompt = getDefaultProfilePrompt(profile);
   const [activeTab, setActiveTab] = useState<"current" | "edit" | "test">("current");
-  const [editedPrompt, setEditedPrompt] = useState(getCurrentPrompt);
+  const [editedPrompt, setEditedPrompt] = useState(UNIFIED_SYSTEM_PROMPT);
   const [testText, setTestText] = useState(
     "um so like I was thinking we should probably you know schedule a meeting for next week to discuss the the project timeline"
   );
   const [testResult, setTestResult] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
-  const testGeneration = useRef({ value: 0 });
-  const activeModel = localStorage.getItem("reasoningModel");
 
   const { alertDialog, showAlertDialog, hideAlertDialog } = useDialogs();
   const { agentName } = useAgentName();
-  useEffect(() => {
-    const state = testGeneration.current;
-    state.value++;
-    setTestResult("");
-    return () => {
-      state.value++;
-    };
-  }, [
-    profile,
-    currentTemplate,
-    experimentalTemplate,
-    editedPrompt,
-    testText,
-    agentName,
-    activeModel,
-  ]);
 
   useEffect(() => {
     const legacyPrompts = localStorage.getItem("customPrompts");
@@ -104,29 +84,34 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
       }
     }
 
-    setEditedPrompt(getCurrentPrompt());
-    setTestResult("");
-    onCustomPromptChange?.(getCurrentPrompt() !== defaultPrompt);
-  }, [onCustomPromptChange, profile, defaultPrompt, currentTemplate, experimentalTemplate]);
+    const customPrompt = localStorage.getItem("customUnifiedPrompt");
+    if (customPrompt) {
+      try {
+        const parsed = JSON.parse(customPrompt);
+        if (typeof parsed === "string") setEditedPrompt(parsed);
+      } catch (error) {
+        console.error("Failed to load custom prompt:", error);
+      }
+    }
+    onCustomPromptChange?.(getCurrentPrompt() !== UNIFIED_SYSTEM_PROMPT);
+  }, [onCustomPromptChange]);
 
   const savePrompt = () => {
-    savePromptPreference(getPromptStorageKey(profile), JSON.stringify(editedPrompt));
-    onCustomPromptChange?.(editedPrompt !== defaultPrompt);
+    localStorage.setItem("customUnifiedPrompt", JSON.stringify(editedPrompt));
+    onCustomPromptChange?.(editedPrompt !== UNIFIED_SYSTEM_PROMPT);
     showAlertDialog({
       title: "Prompt Saved",
-      description: `Saved for the ${profile === "experimental" ? "experimental" : "current"} prompt. The other prompt is unchanged.`,
+      description: "Your custom prompt will be used for all future AI processing.",
     });
   };
 
   const resetToDefault = () => {
-    setEditedPrompt(defaultPrompt);
-    savePromptPreference(getPromptStorageKey(profile), null);
-    if (profile === "current") localStorage.removeItem("customPrompts");
+    setEditedPrompt(UNIFIED_SYSTEM_PROMPT);
+    localStorage.removeItem("customUnifiedPrompt");
     onCustomPromptChange?.(false);
     showAlertDialog({
       title: "Reset Complete",
-      description:
-        "This profile has been reset to its built-in prompt. The other profile is unchanged.",
+      description: "Prompt has been reset to the default value.",
     });
   };
 
@@ -141,7 +126,6 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
 
     setIsLoading(true);
     setTestResult("");
-    const generation = ++testGeneration.current.value;
 
     try {
       const useReasoningModel = localStorage.getItem("useReasoningModel") !== "false";
@@ -185,26 +169,24 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
       }
 
       const result = await ReasoningService.processText(testText, reasoningModel, agentName, {
-        promptTemplate: withWritingStyle(editedPrompt, profile),
-        preserveShortDictation: profile === "experimental",
+        promptTemplate: editedPrompt,
         preferredLanguage: localStorage.getItem("preferredLanguage") || "auto",
         timeoutMs: 30000,
         maxRetries: 0,
         smartContext: null,
       });
-      if (generation === testGeneration.current.value) setTestResult(result);
+      setTestResult(result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error("PromptStudio test failed", { error: errorMessage }, "prompt-studio");
-      if (generation === testGeneration.current.value)
-        setTestResult(`Test failed - ${errorMessage}`);
+      setTestResult(`Test failed - ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   const isAgentAddressed = testText.toLowerCase().includes(agentName.toLowerCase());
-  const isCustomPrompt = getCurrentPrompt() !== defaultPrompt;
+  const isCustomPrompt = getCurrentPrompt() !== UNIFIED_SYSTEM_PROMPT;
 
   const tabs = [
     { id: "current" as const, label: "View", icon: Eye },
@@ -224,7 +206,6 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
 
       {/* Tab Navigation + Content in a single panel */}
       <div className="rounded-xl border border-border-subtle bg-surface-2 overflow-hidden">
-        <EnhancementProfile />
         <div className="flex border-b border-border-subtle">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -271,13 +252,7 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
             <div className="px-5 py-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <SectionLabel>
-                    {profile === "experimental"
-                      ? "Experimental prompt"
-                      : isCustomPrompt
-                        ? "Custom prompt"
-                        : "Default prompt"}
-                  </SectionLabel>
+                  <SectionLabel>{isCustomPrompt ? "Custom prompt" : "Default prompt"}</SectionLabel>
                   {isCustomPrompt && (
                     <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded-full bg-primary/10 text-primary">
                       Modified
@@ -285,7 +260,7 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
                   )}
                 </div>
                 <Button
-                  onClick={() => copyText(getProfileTemplate())}
+                  onClick={() => copyText(getCurrentPrompt())}
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2 text-[11px]"
@@ -303,7 +278,7 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
               </div>
               <div className="bg-surface-raised/30 border border-border/30 rounded-lg p-4 max-h-80 overflow-y-auto">
                 <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                  {getProfileTemplate().replace(/\{\{agentName\}\}/g, agentName)}
+                  {getCurrentPrompt().replace(/\{\{agentName\}\}/g, agentName)}
                 </pre>
               </div>
             </div>
@@ -339,12 +314,7 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
 
             <div className="px-5 py-4">
               <div className="flex gap-2">
-                <Button
-                  onClick={savePrompt}
-                  disabled={!editedPrompt.trim()}
-                  size="sm"
-                  className="flex-1"
-                >
+                <Button onClick={savePrompt} size="sm" className="flex-1">
                   <Save className="w-3.5 h-3.5 mr-2" />
                   Save
                 </Button>

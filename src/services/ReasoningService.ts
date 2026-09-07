@@ -3,7 +3,6 @@ import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
-import { getPromptProfile } from "../config/promptProfiles";
 import { isShortDictation } from "../utils/shortDictation";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
@@ -15,8 +14,6 @@ import {
 } from "../helpers/contextPipeline";
 
 export interface ReasoningConfig {
-  /** Experimental profile keeps short insertions without a model rewrite. */
-  preserveShortDictation?: boolean;
   maxTokens?: number;
   temperature?: number;
   contextSize?: number;
@@ -672,10 +669,6 @@ class ReasoningService {
     if (!trimmedModel) {
       throw new Error("No reasoning model selected");
     }
-    const preserveShort =
-      config.preserveShortDictation ??
-      (config.promptTemplate === undefined && getPromptProfile() === "experimental");
-    if (preserveShort && isShortDictation(text)) return text.trim();
     const provider = getModelProvider(trimmedModel);
 
     logger.logReasoning("PROVIDER_SELECTION", {
