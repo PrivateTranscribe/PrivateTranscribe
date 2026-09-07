@@ -197,6 +197,14 @@ describe("Converse is a Pro feature", () => {
     expect(shouldShowProBadge("converse")).toBe(true);
   });
 
+  it("leaves Read Aloud open on a free install, with no badge", () => {
+    vi.stubEnv("PROD", true);
+    stubLicense({ isPro: false, betaAccess: false });
+
+    expect(isFeatureUnlocked("read-aloud")).toBe(true);
+    expect(shouldShowProBadge("read-aloud")).toBe(false);
+  });
+
   it("unlocks for an approved tester", () => {
     vi.stubEnv("PROD", true);
     stubLicense({ isPro: true, betaAccess: true });

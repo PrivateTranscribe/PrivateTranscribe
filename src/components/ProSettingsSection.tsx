@@ -41,10 +41,6 @@ const PRO_FEATURES_BETA = [
     name: "Action Engine",
     desc: "Trigger custom voice commands to launch apps, run scripts, and automate workflows",
   },
-  {
-    name: "Read Aloud",
-    desc: "Select text anywhere and hit the hotkey to hear it read back in a local voice",
-  },
 ];
 
 /** Where each listed feature lives, so the card can open it. */
@@ -52,7 +48,6 @@ const FEATURE_PAGES: Record<string, string> = {
   "Correction Memory": "correction-memory",
   "AI Enhancement": "ai-enhancement",
   "Action Engine": "action-engine",
-  "Read Aloud": "read-aloud",
   Converse: "converse",
 };
 
