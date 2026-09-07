@@ -24,6 +24,11 @@ const SHOTS_DIR = process.env.PT_SHOTS_DIR ?? path.resolve("test-results/marketi
 // sit in the gallery at the same shape.
 const VIEWPORT = { width: 1232, height: 788 };
 
+// Link the machine's installed CUDA package into the throwaway profile, so the
+// setup panel reports the GPU engine this PC really has rather than the CPU
+// fallback an empty profile always shows.
+test.use({ seedCudaEngine: true });
+
 test.skip(
   !process.env.PT_MARKETING_SHOTS,
   "Marketing capture run. Set PT_MARKETING_SHOTS=1 to enable."
@@ -95,6 +100,10 @@ test("capture the listing gallery", async ({ controlPanel: page, electronApp }) 
 
   await page.getByRole("button", { name: "Dictation", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Controls", exact: true })).toBeVisible();
+  // The GPU tile starts disabled and enables when detectHardware() comes back,
+  // which is slower than the heading. Without this wait the shot catches the
+  // pre-detection state and contradicts the dashboard's "GPU, ready".
+  await expect(page.getByText("Needs NVIDIA GPU")).toHaveCount(0, { timeout: 30_000 });
   await shoot(page, "3-dictation");
 
   await page.getByRole("button", { name: "Read Aloud", exact: true }).click();
