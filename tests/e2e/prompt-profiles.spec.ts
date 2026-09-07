@@ -52,6 +52,10 @@ test("profiles preserve the baseline, compare identical inputs, and keep short d
     .getByRole("button", { name: /^AI Enhancement/ })
     .click();
   const selector = page.getByRole("combobox", { name: "Dictation prompt" });
+  await expect(selector).toBeHidden();
+  await capture(page, "prompt-tools-closed");
+  await disclosure(page, "Advanced settings").click();
+  await disclosure(page, "Prompt tools").click();
   await expect(selector).toHaveText("Current prompt");
   await selector.scrollIntoViewIfNeeded();
   await capture(page, "current");
@@ -104,8 +108,6 @@ test("profiles preserve the baseline, compare identical inputs, and keep short d
     page.getByRole("button", { name: "Compare both prompts", exact: true })
   ).toBeDisabled();
   await capture(page, "empty");
-  await disclosure(page, "Advanced settings").click();
-  await disclosure(page, "Prompt tools").click();
   await page.getByRole("button", { name: "Customize", exact: true }).click();
   const editor = page.getByPlaceholder("Enter your custom system prompt...");
   await expect(editor).toContainText(/SHORT DICTATION/);
@@ -133,6 +135,8 @@ test("profiles preserve the baseline, compare identical inputs, and keep short d
     .getByRole("navigation")
     .getByRole("button", { name: /^AI Enhancement/ })
     .click();
+  await disclosure(freshPage, "Advanced settings").click();
+  await disclosure(freshPage, "Prompt tools").click();
   await expect(freshPage.getByRole("combobox", { name: "Dictation prompt" })).toHaveText(
     "Experimental prompt"
   );
@@ -177,6 +181,8 @@ test("comparison shows provider errors and discards results after a profile chan
     .getByRole("navigation")
     .getByRole("button", { name: /^AI Enhancement/ })
     .click();
+  await disclosure(page, "Advanced settings").click();
+  await disclosure(page, "Prompt tools").click();
   await page.getByRole("button", { name: "Compare both prompts", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Test provider unavailable");
   await page.getByRole("alert").scrollIntoViewIfNeeded();

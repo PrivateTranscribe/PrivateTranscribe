@@ -14,7 +14,7 @@ export function EnhancementProfile() {
   const { profile } = usePromptProfile();
   return (
     <section
-      className="rounded-xl border border-border bg-card p-5 space-y-3"
+      className="px-5 py-4 space-y-3 border-b border-border-subtle"
       aria-labelledby="prompt-profile-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -28,6 +28,7 @@ import {
 } from "../../config/promptProfiles";
 import { usePromptProfile } from "../../hooks/usePromptProfile";
 import { SectionLabel } from "./SectionLabel";
+import { EnhancementProfile } from "../EnhancementProfile";
 
 interface PromptStudioProps {
   className?: string;
@@ -223,6 +224,7 @@ export default function PromptStudio({ className = "", onCustomPromptChange }: P
 
       {/* Tab Navigation + Content in a single panel */}
       <div className="rounded-xl border border-border-subtle bg-surface-2 overflow-hidden">
+        <EnhancementProfile />
         <div className="flex border-b border-border-subtle">
           {tabs.map((tab) => {
             const Icon = tab.icon;

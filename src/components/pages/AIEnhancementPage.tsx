@@ -1,5 +1,4 @@
 import { EnhancementTest } from "../EnhancementTest";
-import { EnhancementProfile } from "../EnhancementProfile";
 import { Brain, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import ReasoningModelSelector from "../ReasoningModelSelector";
@@ -15,8 +14,10 @@ import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { modelRegistry } from "../../models/ModelRegistry";
+import { usePromptProfile } from "../../hooks/usePromptProfile";
 
 export default function AIEnhancementPage() {
+  const { profile } = usePromptProfile();
   const isUnlocked = isFeatureUnlocked("ai-enhancement");
   const {
     preferredLanguage,
@@ -117,9 +118,6 @@ export default function AIEnhancementPage() {
           />
 
           <div className="mt-5">
-            <EnhancementProfile />
-          </div>
-          <div className="mt-5">
             <EnhancementTest
               model={reasoningModel}
               provider={reasoningProvider}
@@ -132,7 +130,13 @@ export default function AIEnhancementPage() {
             <SettingsDisclosure
               title="Advanced settings"
               description="Custom prompts, spoken commands, and memory use."
-              status={hasCustomPrompt ? "Custom prompt" : undefined}
+              status={
+                profile === "experimental"
+                  ? "Experimental prompt"
+                  : hasCustomPrompt
+                    ? "Custom prompt"
+                    : undefined
+              }
             >
               {/* Local llama-server idle shutdown - only relevant when local provider is selected */}
               {(reasoningProvider === "local" || modelRegistry.getProvider(reasoningProvider)) && (
@@ -232,8 +236,14 @@ export default function AIEnhancementPage() {
               <div className="space-y-3">
                 <SettingsDisclosure
                   title="Prompt tools"
-                  description="View, edit, or test the cleanup prompt."
-                  status={hasCustomPrompt ? "Custom" : "Default"}
+                  description="Choose, edit, or test the cleanup prompt."
+                  status={
+                    profile === "experimental"
+                      ? "Experimental"
+                      : hasCustomPrompt
+                        ? "Custom"
+                        : "Current"
+                  }
                 >
                   <PromptStudio onCustomPromptChange={setHasCustomPrompt} />
                 </SettingsDisclosure>
