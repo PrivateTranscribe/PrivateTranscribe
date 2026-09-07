@@ -117,7 +117,8 @@ test("local setup downloads the suggested model, tests it and keeps alternatives
   await unlockTesterAccess(page);
   await page.getByRole("button", { name: "AI Enhancement", exact: true }).click();
   await page.getByRole("button", { name: "Enable AI enhancement" }).click();
-  await page.getByRole("button", { name: "Local", exact: true }).click();
+  await page.getByRole("combobox", { name: "Enhance using", exact: true }).click();
+  await page.getByRole("option", { name: "Local model", exact: true }).click();
   await expect(page.getByRole("button", { name: "Try cleanup", exact: true })).toBeDisabled();
   await capture(page, "local-download");
   await page.getByRole("button", { name: "Download", exact: true }).click();

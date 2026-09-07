@@ -4,6 +4,7 @@ import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
 import { isShortDictation } from "../utils/shortDictation";
+import codingPrompt from "../config/codingPrompt.json";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import {
@@ -14,6 +15,7 @@ import {
 } from "../helpers/contextPipeline";
 
 export interface ReasoningConfig {
+  writingStyle?: "clean" | "coding";
   maxTokens?: number;
   temperature?: number;
   contextSize?: number;
@@ -670,6 +672,9 @@ class ReasoningService {
       throw new Error("No reasoning model selected");
     }
     const provider = getModelProvider(trimmedModel);
+    if (config.writingStyle === "coding") {
+      config = { ...config, promptTemplate: codingPrompt.systemPrompt };
+    }
 
     logger.logReasoning("PROVIDER_SELECTION", {
       model: trimmedModel,
@@ -690,6 +695,24 @@ class ReasoningService {
       });
 
       switch (provider) {
+        case "claude-code": {
+          const bridge = window.electronAPI?.enhanceWithClaudeCode;
+          if (!bridge) throw new Error("Claude Code enhancement is unavailable. Restart the app.");
+          const reply = await bridge(
+            await this.buildUserPrompt(text, config),
+            this.getSystemPrompt(
+              agentName,
+              config.dictationMode,
+              config.preferredLanguage,
+              config.promptTemplate
+            )
+          );
+          if (!reply.ok || !reply.text?.trim()) {
+            throw new Error(reply.message || "Claude Code did not return enhanced text.");
+          }
+          result = reply.text.trim();
+          break;
+        }
         case "openai":
           result = await this.processWithOpenAI(text, trimmedModel, agentName, config);
           break;
@@ -1347,6 +1370,9 @@ class ReasoningService {
 
   async isAvailable(): Promise<boolean> {
     try {
+      if (window.localStorage?.getItem("reasoningModel") === "claude-code") {
+        return Boolean((await window.electronAPI?.agentModeRewriteStatus?.())?.available);
+      }
       const openaiKey = await window.electronAPI?.getOpenAIKey?.();
       const anthropicKey = await window.electronAPI?.getAnthropicKey?.();
       const geminiKey = await window.electronAPI?.getGeminiKey?.();

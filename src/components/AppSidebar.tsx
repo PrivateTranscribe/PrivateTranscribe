@@ -52,7 +52,9 @@ interface NavGroup {
 /**
  * Every feature the app has. Entries whose feature is still tester-only are
  * filtered out at render time for everyone without tester access, so a new
- * install sees only what it can open. The "Early access features" row below
+ * install sees only what it can open. AI Enhancement also contains shipped
+ * coding shortcuts, so that page stays visible and gates its beta controls.
+ * The "Early access features" row below
  * the groups is the one door to the rest.
  */
 const navGroups: NavGroup[] = [
@@ -142,7 +144,9 @@ export default function AppSidebar({
   const visibleGroups = navGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => item.proGated || isFeatureUnlocked(item.id)),
+      items: group.items.filter(
+        (item) => item.id === "ai-enhancement" || item.proGated || isFeatureUnlocked(item.id)
+      ),
     }))
     .filter((group) => group.items.length > 0);
 

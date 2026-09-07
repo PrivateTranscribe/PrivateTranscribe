@@ -15,16 +15,16 @@ const read = (...segments: string[]) =>
 
 describe("Agent Mode settings wiring", () => {
   it("renders the four Agent Mode rows on the settings page", () => {
-    const page = read("src", "components", "SettingsPage.tsx");
+    const page = read("src", "components", "CodingPromptSettings.tsx");
 
-    expect(page).toContain('label="Agent Mode"');
-    expect(page).toContain('label="Agent Mode hotkey"');
-    expect(page).toContain('label="Rewrite with Claude Code"');
+    expect(page).toContain('label="Enable coding prompt shortcut"');
+    expect(page).toContain('label="Coding prompt hotkey"');
+    expect(page).toContain('label="Enhance coding prompts"');
     expect(page).toContain('label="Prompts today"');
   });
 
   it("re-syncs the main process and reads the live daily count", () => {
-    const page = read("src", "components", "SettingsPage.tsx");
+    const page = read("src", "components", "CodingPromptSettings.tsx");
 
     expect(page).toContain("agentModeSyncHotkey");
     expect(page).toContain("agentModeHotkeyStatus");
@@ -32,7 +32,7 @@ describe("Agent Mode settings wiring", () => {
   });
 
   it("asks the main process whether Claude Code is there and says so honestly", () => {
-    const page = read("src", "components", "SettingsPage.tsx");
+    const page = read("src", "components", "CodingPromptSettings.tsx");
 
     expect(page).toContain("agentModeRewriteStatus");
     expect(page).toContain(

@@ -1688,11 +1688,11 @@ export default function App() {
               style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
               title={
                 isRewriting
-                  ? "Your words are going through your Claude Code login"
+                  ? "Enhancing your coding prompt before pasting"
                   : "Dictating a prompt for your coding agent"
               }
             >
-              {isRewriting ? "Rewriting with Claude Code" : "Agent Mode"}
+              {isRewriting ? "Enhancing coding prompt" : "Coding prompt"}
             </div>
           )}
 

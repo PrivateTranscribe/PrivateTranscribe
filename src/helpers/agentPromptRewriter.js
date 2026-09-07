@@ -27,16 +27,7 @@ const path = require("node:path");
 
 const { resolveClaudeBin, resolveClaudeArgPrefix, probeClaudeBin } = require("./converseAgent");
 
-const AGENT_REWRITE_SYSTEM_PROMPT = `You turn a spoken ramble into a prompt a coding agent can act on. The text is a speech-to-text transcript, so spoken forms of code appear in it.
-
-Rules:
-- Outcome first. Open with what the speaker wants done, then the details they gave.
-- Keep every technical detail word for word: file names, identifiers, commands, error text, numbers, counts.
-- When the speaker changes their mind ("no wait", "actually", "scratch that", "I mean"), keep only the final intent, in the order it was said.
-- Write paths, identifiers, commands and error text in backticks. Spoken forms become code: "auth slash login dot ts" is \`auth/login.ts\`, "user underscore id" is \`user_id\`, "crate colon colon parser" is \`crate::parser\`, "use effect" in a React context is \`useEffect\`.
-- Short lines. A spoken "new line" or "new paragraph" is a line break.
-- Never add facts, never guess at causes the speaker did not state, never do the task, never ask a question unless the speaker asked one.
-- Output only the prompt. No preamble, no explanation, no quotes around it.`;
+const { systemPrompt: AGENT_REWRITE_SYSTEM_PROMPT } = require("../config/codingPrompt.json");
 
 const AGENT_REWRITE_MODEL = "haiku";
 const AGENT_REWRITE_TIMEOUT_MS = 12_000;
@@ -80,12 +71,24 @@ function buildRewriteArgs(systemPrompt, model) {
 }
 
 function buildRewriteEnv(baseEnv) {
-  return {
+  const env = {
     ...(baseEnv || {}),
     ENABLE_CLAUDEAI_MCP_SERVERS: "false",
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     MAX_THINKING_TOKENS: "0",
   };
+  // This connection explicitly uses the user's Claude Code login. API keys
+  // and cloud routing inherited from the app must not silently change billing.
+  for (const key of [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+  ])
+    delete env[key];
+  return env;
 }
 
 let cachedCwd = null;
@@ -160,7 +163,8 @@ class AgentPromptRewriter {
     return found;
   }
 
-  async getStatus() {
+  async getStatus(refresh = false) {
+    if (refresh === true) this.probeCache = null;
     if (this.isDisabled()) {
       return { available: false, bin: null, reason: "diagnostic-flag" };
     }
@@ -169,7 +173,7 @@ class AgentPromptRewriter {
     return { available: false, bin: this.claudeBin, reason: "not-found" };
   }
 
-  async rewrite(text) {
+  async rewrite(text, options = {}) {
     const startedAt = Date.now();
     const fail = (reason, message) => {
       const ms = Date.now() - startedAt;
@@ -190,7 +194,12 @@ class AgentPromptRewriter {
 
     const args = [
       ...resolveClaudeArgPrefix(),
-      ...buildRewriteArgs(AGENT_REWRITE_SYSTEM_PROMPT, this.model),
+      ...buildRewriteArgs(
+        typeof options?.systemPrompt === "string" && options.systemPrompt.trim()
+          ? options.systemPrompt.slice(0, 40000)
+          : AGENT_REWRITE_SYSTEM_PROMPT,
+        this.model
+      ),
     ];
 
     return new Promise((resolve) => {

@@ -1036,7 +1036,7 @@ export default function ConversePage() {
             Get PrivateTranscribe Pro - €29
           </Button>
           <p className="text-[12px] text-muted-foreground">
-            Pro is Converse and Agent Mode. One licence, this PC.
+            Pro includes Converse and unlimited coding prompt shortcuts. One licence, this PC.
           </p>
         </div>
       )}

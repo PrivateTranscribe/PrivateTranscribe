@@ -1,9 +1,10 @@
 import { SettingsDisclosure } from "./ui/SettingsDisclosure";
 import { Toggle } from "./ui/toggle";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import type { ReactNode } from "react";
+import { useClaudeCodeStatus } from "../hooks/useClaudeCodeStatus";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Cloud, Lock } from "lucide-react";
 import ApiKeyInput from "./ui/ApiKeyInput";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import LocalModelPicker, { type LocalProvider } from "./LocalModelPicker";
@@ -49,6 +50,8 @@ const resolveOwnedByIcon = (ownedBy?: string): { icon?: string; invertInDark: bo
 };
 
 interface ReasoningModelSelectorProps {
+  children?: ReactNode;
+  onConnectionChange?: () => void;
   useReasoningModel: boolean;
   setUseReasoningModel: (value: boolean) => void;
   reasoningModel: string;
@@ -71,6 +74,8 @@ interface ReasoningModelSelectorProps {
 }
 
 export default function ReasoningModelSelector({
+  children,
+  onConnectionChange,
   useReasoningModel,
   setUseReasoningModel,
   reasoningModel,
@@ -90,10 +95,13 @@ export default function ReasoningModelSelector({
   customReasoningApiKey = "",
   setCustomReasoningApiKey,
 }: ReasoningModelSelectorProps) {
-  const [selectedMode, setSelectedMode] = useState<"cloud" | "local">(
-    localReasoningProvider === "local" || modelRegistry.getProvider(localReasoningProvider)
-      ? "local"
-      : "cloud"
+  const { status: claudeStatus, refresh: refreshClaudeStatus } = useClaudeCodeStatus();
+  const [selectedMode, setSelectedMode] = useState<"cloud" | "local" | "claude-code">(
+    localReasoningProvider === "claude-code"
+      ? "claude-code"
+      : localReasoningProvider === "local" || modelRegistry.getProvider(localReasoningProvider)
+        ? "local"
+        : "cloud"
   );
   const [selectedCloudProvider, setSelectedCloudProvider] = useState(
     ["openai", "anthropic", "gemini", "groq", "custom"].includes(localReasoningProvider)
@@ -366,7 +374,12 @@ export default function ReasoningModelSelector({
 
   useEffect(() => {
     const localProviderIds = localProviders.map((p) => p.id);
-    if (localReasoningProvider === "local" || localProviderIds.includes(localReasoningProvider)) {
+    if (localReasoningProvider === "claude-code") {
+      setSelectedMode("claude-code");
+    } else if (
+      localReasoningProvider === "local" ||
+      localProviderIds.includes(localReasoningProvider)
+    ) {
       setSelectedMode("local");
       setSelectedLocalProvider(
         localReasoningProvider === "local"
@@ -422,9 +435,18 @@ export default function ReasoningModelSelector({
     loadDownloadedModels();
   }, [loadDownloadedModels]);
 
-  const handleModeChange = async (newMode: "cloud" | "local") => {
+  const handleModeChange = async (newMode: "cloud" | "local" | "claude-code") => {
     const request = ++selectionRequestRef.current;
+    // Stop using the previous connection while a local or custom model list loads.
+    setReasoningModel("");
     setSelectedMode(newMode);
+    onConnectionChange?.();
+
+    if (newMode === "claude-code") {
+      setLocalReasoningProvider("claude-code");
+      setReasoningModel("claude-code");
+      return;
+    }
 
     if (newMode === "cloud") {
       setLocalReasoningProvider(selectedCloudProvider);
@@ -465,6 +487,8 @@ export default function ReasoningModelSelector({
   };
 
   const handleCloudProviderChange = (provider: string) => {
+    setReasoningModel("");
+    onConnectionChange?.();
     selectionRequestRef.current++;
     setEditingConnection(false);
     setSelectedCloudProvider(provider);
@@ -490,6 +514,8 @@ export default function ReasoningModelSelector({
   };
 
   const handleLocalProviderChange = async (providerId: string) => {
+    setReasoningModel("");
+    onConnectionChange?.();
     const request = ++selectionRequestRef.current;
     setSelectedLocalProvider(providerId);
     setLocalReasoningProvider(providerId);
@@ -566,23 +592,13 @@ export default function ReasoningModelSelector({
     },
   }[selectedCloudProvider];
 
-  const MODE_TABS = [
-    { id: "local", name: "Local" },
-    { id: "cloud", name: "Cloud" },
-  ];
-
-  const renderModeIcon = (id: string) => {
-    if (id === "cloud") return <Cloud className="w-4 h-4" />;
-    return <Lock className="w-4 h-4" />;
-  };
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between p-4 bg-card border border-border rounded-xl">
+    <div className="rounded-xl border border-border bg-card divide-y divide-border">
+      <div className="flex items-center justify-between gap-4 px-5 py-5">
         <div>
-          <label className="text-sm font-medium text-foreground">AI enhancement</label>
-          <p className="text-xs text-muted-foreground">
-            Clean up each transcription before it is pasted.
+          <label className="text-sm font-medium text-foreground">Enhance before pasting</label>
+          <p className="text-xs text-muted-foreground mt-1">
+            Applies to your usual dictation key. The coding shortcut has its own switch.
           </p>
         </div>
         <Toggle
@@ -594,23 +610,55 @@ export default function ReasoningModelSelector({
 
       {useReasoningModel && (
         <>
-          <div className="space-y-3">
-            <ProviderTabs
-              providers={MODE_TABS}
-              selectedId={selectedMode}
-              onSelect={(id) => handleModeChange(id as "cloud" | "local")}
-              renderIcon={renderModeIcon}
-              colorScheme="purple"
-            />
-            <p className="text-xs text-muted-foreground text-center">
-              {selectedMode === "local"
-                ? "Runs on this PC and works offline."
-                : "Sends transcription text to the selected provider."}
-            </p>
+          <div
+            className="flex flex-wrap items-center justify-between gap-4 px-5 py-5"
+            data-settings-label="Enhance using"
+          >
+            <div>
+              <p className="text-sm font-medium text-foreground">Enhance using</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {selectedMode === "claude-code"
+                  ? "Use your existing Claude Code login."
+                  : selectedMode === "local"
+                    ? "Runs on this PC and works offline."
+                    : "Sends transcription text to the selected provider."}
+              </p>
+            </div>
+            <Select
+              value={selectedMode}
+              onValueChange={(id) => void handleModeChange(id as "cloud" | "local" | "claude-code")}
+            >
+              <SelectTrigger className="w-[210px]" aria-label="Enhance using">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="claude-code">Claude Code</SelectItem>
+                <SelectItem value="local">Local model</SelectItem>
+                <SelectItem value="cloud">API provider</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-
-          {selectedMode === "cloud" ? (
-            <div className="space-y-3">
+          {selectedMode === "claude-code" ? (
+            <div className="px-5 py-4 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground" role="status">
+                  {!claudeStatus
+                    ? "Checking for Claude Code…"
+                    : claudeStatus.available
+                      ? "Claude Code is installed. Uses your existing login and Claude plan limits."
+                      : "Claude Code was not found or is unavailable. Install it and sign in, then check again."}
+                </p>
+                <Button size="sm" variant="outline" onClick={refreshClaudeStatus}>
+                  Check again
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Text is sent to Claude for enhancement. If it cannot answer, dictation is pasted as
+                spoken.
+              </p>
+            </div>
+          ) : selectedMode === "cloud" ? (
+            <div className="space-y-3 p-5">
               <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -819,18 +867,21 @@ export default function ReasoningModelSelector({
               </SettingsDisclosure>
             </div>
           ) : (
-            <LocalModelPicker
-              compact
-              providers={localProviders}
-              selectedModel={reasoningModel}
-              selectedProvider={selectedLocalProvider}
-              onModelSelect={setReasoningModel}
-              onProviderSelect={handleLocalProviderChange}
-              modelType="llm"
-              colorScheme="purple"
-              onDownloadComplete={loadDownloadedModels}
-            />
+            <div className="p-5">
+              <LocalModelPicker
+                compact
+                providers={localProviders}
+                selectedModel={reasoningModel}
+                selectedProvider={selectedLocalProvider}
+                onModelSelect={setReasoningModel}
+                onProviderSelect={handleLocalProviderChange}
+                modelType="llm"
+                colorScheme="purple"
+                onDownloadComplete={loadDownloadedModels}
+              />
+            </div>
           )}
+          {children}
         </>
       )}
     </div>

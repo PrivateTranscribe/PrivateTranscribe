@@ -1571,9 +1571,14 @@ class IPCHandlers {
 
     ipcMain.handle("agent-mode-hotkey-status", () => this.agentModeHotkey.getStatus());
 
-    ipcMain.handle("agent-mode-rewrite-status", () => this.agentPromptRewriter.getStatus());
+    ipcMain.handle("agent-mode-rewrite-status", (_event, refresh) =>
+      this.agentPromptRewriter.getStatus(refresh)
+    );
 
     ipcMain.handle("agent-mode-rewrite", (_event, text) => this.agentPromptRewriter.rewrite(text));
+    ipcMain.handle("enhance-with-claude-code", (_event, text, systemPrompt) =>
+      this.agentPromptRewriter.rewrite(text, { systemPrompt })
+    );
 
     /**
      * The overlay reporting whether a read is on screen right now.

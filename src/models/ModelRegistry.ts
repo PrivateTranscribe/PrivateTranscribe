@@ -283,6 +283,7 @@ export function getReasoningModelLabel(modelId: string): string {
 }
 
 export function getModelProvider(modelId: string): string {
+  if (modelId === "claude-code") return "claude-code";
   const model = getAllReasoningModels().find((m) => m.value === modelId);
 
   if (!model) {

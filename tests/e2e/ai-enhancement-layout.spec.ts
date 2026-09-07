@@ -72,7 +72,8 @@ test("local AI performance options save without leaving the page", async ({
   await unlockTesterAccess(page);
   await page.getByRole("button", { name: "AI Enhancement", exact: true }).click();
   await expect(disclosure(page, "Local performance settings")).toHaveCount(0);
-  await page.getByRole("button", { name: "Local", exact: true }).click();
+  await page.getByRole("combobox", { name: "Enhance using", exact: true }).click();
+  await page.getByRole("option", { name: "Local model", exact: true }).click();
   await expect(page.getByText("Runs on this PC and works offline.", { exact: true })).toBeVisible();
   const options = disclosure(page, "Local performance settings");
   await expect(page.getByText("Qwen3.8 2B Distill", { exact: true })).toBeVisible();

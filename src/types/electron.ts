@@ -949,6 +949,15 @@ declare global {
       onModelDownloadProgress: (callback: (event: any, data: any) => void) => (() => void) | void;
 
       // Local reasoning
+      agentModeRewriteStatus?: (refresh?: boolean) => Promise<{
+        available: boolean;
+        bin: string | null;
+        reason?: "not-found" | "diagnostic-flag";
+      }>;
+      enhanceWithClaudeCode?: (
+        text: string,
+        systemPrompt: string
+      ) => Promise<{ ok: boolean; text?: string; reason?: string; message?: string }>;
       processLocalReasoning: (
         text: string,
         modelId: string,

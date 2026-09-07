@@ -7,6 +7,8 @@ import { getModelProvider, modelRegistry, getCloudModel } from "../models/ModelR
 
 const SAMPLE =
   "um hey Alex I can't attend the meeting tomorrow could you could you send me the notes afterwards and uh I'll I'll catch up on Friday thanks";
+const CODING_SAMPLE =
+  "uh fix the login button it does nothing after I reset my password the file is auth slash login dot ts";
 
 export function EnhancementTest({
   model,
@@ -14,14 +16,25 @@ export function EnhancementTest({
   agentName,
   preferredLanguage,
   enabled,
+  writingStyle = "clean",
 }: {
   model: string;
   provider: string;
   agentName: string;
   preferredLanguage: string;
   enabled: boolean;
+  writingStyle?: "clean" | "coding";
 }) {
-  const [text, setText] = useState(SAMPLE);
+  const [text, setText] = useState(writingStyle === "coding" ? CODING_SAMPLE : SAMPLE);
+  useEffect(() => {
+    setText((current) =>
+      current === SAMPLE || current === CODING_SAMPLE
+        ? writingStyle === "coding"
+          ? CODING_SAMPLE
+          : SAMPLE
+        : current
+    );
+  }, [writingStyle]);
   const [result, setResult] = useState<{ text: string; seconds: number; modelName: string } | null>(
     null
   );
@@ -38,7 +51,7 @@ export function EnhancementTest({
     return () => {
       state.value++;
     };
-  }, [model, provider, preferredLanguage, enabled, text]);
+  }, [model, provider, preferredLanguage, enabled, text, writingStyle]);
   useEffect(() => {
     if (result || error) feedback.current?.scrollIntoView({ block: "nearest" });
   }, [result, error]);
@@ -53,9 +66,12 @@ export function EnhancementTest({
     setError("");
     setResult(null);
     const modelName =
-      modelRegistry.getModel(model)?.model.name || getCloudModel(model)?.name || model;
+      model === "claude-code"
+        ? "Claude Code"
+        : modelRegistry.getModel(model)?.model.name || getCloudModel(model)?.name || model;
     try {
       const cleaned = await ReasoningService.processText(text.trim(), model, agentName, {
+        writingStyle,
         preferredLanguage,
         smartContext: null,
         timeoutMs: 30000,
@@ -80,11 +96,13 @@ export function EnhancementTest({
     >
       <div>
         <h2 id="enhancement-test-title" className="text-sm font-semibold text-foreground">
-          Try cleanup
+          {writingStyle === "coding" ? "Try a coding prompt" : "Try cleanup"}
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Check how the model handles fillers, repeated words, and punctuation. This test never
-          pastes into another app.
+          {writingStyle === "coding"
+            ? "Check how your spoken description becomes instructions. "
+            : "Check how the model handles fillers, repeated words, and punctuation. "}
+          This test never pastes into another app.
         </p>
       </div>
       <Textarea
@@ -100,13 +118,15 @@ export function EnhancementTest({
             ? "Enable cleanup above to try it."
             : !model
               ? "Download or choose a model above first."
-              : isLocal || getModelProvider(model) === "local"
-                ? "Runs locally on your PC."
-                : "Sends this text to your selected cloud provider."}
+              : model === "claude-code"
+                ? "Sends this text through your Claude Code login. Uses your Claude plan limits."
+                : isLocal || getModelProvider(model) === "local"
+                  ? "Runs locally on your PC."
+                  : "Sends this text to your selected cloud provider."}
         </p>
         <Button onClick={run} disabled={running || !enabled || !model || !text.trim()} size="sm">
           {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-          {running ? "Cleaning up…" : "Try cleanup"}
+          {running ? "Enhancing…" : writingStyle === "coding" ? "Try coding prompt" : "Try cleanup"}
         </Button>
       </div>
       <div ref={feedback} aria-live="polite" aria-atomic="true">
@@ -118,7 +138,7 @@ export function EnhancementTest({
         {result && (
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-4 space-y-2">
             <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-              <span>Cleaned text</span>
+              <span>{writingStyle === "coding" ? "Coding prompt" : "Cleaned text"}</span>
               <span>
                 {result.modelName} · {result.seconds.toFixed(2)} s
               </span>
