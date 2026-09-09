@@ -5,16 +5,11 @@ import { describe, expect, it } from "vitest";
 const readSource = (relativePath: string): string =>
   fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
-// VoiceAssistantPage is deliberately absent: it was merged into
-// AIEnhancementPage, which now carries the one badge and the one way out for
-// both the model settings and the assistant name / prompt controls.
+// These whole pages are tester-only. AI Enhancement now mixes tester-only
+// dictation cleanup with public coding prompts; Read Aloud is part of Starter.
 const BETA_SURFACES = [
   "src/components/pages/CorrectionMemoryPage.tsx",
-  "src/components/pages/AIEnhancementPage.tsx",
   "src/components/pages/ActionEnginePage.tsx",
-  // Read Aloud was a Settings tab until it became a sidebar page; it is a
-  // badged beta surface like the rest now, so it is held to the same rules.
-  "src/components/pages/ReadAloudPage.tsx",
   // ConversePage is deliberately absent: Converse left the tester gate for the
   // Pro entitlement, so its locked state sells Pro (a Pro badge and the buy
   // button) instead of linking to the tester application.
@@ -27,6 +22,17 @@ const BETA_SURFACES = [
  * the sidebar, "Tester" on page headers, "Approved testers only" on one page.
  */
 describe("beta feature labelling", () => {
+  it("labels gated dictation enhancement without locking public coding prompts", () => {
+    const source = readSource("src/components/pages/AIEnhancementPage.tsx");
+    expect(source).toContain('isFeatureUnlocked("ai-enhancement")');
+    expect(source).toMatch(
+      /!isUnlocked && \([\s\S]*?Dictation enhancement is in beta[\s\S]*?<BetaAccessLink/
+    );
+    expect(source).toContain("{isUnlocked && (");
+    expect(source).toContain("{!isUnlocked && <CodingPromptSettings />}");
+    expect(source).not.toContain("<BetaBadge");
+  });
+
   it("says it with one component instead of hand-rolled pills", () => {
     for (const file of BETA_SURFACES) {
       const source = readSource(file);
