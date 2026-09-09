@@ -128,10 +128,10 @@ describe("agentModeUsage", () => {
 
   it("builds the limit message with and without a usage object", () => {
     expect(buildAgentModeLimitMessage()).toBe(
-      "Starter includes 20 Agent Mode prompts a day. It resets tomorrow. Buy Pro for unlimited Agent Mode."
+      "Starter includes 20 coding prompt shortcuts a day. It resets tomorrow. Buy Pro for unlimited coding shortcuts."
     );
     expect(buildAgentModeLimitMessage({ limit: 50 })).toBe(
-      "Starter includes 50 Agent Mode prompts a day. It resets tomorrow. Buy Pro for unlimited Agent Mode."
+      "Starter includes 50 coding prompt shortcuts a day. It resets tomorrow. Buy Pro for unlimited coding shortcuts."
     );
   });
 });

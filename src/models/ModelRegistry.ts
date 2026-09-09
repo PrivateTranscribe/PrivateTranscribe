@@ -10,6 +10,8 @@ export interface ModelDefinition {
   quantization: string;
   contextLength: number;
   hfRepo: string;
+  hfRevision?: string;
+  sha256?: string;
   recommended?: boolean;
 }
 
@@ -35,6 +37,11 @@ export interface CloudModelDefinition {
   name: string;
   description: string;
   disableThinking?: boolean;
+  recommended?: boolean;
+  deprecated?: boolean;
+  replacementId?: string;
+  reasoningEffort?: "none" | "low";
+  thinkingLevel?: "minimal" | "low";
 }
 
 export interface CloudProviderData {
@@ -194,7 +201,8 @@ class ModelRegistry {
         models: providerData.models,
         formatPrompt,
         getDownloadUrl(model: ModelDefinition): string {
-          return `${providerData.baseUrl}/${model.hfRepo}/resolve/main/${model.fileName}`;
+          const revision = model.hfRevision || "main";
+          return `${providerData.baseUrl}/${model.hfRepo}/resolve/${revision}/${model.fileName}`;
         },
       });
     }
@@ -207,6 +215,11 @@ export interface ReasoningModel {
   value: string;
   label: string;
   description: string;
+  recommended?: boolean;
+  deprecated?: boolean;
+  replacementId?: string;
+  reasoningEffort?: "none" | "low";
+  thinkingLevel?: "minimal" | "low";
 }
 
 export interface ReasoningProvider {
@@ -226,6 +239,11 @@ function buildReasoningProviders(): ReasoningProviders {
         value: m.id,
         label: m.name,
         description: m.description,
+        recommended: m.recommended,
+        deprecated: m.deprecated,
+        replacementId: m.replacementId,
+        reasoningEffort: m.reasoningEffort,
+        thinkingLevel: m.thinkingLevel,
       })),
     };
   }
@@ -265,12 +283,16 @@ export function getReasoningModelLabel(modelId: string): string {
 }
 
 export function getModelProvider(modelId: string): string {
+  if (modelId === "claude-code") return "claude-code";
   const model = getAllReasoningModels().find((m) => m.value === modelId);
 
   if (!model) {
     if (modelId.includes("claude")) return "anthropic";
     if (modelId.includes("gemini") && !modelId.includes("gemma")) return "gemini";
-    if ((modelId.includes("gpt-4") || modelId.includes("gpt-5")) && !modelId.includes("gpt-oss"))
+    if (
+      (modelId.includes("gpt-4") || modelId.includes("gpt-5") || modelId.includes("gpt-6")) &&
+      !modelId.includes("gpt-oss")
+    )
       return "openai";
     if (modelId.includes("qwen/") || modelId.includes("openai/")) return "groq";
     if (modelId.includes("qwen") || modelId.includes("gpt-oss-20b-mxfp4")) return "local";

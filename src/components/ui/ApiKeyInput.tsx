@@ -30,6 +30,7 @@ export default function ApiKeyInput({
       <div className="relative">
         <Input
           type="password"
+          aria-label={label || "API key"}
           placeholder={placeholder}
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}

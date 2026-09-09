@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.0 - 2026-09-09
+
+### Fixed
+
+- Long Whisper dictations preserve their endings more reliably, including speech after long pauses. Recording and History checks passed with Turbo and Large on clips up to ten minutes.
+- Local speech detection reduces invented closing phrases after breathing or silence while preserving quiet speech and intentionally spoken "thank you" phrases.
+- A slow Windows clipboard read can no longer block the automatic paste shortcut. Text remains on the clipboard when insertion cannot be confirmed.
+- Read Aloud recovers missing or shifted word highlights and skips code and other text that is not useful to speak.
+
+### Changed
+
+- AI Enhancement has a simpler setup, refreshed model choices, and a test area for comparing cleanup results. Local and cloud providers use the same cleanup instructions.
+- AI Enhancement brings coding prompt controls and dictation cleanup together, with separate settings for each.
+- Read Aloud is included with Starter. Its compact player stays in place as word highlighting changes.
+
 ## 0.18.0 - 2026-09-06
 
 ### Added

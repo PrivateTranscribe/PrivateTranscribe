@@ -112,6 +112,27 @@ describe("agent prompt rewriter", () => {
       .map((line) => JSON.parse(line));
 
   describe("buildRewriteArgs / buildRewriteEnv", () => {
+    it("does not let inherited API billing or cloud routing replace the Claude login", () => {
+      const env = buildRewriteEnv({
+        PATH: "keep",
+        ANTHROPIC_API_KEY: "test-only",
+        ANTHROPIC_AUTH_TOKEN: "test-only",
+        ANTHROPIC_BASE_URL: "https://example.invalid",
+        CLAUDE_CODE_USE_BEDROCK: "1",
+        CLAUDE_CODE_USE_VERTEX: "1",
+        CLAUDE_CODE_USE_FOUNDRY: "1",
+      });
+      expect(env.PATH).toBe("keep");
+      for (const key of [
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+        "CLAUDE_CODE_USE_FOUNDRY",
+      ])
+        expect(env).not.toHaveProperty(key);
+    });
     it("returns exactly the slim print-mode flag list", () => {
       expect(buildRewriteArgs(AGENT_REWRITE_SYSTEM_PROMPT, AGENT_REWRITE_MODEL)).toEqual([
         "--print",
@@ -142,6 +163,18 @@ describe("agent prompt rewriter", () => {
   });
 
   describe("rewrite()", () => {
+    it("accepts the cleanup prompt without changing the saved coding prompt default", async () => {
+      const rewriter = makeRewriter({ STUB_REPLY: GOOD_REPLY });
+      await rewriter.rewrite("um hello", {
+        systemPrompt: "Clean up dictation. Output only the text.",
+      });
+      await rewriter.rewrite(RAMBLE);
+      const calls = readLog();
+      expect(calls[0].argv).toEqual(
+        buildRewriteArgs("Clean up dictation. Output only the text.", "haiku")
+      );
+      expect(calls[1].argv).toEqual(buildRewriteArgs(AGENT_REWRITE_SYSTEM_PROMPT, "haiku"));
+    });
     it("carries the CLI's answer, timings and token counts back", async () => {
       const result = await makeRewriter({ STUB_REPLY: GOOD_REPLY }).rewrite(RAMBLE);
 

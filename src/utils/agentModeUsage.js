@@ -57,5 +57,5 @@ export function recordAgentModeUse(storage = globalThis.localStorage, date = new
 
 export function buildAgentModeLimitMessage(usage) {
   const limit = usage?.limit || AGENT_MODE_DAILY_USE_LIMIT;
-  return `Starter includes ${limit.toLocaleString()} Agent Mode prompts a day. It resets tomorrow. Buy Pro for unlimited Agent Mode.`;
+  return `Starter includes ${limit.toLocaleString()} coding prompt shortcuts a day. It resets tomorrow. Buy Pro for unlimited coding shortcuts.`;
 }

@@ -21,6 +21,7 @@ vi.mock("../../../src/utils/languageCompat", () => ({
 }));
 
 import AudioManager from "../../../src/helpers/audioManager";
+import ReasoningService from "../../../src/services/ReasoningService";
 
 /**
  * The entitlement check is wired in from the renderer, so the failure mode
@@ -29,6 +30,27 @@ import AudioManager from "../../../src/helpers/audioManager";
  * a beta workflow that ships to everyone the first time that wiring moves.
  */
 describe("beta feature gates fail closed", () => {
+  it("does not enhance coding shortcuts twice, then restores ordinary cleanup", async () => {
+    const manager: any = new AudioManager();
+    manager._checkBetaFeatureAccess = () => true;
+    localStorageMock.setItem("useReasoningModel", "true");
+    manager.codingPromptSession = true;
+    await expect(manager.isReasoningAvailable()).resolves.toBe(false);
+    manager.codingPromptSession = false;
+    await expect(manager.isReasoningAvailable()).resolves.toBe(true);
+  });
+  it("checks availability again when the connection changes", async () => {
+    const manager: any = new AudioManager();
+    manager._checkBetaFeatureAccess = () => true;
+    localStorageMock.setItem("useReasoningModel", "true");
+    localStorageMock.setItem("reasoningModel", "qwen3-4b");
+    vi.mocked(ReasoningService.isAvailable)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    await expect(manager.isReasoningAvailable()).resolves.toBe(true);
+    localStorageMock.setItem("reasoningModel", "claude-code");
+    await expect(manager.isReasoningAvailable()).resolves.toBe(false);
+  });
   beforeEach(() => {
     (globalThis as any).localStorage = localStorageMock;
     localStorageMock.clear();

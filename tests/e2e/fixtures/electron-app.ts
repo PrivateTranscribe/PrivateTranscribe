@@ -50,6 +50,44 @@ const DEFAULT_DIAG_FLAGS: Record<string, string> = {
 
 export type ConsoleEntry = { type: string; text: string };
 
+/**
+ * The real profile's binary directory, where the downloaded CUDA whisper-server
+ * package lands. Mirrors app.getPath("userData") + "/bin" for the product name
+ * this app ships under.
+ */
+function installedCudaBinDir(): string {
+  if (process.platform !== "win32") {
+    throw new Error("seedCudaEngine: only wired up for Windows, where the CUDA package ships");
+  }
+  const appData = process.env.APPDATA;
+  if (!appData) throw new Error("seedCudaEngine: APPDATA is not set");
+  return path.join(appData, "PrivateTranscribe", "bin");
+}
+
+/** Hardlink the installed CUDA package into a throwaway profile's bin dir. */
+function seedCudaEngineInto(userDataDir: string): void {
+  const source = installedCudaBinDir();
+  if (!fs.existsSync(source)) {
+    throw new Error(
+      `seedCudaEngine: no CUDA engine installed on this machine. Expected it at ${source} — download it from Settings first.`
+    );
+  }
+
+  const target = path.join(userDataDir, "bin");
+  fs.mkdirSync(target, { recursive: true });
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const from = path.join(source, entry.name);
+    const to = path.join(target, entry.name);
+    try {
+      fs.linkSync(from, to);
+    } catch {
+      // Different volume, or the filesystem refuses the link.
+      fs.copyFileSync(from, to);
+    }
+  }
+}
+
 /** The one Kokoro model in the registry; seeded by `seedKokoroModel`. */
 const KOKORO_MODEL_ID = "kokoro-82m-v1.0-fp32";
 
@@ -155,6 +193,17 @@ export type PrivateTranscribeOptions = {
    * that has the model.
    */
   useThrowawayHome: boolean;
+  /**
+   * Hardlink the machine's installed CUDA whisper-server package into the
+   * throwaway profile, so the app reports the GPU engine it really has.
+   *
+   * The package lives in userData, which every run throws away, so a spec that
+   * asserts on GPU state otherwise always sees "CPU" no matter what the machine
+   * is. Hardlinks keep a run free: the package is roughly a gigabyte. Throws
+   * when it is not installed, because a spec that silently fell back to CPU
+   * would be hiding the thing it set out to check.
+   */
+  seedCudaEngine: boolean;
   /**
    * Absolute path to a PCM WAV that Chromium plays back in place of the real
    * microphone, for specs that dictate through the app's own audio pipeline.
@@ -491,6 +540,7 @@ export const test = base.extend<
   seedRealWhisperModels: [[], { option: true }],
   seedKokoroModel: [false, { option: true }],
   useThrowawayHome: [false, { option: true }],
+  seedCudaEngine: [false, { option: true }],
   fakeAudioCaptureFile: ["", { option: true }],
 
   fakeHomeDir: async (
@@ -578,8 +628,10 @@ export const test = base.extend<
     fs.rmSync(dir, { recursive: true, force: true });
   },
 
-  userDataDir: async ({ seedConsentFile }, use, testInfo) => {
+  userDataDir: async ({ seedConsentFile, seedCudaEngine }, use, testInfo) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-"));
+
+    if (seedCudaEngine) seedCudaEngineInto(dir);
 
     // Pre-deny analytics so no run phones home and the consent modal never
     // covers the UI a spec is asserting against. Specs that test the consent

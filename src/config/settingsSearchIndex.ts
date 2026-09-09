@@ -242,29 +242,41 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["whisper server", "memory", "ram", "unload", "idle"],
   },
 
-  // ── Dictation › Agent Mode ────────────────────────────────────────────────
+  // ── AI Enhancement › Coding prompt shortcut ──────────────────────────────
   {
-    label: "Agent Mode",
-    group: "Agent Mode",
-    page: "dictation",
+    label: "Enable coding prompt shortcut",
+    group: "Coding prompt shortcut",
+    page: "ai-enhancement",
+    keywords: ["agent mode", "enable", "hold"],
+  },
+  {
+    label: "Shortcut AI connection",
+    group: "Coding prompt shortcut",
+    page: "ai-enhancement",
+    keywords: ["claude code", "shared", "provider", "subscription"],
+  },
+  {
+    label: "Coding prompt shortcut",
+    group: "Coding prompt shortcut",
+    page: "ai-enhancement",
     keywords: ["claude code", "cursor", "codex", "prompt", "agent", "coding"],
   },
   {
-    label: "Agent Mode hotkey",
-    group: "Agent Mode",
-    page: "dictation",
-    keywords: ["right ctrl", "hotkey", "shortcut", "hold", "push to talk"],
+    label: "Coding prompt hotkey",
+    group: "Coding prompt shortcut",
+    page: "ai-enhancement",
+    keywords: ["agent mode", "right ctrl", "hotkey", "shortcut", "hold", "push to talk"],
   },
   {
-    label: "Rewrite with Claude Code",
-    group: "Agent Mode",
-    page: "dictation",
+    label: "Enhance coding prompts",
+    group: "Coding prompt shortcut",
+    page: "ai-enhancement",
     keywords: ["claude code", "rewrite", "cli", "login", "prompt", "haiku"],
   },
   {
     label: "Prompts today",
-    group: "Agent Mode",
-    page: "dictation",
+    group: "Coding prompt shortcut",
+    page: "ai-enhancement",
     keywords: ["cap", "limit", "20", "pro", "daily", "usage"],
   },
 

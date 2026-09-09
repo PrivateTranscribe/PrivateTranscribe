@@ -2773,6 +2773,7 @@ class AudioManager {
   }
 
   async isReasoningAvailable() {
+    if (this.codingPromptSession) return false;
     if (typeof window === "undefined" || !window.localStorage) {
       return false;
     }
@@ -2785,11 +2786,12 @@ class AudioManager {
     }
 
     const storedValue = localStorage.getItem("useReasoningModel");
+    const cacheKey = `${storedValue}:${localStorage.getItem("reasoningModel")}`;
     const now = Date.now();
     const cacheValid =
       this.reasoningAvailabilityCache &&
       now < this.reasoningAvailabilityCache.expiresAt &&
-      this.cachedReasoningPreference === storedValue;
+      this.cachedReasoningPreference === cacheKey;
 
     if (cacheValid) {
       return this.reasoningAvailabilityCache.value;
@@ -2809,7 +2811,7 @@ class AudioManager {
         value: false,
         expiresAt: now + REASONING_CACHE_TTL,
       };
-      this.cachedReasoningPreference = storedValue;
+      this.cachedReasoningPreference = cacheKey;
       return false;
     }
 
@@ -2826,7 +2828,7 @@ class AudioManager {
         value: isAvailable,
         expiresAt: now + REASONING_CACHE_TTL,
       };
-      this.cachedReasoningPreference = storedValue;
+      this.cachedReasoningPreference = cacheKey;
 
       return isAvailable;
     } catch (error) {
@@ -2839,7 +2841,7 @@ class AudioManager {
         value: false,
         expiresAt: now + REASONING_CACHE_TTL,
       };
-      this.cachedReasoningPreference = storedValue;
+      this.cachedReasoningPreference = cacheKey;
       return false;
     }
   }
@@ -2963,7 +2965,13 @@ class AudioManager {
           normalizedText,
           reasoningModel,
           agentName,
-          { dictationMode, preferredLanguage, smartContext: this._cachedSmartContext ?? null }
+          {
+            dictationMode,
+            preferredLanguage,
+            writingStyle:
+              localStorage.getItem("enhancementWritingStyle") === "coding" ? "coding" : "clean",
+            smartContext: this._cachedSmartContext ?? null,
+          }
         );
 
         logger.logReasoning("REASONING_SUCCESS", {

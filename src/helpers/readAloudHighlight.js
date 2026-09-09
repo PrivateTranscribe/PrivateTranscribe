@@ -19,14 +19,12 @@
  *      overlay because the overlay is a fixed 400x500 box that follows the
  *      dictation button; the sentence can be anywhere on any monitor.
  *   3. The renderer's player owns playback, so it reports each spoken word
- *      up to the main process (`readaloud-sentence`), and the main process
- *      tells the overlay when a highlight is actually on screen
- *      (`readaloud-highlight`), so the overlay can drop its own sentence line
- *      while the text is visible where it lives.
+ *      up to the main process (`readaloud-sentence`). The control capsule keeps
+ *      its size regardless of whether native word geometry is available.
  *
  * Everything fails soft. No worker, no TextPattern, an app that hides its
  * text from accessibility, a sentence that is not found: the read carries on
- * exactly as before, with the sentence on the overlay.
+ * while the capsule continues to show progress and playback controls.
  */
 const { spawn } = require("child_process");
 const path = require("path");
@@ -118,7 +116,7 @@ class ReadAloudHighlight {
   /**
    * @param {{ onActiveChange?: (active: boolean) => void }} [options]
    *   `onActiveChange` fires when a highlight appears on or leaves the screen,
-   *   so the overlay can show or hide its own sentence line.
+   *   for consumers that report native highlight availability.
    */
   constructor(options = {}) {
     this.isSupported = process.platform === "win32" && !isFlagEnabled(DISABLE_FLAG);
@@ -412,7 +410,12 @@ class ReadAloudHighlight {
     try {
       const reply = await this.send(command);
       if (generation !== this.generation) return;
-      this.workerTargetKey = reply.startsWith("ERR") ? "" : target.key;
+      // A missing sentence has no cached range to remeasure. Retry locating it
+      // when the source's accessibility tree becomes available again.
+      this.workerTargetKey =
+        reply.startsWith("WORDS ") || reply.startsWith("RECTS ") || reply === "NONE off-screen"
+          ? target.key
+          : "";
       if (this.target?.key === target.key) this.applyReply(reply);
     } finally {
       this.refreshing = false;
@@ -433,7 +436,7 @@ class ReadAloudHighlight {
           return;
         }
       } catch {
-        /* Invalid geometry falls back to the overlay. */
+        /* Invalid geometry is retried without changing the control capsule. */
       }
     }
     if (this.target?.silent || this.target?.payload.start !== undefined) {

@@ -49,6 +49,28 @@ const {
 // drift apart. See navigationGuard.js for the protocol allowlist rationale.
 const { isAllowedExternalUrl } = require("./navigationGuard");
 
+function createIpcRequestTimeout(timeoutMs) {
+  const durationMs =
+    Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.floor(timeoutMs) : undefined;
+  if (!durationMs) {
+    return { signal: undefined, clear: () => {}, didExpire: () => false, durationMs: null };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), durationMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+    didExpire: () => controller.signal.aborted,
+    durationMs,
+  };
+}
+
+function truncateReasoningError(error) {
+  const message = error instanceof Error ? error.message : String(error || "Unknown error");
+  return message.length > 500 ? `${message.slice(0, 500)}...` : message;
+}
+
 /**
  * Returns true if the filename looks like a safe GGUF model file name.
  * Rejects paths that contain directory separators or traversal sequences.
@@ -1445,7 +1467,8 @@ class IPCHandlers {
     });
 
     ipcMain.handle("readaloud-split", async (_event, text) => {
-      return requireKokoro().splitSentences(text);
+      const { splitReadableText } = require("./readAloudText");
+      return splitReadableText(text, (span) => requireKokoro().splitSentences(span));
     });
 
     ipcMain.handle(
@@ -1548,9 +1571,14 @@ class IPCHandlers {
 
     ipcMain.handle("agent-mode-hotkey-status", () => this.agentModeHotkey.getStatus());
 
-    ipcMain.handle("agent-mode-rewrite-status", () => this.agentPromptRewriter.getStatus());
+    ipcMain.handle("agent-mode-rewrite-status", (_event, refresh) =>
+      this.agentPromptRewriter.getStatus(refresh)
+    );
 
     ipcMain.handle("agent-mode-rewrite", (_event, text) => this.agentPromptRewriter.rewrite(text));
+    ipcMain.handle("enhance-with-claude-code", (_event, text, systemPrompt) =>
+      this.agentPromptRewriter.rewrite(text, { systemPrompt })
+    );
 
     /**
      * The overlay reporting whether a read is on screen right now.
@@ -2336,7 +2364,7 @@ class IPCHandlers {
         });
         return { success: true, text: result };
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: truncateReasoningError(error) };
       }
     });
 
@@ -2351,11 +2379,16 @@ class IPCHandlers {
             throw new Error("Anthropic API key not configured");
           }
 
-          const systemPrompt = getSystemPrompt(
-            agentName,
-            this._getDictionarySafe(),
-            config?.dictationMode
-          );
+          const systemPrompt =
+            typeof config?.customSystemPrompt === "string"
+              ? config.customSystemPrompt
+              : getSystemPrompt(
+                  agentName,
+                  this._getDictionarySafe(),
+                  config?.dictationMode,
+                  config?.preferredLanguage,
+                  config?.promptTemplate
+                );
           const userPrompt = text;
 
           if (!modelId) {
@@ -2370,36 +2403,50 @@ class IPCHandlers {
             temperature: config?.temperature || 0.3,
           };
 
-          const response = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": apiKey,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify(requestBody),
-          });
+          const requestTimeout = createIpcRequestTimeout(config?.timeoutMs);
+          let response;
+          try {
+            response = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": apiKey,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify(requestBody),
+              signal: requestTimeout.signal,
+            });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            let errorData = { error: response.statusText };
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { error: errorText || response.statusText };
+            if (!response.ok) {
+              const errorText = await response.text();
+              let errorData = { error: response.statusText };
+              try {
+                errorData = JSON.parse(errorText);
+              } catch {
+                errorData = { error: errorText || response.statusText };
+              }
+              throw new Error(
+                truncateReasoningError(
+                  errorData.error?.message ||
+                    errorData.error ||
+                    `Anthropic API error: ${response.status}`
+                )
+              );
             }
-            throw new Error(
-              errorData.error?.message ||
-                errorData.error ||
-                `Anthropic API error: ${response.status}`
-            );
-          }
 
-          const data = await response.json();
-          return { success: true, text: data.content[0].text.trim() };
+            const data = await response.json();
+            return { success: true, text: data.content[0].text.trim() };
+          } catch (error) {
+            if (requestTimeout.didExpire()) {
+              throw new Error(`Anthropic request timed out after ${requestTimeout.durationMs} ms`);
+            }
+            throw error;
+          } finally {
+            requestTimeout.clear();
+          }
         } catch (error) {
           debugLogger.error("Anthropic reasoning error:", error);
-          return { success: false, error: error.message };
+          return { success: false, error: truncateReasoningError(error) };
         }
       }
     );

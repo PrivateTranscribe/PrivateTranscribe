@@ -30,12 +30,9 @@ describe("Pro branding", () => {
   });
 
   it("distinguishes locked Beta badges from purple Pro badges", () => {
-    // VoiceAssistantPage was merged into AIEnhancementPage, so the badge it
-    // used to carry is now the one on the merged page.
-    const files = [
-      "src/components/pages/AIEnhancementPage.tsx",
-      "src/components/pages/ActionEnginePage.tsx",
-    ];
+    // AI Enhancement mixes public coding prompts with tester-only cleanup.
+    // Its scoped lock explanation is covered by betaFeatureLabelling.test.ts.
+    const files = ["src/components/pages/ActionEnginePage.tsx"];
 
     // These pages used to spell the purple out in a hand-rolled pill each.
     // The token now lives once inside the shared beta badge, so follow it

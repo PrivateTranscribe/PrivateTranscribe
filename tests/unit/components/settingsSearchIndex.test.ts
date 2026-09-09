@@ -21,6 +21,7 @@ const ROOT = join(__dirname, "..", "..", "..");
 /** Files that render SettingsRow and are reachable in the shipped UI. */
 const SOURCES = [
   "src/components/SettingsPage.tsx",
+  "src/components/CodingPromptSettings.tsx",
   "src/components/pages/ConversePage.tsx",
   "src/components/pages/ReadAloudPage.tsx",
   "src/components/pages/DictionaryPage.tsx",

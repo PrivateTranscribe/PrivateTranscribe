@@ -120,6 +120,7 @@ test.describe("beta access offline", () => {
     );
     // ...and the real control is present, so the assertion above is not passing
     // because the page failed to render at all.
+    await controlPanel.locator("summary").filter({ hasText: "Advanced settings" }).click();
     await controlPanel.locator("summary").filter({ hasText: "Voice instructions" }).click();
     await expect(controlPanel.getByTestId("agent-name-input")).toBeVisible();
 
@@ -183,12 +184,18 @@ test.describe("beta access offline", () => {
       )
     ).toBe(false);
 
-    // Same re-render note as above: the gate is read at render time. Locked
-    // again means the entry is gone and the early access row is back.
+    // The shared page remains available for coding shortcuts, but ordinary
+    // dictation enhancement must become locked again after access is revoked.
     await controlPanel.getByRole("button", { name: "Home", exact: true }).click();
-    await expect(controlPanel.getByRole("button", { name: /^AI Enhancement/ })).toHaveCount(0);
+    await expect(
+      controlPanel.getByRole("button", { name: "AI Enhancement", exact: true })
+    ).toBeVisible();
     await expect(
       controlPanel.getByRole("button", { name: "Beta features", exact: true })
+    ).toBeVisible();
+    await controlPanel.getByRole("button", { name: "AI Enhancement", exact: true }).click();
+    await expect(
+      controlPanel.getByText("Dictation enhancement is in beta", { exact: true })
     ).toBeVisible();
   });
 });

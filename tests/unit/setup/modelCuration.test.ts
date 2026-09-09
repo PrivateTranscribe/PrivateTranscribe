@@ -73,13 +73,13 @@ describe("Model curation invariants", () => {
       }
     });
 
-    it("Qwen provider has exactly one recommended model (qwen3-8b-q4_k_m)", () => {
+    it("Qwen provider recommends the compact cleanup model", () => {
       const data = readRegistry();
       const qwen = data.localProviders.find((p) => p.id === "qwen");
       expect(qwen).toBeDefined();
       const recommended = qwen!.models.filter((m) => m.recommended === true);
       expect(recommended).toHaveLength(1);
-      expect(recommended[0].id).toBe("qwen3-8b-q4_k_m");
+      expect(recommended[0].id).toBe("qwen3.8-2b-distill-q4_k_m");
     });
 
     it("Mistral provider has been removed (superseded by Qwen3)", () => {

@@ -48,7 +48,6 @@ jobs:
         run: npm run prepare:resources
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LLAMA_CPP_VERSION: b9016
 
       - name: Verify fast paste helper was built
         shell: pwsh

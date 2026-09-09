@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ProviderTabs } from "./ui/ProviderTabs";
 import { DownloadProgressBar } from "./ui/DownloadProgressBar";
 import { ConfirmDialog } from "./ui/dialog";
@@ -7,6 +7,7 @@ import { useDialogs } from "../hooks/useDialogs";
 import { useModelDownload, type ModelType } from "../hooks/useModelDownload";
 import { MODEL_PICKER_COLORS, type ColorScheme } from "../utils/modelPickerStyles";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
+import { Button } from "./ui/button";
 
 export interface LocalModel {
   id: string;
@@ -35,6 +36,7 @@ interface LocalModelPickerProps {
   colorScheme?: Exclude<ColorScheme, "blue">;
   className?: string;
   onDownloadComplete?: () => void;
+  compact?: boolean;
 }
 
 export default function LocalModelPicker({
@@ -47,7 +49,18 @@ export default function LocalModelPicker({
   colorScheme = "purple",
   className = "",
   onDownloadComplete,
+  compact = false,
 }: LocalModelPickerProps) {
+  const [showAllModels, setShowAllModels] = useState(false);
+  const selectionContext = useRef({ active: true, provider: selectedProvider });
+  selectionContext.current.provider = selectedProvider;
+  useEffect(() => {
+    const context = selectionContext.current;
+    context.active = true;
+    return () => {
+      context.active = false;
+    };
+  }, []);
   const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
 
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
@@ -84,13 +97,17 @@ export default function LocalModelPicker({
   }, [modelType]);
 
   useEffect(() => {
+    let active = true;
     const initAndValidate = async () => {
       const downloaded = await loadDownloadedModels();
-      if (selectedModel && !downloaded.has(selectedModel)) {
+      if (active && selectedModel && !downloaded.has(selectedModel)) {
         onModelSelect("");
       }
     };
     initAndValidate();
+    return () => {
+      active = false;
+    };
   }, [loadDownloadedModels, selectedModel, onModelSelect]);
 
   const handleDownloadComplete = useCallback(() => {
@@ -114,9 +131,16 @@ export default function LocalModelPicker({
 
   const handleDownload = useCallback(
     (modelId: string) => {
-      downloadModel(modelId, onModelSelect);
+      const providerAtStart = selectedProvider;
+      downloadModel(modelId, (id) => {
+        if (
+          selectionContext.current.active &&
+          selectionContext.current.provider === providerAtStart
+        )
+          onModelSelect(id);
+      });
     },
-    [downloadModel, onModelSelect]
+    [downloadModel, onModelSelect, selectedProvider]
   );
 
   const handleDelete = useCallback(
@@ -140,6 +164,13 @@ export default function LocalModelPicker({
 
   const currentProvider = providers.find((p) => p.id === selectedProvider);
   const models = useMemo(() => currentProvider?.models || [], [currentProvider]);
+  const visibleModels =
+    compact && !showAllModels
+      ? models.filter(
+          (model) =>
+            model.id === (selectedModel || models.find((m) => m.recommended)?.id || models[0]?.id)
+        )
+      : models;
 
   const progressDisplay = useMemo(() => {
     if (!downloadingModel) return null;
@@ -151,28 +182,32 @@ export default function LocalModelPicker({
 
   return (
     <div className={`${styles.container} ${className}`}>
-      <ProviderTabs
-        providers={providers}
-        selectedId={selectedProvider}
-        onSelect={onProviderSelect}
-        colorScheme={colorScheme}
-        scrollable
-      />
+      {(!compact || showAllModels) && (
+        <ProviderTabs
+          providers={providers}
+          selectedId={selectedProvider}
+          onSelect={onProviderSelect}
+          colorScheme={colorScheme}
+          scrollable
+        />
+      )}
 
       {progressDisplay}
 
       <div className="p-4">
-        <h5 className={`${styles.header} mb-3`}>Available Models</h5>
+        <h5 className={`${styles.header} mb-3`}>
+          {compact && !showAllModels ? "Local model" : "Available models"}
+        </h5>
 
         <ModelCardList
-          models={models.map(
+          models={visibleModels.map(
             (model): ModelCardOption => ({
               value: model.id,
               label: model.name,
               description: model.size,
               icon: getProviderIcon(selectedProvider),
               invertInDark: isMonochromeProvider(selectedProvider),
-              recommended: model.recommended,
+              recommended: compact ? false : model.recommended,
               isDownloaded:
                 downloadedModels.has(model.id) || model.isDownloaded || model.downloaded,
               isDownloading: isDownloadingModel(model.id),
@@ -186,6 +221,25 @@ export default function LocalModelPicker({
           isCancelling={isCancelling}
           colorScheme={colorScheme}
         />
+        {compact && (
+          <div className="mt-3 space-y-2">
+            {!showAllModels && (
+              <p className="text-xs text-muted-foreground">{visibleModels[0]?.description}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Download once. Your text stays on this PC. The first cleanup after idle time takes
+              longer while the model loads.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAllModels(!showAllModels)}
+              aria-expanded={showAllModels}
+            >
+              {showAllModels ? "Show selected model" : "Choose another local model"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <ConfirmDialog

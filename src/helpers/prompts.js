@@ -3,9 +3,17 @@ const promptData = require("../config/promptData.json");
 const UNIFIED_SYSTEM_PROMPT = promptData.UNIFIED_SYSTEM_PROMPT;
 const DICTIONARY_SUFFIX = promptData.DICTIONARY_SUFFIX;
 
-function getSystemPrompt(agentName, customDictionary, dictationMode, preferredLanguage) {
+function getSystemPrompt(
+  agentName,
+  customDictionary,
+  dictationMode,
+  preferredLanguage,
+  customSystemPrompt
+) {
   const name = (agentName && agentName.trim()) || "Assistant";
-  let prompt = UNIFIED_SYSTEM_PROMPT.replace(/\{\{agentName\}\}/g, name);
+  const promptTemplate =
+    typeof customSystemPrompt === "string" ? customSystemPrompt : UNIFIED_SYSTEM_PROMPT;
+  let prompt = promptTemplate.replace(/\{\{agentName\}\}/g, name);
 
   if (Array.isArray(customDictionary) && customDictionary.length > 0) {
     prompt += DICTIONARY_SUFFIX + customDictionary.join(", ");

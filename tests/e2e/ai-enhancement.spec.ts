@@ -39,6 +39,7 @@ const FAKE_REASONING_BASE = "https://e2e.invalid/v1";
 async function openAiEnhancement(controlPanel: Page) {
   await controlPanel.getByRole("button", { name: /^AI Enhancement( Beta)?$/ }).click();
   await expect(controlPanel.getByRole("heading", { name: "AI Enhancement" })).toBeVisible();
+  await controlPanel.locator("summary").filter({ hasText: "Advanced settings" }).click();
 }
 
 async function captureEvidence(page: Page, fileName: string, fullPage: boolean) {
@@ -245,7 +246,7 @@ test.describe("ai enhancement", () => {
       "Custom"
     );
     await panel.getByText("Prompt tools", { exact: true }).click();
-    await expect(panel.getByText("Custom prompt", { exact: true })).toBeVisible();
+    await expect(panel.getByText("Custom prompt", { exact: true }).last()).toBeVisible();
     await expect(panel.getByText(/Rewrite everything as haiku/)).toBeVisible();
     await expect(panel.getByText(/Address the user as LegacyAtlas/)).toBeVisible();
   });

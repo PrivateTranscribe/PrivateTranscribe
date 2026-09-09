@@ -21,7 +21,7 @@ const PRO_FEATURES_INCLUDED = [
     desc: "Voice control for Claude Code runs you walk away from. Approve by voice, hear status, never reads code aloud.",
   },
   {
-    name: "Agent Mode",
+    name: "Coding prompt shortcuts",
     desc: "Hold Right Ctrl, describe the bug, release. A prompt lands in Claude Code, Cursor or Codex. Unlimited on Pro.",
   },
 ];
@@ -41,10 +41,6 @@ const PRO_FEATURES_BETA = [
     name: "Action Engine",
     desc: "Trigger custom voice commands to launch apps, run scripts, and automate workflows",
   },
-  {
-    name: "Read Aloud",
-    desc: "Select text anywhere and hit the hotkey to hear it read back in a local voice",
-  },
 ];
 
 /** Where each listed feature lives, so the card can open it. */
@@ -52,13 +48,12 @@ const FEATURE_PAGES: Record<string, string> = {
   "Correction Memory": "correction-memory",
   "AI Enhancement": "ai-enhancement",
   "Action Engine": "action-engine",
-  "Read Aloud": "read-aloud",
   Converse: "converse",
 };
 
 /** Features that are a settings section rather than a page of their own. */
 const FEATURE_SETTINGS_DESTINATIONS: Record<string, ControlPanelDestination> = {
-  "Agent Mode": { page: "dictation" },
+  "Coding prompt shortcuts": { page: "ai-enhancement" },
 };
 
 const PRO_FEATURES_COMING = [
@@ -356,7 +351,9 @@ export default function ProSettingsSection({
       <div className="space-y-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">What's included</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Pro is Converse and Agent Mode.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pro includes Converse and unlimited coding prompt shortcuts.
+          </p>
         </div>
 
         {PRO_FEATURES_INCLUDED.map((feature) => renderFeatureCard(feature))}

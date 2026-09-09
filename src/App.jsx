@@ -282,8 +282,8 @@ function liveDotStyle({ live, pulse, warn = false }) {
  * position stays on the element as data for the specs and as an aria value
  * for anyone who cannot see the bar.
  */
-const OverlayProgress = ({ index, total, label, testId }) => {
-  if (!(total > 0)) return null;
+const OverlayProgress = ({ index, total, label, testId, inset = false, pending = false }) => {
+  if (!(total > 0) && !pending) return null;
   const position = Math.min(index + 1, total);
   return (
     <span
@@ -291,14 +291,14 @@ const OverlayProgress = ({ index, total, label, testId }) => {
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={total}
-      aria-valuenow={position}
+      aria-valuenow={pending ? undefined : position}
       data-testid={testId}
       data-position={`${position}/${total}`}
-      className="relative ml-1 h-[2px] w-11 shrink-0 overflow-hidden rounded-full bg-white/25"
+      className={`relative block h-[2px] shrink-0 overflow-hidden rounded-full bg-white/25 ${inset ? "w-full" : "ml-1 w-11"}`}
     >
       <span
         className="absolute inset-y-0 left-0 rounded-full bg-primary/85 transition-[width] duration-300 ease-out"
-        style={{ width: `${(position / total) * 100}%` }}
+        style={{ width: pending ? "0%" : `${(position / total) * 100}%` }}
       />
     </span>
   );
@@ -493,9 +493,6 @@ export default function App() {
   // renderer would re-ask for the same registration on every tick.
   const readAloudKeysActiveRef = useRef(false);
   const [readAloudState, setReadAloudState] = useState(null);
-  // True while the sentence being read is tinted where it lives, in the app
-  // it came from. The overlay then stops repeating it on its own line.
-  const [readAloudHighlightActive, setReadAloudHighlightActive] = useState(false);
   const readAloudReportedRef = useRef("");
   // Where the text being read came from, so a clipboard fallback can say so.
   const [readAloudSource, setReadAloudSource] = useState(null);
@@ -627,10 +624,6 @@ export default function App() {
     // The real feature path: the main process captures the foreground app's
     // selection and pushes the text here. Not gated on the test flag - this is
     // what a user's read hotkey ends up calling.
-    const unsubscribeHighlight = window.electronAPI?.onReadAloudHighlight?.((_event, data) => {
-      setReadAloudHighlightActive(Boolean(data?.active));
-    });
-
     const unsubscribeSpeak = window.electronAPI?.onReadAloudSpeak?.((_event, data) => {
       const text = data?.text;
       if (typeof text === "string" && text.trim()) {
@@ -690,7 +683,6 @@ export default function App() {
       syncPlaybackKeys(false);
       readAloudRef.current = null;
       if (typeof unsubscribeSpeak === "function") unsubscribeSpeak();
-      if (typeof unsubscribeHighlight === "function") unsubscribeHighlight();
       if (typeof unsubscribeNotice === "function") unsubscribeNotice();
       if (typeof unsubscribeControl === "function") unsubscribeControl();
       window.removeEventListener("storage", syncStoredPlaybackKeys);
@@ -839,17 +831,6 @@ export default function App() {
     readAloudSource === "clipboard" && readAloudState?.status === "playing"
       ? "Reading clipboard"
       : READ_ALOUD_STATUS_LABELS[readAloudState?.status] || "Reading aloud";
-
-  // The sentence being spoken, shown under the controls so a read has a place
-  // in the text and not just a count. Only once there is one to show: while the
-  // player is still splitting or loading the engine there is no sentence yet,
-  // and an empty second line would just make the pill twitch.
-  const readAloudSentence =
-    (readAloudState?.status === "playing" || readAloudState?.status === "paused") &&
-    typeof readAloudState?.currentSentence === "string" &&
-    readAloudState.currentSentence.trim()
-      ? readAloudState.currentSentence.trim()
-      : null;
 
   const handleReadAloudToggle = useCallback(() => {
     const handle = readAloudRef.current;
@@ -1707,11 +1688,11 @@ export default function App() {
               style={{ pointerEvents: "none", flexShrink: 0, borderRadius: OVERLAY_RADIUS }}
               title={
                 isRewriting
-                  ? "Your words are going through your Claude Code login"
+                  ? "Enhancing your coding prompt before pasting"
                   : "Dictating a prompt for your coding agent"
               }
             >
-              {isRewriting ? "Rewriting with Claude Code" : "Agent Mode"}
+              {isRewriting ? "Enhancing coding prompt" : "Coding prompt"}
             </div>
           )}
 
@@ -1802,52 +1783,62 @@ export default function App() {
               The Read Aloud player is a status capsule like the others: the
               dot, the state, the hairline, pause and stop. Skipping a sentence
               is on the keys (Ctrl+Alt+←/→) rather than two more buttons; the
-              hairline says where the read is. The sentence itself is shown
-              where it lives, tinted in the source app, and only falls back to
-              a line here when that app keeps its text out of reach.
+              hairline says where the read is. Word highlighting stays in the
+              source app; missing geometry never changes the capsule's size.
             */}
             {readAloudState && (
               <div
                 ref={readAloudPillRef}
                 data-testid="readaloud-overlay-player"
-                className={`flex flex-col gap-1.5 px-3.5 ${OVERLAY_SURFACE_CLASS}`}
-                style={overlayRowStyle({ interactive: true, status: true })}
+                className={`flex items-center gap-2 pl-3 pr-1.5 ${OVERLAY_SURFACE_CLASS}`}
+                style={{
+                  ...overlayRowStyle({ interactive: true, status: true }),
+                  paddingTop: 4,
+                  paddingBottom: 4,
+                }}
               >
-                <div className="flex items-center gap-2">
-                  <span style={readAloudDotStyle(readAloudState)} aria-hidden />
-                  {/* A fixed label width, sized to the longest state, so
-                      "Reading aloud" becoming "Paused" never moves the pause
-                      button out from under the cursor that just pressed it. */}
-                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} w-[7.25rem] whitespace-nowrap`}>
+                <span style={readAloudDotStyle(readAloudState)} aria-hidden />
+                {/* Progress occupies the status column, giving the reserved
+                    label space a purpose without moving the controls on pause. */}
+                <div
+                  className={`flex shrink-0 flex-col gap-[5px] ${readAloudState.status === "error" ? "w-[126px]" : "w-[100px]"}`}
+                >
+                  <span className={`${OVERLAY_STATUS_TEXT_CLASS} whitespace-nowrap`}>
                     {readAloudLabel}
                   </span>
-
                   {readAloudState.status !== "error" && (
-                    <>
-                      <OverlayProgress
-                        index={readAloudState.index}
-                        total={readAloudState.sentenceCount}
-                        label="Read progress"
-                        testId="readaloud-progress"
-                      />
-                      <button
-                        aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
-                        onClick={handleReadAloudToggle}
-                        className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 ml-1`}
-                      >
-                        {readAloudPlaying ? (
-                          <Pause size={10} fill="currentColor" strokeWidth={0} />
-                        ) : (
-                          <Play size={10} fill="currentColor" strokeWidth={0} />
-                        )}
-                      </button>
-                    </>
+                    <OverlayProgress
+                      index={readAloudState.index}
+                      total={readAloudState.sentenceCount}
+                      label="Read progress"
+                      testId="readaloud-progress"
+                      inset
+                      pending={["splitting", "loading-engine", "synthesizing"].includes(
+                        readAloudState.status
+                      )}
+                    />
                   )}
-
+                </div>
+                <div className="flex items-center gap-0.5">
+                  {readAloudState.status !== "error" && (
+                    <button
+                      aria-label={readAloudPlaying ? "Pause reading" : "Resume reading"}
+                      onClick={handleReadAloudToggle}
+                      className={`${OVERLAY_STATUS_CONTROL_CLASS} focus-visible:ring-1 focus-visible:ring-primary`}
+                      style={{ width: 24, height: 24 }}
+                    >
+                      {readAloudPlaying ? (
+                        <Pause size={10} fill="currentColor" strokeWidth={0} />
+                      ) : (
+                        <Play size={10} fill="currentColor" strokeWidth={0} />
+                      )}
+                    </button>
+                  )}
                   <button
                     aria-label="Stop reading"
                     onClick={handleReadAloudStop}
-                    className={`${OVERLAY_STATUS_CONTROL_CLASS} -my-1 -mr-0.5 ${readAloudState.status === "error" ? "ml-1" : ""}`}
+                    className={`${OVERLAY_STATUS_CONTROL_CLASS} focus-visible:ring-1 focus-visible:ring-primary`}
+                    style={{ width: 24, height: 24 }}
                   >
                     {/* The same tinted disc as the Converse capsule's stop: one
                         function, one look. Filled, because an outlined square
@@ -1855,21 +1846,6 @@ export default function App() {
                     <Square size={8} fill="currentColor" />
                   </button>
                 </div>
-
-                {/*
-                  The fallback: only when the sentence cannot be tinted where
-                  it lives. Truncated to the column so a long sentence never
-                  pushes the capsule past the edge, indented under the title.
-                */}
-                {readAloudSentence && !readAloudHighlightActive && (
-                  <span
-                    data-testid="readaloud-current-sentence"
-                    className="block max-w-full truncate pl-[14px] text-[11px] leading-snug text-white/60"
-                    title={readAloudSentence}
-                  >
-                    {readAloudSentence}
-                  </span>
-                )}
               </div>
             )}
 

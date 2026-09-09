@@ -4,9 +4,15 @@ interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  "aria-label"?: string;
 }
 
-export const Toggle = ({ checked, onChange, disabled = false }: ToggleProps) => {
+export const Toggle = ({
+  checked,
+  onChange,
+  disabled = false,
+  "aria-label": ariaLabel,
+}: ToggleProps) => {
   const getTrackClasses = () => {
     if (disabled) {
       // bg-muted matches the settings panel surface, which left disabled
@@ -18,6 +24,8 @@ export const Toggle = ({ checked, onChange, disabled = false }: ToggleProps) => 
 
   return (
     <button
+      aria-label={ariaLabel}
+      aria-pressed={checked}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
       className={`relative inline-flex h-4.5 w-8 shrink-0 items-center rounded-full transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-1 ${getTrackClasses()} ${

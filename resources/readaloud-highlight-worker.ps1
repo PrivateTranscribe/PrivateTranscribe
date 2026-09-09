@@ -53,18 +53,16 @@ function Get-Anchor {
 
   $cond = New-Object System.Windows.Automation.PropertyCondition(
     [System.Windows.Automation.AutomationElement]::IsTextPatternAvailableProperty, $true)
-  $candidates = @()
-  $candidates += $focused
-  $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
-  # Documents first (a browser's page, an editor's body), then the rest: an
-  # address bar has a TextPattern too, and usually an empty selection.
-  foreach ($el in $all) { if ($el.Current.ControlType -eq [System.Windows.Automation.ControlType]::Document) { $candidates += $el } }
-  foreach ($el in $all) { if ($el.Current.ControlType -ne [System.Windows.Automation.ControlType]::Document) { $candidates += $el } }
-
   # Chromium switches its accessibility tree on when a UIA client first asks,
   # so the first look can come back empty; a couple of short retries cover it.
   for ($attempt = 0; $attempt -lt 3; $attempt++) {
     if ($attempt -gt 0) { Start-Sleep -Milliseconds 250 }
+    # Re-enumerate: Chromium may only publish its document after the first
+    # request. Retrying the original empty list cannot discover that document.
+    $candidates = @($focused)
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    foreach ($el in $all) { if ($el.Current.ControlType -eq [System.Windows.Automation.ControlType]::Document) { $candidates += $el } }
+    foreach ($el in $all) { if ($el.Current.ControlType -ne [System.Windows.Automation.ControlType]::Document) { $candidates += $el } }
     foreach ($el in $candidates) {
       try {
         $tp = $el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
@@ -107,6 +105,36 @@ function Get-SourceWords([string]$text) {
   return [regex]::Matches($masked, '\S+')
 }
 
+function Find-VerifiedText($scope, [string]$text) {
+  $hit = $scope.FindText($text, $false, $true)
+  if ($hit -and [string]::Equals($hit.GetText(-1).Trim(), $text.Trim(), [StringComparison]::OrdinalIgnoreCase)) {
+    return $hit
+  }
+  # Chromium can count synthetic list markers differently in FindText and
+  # its returned endpoints. Reconcile against actual source text, then verify
+  # the repaired range. Never paint a search result containing another word.
+  $source = $scope.GetText(-1)
+  $offset = $source.IndexOf($text, [StringComparison]::OrdinalIgnoreCase)
+  if ($offset -lt 0) { return $null }
+  $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
+  $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
+  $unit = [System.Windows.Automation.Text.TextUnit]::Character
+  if (-not $hit) { $hit = $scope.Clone(); $hit.MoveEndpointByRange($end, $hit, $start) }
+  for ($attempt = 0; $attempt -lt 3; $attempt++) {
+    $prefix = $scope.Clone()
+    $prefix.MoveEndpointByRange($end, $hit, $start)
+    $delta = $offset - $prefix.GetText(-1).Length
+    $hit.MoveEndpointByRange($end, $hit, $start)
+    [void]$hit.MoveEndpointByUnit($start, $unit, $delta)
+    $hit.MoveEndpointByRange($end, $hit, $start)
+    [void]$hit.MoveEndpointByUnit($end, $unit, $text.Length)
+    if ([string]::Equals($hit.GetText(-1).Trim(), $text.Trim(), [StringComparison]::OrdinalIgnoreCase)) {
+      return $hit
+    }
+  }
+  return $null
+}
+
 function Find-WordSequence($scope, $words) {
   if ($words.Count -eq 0) { return $null }
   $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
@@ -114,14 +142,14 @@ function Find-WordSequence($scope, $words) {
   $search = $scope.Clone()
   # Retry repeated first words, but bound calls into another app's UIA provider.
   for ($attempt = 0; $attempt -lt 64; $attempt++) {
-    $first = $search.FindText($words[0].Value, $false, $true)
+    $first = Find-VerifiedText $search $words[0].Value
     if (-not $first) { return $null }
     $rest = $scope.Clone()
     $rest.MoveEndpointByRange($start, $first, $end)
     $last = $first
     $matched = $true
     for ($i = 1; $i -lt $words.Count; $i++) {
-      $next = $rest.FindText($words[$i].Value, $false, $true)
+      $next = Find-VerifiedText $rest $words[$i].Value
       if (-not $next) { $matched = $false; break }
       $gap = $rest.Clone()
       $gap.MoveEndpointByRange($end, $next, $start)
@@ -160,7 +188,7 @@ function Find-Sentence($text) {
 
   $words = @(Get-SourceWords $text)
   foreach ($scope in $scopes) {
-    $hit = $scope.FindText($text, $false, $true)
+    $hit = Find-VerifiedText $scope $text
     if ($hit) { return $hit }
     $hit = Find-WordSequence $scope $words
     if ($hit) { return $hit }
@@ -177,20 +205,22 @@ function Locate-Word($payload) {
   if (-not $cached -or $cached.text -ne $payload.sentence) {
     $hit = Find-Sentence $payload.sentence
     if (-not $hit) { return $null }
-    $script:lastSentence = $hit
     $words = @{}
     $rest = $hit.Clone()
     $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
     $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
     foreach ($match in @(Get-SourceWords $payload.sentence)) {
-      $word = $rest.FindText($match.Value, $false, $true)
-      if (-not $word) { break }
+      $word = Find-VerifiedText $rest $match.Value
+      # Never cache a partial match forever. Providers can expose inline runs
+      # a little later than the enclosing sentence; the next locate retries.
+      if (-not $word) { return $null }
       $words[[string]$match.Index] = $word
       $rest.MoveEndpointByRange($start, $word, $end)
     }
     $cached = @{ text = $payload.sentence; range = $hit; words = $words }
     $script:sentences[$key] = $cached
   }
+  $script:lastSentence = $cached.range
   $script:wordRanges = $cached.words
   if ($null -eq $payload.start) { return $cached.range }
   return $cached.words[[string]$payload.start]

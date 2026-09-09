@@ -126,7 +126,7 @@ test.describe("Agent Mode", () => {
     expect(status).toMatchObject({ hotkey: "RightControl", registered: false });
 
     await sendToOverlay(electronApp, "start-agent-dictation");
-    const badge = overlayWindow.getByText("Agent Mode", { exact: true });
+    const badge = overlayWindow.getByText("Coding prompt", { exact: true });
     await expect(badge).toBeVisible({ timeout: 30_000 });
     await captureEvidence(overlayWindow, "agent-mode-overlay-recording.png");
 
@@ -153,7 +153,7 @@ test.describe("Agent Mode", () => {
     await recordPastes(electronApp);
 
     await sendToOverlay(electronApp, "toggle-dictation");
-    await expect(overlayWindow.getByText("Agent Mode", { exact: true })).toHaveCount(0);
+    await expect(overlayWindow.getByText("Coding prompt", { exact: true })).toHaveCount(0);
     await overlayWindow.waitForTimeout(RECORD_MS);
     await sendToOverlay(electronApp, "toggle-dictation");
 
@@ -189,7 +189,7 @@ test.describe("Agent Mode", () => {
     await controlPanel.getByRole("button", { name: "History" }).click();
     await sendToOverlay(electronApp, "start-agent-dictation");
 
-    await expect(overlayWindow.getByText("Agent Mode free uses spent for today")).toBeVisible({
+    await expect(overlayWindow.getByText("Coding prompt shortcuts used up for today")).toBeVisible({
       timeout: 15_000,
     });
     await captureEvidence(overlayWindow, "agent-mode-cap-toast.png");

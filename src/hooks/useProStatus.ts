@@ -8,12 +8,14 @@ import { getProStatus, _verifyToken } from "../services/LicensingService";
 // Nothing per-feature is persisted — every id here resolves through the one
 // `hasTesterAccess()` entitlement — so an existing tester keeps exactly the
 // access they had.
+//
+// "read-aloud" left this set in 0.18.x: Read Aloud is part of Starter now and
+// needs no entitlement at all, so it is neither a beta nor a Pro feature.
 const BETA_FEATURES = new Set([
   "correction-memory",
   "smart-context",
   "action-engine",
   "ai-enhancement",
-  "read-aloud",
 ]);
 
 // Shipped Pro features: unlocked by the paid entitlement alone, no tester flag.
@@ -26,13 +28,7 @@ const PRO_FEATURES = new Set(["converse"]);
 // own (its page renders embedded inside Dictionary, which carries no badge),
 // so there is nothing for shouldShowProBadge("correction-memory") to badge.
 // It stays in BETA_FEATURES above because the feature gate itself is alive.
-const SIDEBAR_BETA_ITEMS = new Set([
-  "ai-enhancement",
-  "action-engine",
-  // Read Aloud used to be a Settings tab, where nobody found it. It is a
-  // sidebar page now, so it carries the same badge as every other beta item.
-  "read-aloud",
-]);
+const SIDEBAR_BETA_ITEMS = new Set(["ai-enhancement", "action-engine"]);
 
 // localStorage key and custom event used by the temporary preview toggle
 const PREVIEW_KEY = "privatetranscribe_pro_preview";

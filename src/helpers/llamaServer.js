@@ -15,14 +15,36 @@ const HEALTH_CHECK_TIMEOUT_MS = 2000;
 const STARTUP_POLL_INTERVAL_MS = 500;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
+const DEFAULT_INFERENCE_TIMEOUT_MS = 300000;
+const MAX_ERROR_DETAIL_CHARS = 500;
+
+const stripLeadingThinkingBlock = (text) => {
+  const trimmed = String(text || "").trim();
+  if (!trimmed.startsWith("<think>")) return trimmed;
+
+  const closingTagIndex = trimmed.indexOf("</think>", "<think>".length);
+  if (closingTagIndex === -1) {
+    throw new Error("Local reasoning returned an unfinished thinking block");
+  }
+
+  return trimmed.slice(closingTagIndex + "</think>".length).trim();
+};
 
 const extractCompletionText = (response) => {
   const choice = response?.choices?.[0];
   if (choice?.finish_reason === "length") {
     throw new Error("Local reasoning reached its output or context limit before finishing");
   }
-  return (choice?.message?.content || "").trim();
+  return stripLeadingThinkingBlock(choice?.message?.content || "");
 };
+
+const buildInferenceRequestBody = (messages, options = {}) => ({
+  messages,
+  temperature: options.temperature ?? 0.7,
+  max_tokens: options.max_tokens ?? 512,
+  stream: false,
+  ...(options.disableThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+});
 
 class LlamaServerManager {
   constructor() {
@@ -354,12 +376,11 @@ class LlamaServerManager {
       throw new Error("llama-server is not running");
     }
 
-    const body = JSON.stringify({
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.max_tokens ?? 512,
-      stream: false,
-    });
+    const body = JSON.stringify(buildInferenceRequestBody(messages, options));
+    const timeoutMs =
+      Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? Math.floor(options.timeoutMs)
+        : DEFAULT_INFERENCE_TIMEOUT_MS;
 
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
@@ -374,7 +395,7 @@ class LlamaServerManager {
             "Content-Type": "application/json",
             "Content-Length": Buffer.byteLength(body),
           },
-          timeout: 300000, // 5 minute timeout for inference
+          timeout: timeoutMs,
         },
         (res) => {
           let data = "";
@@ -388,7 +409,8 @@ class LlamaServerManager {
             });
 
             if (res.statusCode !== 200) {
-              reject(new Error(`llama-server returned status ${res.statusCode}: ${data}`));
+              const errorDetail = data.slice(0, MAX_ERROR_DETAIL_CHARS);
+              reject(new Error(`llama-server returned status ${res.statusCode}: ${errorDetail}`));
               return;
             }
 
@@ -411,7 +433,7 @@ class LlamaServerManager {
       });
       req.on("timeout", () => {
         req.destroy();
-        reject(new Error("llama-server request timed out"));
+        reject(new Error(`llama-server request timed out after ${timeoutMs} ms`));
       });
 
       req.write(body);
@@ -482,3 +504,4 @@ class LlamaServerManager {
 
 module.exports = LlamaServerManager;
 module.exports.extractCompletionText = extractCompletionText;
+module.exports.buildInferenceRequestBody = buildInferenceRequestBody;

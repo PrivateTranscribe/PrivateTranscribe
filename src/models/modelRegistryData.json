@@ -180,9 +180,34 @@
       "name": "OpenAI",
       "models": [
         {
+          "id": "gpt-5.6-luna",
+          "name": "GPT-5.6 Luna",
+          "description": "Fast, cost-efficient model for everyday cleanup",
+          "recommended": true,
+          "reasoningEffort": "none"
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "name": "GPT-5.6 Terra",
+          "description": "Balances intelligence, speed, and cost",
+          "reasoningEffort": "none"
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "name": "GPT-5.6 Sol",
+          "description": "Flagship model for complex professional work",
+          "reasoningEffort": "none"
+        },
+        {
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra",
+          "description": "Most capable OpenAI model for demanding work",
+          "reasoningEffort": "low"
+        },
+        {
           "id": "gpt-5.2",
           "name": "GPT-5.2",
-          "description": "Latest flagship reasoning model"
+          "description": "Previous-generation reasoning model"
         },
         {
           "id": "gpt-5-mini",
@@ -207,7 +232,9 @@
         {
           "id": "gpt-4.1-nano",
           "name": "GPT-4.1 Nano",
-          "description": "Lowest latency GPT-4.1"
+          "description": "Deprecated; kept for existing selections",
+          "deprecated": true,
+          "replacementId": "gpt-5.6-luna"
         }
       ]
     },
@@ -216,19 +243,35 @@
       "name": "Anthropic",
       "models": [
         {
+          "id": "claude-haiku-4-5-20251001",
+          "name": "Claude Haiku 4.5",
+          "description": "Fastest current Claude model",
+          "recommended": true
+        },
+        {
+          "id": "claude-sonnet-5",
+          "name": "Claude Sonnet 5",
+          "description": "Fast model with strong general intelligence"
+        },
+        {
+          "id": "claude-opus-5",
+          "name": "Claude Opus 5",
+          "description": "Advanced model for complex work"
+        },
+        {
           "id": "claude-sonnet-4-5",
           "name": "Claude Sonnet 4.5",
-          "description": "Balanced performance"
+          "description": "Previous-generation balanced model"
         },
         {
           "id": "claude-haiku-4-5",
-          "name": "Claude Haiku 4.5",
-          "description": "Fast with near-frontier intelligence"
+          "name": "Claude Haiku 4.5 (alias)",
+          "description": "Compatibility alias for existing selections"
         },
         {
           "id": "claude-opus-4-5",
           "name": "Claude Opus 4.5",
-          "description": "Most capable Claude model"
+          "description": "Previous-generation advanced model"
         }
       ]
     },
@@ -237,14 +280,36 @@
       "name": "Google Gemini",
       "models": [
         {
+          "id": "gemini-3.5-flash-lite",
+          "name": "Gemini 3.5 Flash-Lite",
+          "description": "Fast, cost-efficient stable model",
+          "recommended": true,
+          "thinkingLevel": "minimal"
+        },
+        {
+          "id": "gemini-3.8-flash",
+          "name": "Gemini 3.8 Flash",
+          "description": "Latest stable Gemini Flash model",
+          "thinkingLevel": "low"
+        },
+        {
+          "id": "gemini-3.1-pro-preview",
+          "name": "Gemini 3.1 Pro",
+          "description": "Preview model for complex reasoning",
+          "thinkingLevel": "low"
+        },
+        {
           "id": "gemini-3-pro-preview",
           "name": "Gemini 3 Pro",
-          "description": "Next-gen flagship model for complex reasoning"
+          "description": "Shut down; kept for existing selections",
+          "deprecated": true,
+          "replacementId": "gemini-3.1-pro-preview"
         },
         {
           "id": "gemini-3-flash-preview",
           "name": "Gemini 3 Flash",
-          "description": "Ultra-fast, high-capability next-gen model"
+          "description": "Supported preview model",
+          "thinkingLevel": "minimal"
         },
         {
           "id": "gemini-2.5-flash-lite",
@@ -258,20 +323,33 @@
       "name": "Groq",
       "models": [
         {
-          "id": "qwen/qwen3-32b",
-          "name": "Qwen3 32B",
-          "description": "Powerful reasoning model, 131K context",
-          "disableThinking": true
+          "id": "openai/gpt-oss-20b",
+          "name": "GPT-OSS 20B",
+          "description": "Fast production model",
+          "recommended": true,
+          "reasoningEffort": "low"
         },
         {
           "id": "openai/gpt-oss-120b",
           "name": "GPT-OSS 120B",
-          "description": "OpenAI's open-source flagship, 500 T/sec"
+          "description": "Larger production model",
+          "reasoningEffort": "low"
         },
         {
-          "id": "openai/gpt-oss-20b",
-          "name": "GPT-OSS 20B",
-          "description": "Fast open-source model, 1000 T/sec"
+          "id": "qwen/qwen3.8-27b",
+          "name": "Qwen3.8 27B",
+          "description": "Current Qwen model with fast non-thinking mode",
+          "disableThinking": true,
+          "reasoningEffort": "none"
+        },
+        {
+          "id": "qwen/qwen3-32b",
+          "name": "Qwen3 32B",
+          "description": "Retired; kept for existing selections",
+          "disableThinking": true,
+          "deprecated": true,
+          "replacementId": "qwen/qwen3.8-27b",
+          "reasoningEffort": "none"
         }
       ]
     }
@@ -284,6 +362,20 @@
       "promptTemplate": "<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n",
       "models": [
         {
+          "id": "qwen3.8-2b-distill-q4_k_m",
+          "name": "Qwen3.8 2B Distill",
+          "size": "1.31GB",
+          "sizeBytes": 1312164224,
+          "description": "Experimental community model. Check meaning and speed with the test below.",
+          "fileName": "Qwen3.8-2B-Q4_K_M.gguf",
+          "quantization": "q4_k_m",
+          "contextLength": 131072,
+          "hfRepo": "empero-ai/Qwen3.8-2B-Distill-GGUF",
+          "hfRevision": "f4f73582d0b149595450c719b9a7521a03894f9c",
+          "sha256": "4aa0fb13c431514262f259d420ecc95a8714df58ac2a2384514e20b93983f0ff",
+          "recommended": true
+        },
+        {
           "id": "qwen3-8b-q4_k_m",
           "name": "Qwen3 8B",
           "size": "5.0GB",
@@ -292,8 +384,7 @@
           "fileName": "Qwen3-8B-Q4_K_M.gguf",
           "quantization": "q4_k_m",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-8B-GGUF",
-          "recommended": true
+          "hfRepo": "Qwen/Qwen3-8B-GGUF"
         },
         {
           "id": "qwen3-8b-q5_k_m",

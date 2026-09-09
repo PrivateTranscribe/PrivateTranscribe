@@ -13,6 +13,7 @@ import {
   recordAgentModeUse,
 } from "../utils/agentModeUsage";
 import { cleanAgentPrompt, extractSendCommand } from "../utils/agentPrompt";
+import ReasoningService from "../services/ReasoningService";
 import {
   buildTranscriptionAnalyticsProperties,
   trackAnalyticsEvent,
@@ -129,6 +130,9 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const setAgentSession = (active) => {
       agentSession = Boolean(active);
+      // The shortcut rewrites once, after splitting the spoken send command.
+      // Ordinary dictation cleanup would otherwise consume or rewrite it first.
+      manager.codingPromptSession = agentSession;
       setIsAgentSession(agentSession);
       if (!agentSession) setIsRewriting(false);
     };
@@ -186,7 +190,7 @@ export const useAudioRecording = (toast, options = {}) => {
     const showAgentModeLimitReached = () => {
       const usage = readAgentModeUsage();
       toastRef.current?.({
-        title: "Agent Mode free uses spent for today",
+        title: "Coding prompt shortcuts used up for today",
         description: buildAgentModeLimitMessage(usage),
         variant: "default",
         duration: 8000,
@@ -478,10 +482,32 @@ export const useAudioRecording = (toast, options = {}) => {
           const rewriteOn = localStorage.getItem("agentModeRewrite") !== "false";
           let rewritten = null;
           let failure = null;
-          if (rewriteOn && window.electronAPI?.agentModeRewrite) {
+          if (rewriteOn) {
             setIsRewriting(true);
             try {
-              const reply = await window.electronAPI.agentModeRewrite(spoken);
+              const useSharedConnection =
+                localStorage.getItem("codingPromptUseSharedConnection") === "true";
+              let reply;
+              if (useSharedConnection) {
+                if (!isFeatureUnlocked("ai-enhancement")) {
+                  throw new Error("Shared AI connections require tester access.");
+                }
+                const enhanced = await ReasoningService.processText(
+                  spoken,
+                  localStorage.getItem("reasoningModel") || "",
+                  null,
+                  {
+                    writingStyle: "coding",
+                    preferredLanguage: localStorage.getItem("preferredLanguage"),
+                    smartContext: null,
+                    timeoutMs: 12000,
+                    maxRetries: 0,
+                  }
+                );
+                reply = { ok: true, text: enhanced };
+              } else {
+                reply = await window.electronAPI?.agentModeRewrite?.(spoken);
+              }
               if (reply?.ok && typeof reply.text === "string" && reply.text.trim()) {
                 rewritten = reply.text.trim();
               } else {
@@ -505,7 +531,7 @@ export const useAudioRecording = (toast, options = {}) => {
                 title:
                   failure.reason === "not-found"
                     ? "Claude Code not found. Pasted as spoken."
-                    : "Claude Code did not answer. Pasted as spoken.",
+                    : "Enhancement unavailable. Pasted as spoken.",
                 variant: "default",
                 duration: 5000,
               });

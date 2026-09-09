@@ -127,7 +127,7 @@ internal static class WindowsFastPaste
             return 0;
         }
 
-        string clipboardText = ReadClipboardText();
+        string clipboardText = ReadClipboardWithDeadline(ReadClipboardText);
         // A cold or hung accessibility provider must not prevent Ctrl+V. UIA
         // calls run off the input thread and only get a short observation budget.
         AccessibleTextSnapshot textBefore = ObserveWithDeadline(ReadFocusedAccessibleText, 100);
@@ -167,7 +167,8 @@ internal static class WindowsFastPaste
     // Use an MTA worker per observation, as recommended for UIA clients. A
     // timed-out worker is background-only and dies when this short-lived helper
     // exits. It can only read; it can never send a late paste or Enter.
-    private static T ObserveWithDeadline<T>(Func<T> observe, int timeoutMs) where T : class
+    private static T ObserveWithDeadline<T>(
+        Func<T> observe, int timeoutMs, ApartmentState apartment = ApartmentState.MTA) where T : class
     {
         T result = null;
         Thread worker = new Thread(delegate()
@@ -176,9 +177,17 @@ internal static class WindowsFastPaste
             catch { /* Observation is optional; delivery is not. */ }
         });
         worker.IsBackground = true;
-        worker.SetApartmentState(ApartmentState.MTA);
+        worker.SetApartmentState(apartment);
         worker.Start();
         return worker.Join(timeoutMs) ? result : null;
+    }
+
+    // Clipboard access is only needed to confirm insertion. OLE clipboard
+    // reads can block on another process, just like UI Automation. Never let
+    // that optional observation prevent Ctrl+V. Windows Forms requires STA.
+    private static string ReadClipboardWithDeadline(Func<string> read)
+    {
+        return ObserveWithDeadline(read, 100, ApartmentState.STA) ?? string.Empty;
     }
 
     private static void WriteResult(
@@ -248,9 +257,7 @@ internal static class WindowsFastPaste
     {
         try
         {
-            return Clipboard.ContainsText(TextDataFormat.UnicodeText)
-                ? Clipboard.GetText(TextDataFormat.UnicodeText)
-                : string.Empty;
+            return Clipboard.GetText(TextDataFormat.UnicodeText);
         }
         catch
         {

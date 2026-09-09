@@ -1,6 +1,8 @@
 # PrivateTranscribe
 
-Private, local voice dictation for Windows. Speak to type — 100% on-device, nothing sent to the cloud.
+Private, local voice dictation for Windows. Speak to type. Local Whisper by default, so the recording stays on your PC. Cloud transcription is optional.
+
+PrivateTranscribe began as a private copy of [OpenWhispr](https://github.com/OpenWhispr/openwhispr) (MIT) in early 2026 and has been rewritten since. The OpenWhispr notice ships with every build, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Features
 
