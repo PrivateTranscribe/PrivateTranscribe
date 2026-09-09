@@ -181,6 +181,13 @@ async function main() {
     for (const variant of variants) {
       const manager = new Whisper();
       manager.serverManager = new variant.Server();
+      if (variant.vad) {
+        // Experimental audio has already been prepared by this harness. Keep
+        // the integrated path from processing it a second time.
+        const convert = manager.serverManager._convertToWav.bind(manager.serverManager);
+        manager.serverManager._convertToWav = (audio, name, options) =>
+          convert(audio, name, { ...options, speechCleanup: false });
+      }
       try {
         for (let repetition = 1; repetition <= repetitions; repetition++)
           for (const c of cases) {

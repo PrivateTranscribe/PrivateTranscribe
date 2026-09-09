@@ -88,6 +88,10 @@
       "to": "THIRD_PARTY_NOTICES.md"
     },
     {
+      "from": "resources/models/silero-vad.onnx",
+      "to": "models/silero-vad.onnx"
+    },
+    {
       "from": "resources/readaloud-copy-worker.ps1",
       "to": "readaloud-copy-worker.ps1"
     },

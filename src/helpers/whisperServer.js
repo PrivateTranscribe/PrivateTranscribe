@@ -1431,6 +1431,8 @@ class WhisperServerManager {
         longSessionChunk,
         trimTrailingSilence,
         dropSilentResult: longSessionChunk,
+        speechCleanup: !fileMode,
+        signal,
       });
 
       // FFmpeg cannot be interrupted usefully, but a cancel that landed during
@@ -1957,6 +1959,8 @@ class WhisperServerManager {
     const tempInputPath = path.join(tempDir, `whisper-input-${tempId}${inputExtension}`);
     const tempWavPath = path.join(tempDir, `whisper-output-${tempId}.wav`);
     const tempTrimmedWavPath = path.join(tempDir, `whisper-trimmed-${tempId}.wav`);
+    const tempSpeechWavPath = path.join(tempDir, `whisper-speech-${tempId}.wav`);
+    const tempBalancedWavPath = path.join(tempDir, `whisper-balanced-${tempId}.wav`);
 
     try {
       await fs.promises.writeFile(tempInputPath, audioBuffer);
@@ -1966,12 +1970,62 @@ class WhisperServerManager {
         audioFilters: getTranscriptionAudioFilters(options),
       });
 
+      let preparedPath = tempWavPath;
+      if (options.speechCleanup) {
+        try {
+          const wav = await fs.promises.readFile(tempWavPath);
+          const info = parseWavPcmInfo(wav);
+          if (
+            info?.audioFormat === 1 &&
+            info.channels === 1 &&
+            info.sampleRate === 16000 &&
+            info.bitsPerSample === 16
+          ) {
+            const { prepareDictationSpeech } = require("./dictationSpeechRunner");
+            const prepared = await prepareDictationSpeech(
+              wav.subarray(info.dataOffset, info.dataOffset + info.dataSize),
+              { signal: options.signal }
+            );
+            throwIfCancelled(options.signal);
+            if (prepared.available && prepared.mode !== "unchanged") {
+              await fs.promises.writeFile(tempSpeechWavPath, createPcm16WavBuffer(prepared.pcm));
+              preparedPath = tempSpeechWavPath;
+              if (prepared.mode === "cleanup") {
+                const { NORMALIZATION_FILTER } = require("./dictationSpeech");
+                await convertToWav(tempSpeechWavPath, tempBalancedWavPath, {
+                  sampleRate: 16000,
+                  channels: 1,
+                  audioFilters: [NORMALIZATION_FILTER],
+                });
+                preparedPath = tempBalancedWavPath;
+              }
+              debugLogger.debug("Prepared dictation speech", {
+                mode: prepared.mode,
+                regions: prepared.regions,
+                inputSeconds: info.durationSeconds,
+                outputSeconds: prepared.pcm.length / 32000,
+              });
+            } else if (!prepared.available && prepared.reason !== "cancelled") {
+              debugLogger.warn("Speech preparation unavailable; preserving original audio", {
+                reason: prepared.reason,
+              });
+            }
+          }
+        } catch (error) {
+          if (isCancelledError(error)) throw error;
+          preparedPath = tempWavPath;
+          debugLogger.warn("Speech preparation failed; preserving original audio", {
+            error: error.message,
+          });
+        }
+      }
+
       // Browser MediaRecorder WebM files can contain multiple timestamp clusters.
       // Reversing while decoding that container can discard a cluster, so normalize
       // the complete stream to PCM WAV first and only then trim its trailing silence.
       if (options.trimTrailingSilence) {
         try {
-          await convertToWav(tempWavPath, tempTrimmedWavPath, {
+          await convertToWav(preparedPath, tempTrimmedWavPath, {
             sampleRate: 16000,
             channels: options.channels || 1,
             audioFilters: getTrailingSilenceFilters(),
@@ -2004,9 +2058,15 @@ class WhisperServerManager {
         }
       }
 
-      return await fs.promises.readFile(tempWavPath);
+      return await fs.promises.readFile(preparedPath);
     } finally {
-      for (const f of [tempInputPath, tempWavPath, tempTrimmedWavPath]) {
+      for (const f of [
+        tempInputPath,
+        tempWavPath,
+        tempTrimmedWavPath,
+        tempSpeechWavPath,
+        tempBalancedWavPath,
+      ]) {
         await fs.promises.rm(f, { force: true }).catch(() => {});
       }
     }
