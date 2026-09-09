@@ -20,7 +20,6 @@ import { describeMicrophoneSelection } from "../../utils/audioDeviceUtils";
 import type { AggregateStats } from "../../types/electron";
 import logger from "../../utils/logger";
 import { SectionLabel } from "../ui/SectionLabel";
-import { Tooltip } from "../ui/tooltip";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
@@ -115,21 +114,6 @@ export function computeStreak(activeDates: Set<string>): number {
   }
 
   return streak;
-}
-
-// Compare calendar dates in UTC so daylight-saving changes cannot break a run.
-// eslint-disable-next-line react-refresh/only-export-components
-export function computeLongestStreak(activeDates: Set<string>): number {
-  let longest = 0;
-  let run = 0;
-  let previous = Number.NEGATIVE_INFINITY;
-  for (const key of [...activeDates].sort()) {
-    const day = Date.parse(`${key}T00:00:00Z`);
-    run = day - previous === 86_400_000 ? run + 1 : 1;
-    longest = Math.max(longest, run);
-    previous = day;
-  }
-  return longest;
 }
 
 function formatNumber(n: number): string {
@@ -311,7 +295,6 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     };
   }, [loadAudioInputs]);
 
-  const longestStreak = useMemo(() => computeLongestStreak(streakDates), [streakDates]);
   const streak = useMemo(() => {
     const value = computeStreak(streakDates);
     void logger.debug(
@@ -451,26 +434,17 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
             {/* Sub-stat Pills */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
-              <Tooltip
-                interactive
-                className="min-w-0"
-                content={`Longest streak: ${longestStreak} ${longestStreak === 1 ? "day" : "days"}`}
-              >
-                <Button
-                  variant="ghost"
-                  className="h-full w-full justify-start text-left min-w-0 gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle hover:bg-surface-raised hover:border-border-hover transition-colors"
-                >
-                  <IconTile>
-                    <Flame size={15} />
-                  </IconTile>
-                  <div className="flex flex-col min-w-0">
-                    <SectionLabel as="span">Streak</SectionLabel>
-                    <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
-                      {streak} {streak === 1 ? "day" : "days"}
-                    </span>
-                  </div>
-                </Button>
-              </Tooltip>
+              <div className="flex min-w-0 items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
+                <IconTile>
+                  <Flame size={15} />
+                </IconTile>
+                <div className="flex flex-col min-w-0">
+                  <SectionLabel as="span">Streak</SectionLabel>
+                  <span className="text-sm font-semibold text-foreground tabular-nums whitespace-nowrap">
+                    {streak} {streak === 1 ? "day" : "days"}
+                  </span>
+                </div>
+              </div>
 
               <div className="flex items-center gap-2.5 px-3 py-3 rounded-xl bg-surface-raised/80 border border-border-subtle">
                 <IconTile>

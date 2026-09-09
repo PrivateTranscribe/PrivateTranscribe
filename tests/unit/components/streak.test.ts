@@ -10,35 +10,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   computeStreak,
-  computeLongestStreak,
   toLocalDateKey,
   parseUtcTimestamp,
 } from "../../../src/components/pages/DashboardPage";
-
-describe("computeLongestStreak", () => {
-  it("returns zero without activity and one for a single day", () => {
-    expect(computeLongestStreak(new Set())).toBe(0);
-    expect(computeLongestStreak(new Set(["2026-01-03"]))).toBe(1);
-  });
-
-  it("keeps an older personal best after a gap regardless of input order", () => {
-    expect(
-      computeLongestStreak(
-        new Set(["2026-09-10", "2026-01-03", "2026-01-01", "2026-09-09", "2026-01-02"])
-      )
-    ).toBe(3);
-  });
-
-  it("counts through year, leap-day and daylight-saving boundaries", () => {
-    for (const dates of [
-      ["2025-12-31", "2026-01-01", "2026-01-02"],
-      ["2024-02-28", "2024-02-29", "2024-03-01"],
-      ["2026-03-28", "2026-03-29", "2026-03-30"],
-      ["2026-10-24", "2026-10-25", "2026-10-26"],
-    ])
-      expect(computeLongestStreak(new Set(dates))).toBe(3);
-  });
-});
 
 // Build a date key for N days offset from today (negative = past).
 function dateKeyOffset(daysOffset: number): string {
