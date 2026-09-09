@@ -72,6 +72,7 @@ const WINDOWS_STATUS_DLL_NOT_FOUND = 3221225781;
 const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const WAV_HEADER_BYTES = 44;
 const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
+const WHISPER_DICTATION_THRESHOLD_SECONDS = 90;
 const WHISPER_CHUNK_SECONDS = 60;
 // How far either side of a chunk boundary to look for a pause to cut on, and
 // how finely to measure loudness while looking.
@@ -1441,7 +1442,15 @@ class WhisperServerManager {
         return { text: "" };
       }
 
-      const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer);
+      // Dictations need bounded requests well before the long-file threshold.
+      // A decoder that loses its place must not take the remaining minutes
+      // with it. Reuse the PCM splitter so all audio, including the tail, is
+      // submitted once, with seams placed near pauses where possible.
+      const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer, {
+        thresholdSeconds: fileMode
+          ? WHISPER_LONG_AUDIO_THRESHOLD_SECONDS
+          : WHISPER_DICTATION_THRESHOLD_SECONDS,
+      });
       if (chunks.length > 1) {
         debugLogger.info("Long audio detected; transcribing in chunks", {
           chunks: chunks.length,
@@ -1895,9 +1904,12 @@ class WhisperServerManager {
     });
   }
 
-  _splitWavIntoTranscriptionChunks(wavBuffer) {
+  _splitWavIntoTranscriptionChunks(
+    wavBuffer,
+    { thresholdSeconds = WHISPER_LONG_AUDIO_THRESHOLD_SECONDS } = {}
+  ) {
     const info = parseWavPcmInfo(wavBuffer);
-    if (!info || info.durationSeconds <= WHISPER_LONG_AUDIO_THRESHOLD_SECONDS) {
+    if (!info || info.durationSeconds <= thresholdSeconds) {
       return [{ buffer: wavBuffer, durationSeconds: info?.durationSeconds || 0 }];
     }
 
@@ -1919,6 +1931,9 @@ class WhisperServerManager {
       // A seam that did not move forward would stall the walk. Fall back to the
       // clock, which is what this did before the search existed.
       if (end <= start) end = target;
+      // Whisper can return no text for an isolated sub-second request. Keep
+      // that final fragment with the preceding speech instead of dropping it.
+      if (dataEnd - end < info.byteRate) end = dataEnd;
 
       const pcmData = wavBuffer.slice(start, end);
       if (pcmData.length === 0) break;

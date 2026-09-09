@@ -6,7 +6,7 @@
  *
  * These tests pin where the seam goes, not how loud anything is.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import WhisperServerManager from "../../../src/helpers/whisperServer";
 
 const SAMPLE_RATE = 16000;
@@ -48,6 +48,47 @@ function makeWav(seconds: number, quietWindows: Array<[number, number]> = []): B
 }
 
 describe("long-audio chunk seams", () => {
+  it.each([
+    ...[60, 90, 180, 240, 300.25, 301].map((seconds) => ({ seconds, fileMode: false })),
+    { seconds: 240, fileMode: true },
+  ])(
+    "submits all $seconds seconds with the appropriate request bounds (file mode $fileMode)",
+    async ({ seconds, fileMode }) => {
+      const manager: any = new WhisperServerManager();
+      const wav = makeWav(seconds);
+      manager.ready = true;
+      manager.process = {};
+      manager.canConvert = true;
+      manager._scheduleIdleCheck = vi.fn();
+      manager._convertToWav = vi.fn().mockResolvedValue(wav);
+      manager._postInference = vi.fn(async (_audio, options) => ({
+        text: `section-${options.chunkIndex}`,
+      }));
+
+      const result = await manager.transcribe(wav, { language: "en", fileMode });
+      const calls = manager._postInference.mock.calls;
+      expect(
+        Buffer.concat(calls.map(([audio]) => audio.subarray(44))).equals(wav.subarray(44))
+      ).toBe(true);
+      expect(result.text).toBe(calls.map((_, i) => `section-${i}`).join(" "));
+      if (fileMode || seconds <= 90) expect(calls).toHaveLength(1);
+      else {
+        expect(calls.every(([, options]) => options.durationSeconds <= 66)).toBe(true);
+        expect(calls.every(([, options]) => options.durationSeconds >= 1)).toBe(true);
+      }
+    }
+  );
+
+  it("keeps a sub-second ending attached to the preceding request", () => {
+    const manager: any = new WhisperServerManager();
+    const wav = makeWav(1260.25);
+    const chunks = manager._splitWavIntoTranscriptionChunks(wav);
+    expect(chunks.every((chunk) => chunk.durationSeconds >= 1)).toBe(true);
+    expect(
+      Buffer.concat(chunks.map((chunk) => chunk.buffer.subarray(44))).equals(wav.subarray(44))
+    ).toBe(true);
+  });
+
   it("cuts at a nearby pause instead of on the clock", () => {
     const manager: any = new WhisperServerManager();
     // Continuous speech except for one pause at 62s, two seconds past the
