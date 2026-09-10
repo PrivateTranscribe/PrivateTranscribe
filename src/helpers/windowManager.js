@@ -1232,7 +1232,8 @@ class WindowManager {
         // stealing focus on startup (the overlay is now skipTaskbar:true so
         // this is the only persistent taskbar presence).
         this.controlPanelWindow.minimize();
-        this.controlPanelWindow.showInactive();
+        // showInactive() restores a minimized window on Windows. minimize()
+        // already gives it a taskbar entry; leave it in that state.
       } else {
         this.controlPanelWindow.show();
         this.controlPanelWindow.focus();
