@@ -28,8 +28,12 @@ test.describe("duplicate login launch", () => {
       );
       await new Promise((resolve) => setImmediate(resolve));
     });
-    test.fail(true, "main.js treats automatic second launches as explicit open requests");
     expect(await visible()).toBe(false);
+    await electronApp.evaluate(async ({ app }) => {
+      app.emit("second-instance", {}, [process.execPath], process.cwd());
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+    expect(await visible()).toBe(true);
   });
 });
 

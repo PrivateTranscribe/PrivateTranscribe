@@ -916,7 +916,10 @@ async function startApp() {
 
 // App event handlers
 if (gotSingleInstanceLock) {
-  app.on("second-instance", async () => {
+  app.on("second-instance", async (_event, commandLine = []) => {
+    // A duplicate login launch is not a request to open the app. Keep the
+    // current tray/minimized/visible state; explicit manual launches still open it.
+    if (commandLine.includes("--launch-at-login")) return;
     await app.whenReady();
     if (!windowManager) {
       return;
@@ -929,7 +932,7 @@ if (gotSingleInstanceLock) {
       windowManager.controlPanelWindow.show();
       windowManager.controlPanelWindow.focus();
     } else {
-      windowManager.createControlPanelWindow();
+      await windowManager.openControlPanel();
     }
 
     if (isLiveWindow(windowManager.mainWindow)) {
