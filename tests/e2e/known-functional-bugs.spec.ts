@@ -186,10 +186,25 @@ test("preserves the history limit when deleting older entries fails", async ({
   await expect(input).toHaveValue("50");
   await input.fill("10");
   await input.press("Enter");
+  await capture(controlPanel, "history-confirmation");
+  await controlPanel.getByRole("button", { name: "Confirm & delete", exact: true }).click();
+  await expect(controlPanel.getByText("Failed to delete records. Please try again.")).toBeVisible();
+  await capture(controlPanel, "history-error");
+  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("50");
+  await controlPanel.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(input).toHaveValue("50");
+  await electronApp.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler("db-trim-transcriptions");
+    ipcMain.handle("db-trim-transcriptions", () => ({ success: true, trimmed: 0 }));
+    ipcMain.removeHandler("set-history-limit");
+    ipcMain.handle("set-history-limit", () => ({ success: true }));
+  });
+  await input.fill("10");
+  await input.press("Enter");
   await controlPanel.getByRole("button", { name: "Confirm & delete", exact: true }).click();
   await expect(
     controlPanel.getByRole("button", { name: "Confirm & delete", exact: true })
   ).toHaveCount(0);
-  test.fail(true, "HistoryLimitInput ignores success:false and commits the new setting");
-  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("50");
+  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("10");
+  await capture(controlPanel, "history-success");
 });

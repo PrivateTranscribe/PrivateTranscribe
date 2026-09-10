@@ -1063,20 +1063,24 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
     setIsConfirming(true);
     setTrimError(null);
     try {
-      await window.electronAPI.trimTranscriptions(pending);
+      const result = await window.electronAPI.trimTranscriptions(pending);
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to delete records. Please try again.");
+      }
       onChange(pending);
       setRaw(String(pending));
+      setPending(null);
     } catch (err) {
       console.error("trimTranscriptions failed:", err);
       setTrimError("Failed to delete records. Please try again.");
     } finally {
-      setPending(null);
       setIsConfirming(false);
     }
   };
 
   const handleCancel = () => {
     setPending(null);
+    setTrimError(null);
     setRaw(String(value));
   };
 
