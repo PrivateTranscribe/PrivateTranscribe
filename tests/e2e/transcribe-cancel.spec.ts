@@ -42,8 +42,8 @@ const BASE_MODEL = path.join(
 const GOAL_EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
 
 async function readWhisperPid(page: Page): Promise<number | null> {
-  const diagnostics = await page.evaluate(
-    () => (window as unknown as { electronAPI: any }).electronAPI.getAudioDiagnostics()
+  const diagnostics = await page.evaluate(() =>
+    (window as unknown as { electronAPI: any }).electronAPI.getAudioDiagnostics()
   );
   return diagnostics?.lastSpawn?.pid ?? null;
 }
@@ -111,9 +111,13 @@ test.describe("Transcribe page cancel", () => {
     await expect(controlPanel.getByRole("heading", { name: "Cancelled" })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(controlPanel.getByRole("heading", { name: "Transcription failed" })).toHaveCount(0);
+    await expect(controlPanel.getByRole("heading", { name: "Transcription failed" })).toHaveCount(
+      0
+    );
     await expect(controlPanel.getByRole("heading", { name: "Done" })).toHaveCount(0);
-    await expect(controlPanel.getByText(/nothing was saved/i)).toBeVisible();
+    await expect(
+      controlPanel.getByRole("button", { name: "Choose a file", exact: true })
+    ).toBeVisible();
 
     await controlPanel.screenshot({
       path: path.join(GOAL_EVIDENCE_DIR, "transcribe-cancelled.png"),

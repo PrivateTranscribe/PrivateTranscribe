@@ -495,6 +495,10 @@ async function closeApp(app: ElectronApplication): Promise<void> {
  */
 async function ensureOnboarded(app: ElectronApplication, complete: boolean): Promise<Page> {
   let page = await findWindow(app, (w) => isControlPanelUrl(w.url()), "control panel");
+  // Tests requesting the panel intend to use it. Open it through the real app
+  // action so Windows startup minimization does not block clicks or screenshots.
+  // Startup-state tests use electronApp directly and keep their original state.
+  await page.evaluate(() => window.electronAPI.openControlPanel());
   if (!complete) return page;
 
   const alreadyDone = await page.evaluate(
