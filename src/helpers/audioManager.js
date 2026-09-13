@@ -3793,6 +3793,7 @@ class AudioManager {
         delivered: result?.delivered !== false,
         evidence: result?.evidence ?? null,
         dispatched: result?.dispatched === true,
+        clipboardPreserved: result?.clipboardPreserved === true,
       };
     } catch (error) {
       this.onError?.({

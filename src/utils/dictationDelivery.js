@@ -27,6 +27,7 @@ export async function deliverDictation({
   // means the target was unreadable and neither success nor failure is known.
   let pasteEvidence = null;
   let pasteDispatched = false;
+  let copied = false;
   if (shouldPaste) {
     try {
       const outcome = await paste(text);
@@ -34,6 +35,7 @@ export async function deliverDictation({
         pasteConfirmed = outcome.delivered === true;
         pasteEvidence = outcome.evidence ?? null;
         pasteDispatched = outcome.dispatched === true;
+        copied = outcome.clipboardPreserved === true;
       } else {
         pasteConfirmed = outcome === true;
       }
@@ -42,9 +44,10 @@ export async function deliverDictation({
     }
   }
 
-  let copied = false;
   const needsClipboardFallback = shouldPaste && pasteConfirmed !== true;
-  if (shouldCopy || needsClipboardFallback) {
+  // A native paste may have already left the transcript on the clipboard.
+  // Rewriting it here races the target's asynchronous clipboard read.
+  if (!copied && (shouldCopy || needsClipboardFallback)) {
     try {
       await copy(text);
       copied = true;

@@ -238,6 +238,12 @@ class ClipboardManager {
       } else if (platform === "win32") {
         method = "windows-fast-paste";
         deliveryResult = await this.pasteWindows(originalClipboard, { sendEnter });
+        // The Windows fallback deliberately leaves the text written above in
+        // place. Tell the renderer so it does not reopen/rewrite the clipboard
+        // while the target may still be consuming the dispatched Ctrl+V.
+        if (deliveryResult?.fallback === "clipboard") {
+          deliveryResult.clipboardPreserved = true;
+        }
       } else {
         method = "linux-tools";
         await this.pasteLinux(originalClipboard);

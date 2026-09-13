@@ -2,6 +2,37 @@ import { describe, expect, test, vi } from "vitest";
 import { deliverDictation } from "../../../src/utils/dictationDelivery";
 
 describe("deliverDictation", () => {
+  test.each([false, true])(
+    "leaves a preserved clipboard untouched while a target reads it (copy preference %s)",
+    async (shouldCopy) => {
+      const copy = vi.fn(async () => {
+        throw new Error("target is reading the clipboard");
+      });
+      const result = await deliverDictation({
+        text: "recoverable transcript",
+        shouldPersist: false,
+        shouldPaste: true,
+        shouldCopy,
+        persist: vi.fn(),
+        paste: vi.fn(async () => ({
+          delivered: false,
+          dispatched: true,
+          evidence: "none",
+          clipboardPreserved: true,
+        })),
+        copy,
+      });
+      expect(copy).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        pasteConfirmed: false,
+        pasteDispatched: true,
+        copied: true,
+        recoverable: true,
+        outputAction: "copy-fallback",
+      });
+    }
+  );
+
   test("persists completed text before paste and copies it when paste is not confirmed", async () => {
     const calls: string[] = [];
     const persist = vi.fn(async () => {
