@@ -143,6 +143,8 @@ describe("parseWindowsFastPasteOutput", () => {
       isTerminal: true,
       windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
       processName: "WindowsTerminal",
+      targetChanged: false,
+      heldModifierCount: null,
     });
   });
 

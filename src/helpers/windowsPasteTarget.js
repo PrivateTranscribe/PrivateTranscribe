@@ -65,6 +65,10 @@ function parseWindowsFastPasteOutput(stdout) {
       // an older helper never writes the field and never pressed Enter.
       enterSent: parsed.enterSent === true,
       isTerminal: parsed.isTerminal === true,
+      targetChanged: parsed.targetChanged === true,
+      heldModifierCount: Number.isInteger(parsed.heldModifierCount)
+        ? parsed.heldModifierCount
+        : null,
       windowClass: typeof parsed.windowClass === "string" ? parsed.windowClass.slice(0, 128) : "",
       processName: typeof parsed.processName === "string" ? parsed.processName.slice(0, 128) : "",
     };
