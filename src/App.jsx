@@ -670,13 +670,6 @@ export default function App() {
       hotkey: localStorage.getItem("readAloudHotkey") || DEFAULT_READ_ALOUD_HOTKEY,
     });
 
-    // Agent Mode defaults to on, unlike Read Aloud: it needs no model, and
-    // Right Ctrl held on its own does nothing else.
-    void window.electronAPI?.agentModeSyncHotkey?.({
-      enabled: localStorage.getItem("agentModeEnabled") !== "false",
-      hotkey: localStorage.getItem("agentModeHotkey") || "RightControl",
-    });
-
     const teardown = () => {
       stopPolling();
       clearNotice();

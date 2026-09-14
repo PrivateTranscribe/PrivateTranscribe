@@ -46,21 +46,38 @@ test.describe("login launch, tray mode", () => {
     const panel = panelOf(await readWindows(electronApp));
     expect(panel).toBeDefined();
     expect(panel?.visible).toBe(false);
+
+    await overlayWindow.evaluate(() => window.electronAPI.openControlPanel());
+    await expect.poll(async () => panelOf(await readWindows(electronApp))?.visible).toBe(true);
   });
 });
 
 test.describe("login launch, minimized mode", () => {
   test.use({ appArgs: ["--launch-at-login", "--startup-mode=minimized"] });
 
-  test("shows the overlay alongside the control panel", async ({ electronApp, overlayWindow }) => {
+  test("shows the overlay and keeps the control panel minimized", async ({
+    electronApp,
+    overlayWindow,
+  }) => {
     await expect(overlayWindow.locator("#root")).not.toBeEmpty();
     await expect
       .poll(async () => overlayOf(await readWindows(electronApp))?.visible, { timeout: 15_000 })
       .toBe(true);
 
-    // The fixture forces every window to skip the taskbar and re-shows it
-    // inactive, so "minimized to the taskbar" is not observable here. The
-    // panel existing is all this mode can prove under the harness.
-    expect(panelOf(await readWindows(electronApp))).toBeDefined();
+    await expect.poll(async () => panelOf(await readWindows(electronApp))?.minimized).toBe(true);
+
+    await overlayWindow.evaluate(() => window.electronAPI.openControlPanel());
+    await expect.poll(async () => panelOf(await readWindows(electronApp))?.minimized).toBe(false);
+    expect(panelOf(await readWindows(electronApp))?.visible).toBe(true);
+  });
+});
+
+test.describe("login launch, window mode", () => {
+  test.use({ appArgs: ["--launch-at-login", "--startup-mode=window"] });
+
+  test("opens the control panel", async ({ electronApp, overlayWindow }) => {
+    await expect(overlayWindow.locator("#root")).not.toBeEmpty();
+    await expect.poll(async () => panelOf(await readWindows(electronApp))?.visible).toBe(true);
+    expect(panelOf(await readWindows(electronApp))?.minimized).toBe(false);
   });
 });

@@ -76,10 +76,12 @@ describe.runIf(helperPath)("windows-fast-paste.exe", () => {
       "dispatched",
       "enterSent",
       "evidence",
+      "heldModifierCount",
       "isTerminal",
       "pasted",
       "processName",
       "sendEnter",
+      "targetChanged",
       "windowClass",
     ]);
   });

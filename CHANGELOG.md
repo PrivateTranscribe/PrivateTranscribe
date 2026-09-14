@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.1 - 2026-09-14
+
+### Fixed
+
+- Windows paste preserves text already left on the clipboard when insertion cannot be confirmed, avoiding a second clipboard write while the target app may still be reading it.
+- Model downloads keep their progress and cancellation controls when you leave a page and return. Download, deletion, and cancellation errors are visible.
+- Minimized startup stays minimized, and duplicate automatic login launches no longer open the control panel.
+- Failed History cleanup keeps the error and confirmation visible and preserves the previous retention setting.
+
+### Changed
+
+- Agent Mode uses your normal dictation shortcut when enabled in settings. It starts disabled so existing settings cannot unexpectedly turn ordinary dictation into a submitted coding prompt.
+- Windows paste diagnostics record bounded local timing and outcome metadata without dictated text.
+
 ## 0.19.0 - 2026-09-09
 
 ### Fixed

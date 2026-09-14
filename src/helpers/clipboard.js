@@ -2,8 +2,11 @@ const { clipboard, app } = require("electron");
 const { spawn, spawnSync } = require("child_process");
 const { killProcess } = require("../utils/process");
 const debugLogger = require("./debugLogger");
+const { WindowsPasteDiagnostics, STAGES } = require("./windowsPasteDiagnostics");
+const path = require("path");
 const {
   assertWindowsFastPasteSucceeded,
+  parseWindowsFastPasteOutput,
   PASTE_EVIDENCE_ABSENT,
   getWindowsPasteShortcut,
   resolveWindowsFastPasteExecutable,
@@ -57,6 +60,9 @@ class ClipboardManager {
     this.commandAvailabilityCache = new Map();
     this.fastPastePath = null;
     this.fastPasteChecked = false;
+    this.pasteDiagnostics = new WindowsPasteDiagnostics(() =>
+      path.join(app.getPath("userData"), "logs")
+    );
   }
 
   // Get path to the native fast paste helper (Windows only)
@@ -232,6 +238,12 @@ class ClipboardManager {
       } else if (platform === "win32") {
         method = "windows-fast-paste";
         deliveryResult = await this.pasteWindows(originalClipboard, { sendEnter });
+        // The Windows fallback deliberately leaves the text written above in
+        // place. Tell the renderer so it does not reopen/rewrite the clipboard
+        // while the target may still be consuming the dispatched Ctrl+V.
+        if (deliveryResult?.fallback === "clipboard") {
+          deliveryResult.clipboardPreserved = true;
+        }
       } else {
         method = "linux-tools";
         await this.pasteLinux(originalClipboard);
@@ -324,6 +336,7 @@ class ClipboardManager {
     const fastPastePath = this.getFastPastePath();
 
     if (!fastPastePath) {
+      this.pasteDiagnostics.record({ outcome: "missing-helper", dispatched: false });
       this.safeLog("Windows paste helper not found; keeping text on the clipboard");
       return {
         delivered: false,
@@ -371,6 +384,24 @@ class ClipboardManager {
         let stdout = "";
         let stderr = "";
         const startTime = Date.now();
+        let stage = "unknown";
+        let recorded = false;
+        const record = (outcome, details = {}) => {
+          if (recorded) return;
+          recorded = true;
+          this.pasteDiagnostics.record({
+            ...details,
+            outcome,
+            stage,
+            elapsedMs: Date.now() - startTime,
+            dispatched:
+              details.dispatched === true || stage === "dispatched" || stage === "observed"
+                ? true
+                : details.dispatched === false
+                  ? false
+                  : null,
+          });
+        };
 
         this.safeLog(`⚡ Fast paste starting (delay: ${pasteDelay}ms)`, { helperArgs });
 
@@ -378,6 +409,7 @@ class ClipboardManager {
         try {
           pasteProcess = this._spawnFastPaste(fastPastePath, helperArgs);
         } catch (error) {
+          record("start-error");
           reject(new Error(`Fast paste helper could not start: ${error.message}`));
           return;
         }
@@ -386,8 +418,16 @@ class ClipboardManager {
           if (stdout.length < 4096) stdout += data.toString();
         });
 
+        let stageBuffer = "";
         pasteProcess.stderr?.on("data", (data) => {
           if (stderr.length < 4096) stderr += data.toString();
+          stageBuffer = (stageBuffer + data.toString()).slice(-4096);
+          const lines = stageBuffer.split(/\r?\n/);
+          stageBuffer = lines.pop();
+          for (const line of lines) {
+            const candidate = line.replace(/^PT_PASTE_STAGE /, "");
+            if (line.startsWith("PT_PASTE_STAGE ") && STAGES.has(candidate)) stage = candidate;
+          }
         });
 
         pasteProcess.on("close", (code) => {
@@ -397,6 +437,7 @@ class ClipboardManager {
           const elapsed = Date.now() - startTime;
 
           if (code !== 0) {
+            record("exit-error", { exitCode: code });
             reject(
               new Error(
                 `Fast paste helper exited with code ${code}${stderr ? `: ${stderr.trim()}` : ""}`
@@ -409,9 +450,11 @@ class ClipboardManager {
           try {
             result = assertWindowsFastPasteSucceeded(stdout);
           } catch (error) {
+            record("unconfirmed", { ...parseWindowsFastPasteOutput(stdout), exitCode: code });
             reject(error);
             return;
           }
+          record("confirmed", { ...result, evidence: "inserted", exitCode: code });
           const restoreDelay = result.isTerminal
             ? RESTORE_DELAYS.win32_terminal
             : RESTORE_DELAYS.win32_fastpaste;
@@ -437,11 +480,13 @@ class ClipboardManager {
         pasteProcess.on("error", (error) => {
           if (hasTimedOut) return;
           clearTimeout(timeoutId);
+          record("start-error");
           reject(new Error(`Fast paste helper failed: ${error.message}`));
         });
 
         const timeoutId = setTimeout(() => {
           hasTimedOut = true;
+          record("timeout");
           killProcess(pasteProcess, "SIGKILL");
           pasteProcess.removeAllListeners();
           reject(new Error("Fast paste helper timed out"));

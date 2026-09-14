@@ -56,7 +56,7 @@ import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 
 import { HotkeyInput } from "./ui/HotkeyInput";
-import { AGENT_MODE_HOTKEY_OPTIONS, getDefaultHotkey } from "../utils/hotkeys";
+import { getDefaultHotkey } from "../utils/hotkeys";
 import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import { ActivationModeSelector } from "./ui/ActivationModeSelector";
 import { Toggle } from "./ui/toggle";
@@ -1063,20 +1063,24 @@ function HistoryLimitInput({ value, onChange }: { value: number; onChange: (v: n
     setIsConfirming(true);
     setTrimError(null);
     try {
-      await window.electronAPI.trimTranscriptions(pending);
+      const result = await window.electronAPI.trimTranscriptions(pending);
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to delete records. Please try again.");
+      }
       onChange(pending);
       setRaw(String(pending));
+      setPending(null);
     } catch (err) {
       console.error("trimTranscriptions failed:", err);
       setTrimError("Failed to delete records. Please try again.");
     } finally {
-      setPending(null);
       setIsConfirming(false);
     }
   };
 
   const handleCancel = () => {
     setPending(null);
+    setTrimError(null);
     setRaw(String(value));
   };
 
@@ -1251,8 +1255,6 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     setReadAloudHotkey,
     agentModeEnabled,
     setAgentModeEnabled,
-    agentModeHotkey,
-    setAgentModeHotkey,
     agentModeRewrite,
     setAgentModeRewrite,
     apiKeySyncError,
@@ -1428,8 +1430,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           readAloudHotkey,
           readAloudPlaybackHotkeys,
           // Agent Mode
-          agentModeEnabled,
-          agentModeHotkey,
+          agentModeDictationEnabled: agentModeEnabled,
           agentModeRewrite,
           // Devices
           preferBuiltInMic,
@@ -1510,7 +1511,6 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       readAloudHotkey,
       readAloudPlaybackHotkeys,
       agentModeEnabled,
-      agentModeHotkey,
       agentModeRewrite,
       preferBuiltInMic,
       selectedMicDeviceId,
@@ -1726,18 +1726,9 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
         }
       }
 
-      if (typeof s.agentModeEnabled === "boolean") setAgentModeEnabled(s.agentModeEnabled);
+      if (typeof s.agentModeDictationEnabled === "boolean")
+        setAgentModeEnabled(s.agentModeDictationEnabled);
       if (typeof s.agentModeRewrite === "boolean") setAgentModeRewrite(s.agentModeRewrite);
-      if (s.agentModeHotkey !== undefined) {
-        if (
-          isSafeImportedIdentifier(s.agentModeHotkey) &&
-          AGENT_MODE_HOTKEY_OPTIONS.some((option) => option.value === s.agentModeHotkey)
-        ) {
-          setAgentModeHotkey(s.agentModeHotkey);
-        } else {
-          skipField("agentModeHotkey", "is not one of the coding shortcut keys");
-        }
-      }
 
       if (typeof s.preferBuiltInMic === "boolean") setPreferBuiltInMic(s.preferBuiltInMic);
       if (s.selectedMicDeviceId !== undefined) {

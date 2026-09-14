@@ -121,8 +121,8 @@ export const useAudioRecording = (toast, options = {}) => {
     let hybridStartedFromIdle = false;
     let hybridWasRecordingOnKeyDown = false;
     /**
-     * Whether the recording in flight, or the processing after it, started from
-     * the Agent Mode key. A stale true would push the NEXT plain dictation
+     * Whether the recording in flight, or the processing after it, started with
+     * Agent mode enabled in settings. A stale true would push the NEXT plain dictation
      * through the rules pass and press Enter on it, so every path that ends a
      * session without reaching onTranscriptionComplete clears it.
      */
@@ -925,44 +925,6 @@ export const useAudioRecording = (toast, options = {}) => {
       endRecordingFlow({ playSound: true });
     };
 
-    const handleAgentStart = () => {
-      const currentState = manager.getState();
-      if (
-        currentState.isRecording ||
-        currentState.isProcessing ||
-        currentState.isStartingRecording
-      ) {
-        return;
-      }
-
-      // The Starter word cap still applies: these are dictated words like any
-      // other. The Agent Mode cap is a second, separate allowance.
-      if (!starterCanBegin()) {
-        return;
-      }
-      if (!agentModeCanBegin()) {
-        return;
-      }
-
-      setAgentSession(true);
-      void Promise.resolve(beginRecordingFlow({ playSound: true }))
-        .then((started) => {
-          if (!started) {
-            setAgentSession(false);
-          }
-        })
-        .catch(() => {
-          setAgentSession(false);
-        });
-    };
-
-    const handleAgentStop = () => {
-      const stopped = endRecordingFlow({ playSound: true });
-      if (!stopped && !manager.getState().isProcessing) {
-        setAgentSession(false);
-      }
-    };
-
     const handleHybridKeyDown = () => {
       if (hybridKeyDownAt > 0) {
         return;
@@ -1017,16 +979,6 @@ export const useAudioRecording = (toast, options = {}) => {
       onToggleRef.current?.();
     });
 
-    const disposeAgentStart = window.electronAPI.onStartAgentDictation?.(() => {
-      handleAgentStart();
-      onToggleRef.current?.();
-    });
-
-    const disposeAgentStop = window.electronAPI.onStopAgentDictation?.(() => {
-      handleAgentStop();
-      onToggleRef.current?.();
-    });
-
     const disposeHybridKeyDown = window.electronAPI.onHybridDictationKeyDown?.(() => {
       handleHybridKeyDown();
       onToggleRef.current?.();
@@ -1061,6 +1013,11 @@ export const useAudioRecording = (toast, options = {}) => {
         return false;
       }
 
+      // Read at session start so settings changes apply to the next recording.
+      const useAgentMode = localStorage.getItem("agentModeDictationEnabled") === "true";
+      if (useAgentMode && !agentModeCanBegin()) return false;
+      setAgentSession(useAgentMode);
+
       if (playSound) {
         playFeedback("playStartSound");
       }
@@ -1070,6 +1027,7 @@ export const useAudioRecording = (toast, options = {}) => {
       try {
         const started = await manager.startRecording();
         if (!started) {
+          setAgentSession(false);
           restoreAudio();
           resumeMedia();
           unmuteVoiceCall();
@@ -1078,6 +1036,7 @@ export const useAudioRecording = (toast, options = {}) => {
         }
         return started;
       } catch (error) {
+        setAgentSession(false);
         restoreAudio();
         resumeMedia();
         unmuteVoiceCall();
@@ -1116,8 +1075,6 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
-      disposeAgentStart?.();
-      disposeAgentStop?.();
       disposeHybridKeyDown?.();
       disposeHybridKeyUp?.();
       disposeNoAudio?.();

@@ -4,7 +4,7 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
 
 /**
- * Agent Mode end to end: the hold key starts an Agent Mode recording, the
+ * Agent Mode end to end: the normal dictation key starts an Agent Mode recording, the
  * ramble is decoded by a real whisper model, the rewrite goes out to the
  * Claude Code CLI and comes back, and the paste carries the send-Enter request.
  *
@@ -42,6 +42,7 @@ async function captureEvidence(page: Page, fileName: string) {
 
 async function configureDictation(overlay: Page): Promise<void> {
   await overlay.evaluate(() => {
+    localStorage.setItem("agentModeDictationEnabled", "false");
     localStorage.setItem("useLocalWhisper", "true");
     localStorage.setItem("whisperModel", "base");
     localStorage.setItem("localTranscriptionProvider", "whisper");
@@ -111,11 +112,12 @@ test.describe("Agent Mode", () => {
     },
   });
 
-  test("the hold key pastes a cleaned prompt and asks for Enter", async ({
+  test("the dictation key pastes a cleaned prompt when agent mode is enabled", async ({
     electronApp,
     overlayWindow,
   }) => {
     await configureDictation(overlayWindow);
+    await overlayWindow.evaluate(() => localStorage.setItem("agentModeDictationEnabled", "true"));
     await recordPastes(electronApp);
 
     // The main process reports the key as not live under the fixture's flag,
@@ -125,13 +127,13 @@ test.describe("Agent Mode", () => {
     );
     expect(status).toMatchObject({ hotkey: "RightControl", registered: false });
 
-    await sendToOverlay(electronApp, "start-agent-dictation");
+    await sendToOverlay(electronApp, "start-dictation");
     const badge = overlayWindow.getByText("Coding prompt", { exact: true });
     await expect(badge).toBeVisible({ timeout: 30_000 });
     await captureEvidence(overlayWindow, "agent-mode-overlay-recording.png");
 
     await overlayWindow.waitForTimeout(RECORD_MS);
-    await sendToOverlay(electronApp, "stop-agent-dictation");
+    await sendToOverlay(electronApp, "stop-dictation");
 
     await expect
       .poll(() => readPastes(electronApp).then((p) => p.length), { timeout: 90_000 })
@@ -174,6 +176,7 @@ test.describe("Agent Mode", () => {
     await recordPastes(electronApp);
     await overlayWindow.evaluate(() => {
       localStorage.setItem("PRO_ENFORCEMENT", "true");
+      localStorage.setItem("agentModeDictationEnabled", "true");
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
         now.getDate()
@@ -187,7 +190,7 @@ test.describe("Agent Mode", () => {
     await expect(overlayWindow.getByRole("button", { name: "Dictation overlay" })).toBeVisible();
 
     await controlPanel.getByRole("button", { name: "History" }).click();
-    await sendToOverlay(electronApp, "start-agent-dictation");
+    await sendToOverlay(electronApp, "start-dictation");
 
     await expect(overlayWindow.getByText("Coding prompt shortcuts used up for today")).toBeVisible({
       timeout: 15_000,

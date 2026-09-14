@@ -113,6 +113,7 @@ describe("AudioManager recorder lifecycle", () => {
       delivered: false,
       evidence: null,
       dispatched: false,
+      clipboardPreserved: false,
     });
     expect(onError).not.toHaveBeenCalled();
   });
@@ -136,6 +137,7 @@ describe("AudioManager recorder lifecycle", () => {
       delivered: false,
       evidence: "none",
       dispatched: true,
+      clipboardPreserved: false,
     });
   });
 

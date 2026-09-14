@@ -17,8 +17,8 @@ describe("Agent Mode settings wiring", () => {
   it("renders the four Agent Mode rows on the settings page", () => {
     const page = read("src", "components", "CodingPromptSettings.tsx");
 
-    expect(page).toContain('label="Enable coding prompt shortcut"');
-    expect(page).toContain('label="Coding prompt hotkey"');
+    expect(page).toContain('label="Enable agent mode"');
+    expect(page).not.toContain('label="Coding prompt hotkey"');
     expect(page).toContain('label="Enhance coding prompts"');
     expect(page).toContain('label="Prompts today"');
   });
@@ -26,8 +26,8 @@ describe("Agent Mode settings wiring", () => {
   it("re-syncs the main process and reads the live daily count", () => {
     const page = read("src", "components", "CodingPromptSettings.tsx");
 
-    expect(page).toContain("agentModeSyncHotkey");
-    expect(page).toContain("agentModeHotkeyStatus");
+    expect(page).not.toContain("agentModeSyncHotkey");
+    expect(page).not.toContain("agentModeHotkeyStatus");
     expect(page).toContain("readAgentModeUsage");
   });
 
@@ -47,8 +47,8 @@ describe("Agent Mode settings wiring", () => {
   it("stores the settings with the defaults the overlay reads raw", () => {
     const hook = read("src", "hooks", "useSettings.ts");
 
-    expect(hook).toMatch(/useLocalStorage\(\s*"agentModeEnabled",\s*true,/);
-    expect(hook).toMatch(/useLocalStorage\(\s*"agentModeHotkey",\s*DEFAULT_AGENT_MODE_HOTKEY,/);
+    expect(hook).toMatch(/useLocalStorage\(\s*"agentModeDictationEnabled",\s*false,/);
+    expect(hook).not.toContain('"agentModeHotkey"');
     expect(hook).toMatch(/useLocalStorage\(\s*"agentModeRewrite",\s*true,/);
   });
 
@@ -76,11 +76,11 @@ describe("Agent Mode settings wiring", () => {
       page.indexOf("// Devices", page.indexOf("// Agent Mode"))
     );
 
-    expect(exportBlock).toContain("agentModeEnabled,");
-    expect(exportBlock).toContain("agentModeHotkey,");
+    expect(exportBlock).toContain("agentModeDictationEnabled: agentModeEnabled,");
+    expect(exportBlock).not.toContain("agentModeHotkey,");
     expect(exportBlock).toContain("agentModeRewrite,");
-    expect(page).toContain("setAgentModeEnabled(s.agentModeEnabled)");
-    expect(page).toContain("setAgentModeHotkey(s.agentModeHotkey)");
+    expect(page).toContain("setAgentModeEnabled(s.agentModeDictationEnabled)");
+    expect(page).not.toContain("setAgentModeHotkey(s.agentModeHotkey)");
     expect(page).toContain("setAgentModeRewrite(s.agentModeRewrite)");
   });
 });

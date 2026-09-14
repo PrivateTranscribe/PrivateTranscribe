@@ -34,6 +34,19 @@ using System.Windows.Forms;
 
 internal static class WindowsFastPaste
 {
+    private static bool targetChanged;
+    private static int heldModifierCount;
+
+    private static void WriteStage(string stage)
+    {
+        try
+        {
+            Console.Error.WriteLine("PT_PASTE_STAGE " + stage);
+            Console.Error.Flush();
+        }
+        catch { /* Diagnostic output is optional, including a closed pipe. */ }
+    }
+
     private sealed class AccessibleTextSnapshot
     {
         public string Text;
@@ -107,6 +120,7 @@ internal static class WindowsFastPaste
     private static int Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
+        WriteStage("started");
         bool detectOnly = Array.IndexOf(args, "--detect-only") >= 0;
         bool sendEnter = Array.IndexOf(args, "--send-enter") >= 0;
 
@@ -127,15 +141,20 @@ internal static class WindowsFastPaste
             return 0;
         }
 
+        WriteStage("clipboard");
         string clipboardText = ReadClipboardWithDeadline(ReadClipboardText);
         // A cold or hung accessibility provider must not prevent Ctrl+V. UIA
         // calls run off the input thread and only get a short observation budget.
+        WriteStage("accessibility");
         AccessibleTextSnapshot textBefore = ObserveWithDeadline(ReadFocusedAccessibleText, 100);
 
         // Give the foreground window a moment to settle after the hotkey release.
         Thread.Sleep(10);
 
+        targetChanged = GetForegroundWindow() != window;
+        WriteStage("input");
         ushort[] heldModifiers = ReleaseHeldModifiers();
+        heldModifierCount = heldModifiers.Length;
         bool sent = SendPasteChord(isTerminal);
         RestoreHeldModifiers(heldModifiers);
 
@@ -145,9 +164,12 @@ internal static class WindowsFastPaste
             return 1;
         }
 
+        WriteStage("dispatched");
+
         string evidence = ObserveWithDeadline(
             delegate { return ConfirmAccessibleInsertion(textBefore, clipboardText); }, 500)
             ?? EvidenceNone;
+        WriteStage("observed");
 
         bool enterSent = false;
         if (sendEnter && evidence != EvidenceAbsent)
@@ -206,6 +228,8 @@ internal static class WindowsFastPaste
             ",\"sendEnter\":" + (sendEnter ? "true" : "false") +
             ",\"enterSent\":" + (enterSent ? "true" : "false") +
             ",\"isTerminal\":" + (isTerminal ? "true" : "false") +
+            ",\"targetChanged\":" + (targetChanged ? "true" : "false") +
+            ",\"heldModifierCount\":" + heldModifierCount +
             ",\"windowClass\":\"" + EscapeJson(windowClass) +
             "\",\"processName\":\"" + EscapeJson(processName) +
             "\",\"chord\":\"" + (isTerminal ? "ctrl+shift+v" : "ctrl+v") + "\"}");
