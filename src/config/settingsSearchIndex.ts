@@ -242,40 +242,34 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["whisper server", "memory", "ram", "unload", "idle"],
   },
 
-  // ── AI Enhancement › Coding prompt shortcut ──────────────────────────────
+  // ── AI Enhancement › Agent mode ──────────────────────────────
   {
-    label: "Enable coding prompt shortcut",
-    group: "Coding prompt shortcut",
+    label: "Enable agent mode",
+    group: "Agent mode",
     page: "ai-enhancement",
-    keywords: ["agent mode", "enable", "hold"],
+    keywords: ["agent mode", "enable", "disable", "toggle", "dictation"],
   },
   {
-    label: "Shortcut AI connection",
-    group: "Coding prompt shortcut",
+    label: "Agent mode AI connection",
+    group: "Agent mode",
     page: "ai-enhancement",
     keywords: ["claude code", "shared", "provider", "subscription"],
   },
   {
-    label: "Coding prompt shortcut",
-    group: "Coding prompt shortcut",
+    label: "Agent mode",
+    group: "Agent mode",
     page: "ai-enhancement",
     keywords: ["claude code", "cursor", "codex", "prompt", "agent", "coding"],
   },
   {
-    label: "Coding prompt hotkey",
-    group: "Coding prompt shortcut",
-    page: "ai-enhancement",
-    keywords: ["agent mode", "right ctrl", "hotkey", "shortcut", "hold", "push to talk"],
-  },
-  {
     label: "Enhance coding prompts",
-    group: "Coding prompt shortcut",
+    group: "Agent mode",
     page: "ai-enhancement",
     keywords: ["claude code", "rewrite", "cli", "login", "prompt", "haiku"],
   },
   {
     label: "Prompts today",
-    group: "Coding prompt shortcut",
+    group: "Agent mode",
     page: "ai-enhancement",
     keywords: ["cap", "limit", "20", "pro", "daily", "usage"],
   },

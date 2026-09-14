@@ -7,7 +7,7 @@ import {
   normalizeSpokenLanguages,
   resolveSpokenLanguages,
 } from "../utils/spokenLanguages";
-import { DEFAULT_AGENT_MODE_HOTKEY, DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
+import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
 import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../models/kokoroVoices";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
@@ -925,22 +925,11 @@ export function useSettings() {
       deserialize: String,
     }
   );
-  // Agent Mode. On by default: it needs no model to download, and Right Ctrl
-  // held on its own does nothing in any app we checked, so nothing is taken away.
+  // A new opt-in: the legacy separate-key default must not change normal dictation.
   const [agentModeEnabled, setAgentModeEnabled] = useLocalStorage(
-    "agentModeEnabled",
-    true,
+    "agentModeDictationEnabled",
+    false,
     boolSerializer
-  );
-  // Stored raw for the same reason readAloudHotkey is: the main process reads
-  // the key name out of localStorage, not a JSON-quoted copy of it.
-  const [agentModeHotkey, setAgentModeHotkey] = useLocalStorage(
-    "agentModeHotkey",
-    DEFAULT_AGENT_MODE_HOTKEY,
-    {
-      serialize: String,
-      deserialize: String,
-    }
   );
   // On by default: whoever buys Agent Mode already has Claude Code installed
   // and logged in. The settings page disables the toggle itself when the CLI
@@ -1237,8 +1226,6 @@ export function useSettings() {
     setReadAloudVoice,
     agentModeEnabled,
     setAgentModeEnabled,
-    agentModeHotkey,
-    setAgentModeHotkey,
     agentModeRewrite,
     setAgentModeRewrite,
     errorNotifications,

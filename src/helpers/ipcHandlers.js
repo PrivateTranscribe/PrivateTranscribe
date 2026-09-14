@@ -1560,14 +1560,8 @@ class IPCHandlers {
       return this.readAloudHotkey.apply({ enabled, hotkey });
     });
 
-    /**
-     * Bring the Agent Mode hold key in line with the renderer's saved settings.
-     * No model check, unlike Read Aloud: the rules pass runs on the transcript
-     * and needs nothing downloaded.
-     */
-    ipcMain.handle("agent-mode-sync-hotkey", (_event, { enabled, hotkey } = {}) =>
-      this.agentModeHotkey.apply({ enabled, hotkey })
-    );
+    // Compatibility with older renderers: never register a second dictation key.
+    ipcMain.handle("agent-mode-sync-hotkey", () => this.agentModeHotkey.apply({ enabled: false }));
 
     ipcMain.handle("agent-mode-hotkey-status", () => this.agentModeHotkey.getStatus());
 

@@ -22,7 +22,7 @@ const PRO_FEATURES_INCLUDED = [
   },
   {
     name: "Coding prompt shortcuts",
-    desc: "Hold Right Ctrl, describe the bug, release. A prompt lands in Claude Code, Cursor or Codex. Unlimited on Pro.",
+    desc: "Enable Agent mode and use your dictation shortcut. A prompt lands in Claude Code, Cursor or Codex. Unlimited on Pro.",
   },
 ];
 
