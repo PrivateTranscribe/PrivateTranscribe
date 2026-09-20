@@ -343,6 +343,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["tts", "kokoro", "voice", "speaker", "accent"],
   },
   {
+    label: "Reading speed",
+    group: "Read Aloud",
+    page: "read-aloud",
+    keywords: ["speed", "faster", "slower", "rate", "tts"],
+  },
+  {
     label: "Quiet other apps while reading",
     group: "Read Aloud",
     page: "read-aloud",

@@ -8,6 +8,8 @@ import { DownloadProgressBar } from "../ui/DownloadProgressBar";
 import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { VoicePicker } from "../ui/VoicePicker";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { READ_ALOUD_SPEEDS } from "../../utils/readAloudSpeed";
 import { useModelDownload } from "../../hooks/useModelDownload";
 import { useSettings } from "../../hooks/useSettings";
 import { isFeatureUnlocked } from "../../hooks/useProStatus";
@@ -60,6 +62,8 @@ export default function ReadAloudPage() {
     setReadAloudPlaybackHotkeys,
     readAloudVoice,
     setReadAloudVoice,
+    readAloudSpeed,
+    setReadAloudSpeed,
     // Only read, to refuse a key one of these already owns.
     dictationKey,
     voiceCallMuteKey,
@@ -254,6 +258,26 @@ export default function ReadAloudPage() {
                 />
               </PanelRow>
             )}
+            <PanelRow>
+              <SettingsRow label="Reading speed" description="Applies from your next reading.">
+                <Select
+                  value={String(readAloudSpeed)}
+                  onValueChange={(value) => setReadAloudSpeed(Number(value))}
+                  disabled={!installed}
+                >
+                  <SelectTrigger aria-label="Reading speed" className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {READ_ALOUD_SPEEDS.map((speed) => (
+                      <SelectItem key={speed} value={String(speed)}>
+                        {speed === 1 ? "1× (Normal)" : `${speed}×`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+            </PanelRow>
           </Panel>
 
           <Panel>

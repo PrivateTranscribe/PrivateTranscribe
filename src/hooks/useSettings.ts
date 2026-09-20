@@ -1,6 +1,7 @@
 import defaultReadAloudPlaybackHotkeys from "../config/readAloudPlaybackHotkeys.json";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
+import { READ_ALOUD_SPEED_KEY, normalizeReadAloudSpeed } from "../utils/readAloudSpeed";
 import {
   SPOKEN_LANGUAGES_KEY,
   derivePreferredLanguage,
@@ -914,6 +915,10 @@ export function useSettings() {
     true,
     boolSerializer
   );
+  const [readAloudSpeed, setReadAloudSpeed] = useLocalStorage(READ_ALOUD_SPEED_KEY, 1, {
+    serialize: String,
+    deserialize: normalizeReadAloudSpeed,
+  });
   // Stored raw for the same reason readAloudHotkey is: the overlay reads this
   // key straight out of localStorage right before it speaks, so a JSON-quoted
   // copy would reach Kokoro as `"af_heart"` and be rejected as an unknown voice.
@@ -1222,6 +1227,8 @@ export function useSettings() {
     readAloudPlaybackHotkeys,
     setReadAloudPlaybackHotkeys,
     setReadAloudHotkey,
+    readAloudSpeed,
+    setReadAloudSpeed,
     readAloudVoice,
     setReadAloudVoice,
     agentModeEnabled,

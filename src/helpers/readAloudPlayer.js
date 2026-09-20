@@ -113,6 +113,7 @@ export class ReadAloudPlayer {
       // it from localStorage before every speak(), so this is the only place
       // that can prove the picker's choice actually reached playback.
       voice: this.voice,
+      speed: this.speed,
       sentenceCount: this.sentences.length,
       index: this.index,
       // The sentence the listener is hearing right now. The overlay shows it so
