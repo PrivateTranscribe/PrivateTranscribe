@@ -611,9 +611,21 @@ class WhisperManager {
   async transcribeFileV2(audioBlob, options = {}) {
     const speakerDetectionMode =
       options.speakerDetectionMode ||
-      (options.speakerDetection === true ? "tiny-diarize-en" : "off");
+      (options.speakerDetection === true ? "local-diarization" : "off");
     const requestedTinyDiarize = speakerDetectionMode === "tiny-diarize-en";
     const requestedLocalDiarization = speakerDetectionMode === "local-diarization";
+    if (options.signal?.aborted) throw createCancelledError();
+    if (requestedTinyDiarize && normalizeWhisperLanguage(options.language) !== "en") {
+      throw new Error(
+        "English turn detection requires English. Use multilingual speaker models for Auto or another language."
+      );
+    }
+    if (requestedLocalDiarization) {
+      this.diarizationManager.buildConfig({
+        expectedSpeakers: options.expectedSpeakers,
+        threshold: options.diarizationThreshold,
+      });
+    }
     const model =
       requestedTinyDiarize && this.isModelDownloaded("small-en-tdrz")
         ? "small-en-tdrz"
@@ -649,7 +661,9 @@ class WhisperManager {
       const diarization = await this.diarizationManager.diarizeWavBufferInWorker(wavBuffer, {
         expectedSpeakers: options.expectedSpeakers,
         threshold: options.diarizationThreshold,
+        signal: options.signal,
       });
+      if (options.signal?.aborted) throw createCancelledError();
       if (typeof onProgress === "function") {
         onProgress({ stage: "diarizing", percentage: 100 });
       }

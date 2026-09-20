@@ -7,6 +7,7 @@ const { spawn } = require("child_process");
 const debugLogger = require("./debugLogger");
 const { getModelsDirForService } = require("./modelDirUtils");
 const { downloadFile } = require("./downloadUtils");
+const { createCancelledError } = require("./whisperServer");
 
 const DEFAULT_BUNDLE_ID = "sherpa-onnx-multilingual-v1";
 const DEFAULT_SEGMENTATION_RELATIVE_PATH = path.join(
@@ -93,6 +94,7 @@ class DiarizationManager {
       options.segmentationRelativePath || DEFAULT_SEGMENTATION_RELATIVE_PATH;
     this.embeddingRelativePath = options.embeddingRelativePath || DEFAULT_EMBEDDING_RELATIVE_PATH;
     this.loadSherpa = options.loadSherpa || (() => require("sherpa-onnx-node"));
+    this.spawn = options.spawn || spawn;
   }
 
   getModelPaths() {
@@ -186,11 +188,10 @@ class DiarizationManager {
       Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
         ? options.expectedSpeakers
         : -1;
-    // In sherpa-onnx agglomerative clustering, higher threshold = fewer speakers.
-    // Valid range appears to be 0.0–1.0; values above 1.0 crash the native library.
-    // 0.9 produces fewer clusters than 0.5, but still over-segments for long files.
-    // The post-processing cap in diarizeWavFile handles the excess.
     const threshold = toFiniteNumber(options.threshold, 0.9);
+    if (threshold <= 0 || threshold > 1) {
+      throw new Error("Speaker detection threshold must be greater than 0 and at most 1.");
+    }
 
     return {
       segmentation: { pyannote: { model: status.segmentationModel } },
@@ -222,6 +223,7 @@ class DiarizationManager {
   }
 
   async diarizeWavBufferInWorker(wavBuffer, options = {}) {
+    if (options.signal?.aborted) throw createCancelledError();
     if (!Buffer.isBuffer(wavBuffer)) {
       throw new Error("diarizeWavBufferInWorker expects a WAV Buffer.");
     }
@@ -239,6 +241,8 @@ class DiarizationManager {
   }
 
   async diarizeWavFileInWorker(wavPath, options = {}) {
+    const { signal, ...workerOptions } = options;
+    if (signal?.aborted) throw createCancelledError();
     const payloadPath = path.join(
       os.tmpdir(),
       `privatetranscribe-diarization-${crypto.randomUUID()}.json`
@@ -246,7 +250,7 @@ class DiarizationManager {
     const workerPath = path.join(__dirname, "diarizationWorker.js");
     const payload = {
       wavPath,
-      options,
+      options: workerOptions,
       managerOptions: {
         modelsDir: this.modelsDir,
         bundleId: this.bundleId,
@@ -257,21 +261,36 @@ class DiarizationManager {
     await fs.promises.writeFile(payloadPath, JSON.stringify(payload));
 
     try {
+      if (signal?.aborted) throw createCancelledError();
       return await new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [workerPath, payloadPath], {
+        const child = this.spawn(process.execPath, [workerPath, payloadPath], {
           windowsHide: true,
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
         });
         let stdout = "";
         let stderr = "";
+        let cancelled = false;
+        const abort = () => {
+          cancelled = true;
+          child.kill();
+        };
+        const detach = () => signal?.removeEventListener("abort", abort);
         child.stdout.on("data", (data) => {
           stdout += data.toString();
         });
         child.stderr.on("data", (data) => {
           stderr += data.toString();
         });
-        child.on("error", reject);
+        child.on("error", (error) => {
+          detach();
+          reject(cancelled ? createCancelledError() : error);
+        });
         child.on("close", (code) => {
+          detach();
+          if (cancelled || signal?.aborted) {
+            reject(createCancelledError());
+            return;
+          }
           // Filter out benign Chromium crashpad warnings that always appear on
           // Windows when running Electron with ELECTRON_RUN_AS_NODE.
           const filteredStderr = stderr
@@ -300,6 +319,8 @@ class DiarizationManager {
             );
           }
         });
+        signal?.addEventListener("abort", abort, { once: true });
+        if (signal?.aborted) abort();
       });
     } finally {
       await fs.promises.rm(payloadPath, { force: true }).catch(() => {});
@@ -310,7 +331,8 @@ class DiarizationManager {
     const config = this.buildConfig(options);
     const status = this.getModelStatus();
     const startedAt = Date.now();
-    const maxAutoSpeakers = options.maxSpeakers || 6;
+    const maxAutoSpeakers =
+      Number.isInteger(options.maxSpeakers) && options.maxSpeakers > 0 ? options.maxSpeakers : 6;
 
     try {
       const sherpa = this.loadSherpa();
@@ -331,50 +353,21 @@ class DiarizationManager {
       const samples = copyFloat32Samples(wave.samples);
       let rawSegments = diarizer.process(samples);
 
-      // Safety cap: if auto-detect produced too many speakers, merge the least
-      // significant ones into their nearest (by temporal proximity) frequent speaker.
-      // We do NOT create a second native diarizer instance — that crashes sherpa-onnx.
-      // Uses total speech DURATION per speaker (not segment count) for ranking.
+      // Recluster by voice similarity, never by who happened to speak nearby.
+      // Reuse this instance: constructing a second native diarizer can crash.
       if (config.clustering.numClusters <= 0 && Array.isArray(rawSegments)) {
-        const speakerDurations = {};
-        for (const seg of rawSegments) {
-          const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
-          const duration = Math.max(0, (seg.end || 0) - (seg.start || 0));
-          speakerDurations[id] = (speakerDurations[id] || 0) + duration;
-        }
-        const uniqueCount = Object.keys(speakerDurations).length;
+        const uniqueCount = new Set(
+          rawSegments.map((seg) => seg.speaker ?? seg.label ?? seg.speakerLabel)
+        ).size;
         if (uniqueCount > maxAutoSpeakers) {
-          debugLogger.info("Diarization auto-detect exceeded max speakers, merging excess", {
+          debugLogger.info("Diarization auto-detect exceeded max speakers, reclustering", {
             detectedSpeakers: uniqueCount,
             maxAutoSpeakers,
           });
-          // Keep the top N speakers by total speech duration; reassign the rest
-          const sorted = Object.entries(speakerDurations).sort((a, b) => b[1] - a[1]);
-          const keepSet = new Set(sorted.slice(0, maxAutoSpeakers).map(([id]) => id));
-          const keptSegments = rawSegments.filter((s) =>
-            keepSet.has(String(s.speaker ?? s.label ?? s.speakerLabel ?? 0))
-          );
-
-          rawSegments = rawSegments.map((seg) => {
-            const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
-            if (keepSet.has(id)) return seg;
-            // Find nearest kept segment by time midpoint
-            const mid = ((seg.start || 0) + (seg.end || 0)) / 2;
-            let nearest = null;
-            let nearestDist = Infinity;
-            for (const kept of keptSegments) {
-              const keptMid = ((kept.start || 0) + (kept.end || 0)) / 2;
-              const dist = Math.abs(mid - keptMid);
-              if (dist < nearestDist) {
-                nearestDist = dist;
-                nearest = kept;
-              }
-            }
-            if (nearest) {
-              return { ...seg, speaker: nearest.speaker ?? nearest.label ?? nearest.speakerLabel };
-            }
-            return seg;
+          diarizer.setConfig({
+            clustering: { ...config.clustering, numClusters: maxAutoSpeakers },
           });
+          rawSegments = diarizer.process(samples);
         }
 
         // Renumber speaker IDs sequentially (0, 1, 2, ...) so output labels are
@@ -384,7 +377,7 @@ class DiarizationManager {
           const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
           if (!seenIds.includes(id)) seenIds.push(id);
         }
-        if (seenIds.length > 1) {
+        if (seenIds.length > 0) {
           const idMap = new Map(seenIds.map((id, idx) => [id, idx]));
           rawSegments = rawSegments.map((seg) => {
             const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);

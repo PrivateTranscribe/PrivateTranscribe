@@ -427,11 +427,11 @@ export function useSettings() {
     });
 
   // Expected number of speakers for file transcription diarization.
-  // "auto" = let the clustering algorithm decide; "2"-"6" = fixed hint.
+  // "auto" detects up to six speakers; "1"-"10" requests a fixed count.
   const [fileTranscriptionExpectedSpeakers, setFileTranscriptionExpectedSpeakers] =
     useLocalStorage<string>("fileTranscriptionExpectedSpeakers", "auto", {
       serialize: String,
-      deserialize: (value) => (["auto", "2", "3", "4", "5", "6"].includes(value) ? value : "auto"),
+      deserialize: (value) => (/^(?:[1-9]|10)$/.test(value) ? value : "auto"),
     });
 
   // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
