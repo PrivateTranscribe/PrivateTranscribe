@@ -76,7 +76,7 @@ describe("bundled speech detector", () => {
       to: "models/silero-vad.onnx",
     });
   });
-  it("detects real speech in a worker without blocking the event loop", async () => {
+  it("detects real speech in a process without blocking the event loop", async () => {
     const pcm = readPcm(path.resolve("tests/fixtures/dictation/banana.wav"));
     let timerRan = false;
     const timer = setTimeout(() => {
@@ -97,7 +97,7 @@ describe("bundled speech detector", () => {
       await prepareDictationSpeech(audio(1), { modelPath: path.resolve("package.json") })
     ).toMatchObject({ available: false });
   });
-  it("cancels a pending worker and bounds its runtime", async () => {
+  it("cancels a pending process and bounds its runtime", async () => {
     const controller = new AbortController();
     const pending = prepareDictationSpeech(audio(30), { signal: controller.signal });
     controller.abort();
