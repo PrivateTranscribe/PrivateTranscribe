@@ -62,6 +62,9 @@ describe("WhisperServer file mode", () => {
     expect(body).toMatch(/name="temperature_inc"[\s\S]*0\.2/);
     expect(body).toContain('name="no_speech_thold"');
     expect(body).toContain('name="token_timestamps"');
+    // Token timestamps trigger server-side cue wrapping. It must wrap on words,
+    // otherwise the formatter turns a split Danish word into two separate words.
+    expect(body).toMatch(/name="split_on_word"\r\n\r\ntrue/);
   });
 
   it("uses conservative decoding controls for live long-session chunks", async () => {
