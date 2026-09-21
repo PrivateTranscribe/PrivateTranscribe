@@ -9,6 +9,16 @@ spec.loader.exec_module(benchmark)
 
 
 class ScoringTests(unittest.TestCase):
+    def test_transcript_count_excludes_unknown_and_empty_labels(self):
+        segments = [dict(speaker="Speaker 1", text="Hello"),
+                    dict(speaker="Speaker 1", text="Again"),
+                    dict(speaker="Speaker 2", text="Hi"),
+                    dict(speaker="Unknown speaker", text="Lost short reply"),
+                    dict(speaker="Speaker 3", text=""),
+                    dict(text="Unassigned")]
+        self.assertEqual(benchmark.transcript_speaker_counts(segments),
+                         dict(transcriptSpeakers=2, unassignedTranscriptWords=4))
+
     def test_empty_transcripts_have_no_errors_and_undefined_rate(self):
         self.assertEqual(benchmark.cpwer([], []), dict(errors=0, referenceWords=0, rate=None))
 

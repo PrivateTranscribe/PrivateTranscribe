@@ -225,6 +225,15 @@ def tokens(text):
     return re.findall(r"\w+(?:['’]\w+)*", text.casefold().replace("’", "'"))
 
 
+def transcript_speaker_counts(segments):
+    # Unknown assignments must never make a missing real voice look recovered.
+    named = {s["speaker"] for s in segments
+             if s.get("speaker") and s["speaker"] != "Unknown speaker" and s.get("text", "").strip()}
+    unknown_words = sum(len(tokens(s.get("text", ""))) for s in segments
+                        if not s.get("speaker") or s["speaker"] == "Unknown speaker")
+    return dict(transcriptSpeakers=len(named), unassignedTranscriptWords=unknown_words)
+
+
 def cpwer(reference, hypothesis):
     from rapidfuzz.distance import Levenshtein
     from scipy.optimize import linear_sum_assignment
@@ -282,6 +291,8 @@ def score(engines):
                        referenceWordSpeakerErrors=wrong, referenceWordCount=len(assigned),
                        cpwer=cpwer(words, merged["transcript"]["segments"]),
                        detectedSpeakers=len(raw.labels()), referenceSpeakers=case["speakers"],
+                       assignmentOutputSpeakers=len({s["speaker"] for s in hypothesis["segments"]}),
+                       **transcript_speaker_counts(merged["transcript"]["segments"]),
                        performance=read(directory / f"{engine}.performance.json"))
             rows.append(row)
             print(json.dumps(row), flush=True)
@@ -301,6 +312,8 @@ def score(engines):
         totals[engine] = dict(completed=len(selected), failures=failures, scoredCases=[r["case"] for r in selected], der=error_seconds/ref_seconds, wrongSpeakerWords=wrong,
                               referenceWords=ref_words, wordSpeakerErrorRate=wrong/ref_words,
                               cpwer=cp_errors/cp_words, cpErrors=cp_errors, cpReferenceWords=cp_words,
+                              exactTranscriptSpeakerCountClips=sum(r["transcriptSpeakers"]==r["referenceSpeakers"] for r in selected),
+                              unassignedTranscriptWords=sum(r["unassignedTranscriptWords"] for r in selected),
                               exactSpeakerCountClips=sum(r["detectedSpeakers"]==r["referenceSpeakers"] for r in selected))
     save(WORK / "results.json", dict(protocol="AMI Mix-Headset, six fixed 120s excerpts, zero collar, overlap included", rows=rows, totals=totals))
     print(json.dumps(totals, indent=2))

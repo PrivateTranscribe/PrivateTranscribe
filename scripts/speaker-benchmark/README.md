@@ -57,6 +57,8 @@ families. Run inference sequentially on an otherwise idle machine.
   output. Unicode word normalization and scorer sanity tests are included.
 - Count agreement compares detected and reference speaker counts. A very brief
   voice still counts as a speaker, so low time error can coexist with a wrong count.
+  Raw audio output, assignment output and final named transcript labels are counted
+  separately. `Unknown speaker` is not a participant; its words are reported separately.
 - Native time is cold subprocess wall time, including model loading and output
   serialization. Memory is sampled total process-tree RSS every 100 ms. Neither
   includes the separate Whisper run. Compare medians only on identical cases.
