@@ -29,7 +29,14 @@ test.beforeAll(() => {
 });
 
 // Exercise the real preload/IPC/worker/formatter path without substituting inference.
-async function transcribe(page: Page, name: string, file: string, options = {}, cancel = false) {
+async function transcribe(
+  page: Page,
+  name: string,
+  file: string,
+  options = {},
+  cancel = false,
+  outputDir = evidence
+) {
   await page.evaluate(() => {
     document.getElementById("speaker-test-file")?.remove();
     const input = document.createElement("input");
@@ -81,8 +88,8 @@ async function transcribe(page: Page, name: string, file: string, options = {}, 
     },
     { options, cancel, name }
   );
-  fs.mkdirSync(evidence, { recursive: true });
-  fs.writeFileSync(path.join(evidence, `${name}.json`), JSON.stringify(captured, null, 2));
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(path.join(outputDir, `${name}.json`), JSON.stringify(captured, null, 2));
   return captured;
 }
 
@@ -225,6 +232,48 @@ test("Whisper Turbo processes the same Danish clips with automatic language", as
     expect(result.model).toBe("turbo");
     expect(result.text.trim()).not.toBe("");
     expect(result.languageDetection?.detected).toBe("da");
+  }
+});
+
+// Simulated Danish conversations built by scripts/speaker-benchmark/prepare-danish-multi.py.
+// Accuracy is scored afterwards by score-danish-multi.py; here we only assert the
+// pipeline completed and the speaker controls reached the native engine.
+test("Danish multi-speaker fixtures run with automatic and supplied counts", async ({
+  controlPanel,
+}) => {
+  test.skip(process.env.PT_SPEAKER_DANISH_MULTI !== "1", "Needs prepared Danish multi fixtures");
+  test.setTimeout(1_800_000);
+  const fixtures = path.join(evidence, "multi/fixtures");
+  const results = path.join(evidence, "multi/results");
+  const manifest = JSON.parse(fs.readFileSync(path.join(fixtures, "manifest.json"), "utf8"));
+  const label = process.env.PT_SPEAKER_RUN_LABEL || "app";
+  for (const entry of manifest) {
+    const file = path.join(fixtures, `${entry.name}.wav`);
+    expect(crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")).toBe(
+      entry.wavSha256
+    );
+    for (const [mode, options] of [
+      ["auto", {}],
+      ["exact", { expectedSpeakers: entry.speakers }],
+    ] as const) {
+      const { result } = await transcribe(
+        controlPanel,
+        `${entry.name}-${label}-${mode}`,
+        file,
+        { model: "turbo", ...options },
+        false,
+        results
+      );
+      validResult(result);
+      expect(result.model).toBe("turbo");
+      expect(result.languageDetection?.detected).toBe("da");
+      if (mode === "exact") {
+        // The supplied count reaches the native engine, but sherpa-onnx can still
+        // return fewer clusters than requested; the scorer records what came back.
+        expect(result.diarization.config.numClusters).toBe(entry.speakers);
+        expect(result.diarization.speakerCount).toBeLessThanOrEqual(entry.speakers);
+      }
+    }
   }
 });
 
