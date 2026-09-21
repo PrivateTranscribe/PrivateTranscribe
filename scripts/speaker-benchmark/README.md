@@ -73,13 +73,15 @@ It needs separately installed pyannote.audio, torch, torchaudio and soundfile.
 The model's access agreement must be accepted by an authorized person first.
 Do not bypass the gate or upload recordings to a hosted service.
 
-This adapter was not exercised in the September 21 evaluation because access
-consent was pending. The prepared environment imported pyannote.audio 4.0.7,
-torch 2.14.0 CPU, torchaudio 2.11.0 CPU and soundfile 0.13.1, but that is not a
-validated inference environment. It uses overlap-aware output for DER and exclusive
-output for app text assignment. Its warm inference and separate pipeline-load
-times are **not comparable** to native cold-process time. Model/runtime footprint
-and peak memory need measurement before any deployment recommendation.
+The adapter completed all six excerpts after approved access and manual model
+downloads. See the [follow-up evaluation](../../docs/community-1-evaluation-2026-09-21.md)
+for scores, hashes and exact dependency versions. `community-config.yaml` preserves
+the official configuration values supplied by the user. Set `HF_HUB_OFFLINE=1` for
+local inference. The adapter uses overlap-aware output for DER and exclusive output
+for app text assignment. Its warm inference and separate pipeline-load times are
+**not directly comparable** to native cold-process time. Runtime footprint and peak
+memory still need measurement before any deployment recommendation. This verifies
+Python inference only, not an Electron integration.
 
 ## Sources and limits
 
