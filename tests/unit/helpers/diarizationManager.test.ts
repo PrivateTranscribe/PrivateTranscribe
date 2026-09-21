@@ -132,6 +132,118 @@ describe("DiarizationManager", () => {
     expect(setConfig).toHaveBeenCalledWith({ clustering: { numClusters: 6, threshold: 0.9 } });
   });
 
+  function fakeSherpaWithVoices(segments: any[], voiceOf: (start: number) => number[]) {
+    const extractorCalls: number[] = [];
+    return {
+      extractorCalls,
+      sherpa: {
+        OfflineSpeakerDiarization: class {
+          sampleRate = 16000;
+          setConfig() {}
+          process() {
+            return segments.map((segment) => ({ ...segment }));
+          }
+        },
+        SpeakerEmbeddingExtractor: class {
+          createStream() {
+            return {
+              offset: 0,
+              acceptWaveform(this: any, wave: any) {
+                this.offset = Math.round(wave.samples[0]);
+              },
+            };
+          }
+          compute(stream: any) {
+            extractorCalls.push(stream.offset);
+            return Float32Array.from(voiceOf(stream.offset));
+          }
+        },
+        readWave: () => {
+          // Each sample holds its own position in seconds, so the fake extractor
+          // can tell which window it was given without real audio.
+          const samples = Float32Array.from({ length: 16000 * 60 }, (_, i) => i / 16000);
+          return { sampleRate: 16000, samples };
+        },
+      },
+    };
+  }
+
+  it("attaches tiny clusters to the most similar voice under automatic counting", async () => {
+    const segments = [
+      { label: 0, start: 0, end: 20 },
+      { label: 1, start: 21, end: 40 },
+      { label: 2, start: 41, end: 41.5 }, // laughter-sized fragment of voice 1
+      { label: 3, start: 43, end: 45 }, // short fragment of voice 0
+    ];
+    const voiceOf = (start: number) => (start >= 21 && start < 43 ? [0, 1] : [1, 0]);
+    const { sherpa, extractorCalls } = fakeSherpaWithVoices(segments, voiceOf);
+    const manager = new DiarizationManager({
+      modelsDir: makeTempModelsDir(),
+      loadSherpa: () => sherpa,
+    });
+
+    const result = await manager.diarizeWavFile("unused.wav", {});
+
+    expect(result.speakerCount).toBe(2);
+    expect(result.segments.map((s: any) => s.speaker)).toEqual([
+      "SPEAKER_00",
+      "SPEAKER_01",
+      "SPEAKER_01",
+      "SPEAKER_00",
+    ]);
+    expect(result.smallClusterMerges).toEqual([
+      { from: "2", to: "1", similarity: 1 },
+      { from: "3", to: "0", similarity: 1 },
+    ]);
+    expect(result.config).toMatchObject({ minClusterSeconds: 4, minClusterShare: 0.05 });
+    // Long segments are embedded from a bounded window, never whole.
+    expect(extractorCalls.length).toBe(4);
+  });
+
+  it("keeps every cluster when a supplied count or a zero floor disables merging", async () => {
+    const segments = [
+      { label: 0, start: 0, end: 20 },
+      { label: 1, start: 21, end: 21.5 },
+    ];
+    const { sherpa, extractorCalls } = fakeSherpaWithVoices(segments, () => [1, 0]);
+    const manager = new DiarizationManager({
+      modelsDir: makeTempModelsDir(),
+      loadSherpa: () => sherpa,
+    });
+
+    const exact = await manager.diarizeWavFile("unused.wav", { expectedSpeakers: 2 });
+    expect(exact.speakerCount).toBe(2);
+    const off = await manager.diarizeWavFile("unused.wav", {
+      minClusterSeconds: 0,
+      minClusterShare: 0,
+    });
+    expect(off.speakerCount).toBe(2);
+    expect(off.smallClusterMerges).toEqual([]);
+    expect(extractorCalls).toEqual([]);
+  });
+
+  it("returns the unmerged clusters when the embedding model fails", async () => {
+    const segments = [
+      { label: 0, start: 0, end: 20 },
+      { label: 1, start: 21, end: 21.5 },
+    ];
+    const { sherpa } = fakeSherpaWithVoices(segments, () => [1, 0]);
+    sherpa.SpeakerEmbeddingExtractor = class {
+      constructor() {
+        throw new Error("model missing");
+      }
+    } as any;
+    const manager = new DiarizationManager({
+      modelsDir: makeTempModelsDir(),
+      loadSherpa: () => sherpa,
+    });
+
+    const result = await manager.diarizeWavFile("unused.wav", {});
+    expect(result.success).toBe(true);
+    expect(result.speakerCount).toBe(2);
+    expect(result.smallClusterMerges).toEqual([]);
+  });
+
   it.each([0, -1, 1.01, 2])(
     "rejects native-crashing threshold %s before loading sherpa",
     (threshold) => {

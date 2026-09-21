@@ -166,8 +166,10 @@ def run_process(command, log, timeout=600):
     return dict(wallSeconds=time.perf_counter()-started, peakRssBytes=peak)
 
 
-def run_native(mode, embedding=None, sherpa_module=None, label=None):
+def run_native(mode, embedding=None, sherpa_module=None, label=None, options=None):
     label = label or mode
+    if options and label == mode:
+        raise ValueError("Non-default diarization options need an explicit --label")
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", label):
         raise ValueError("Label must contain only letters, digits, underscores or hyphens")
     if mode == "wespeaker":
@@ -184,6 +186,8 @@ def run_native(mode, embedding=None, sherpa_module=None, label=None):
             job["embedding"] = str(Path(embedding).resolve())
         if sherpa_module:
             job["sherpaModule"] = str(Path(sherpa_module).resolve())
+        if options:
+            job["options"] = options
         job_path = directory / f"{label}.job.json"
         save(job_path, job)
         try:
@@ -327,10 +331,15 @@ if __name__ == "__main__":
     parser.add_argument("--label")
     parser.add_argument("--model", default="pyannote/speaker-diarization-community-1")
     parser.add_argument("--engines", nargs="+", default=["baseline", "community"])
+    parser.add_argument("--threshold", type=float, help="Clustering distance cut; app default 0.9")
+    parser.add_argument("--min-cluster-seconds", type=float)
+    parser.add_argument("--min-cluster-share", type=float)
     args = parser.parse_args()
+    options = {k: v for k, v in dict(threshold=args.threshold, minClusterSeconds=args.min_cluster_seconds,
+                                     minClusterShare=args.min_cluster_share).items() if v is not None}
     if args.command == "wespeaker" and not args.embedding:
         parser.error("wespeaker requires --embedding; never label the baseline as another model")
     if args.command == "prepare": prepare()
     elif args.command == "community": community(args.model)
     elif args.command == "score": score(args.engines)
-    else: run_native(args.command, args.embedding, args.sherpa_module, args.label)
+    else: run_native(args.command, args.embedding, args.sherpa_module, args.label, options)

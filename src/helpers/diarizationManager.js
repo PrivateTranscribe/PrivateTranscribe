@@ -8,8 +8,23 @@ const debugLogger = require("./debugLogger");
 const { getModelsDirForService } = require("./modelDirUtils");
 const { downloadFile } = require("./downloadUtils");
 const { createCancelledError } = require("./whisperServer");
+const {
+  centroid,
+  clusterDurations,
+  reassignSmallClusters,
+  representativeSegments,
+  selectSmallClusters,
+} = require("./diarizationClusters");
 
 const DEFAULT_BUNDLE_ID = "sherpa-onnx-multilingual-v1";
+// Automatic counting: clusters shorter than both floors are attached to the most
+// similar remaining voice instead of becoming an extra speaker. Values were
+// chosen on the AMI excerpts and simulated Danish conversations in
+// docs/speaker-count-merge-2026-09-21.md.
+const DEFAULT_MIN_CLUSTER_SECONDS = 4;
+const DEFAULT_MIN_CLUSTER_SHARE = 0.05;
+// Longest audio embedded per representative segment; bounds the extra work.
+const MAX_EMBED_SECONDS = 6;
 const DEFAULT_SEGMENTATION_RELATIVE_PATH = path.join(
   "sherpa-onnx-pyannote-segmentation-3-0",
   "model.int8.onnx"
@@ -327,12 +342,66 @@ class DiarizationManager {
     }
   }
 
+  // Dissolve tiny clusters by voice similarity. Uses the diarizer's own embedding
+  // model on the longest few segments of every cluster, so the extra cost stays
+  // bounded on long meetings. Any failure here keeps the unmerged result.
+  mergeSmallClusters(sherpa, embeddingModel, segments, samples, sampleRate, options = {}) {
+    const floors = {
+      minClusterSeconds: toFiniteNumber(options.minClusterSeconds, DEFAULT_MIN_CLUSTER_SECONDS),
+      minClusterShare: toFiniteNumber(options.minClusterShare, DEFAULT_MIN_CLUSTER_SHARE),
+    };
+    const { small, large, floor } = selectSmallClusters(clusterDurations(segments), floors);
+    const base = { segments, merges: [], floor: Number(floor.toFixed(3)), ...floors };
+    if (!small.size || !large.size) return base;
+    try {
+      const extractor = new sherpa.SpeakerEmbeddingExtractor({
+        model: embeddingModel,
+        numThreads: 2,
+      });
+      const embed = (segment) => {
+        let start = toFiniteNumber(segment.start, 0);
+        let end = toFiniteNumber(segment.end, start);
+        if (end - start > MAX_EMBED_SECONDS) {
+          const middle = (start + end) / 2;
+          start = middle - MAX_EMBED_SECONDS / 2;
+          end = middle + MAX_EMBED_SECONDS / 2;
+        }
+        const from = Math.max(0, Math.floor(start * sampleRate));
+        const to = Math.min(samples.length, Math.ceil(end * sampleRate));
+        if (to - from < sampleRate * 0.1) return null;
+        const stream = extractor.createStream();
+        stream.acceptWaveform({ samples: samples.slice(from, to), sampleRate });
+        return extractor.compute(stream, false);
+      };
+      const centroids = new Map();
+      for (const id of [...small, ...large]) {
+        const entries = representativeSegments(segments, id).map((segment) => ({
+          vector: embed(segment),
+          weight: toFiniteNumber(segment.end, 0) - toFiniteNumber(segment.start, 0),
+        }));
+        centroids.set(id, centroid(entries));
+      }
+      const merged = reassignSmallClusters(segments, small, large, centroids);
+      if (merged.merges.length) {
+        debugLogger.info("Diarization merged small clusters by voice", {
+          floorSeconds: base.floor,
+          merges: merged.merges,
+        });
+      }
+      return { ...base, ...merged };
+    } catch (error) {
+      debugLogger.warn("Diarization small-cluster merge skipped", { error: error.message });
+      return base;
+    }
+  }
+
   async diarizeWavFile(wavPath, options = {}) {
     const config = this.buildConfig(options);
     const status = this.getModelStatus();
     const startedAt = Date.now();
     const maxAutoSpeakers =
       Number.isInteger(options.maxSpeakers) && options.maxSpeakers > 0 ? options.maxSpeakers : 6;
+    let smallClusters = null;
 
     try {
       const sherpa = this.loadSherpa();
@@ -370,6 +439,16 @@ class DiarizationManager {
           rawSegments = diarizer.process(samples);
         }
 
+        smallClusters = this.mergeSmallClusters(
+          sherpa,
+          status.embeddingModel,
+          rawSegments,
+          samples,
+          wave.sampleRate,
+          options
+        );
+        rawSegments = smallClusters.segments;
+
         // Renumber speaker IDs sequentially (0, 1, 2, ...) so output labels are
         // "Speaker 1", "Speaker 2", etc. instead of confusing original cluster IDs.
         const seenIds = [];
@@ -401,8 +480,11 @@ class DiarizationManager {
           threshold: config.clustering.threshold,
           minDurationOn: config.minDurationOn,
           minDurationOff: config.minDurationOff,
+          minClusterSeconds: smallClusters?.minClusterSeconds ?? null,
+          minClusterShare: smallClusters?.minClusterShare ?? null,
         },
       });
+      result.smallClusterMerges = smallClusters?.merges ?? [];
 
       debugLogger.info("Local diarization completed", {
         speakerCount: result.speakerCount,
@@ -422,6 +504,8 @@ module.exports = {
   DiarizationManager,
   DEFAULT_BUNDLE_ID,
   DEFAULT_EMBEDDING_RELATIVE_PATH,
+  DEFAULT_MIN_CLUSTER_SECONDS,
+  DEFAULT_MIN_CLUSTER_SHARE,
   DEFAULT_SEGMENTATION_RELATIVE_PATH,
   EMBEDDING_MODEL_URL,
   SEGMENTATION_ARCHIVE_URL,

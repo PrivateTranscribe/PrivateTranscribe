@@ -85,6 +85,37 @@ for app text assignment. Its warm inference and separate pipeline-load times are
 memory still need measurement before any deployment recommendation. This verifies
 Python inference only, not an Electron integration.
 
+## Clustering options and small-cluster merge
+
+`baseline` accepts `--threshold`, `--min-cluster-seconds` and `--min-cluster-share`,
+passed straight to the app's diarization manager. Any non-default value needs a
+unique `--label` so a tuned run can never overwrite the baseline. The threshold
+sweep and the merge evaluation are in
+[speaker-count-merge](../../docs/speaker-count-merge-2026-09-21.md). Clusters
+below the larger of the two floors are attached to the most similar remaining
+voice using the app's own embedding model; merges are listed as
+`smallClusterMerges` in each engine output.
+
+## Danish multi-speaker fixtures
+
+`prepare-danish-multi.py` builds three simulated Danish conversations from the
+first 30 rows of the pinned FLEURS Danish test shard. FLEURS carries no speaker
+ids, so `danish-multi-sources.json` records how clips were grouped by voice with
+the app's embedding model and which rows form each of the three speakers. Turns
+are round-robin with seeded gaps, so the reference timeline is exact; they contain
+no overlap or crosstalk and are not a substitute for a real Danish meeting.
+
+```powershell
+python scripts/speaker-benchmark/prepare-danish-multi.py
+$env:PT_SPEAKER_RELIABILITY='1'; $env:PT_SPEAKER_DANISH_MULTI='1'; $env:PT_SPEAKER_RUN_LABEL='merge'
+node node_modules/@playwright/test/cli.js test tests/e2e/speaker-reliability.spec.ts -g "Danish multi-speaker"
+python scripts/speaker-benchmark/score-danish-multi.py --app merge-auto merge-exact --output docs/<artifact>.json
+```
+
+The scorer reads raw diarizer outputs (`<fixture>.<label>.json`) and real-app
+outputs (`<fixture>-<label>.json`), and reports speaker time error, raw and final
+speaker counts, cpWER per speaker and plain WER.
+
 ## Sources and limits
 
 AMI audio and manual annotations are [CC BY 4.0](https://groups.inf.ed.ac.uk/ami/download/).
