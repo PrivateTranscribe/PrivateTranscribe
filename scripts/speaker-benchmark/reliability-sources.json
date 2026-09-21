@@ -1,0 +1,81 @@
+{
+  "source": {
+    "dataset": "google/fleurs",
+    "config": "da_dk",
+    "split": "test",
+    "url": "https://huggingface.co/datasets/google/fleurs/resolve/168de341b3db6859a9bac1c50a2ef5e3b47647e0/da_dk/test/0000.parquet",
+    "filename": "0000.parquet",
+    "size": 660392792
+  },
+  "rows": [
+    {
+      "index": 0,
+      "id": 1908,
+      "language": "Danish",
+      "sourcePath": "10016401698104160032.wav",
+      "audioFile": "da-0.audio",
+      "sourceSha256": "355a74a9ec558e703d65a4e2e0d5887fedf115fcfdc8f0776acb74bee2d44aa0",
+      "sourceBytes": 326458,
+      "referenceSha256": "903209e30947d31b9bbdebc5edccbb2b13c8ac797bed92dc0ef287f6f0b42e89",
+      "wavSha256": "1485bab4c5b5fc50799112425442750c485f855e2b1a1fdda91e71da7b787152"
+    },
+    {
+      "index": 1,
+      "id": 1842,
+      "language": "Danish",
+      "sourcePath": "10034617623435290253.wav",
+      "audioFile": "da-1.audio",
+      "sourceSha256": "0480adc720a5887e4648e05e7f4444032b30b96c90f299373795537ea1eb5731",
+      "sourceBytes": 1167418,
+      "referenceSha256": "79323afb9a191aa3cae4cfb0138843bf286c4ce52dd9546c5463662977c878f2",
+      "wavSha256": "3e275a798b106ed4482c7eec20a8d583d763f3513e2e28dd1b802f0e4e62ab11"
+    },
+    {
+      "index": 2,
+      "id": 1876,
+      "language": "Danish",
+      "sourcePath": "10077729101954371425.wav",
+      "audioFile": "da-2.audio",
+      "sourceSha256": "c8996ef6353893497431312efef4f9c03c655b98a0f33a31d0a2727ce2fff0f1",
+      "sourceBytes": 437818,
+      "referenceSha256": "04d297a328fe1bbc87b53eeb69a804e48455a285b486588dfb573defb1702551",
+      "wavSha256": "6537c48a1b549f2eb62c53af6e1312b5798b23485fe8f73e3f7096692f2a2665"
+    },
+    {
+      "index": 3,
+      "id": 1856,
+      "language": "Danish",
+      "sourcePath": "10085624755376094742.wav",
+      "audioFile": "da-3.audio",
+      "sourceSha256": "1b36af495d15aa50c7a67b9b2e75c4b90b884595d900bc18be3840aea2966f21",
+      "sourceBytes": 725818,
+      "referenceSha256": "42e1203d276bc7d9882788937f8412acb2d6c3c1b5e3efff992b061f37a3cd9f",
+      "wavSha256": "bd92714a0326746e4df868f958d46765a7404938a9df8a324a51adea9977c7a8"
+    },
+    {
+      "index": 4,
+      "id": 1836,
+      "language": "Danish",
+      "sourcePath": "10090792264157033835.wav",
+      "audioFile": "da-4.audio",
+      "sourceSha256": "6d3c79f60811e1b88c7d981c674ee505b5919d4c16ab974ad95716b9a00be850",
+      "sourceBytes": 1436218,
+      "referenceSha256": "24ac0772273a5f9d5e83fffc990ccc87e69f28863f3bc7fb1be2499f775dd348",
+      "wavSha256": "aaa4680002e266ecb70bb71acc4b7f276500bf4013ec9c317944ae7e572fe667"
+    },
+    {
+      "index": 5,
+      "id": 1810,
+      "language": "Danish",
+      "sourcePath": "10092298310061000596.wav",
+      "audioFile": "da-5.audio",
+      "sourceSha256": "36b3a0ba201dac1e0bf390469f705573d7e3feff8c8645239ead9fb9cf849110",
+      "sourceBytes": 583738,
+      "referenceSha256": "f03e61e8f2d7c8b559375b7fe9293851f8ea51869f0e01f64eb42f7e5e69c8e1",
+      "wavSha256": "42cb424485290d4a007f90ab512e93bd1539969a1b0b4617f3ada4cd50c0deed"
+    }
+  ],
+  "revision": "168de341b3db6859a9bac1c50a2ef5e3b47647e0",
+  "license": "CC-BY-4.0",
+  "credit": "Google FLEURS, Conneau et al. (2022)"
+}
