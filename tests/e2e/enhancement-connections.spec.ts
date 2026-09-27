@@ -27,20 +27,18 @@ test("Claude Code enhances both styles and the shared shortcut settings persist"
   await page.getByRole("tab", { name: "Coding prompt", exact: true }).click();
   await page.getByRole("button", { name: "Try coding prompt", exact: true }).click();
   await expect(page.getByTestId("cleanup-result")).toContainText("Fix the crash");
-  const shortcut = page.locator("summary").filter({ hasText: "Coding prompt shortcut" });
-  await shortcut.click();
+  // Agent mode rides the normal dictation key now, so its only settings are the
+  // switch and the connection; there is no separate hotkey to pick.
+  await page.locator("summary").filter({ hasText: "Agent mode" }).click();
   await expect(
-    page.getByRole("combobox", { name: "Shortcut AI connection", exact: true })
+    page.getByRole("combobox", { name: "Agent mode AI connection", exact: true })
   ).toContainText("Same as AI Enhancement");
-  await page.getByRole("button", { name: "Enable coding prompt shortcut", exact: true }).click();
-  await expect(
-    page.getByRole("combobox", { name: "Coding prompt hotkey", exact: true })
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "Enable coding prompt shortcut", exact: true }).click();
-  await page.getByRole("combobox", { name: "Coding prompt hotkey", exact: true }).click();
-  await page.getByRole("option", { name: "Right Alt", exact: true }).click();
+  await page.getByRole("button", { name: "Enable agent mode", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("agentModeDictationEnabled")))
+    .toBe("true");
   await page.getByRole("button", { name: "Dictation", exact: true }).click();
-  await expect(page.locator("summary").filter({ hasText: "Agent Mode" })).toHaveCount(0);
+  await expect(page.locator("summary").filter({ hasText: "Agent mode" })).toHaveCount(0);
   await page.getByRole("button", { name: "AI Enhancement", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Enhance using", exact: true })).toContainText(
     "Claude Code"
@@ -49,8 +47,8 @@ test("Claude Code enhances both styles and the shared shortcut settings persist"
     .poll(() => page.evaluate(() => localStorage.getItem("enhancementWritingStyle")))
     .toBe("coding");
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("agentModeHotkey")))
-    .toBe("RightAlt");
+    .poll(() => page.evaluate(() => localStorage.getItem("agentModeDictationEnabled")))
+    .toBe("true");
   // A failed connection never displays a stale success result.
   await electronApp.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler("enhance-with-claude-code");
@@ -70,12 +68,14 @@ test("Starter can still configure coding shortcuts without tester access", async
   await page.getByRole("button", { name: "AI Enhancement", exact: true }).click();
   await expect(page.getByText("Dictation enhancement is in beta", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Enhance using", exact: true })).toHaveCount(0);
-  await page.locator("summary").filter({ hasText: "Coding prompt shortcut" }).click();
+  await page.locator("summary").filter({ hasText: "Agent mode" }).click();
+  // The rewrite switch only unlocks once agent mode itself is on.
+  await page.getByRole("button", { name: "Enable agent mode", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Enhance coding prompts", exact: true })
   ).toBeEnabled();
   await expect(
-    page.getByRole("combobox", { name: "Shortcut AI connection", exact: true })
+    page.getByRole("combobox", { name: "Agent mode AI connection", exact: true })
   ).toContainText("Claude Code");
   await expect(page.getByText(/Starter includes .* a day/)).toBeVisible();
 });
@@ -100,6 +100,7 @@ test.describe("coding shortcut routing", () => {
         reasoningModel: "claude-code",
         reasoningProvider: "claude-code",
         codingPromptUseSharedConnection: "true",
+        agentModeDictationEnabled: "true",
         autoPaste: "true",
         copyToClipboard: "false",
         audioFeedback: "false",
@@ -134,10 +135,11 @@ test.describe("coding shortcut routing", () => {
           .find((win) => !win.webContents.getURL().includes("panel=true"))
           ?.webContents.send(channel);
       }, channel);
-    await send("start-agent-dictation");
+    // With agent mode on, the ordinary dictation key starts a coding-prompt session.
+    await send("start-dictation");
     await expect(overlayWindow.getByText("Coding prompt", { exact: true })).toBeVisible();
     await overlayWindow.waitForTimeout(2000);
-    await send("stop-agent-dictation");
+    await send("stop-dictation");
     await expect
       .poll(() => electronApp.evaluate(() => (globalThis as any).__enhancementRouting), {
         timeout: 15000,
