@@ -363,10 +363,10 @@ export default function ControlPanelShell() {
         <AppSidebar
           activePage={activePage === "correction-memory" ? "dictionary" : activePage}
           onPageChange={setActivePage}
-          onOpenEarlyAccess={() => {
+          onOpenBetaFeatures={() => {
             setActivePage("settings");
             setSettingsTabRequest((current) => ({
-              section: "pro",
+              section: "beta",
               requestId: current.requestId + 1,
             }));
           }}

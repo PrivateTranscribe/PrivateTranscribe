@@ -87,11 +87,6 @@
   --color-destructive-hover: #ff8585;
   --color-destructive-active: #e65555;
 
-  /* Pro / tester accent — the only violet in the product */
-  --color-pro: #a885ff;
-  --color-pro-foreground: #ffffff;
-  --color-pro-deep: #2d1b69;
-
   /* Surface hierarchy — layered depth */
   --color-surface-0: #080908;
   --color-surface-1: #0d0f0d;

@@ -125,7 +125,6 @@
     "form-data": "^4.0.5",
     "kokoro-js": "^1.2.1",
     "lucide-react": "^0.518.0",
-    "node-machine-id": "^1.1.12",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",

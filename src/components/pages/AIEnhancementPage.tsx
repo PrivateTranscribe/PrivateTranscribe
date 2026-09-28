@@ -9,7 +9,7 @@ import { AlertDialog } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useAgentName } from "../../utils/agentName";
-import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { isBetaFeature, useBetaFeaturesEnabled } from "../../utils/betaFeatures";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { modelRegistry } from "../../models/ModelRegistry";
@@ -18,7 +18,8 @@ import CodingPromptSettings from "../CodingPromptSettings";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 
 export default function AIEnhancementPage() {
-  const isUnlocked = isFeatureUnlocked("ai-enhancement");
+  const [betaOn] = useBetaFeaturesEnabled();
+  const isUnlocked = betaOn || !isBetaFeature("ai-enhancement");
   const { writingStyle, setWritingStyle, setUseSharedConnection } = useEnhancementPreferences();
   const {
     preferredLanguage,
@@ -83,8 +84,8 @@ export default function AIEnhancementPage() {
             Dictation enhancement is in beta
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Approved testers can enhance ordinary dictation with local models, an API provider, or
-            Claude Code. Coding prompt shortcuts remain available below.
+            We are still building it, so it can change between updates. Coding prompt shortcuts
+            below work without it.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>

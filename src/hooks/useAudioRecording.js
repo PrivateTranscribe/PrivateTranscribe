@@ -1,17 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import AudioManager, { MISSING_SECTION_MARKER } from "../helpers/audioManager";
-import {
-  buildStarterLimitMessage,
-  isStarterLimitReached,
-  readStarterUsage,
-  recordStarterWords,
-} from "../utils/starterUsage";
-import {
-  buildAgentModeLimitMessage,
-  isAgentModeLimitReached,
-  readAgentModeUsage,
-  recordAgentModeUse,
-} from "../utils/agentModeUsage";
 import { cleanAgentPrompt, extractSendCommand } from "../utils/agentPrompt";
 import ReasoningService from "../services/ReasoningService";
 import {
@@ -19,7 +7,7 @@ import {
   trackAnalyticsEvent,
   trackAnalyticsEventOnce,
 } from "../utils/analytics";
-import { getEffectiveEntitlement, isFeatureUnlocked } from "./useProStatus";
+import { isFeatureUnlocked } from "../utils/betaFeatures";
 import { deliverDictation } from "../utils/dictationDelivery";
 import { formatHotkeyLabel, readStoredHotkey } from "../utils/hotkeys";
 
@@ -105,7 +93,7 @@ export const useAudioRecording = (toast, options = {}) => {
 
   useEffect(() => {
     const manager = new AudioManager();
-    // Wire tester access so unfinished workflow features stay unavailable to regular Pro users.
+    // Beta features stay off in the recorder until the user turns them on in Settings.
     manager._checkBetaFeatureAccess = (featureId) => {
       try {
         return isFeatureUnlocked(featureId);
@@ -142,86 +130,12 @@ export const useAudioRecording = (toast, options = {}) => {
       correctionIntervalIds.delete(intervalId);
     };
 
-    const isProEntitled = () => {
-      try {
-        return getEffectiveEntitlement() === "pro";
-      } catch {
-        return false;
-      }
-    };
-
     const isBetaFeatureUnlocked = (featureId) => {
       try {
         return isFeatureUnlocked(featureId);
       } catch {
         return false;
       }
-    };
-
-    const trackUsageEvent = (event, extra = {}) => {
-      void trackAnalyticsEvent(event, extra);
-    };
-
-    const showStarterLimitReached = () => {
-      const usage = readStarterUsage();
-      toastRef.current?.({
-        title: "Starter word limit reached",
-        description: buildStarterLimitMessage(usage),
-        variant: "default",
-        duration: 8000,
-      });
-      trackUsageEvent("starter_limit_hit", {
-        words_used: usage.wordsUsed,
-        daily_limit: usage.limit,
-      });
-    };
-
-    const starterCanBegin = () => {
-      if (isProEntitled()) return true;
-      if (!isStarterLimitReached()) return true;
-      showStarterLimitReached();
-      // Land on the Pro tab: this is the moment the limit message points at
-      // Pro, not whatever tab the panel happened to be left on.
-      window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "pro" });
-      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
-      return false;
-    };
-
-    const showAgentModeLimitReached = () => {
-      const usage = readAgentModeUsage();
-      toastRef.current?.({
-        title: "Coding prompt shortcuts used up for today",
-        description: buildAgentModeLimitMessage(usage),
-        variant: "default",
-        duration: 8000,
-      });
-    };
-
-    const agentModeCanBegin = () => {
-      if (isProEntitled()) return true;
-      if (!isAgentModeLimitReached()) return true;
-      showAgentModeLimitReached();
-      window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "pro" });
-      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
-      return false;
-    };
-
-    const recordStarterUsageIfNeeded = (text) => {
-      if (isProEntitled()) return null;
-      const usage = recordStarterWords(text);
-      trackUsageEvent("starter_words_used", {
-        words_added: usage.wordsAdded,
-        words_used: usage.wordsUsed,
-        daily_limit: usage.limit,
-        limit_reached: usage.limitReached,
-      });
-      if (usage.limitReached) {
-        trackUsageEvent("starter_limit_reached", {
-          words_used: usage.wordsUsed,
-          daily_limit: usage.limit,
-        });
-      }
-      return usage;
     };
 
     // ── Audio ducking helpers ────────────────────────────────────────────────
@@ -460,19 +374,6 @@ export const useAudioRecording = (toast, options = {}) => {
           return;
         }
 
-        const usage = recordStarterUsageIfNeeded(text);
-        if (usage?.limitReached) {
-          toastRef.current?.({
-            title: "Starter limit reached",
-            description:
-              "This transcription went through. Starter resets tomorrow, or buy Pro for unlimited words.",
-            variant: "default",
-            duration: 7000,
-          });
-        }
-
-        // The rewrite runs after starter counting on purpose: the cap counts
-        // the words that were dictated, not what survives the rewrite.
         let sendEnter = false;
         if (wasAgentSession) {
           // The send word is decided here, not by the model, so Enter never depends on
@@ -490,7 +391,9 @@ export const useAudioRecording = (toast, options = {}) => {
               let reply;
               if (useSharedConnection) {
                 if (!isFeatureUnlocked("ai-enhancement")) {
-                  throw new Error("Shared AI connections require tester access.");
+                  throw new Error(
+                    "Turn on beta features in Settings to use the shared connection."
+                  );
                 }
                 const enhanced = await ReasoningService.processText(
                   spoken,
@@ -539,9 +442,6 @@ export const useAudioRecording = (toast, options = {}) => {
           }
           // No analytics event here yet: event names are pinned by a database
           // check constraint, so a new one needs a Supabase migration first.
-          if (!isProEntitled()) {
-            recordAgentModeUse();
-          }
         }
 
         setTranscript(text);
@@ -1009,14 +909,8 @@ export const useAudioRecording = (toast, options = {}) => {
         return false;
       }
 
-      if (!starterCanBegin()) {
-        return false;
-      }
-
       // Read at session start so settings changes apply to the next recording.
-      const useAgentMode = localStorage.getItem("agentModeDictationEnabled") === "true";
-      if (useAgentMode && !agentModeCanBegin()) return false;
-      setAgentSession(useAgentMode);
+      setAgentSession(localStorage.getItem("agentModeDictationEnabled") === "true");
 
       if (playSound) {
         playFeedback("playStartSound");

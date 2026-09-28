@@ -32,7 +32,7 @@ import {
   DialogFooter,
   ConfirmDialog,
 } from "../ui/dialog";
-import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { isBetaFeature, useBetaFeaturesEnabled } from "../../utils/betaFeatures";
 import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { useActionEngine } from "../../hooks/useActionEngine";
@@ -911,7 +911,8 @@ function RunHistoryPanel({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ActionEnginePage() {
-  const isUnlocked = isFeatureUnlocked("action-engine");
+  const [betaOn] = useBetaFeaturesEnabled();
+  const isUnlocked = betaOn || !isBetaFeature("action-engine");
   const {
     actions,
     loading,
@@ -1014,8 +1015,7 @@ export default function ActionEnginePage() {
           <Lock size={24} className="text-muted-foreground" />
           <h3 className="text-base font-semibold text-foreground">Action Engine is in beta</h3>
           <p className="text-sm text-muted-foreground">
-            Open apps, visit websites, or run commands with your voice. Requires approved tester
-            access.
+            We are still building it, so it can change between updates.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>

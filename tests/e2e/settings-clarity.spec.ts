@@ -1,12 +1,26 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess } from "./fixtures/tester-access";
 
 const shots = path.resolve("docs/qa-settings-clarity");
 test.beforeAll(() => {
   fs.mkdirSync(shots, { recursive: true });
 });
+
+// The sidebar row, the Settings tab and the switch are all named "Beta features",
+// so each is found inside its own container.
+const betaFeaturesRow = (controlPanel: Page) =>
+  controlPanel.getByRole("navigation").getByRole("button", { name: "Beta features", exact: true });
+const betaFeaturesSwitch = (controlPanel: Page) =>
+  controlPanel.locator('[data-settings-label="Beta features"]').getByRole("button");
+
+/** Turns the beta features on the way a user does, from the sidebar row. */
+async function turnOnBetaFeatures(controlPanel: Page) {
+  await betaFeaturesRow(controlPanel).click();
+  await betaFeaturesSwitch(controlPanel).click();
+  await expect(betaFeaturesSwitch(controlPanel)).toHaveAttribute("aria-pressed", "true");
+}
 
 test("everyday settings come first and navigation starts at the top", async ({ controlPanel }) => {
   await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
@@ -56,7 +70,7 @@ test("Dictionary keeps optional tools compact and retains learning state", async
   await controlPanel.getByPlaceholder(/^e.g. PrivateTranscribe/).fill("PrivateTranscribe");
   await controlPanel.getByRole("button", { name: "Add", exact: true }).click();
   await corrections.click();
-  await expect(controlPanel.getByRole("button", { name: "Apply for beta access" })).toBeVisible();
+  await expect(controlPanel.getByRole("button", { name: "Turn on beta features" })).toBeVisible();
   await controlPanel.screenshot({
     path: path.join(shots, "after-dictionary-locked.png"),
     animations: "disabled",
@@ -72,7 +86,7 @@ test("Dictionary keeps optional tools compact and retains learning state", async
     path: path.join(shots, "after-dictionary-settings.png"),
     animations: "disabled",
   });
-  await unlockTesterAccess(controlPanel);
+  await turnOnBetaFeatures(controlPanel);
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();
   await expect(corrections.getByText("Learning off")).toBeVisible();
   await corrections.click();
@@ -128,20 +142,23 @@ test("search opens optional settings on this page and another page", async ({ co
   const result = controlPanel.locator('summary[data-settings-label="Correction Memory"]');
   await expect(result).toBeInViewport();
   await expect(result.locator("..")).toHaveAttribute("open", "");
-  await expect(controlPanel.getByRole("button", { name: "Apply for beta access" })).toBeVisible();
+  await expect(controlPanel.getByRole("button", { name: "Turn on beta features" })).toBeVisible();
 });
 
-test("build type and beta access have separate labels", async ({ controlPanel }) => {
-  await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
-  await expect(controlPanel.getByRole("button", { name: "Pro & Beta", exact: true })).toBeVisible();
+test("build type and beta features have separate labels", async ({ controlPanel }) => {
+  await betaFeaturesRow(controlPanel).click();
+  const betaSwitch = betaFeaturesSwitch(controlPanel);
+  await expect(betaSwitch).toHaveAttribute("aria-pressed", "false");
   await expect(controlPanel.getByText("Unpacked build", { exact: true })).toBeVisible();
+  // Off, the cards say what the switch turns on but open nothing yet.
+  await expect(controlPanel.getByRole("button", { name: /^Correction Memory/ })).toHaveCount(0);
   await controlPanel.screenshot({
     path: path.join(shots, "after-access.png"),
     animations: "disabled",
   });
-  await controlPanel
-    .getByText("Beta access is separate from Pro and requires tester approval.")
-    .scrollIntoViewIfNeeded();
+  await betaSwitch.click();
+  await expect(betaSwitch).toHaveAttribute("aria-pressed", "true");
+  await controlPanel.getByText("What it turns on", { exact: true }).scrollIntoViewIfNeeded();
   await controlPanel.screenshot({
     path: path.join(shots, "after-access-beta.png"),
     animations: "disabled",
@@ -150,11 +167,11 @@ test("build type and beta access have separate labels", async ({ controlPanel })
   const corrections = controlPanel.locator('summary[data-settings-label="Correction Memory"]');
   await expect(corrections.locator("..")).toHaveAttribute("open", "");
   await expect(corrections).toBeInViewport();
-  await expect(controlPanel.getByRole("button", { name: "Apply for beta access" })).toBeVisible();
+  await expect(controlPanel.getByRole("button", { name: "Turn on beta features" })).toHaveCount(0);
 });
 
 test("enabled app context remains visible in the closed section", async ({ controlPanel }) => {
-  await unlockTesterAccess(controlPanel);
+  await turnOnBetaFeatures(controlPanel);
   await controlPanel.getByRole("button", { name: "General", exact: true }).click();
   const more = controlPanel.locator("summary").filter({ hasText: "More settings" });
   await more.click();

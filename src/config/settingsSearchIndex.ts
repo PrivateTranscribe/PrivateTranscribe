@@ -21,7 +21,7 @@ export type SettingsSearchPage =
   | "converse"
   | "ai-enhancement";
 
-export type SettingsSearchSection = "general" | "permissions" | "pro" | "developer";
+export type SettingsSearchSection = "general" | "permissions" | "beta" | "developer";
 
 export interface SettingsSearchEntry {
   /** The exact label rendered on the row; also its `data-settings-label`. */
@@ -267,11 +267,23 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     page: "ai-enhancement",
     keywords: ["claude code", "rewrite", "cli", "login", "prompt", "haiku"],
   },
+
+  // ── Settings › Beta features ──────────────────────────────────────────────
   {
-    label: "Prompts today",
-    group: "Agent mode",
-    page: "ai-enhancement",
-    keywords: ["cap", "limit", "20", "pro", "daily", "usage"],
+    label: "Beta features",
+    group: "Beta features",
+    page: "settings",
+    section: "beta",
+    keywords: [
+      "beta",
+      "experimental",
+      "unfinished",
+      "preview",
+      "ai enhancement",
+      "correction memory",
+      "smart context",
+      "action engine",
+    ],
   },
 
   // ── Settings › Permissions ────────────────────────────────────────────────

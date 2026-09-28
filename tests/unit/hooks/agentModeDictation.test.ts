@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({
   effects: [] as Array<() => unknown>,
-  pro: true,
-  capped: false,
 }));
 vi.mock("react", () => ({
   default: { createElement: vi.fn() },
@@ -32,16 +30,6 @@ vi.mock("../../../src/helpers/audioManager", () => ({
     });
     cleanup = vi.fn();
   },
-}));
-vi.mock("../../../src/hooks/useProStatus", () => ({
-  getEffectiveEntitlement: () => (harness.pro ? "pro" : "starter"),
-  isFeatureUnlocked: () => true,
-}));
-vi.mock("../../../src/utils/agentModeUsage", () => ({
-  isAgentModeLimitReached: () => harness.capped,
-  readAgentModeUsage: () => ({ usesToday: 20, limit: 20 }),
-  buildAgentModeLimitMessage: () => "Daily limit",
-  recordAgentModeUse: vi.fn(),
 }));
 vi.mock("../../../src/utils/analytics", () => ({
   trackAnalyticsEvent: vi.fn(),
@@ -78,8 +66,6 @@ function mount() {
 
 beforeEach(() => {
   harness.effects = [];
-  harness.pro = true;
-  harness.capped = false;
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,
@@ -126,16 +112,22 @@ describe("Agent mode through the normal dictation flow", () => {
     await hook.startRecording().catch(() => {});
     expect(manager.codingPromptSession).toBe(false);
   });
-  it("enforces the agent allowance only while enabled", async () => {
-    harness.pro = false;
-    harness.capped = true;
+  it("Agent mode is never blocked", async () => {
     localStorage.setItem("agentModeDictationEnabled", "true");
-    const { hook, manager, toast } = mount();
-    await hook.startRecording();
-    expect(manager.startRecording).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalled();
-    localStorage.setItem("agentModeDictationEnabled", "false");
-    await hook.startRecording();
-    expect(manager.startRecording).toHaveBeenCalledOnce();
+    // The record an install kept from when Agent mode had a daily cap.
+    localStorage.setItem(
+      "privatetranscribe_agent_mode_usage_v1",
+      JSON.stringify({ date: new Date().toLocaleDateString("sv"), usesToday: 20, limit: 20 })
+    );
+    const { hook, manager, toast, bridge } = mount();
+    bridge.openControlPanel = vi.fn();
+    for (let i = 0; i < 25; i += 1) {
+      await hook.startRecording();
+      expect(manager.codingPromptSession).toBe(true);
+      hook.stopRecording();
+    }
+    expect(manager.startRecording).toHaveBeenCalledTimes(25);
+    expect(toast).not.toHaveBeenCalled();
+    expect(bridge.openControlPanel).not.toHaveBeenCalled();
   });
 });

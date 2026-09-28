@@ -26,7 +26,7 @@ import {
   CircleSlash,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
-import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProStatus";
+import { isFeatureUnlocked } from "../../utils/betaFeatures";
 import { IconTile } from "../ui/IconTile";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -41,7 +41,6 @@ import {
   buildLanguageMismatchNotice,
   type LanguageMismatchNotice,
 } from "../../utils/languageMismatch";
-import { buildStarterLimitMessage, recordStarterWords } from "../../utils/starterUsage";
 import {
   buildQuickLanguageCodes,
   deriveFileLanguageDefault,
@@ -341,7 +340,6 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
 
   useEffect(() => {
     const mgr = new AudioManager();
-    mgr._checkProEntitlement = () => isFeatureUnlocked("correction-memory");
     mgr._checkBetaFeatureAccess = (featureId: string) => isFeatureUnlocked(featureId);
     audioManagerRef.current = mgr;
     return () => {
@@ -658,29 +656,6 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
       const text = result?.text?.trim();
       if (!text) {
         throw new Error("No text was transcribed from this file.");
-      }
-
-      if (getEffectiveEntitlement() !== "pro") {
-        const usage = recordStarterWords(text);
-        window.electronAPI?.analyticsTrack?.("starter_file_words_used", {
-          words_added: usage.wordsAdded,
-          words_used: usage.wordsUsed,
-          daily_limit: usage.limit,
-          limit_reached: usage.limitReached,
-        });
-        if (usage.limitReached) {
-          window.electronAPI?.analyticsTrack?.("starter_limit_reached", {
-            source: "file-transcription",
-            words_used: usage.wordsUsed,
-            daily_limit: usage.limit,
-          });
-          toast({
-            title: "Starter limit reached",
-            description: buildStarterLimitMessage(usage),
-            variant: "default",
-            duration: 8000,
-          });
-        }
       }
 
       // Make finished text usable while History saves. Only the current run

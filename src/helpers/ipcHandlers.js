@@ -2939,27 +2939,6 @@ class IPCHandlers {
       }
     });
 
-    // Licensing - stable device identifier
-    ipcMain.handle("get-machine-id", async () => {
-      try {
-        const { machineIdSync } = require("node-machine-id");
-        return { id: machineIdSync(false) };
-      } catch {
-        // Fallback: use a persisted random ID
-        const path = require("path");
-        const fs = require("fs");
-        const { app } = require("electron");
-        const idPath = path.join(app.getPath("userData"), ".device-id");
-        if (fs.existsSync(idPath)) {
-          return { id: fs.readFileSync(idPath, "utf-8").trim() };
-        }
-        const crypto = require("crypto");
-        const id = crypto.randomUUID();
-        fs.writeFileSync(idPath, id, "utf-8");
-        return { id };
-      }
-    });
-
     // Native file-open dialog - used by Action Engine "Open application" and other pickers.
     // The dialog is always shown as a sheet attached to the requesting window, so the user
     // explicitly chooses a path; no sensitive data is exposed without interaction.
@@ -3015,7 +2994,7 @@ class IPCHandlers {
     }
   }
 
-  // ── Action Engine (Pro feature) ──────────────────────────────────────────
+  // ── Action Engine (beta feature) ─────────────────────────────────────────
   // Called from setupHandlers() only when actionEngineManager is present.
 
   _setupActionEngineHandlers() {

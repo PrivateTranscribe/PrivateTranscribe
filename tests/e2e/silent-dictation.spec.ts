@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess } from "./fixtures/tester-access";
+import { enableBetaFeatures, enableBetaFeaturesInOverlay } from "./fixtures/tester-access";
 
 /**
  * A dictation nobody spoke into must produce nothing.
@@ -101,40 +101,6 @@ async function configureDictation(page: Page): Promise<void> {
   );
 }
 
-/** Give the overlay window its own tester entitlement; see correction-memory.spec.ts. */
-async function grantOverlayBetaAccess(overlay: Page): Promise<void> {
-  await overlay.addInitScript(() => {
-    (window as unknown as { __e2eActivateCalls: number }).__e2eActivateCalls = 0;
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/licensing/activate")) {
-        (window as unknown as { __e2eActivateCalls: number }).__e2eActivateCalls += 1;
-        return new Response(
-          JSON.stringify({
-            success: true,
-            entitlement: { token: "e2e-token", expiresAt: null, betaAccess: true },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      return realFetch(input, init);
-    };
-  });
-
-  await overlay.reload({ waitUntil: "domcontentloaded" });
-  await expect(recordingHalo(overlay)).toHaveCount(0);
-  await expect
-    .poll(
-      () =>
-        overlay.evaluate(
-          () => (window as unknown as { __e2eActivateCalls?: number }).__e2eActivateCalls ?? 0
-        ),
-      { timeout: 20_000 }
-    )
-    .toBeGreaterThan(0);
-}
-
 /** One dictation, driven the way the hotkey drives it. */
 async function dictate(app: ElectronApplication, overlay: Page): Promise<void> {
   const toggle = () =>
@@ -159,9 +125,9 @@ async function prepare(controlPanel: Page, overlayWindow: Page): Promise<void> {
     fs.existsSync(BASE_MODEL),
     `ggml-base.bin is not installed at ${BASE_MODEL} - download it before running this spec`
   ).toBe(true);
-  await unlockTesterAccess(controlPanel);
+  await enableBetaFeatures(controlPanel);
   await configureDictation(controlPanel);
-  await grantOverlayBetaAccess(overlayWindow);
+  await enableBetaFeaturesInOverlay(overlayWindow);
 }
 
 /**

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess, unlockTesterAccessAfterRestart } from "./fixtures/tester-access";
+import { isBetaFeaturesOn } from "./fixtures/tester-access";
 
 const evidence = path.resolve("test-results/qa-readaloud-shortcuts");
 test.use({ useThrowawayHome: true });
@@ -9,7 +9,6 @@ test.describe("installed voice model", () => {
   test.use({ seedKokoroModel: true });
   test("Read Aloud shortcut settings", async ({ controlPanel }) => {
     fs.mkdirSync(evidence, { recursive: true });
-    await unlockTesterAccess(controlPanel);
     await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
     const field = controlPanel.getByRole("button", { name: "Read Aloud hotkey", exact: true });
     await expect(field).toBeEnabled();
@@ -43,7 +42,7 @@ test.describe("installed voice model", () => {
       await expect(controlPanel.getByRole("button", { name: `${name} hotkey` })).toContainText(key);
     }
     await shortcuts.screenshot({ path: path.join(evidence, "after-custom.png") });
-    await unlockTesterAccessAfterRestart(controlPanel);
+    await controlPanel.reload({ waitUntil: "domcontentloaded" });
     await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
     await expect(pause).toContainText("F8");
     await expect(
@@ -63,15 +62,10 @@ test.describe("installed voice model", () => {
   });
 });
 
-test("locked and missing-model states", async ({ controlPanel }) => {
+test("missing-model state, with the beta switch off", async ({ controlPanel }) => {
   fs.mkdirSync(evidence, { recursive: true });
-  await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
-  await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
-  await expect(
-    controlPanel.getByRole("heading", { name: "Hear it instead of reading" })
-  ).toBeVisible();
-  await controlPanel.screenshot({ path: path.join(evidence, "after-locked.png") });
-  await unlockTesterAccess(controlPanel);
+  // Read Aloud needs no beta switch; only the missing model holds the shortcuts back.
+  expect(await isBetaFeaturesOn(controlPanel)).toBe(false);
   await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
   const pause = controlPanel.getByRole("button", { name: "Pause or resume hotkey" });
   await expect(pause).toBeDisabled();

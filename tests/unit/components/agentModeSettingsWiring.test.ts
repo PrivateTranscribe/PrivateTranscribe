@@ -14,21 +14,31 @@ const read = (...segments: string[]) =>
   fs.readFileSync(path.join(process.cwd(), ...segments), "utf8");
 
 describe("Agent Mode settings wiring", () => {
-  it("renders the four Agent Mode rows on the settings page", () => {
+  it("renders the three Agent Mode rows on the settings page, with no daily count", () => {
     const page = read("src", "components", "CodingPromptSettings.tsx");
 
     expect(page).toContain('label="Enable agent mode"');
     expect(page).not.toContain('label="Coding prompt hotkey"');
+    expect(page).toContain('label="Agent mode AI connection"');
     expect(page).toContain('label="Enhance coding prompts"');
-    expect(page).toContain('label="Prompts today"');
+    expect(page).not.toContain('label="Prompts today"');
   });
 
-  it("re-syncs the main process and reads the live daily count", () => {
+  it("re-reads the Claude Code status whenever the window comes back", () => {
     const page = read("src", "components", "CodingPromptSettings.tsx");
 
     expect(page).not.toContain("agentModeSyncHotkey");
     expect(page).not.toContain("agentModeHotkeyStatus");
-    expect(page).toContain("readAgentModeUsage");
+    expect(page).not.toContain("readAgentModeUsage");
+    expect(page).toContain('window.addEventListener("focus", refreshRewriteStatus)');
+  });
+
+  it("points a locked shared connection at the beta features switch", () => {
+    const page = read("src", "components", "CodingPromptSettings.tsx");
+
+    expect(page).toContain('from "../utils/betaFeatures"');
+    expect(page).toContain("Turn on beta features in Settings to use the shared connection.");
+    expect(page).not.toContain("tester access");
   });
 
   it("asks the main process whether Claude Code is there and says so honestly", () => {

@@ -5,14 +5,13 @@ import { describe, expect, it } from "vitest";
 const readSource = (relativePath: string): string =>
   fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
-// These whole pages are tester-only. AI Enhancement now mixes tester-only
-// dictation cleanup with public coding prompts; Read Aloud is part of Starter.
+// These whole pages sit behind the beta switch. AI Enhancement mixes beta
+// dictation cleanup with coding prompts that work without it; Read Aloud is free.
 const BETA_SURFACES = [
   "src/components/pages/CorrectionMemoryPage.tsx",
   "src/components/pages/ActionEnginePage.tsx",
-  // ConversePage is deliberately absent: Converse left the tester gate for the
-  // Pro entitlement, so its locked state sells Pro (a Pro badge and the buy
-  // button) instead of linking to the tester application.
+  // ConversePage is deliberately absent: Converse is free for everyone now, so
+  // it has no locked state to label.
 ];
 
 /**
@@ -24,7 +23,7 @@ const BETA_SURFACES = [
 describe("beta feature labelling", () => {
   it("labels gated dictation enhancement without locking public coding prompts", () => {
     const source = readSource("src/components/pages/AIEnhancementPage.tsx");
-    expect(source).toContain('isFeatureUnlocked("ai-enhancement")');
+    expect(source).toContain('isBetaFeature("ai-enhancement")');
     expect(source).toMatch(
       /!isUnlocked && \([\s\S]*?Dictation enhancement is in beta[\s\S]*?<BetaAccessLink/
     );
@@ -47,9 +46,9 @@ describe("beta feature labelling", () => {
   it("badges the locked controls in Settings, not only their descriptions", () => {
     const settings = readSource("src/components/SettingsPage.tsx");
 
-    // Smart Context is the one toggle left in Settings that sits disabled for
-    // everyone without tester access. Correction Memory's toggles live on its
-    // own page under Dictionary now, badged there.
+    // Smart Context is the one toggle left in Settings that sits disabled until
+    // beta features are turned on. Correction Memory's toggles live on its own
+    // page under Dictionary now, badged there.
     expect(settings).toContain("badge={smartContextUnlocked ? undefined : <BetaBadge locked />}");
     expect(readSource("src/components/pages/CorrectionMemoryPage.tsx")).toContain(
       "<BetaBadge locked={!isUnlocked} />"
@@ -83,28 +82,25 @@ describe("beta feature labelling", () => {
     expect(settings.match(/<BetaAccessLink/g) ?? []).toHaveLength(1);
   });
 
-  it("keeps the beta destination in one place", () => {
-    const links = readSource("src/utils/externalLinks.ts");
-    expect(links).toContain("BETA_ACCESS_URL");
-
-    // The site has no /beta route. #waitlist is the tester section itself,
-    // rather than #pricing, which drops the user on the purchase cards and
-    // leaves them to find the beta story below.
-    expect(links).not.toContain("privatetranscribe.com/beta");
-    expect(links).toContain("#waitlist");
-
+  it("sends every locked surface to the switch inside the app", () => {
+    // The way out is the Beta features tab in Settings, where the switch lives,
+    // so turning a beta on never leaves the app for a website.
     const component = readSource("src/components/ui/BetaAccessLink.tsx");
-    expect(component).toContain("BETA_ACCESS_URL");
-    // Opens in the system browser, never inside the Electron window.
-    expect(component).toContain("openExternalLink");
+    expect(component).toContain("Turn on beta features");
+    expect(component).toMatch(
+      /openControlPanel\?\.\(\{\s*page: "settings",\s*settingsTab: "beta"\s*\}\)/
+    );
+    expect(component).not.toContain("openExternalLink");
+
+    expect(readSource("src/utils/externalLinks.ts")).not.toContain("#waitlist");
   });
 
-  it("still gates on the entitlement rather than on the badge", () => {
-    // Labelling must never become the enforcement. Every badged surface reads
-    // the same entitlement helper that the runtime paths do.
+  it("still gates on the switch rather than on the badge", () => {
+    // Labelling must never become the enforcement. Every badged surface follows
+    // the switch itself, so it also unlocks the moment the switch is turned on.
     for (const file of BETA_SURFACES) {
-      expect(readSource(file), `${file} should resolve access from the entitlement`).toContain(
-        "isFeatureUnlocked("
+      expect(readSource(file), `${file} should resolve access from the switch`).toContain(
+        "useBetaFeaturesEnabled()"
       );
     }
   });

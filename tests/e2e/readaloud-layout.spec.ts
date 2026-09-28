@@ -1,14 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess } from "./fixtures/tester-access";
+import { isBetaFeaturesOn } from "./fixtures/tester-access";
 
 const evidence = path.resolve(process.env.PT_READALOUD_EVIDENCE_DIR || "docs/qa-readaloud-layout");
 test.use({ useThrowawayHome: true, seedKokoroModel: true });
 
 test("Read Aloud layout", async ({ controlPanel }) => {
   fs.mkdirSync(evidence, { recursive: true });
-  await unlockTesterAccess(controlPanel);
   await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
   await expect(
     controlPanel.getByRole("button", { name: "Read Aloud hotkey", exact: true })
@@ -98,18 +97,10 @@ test("Read Aloud layout", async ({ controlPanel }) => {
 
 test.describe("without a voice model", () => {
   test.use({ seedKokoroModel: false });
-  test("locked and missing-model layouts", async ({ controlPanel }) => {
+  test("missing-model layout, with the beta switch off", async ({ controlPanel }) => {
     fs.mkdirSync(evidence, { recursive: true });
-    await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
-    await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
-    await expect(
-      controlPanel.getByRole("heading", { name: "Hear it instead of reading" })
-    ).toBeVisible();
-    await controlPanel.screenshot({
-      animations: "disabled",
-      path: path.join(evidence, "after-locked.png"),
-    });
-    await unlockTesterAccess(controlPanel);
+    // Read Aloud needs no beta switch, so its first step is the download.
+    expect(await isBetaFeaturesOn(controlPanel)).toBe(false);
     await controlPanel.getByRole("button", { name: /^Read Aloud( Beta)?$/ }).click();
     await expect(controlPanel.getByRole("button", { name: /Download voice model/ })).toBeEnabled();
     const fields = controlPanel.getByTestId("readaloud-shortcuts").getByRole("button");

@@ -77,7 +77,6 @@ test("Starter can still configure coding shortcuts without tester access", async
   await expect(
     page.getByRole("combobox", { name: "Agent mode AI connection", exact: true })
   ).toContainText("Claude Code");
-  await expect(page.getByText(/Starter includes .* a day/)).toBeVisible();
 });
 
 test.describe("coding shortcut routing", () => {

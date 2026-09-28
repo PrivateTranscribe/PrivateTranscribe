@@ -391,7 +391,7 @@ export function useSettings() {
       deserialize: (value) => value === "true",
     });
 
-  // Smart Context master toggle (default true — Pro entitlement gate enforces access for free users).
+  // Smart Context master toggle, off by default. It only takes effect while beta features are on.
   // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
   const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
     "smartContextEnabled",

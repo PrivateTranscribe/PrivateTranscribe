@@ -25,6 +25,8 @@ test("cloud cleanup shows result, timing, errors and preserves its custom prompt
     ipcMain.removeHandler("get-openai-key");
     ipcMain.handle("get-openai-key", () => "e2e-fake-key");
   });
+  // First: turning beta features on reloads the window, which would drop the fetch stub below.
+  await unlockTesterAccess(page);
   await page.evaluate(() => {
     localStorage.setItem("useReasoningModel", "true");
     localStorage.setItem("reasoningModel", "gpt-5.6-luna");
@@ -54,7 +56,6 @@ test("cloud cleanup shows result, timing, errors and preserves its custom prompt
       return fetchOriginal(input, init);
     };
   });
-  await unlockTesterAccess(page);
   await page.getByRole("button", { name: "AI Enhancement", exact: true }).click();
   await expect(page.getByText("GPT-5.6 Luna", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("API key saved", { exact: true }).first()).toBeVisible();

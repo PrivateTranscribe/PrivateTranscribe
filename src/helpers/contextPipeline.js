@@ -9,7 +9,7 @@
  */
 
 import logger from "../utils/logger";
-import { hasTesterAccess } from "../hooks/useProStatus";
+import { isFeatureUnlocked } from "../utils/betaFeatures";
 
 /** Default IPC timeout – short enough to never stall transcription. */
 const DEFAULT_TIMEOUT_MS = 300;
@@ -23,18 +23,18 @@ const WHISPER_TITLE_MAX = 80;
  * Returns true when Smart Context (window title + app name) is enabled.
  *
  * Key priority:
- *  1. `smartContextEnabled` (new key, default true for Pro)
+ *  1. `smartContextEnabled` (current key)
  *  2. `enableContextCapture` (legacy key, backward compat)
  *  3. `includeActiveWindowContextInReasoning` (oldest legacy key)
  *
- * Always requires Pro entitlement.
+ * Off until beta features are turned on, since Smart Context is a beta.
  *
  * @returns {boolean}
  */
 export function isSmartContextEnabled() {
   if (typeof window === "undefined" || !window.localStorage) return false;
   try {
-    if (!hasTesterAccess()) return false;
+    if (!isFeatureUnlocked("smart-context")) return false;
     const v = window.localStorage.getItem("smartContextEnabled");
     if (v === "true") return true;
     if (v === "false") return false;
@@ -68,14 +68,14 @@ export function isFileIdentifiersEnabled() {
 /**
  * Returns true when LLM Context Enhancement is enabled.
  * This is the separate toggle for feeding context to the reasoning LLM.
- * Does NOT require Smart Context — it has its own Pro gate.
+ * Does NOT require the Smart Context toggle, but it is part of the same beta.
  *
  * @returns {boolean}
  */
 export function isLlmContextEnhancementEnabled() {
   if (typeof window === "undefined" || !window.localStorage) return false;
   try {
-    if (!hasTesterAccess()) return false;
+    if (!isFeatureUnlocked("smart-context")) return false;
     return window.localStorage.getItem("llmContextEnhancement") === "true";
   } catch {
     return false;

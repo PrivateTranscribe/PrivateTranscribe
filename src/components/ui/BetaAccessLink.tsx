@@ -1,26 +1,22 @@
-import { ArrowUpRight } from "lucide-react";
-import { BETA_ACCESS_URL, openExternalLink } from "../../utils/externalLinks";
 import { cn } from "../lib/utils";
 
 /**
- * The way out of a locked beta feature.
- *
- * A control that is locked with no path forward is worse than one that is
- * hidden: it tells the user what they are missing and then leaves them
- * nowhere to go. Every locked surface gets the same exit.
+ * The way out of a locked beta feature: it opens the Beta features tab in
+ * Settings, where the one switch for every beta feature lives.
  */
 export function BetaAccessLink({ className }: { className?: string }) {
   return (
     <button
       type="button"
-      onClick={() => openExternalLink(BETA_ACCESS_URL)}
+      onClick={() =>
+        void window.electronAPI?.openControlPanel?.({ page: "settings", settingsTab: "beta" })
+      }
       className={cn(
-        "inline-flex items-center gap-0.5 text-primary underline-offset-2 transition-colors hover:underline",
+        "inline-flex items-center text-primary underline-offset-2 transition-colors hover:underline",
         className
       )}
     >
-      Apply for beta access
-      <ArrowUpRight className="h-3 w-3" aria-hidden />
+      Turn on beta features
     </button>
   );
 }

@@ -1,6 +1,6 @@
 import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { BetaBadge } from "../ui/BetaBadge";
-import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { isBetaFeature, useBetaFeaturesEnabled } from "../../utils/betaFeatures";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { BookOpen } from "lucide-react";
 import { Button } from "../ui/button";
@@ -44,6 +44,8 @@ export default function DictionaryPage({ showCorrections = false }: { showCorrec
     enableCorrectionLearning,
   } = useSettings();
   const { confirmDialog, showConfirmDialog, hideConfirmDialog } = useDialogs();
+  const [betaOn] = useBetaFeaturesEnabled();
+  const correctionMemoryUnlocked = betaOn || !isBetaFeature("correction-memory");
   const [newWord, setNewWord] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
 
@@ -207,7 +209,7 @@ export default function DictionaryPage({ showCorrections = false }: { showCorrec
           settingsLabel="Correction Memory"
           description="Optional replacements for repeated mistakes."
           status={
-            isFeatureUnlocked("correction-memory") ? (
+            correctionMemoryUnlocked ? (
               enableCorrectionLearning ? (
                 "Learning on"
               ) : (

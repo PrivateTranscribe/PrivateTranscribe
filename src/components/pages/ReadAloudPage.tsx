@@ -1,4 +1,4 @@
-import { AudioLines, Download, Lock } from "lucide-react";
+import { AudioLines, Download } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Toggle } from "../ui/toggle";
@@ -6,13 +6,11 @@ import { HotkeyInput } from "../ui/HotkeyInput";
 import { SettingsRow } from "../ui/SettingsSection";
 import { DownloadProgressBar } from "../ui/DownloadProgressBar";
 import { BetaBadge } from "../ui/BetaBadge";
-import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { VoicePicker } from "../ui/VoicePicker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { READ_ALOUD_SPEEDS } from "../../utils/readAloudSpeed";
 import { useModelDownload } from "../../hooks/useModelDownload";
 import { useSettings } from "../../hooks/useSettings";
-import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../../utils/hotkeys";
 import defaultPlaybackHotkeys from "../../config/readAloudPlaybackHotkeys.json";
 import {
@@ -50,7 +48,6 @@ function PanelRow({ children }: { children: ReactNode }) {
  * kind of surprise this product exists to avoid.
  */
 export default function ReadAloudPage() {
-  const isUnlocked = isFeatureUnlocked("read-aloud");
   const {
     readAloudEnabled,
     setReadAloudEnabled,
@@ -99,9 +96,8 @@ export default function ReadAloudPage() {
   });
 
   useEffect(() => {
-    if (!isUnlocked) return;
     void refreshModelStatus();
-  }, [isUnlocked, refreshModelStatus]);
+  }, [refreshModelStatus]);
 
   const installed = Boolean(modelStatus?.installed);
   const playbackControls = [
@@ -122,12 +118,11 @@ export default function ReadAloudPage() {
   // The main process owns the global shortcut and refuses to bind it while the
   // model is missing, so every input to that decision re-syncs here.
   useEffect(() => {
-    if (!isUnlocked) return;
     void window.electronAPI?.readAloudSyncHotkey?.({
       enabled: readAloudEnabled && installed,
       hotkey: readAloudHotkey,
     });
-  }, [isUnlocked, readAloudEnabled, installed, readAloudHotkey]);
+  }, [readAloudEnabled, installed, readAloudHotkey]);
 
   const modelDescription = () => {
     if (isDownloading) {
@@ -200,7 +195,7 @@ export default function ReadAloudPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-semibold text-foreground tracking-tight">Read Aloud</h1>
-            <BetaBadge locked={!isUnlocked} />
+            <BetaBadge />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Read selected text aloud, privately on this device.{" "}
@@ -209,129 +204,111 @@ export default function ReadAloudPage() {
         </div>
       </div>
 
-      {!isUnlocked ? (
-        <Panel>
-          <div className="p-6 space-y-3">
-            <Lock size={22} className="text-muted-foreground" />
-            <h3 className="text-base font-semibold text-foreground">Hear it instead of reading</h3>
-            <p className="text-sm text-muted-foreground">
-              Read Aloud requires approved beta access. Nothing is downloaded until you choose.
-            </p>
-            <BetaAccessLink className="text-sm" />
-          </div>
-        </Panel>
-      ) : (
-        <>
-          {!installed && modelPanel}
-          <Panel>
-            <PanelRow>
-              <SettingsRow label="Read the selected text out loud">
-                <Toggle
-                  checked={readAloudEnabled}
-                  onChange={setReadAloudEnabled}
-                  disabled={!installed}
-                />
-              </SettingsRow>
-            </PanelRow>
-            <PanelRow>
-              <div data-testid="readaloud-duck-others-row">
-                <SettingsRow
-                  label="Quiet other apps while reading"
-                  description="Lowers music and video to 30%, then restores the volume."
-                >
-                  <Toggle
-                    checked={readAloudDuckOthers}
-                    onChange={setReadAloudDuckOthers}
-                    disabled={!installed}
-                  />
-                </SettingsRow>
-              </div>
-            </PanelRow>
-            {installed && (
-              <PanelRow>
-                <VoicePicker
-                  value={readAloudVoice}
-                  onChange={setReadAloudVoice}
-                  testIdPrefix="readaloud"
-                  ariaLabel="Voice"
-                  collapsible
-                />
-              </PanelRow>
-            )}
-            <PanelRow>
-              <SettingsRow label="Reading speed" description="Applies from your next reading.">
-                <Select
-                  value={String(readAloudSpeed)}
-                  onValueChange={(value) => setReadAloudSpeed(Number(value))}
-                  disabled={!installed}
-                >
-                  <SelectTrigger aria-label="Reading speed" className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {READ_ALOUD_SPEEDS.map((speed) => (
-                      <SelectItem key={speed} value={String(speed)}>
-                        {speed === 1 ? "1× (Normal)" : `${speed}×`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </SettingsRow>
-            </PanelRow>
-          </Panel>
-
-          <Panel>
-            <div className="px-5 py-3">
-              <h2 className="text-sm font-semibold text-foreground">Keyboard shortcuts</h2>
-            </div>
-            <div
-              data-testid="readaloud-shortcuts"
-              className="px-5 divide-y divide-border-subtle/30"
+      {!installed && modelPanel}
+      <Panel>
+        <PanelRow>
+          <SettingsRow label="Read the selected text out loud">
+            <Toggle
+              checked={readAloudEnabled}
+              onChange={setReadAloudEnabled}
+              disabled={!installed}
+            />
+          </SettingsRow>
+        </PanelRow>
+        <PanelRow>
+          <div data-testid="readaloud-duck-others-row">
+            <SettingsRow
+              label="Quiet other apps while reading"
+              description="Lowers music and video to 30%, then restores the volume."
             >
-              <SettingsRow label="Read Aloud hotkey" className="py-2">
+              <Toggle
+                checked={readAloudDuckOthers}
+                onChange={setReadAloudDuckOthers}
+                disabled={!installed}
+              />
+            </SettingsRow>
+          </div>
+        </PanelRow>
+        {installed && (
+          <PanelRow>
+            <VoicePicker
+              value={readAloudVoice}
+              onChange={setReadAloudVoice}
+              testIdPrefix="readaloud"
+              ariaLabel="Voice"
+              collapsible
+            />
+          </PanelRow>
+        )}
+        <PanelRow>
+          <SettingsRow label="Reading speed" description="Applies from your next reading.">
+            <Select
+              value={String(readAloudSpeed)}
+              onValueChange={(value) => setReadAloudSpeed(Number(value))}
+              disabled={!installed}
+            >
+              <SelectTrigger aria-label="Reading speed" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {READ_ALOUD_SPEEDS.map((speed) => (
+                  <SelectItem key={speed} value={String(speed)}>
+                    {speed === 1 ? "1× (Normal)" : `${speed}×`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </PanelRow>
+      </Panel>
+
+      <Panel>
+        <div className="px-5 py-3">
+          <h2 className="text-sm font-semibold text-foreground">Keyboard shortcuts</h2>
+        </div>
+        <div data-testid="readaloud-shortcuts" className="px-5 divide-y divide-border-subtle/30">
+          <SettingsRow label="Read Aloud hotkey" className="py-2">
+            <HotkeyInput
+              variant="shortcut"
+              value={readAloudHotkey}
+              onChange={setReadAloudHotkey}
+              disabled={!installed}
+              appliesToDictationHotkey={false}
+              ariaLabel="Read Aloud hotkey"
+              conflicts={shortcutConflicts}
+              resetHotkey={DEFAULT_READ_ALOUD_HOTKEY}
+            />
+          </SettingsRow>
+          <div
+            data-testid="readaloud-playback-shortcuts"
+            className="divide-y divide-border-subtle/30"
+          >
+            {playbackControls.map(({ op, label }) => (
+              <SettingsRow key={op} label={label} className="py-2">
                 <HotkeyInput
                   variant="shortcut"
-                  value={readAloudHotkey}
-                  onChange={setReadAloudHotkey}
+                  value={playbackHotkeys[op]}
+                  onChange={(hotkey) =>
+                    setReadAloudPlaybackHotkeys({ ...playbackHotkeys, [op]: hotkey })
+                  }
+                  resetHotkey={defaultPlaybackHotkeys[op]}
                   disabled={!installed}
                   appliesToDictationHotkey={false}
-                  ariaLabel="Read Aloud hotkey"
-                  conflicts={shortcutConflicts}
-                  resetHotkey={DEFAULT_READ_ALOUD_HOTKEY}
+                  ariaLabel={label + " hotkey"}
+                  conflicts={[
+                    ...shortcutConflicts.filter((entry) => entry.label !== label),
+                    { label: "Read Aloud", hotkey: readAloudHotkey },
+                  ]}
                 />
               </SettingsRow>
-              <div
-                data-testid="readaloud-playback-shortcuts"
-                className="divide-y divide-border-subtle/30"
-              >
-                {playbackControls.map(({ op, label }) => (
-                  <SettingsRow key={op} label={label} className="py-2">
-                    <HotkeyInput
-                      variant="shortcut"
-                      value={playbackHotkeys[op]}
-                      onChange={(hotkey) =>
-                        setReadAloudPlaybackHotkeys({ ...playbackHotkeys, [op]: hotkey })
-                      }
-                      resetHotkey={defaultPlaybackHotkeys[op]}
-                      disabled={!installed}
-                      appliesToDictationHotkey={false}
-                      ariaLabel={label + " hotkey"}
-                      conflicts={[
-                        ...shortcutConflicts.filter((entry) => entry.label !== label),
-                        { label: "Read Aloud", hotkey: readAloudHotkey },
-                      ]}
-                    />
-                  </SettingsRow>
-                ))}
-              </div>
-            </div>
-            <p className="px-5 py-3 text-[12px] text-muted-foreground">
-              Pause and skip shortcuts are active only during a read.
-            </p>
-          </Panel>
-          {installed && modelPanel}
-        </>
-      )}
+            ))}
+          </div>
+        </div>
+        <p className="px-5 py-3 text-[12px] text-muted-foreground">
+          Pause and skip shortcuts are active only during a read.
+        </p>
+      </Panel>
+      {installed && modelPanel}
     </div>
   );
 }

@@ -12,7 +12,12 @@ const VALID_CONTROL_PANEL_PAGES = new Set([
   "settings",
 ]);
 
-const VALID_SETTINGS_TABS = new Set(["general", "permissions", "pro", "developer"]);
+const VALID_SETTINGS_TABS = new Set(["general", "permissions", "beta", "developer"]);
+
+/** "pro" is what the Beta features tab was called; a request for it still lands there. */
+function currentTabId(settingsTab) {
+  return settingsTab === "pro" ? "beta" : settingsTab;
+}
 
 /**
  * Keep renderer-provided navigation values inside the control panel's known routes.
@@ -28,10 +33,9 @@ function normalizeControlPanelDestination(destination) {
     return null;
   }
 
+  const requestedTab = currentTabId(destination.settingsTab);
   const settingsTab =
-    page === "settings" && VALID_SETTINGS_TABS.has(destination.settingsTab)
-      ? destination.settingsTab
-      : undefined;
+    page === "settings" && VALID_SETTINGS_TABS.has(requestedTab) ? requestedTab : undefined;
 
   return settingsTab ? { page, settingsTab } : { page };
 }
