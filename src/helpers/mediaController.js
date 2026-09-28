@@ -5,18 +5,13 @@
  * when recording stops — but only if we were the ones who paused it.
  *
  * Platform implementations:
- *  - Windows : Primary path — SMTC WinRT API via PowerShell TryPauseAsync /
- *              TryPlayAsync on the specific session that was playing.
+ *  - Windows : SMTC WinRT API via PowerShell TryPauseAsync / TryPlayAsync on
+ *              the specific session that was playing.
  *              Stores the SourceAppUserModelId so we resume the same app.
  *
- *              Fallback path — when TryPauseAsync returns false (common for
- *              Spotify Win32 which registers with SMTC but doesn't honour
- *              TryPauseAsync), falls back to nircmd.exe mediaplay which sends
- *              VK_MEDIA_PLAY_PAUSE.  This is only triggered after the SMTC
- *              check has confirmed that something is actually Playing, so we
- *              never accidentally start a paused or stopped player.  nircmd
- *              routes the key to the current SMTC session, which at this point
- *              is the session we just verified as playing.
+ *              When TryPauseAsync returns false (common for Spotify Win32,
+ *              which registers with SMTC but doesn't honour it), no command is
+ *              sent and that player keeps playing.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * TODO: Windows "Pause Media" feature is currently DISABLED IN UI (shows as
@@ -25,10 +20,10 @@
  * Full history of attempts (2026-03-26):
  *
  * 1. Original implementation: sent VK_MEDIA_PLAY_PAUSE global media key via
- *    nircmd.exe or PowerShell `$wshell.SendKeys([char]179)`. This is inherently
- *    unreliable on Windows because the key is routed to the active SMTC session,
- *    which is not always the app that is playing. Could accidentally start a
- *    paused Spotify while YouTube was focused, etc.
+ *    a bundled third-party exe or PowerShell `$wshell.SendKeys([char]179)`.
+ *    This is inherently unreliable on Windows because the key is routed to the
+ *    active SMTC session, which is not always the app that is playing. Could
+ *    accidentally start a paused Spotify while YouTube was focused, etc.
  *
  * 2. PowerShell VBScript approach: used wscript.exe to avoid PowerShell AV
  *    heuristics. Triggered a Windows Script Host popup bug — reverted.
@@ -37,8 +32,10 @@
  *    SessionManager via PowerShell reflection to call TryPauseAsync on the
  *    specific playing session. This is correct architecture but TryPauseAsync
  *    returns false for Spotify Win32 (non-Store) — Spotify registers with SMTC
- *    but does not honour the WinRT pause API. Added nircmd fallback when
- *    TryPauseAsync fails, only after confirming something IS playing.
+ *    but does not honour the WinRT pause API. Added a global media-key
+ *    fallback when TryPauseAsync fails, only after confirming something IS
+ *    playing. That fallback was removed on 2026-09-28 with the exe that sent
+ *    the key, so a false TryPauseAsync now sends nothing.
  *
  * 4. Wiring bug discovered: the overlay button click path used a different
  *    code path that completely bypassed pauseMedia(). Fixed by consolidating
@@ -91,46 +88,6 @@ function runCmd(cmd) {
   } catch (_) {
     // Ignore spawn errors — fail silently
   }
-}
-
-// ---------------------------------------------------------------------------
-// Windows — nircmd helpers (used as fallback when SMTC TryPauseAsync fails)
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the path to the bundled nircmd.exe, or null if not found.
- * Mirrors the search order used by clipboard.js.
- */
-function findNircmdPath() {
-  if (process.platform !== "win32") return null;
-  const candidates = [];
-  try {
-    candidates.push(path.join(process.resourcesPath, "bin", "nircmd.exe"));
-  } catch (_) {}
-  candidates.push(
-    path.join(__dirname, "..", "..", "resources", "bin", "nircmd.exe"),
-    path.join(process.cwd(), "resources", "bin", "nircmd.exe")
-  );
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch (_) {}
-  }
-  return null;
-}
-
-/**
- * Sends the system-wide VK_MEDIA_PLAY_PAUSE key via nircmd.
- * Windows routes this key to the current SMTC session regardless of the
- * foreground window, so it works from a background Electron process.
- * Used as a fallback when SMTC TryPauseAsync returns false (Spotify Win32).
- */
-function nircmdMediaPlayPause(nircmdPath) {
-  return new Promise((resolve) => {
-    exec(`"${nircmdPath}" mediaplay`, { timeout: 2000, windowsHide: true }, (err) => {
-      resolve(err === null);
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -256,8 +213,8 @@ function pauseMediaWindowsDirect() {
       "    }",
       // TryPauseAsync returned false (Spotify Win32 and some other Win32 apps
       // register with SMTC but don't honour TryPauseAsync). Output the AUMID
-      // so the caller can use nircmd as a fallback, then exit 3.
-      "    [Console]::Error.WriteLine('SMTC-DEBUG: TryPauseAsync returned false — signalling nircmd fallback')",
+      // for the caller's log, then exit 3.
+      "    [Console]::Error.WriteLine('SMTC-DEBUG: TryPauseAsync returned false — not paused')",
       "    Write-Output $playingSession.SourceAppUserModelId",
       "    exit 3",
       "} catch { [Console]::Error.WriteLine('SMTC-DEBUG: exception ' + $_.Exception.Message); exit 2 }",
@@ -274,7 +231,7 @@ function pauseMediaWindowsDirect() {
     exec(
       `powershell -NonInteractive -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`,
       { timeout: 5000, windowsHide: true },
-      async (err, stdout, stderr) => {
+      (err, stdout, stderr) => {
         // Log all PS diagnostic lines emitted to stderr.
         if (stderr) {
           for (const line of stderr.split(/\r?\n/)) {
@@ -296,32 +253,14 @@ function pauseMediaWindowsDirect() {
           );
           resolve(aumid);
         } else if (exitCode === 3) {
-          // SMTC found a playing session but TryPauseAsync returned false.
-          // This is common for Spotify Win32.  Fall back to nircmd mediaplay
-          // which sends VK_MEDIA_PLAY_PAUSE to the current SMTC session.
+          // SMTC found a playing session but TryPauseAsync returned false, which
+          // is common for Spotify Win32. Nothing is sent, so it keeps playing.
           const aumid = stdout.trim() || "unknown";
           debugLogger.debug(
-            `mediaController: SMTC TryPauseAsync failed for aumid=${aumid}, trying nircmd fallback`,
+            `mediaController: SMTC TryPauseAsync failed for aumid=${aumid}; no media command sent`,
             undefined,
             "media"
           );
-          const nircmd = findNircmdPath();
-          if (nircmd) {
-            const ok = await nircmdMediaPlayPause(nircmd);
-            if (ok) {
-              debugLogger.debug(`mediaController: nircmd mediaplay succeeded`, undefined, "media");
-              // Prefix the AUMID so resume knows to use nircmd again (toggle back).
-              resolve("NIRCMD:" + aumid);
-              return;
-            }
-            debugLogger.debug(`mediaController: nircmd mediaplay failed`, undefined, "media");
-          } else {
-            debugLogger.debug(
-              `mediaController: nircmd not found, cannot pause media`,
-              undefined,
-              "media"
-            );
-          }
           resolve(null);
         } else {
           // Exit 1: no playing session found.  Exit 2: PS exception.
@@ -435,10 +374,10 @@ let pausedWindowsAumid = null;
 // has shown "Soon" there ever since, but hiding a toggle does not clear what it
 // stored: anyone who switched the feature on before it was withdrawn kept a
 // `pauseMediaOnRecord=true` in localStorage, so the main process went on
-// running the SMTC pause — and its nircmd fallback went on sending a global
-// VK_MEDIA_PLAY_PAUSE — on every dictation, with no control left in the UI to
-// stop it. Found on Kristian's own install: pauseMedia() invoked, twice, in
-// logs written months after the feature was disabled.
+// running the SMTC pause — and its since-removed media-key fallback went on
+// sending a global VK_MEDIA_PLAY_PAUSE — on every dictation, with no control
+// left in the UI to stop it. Found on Kristian's own install: pauseMedia()
+// invoked, twice, in logs written months after the feature was disabled.
 //
 // So the UI is not the gate. This is. Re-enabling Windows means deleting it
 // from this set, and the stored preference each user already has comes back
@@ -592,13 +531,7 @@ async function resumeMedia() {
       if (!pausedWindowsAumid) return;
       const aumid = pausedWindowsAumid;
       pausedWindowsAumid = null;
-      if (aumid.startsWith("NIRCMD:")) {
-        // We paused via nircmd media key (toggle) — send it again to resume.
-        const nircmd = findNircmdPath();
-        if (nircmd) await nircmdMediaPlayPause(nircmd);
-      } else {
-        await resumeMediaWindowsDirect(aumid);
-      }
+      await resumeMediaWindowsDirect(aumid);
     } else {
       if (!didPause) return;
       didPause = false;

@@ -100,24 +100,12 @@ function assertWindowsFastPasteSucceeded(stdout) {
   return result;
 }
 
-/**
- * Paste chord for the nircmd/PowerShell fallback path, used only when the helper
- * is unavailable. Without the helper there is no target detection, so this
- * defaults to the ordinary Ctrl+V that shipped before terminal support existed.
- */
-function getWindowsPasteShortcut({ isTerminal = false } = {}) {
-  return isTerminal
-    ? { isTerminal: true, nircmdKeys: "ctrl+shift+v", sendKeys: "^+v" }
-    : { isTerminal: false, nircmdKeys: "ctrl+v", sendKeys: "^v" };
-}
-
 module.exports = {
   assertWindowsFastPasteSucceeded,
   FAST_PASTE_EXECUTABLE,
   PASTE_EVIDENCE_ABSENT,
   PASTE_EVIDENCE_NONE,
   getWindowsFastPasteExecutablePaths,
-  getWindowsPasteShortcut,
   parseWindowsFastPasteOutput,
   resolveWindowsFastPasteExecutable,
 };

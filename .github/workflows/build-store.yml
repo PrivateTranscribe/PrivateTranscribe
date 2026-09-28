@@ -53,7 +53,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "resources/bin/windows-fast-paste.exe")) {
-            Write-Error "windows-fast-paste.exe is missing. Auto-paste into terminals would silently fall back to Ctrl+V."
+            Write-Error "windows-fast-paste.exe is missing. Auto-paste would be skipped and every dictation left on the clipboard."
             exit 1
           }
 

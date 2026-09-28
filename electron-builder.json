@@ -160,10 +160,6 @@
     "executableName": "PrivateTranscribe",
     "extraResources": [
       {
-        "from": "resources/bin/nircmd.exe",
-        "to": "bin/nircmd.exe"
-      },
-      {
         "from": "resources/bin/",
         "to": "bin/",
         "filter": [
