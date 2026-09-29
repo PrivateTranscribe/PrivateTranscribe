@@ -9,7 +9,12 @@ import {
 import { privateFile } from "../../privateCheckout";
 
 const require = createRequire(import.meta.url);
-const migrationsDir = privateFile("supabase", "migrations");
+const performanceMigrationPath = privateFile(
+  "supabase",
+  "migrations",
+  "20260823160000_add_transcription_performance_analytics.sql"
+);
+const migrationsDir = performanceMigrationPath && path.dirname(performanceMigrationPath);
 const {
   ALLOWED_ANALYTICS_EVENTS,
   ALLOWED_ANALYTICS_LANGUAGES,
@@ -169,10 +174,7 @@ describe("analytics payload privacy", () => {
       .sort()
       .map((name) => fs.readFileSync(path.join(migrationsDir!, name), "utf8"))
       .join("\n");
-    const performanceMigration = fs.readFileSync(
-      path.join(migrationsDir!, "20260823160000_add_transcription_performance_analytics.sql"),
-      "utf8"
-    );
+    const performanceMigration = fs.readFileSync(performanceMigrationPath!, "utf8");
 
     for (const event of ALLOWED_ANALYTICS_EVENTS) {
       expect(migrations).toContain(`'${event}'`);
