@@ -173,6 +173,8 @@ async function expectNothingDictated(
         { timeout: 60_000, intervals: [500] }
       )
       .toBe(true);
+    const log = readAppLog(userDataDir);
+    console.log(`[${label}] stopped by: ${logMarkers.filter((m) => log.includes(m)).join(", ")}`);
   }
 
   await controlPanel.waitForTimeout(SETTLE_MS);
@@ -207,6 +209,10 @@ test.describe("faint breath and rustle", () => {
   test.use({ fakeAudioCaptureFile: path.join(FIXTURE_DIR, "breath.wav"), appEnv: SILENT_ENV });
 
   // Produced "Thank you." with the defences removed - the phrase users report.
+  // Which check ends it varies. Since aa47e51 speech preparation trims the
+  // recording to the short stretch its detector takes for speech, and whisper
+  // often returns nothing for that clip, so the engine's own "No audio
+  // detected" can end it before the transcript check sees any text.
   test("does not become an invented stock phrase", async ({
     electronApp,
     overlayWindow,
@@ -214,12 +220,16 @@ test.describe("faint breath and rustle", () => {
     userDataDir,
   }) => {
     test.setTimeout(300_000);
-    await expectNothingDictated("breath", ["Dropped a non-speech transcript"], {
-      electronApp,
-      overlayWindow,
-      controlPanel,
-      userDataDir,
-    });
+    await expectNothingDictated(
+      "breath",
+      ["Dictation held no speech", "Dropped a non-speech transcript", "No audio detected"],
+      {
+        electronApp,
+        overlayWindow,
+        controlPanel,
+        userDataDir,
+      }
+    );
   });
 });
 
