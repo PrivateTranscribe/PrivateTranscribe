@@ -951,6 +951,10 @@ class WhisperServerManager {
     if (!serverBinary) throw new Error("whisper-server binary not found");
     if (!fs.existsSync(modelPath)) throw new Error(`Model file not found: ${modelPath}`);
 
+    if (this.isCudaServerBinaryPath(serverBinary)) {
+      await gpuBinaryManager.provideCudaRuntime();
+    }
+
     try {
       await this._startWithBinary(serverBinary, modelPath, options);
       if (this.isCudaServerBinaryPath(serverBinary)) {

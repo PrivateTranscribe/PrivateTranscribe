@@ -9,6 +9,7 @@ const { pipeline } = require("stream/promises");
 const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal, isRetryable } = require("./downloadUtils");
+const { provideVcRuntime } = require("./vcRuntime");
 
 // R2 public CDN — binaries served directly (no zip extraction needed)
 const R2_BASE_URL = "https://updates.privatetranscribe.com";
@@ -170,6 +171,23 @@ class GpuBinaryManager {
 
   getPlatformKey() {
     return `${process.platform}-${process.arch}`;
+  }
+
+  /**
+   * Puts the app's Visual C++ runtime beside the downloaded CUDA engine before it
+   * starts. The engine package does not carry it, and without it the engine
+   * starts only where the Visual C++ redistributable is installed. Never throws.
+   */
+  async provideCudaRuntime() {
+    if (process.platform !== "win32") return null;
+    const result = await provideVcRuntime({
+      fromDir: this.getBundledBinDir(),
+      toDir: this.getBinDir(),
+    });
+    if (result.copied.length > 0 || result.missing.length > 0 || result.failed.length > 0) {
+      debugLogger.info("GpuBinaryManager: Visual C++ runtime for the CUDA engine", result);
+    }
+    return result;
   }
 
   getCudaBinaryFilePath() {
