@@ -1,7 +1,14 @@
 const path = require("path");
-const { existsSync, readdirSync } = require("fs");
+const { existsSync, readdirSync, readFileSync } = require("fs");
 const { execFileSync } = require("child_process");
+const { Arch } = require("electron-builder");
 const { findUncoveredFiles, loadManifest } = require("./generate-third-party-notices");
+const { MACHINE, readImports } = require("./lib/pe-file");
+
+// Windows finds these only in the importing file's own folder or in System32, and
+// System32 has them only where the Visual C++ redistributable is installed.
+const VC_RUNTIME_DLL =
+  /^(msvcp140(_\w+)?|vcruntime140(_\w+)?|vcomp140|concrt140|vccorlib140)\.dll$/i;
 
 function listFiles(dir, prefix) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -10,6 +17,27 @@ function listFiles(dir, prefix) {
       ? listFiles(path.join(dir, entry.name), relativePath)
       : [relativePath];
   });
+}
+
+/**
+ * Binaries of one machine type under dir that import a Visual C++ runtime DLL
+ * missing from their own folder, as "relative/path needs NAME.dll". Other
+ * architectures are skipped: onnxruntime-node also ships arm64 copies that never load.
+ */
+function findUnshippedRuntimeImports(dir, machine) {
+  return listFiles(dir, ".")
+    .filter((file) => /\.(exe|dll|node)$/i.test(file))
+    .flatMap((file) => {
+      const fullPath = path.join(dir, file);
+      const pe = readImports(readFileSync(fullPath));
+      if (!pe || pe.machine !== machine) return [];
+      const neighbours = new Set(
+        readdirSync(path.dirname(fullPath)).map((name) => name.toLowerCase())
+      );
+      return [...pe.imports, ...pe.delayImports]
+        .filter((dll) => VC_RUNTIME_DLL.test(dll) && !neighbours.has(dll.toLowerCase()))
+        .map((dll) => `${file.slice(2)} needs ${dll}`);
+    });
 }
 
 module.exports = async function afterPack(context) {
@@ -21,7 +49,11 @@ module.exports = async function afterPack(context) {
   // Source tests can find a working engine in the user's cache and miss stale
   // DLLs in resources/bin. Help must work before signing or publishing a build.
   const binDir = path.join(context.appOutDir, "resources", "bin");
-  for (const name of ["whisper-server-win32-x64.exe", "llama-server-win32-x64.exe"]) {
+  for (const name of [
+    "whisper-server-win32-x64.exe",
+    "llama-server-win32-x64.exe",
+    "sherpa-onnx-ws-win32-x64.exe",
+  ]) {
     try {
       execFileSync(path.join(binDir, name), ["--help"], {
         cwd: binDir,
@@ -47,6 +79,17 @@ module.exports = async function afterPack(context) {
     throw new Error(
       `[after-pack-win] No third-party notice covers ${uncovered.join(", ")}. ` +
         "Add each file to resources/third-party/components.json, then run npm run notices."
+    );
+  }
+
+  // The probes above cannot catch this: the build machine has the runtime in System32.
+  const unshipped = findUnshippedRuntimeImports(context.appOutDir, MACHINE[Arch[context.arch]]);
+  if (unshipped.length > 0) {
+    throw new Error(
+      `[after-pack-win] ${unshipped.join(", ")}. Windows looks for these in the importing ` +
+        "file's folder, then in System32, which has them only where the Visual C++ " +
+        "redistributable is installed. Ship them with scripts/copy-vc-runtime.js and " +
+        "electron-builder.json."
     );
   }
 
@@ -112,3 +155,5 @@ module.exports = async function afterPack(context) {
   execFileSync(rceditPath, args, { stdio: "inherit" });
   console.log(`[after-pack-win] Updated Windows metadata for ${originalFilename}`);
 };
+
+module.exports.findUnshippedRuntimeImports = findUnshippedRuntimeImports;
