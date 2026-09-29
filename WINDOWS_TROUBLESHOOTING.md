@@ -76,7 +76,7 @@ Restart PrivateTranscribe after changing `.env`.
 PrivateTranscribe.exe --log-level=debug
 
 # Or set in .env file at %APPDATA%\PrivateTranscribe\.env
-PRIVATETRANSCRIBE_LOG_LEVEL=debug
+PT_LOG_LEVEL=debug
 ```
 
 Logs saved to: `%APPDATA%\PrivateTranscribe\logs\`
@@ -100,7 +100,7 @@ Settings → Virus & threat protection → Exclusions
 Allow PrivateTranscribe through firewall for cloud transcription
 
 ### Permission Errors
-Right-click → Run as administrator (or set in Properties → Compatibility)
+PrivateTranscribe does not need administrator rights. If the microphone is blocked, open Settings → Privacy & security → Microphone and let desktop apps use it.
 
 ## Complete Reset
 

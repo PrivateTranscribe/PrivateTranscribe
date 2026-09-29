@@ -1,16 +1,13 @@
 # Local Whisper Setup
 
-OpenWhispr supports local speech-to-text processing using whisper.cpp. This keeps your audio completely private—nothing leaves your device.
+PrivateTranscribe transcribes locally with whisper.cpp by default. With a local model, your audio stays on your PC.
 
 ## Quick Start
 
-1. Open the **Control Panel** (right-click tray icon or click the overlay)
-2. Go to **Settings** → **Speech to Text Processing**
-3. Enable **Use Local Whisper**
-4. Select a model (recommended: `base`)
-5. Click **Save**
-
-The first transcription will download the model automatically.
+1. Open the **Control Panel** (right-click the tray icon or click the overlay)
+2. Open **Dictation** in the sidebar
+3. Under **Speech model**, choose local transcription
+4. Pick a model (recommended: `base`) and let the app download it
 
 ## Model Selection
 
@@ -24,10 +21,10 @@ The first transcription will download the model automatically.
 
 ## How It Works
 
-OpenWhispr uses whisper.cpp, a high-performance C++ implementation of OpenAI's Whisper model:
+PrivateTranscribe uses whisper.cpp, a high-performance C++ implementation of OpenAI's Whisper model:
 
-1. whisper.cpp binary is bundled with the app (or uses system installation as fallback)
-2. GGML models are downloaded on first use to `~/.cache/openwhispr/whisper-models/`
+1. The whisper.cpp engine is bundled with the app
+2. GGML models are downloaded on first use to `%USERPROFILE%\.cache\PrivateTranscribe\whisper-models\`
 3. Audio is processed locally using FFmpeg (bundled with the app)
 
 ## Requirements
@@ -38,35 +35,22 @@ OpenWhispr uses whisper.cpp, a high-performance C++ implementation of OpenAI's W
 
 ## Running From Source
 
-If you're running OpenWhispr locally from a git checkout (not a packaged app), download the whisper.cpp binary for your current platform:
+If you're running PrivateTranscribe from a git checkout (not a packaged app), download the whisper.cpp binary first:
 
 ```bash
 npm run download:whisper-cpp
 ```
 
-This puts the binary in `resources/bin/`. For multi-platform packaging from a single machine, use:
-
-```bash
-npm run download:whisper-cpp:all
-```
-
-## File Locations
-
-| Data              | macOS                                        | Windows                              | Linux                           |
-|-------------------|----------------------------------------------|--------------------------------------|---------------------------------|
-| Models            | `~/.cache/openwhispr/whisper-models/`        | `%USERPROFILE%\.cache\openwhispr\whisper-models\` | `~/.cache/openwhispr/whisper-models/` |
+This puts the binary in `resources/bin/`.
 
 ## Troubleshooting
 
-### "Not Found" Status
-1. Click **Recheck Installation** in Control Panel
-2. Restart the app
-3. If bundled binary fails, install via package manager:
-   - macOS: `brew install whisper-cpp`
-   - Linux: Build from source at https://github.com/ggml-org/whisper.cpp
+### The engine does not start
+1. Restart the app
+2. Turn on debug logging and look for the whisper-server lines listed in [DEBUG.md](DEBUG.md)
 
 ### Transcription Fails
-1. Verify microphone permissions
+1. Check that Windows lets desktop apps use the microphone
 2. Try a smaller model (tiny/base)
 3. Check disk space for model downloads
 
@@ -80,4 +64,4 @@ npm run download:whisper-cpp:all
 | Mode  | Audio Leaves Device | Internet Required | Cost      |
 |-------|---------------------|-------------------|-----------|
 | Local | No                  | Only for model download | Free |
-| Cloud | Yes (to OpenAI)     | Yes               | API usage |
+| Cloud | Yes (to the provider you choose) | Yes      | API usage |

@@ -30,7 +30,7 @@ Avoid:
 
 ### 2. Impeccable
 
-Use for better design vocabulary when prompting Claude/Codex/Atlas.
+Use for better design vocabulary when prompting Claude or Codex.
 
 - Site: `https://impeccable.dev`
 - Reel install command seen: `npx skills add pbakus/impeccable`

@@ -14,7 +14,7 @@ PrivateTranscribe began as a private copy of [OpenWhispr](https://github.com/Ope
 - **Custom dictionary** — add names, technical terms, domain jargon
 - **Push-to-talk** — native low-level Windows key listener
 - **Control Panel** — transcription history, settings, model management
-- **Privacy-first** — all audio stays on your device
+- **Privacy-first** — with a local model, audio stays on your device
 
 ## Requirements
 

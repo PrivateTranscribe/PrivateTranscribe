@@ -1,64 +1,55 @@
 # Debug Mode
 
-Enable verbose logging to diagnose issues like "no audio detected" or transcription failures.
+Turn on verbose logging to diagnose problems such as "no audio detected" or a failed transcription.
 
-## Enable Debug Logging
+## Turn on debug logging
 
-### Option 1: Command Line
-```bash
-# macOS
-/Applications/OpenWhispr.app/Contents/MacOS/OpenWhispr --log-level=debug
+### Option 1: Command line
 
-# Windows
-OpenWhispr.exe --log-level=debug
+Start the app from the folder it is installed in (usually `C:\Program Files\PrivateTranscribe`):
+
+```powershell
+& "C:\Program Files\PrivateTranscribe\PrivateTranscribe.exe" --log-level=debug
 ```
 
-### Option 2: Environment File
-Add to your `.env` file and restart:
+### Option 2: Settings file
+
+Add this line to `%APPDATA%\PrivateTranscribe\.env` and restart the app:
+
 ```
-OPENWHISPR_LOG_LEVEL=debug
+PT_LOG_LEVEL=debug
 ```
 
-**Env file locations:**
-- macOS: `~/Library/Application Support/OpenWhispr/.env`
-- Windows: `%APPDATA%\OpenWhispr\.env`
-- Linux: `~/.config/OpenWhispr/.env`
+A development build (`npm run dev`) also has a **Debug Logging** switch under **Settings → Diagnostics & Data**.
 
-## Log File Locations
+## Log file location
 
-- **macOS**: `~/Library/Application Support/OpenWhispr/logs/debug-*.log`
-- **Windows**: `%APPDATA%\OpenWhispr\logs\debug-*.log`
-- **Linux**: `~/.config/OpenWhispr/logs/debug-*.log`
+`%APPDATA%\PrivateTranscribe\logs\debug-*.log`
 
-## What Gets Logged
+## What gets logged
 
 | Stage | Details |
 |-------|---------|
 | FFmpeg | Path resolution, permissions, ASAR unpacking |
 | Audio Recording | Permission requests, chunk sizes, audio levels |
-| Audio Processing | File creation, Whisper command, process output |
+| Audio Processing | File creation, the whisper-server request, process output |
 | IPC | Messages between renderer and main process |
 
 ## Common Issues
 
 ### "No Audio Detected"
 Look for:
-- `maxLevel < 0.01` → Audio too quiet
-- `Audio appears to be silent` → Microphone issue
+- `Microphone Access Denied` → Windows blocks the microphone for desktop apps
 - `FFmpeg not available` → Path resolution failed
 
 ### Transcription Fails
 Look for:
-- `Whisper stderr:` → whisper.cpp/FFmpeg errors
-- `Process closed with code: [non-zero]` → Process failure
+- `Failed to start whisper-server` or `whisper-server spawn failed` → the local engine did not start
+- `whisper-server failed readiness check` → the engine started but never answered
+- `CUDA binary failed ... falling back to CPU binary` → the GPU engine could not load, so the CPU engine took over
 - `Failed to parse Whisper output` → Invalid JSON
 
-### Permission Issues
-Look for:
-- `Microphone Access Denied`
-- `isExecutable: false` → FFmpeg permission issue
-
-### Hotkey / Push-to-Talk Issues (Windows)
+### Hotkey / Push-to-Talk Issues
 Look for:
 - `[WindowsKeyManager] Starting key listener` (confirms the native listener is being used)
 - `Windows key listener binary not found` (fallback mode; push-to-talk reliability may be reduced)
@@ -75,8 +66,8 @@ When reporting issues:
 3. Redact any sensitive information
 4. Include relevant log sections in your issue report
 
-## Disable Debug Mode
+## Turn Debug Logging Off
 
-Debug mode is off by default. To ensure it's disabled:
-- Remove `--log-level=debug` from command
-- Remove `OPENWHISPR_LOG_LEVEL` from `.env`
+Debug logging is off by default. To turn it off again:
+- Start the app without `--log-level=debug`
+- Remove `PT_LOG_LEVEL` from `%APPDATA%\PrivateTranscribe\.env`

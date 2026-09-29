@@ -144,7 +144,7 @@
 - Opening Settings no longer freezes the app for a second and a half.
 - The Start Menu shortcut is only rewritten when it is actually stale, instead of on every launch.
 - Waking a display no longer takes the overlay's global mouse hook down and back up six times over.
-- Referral and creator discount codes work at checkout. They failed with a server error before, so no code had ever been used.
+- Referral and creator discount codes work at checkout. They failed with a server error before.
 
 ## 0.16.0 - 2026-08-27
 
