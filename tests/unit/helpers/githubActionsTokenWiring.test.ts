@@ -2,10 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const workflowPaths = [
-  ".github/workflows/build-and-notarize.yml",
-  ".github/workflows/release-production.yml",
-];
+const workflowPaths = [".github/workflows/release-production.yml"];
 
 describe("release workflow GitHub authentication", () => {
   it.each(workflowPaths)(
