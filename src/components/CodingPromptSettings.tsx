@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { useEnhancementPreferences } from "../hooks/useEnhancementPreferences";
-import { getEffectiveEntitlement, isFeatureUnlocked } from "../hooks/useProStatus";
-import { readAgentModeUsage } from "../utils/agentModeUsage";
+import { isFeatureUnlocked } from "../utils/betaFeatures";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import { SettingsDisclosure } from "./ui/SettingsDisclosure";
 import { SettingsRow } from "./ui/SettingsSection";
 import { Toggle } from "./ui/toggle";
-import { Badge } from "./ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 interface AgentModeRewriteStatus {
@@ -64,16 +62,12 @@ export default function CodingPromptSettings() {
   const canUseSharedConnection = isFeatureUnlocked("ai-enhancement");
   const [agentModeRewriteStatus, setAgentModeRewriteStatus] =
     useState<AgentModeRewriteStatus | null>(null);
-  const [agentModeUsage, setAgentModeUsage] = useState(() => readAgentModeUsage());
-  const [isAgentModePro, setIsAgentModePro] = useState(() => getEffectiveEntitlement() === "pro");
 
-  // A prompt is spent in the overlay window, so the count is re-read whenever
-  // this window comes back to the front rather than only on mount.
+  // Claude Code can be installed while this window is open, so its status is
+  // re-read whenever the window comes back to the front rather than only on mount.
   useEffect(() => {
     let cancelled = false;
-    const refreshAgentModeUsage = () => {
-      setAgentModeUsage(readAgentModeUsage());
-      setIsAgentModePro(getEffectiveEntitlement() === "pro");
+    const refreshRewriteStatus = () => {
       void agentModeBridge()
         .agentModeRewriteStatus?.()
         .then((status) => {
@@ -81,11 +75,11 @@ export default function CodingPromptSettings() {
         })
         .catch(() => undefined);
     };
-    refreshAgentModeUsage();
-    window.addEventListener("focus", refreshAgentModeUsage);
+    refreshRewriteStatus();
+    window.addEventListener("focus", refreshRewriteStatus);
     return () => {
       cancelled = true;
-      window.removeEventListener("focus", refreshAgentModeUsage);
+      window.removeEventListener("focus", refreshRewriteStatus);
     };
   }, []);
 
@@ -168,7 +162,7 @@ export default function CodingPromptSettings() {
                 ? !agentModeRewrite
                   ? "Off. Prompts are pasted as spoken, with paths in backticks."
                   : !canUseSharedConnection
-                    ? "The shared connection requires tester access. Prompts are pasted as spoken."
+                    ? "Turn on beta features in Settings to use the shared connection. Until then, prompts are pasted as spoken."
                     : !reasoningModel
                       ? "Choose a model above. Until then, prompts are pasted as spoken."
                       : "Uses the AI connection above with the Coding prompt style."
@@ -206,42 +200,6 @@ export default function CodingPromptSettings() {
               agentModeRewriteLive &&
               " Rewriting sends text through your Claude Code login."}
           </p>
-        </SettingsPanelRow>
-
-        <SettingsPanelRow>
-          <SettingsRow
-            label="Prompts today"
-            description={
-              isAgentModePro ? (
-                "Unlimited coding prompts on this license. Your AI provider’s limits still apply."
-              ) : (
-                <>
-                  Starter includes {agentModeUsage.limit} a day. Resets at midnight.{" "}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void window.electronAPI?.openControlPanel?.({
-                        page: "settings",
-                        settingsTab: "pro",
-                      })
-                    }
-                    className="text-primary underline-offset-2 hover:underline"
-                  >
-                    Unlimited with Pro
-                  </button>
-                </>
-              )
-            }
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="text-[13px] tabular-nums text-muted-foreground font-mono">
-                {isAgentModePro
-                  ? "Unlimited"
-                  : `${agentModeUsage.usesToday} of ${agentModeUsage.limit}`}
-              </span>
-              {isAgentModePro && <Badge variant="pro">Pro</Badge>}
-            </div>
-          </SettingsRow>
         </SettingsPanelRow>
       </SettingsPanel>
     </SettingsDisclosure>

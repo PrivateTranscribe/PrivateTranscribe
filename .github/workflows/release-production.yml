@@ -61,11 +61,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Download nircmd.exe
-        run: node scripts/download-nircmd.js
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
       - name: Compile native helpers
         run: npm run compile:native
 
@@ -73,7 +68,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "resources/bin/windows-fast-paste.exe")) {
-            Write-Error "windows-fast-paste.exe is missing. Auto-paste into terminals would silently fall back to Ctrl+V."
+            Write-Error "windows-fast-paste.exe is missing. Auto-paste would be skipped and every dictation left on the clipboard."
             exit 1
           }
 
@@ -83,55 +78,6 @@ jobs:
           path: ~/AppData/Local/electron/Cache
           key: windows-electron-${{ hashFiles('**/package-lock.json') }}
           restore-keys: windows-electron-
-
-      # Licensing moved onto the updater's hostname so that blocking it also
-      # blocks updates. If the Cloudflare worker is not routed, that path 404s
-      # from R2 and every install from this build would be unable to activate
-      # Pro. Fail the release here instead of shipping a build that cannot sell.
-      - name: Verify the licensing endpoint is live
-        shell: pwsh
-        run: |
-          $url = 'https://updates.privatetranscribe.com/licensing/activate'
-
-          # curl.exe on purpose. The activate function answers a bogus key with
-          # HTTP 404 and a JSON body, and Invoke-WebRequest hides the body of a
-          # non-2xx response unless -SkipHttpErrorCheck is available, which
-          # varies by PowerShell version. curl.exe returns the body either way,
-          # so this check behaves the same on the runner and on a dev machine.
-          #
-          # The body goes via a file because PowerShell mangles the quotes in
-          # inline JSON when handing it to a native executable. That corrupts
-          # the payload, the function throws on req.json(), and the check then
-          # passes against a broken function.
-          $bodyFile = Join-Path ([System.IO.Path]::GetTempPath()) 'licensing-preflight.json'
-          '{"key":"PREFLIGHT-CHECK","deviceId":"preflight","deviceName":"ci"}' |
-            Out-File -FilePath $bodyFile -Encoding ascii -NoNewline
-
-          $out = curl.exe -sS --max-time 20 -X POST $url `
-            -H "Content-Type: application/json" -d "@$bodyFile" 2>&1
-          Remove-Item $bodyFile -ErrorAction SilentlyContinue
-          if ($LASTEXITCODE -ne 0) {
-            throw "Licensing endpoint $url is unreachable (curl exit $LASTEXITCODE): $out. Deploy infra/updates-worker before releasing."
-          }
-
-          try {
-            $parsed = $out | ConvertFrom-Json
-          } catch {
-            throw "Licensing endpoint $url did not return JSON. The Cloudflare worker route is probably missing, so R2 is serving this path. Deploy infra/updates-worker. Body was: $out"
-          }
-
-          if ($null -eq $parsed.PSObject.Properties['success']) {
-            throw "Licensing endpoint $url returned JSON without a 'success' field. Check the worker's function allowlist. Body was: $out"
-          }
-
-          # A well-formed request for a key that does not exist must be rejected
-          # on its merits. "Internal error" means the function itself threw, so
-          # a real activation would fail too - do not ship against that.
-          if ($parsed.error -eq 'Internal error') {
-            throw "Licensing endpoint $url returned an internal error. The function is failing on a well-formed request, so activation would fail for buyers. Body was: $out"
-          }
-
-          Write-Host "Licensing endpoint answered on the updater hostname: $out"
 
       # Fail here rather than 10 minutes later inside electron-builder, where a
       # missing credential surfaces as an opaque Azure auth error.

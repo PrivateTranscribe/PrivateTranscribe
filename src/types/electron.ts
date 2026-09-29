@@ -502,7 +502,7 @@ export type ControlPanelPage =
   | "action-engine"
   | "settings";
 
-export type ControlPanelSettingsTab = "general" | "permissions" | "pro" | "developer";
+export type ControlPanelSettingsTab = "general" | "permissions" | "beta" | "developer";
 
 export interface ControlPanelDestination {
   page: ControlPanelPage;
@@ -1158,7 +1158,7 @@ declare global {
         filters?: Array<{ name: string; extensions: string[] }>;
       }) => Promise<{ canceled: boolean; filePaths: string[] }>;
 
-      // Action Engine (Pro feature)
+      // Action Engine (beta feature)
       actionEngineList?: () => Promise<{
         success: boolean;
         actions?: import("./actionEngine").Action[];

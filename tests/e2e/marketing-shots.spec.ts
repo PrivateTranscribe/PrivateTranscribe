@@ -73,9 +73,8 @@ test("capture the listing gallery", async ({ controlPanel: page, electronApp }) 
   await seedShowcaseDatabase(electronApp);
   await page.reload();
 
-  // Unlock before the first capture, not between them: Read Aloud, AI
-  // Enhancement and Action Engine collapse into a single locked "Beta features"
-  // row until this runs, and the sidebar is in every shot.
+  // Before the first capture, not between them: the Action Engine is only in
+  // the sidebar while beta features are on, and the sidebar is in every shot.
   await unlockTesterAccess(page);
 
   // The microphone label prints whatever device the OS reports, which on a

@@ -15,10 +15,9 @@ import type { Page } from "@playwright/test";
  * look completely fine in a screenshot.
  *
  * No live prompt is spent. The reasoning provider is pointed at a `.invalid`
- * host that can never resolve, and `window.fetch` is intercepted in the page
- * the same way tests/e2e/fixtures/tester-access.ts stubs licensing. Everything
- * between the text field and the request body — useAgentName, PromptStudio,
- * ReasoningService, getSystemPrompt — is the real shipped code.
+ * host that can never resolve, and `window.fetch` is intercepted in the page.
+ * Everything between the text field and the request body — useAgentName,
+ * PromptStudio, ReasoningService, getSystemPrompt — is the real shipped code.
  */
 
 const EVIDENCE_DIR = path.resolve("test-results/e2e");
@@ -81,14 +80,6 @@ async function captureEvidence(page: Page, fileName: string, fullPage: boolean) 
 }
 
 test.describe("ai enhancement", () => {
-  // Both renderer windows share one localStorage and both re-validate the
-  // cached license on startup. After a restart that means the overlay posts the
-  // spec's fake key to the real licensing server, is told it is not a licence,
-  // and wipes the shared license data — sometimes after the control panel has
-  // finished re-activating, which silently re-locks the page mid-test. Nothing
-  // here needs the overlay, so it stays shut and the restart is deterministic.
-  test.use({ appEnv: { PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW: "1" } });
-
   test("absorbs the voice assistant, keeps its storage, and reaches the prompt", async ({
     controlPanel,
     relaunchElectronApp,

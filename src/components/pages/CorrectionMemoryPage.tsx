@@ -5,7 +5,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Toggle } from "../ui/toggle";
-import { isFeatureUnlocked } from "../../hooks/useProStatus";
+import { isBetaFeature, useBetaFeaturesEnabled } from "../../utils/betaFeatures";
 import { BetaBadge } from "../ui/BetaBadge";
 import { BetaAccessLink } from "../ui/BetaAccessLink";
 import { useSettings } from "../../hooks/useSettings";
@@ -46,7 +46,8 @@ function isSingleWord(value: string) {
 }
 
 export default function CorrectionMemoryPage({ embedded = false }: { embedded?: boolean }) {
-  const isUnlocked = isFeatureUnlocked("correction-memory");
+  const [betaOn] = useBetaFeaturesEnabled();
+  const isUnlocked = betaOn || !isBetaFeature("correction-memory");
   const {
     enableCorrectionLearning,
     setEnableCorrectionLearning,
@@ -163,8 +164,6 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
               <h1 className="text-3xl font-semibold text-foreground tracking-tight">
                 Correction Memory
               </h1>
-              {/* One pill, not two. Locked showed both "Beta" and "Approved
-                testers only", which reads as two separate problems. */}
               <BetaBadge locked={!isUnlocked} />
             </div>
             <p className="text-sm text-muted-foreground mt-1">
@@ -177,9 +176,10 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
       {!isUnlocked && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
           <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">Optional correction tools</h3>
+          <h3 className="text-base font-semibold text-foreground">Correction Memory is in beta</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Requires beta access. Your dictionary works without it.
+            We are still building it, so it can change between updates. Your dictionary works
+            without it.
           </p>
           <BetaAccessLink className="text-sm" />
         </div>

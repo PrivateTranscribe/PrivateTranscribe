@@ -7,15 +7,19 @@ import { AnalyticsConsentModal } from "./components/AnalyticsConsentModal.jsx";
 import { ToastProvider } from "./components/ui/Toast.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { useTheme } from "./hooks/useTheme";
-import { refreshProStatus } from "./services/LicensingService.ts";
 import { trackAnalyticsEventOnce } from "./utils/analytics.ts";
 import { applyStoredHotkeyMigrations } from "./utils/hotkeys.ts";
+import { cleanUpLegacyPlanState } from "./utils/legacyPlanCleanup.ts";
 import "./index.css";
 
 // Repair stored hotkeys before anything reads them. useSettings persists its
 // default on first read, so a migration that ran after mount would be writing
 // underneath a value the app had already adopted.
 applyStoredHotkeyMigrations();
+
+// Same reason: the beta switch is read on first render, so a former tester's
+// switch has to be on before then.
+cleanUpLegacyPlanState();
 
 // Tell the main process the window now has real content on it.
 //
@@ -70,9 +74,6 @@ function AppRouter() {
     if (isDictationPanel && !onboardingCompleted && currentStep < 4) {
       window.electronAPI?.hideWindow?.();
     }
-
-    // Validate Pro license on startup (non-blocking)
-    refreshProStatus().catch(() => {});
 
     setIsLoading(false);
   }, [isControlPanel, isDictationPanel]);

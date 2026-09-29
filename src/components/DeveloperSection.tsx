@@ -3,11 +3,9 @@ import { Button } from "./ui/button";
 import { FolderOpen, Copy, Check, Mail } from "lucide-react";
 import { useToast } from "./ui/Toast";
 import { Toggle } from "./ui/toggle";
-import { useProPreview, type ProPreviewMode } from "../hooks/useProStatus";
 import { SectionLabel } from "./ui/SectionLabel";
 
 export default function DeveloperSection() {
-  const [proPreview, setProPreview] = useProPreview();
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [logPath, setLogPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -192,64 +190,8 @@ export default function DeveloperSection() {
     }
   };
 
-  // NOTE: null (no override) is the internal default.
-  const proPreviewOptions: {
-    value: Exclude<ProPreviewMode, null>;
-    label: string;
-    description: string;
-  }[] = [
-    { value: "free", label: "Starter", description: "Daily limit active - beta features locked" },
-    { value: "pro", label: "Paid Pro", description: "Unlimited words - beta features locked" },
-    { value: "tester", label: "Approved tester", description: "Unlimited words and beta features" },
-  ];
-
   return (
     <div className="space-y-8">
-      {/* ── Pro Preview (temporary internal toggle) ── */}
-      <div>
-        <div className="mb-3">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-[15px] font-semibold text-foreground tracking-tight">
-              Pro Preview
-            </h3>
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/20">
-              INTERNAL
-            </span>
-          </div>
-          <p className="text-[12px] text-muted-foreground leading-relaxed">
-            Preview Starter, paid Pro, or approved-tester access without changing your license.
-          </p>
-        </div>
-        <div className="rounded-xl border border-border-subtle bg-surface-2 divide-y divide-border-subtle">
-          {proPreviewOptions.map(({ value, label, description }) => {
-            const isSelected = proPreview === value;
-            return (
-              <button
-                key={String(value)}
-                onClick={() => setProPreview(value)}
-                className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left transition-colors hover:bg-surface-raised/40"
-              >
-                <div className="min-w-0">
-                  <p
-                    className={`text-[13px] font-medium ${isSelected ? "text-foreground" : "text-muted-foreground"}`}
-                  >
-                    {label}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground/60 mt-0.5">{description}</p>
-                </div>
-                <div
-                  className={`shrink-0 h-4 w-4 rounded-full border-2 transition-colors ${
-                    isSelected
-                      ? "border-primary bg-primary"
-                      : "border-muted-foreground/30 bg-transparent"
-                  }`}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Quick actions */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} className="text-xs">

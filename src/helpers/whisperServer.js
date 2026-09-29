@@ -305,6 +305,21 @@ function offsetVerboseJsonSegments(result, offsetSeconds) {
       start: typeof segment.start === "number" ? segment.start + timestampOffset : segment.start,
       end: typeof segment.end === "number" ? segment.end + timestampOffset : segment.end,
       text: segment.text,
+      ...(Array.isArray(segment.words)
+        ? {
+            words: segment.words.map((word) => ({
+              ...word,
+              start:
+                typeof word.start === "number" && word.start >= 0
+                  ? word.start + timestampOffset
+                  : word.start,
+              end:
+                typeof word.end === "number" && word.end >= 0
+                  ? word.end + timestampOffset
+                  : word.end,
+            })),
+          }
+        : {}),
     })),
   };
 }
@@ -1738,6 +1753,13 @@ class WhisperServerManager {
     // requests that already know it keep the cheaper response.
     const responseFormat = fileMode || detectLanguage ? "verbose_json" : "json";
     form.append("response_format", responseFormat);
+    if (fileMode) {
+      form.append("token_timestamps", "true");
+      // Token timestamps enable whisper-server's segment-length wrapping.
+      // Wrap at whole words so joining subtitle cues cannot add spaces inside
+      // words (for example, Danish "objektiver" becoming "objekt iver").
+      form.append("split_on_word", "true");
+    }
 
     if (fileMode || longSessionChunk) {
       // Long-form audio is especially prone to Whisper repeating stale context

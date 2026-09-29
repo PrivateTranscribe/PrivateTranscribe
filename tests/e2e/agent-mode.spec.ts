@@ -166,41 +166,4 @@ test.describe("Agent Mode", () => {
     expect(paste.options ?? {}).not.toHaveProperty("sendEnter", true);
     expect(paste.text).toMatch(/\bsend\b/i);
   });
-
-  test("a Starter install at the daily cap is stopped before recording", async ({
-    electronApp,
-    overlayWindow,
-    controlPanel,
-  }) => {
-    await configureDictation(overlayWindow);
-    await recordPastes(electronApp);
-    await overlayWindow.evaluate(() => {
-      localStorage.setItem("PRO_ENFORCEMENT", "true");
-      localStorage.setItem("agentModeDictationEnabled", "true");
-      const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-        now.getDate()
-      ).padStart(2, "0")}`;
-      localStorage.setItem(
-        "privatetranscribe_agent_mode_usage_v1",
-        JSON.stringify({ date: today, usesToday: 20, limit: 20 })
-      );
-    });
-    await overlayWindow.reload({ waitUntil: "domcontentloaded" });
-    await expect(overlayWindow.getByRole("button", { name: "Dictation overlay" })).toBeVisible();
-
-    await controlPanel.getByRole("button", { name: "History" }).click();
-    await sendToOverlay(electronApp, "start-dictation");
-
-    await expect(overlayWindow.getByText("Coding prompt shortcuts used up for today")).toBeVisible({
-      timeout: 15_000,
-    });
-    await captureEvidence(overlayWindow, "agent-mode-cap-toast.png");
-    await expect(
-      controlPanel.getByText("PrivateTranscribe Pro", { exact: false }).first()
-    ).toBeVisible({ timeout: 15_000 });
-
-    await overlayWindow.waitForTimeout(2_000);
-    expect(await readPastes(electronApp)).toHaveLength(0);
-  });
 });

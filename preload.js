@@ -458,13 +458,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   voiceMuteStatus: () => ipcRenderer.invoke("voice-mute-status"),
   voiceMuteTest: (options) => ipcRenderer.invoke("voice-mute-test", options),
 
-  // Licensing
-  getMachineId: () => ipcRenderer.invoke("get-machine-id"),
-
   // Native file-open dialog (used by Action Engine app-picker and other UI)
   showOpenDialog: (options) => ipcRenderer.invoke("show-open-dialog", options),
 
-  // Action Engine (Pro feature)
+  // Action Engine (beta feature)
   actionEngineList: () => ipcRenderer.invoke("action-engine-list"),
   actionEngineCreate: (payload) => ipcRenderer.invoke("action-engine-create", payload),
   actionEngineUpdate: (id, patch) => ipcRenderer.invoke("action-engine-update", id, patch),

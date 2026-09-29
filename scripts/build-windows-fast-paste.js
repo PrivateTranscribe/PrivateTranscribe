@@ -7,10 +7,9 @@
  * other toolchain. UI Automation distinguishes key dispatch from observable
  * text insertion.
  *
- * Missing the compiler is not fatal: PrivateTranscribe falls back to nircmd or
- * PowerShell with a plain Ctrl+V, which is what it did before this helper
- * existed. Release builds assert that the binary is present (see the workflows
- * under .github/workflows).
+ * Missing the compiler is not fatal: without the helper, PrivateTranscribe
+ * skips auto-paste and the text stays on the clipboard. Release builds assert
+ * that the binary is present (see the workflows under .github/workflows).
  */
 
 const { spawnSync } = require("child_process");
@@ -56,7 +55,7 @@ if (!compilerPath) {
   fs.rmSync(outputPath, { force: true });
   console.warn("[windows-fast-paste] .NET Framework C# compiler was not found.");
   console.warn(
-    "[windows-fast-paste] Auto-paste will fall back to Ctrl+V without terminal support."
+    "[windows-fast-paste] Auto-paste will be skipped; dictated text stays on the clipboard."
   );
   process.exit(0);
 }
@@ -85,7 +84,7 @@ if (result.status !== 0 || !fs.existsSync(outputPath)) {
   fs.rmSync(outputPath, { force: true });
   console.warn("[windows-fast-paste] Compilation failed.");
   console.warn(
-    "[windows-fast-paste] Auto-paste will fall back to Ctrl+V without terminal support."
+    "[windows-fast-paste] Auto-paste will be skipped; dictated text stays on the clipboard."
   );
   process.exit(0);
 }

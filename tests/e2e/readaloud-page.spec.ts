@@ -1,21 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess } from "./fixtures/tester-access";
+import { isBetaFeaturesOn } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
 /**
  * Ledger gate `readaloud-sidebar-page`: Read Aloud is a sidebar page, not a
- * settings tab nobody found. It is beta gated, downloads its voice model
- * through the real model manager, and says out loud that it only speaks
+ * settings tab nobody found. It needs no beta switch, downloads its voice
+ * model through the real model manager, and says out loud that it only speaks
  * English.
  *
- * This replaces readaloud-settings.spec.ts. Every assertion that spec made is
- * still here — locked, no model, downloading, ready, the enable toggle
- * persisting, and real synthesis through the overlay — because moving a
- * feature is only safe if the behaviour is proven at the new address. What is
- * added is the move itself: the sidebar carries the entry, Settings no longer
- * offers the tab.
+ * This replaces readaloud-settings.spec.ts. Every assertion that spec made
+ * about a working page is still here — no model, downloading, ready, the
+ * enable toggle persisting, and real synthesis through the overlay — because
+ * moving a feature is only safe if the behaviour is proven at the new address.
+ * What is added is the move itself: the sidebar carries the entry, Settings no
+ * longer offers the tab. None of it turns the beta switch on.
  *
  * Screenshots land in docs/goal-evidence/ because a design critic reads them
  * afterwards; every state the page can be in gets one, since a state with
@@ -73,64 +73,58 @@ async function captureSidebar(page: Page, fileName: string) {
   );
 }
 
-/**
- * Unlocked, Read Aloud sits in the sidebar. Locked, it is not listed there and
- * the route runs through the Pro tab's feature card.
- */
 async function openReadAloudPage(controlPanel: Page) {
-  const entry = controlPanel.getByRole("button", { name: "Read Aloud", exact: true });
-  if ((await entry.count()) > 0) {
-    await entry.click();
-  } else {
-    await controlPanel.getByRole("button", { name: "Beta features", exact: true }).click();
-    await controlPanel.getByRole("button", { name: /^Read Aloud/ }).click();
-  }
+  await controlPanel.getByRole("button", { name: "Read Aloud", exact: true }).click();
   await expect(controlPanel.getByRole("heading", { name: "Read Aloud" })).toBeVisible();
 }
 
 test.describe("read aloud page", () => {
-  test("stays out of the sidebar while locked, and is no longer a settings tab", async ({
+  test("sits in the sidebar without the beta switch, and is no longer a settings tab", async ({
     controlPanel,
   }) => {
-    // Locked features are not listed; the one door is the early access row.
-    await expect(controlPanel.getByRole("button", { name: /^Read Aloud/ })).toHaveCount(0);
-    await expect(
-      controlPanel.getByRole("button", { name: "Beta features", exact: true })
-    ).toBeVisible();
+    expect(await isBetaFeaturesOn(controlPanel)).toBe(false);
 
     // It sits in SPEECH, beside Dictionary, not off in some unrelated group.
+    await expect(
+      controlPanel.getByRole("button", { name: "Read Aloud", exact: true })
+    ).toBeVisible();
     await expect(
       controlPanel.getByRole("button", { name: "Dictionary", exact: true })
     ).toBeVisible();
 
     await captureSidebar(controlPanel, "readaloud-sidebar-after.png");
 
-    // Settings must not keep a second copy — one home, not two.
+    // Settings must not keep a second copy — one home, not two. The sidebar
+    // entry stays, so only the page itself is searched.
     await controlPanel.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(controlPanel.getByRole("heading", { name: "Settings" })).toBeVisible();
-    await expect(controlPanel.getByRole("button", { name: "Read Aloud", exact: true })).toHaveCount(
-      0
-    );
+    await expect(
+      controlPanel.getByRole("main").getByRole("button", { name: "Read Aloud", exact: true })
+    ).toHaveCount(0);
   });
 
-  test("shows the locked beta state with a way out", async ({ controlPanel }) => {
+  test("opens with the beta switch off", async ({ controlPanel }) => {
+    expect(await isBetaFeaturesOn(controlPanel)).toBe(false);
     await openReadAloudPage(controlPanel);
 
+    // Beta here labels an English-only feature. It is not a lock.
     await expect(controlPanel.getByText("Beta", { exact: true }).first()).toBeVisible();
-    await expect(controlPanel.getByRole("button", { name: /Apply for beta access/ })).toBeVisible();
     await expect(controlPanel.getByText("English only.")).toBeVisible();
+    await expect(controlPanel.getByRole("button", { name: "Turn on beta features" })).toHaveCount(
+      0
+    );
+    await expect(controlPanel.getByTestId("readaloud-model-status")).toBeVisible();
+    await expect(
+      controlPanel.getByText("Read the selected text out loud", { exact: true })
+    ).toBeVisible();
 
-    // Locked means locked: no download button is reachable from here.
-    await expect(controlPanel.getByRole("button", { name: /Download voice model/ })).toHaveCount(0);
-
-    await captureEvidence(controlPanel, "readaloud-page-locked.png");
+    await captureEvidence(controlPanel, "readaloud-page-switch-off.png");
   });
 
-  test.describe("with tester access and no model on disk", () => {
+  test.describe("with no model on disk", () => {
     test.use({ useThrowawayHome: true });
 
     test("offers the download and never starts one by itself", async ({ controlPanel }) => {
-      await unlockTesterAccess(controlPanel);
       await openReadAloudPage(controlPanel);
 
       const status = controlPanel.getByTestId("readaloud-model-status");
@@ -159,7 +153,6 @@ test.describe("read aloud page", () => {
       // A real HTTP download plus its cancellation; the default 30s is tight.
       test.setTimeout(120_000);
 
-      await unlockTesterAccess(controlPanel);
       await openReadAloudPage(controlPanel);
 
       const modelDir = (
@@ -208,7 +201,6 @@ test.describe("read aloud page", () => {
     test.use({ seedKokoroModel: true });
 
     test("shows the size on disk and lets the feature be turned on", async ({ controlPanel }) => {
-      await unlockTesterAccess(controlPanel);
       await openReadAloudPage(controlPanel);
 
       const modelStatus = await controlPanel.evaluate(

@@ -1,6 +1,7 @@
 import defaultReadAloudPlaybackHotkeys from "../config/readAloudPlaybackHotkeys.json";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "./useLocalStorage";
+import { READ_ALOUD_SPEED_KEY, normalizeReadAloudSpeed } from "../utils/readAloudSpeed";
 import {
   SPOKEN_LANGUAGES_KEY,
   derivePreferredLanguage,
@@ -390,7 +391,7 @@ export function useSettings() {
       deserialize: (value) => value === "true",
     });
 
-  // Smart Context master toggle (default true — Pro entitlement gate enforces access for free users).
+  // Smart Context master toggle, off by default. It only takes effect while beta features are on.
   // Reads "smartContextEnabled"; contextPipeline.js also reads legacy "enableContextCapture" key.
   const [smartContextEnabled, setSmartContextEnabled] = useLocalStorage<boolean>(
     "smartContextEnabled",
@@ -426,11 +427,11 @@ export function useSettings() {
     });
 
   // Expected number of speakers for file transcription diarization.
-  // "auto" = let the clustering algorithm decide; "2"-"6" = fixed hint.
+  // "auto" detects up to six speakers; "1"-"10" requests a fixed count.
   const [fileTranscriptionExpectedSpeakers, setFileTranscriptionExpectedSpeakers] =
     useLocalStorage<string>("fileTranscriptionExpectedSpeakers", "auto", {
       serialize: String,
-      deserialize: (value) => (["auto", "2", "3", "4", "5", "6"].includes(value) ? value : "auto"),
+      deserialize: (value) => (/^(?:[1-9]|10)$/.test(value) ? value : "auto"),
     });
 
   // Legacy alias kept so older settings exports still work (SettingsPage may import this name).
@@ -914,6 +915,10 @@ export function useSettings() {
     true,
     boolSerializer
   );
+  const [readAloudSpeed, setReadAloudSpeed] = useLocalStorage(READ_ALOUD_SPEED_KEY, 1, {
+    serialize: String,
+    deserialize: normalizeReadAloudSpeed,
+  });
   // Stored raw for the same reason readAloudHotkey is: the overlay reads this
   // key straight out of localStorage right before it speaks, so a JSON-quoted
   // copy would reach Kokoro as `"af_heart"` and be rejected as an unknown voice.
@@ -1222,6 +1227,8 @@ export function useSettings() {
     readAloudPlaybackHotkeys,
     setReadAloudPlaybackHotkeys,
     setReadAloudHotkey,
+    readAloudSpeed,
+    setReadAloudSpeed,
     readAloudVoice,
     setReadAloudVoice,
     agentModeEnabled,

@@ -1,0 +1,7 @@
+# CPU scoring/preparation only. The app supplies native inference and Whisper.
+pyannote.metrics==4.1
+pyannote.core==6.0.1
+scipy==1.18.1
+numpy==2.5.3
+rapidfuzz==3.14.1
+psutil==7.0.0

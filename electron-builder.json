@@ -107,7 +107,7 @@
         "whisper-server-*",
         "llama-server-*",
         "sherpa-onnx-*",
-        "windows-key-listener*"
+        "windows-key-listener.exe"
       ]
     }
   ],
@@ -160,10 +160,6 @@
     "executableName": "PrivateTranscribe",
     "extraResources": [
       {
-        "from": "resources/bin/nircmd.exe",
-        "to": "bin/nircmd.exe"
-      },
-      {
         "from": "resources/bin/",
         "to": "bin/",
         "filter": [
@@ -172,6 +168,7 @@
           "!ggml-vulkan.dll",
           "!cublas*.dll",
           "!cudart*.dll",
+          "!libomp140.x86_64.dll",
           "windows-fast-paste.exe",
           "windows-mic-watch.exe",
           "windows-hold-key.exe"

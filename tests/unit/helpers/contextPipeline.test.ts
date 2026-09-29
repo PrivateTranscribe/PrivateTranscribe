@@ -3,27 +3,13 @@
  *
  * Pure functions (buildWhisperContextHint, parseFilenameFromTitle) are tested
  * without any mocking.  getContext / isSmartContextEnabled / extractFileIdentifiers
- * tests manipulate globalThis.window and module mocks to stay isolated from
- * Electron and the Pro-entitlement check.
+ * tests manipulate globalThis.window to stay isolated from Electron, and set the
+ * real beta features switch so every gate test says which side of it it is on.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "path";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock useProStatus so getEffectiveEntitlement is controllable in every test.
-// ─────────────────────────────────────────────────────────────────────────────
-vi.mock("../../../src/hooks/useProStatus", () => {
-  const getEffectiveEntitlement = vi.fn(() => "pro");
-  return {
-    getEffectiveEntitlement,
-    hasTesterAccess: vi.fn(() => getEffectiveEntitlement() === "pro"),
-  };
-});
-
-import { getEffectiveEntitlement } from "../../../src/hooks/useProStatus";
-
-// Import after mocks are set up
+import { BETA_FEATURES_KEY } from "../../../src/utils/betaFeatures";
 import {
   buildWhisperContextHint,
   buildFileIdentifierHint,
@@ -55,6 +41,16 @@ function makeWindow(overrides: Record<string, unknown> = {}): typeof window {
     },
     ...overrides,
   } as unknown as typeof window;
+}
+
+/**
+ * The beta features switch, read through the shared module. It reads the global
+ * localStorage, which is window.localStorage in the app, so it gets its own stub.
+ */
+function setBetaFeatures(enabled: boolean) {
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => (enabled && key === BETA_FEATURES_KEY ? "true" : null),
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -314,15 +310,15 @@ describe("getContext", () => {
 
 describe("isSmartContextEnabled", () => {
   let originalWindow: typeof globalThis.window;
-  const mockGetEntitlement = getEffectiveEntitlement as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     originalWindow = globalThis.window;
-    mockGetEntitlement.mockReturnValue("pro");
+    setBetaFeatures(true);
   });
 
   afterEach(() => {
     globalThis.window = originalWindow;
+    vi.unstubAllGlobals();
   });
 
   it("returns false when window is undefined", () => {
@@ -331,8 +327,8 @@ describe("isSmartContextEnabled", () => {
     expect(isSmartContextEnabled()).toBe(false);
   });
 
-  it("returns false when entitlement is not pro", () => {
-    mockGetEntitlement.mockReturnValue("free");
+  it("returns false while beta features are off", () => {
+    setBetaFeatures(false);
     globalThis.window = makeWindow({
       localStorage: { getItem: vi.fn().mockReturnValue("true") },
     });
@@ -357,7 +353,7 @@ describe("isSmartContextEnabled", () => {
     expect(isSmartContextEnabled()).toBe(false);
   });
 
-  it("returns true when entitlement is pro and enableContextCapture is 'true' (legacy key)", () => {
+  it("returns true with beta features on and enableContextCapture 'true' (legacy key)", () => {
     globalThis.window = makeWindow({
       localStorage: {
         getItem: vi.fn((key: string) => {
@@ -369,7 +365,7 @@ describe("isSmartContextEnabled", () => {
     expect(isSmartContextEnabled()).toBe(true);
   });
 
-  it("returns false when enableContextCapture is 'false' even with pro entitlement", () => {
+  it("returns false when enableContextCapture is 'false' even with beta features on", () => {
     globalThis.window = makeWindow({
       localStorage: {
         getItem: vi.fn((key: string) => (key === "enableContextCapture" ? "false" : null)),
@@ -404,15 +400,15 @@ describe("isSmartContextEnabled", () => {
 
 describe("isFileIdentifiersEnabled", () => {
   let originalWindow: typeof globalThis.window;
-  const mockGetEntitlement = getEffectiveEntitlement as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     originalWindow = globalThis.window;
-    mockGetEntitlement.mockReturnValue("pro");
+    setBetaFeatures(true);
   });
 
   afterEach(() => {
     globalThis.window = originalWindow;
+    vi.unstubAllGlobals();
   });
 
   it("returns false when smart context is disabled", () => {
@@ -449,15 +445,15 @@ describe("isFileIdentifiersEnabled", () => {
 
 describe("isLlmContextEnhancementEnabled", () => {
   let originalWindow: typeof globalThis.window;
-  const mockGetEntitlement = getEffectiveEntitlement as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     originalWindow = globalThis.window;
-    mockGetEntitlement.mockReturnValue("pro");
+    setBetaFeatures(true);
   });
 
   afterEach(() => {
     globalThis.window = originalWindow;
+    vi.unstubAllGlobals();
   });
 
   it("returns false when not set", () => {
@@ -476,8 +472,8 @@ describe("isLlmContextEnhancementEnabled", () => {
     expect(isLlmContextEnhancementEnabled()).toBe(true);
   });
 
-  it("returns false when entitlement is free even if flag is set", () => {
-    mockGetEntitlement.mockReturnValue("free");
+  it("returns false while beta features are off even if flag is set", () => {
+    setBetaFeatures(false);
     globalThis.window = makeWindow({
       localStorage: {
         getItem: vi.fn((key: string) => (key === "llmContextEnhancement" ? "true" : null)),

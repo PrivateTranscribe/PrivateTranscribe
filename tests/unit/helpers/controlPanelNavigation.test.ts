@@ -13,6 +13,17 @@ describe("control panel navigation", () => {
     ).toEqual({ page: "settings", settingsTab: "permissions" });
   });
 
+  test("sends a request for the old Pro tab to Beta features", () => {
+    expect(normalizeControlPanelDestination({ page: "settings", settingsTab: "pro" })).toEqual({
+      page: "settings",
+      settingsTab: "beta",
+    });
+    expect(normalizeControlPanelDestination({ page: "settings", settingsTab: "beta" })).toEqual({
+      page: "settings",
+      settingsTab: "beta",
+    });
+  });
+
   test("drops unknown routes and tabs", () => {
     expect(normalizeControlPanelDestination({ page: "unknown" })).toBeNull();
     expect(normalizeControlPanelDestination({ page: "settings", settingsTab: "unknown" })).toEqual({

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess } from "./fixtures/tester-access";
+import { enableBetaFeatures, enableBetaFeaturesInOverlay } from "./fixtures/tester-access";
 
 /**
  * Correction Memory, end to end, against the claim the feature makes about
@@ -132,56 +132,6 @@ async function configureDictation(page: Page): Promise<void> {
 }
 
 /**
- * Give the OVERLAY window its own tester entitlement.
- *
- * `_serverVerifiedBetaAccess` is module state, set only by a successful
- * licensing-server response, and each window runs its own copy of the module.
- * Activating in the control panel therefore unlocks the control panel and
- * nothing else — the overlay, which is where dictation actually completes,
- * stays locked.
- *
- * The overlay's only route to the flag is its own start-up `refreshProStatus()`
- * re-activating the cached key. So: install the stub as an init script (it runs
- * before app code on the next navigation) and reload. The counter is not
- * decoration — if act (c) ever fails, it is the difference between "the stub
- * was never reached" and "the stub was reached and the flag still did not
- * take".
- */
-async function grantOverlayBetaAccess(overlay: Page): Promise<void> {
-  await overlay.addInitScript(() => {
-    (window as unknown as { __e2eActivateCalls: number }).__e2eActivateCalls = 0;
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/licensing/activate")) {
-        (window as unknown as { __e2eActivateCalls: number }).__e2eActivateCalls += 1;
-        return new Response(
-          JSON.stringify({
-            success: true,
-            entitlement: { token: "e2e-token", expiresAt: null, betaAccess: true },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      return realFetch(input, init);
-    };
-  });
-
-  await overlay.reload({ waitUntil: "domcontentloaded" });
-  await expect(recordingHalo(overlay)).toHaveCount(0);
-
-  await expect
-    .poll(
-      () =>
-        overlay.evaluate(
-          () => (window as unknown as { __e2eActivateCalls?: number }).__e2eActivateCalls ?? 0
-        ),
-      { timeout: 20_000 }
-    )
-    .toBeGreaterThan(0);
-}
-
-/**
  * One dictation, driven the way the hotkey drives it: the main process sends
  * `toggle-dictation` to the overlay's webContents. First toggle records, second
  * stops and transcribes.
@@ -216,8 +166,8 @@ test.describe("Correction Memory", () => {
     overlayWindow,
     controlPanel,
   }) => {
-    // Two real whisper decodes, an activation round-trip and two window
-    // reloads. The default 90s budget is for specs that only touch the UI.
+    // Two real whisper decodes and two window reloads. The default 90s budget
+    // is for specs that only touch the UI.
     test.setTimeout(300_000);
 
     // No silent skip. A machine without the model must say so rather than
@@ -235,9 +185,9 @@ test.describe("Correction Memory", () => {
     const SOURCE = TRUTH.correctionSource;
     const TARGET = TRUTH.correctionTarget;
 
-    await unlockTesterAccess(controlPanel);
+    await enableBetaFeatures(controlPanel);
     await configureDictation(controlPanel);
-    await grantOverlayBetaAccess(overlayWindow);
+    await enableBetaFeaturesInOverlay(overlayWindow);
 
     // ── act a: baseline ────────────────────────────────────────────────────
     expect(await readCorrections(controlPanel)).toHaveLength(0);

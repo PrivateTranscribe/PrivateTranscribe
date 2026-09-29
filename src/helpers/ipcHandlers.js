@@ -1552,6 +1552,12 @@ class IPCHandlers {
         this.kokoroManager.loadEngine().catch((error) => {
           debugLogger.warn("Read Aloud engine pre-warm failed", { error: error?.message });
         });
+        // The engine warms in its own child process, but sentence splitting
+        // runs here, and its first kokoro-js import costs ~90ms. Without this
+        // the first press of a session still pays it.
+        this.kokoroManager.splitSentences("").catch((error) => {
+          debugLogger.warn("Read Aloud splitter pre-warm failed", { error: error?.message });
+        });
         // Same idea for the in-place highlight's worker: its first anchor
         // must not wait on a PowerShell start and two assembly loads.
         this.readAloudHighlight?.start();
@@ -2939,27 +2945,6 @@ class IPCHandlers {
       }
     });
 
-    // Licensing - stable device identifier
-    ipcMain.handle("get-machine-id", async () => {
-      try {
-        const { machineIdSync } = require("node-machine-id");
-        return { id: machineIdSync(false) };
-      } catch {
-        // Fallback: use a persisted random ID
-        const path = require("path");
-        const fs = require("fs");
-        const { app } = require("electron");
-        const idPath = path.join(app.getPath("userData"), ".device-id");
-        if (fs.existsSync(idPath)) {
-          return { id: fs.readFileSync(idPath, "utf-8").trim() };
-        }
-        const crypto = require("crypto");
-        const id = crypto.randomUUID();
-        fs.writeFileSync(idPath, id, "utf-8");
-        return { id };
-      }
-    });
-
     // Native file-open dialog - used by Action Engine "Open application" and other pickers.
     // The dialog is always shown as a sheet attached to the requesting window, so the user
     // explicitly chooses a path; no sensitive data is exposed without interaction.
@@ -3015,7 +3000,7 @@ class IPCHandlers {
     }
   }
 
-  // ── Action Engine (Pro feature) ──────────────────────────────────────────
+  // ── Action Engine (beta feature) ─────────────────────────────────────────
   // Called from setupHandlers() only when actionEngineManager is present.
 
   _setupActionEngineHandlers() {

@@ -72,8 +72,7 @@ describe("analytics payload privacy", () => {
         output_action: "email transcript",
         word_count_bucket: "the entire transcript",
         step: 1.5,
-        words_used: -1,
-        limit_reached: "yes",
+        step_count: -1,
         compute_mode: "rtx-4090",
         realtime_factor_x100: 0,
       })
@@ -84,8 +83,7 @@ describe("analytics payload privacy", () => {
         source: "local-parakeet",
         output_action: "paste",
         step: 2,
-        words_used: 5000,
-        limit_reached: true,
+        step_count: 5,
         compute_mode: "cpu",
         realtime_factor_x100: 11525,
       })
@@ -93,11 +91,29 @@ describe("analytics payload privacy", () => {
       source: "local-parakeet",
       output_action: "paste",
       step: 2,
-      words_used: 5000,
-      limit_reached: true,
+      step_count: 5,
       compute_mode: "cpu",
       realtime_factor_x100: 11525,
     });
+  });
+
+  it("no longer sends the events and counts of the old daily word cap", () => {
+    for (const event of [
+      "starter_words_used",
+      "starter_limit_reached",
+      "starter_limit_hit",
+      "starter_file_words_used",
+    ]) {
+      expect(isAllowedAnalyticsEvent(event)).toBe(false);
+    }
+    expect(
+      sanitizeAnalyticsProperties({
+        words_added: 3,
+        words_used: 5000,
+        daily_limit: 1000,
+        limit_reached: true,
+      })
+    ).toEqual({});
   });
 
   it("categorizes arbitrary language and model strings at the main-process boundary", () => {

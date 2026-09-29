@@ -36,8 +36,9 @@ async function seedHotkeys(
 }
 
 /**
- * Reach a tester-only page. Unlocked, it sits in the sidebar; locked, it is
- * not listed there and the route runs through the Pro tab's feature card.
+ * Reach a feature page. A listed page is one click in the sidebar; a hidden
+ * beta page runs through its card on the Beta features tab, which only opens
+ * while beta features are on.
  */
 async function openFeaturePage(page: Page, name: string) {
   const entry = page.getByRole("button", { name, exact: true });

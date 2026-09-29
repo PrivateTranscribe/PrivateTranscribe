@@ -8,7 +8,6 @@ const {
   assertWindowsFastPasteSucceeded,
   parseWindowsFastPasteOutput,
   PASTE_EVIDENCE_ABSENT,
-  getWindowsPasteShortcut,
   resolveWindowsFastPasteExecutable,
 } = require("./windowsPasteTarget");
 

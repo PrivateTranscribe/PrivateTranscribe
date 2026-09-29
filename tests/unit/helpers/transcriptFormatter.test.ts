@@ -51,8 +51,56 @@ describe("transcriptFormatter", () => {
     expect(result.text).toBe("");
   });
 
+  it.each(["plain", "timestamped", "srt"])(
+    "preserves repeated replies by different speakers in %s",
+    (format) => {
+      const result = formatTranscript(
+        {
+          segments: [
+            { start: 0, end: 1, speaker: "Speaker 1", text: "Ja." },
+            { start: 1, end: 2, speaker: "Speaker 2", text: "Ja." },
+            { start: 2, end: 3, speaker: "Speaker 3", text: "Ja." },
+          ],
+        },
+        format
+      );
+      expect(result.text.match(/Ja\./g)).toHaveLength(3);
+      expect(result.text).toContain("Speaker 2: Ja.");
+      expect(result.text).toContain("Speaker 3: Ja.");
+    }
+  );
+
+  it("keeps a longer reply that contains the previous speaker's words", () => {
+    const result = formatTranscript({
+      segments: [
+        { start: 0, end: 1, speaker: "Speaker 1", text: "Kan vi starte nu?" },
+        { start: 1, end: 3, speaker: "Speaker 2", text: "Kan vi starte nu? Ja, det kan vi." },
+      ],
+    });
+    expect(result.text).toContain("Speaker 2: Kan vi starte nu? Ja, det kan vi.");
+  });
+
+  it("does not silently edit repeated words in an explicitly labelled transcript", () => {
+    expect(
+      formatTranscript({
+        segments: [{ start: 0, end: 3, speaker: "Speaker 1", text: "Nej. Nej. Nej." }],
+      }).text
+    ).toBe("Nej. Nej. Nej.");
+  });
+
+  it("does not count unknown speech as another identified speaker", () => {
+    const result = formatTranscript({
+      segments: [{ start: 0, end: 1, speaker: "Unknown speaker", text: "Hello" }],
+    });
+    expect(result.speakerCount).toBe(0);
+    expect(result.text).toBe("Unknown speaker: Hello");
+  });
+
   it("uses explicit speaker labels when present", () => {
-    const result = formatTranscript({ segments: [{ start: 0, end: 1, speaker: "Alex", text: "Test" }] }, "timestamped");
+    const result = formatTranscript(
+      { segments: [{ start: 0, end: 1, speaker: "Alex", text: "Test" }] },
+      "timestamped"
+    );
     expect(result.speakerCount).toBe(1);
     expect(result.text).toBe("[00:00:00] Alex: Test");
   });

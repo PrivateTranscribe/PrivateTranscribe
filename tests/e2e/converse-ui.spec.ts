@@ -2,16 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
-import { unlockTesterAccess } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
 /**
  * Ledger gate `converse-ui`: the Converse page and the overlay's conversation
- * state exist, are beta gated, and survive a blind design review.
+ * state exist and survive a blind design review.
  *
  * Every state the UI can be in gets a screenshot in test-results/e2e/,
  * because a critic reads them afterwards and a state with no picture is a state
- * nobody judged: locked, no project chosen, a project chosen but not started,
+ * nobody judged: no project chosen, a project chosen but not started,
  * and then the live session in idle / thinking / speaking / after-interrupt,
  * plus the overlay pill while it speaks.
  *
@@ -102,9 +101,8 @@ async function captureEvidence(
   return filePath;
 }
 
-/** The sidebar entry drops its "Beta" badge once tester access is active. */
 async function openConversePage(controlPanel: Page) {
-  await controlPanel.getByRole("button", { name: /^Converse( Beta)?$/ }).click();
+  await controlPanel.getByRole("button", { name: "Converse", exact: true }).click();
   await expect(controlPanel.getByRole("heading", { name: "Converse" })).toBeVisible();
 }
 
@@ -133,45 +131,11 @@ async function expectStatusMatchesSession(controlPanel: Page, expected: string) 
 }
 
 test.describe("converse ui", () => {
-  test("shows the locked Pro state with the way to buy", async ({ controlPanel }) => {
-    await controlPanel.evaluate(() => {
-      localStorage.setItem("PRO_ENFORCEMENT", "true");
-    });
-    await controlPanel.reload({ waitUntil: "domcontentloaded" });
-
-    // The sidebar entry carries the Pro badge while it is locked, so it cannot
-    // go through openConversePage's tester-state name.
-    await controlPanel.getByRole("button", { name: /^Converse( Pro)?$/ }).click();
-    await expect(controlPanel.getByRole("heading", { name: "Converse" })).toBeVisible();
-
-    await expect(controlPanel.getByText("Pro", { exact: true }).first()).toBeVisible();
-    await expect(
-      controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" })
-    ).toBeVisible();
-    await expect(controlPanel.getByText("Apply for beta access")).toHaveCount(0);
-
-    // Locked means locked: no folder picker and no session controls are
-    // reachable from here.
-    await expect(controlPanel.getByRole("button", { name: /Choose a project folder/ })).toHaveCount(
-      0
-    );
-    await expect(controlPanel.getByRole("button", { name: "Start session" })).toHaveCount(0);
-
-    await captureEvidence(controlPanel, "converse-page-locked.png");
-
-    await controlPanel.getByRole("button", { name: "Get PrivateTranscribe Pro - €29" }).click();
-    await expect(controlPanel.getByRole("heading", { name: "Converse" })).toHaveCount(0, {
-      timeout: 15_000,
-    });
-    await expect(
-      controlPanel.getByText("PrivateTranscribe Pro", { exact: false }).first()
-    ).toBeVisible({ timeout: 15_000 });
-  });
-
   test("explains itself before a folder is chosen", async ({ controlPanel }) => {
-    await unlockTesterAccess(controlPanel);
+    // A fresh install, nothing turned on first: Converse is free for everyone.
     await openConversePage(controlPanel);
 
+    await expect(controlPanel.getByText(/PrivateTranscribe Pro/)).toHaveCount(0);
     await expect(
       controlPanel.getByRole("button", { name: /Choose a project folder/ })
     ).toBeVisible();
@@ -216,8 +180,6 @@ test.describe("converse ui", () => {
           ),
         projectDir
       );
-
-      await unlockTesterAccess(controlPanel);
 
       // Paid outside the turn, exactly as the converse-loop gate does it: 326MB
       // of weights off disk is not part of a conversational turn.
@@ -384,7 +346,6 @@ test.describe("converse ui", () => {
         projectDir
       );
 
-      await unlockTesterAccess(controlPanel);
       await openConversePage(controlPanel);
 
       await controlPanel.getByTestId("converse-recent-project").first().click();

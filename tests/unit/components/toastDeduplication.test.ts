@@ -14,8 +14,8 @@ type TestToast = {
 function makeToast(overrides: Partial<TestToast> = {}): TestToast {
   const toast: TestToast = {
     id: "toast-1",
-    title: "Starter word limit reached",
-    description: "Starter includes 5,000 words per day.",
+    title: "Loading the speech model",
+    description: "The first dictation after launch takes longer while the model loads.",
     variant: "default",
     createdAt: 100,
     isExiting: false,

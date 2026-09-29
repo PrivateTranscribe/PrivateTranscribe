@@ -144,16 +144,16 @@ function buildAnalysis(verboseJson) {
   // seams, so the timeline is repaired once here — every format below reads
   // these segments, and a cue that runs backwards is invalid in all of them.
   const segments = makeTimelineForwardMoving(normalizeSegments(verboseJson));
-  const speakers = Array.from(new Set(segments.map((segment) => segment.speaker)));
+  const speakers = Array.from(
+    new Set(
+      segments.map((segment) => segment.speaker).filter((speaker) => speaker !== "Unknown speaker")
+    )
+  );
   return { speakerCount: speakers.length, speakers, segments };
 }
 
-/**
- * Remove consecutive turns that contain the same text (cross-speaker hallucination).
- * Whisper sometimes hallucinates a phrase repeatedly across chunk boundaries, and
- * diarization assigns each repetition to a different speaker. This collapses runs
- * of identical (or substring-contained) consecutive turns.
- */
+// Text repetition alone is not evidence of a duplicate. Speakers can echo each
+// other or repeat themselves; only consider overlapping copies from one speaker.
 function deduplicateConsecutiveTurns(turns) {
   if (turns.length <= 1) return turns;
   const result = [turns[0]];
@@ -168,7 +168,12 @@ function deduplicateConsecutiveTurns(turns) {
       .toLowerCase()
       .replace(/[.!?,;:\s]+/g, " ")
       .trim();
-    // Skip if identical or if one is a substring of the other (catches partial repeats)
+    // Repeated replies by different speakers are real conversation, not evidence
+    // of hallucination. Only deduplicate the same speaker at overlapping times.
+    if (curr.speaker !== prev.speaker || curr.start >= prev.end) {
+      result.push(curr);
+      continue;
+    }
     if (currNorm === prevNorm) continue;
     if (prevNorm.length > 10 && currNorm.length > 10) {
       if (prevNorm.includes(currNorm) || currNorm.includes(prevNorm)) continue;
@@ -180,7 +185,17 @@ function deduplicateConsecutiveTurns(turns) {
 
 function formatTranscript(verboseJson, format = "plain", options = {}) {
   const analysis = buildAnalysis(verboseJson);
+  const hasExplicitSpeakers =
+    Array.isArray(verboseJson.segments) &&
+    verboseJson.segments.some(
+      (segment) =>
+        segment.speaker != null || segment.speaker_label != null || segment.speakerLabel != null
+    );
   const withSpeakers = format === "speakers" || options.includeSpeakers !== false;
+  const showSpeakerLabels =
+    withSpeakers &&
+    (analysis.speakerCount > 1 ||
+      analysis.segments.some((segment) => segment.speaker === "Unknown speaker"));
   // Turns are merged by speaker. With speaker labels off, every segment carries
   // the same placeholder speaker, so merging folds the entire file into one
   // turn — and a timestamped transcript of one turn is a single line stamped
@@ -191,13 +206,13 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
       ? analysis.segments
       : mergeTurns(analysis.segments);
 
-  // Clean hallucination artifacts from each turn's text
+  // Preserve explicitly attributed speech, including repeated answers.
   for (const turn of turns) {
-    turn.text = removeRepetitions(turn.text);
+    turn.text = hasExplicitSpeakers ? cleanText(turn.text) : removeRepetitions(turn.text);
   }
   // Also clean analysis segments used for SRT
   for (const segment of analysis.segments) {
-    segment.text = removeRepetitions(segment.text);
+    segment.text = hasExplicitSpeakers ? cleanText(segment.text) : removeRepetitions(segment.text);
   }
   // Remove turns/segments that became empty after cleaning
   const cleanTurns = deduplicateConsecutiveTurns(turns.filter((t) => t.text));
@@ -220,11 +235,7 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
       .join("\n");
   } else {
     text = cleanTurns
-      .map((segment) =>
-        withSpeakers && analysis.speakerCount > 1
-          ? `${segment.speaker}: ${segment.text}`
-          : segment.text
-      )
+      .map((segment) => (showSpeakerLabels ? `${segment.speaker}: ${segment.text}` : segment.text))
       .join("\n");
   }
 

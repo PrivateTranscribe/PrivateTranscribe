@@ -26,7 +26,7 @@ import {
   CircleSlash,
 } from "lucide-react";
 import AudioManager from "../../helpers/audioManager";
-import { getEffectiveEntitlement, isFeatureUnlocked } from "../../hooks/useProStatus";
+import { isFeatureUnlocked } from "../../utils/betaFeatures";
 import { IconTile } from "../ui/IconTile";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -41,7 +41,6 @@ import {
   buildLanguageMismatchNotice,
   type LanguageMismatchNotice,
 } from "../../utils/languageMismatch";
-import { buildStarterLimitMessage, recordStarterWords } from "../../utils/starterUsage";
 import {
   buildQuickLanguageCodes,
   deriveFileLanguageDefault,
@@ -59,12 +58,17 @@ const ACCEPT_ATTR = [
 const LOCAL_MAX_BYTES = 500 * 1024 * 1024;
 const CLOUD_MAX_BYTES = 25 * 1024 * 1024;
 const SPEAKER_COUNT_OPTIONS = [
-  { value: "auto", label: "Auto-detect" },
+  { value: "auto", label: "Auto (up to 6)" },
+  { value: "1", label: "1 speaker" },
   { value: "2", label: "2 speakers" },
   { value: "3", label: "3 speakers" },
   { value: "4", label: "4 speakers" },
   { value: "5", label: "5 speakers" },
   { value: "6", label: "6 speakers" },
+  { value: "7", label: "7 speakers" },
+  { value: "8", label: "8 speakers" },
+  { value: "9", label: "9 speakers" },
+  { value: "10", label: "10 speakers" },
 ] as const;
 type OutputFormat = "plain" | "timestamped" | "speakers";
 
@@ -149,6 +153,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   // ambiguous: it is what the placeholder label says when detection was off,
   // and it is also what a detector that found no speaker change reports.
   const [speakerDetectionActive, setSpeakerDetectionActive] = useState(false);
+  const [speakerResultMode, setSpeakerResultMode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
@@ -220,8 +225,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const resolvedDiarizationMode = useMemo(() => {
     if (!speakerLabelsEnabled) return "off" as const;
     if (diarizationReady) return "local-diarization" as const;
-    if (tdrzDownloaded && (fileLanguage === "en" || fileLanguage === "auto"))
-      return "tiny-diarize-en" as const;
+    if (tdrzDownloaded && fileLanguage === "en") return "tiny-diarize-en" as const;
     // Models not ready - will prompt download
     return "local-diarization" as const;
   }, [speakerLabelsEnabled, diarizationReady, tdrzDownloaded, fileLanguage]);
@@ -231,9 +235,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
 
   // Whether the user needs to download models before speaker labels will work
   const needsModelDownload =
-    speakerLabelsEnabled &&
-    !diarizationReady &&
-    !(tdrzDownloaded && (fileLanguage === "en" || fileLanguage === "auto"));
+    speakerLabelsEnabled && !diarizationReady && !(tdrzDownloaded && fileLanguage === "en");
 
   const setFileLanguage = (language: string) => {
     const next = language || "auto";
@@ -316,8 +318,9 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   const speakerSummary = useMemo(() => {
     if (!speakerDetectionActive) return "";
     if (speakerCount > 1) return `${speakerCount} speakers`;
+    if (speakerCount === 1 && speakerResultMode === "local-diarization") return "1 speaker";
     return "No speaker turns found";
-  }, [speakerDetectionActive, speakerCount]);
+  }, [speakerDetectionActive, speakerCount, speakerResultMode]);
 
   const missingModel = status === "error" && isMissingModelError(errorMessage);
 
@@ -337,7 +340,6 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
 
   useEffect(() => {
     const mgr = new AudioManager();
-    mgr._checkProEntitlement = () => isFeatureUnlocked("correction-memory");
     mgr._checkBetaFeatureAccess = (featureId: string) => isFeatureUnlocked(featureId);
     audioManagerRef.current = mgr;
     return () => {
@@ -468,7 +470,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
       // Auto-select the best mode
       if (diarizationReady) {
         setSpeakerDetectionMode("local-diarization");
-      } else if (tdrzDownloaded && (fileLanguage === "en" || fileLanguage === "auto")) {
+      } else if (tdrzDownloaded && fileLanguage === "en") {
         setSpeakerDetectionMode("tiny-diarize-en");
       } else {
         // Needs download - show dialog
@@ -656,35 +658,13 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
         throw new Error("No text was transcribed from this file.");
       }
 
-      if (getEffectiveEntitlement() !== "pro") {
-        const usage = recordStarterWords(text);
-        window.electronAPI?.analyticsTrack?.("starter_file_words_used", {
-          words_added: usage.wordsAdded,
-          words_used: usage.wordsUsed,
-          daily_limit: usage.limit,
-          limit_reached: usage.limitReached,
-        });
-        if (usage.limitReached) {
-          window.electronAPI?.analyticsTrack?.("starter_limit_reached", {
-            source: "file-transcription",
-            words_used: usage.wordsUsed,
-            daily_limit: usage.limit,
-          });
-          toast({
-            title: "Starter limit reached",
-            description: buildStarterLimitMessage(usage),
-            variant: "default",
-            duration: 8000,
-          });
-        }
-      }
-
       // Make finished text usable while History saves. Only the current run
       // may update its save status, even if the user opens another file.
       setTranscript(text);
       setSrt(result?.srt || "");
       setSpeakerCount(Number(result?.speakerCount) || 0);
       setSpeakerDetectionActive(result?.speakerDetectionActive === true);
+      setSpeakerResultMode(result?.speakerDetectionMode || "");
       setLanguageNotice(
         buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
       );
@@ -1001,12 +981,17 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
                         <div>
                           <p className="text-sm font-medium text-foreground">Number of speakers</p>
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            Set the number of speakers for best results. Auto-detect may
-                            over-segment.
+                            {isUsingLocalDiarization
+                              ? "Set the number of speakers for best results. Auto-detect may split one voice into several speakers."
+                              : "English turn detection alternates between two labels. It does not count voices."}
                           </p>
                         </div>
                       </div>
-                      <Select value={expectedSpeakers} onValueChange={setExpectedSpeakers}>
+                      <Select
+                        value={isUsingLocalDiarization ? expectedSpeakers : "2"}
+                        onValueChange={setExpectedSpeakers}
+                        disabled={!isUsingLocalDiarization}
+                      >
                         <SelectTrigger className="min-w-[160px] sm:w-[160px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -1039,11 +1024,19 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
                     {speakerLabelsEnabled && !needsModelDownload && (
                       <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
                         <Info size={12} className="shrink-0" />
-                        <span>
-                          {diarizationReady
-                            ? "Using multilingual speaker detection. Works with any language."
-                            : "Using English speaker turn detection."}
-                        </span>
+                        {diarizationReady ? (
+                          <span>
+                            Using multilingual speaker detection. Works with any language.
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setModelDownloadDialogOpen(true)}
+                            className="font-medium text-primary hover:text-primary/80 underline underline-offset-2"
+                          >
+                            Download multilingual speaker models
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

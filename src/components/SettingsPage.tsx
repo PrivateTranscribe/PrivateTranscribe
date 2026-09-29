@@ -22,7 +22,9 @@ import {
   Timer,
   ArrowRight,
   BookOpen,
+  Check,
   CheckCircle2,
+  ChevronRight,
   XCircle,
 } from "lucide-react";
 import type {
@@ -44,13 +46,12 @@ import TranscriptionModelPicker from "./TranscriptionModelPicker";
 import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
-import { isFeatureUnlocked } from "../hooks/useProStatus";
+import { useBetaFeaturesEnabled } from "../utils/betaFeatures";
 import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLanguagesSelector";
 import { BetaBadge } from "./ui/BetaBadge";
 import { BetaAccessLink } from "./ui/BetaAccessLink";
 import { derivePreferredLanguage, normalizeSpokenLanguages } from "../utils/spokenLanguages";
 import { resolveRatingLanguage } from "../utils/modelAccuracy";
-import ProSettingsSection from "./ProSettingsSection";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
@@ -79,7 +80,7 @@ import { setAgentName as persistAgentName } from "../utils/agentName";
  * "dictionary" and "aiModels" sections sat unreachable behind their own copies
  * of controls that had already moved to DictionaryPage and AIEnhancementPage.
  */
-export type SettingsSectionType = "general" | "dictation" | "permissions" | "developer" | "pro";
+export type SettingsSectionType = "general" | "dictation" | "permissions" | "developer" | "beta";
 
 const HISTORY_LIMIT_MIN = 10;
 const HISTORY_LIMIT_MAX = 10000;
@@ -125,7 +126,7 @@ const readStoredCustomPrompt = (): string | undefined => {
 
 interface SettingsPageProps {
   activeSection?: SettingsSectionType;
-  /** Leaves Settings for another page, used by the Pro tab's feature cards. */
+  /** Leaves Settings for another page, used by the Beta features tab's feature cards. */
   onNavigate?: (page: string) => void;
 }
 
@@ -164,7 +165,7 @@ function SectionHeader({
 }: {
   title: string;
   description?: string;
-  /** Rendered beside the title, e.g. a Beta pill on a tester-only section. */
+  /** Rendered beside the title, e.g. a Beta pill on a beta feature's section. */
   badge?: React.ReactNode;
 }) {
   return (
@@ -177,6 +178,77 @@ function SectionHeader({
         <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{description}</p>
       )}
     </div>
+  );
+}
+
+// ── Beta features - what the switch turns on ───────────────────────────
+
+const SMART_CONTEXT_DESCRIPTION = "Use your app name and window title to improve local dictation.";
+
+const BETA_FEATURE_CARDS: { name: string; description: string; page?: string }[] = [
+  {
+    name: "AI Enhancement",
+    description:
+      "Polish transcriptions automatically, name the assistant you address mid-dictation, and tune the prompt behind both.",
+    page: "ai-enhancement",
+  },
+  {
+    name: "Correction Memory",
+    description: "Learns from your edits and fixes recurring transcription errors.",
+    page: "correction-memory",
+  },
+  // No page of its own: its row is under General, in More settings.
+  { name: "Smart Context", description: SMART_CONTEXT_DESCRIPTION },
+  {
+    name: "Action Engine",
+    description: "Runs your own voice commands to open apps, run scripts and automate tasks.",
+    page: "action-engine",
+  },
+];
+
+function BetaFeatureCard({
+  name,
+  description,
+  enabled,
+  onOpen,
+}: {
+  name: string;
+  description: string;
+  enabled: boolean;
+  /** Opens the feature's page. Without it the card is plain text. */
+  onOpen?: () => void;
+}) {
+  const body = (
+    <>
+      <Check
+        size={14}
+        aria-hidden
+        className={`shrink-0 ${enabled ? "text-primary" : "text-muted-foreground/40"}`}
+      />
+      <div className="min-w-0 flex-1">
+        <span className="text-sm font-medium text-foreground">{name}</span>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    </>
+  );
+
+  if (!onOpen) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-background/40 px-4 py-3 text-left transition-colors hover:border-border-hover hover:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+    >
+      {body}
+      <ChevronRight size={14} aria-hidden className="shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 
@@ -1282,7 +1354,9 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     };
   }, []);
 
-  const smartContextUnlocked = isFeatureUnlocked("smart-context");
+  // Live, because the General tab can stay mounted while the switch changes.
+  const [betaFeaturesEnabled, setBetaFeaturesEnabled] = useBetaFeaturesEnabled();
+  const smartContextUnlocked = betaFeaturesEnabled;
 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
@@ -2219,7 +2293,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
 
             <SettingsDisclosure
               title="More settings"
-              description={`${overlayMode === "off" ? "Overlay hidden" : overlayMode === "snoozed" ? "Overlay snoozed" : "Overlay shown"} · ${musicDuckingMode === "duck" ? "Other audio lowered" : musicDuckingMode === "mute" ? "Other audio muted" : "Other audio unchanged"} · ${smartContextEnabled ? "App context on" : "App context off"}`}
+              description={`${overlayMode === "off" ? "Overlay hidden" : overlayMode === "snoozed" ? "Overlay snoozed" : "Overlay shown"} · ${musicDuckingMode === "duck" ? "Other audio lowered" : musicDuckingMode === "mute" ? "Other audio muted" : "Other audio unchanged"} · ${smartContextUnlocked && smartContextEnabled ? "App context on" : "App context off"}`}
             >
               <div>
                 <SectionHeader title="Overlay" />
@@ -2399,16 +2473,16 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                       badge={smartContextUnlocked ? undefined : <BetaBadge locked />}
                       description={
                         smartContextUnlocked ? (
-                          "Use your app name and window title to improve local dictation."
+                          SMART_CONTEXT_DESCRIPTION
                         ) : (
                           <>
-                            Requires beta access. Screen context stays off. <BetaAccessLink />
+                            App context stays off. <BetaAccessLink />
                           </>
                         )
                       }
                     >
                       <Toggle
-                        checked={smartContextEnabled}
+                        checked={smartContextUnlocked && smartContextEnabled}
                         onChange={setSmartContextEnabled}
                         disabled={!smartContextUnlocked}
                       />
@@ -2691,7 +2765,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Contact & Feedback"
-                    description="In-app feedback is available from Send Feedback for early access testers. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
+                    description="In-app feedback is available from Send Feedback. No email app required, and no audio/transcripts/logs are sent. Screenshots are sent only if attached."
                   >
                     <div className="flex items-center gap-2">
                       <FeedbackDialog currentVersion={currentVersion} source="settings-help" />
@@ -3087,16 +3161,48 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
         );
 
       // ───────────────────────────────────────────────────
-      // PRO
+      // BETA FEATURES
       // ───────────────────────────────────────────────────
-      case "pro":
+      case "beta":
         return (
           <div className="space-y-8">
-            <SectionHeader
-              title="Pro & Beta"
-              description="Manage your Pro license and beta access"
-            />
-            <ProSettingsSection onNavigate={onNavigate} />
+            <div>
+              <SectionHeader
+                title="Beta features"
+                description="Features we are still building. They can change or break between updates."
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Beta features"
+                    description="Turns on AI Enhancement, Correction Memory, Smart Context and the Action Engine on this PC."
+                  >
+                    <Toggle
+                      aria-label="Beta features"
+                      checked={betaFeaturesEnabled}
+                      onChange={setBetaFeaturesEnabled}
+                    />
+                  </SettingsRow>
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            <div>
+              <SectionLabel className="mb-3">What it turns on</SectionLabel>
+              <div className="space-y-3">
+                {BETA_FEATURE_CARDS.map(({ name, description, page }) => (
+                  <BetaFeatureCard
+                    key={name}
+                    name={name}
+                    description={description}
+                    enabled={betaFeaturesEnabled}
+                    onOpen={
+                      betaFeaturesEnabled && page && onNavigate ? () => onNavigate(page) : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         );
 

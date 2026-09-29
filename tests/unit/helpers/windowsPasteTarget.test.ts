@@ -6,36 +6,9 @@ const {
   assertWindowsFastPasteSucceeded,
   FAST_PASTE_EXECUTABLE,
   getWindowsFastPasteExecutablePaths,
-  getWindowsPasteShortcut,
   parseWindowsFastPasteOutput,
   resolveWindowsFastPasteExecutable,
 } = require("../../../src/helpers/windowsPasteTarget");
-
-describe("getWindowsPasteShortcut", () => {
-  test("uses Ctrl+Shift+V for terminal targets", () => {
-    expect(getWindowsPasteShortcut({ isTerminal: true })).toEqual({
-      isTerminal: true,
-      nircmdKeys: "ctrl+shift+v",
-      sendKeys: "^+v",
-    });
-  });
-
-  test("uses Ctrl+V for ordinary targets", () => {
-    expect(getWindowsPasteShortcut({ isTerminal: false })).toEqual({
-      isTerminal: false,
-      nircmdKeys: "ctrl+v",
-      sendKeys: "^v",
-    });
-  });
-
-  test("defaults to Ctrl+V when no target information is available", () => {
-    expect(getWindowsPasteShortcut()).toEqual({
-      isTerminal: false,
-      nircmdKeys: "ctrl+v",
-      sendKeys: "^v",
-    });
-  });
-});
 
 describe("getWindowsFastPasteExecutablePaths", () => {
   test("prefers the packaged resources directory", () => {

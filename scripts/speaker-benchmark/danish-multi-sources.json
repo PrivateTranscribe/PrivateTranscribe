@@ -1,0 +1,360 @@
+{
+  "dataset": "google/fleurs da_dk test, first 30 rows of parquet row group 0, CC BY 4.0",
+  "voiceGrouping": "cosine similarity of 3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k embeddings; average-linkage groups cut at 0.62, cores kept where every pair >= 0.72",
+  "source": {
+    "dataset": "google/fleurs",
+    "config": "da_dk",
+    "split": "test",
+    "url": "https://huggingface.co/datasets/google/fleurs/resolve/168de341b3db6859a9bac1c50a2ef5e3b47647e0/da_dk/test/0000.parquet",
+    "filename": "0000.parquet",
+    "size": 660392792
+  },
+  "speakers": {
+    "A": {
+      "rows": [
+        13,
+        24,
+        29,
+        8,
+        18,
+        21
+      ],
+      "minWithinCosine": 0.79,
+      "maxToOtherSpeakers": {
+        "B": 0.4,
+        "C": 0.45
+      }
+    },
+    "B": {
+      "rows": [
+        4,
+        15,
+        23,
+        27,
+        6,
+        14
+      ],
+      "minWithinCosine": 0.72,
+      "maxToOtherSpeakers": {
+        "A": 0.4,
+        "C": 0.42
+      }
+    },
+    "C": {
+      "rows": [
+        28,
+        10,
+        9,
+        3,
+        17
+      ],
+      "minWithinCosine": 0.77,
+      "maxToOtherSpeakers": {
+        "A": 0.45,
+        "B": 0.42
+      }
+    }
+  },
+  "rows": [
+    {
+      "index": 0,
+      "id": 1908,
+      "sourcePath": "10016401698104160032.wav",
+      "sourceSha256": "355a74a9ec558e703d65a4e2e0d5887fedf115fcfdc8f0776acb74bee2d44aa0",
+      "sourceBytes": 326458,
+      "wavSha256": "1485bab4c5b5fc50799112425442750c485f855e2b1a1fdda91e71da7b787152",
+      "referenceSha256": "903209e30947d31b9bbdebc5edccbb2b13c8ac797bed92dc0ef287f6f0b42e89",
+      "reference": "dette er en vigtig måde at skelne mellem nogle verber og objektiver"
+    },
+    {
+      "index": 1,
+      "id": 1842,
+      "sourcePath": "10034617623435290253.wav",
+      "sourceSha256": "0480adc720a5887e4648e05e7f4444032b30b96c90f299373795537ea1eb5731",
+      "sourceBytes": 1167418,
+      "wavSha256": "3e275a798b106ed4482c7eec20a8d583d763f3513e2e28dd1b802f0e4e62ab11",
+      "referenceSha256": "79323afb9a191aa3cae4cfb0138843bf286c4ce52dd9546c5463662977c878f2",
+      "reference": "fordi dinosaurfjerene ikke har et veludviklet skaft kaldet et fjerskaft men har andre kendetegn fra fjer stråler og bistråler udledte forskerne at fjerskaft sandsynligvis var en senere evolutionær udvikling end disse andre karakteristika"
+    },
+    {
+      "index": 2,
+      "id": 1876,
+      "sourcePath": "10077729101954371425.wav",
+      "sourceSha256": "c8996ef6353893497431312efef4f9c03c655b98a0f33a31d0a2727ce2fff0f1",
+      "sourceBytes": 437818,
+      "wavSha256": "6537c48a1b549f2eb62c53af6e1312b5798b23485fe8f73e3f7096692f2a2665",
+      "referenceSha256": "04d297a328fe1bbc87b53eeb69a804e48455a285b486588dfb573defb1702551",
+      "reference": "nordmarianernes beredskabskontor meddelte at der ikke var rapporteret om skader i nationen"
+    },
+    {
+      "index": 3,
+      "id": 1856,
+      "sourcePath": "10085624755376094742.wav",
+      "sourceSha256": "1b36af495d15aa50c7a67b9b2e75c4b90b884595d900bc18be3840aea2966f21",
+      "sourceBytes": 725818,
+      "wavSha256": "bd92714a0326746e4df868f958d46765a7404938a9df8a324a51adea9977c7a8",
+      "referenceSha256": "42e1203d276bc7d9882788937f8412acb2d6c3c1b5e3efff992b061f37a3cd9f",
+      "reference": "finland er et fantastisk rejsemål for sejlere de tusind søers land har også tusindvis af øer i søerne samt i øhavene langs kysten"
+    },
+    {
+      "index": 4,
+      "id": 1836,
+      "sourcePath": "10090792264157033835.wav",
+      "sourceSha256": "6d3c79f60811e1b88c7d981c674ee505b5919d4c16ab974ad95716b9a00be850",
+      "sourceBytes": 1436218,
+      "wavSha256": "aaa4680002e266ecb70bb71acc4b7f276500bf4013ec9c317944ae7e572fe667",
+      "referenceSha256": "24ac0772273a5f9d5e83fffc990ccc87e69f28863f3bc7fb1be2499f775dd348",
+      "reference": "folk har kendt til de grundlæggende kemiske grundstoffer såsom guld sølv og kobber siden oldtiden fordi de findes i naturen i deres naturlige form og er relativt nemme at grave efter hvis man har de rigtige værktøjer"
+    },
+    {
+      "index": 5,
+      "id": 1810,
+      "sourcePath": "10092298310061000596.wav",
+      "sourceSha256": "36b3a0ba201dac1e0bf390469f705573d7e3feff8c8645239ead9fb9cf849110",
+      "sourceBytes": 583738,
+      "wavSha256": "42cb424485290d4a007f90ab512e93bd1539969a1b0b4617f3ada4cd50c0deed",
+      "referenceSha256": "f03e61e8f2d7c8b559375b7fe9293851f8ea51869f0e01f64eb42f7e5e69c8e1",
+      "reference": "californiens guvernør arnold schwarzenegger underskrev et lovforslag der forbyder salg eller udlejning af voldelige computerspil til mindreårige"
+    },
+    {
+      "index": 6,
+      "id": 1969,
+      "sourcePath": "1013200192580161562.wav",
+      "sourceSha256": "bd362ccfcfe426a8aa108a6583957da4784522d3890d8da7d8edba6dcc87dcf1",
+      "sourceBytes": 1006138,
+      "wavSha256": "ee1c3e3bfbbf05e6284b68e95bc06bcf828f8efaf23a67fd88854dd5e0a344b2",
+      "referenceSha256": "f093c31946592f5cb8d3336ff1d4e5702d5db5b1d676e558f7003ba4a43c91ef",
+      "reference": "den siger at det mest effektive sted for hovedmotivet er i skæringspunktet mellem linjer der deler billedet i tredjedele lodret og vandret se eksempel"
+    },
+    {
+      "index": 7,
+      "id": 1761,
+      "sourcePath": "10143479267442626431.wav",
+      "sourceSha256": "4f8a21b05931ef29ea20abae7babaddf0dce402e5a921ae49fd368f27728234f",
+      "sourceBytes": 510778,
+      "wavSha256": "9148993d6a962018b840d42f4fec4a4ba2b3e98778b79373439b0d99598f4591",
+      "referenceSha256": "b50e36b2ba22f28f739b77bddca51b4ee68b211ab47eb5985f9572830349ca34",
+      "reference": "fotograferne tog senere en ældre dames plads da hun skulle på toilettet mendoza blev skudt ned"
+    },
+    {
+      "index": 8,
+      "id": 1919,
+      "sourcePath": "10149729587964516590.wav",
+      "sourceSha256": "378b24abb9ce166da1062fbe1df55cb38311baf9f9b5178a3a0136aa065ba5a0",
+      "sourceBytes": 560698,
+      "wavSha256": "177eb5c72889459c307b76c15036b8e6bd792f36fae8ddb5d21017a9ddcbe8f5",
+      "referenceSha256": "e2b2f11c5105b0b6f1e083e56cd4299d11826a42cf9dbaccae9ffeeabb177056",
+      "reference": "byen er også base for bestigning af nyiragongo-vulkanen samt et af de billigste steder at spore bjerggorillaer i afrika"
+    },
+    {
+      "index": 9,
+      "id": 1898,
+      "sourcePath": "10174917388486875321.wav",
+      "sourceSha256": "bdb204c22f21a7f05a0fd93130756b559b3aecc44317d168e585417af60f0ee8",
+      "sourceBytes": 841018,
+      "wavSha256": "447d31775a57fa832c801c2f612f80652c04284dbbf4f54da85fc7d230d073af",
+      "referenceSha256": "448877337ac84e3edf2af9e1d29d894dfcfe84d8d36f33e857b5146a9e11013a",
+      "reference": "\"han [wales] løj for os stort set fra starten. for det første ved at lade som om at dette var af juridiske årsager. for det andet ved at lade som om han lyttede til os helt op til hans kunstsletning."
+    },
+    {
+      "index": 10,
+      "id": 1753,
+      "sourcePath": "10177414057688758835.wav",
+      "sourceSha256": "d47ec286572ddeda59179444a36e4d443ce3455b6ef09e3a10620650df6f3979",
+      "sourceBytes": 1251898,
+      "wavSha256": "6d1d9c410f835bb9acb35221a277f613e62905ea309570c12ae1c664c7cf1181",
+      "referenceSha256": "6af58df0fd145f49d238af7fc5a57e40a499f3c5501fbe07a202b7000b772615",
+      "reference": "selvom dette ofte kun er en upræcis stereotype er den bedste måde at enes med folk i paris på stadig at opføre sig så pænt som muligt du skal opføre dig som en der er bien élevé velopdraget. det vil gøre det betydeligt lettere at komme rundt"
+    },
+    {
+      "index": 11,
+      "id": 1828,
+      "sourcePath": "1019636676625699977.wav",
+      "sourceSha256": "28b7318d8c2c07cf8bbb363cc26f2bde8f0b2c316ddcea84da49264874e1bf56",
+      "sourceBytes": 702778,
+      "wavSha256": "b1f29374dee8dc50aa8cacab4e4ab3f7a1bb55fbe33985fc7380b301efdf0170",
+      "referenceSha256": "f44c6ae935f088aa2d3eda9c30fb81098ac2ad67dcddb8804be5d809a205b61f",
+      "reference": "en søgning på internettet efter kursus i fjendtligt miljø vil sandsynligvis give adressen på en lokal virksomhed"
+    },
+    {
+      "index": 12,
+      "id": 1838,
+      "sourcePath": "10206519617373672484.wav",
+      "sourceSha256": "ff25f73526c4a81d0b8795abbe303514c75f1a2d6aac4263f06a2b75da1901b5",
+      "sourceBytes": 537658,
+      "wavSha256": "7fcfcefbf176c520c42194d61535c8193be1700129b8ed788a0724222f1074a0",
+      "referenceSha256": "2b81cb96061e27dce17fdd239f6ef3feb6ebf8ce929a4ca7357503c1ae1cddd6",
+      "reference": "den store pyramide i giza er det eneste af de syv vidundere der stadig står i dag"
+    },
+    {
+      "index": 13,
+      "id": 1809,
+      "sourcePath": "10212735846411366127.wav",
+      "sourceSha256": "9d1166ac056a0359c0120c7b1e93ebf8f75f3228cd4a3088c2d1eab355f888ef",
+      "sourceBytes": 821818,
+      "wavSha256": "781cd72d4e3e4342f7e3e5b48e36dabf11a8614bb8ea218cd510edd6c06cc26f",
+      "referenceSha256": "42052e7aef415d213eeb2bd71d24686204e87d91750ce15b4b26c84251ea9279",
+      "reference": "sveller blev opfundet ret tidligt for at holde sporene på plads efterhånden indså man dog at spor ville være mere effektive hvis de havde et jernstykke på toppen"
+    },
+    {
+      "index": 14,
+      "id": 1774,
+      "sourcePath": "10243602616588494946.wav",
+      "sourceSha256": "4ae80cc8c43dc1759b7d42df717fff9c02231b03761f8636772448e73812298a",
+      "sourceBytes": 1313338,
+      "wavSha256": "d4e303d59a3c4b7455de9ca83c95224e27deae16a1b99c678e5bfd1fe5184452",
+      "referenceSha256": "ffdff625797aaf435884a7c7439758ad0ba49b4b5c63e09452efce25a3ce28fb",
+      "reference": "på de yderliggende øer vil kreditkort sandsynligvis ikke kunne anvendes selvom britisk og amerikansk valuta måske vil kunne bruges spørg ejerne i forvejen for at få at vide hvilken betalingsmetode accepteres"
+    },
+    {
+      "index": 15,
+      "id": 1713,
+      "sourcePath": "10250631310363503895.wav",
+      "sourceSha256": "5739f3209a48903c2af2395ae3cda995735c04794f6193cdbf32a67b7c86f4aa",
+      "sourceBytes": 921658,
+      "wavSha256": "1e0e34828e88e49d1b8fa9f64f23ec9e6c3dd48dd49cfe46fb6f933b8e4bf952",
+      "referenceSha256": "fbac31c0a14c52c76ab2dfa337ed13c5981789f6ce1da5d6aa0e12a0c2fd6617",
+      "reference": "på trods af at goma er rimelig sikkert bør alle besøg uden for goma undersøges for at forstå de kampe der finder sted i nordkivu-provinsen"
+    },
+    {
+      "index": 16,
+      "id": 1727,
+      "sourcePath": "10254792225179731420.wav",
+      "sourceSha256": "4fcd85d5b11da6d4478dd9aafaefa8538cbc4469acdc21b4f5b604a326d038fa",
+      "sourceBytes": 622138,
+      "wavSha256": "2b28e4844392973302365470d77b75e6a29c97e1027856af59fbb4963b329376",
+      "referenceSha256": "504e0ff82b3c7cd7717c075c4dcf5b039c331ba05f6869b0313a937028884291",
+      "reference": "vilde børn kan have oplevet alvorlig børnemishandling eller traumer før de blev forladt eller løb bort"
+    },
+    {
+      "index": 17,
+      "id": 1925,
+      "sourcePath": "10259117212918110243.wav",
+      "sourceSha256": "e490211d3bf5cfc7439f0f380fe8fec950b6246022cdb8a631920dd0542e78b0",
+      "sourceBytes": 529978,
+      "wavSha256": "8e22e4ba24a7a3b1ed205871fc599adf97e5eebbd7845e10736af615800980e4",
+      "referenceSha256": "caab67606cddfcff8c25a70512d98615353802bad4caab7f94c763b7775985a5",
+      "reference": "det udførte arbejde var for det meste teoretisk men programmet blev designet til at simulere observationer af sagdeg galaksen"
+    },
+    {
+      "index": 18,
+      "id": 1944,
+      "sourcePath": "10263422571812210976.wav",
+      "sourceSha256": "f234b7b7c28e83c14db6fe3e012b2b96e4fe04f0ceb4f1cd2ad80e842aba5887",
+      "sourceBytes": 476218,
+      "wavSha256": "abbd39aaf24a6d3a548cef8a130051a6e4fc76965e3797d1d73c965ae5be81c9",
+      "referenceSha256": "02cdecf6bf629b8d253bfb341ecccdeab31899b1d53c9e12444a2982962be3d7",
+      "reference": "disse er nogle gange overfyldte familiestrande med et godt udvalg af butikker langs havet det er sikkert at svømme her"
+    },
+    {
+      "index": 19,
+      "id": 1787,
+      "sourcePath": "10268651938677775364.wav",
+      "sourceSha256": "047cd93febb39f59fd398befd99ed29029de7b4ce720d7e0c3ca44bbea0de9a3",
+      "sourceBytes": 852538,
+      "wavSha256": "08d5370201357e7c5007d3c19b5901f4e1da5c18774a62f9bccad5f94ea218fa",
+      "referenceSha256": "4ed02963aacc96b6bcd77df705777894da15c691b723ff4a1f69df7480d5a5b6",
+      "reference": "blogging er et værktøj der inspirerer til samarbejde og tilskynder studerende til at udvide deres læring langt ud over den traditionelle skoledag"
+    },
+    {
+      "index": 20,
+      "id": 1913,
+      "sourcePath": "10274109647082297476.wav",
+      "sourceSha256": "c02a72be9192469df2a3d2cf92576c67ad2b540f9f1d9ec27781c80b02262878",
+      "sourceBytes": 506938,
+      "wavSha256": "ecbc2dc74ebf0c87c21f14cd26198adde3a510427d03d098e9a3e0f57742d110",
+      "referenceSha256": "49455ada3e1a344b78165866bda6ef4685b47a9e976d4e0ebff9dda80aa4a378",
+      "reference": "tigerens brøl er ikke ligesom det høje brøl fra en løve men lyder mere som en sætning af snerrende råbte ord"
+    },
+    {
+      "index": 21,
+      "id": 1771,
+      "sourcePath": "10277501068965892175.wav",
+      "sourceSha256": "873212ea7faaffcec456236a042d7dddf0828a08dfdb508a81d6aa93016b80a2",
+      "sourceBytes": 553018,
+      "wavSha256": "14fe82c7baf093dccd5b9175b1ae760bcc5789b94a4bb1894982a337ed4d5f6f",
+      "referenceSha256": "8bbf73a0996798b39148f9a0b1a1b343b8eecba5e0aa0baee78147399a00fa4b",
+      "reference": "husk at selvom musikken på de store scener er slut kan der stadig være dele af festivalen som spiller musik til sent ud på aftenen"
+    },
+    {
+      "index": 22,
+      "id": 1778,
+      "sourcePath": "1037714189972178176.wav",
+      "sourceSha256": "2263c2a41dd7f0a81c5b367474eadf2540a2396ef2f7943ce9345284b84c33b5",
+      "sourceBytes": 545338,
+      "wavSha256": "4980e277ed9df0de04232c640eb07455e11d10c7ead9e7e158d5cb6746a8db61",
+      "referenceSha256": "a50c4fe7d0b28ed2d06321fc2ce566117a4d0ab3a5efae4decad9885783a892e",
+      "reference": "fjernsynsreportager viser at der kommer hvid røg fra kraftværket"
+    },
+    {
+      "index": 23,
+      "id": 1699,
+      "sourcePath": "10402327702050557189.wav",
+      "sourceSha256": "bc29d4c2ad9df9a600c12bd9bd33944d4b2a2b0edb8626fd82a164b1330fc5f6",
+      "sourceBytes": 913978,
+      "wavSha256": "ffebe860587652f1b5c34d5d60f401582b8a93eed7de1eeb5ec1befe6f7ee6f6",
+      "referenceSha256": "92dcb624e25a1ff72433ce4152bd93739c48ff8d06aa942f5a1e2ed57357fc64",
+      "reference": "bishkek blev af en tilskuer beskrevet som synkende ned i en tilstand af anarki da bander af folk gik rundt på gaderne og plyndrede dagligvarebutikker"
+    },
+    {
+      "index": 24,
+      "id": 1952,
+      "sourcePath": "10414803320658510307.wav",
+      "sourceSha256": "8a818c63a9487fbba9d656e06c707886d1ef360edde9f592e7aa88f617350475",
+      "sourceBytes": 537658,
+      "wavSha256": "0f63b72e72053ebbbe96e66e0e4b1cf8bbe9a7f880a7426e76c5d62a5802d489",
+      "referenceSha256": "3c35dfc01972b99a478d9055bfc6b25f33e0357107758ea7730682cf738b440a",
+      "reference": "alle som skal køre på høje breddegrader eller over bjergpas bør tage højde for mulighed for sne is og minusgrader"
+    },
+    {
+      "index": 25,
+      "id": 1747,
+      "sourcePath": "10444405129133538025.wav",
+      "sourceSha256": "811443d0ff90ae2eb0d48101df1e549f4629ef9fa4d439278ca5529230c105ef",
+      "sourceBytes": 245818,
+      "wavSha256": "ec94877287765db1fe208433a4ff72d13b451aa843bb42a308b007d3cc704bab",
+      "referenceSha256": "b4c1ae03af3d3e3585c5cbde5a666defd27728637366fc4d716257571bd8f0d7",
+      "reference": "andre brydere hyldede også luna"
+    },
+    {
+      "index": 26,
+      "id": 1977,
+      "sourcePath": "10445705242398543312.wav",
+      "sourceSha256": "8b575e1b2c980f289b826e7f08646bcf66a8256bdb622e874f1f8b54fe96837e",
+      "sourceBytes": 483898,
+      "wavSha256": "f7e45b8ff1bc06641b1c8fd62ae74c02e0a35dc017511cb6f946b3c0efa62709",
+      "referenceSha256": "a3f64a30da5d137bc78e6a625c9d857923cd03ee753da535e3f630ab325fc99d",
+      "reference": "flokkene består af en til tre beslægtede voksne hanner samt op til tredive hunner og unger"
+    },
+    {
+      "index": 27,
+      "id": 1867,
+      "sourcePath": "10467390180524459413.wav",
+      "sourceSha256": "ce73c2a93a663e63a56d9615beccb0e5822b1fbc53504c9c229e1951b63e01fe",
+      "sourceBytes": 940858,
+      "wavSha256": "1423f805380e1e05cb0be85823dc9a2540abd2838b666a001525502a582578a2",
+      "referenceSha256": "eadbd9295ca27344dfb2d17839c502da14f0ff2bdcae8171dddfc23d758560d4",
+      "reference": "planter laver oxygen som mennesker inhalerer og de optager kuldioxid som mennesker ekshalerer dvs. udånder"
+    },
+    {
+      "index": 28,
+      "id": 1769,
+      "sourcePath": "10495350940006534880.wav",
+      "sourceSha256": "5d9b8f819b30c91a92918fc6caad85d4bac482af35c112e58e48b41c941dcd88",
+      "sourceBytes": 779578,
+      "wavSha256": "ea98ad894f607c1cded9ee717c40401ebc798662d2fed13b222c683b5b9aeef1",
+      "referenceSha256": "e41979ca99fa01c7ff49dc751a4fba7affcd7d47820002aa1eea4620d2a5d6ea",
+      "reference": "den store pyramide blev bygget af egypterne i det tredje århundrede f.v.t. og er en af mange store pyramidestrukturer som blev bygget til ære for de døde faraoer"
+    },
+    {
+      "index": 29,
+      "id": 1856,
+      "sourcePath": "10509030763393436251.wav",
+      "sourceSha256": "2222fe8c2c8aedc352cefcc6afa19b2946c87ffa7621c53b0a32b90eaa51b8f3",
+      "sourceBytes": 641338,
+      "wavSha256": "6096627e26dfe3909b4b15cf6c33b24573e9ef2c7377dc68d3003bcde7b6db6f",
+      "referenceSha256": "42e1203d276bc7d9882788937f8412acb2d6c3c1b5e3efff992b061f37a3cd9f",
+      "reference": "finland er et fantastisk rejsemål for sejlere de tusind søers land har også tusindvis af øer i søerne samt i øhavene langs kysten"
+    }
+  ]
+}

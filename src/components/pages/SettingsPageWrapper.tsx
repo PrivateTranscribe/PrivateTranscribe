@@ -39,7 +39,7 @@ type SettingsTab = {
 const getSettingsTabs = (): SettingsTab[] => [
   { id: "general", label: "General" },
   { id: "permissions", label: "Microphone & Permissions" },
-  { id: "pro", label: "Pro & Beta" },
+  { id: "beta", label: "Beta features" },
   { id: "developer", label: import.meta.env.DEV ? "Developer" : "Data & Storage" },
 ];
 
@@ -78,12 +78,14 @@ export default function SettingsPageWrapper({
   }, [requestedSection, requestId]);
 
   useEffect(() => {
-    const requestedSection = localStorage.getItem("controlPanelInitialSettingsTab");
-    if (!requestedSection) {
+    const storedSection = localStorage.getItem("controlPanelInitialSettingsTab");
+    if (!storedSection) {
       return;
     }
 
-    const validSections: SettingsSectionType[] = ["general", "permissions", "pro", "developer"];
+    // "pro" is what this tab was called before it became "beta".
+    const requestedSection = storedSection === "pro" ? "beta" : storedSection;
+    const validSections: SettingsSectionType[] = ["general", "permissions", "beta", "developer"];
 
     if (validSections.includes(requestedSection as SettingsSectionType)) {
       setActiveTab(requestedSection as SettingsSectionType);

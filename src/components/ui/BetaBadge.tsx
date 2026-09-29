@@ -3,7 +3,7 @@ import { Badge } from "./badge";
 import { cn } from "../lib/utils";
 
 /**
- * The pill used wherever an unfinished, tester-only workflow appears.
+ * The pill used wherever an unfinished beta feature appears.
  *
  * One component and one word on purpose. The app previously said "Beta" in the
  * sidebar, "Tester" on page headers, and "Beta - approved tester access is

@@ -232,7 +232,7 @@ export function useActionEngine(isUnlocked = false): UseActionEngineResult {
 
   const executeAction = useCallback(
     async (id: string): Promise<ActionExecuteResult> => {
-      if (!isUnlocked) return { success: false, error: "Approved tester access required." };
+      if (!isUnlocked) return { success: false, error: "Turn on beta features to run actions." };
       try {
         const result = await window.electronAPI?.actionEngineExecute?.(id, {
           triggeredBy: "manual",

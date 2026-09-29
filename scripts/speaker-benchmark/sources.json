@@ -1,0 +1,65 @@
+{
+  "revision": "67c2d539286e89f68952d5dcf83912bd9f01dfae",
+  "sources": [
+    {
+      "file": "ES2004a.wav",
+      "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/HeadsetAudio/ES2004a.Mix-Headset.wav",
+      "bytes": 33579394,
+      "sha256": "3e2560b19bee6952c7c7ce041b0f1ea8a7ea9468044c4eea79d2a2c67e24ab0f"
+    },
+    {
+      "file": "ES2004a.rttm",
+      "url": "https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/67c2d539286e89f68952d5dcf83912bd9f01dfae/only_words/rttms/test/ES2004a.rttm",
+      "bytes": 14796,
+      "sha256": "9869c6146c2fd9595403edb36c2caeda65c12ffa2c0af4ce48d6814b673fd5a9"
+    },
+    {
+      "file": "ES2004a.uem",
+      "url": "https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/67c2d539286e89f68952d5dcf83912bd9f01dfae/uems/test/ES2004a.uem",
+      "bytes": 28,
+      "sha256": "514373eae2841ddf15fb07938a7d74bbecc2acad8afc2a28a93e0f7b24bfb446"
+    },
+    {
+      "file": "IS1009a.wav",
+      "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/HeadsetAudio/IS1009a.Mix-Headset.wav",
+      "bytes": 26844093,
+      "sha256": "6eb5a0ede0d9e72794f976ce7bea5b78133eae969f99b4c5418b43c2468d25b1"
+    },
+    {
+      "file": "IS1009a.rttm",
+      "url": "https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/67c2d539286e89f68952d5dcf83912bd9f01dfae/only_words/rttms/test/IS1009a.rttm",
+      "bytes": 11080,
+      "sha256": "ba38d35ca567f3f1e061d90fdc33579ce60d2060fc8664eaeb77d2e0fcd88b01"
+    },
+    {
+      "file": "IS1009a.uem",
+      "url": "https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/67c2d539286e89f68952d5dcf83912bd9f01dfae/uems/test/IS1009a.uem",
+      "bytes": 27,
+      "sha256": "afdc9548c0178876108b7ac88b0464ace094fab910c5e8661c135837b81514c6"
+    },
+    {
+      "file": "TS3003a.wav",
+      "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/HeadsetAudio/TS3003a.Mix-Headset.wav",
+      "bytes": 48180608,
+      "sha256": "b6ce59ff735c234afdd94b13744aa26f6785af746170543fd03b33160e920a6d"
+    },
+    {
+      "file": "TS3003a.rttm",
+      "url": "https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/67c2d539286e89f68952d5dcf83912bd9f01dfae/only_words/rttms/test/TS3003a.rttm",
+      "bytes": 14427,
+      "sha256": "57137f098ee3be9b8d77c9faa4b16e9155e821bdbf21b974dd8771d7e646d185"
+    },
+    {
+      "file": "TS3003a.uem",
+      "url": "https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/67c2d539286e89f68952d5dcf83912bd9f01dfae/uems/test/TS3003a.uem",
+      "bytes": 28,
+      "sha256": "88c25acf7872a0813ec26fc88f5fdc2e6a69eedf4c7c3b66a571b77df669e8fd"
+    },
+    {
+      "file": "ami_public_manual_1.6.2.zip",
+      "url": "https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip",
+      "bytes": 22887865,
+      "sha256": "b56e5babb2496b8795deeeda7e71178d7fbc9963f94276cf2a3f4b56ebbc9f9d"
+    }
+  ]
+}

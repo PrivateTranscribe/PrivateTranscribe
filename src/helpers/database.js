@@ -84,7 +84,7 @@ class DatabaseManager {
         )
       `);
 
-      // User-defined voice actions for the Action Engine (Pro feature).
+      // User-defined voice actions for the Action Engine (beta feature).
       // CRUD is handled by ActionEngineManager; this table is created here so
       // that all schema lives in one place and migrations can reference it.
       this.db.exec(`

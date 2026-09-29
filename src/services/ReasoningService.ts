@@ -208,7 +208,7 @@ class ReasoningService {
   /**
    * Build the user prompt, optionally prepending a context block.
    *
-   * Context inclusion is gated on `llmContextEnhancement` (separate Pro toggle).
+   * Context inclusion is gated on the separate `llmContextEnhancement` toggle.
    * When `config.smartContext` is provided (pre-fetched by AudioManager), it is
    * used directly — avoiding a redundant IPC round-trip. If not provided, context
    * is fetched lazily with a 2 s timeout.

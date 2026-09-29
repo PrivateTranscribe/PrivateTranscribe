@@ -1,0 +1,611 @@
+{
+  "about": [
+    "Hand-maintained list of the third-party parts in the Windows installer and of what the app downloads later.",
+    "scripts/generate-third-party-notices.js turns it and package-lock.json into THIRD_PARTY_NOTICES.md (npm run notices).",
+    "scripts/after-pack-win.js fails a Windows build when a file in resources/bin matches no files glob below.",
+    "files: globs relative to the packaged resources folder, matched without regard to case. ../ is the install folder; app.asar/... names a path inside the archive.",
+    "licenseText: a path under licenses/, or the licence text itself; an array holds several. licenseFiles records where each licenses/ file came from.",
+    "name, version, copyright and note land in Markdown as written, so put names containing * or _ in backticks."
+  ],
+  "licenseFiles": {
+    "licenses/GPL-3.0.txt": {
+      "title": "GNU General Public License v3.0",
+      "source": "https://www.gnu.org/licenses/gpl-3.0.txt",
+      "copiedFrom": "node_modules/ffmpeg-static/LICENSE (ffmpeg-static 5.3.0), byte-identical to the gnu.org file",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "licenses/LGPL-3.0.txt": {
+      "title": "GNU Lesser General Public License v3.0",
+      "source": "https://www.gnu.org/licenses/lgpl-3.0.txt",
+      "copiedFrom": "Downloaded from the gnu.org source URL",
+      "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+    },
+    "licenses/Apache-2.0.txt": {
+      "title": "Apache License 2.0",
+      "source": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "copiedFrom": "node_modules/@huggingface/transformers/LICENSE, byte-identical to the apache.org file",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "licenses/OFL-1.1-JetBrainsMono.txt": {
+      "title": "SIL Open Font License 1.1 (JetBrains Mono)",
+      "source": "https://github.com/JetBrains/JetBrainsMono/blob/v2.221/OFL.txt",
+      "copiedFrom": "Downloaded from the source URL; identical to OFL.txt at tag v2.210",
+      "sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d"
+    },
+    "licenses/ITF-FFL-2.0-Satoshi.txt": {
+      "title": "ITF Free Font License 2.0 (Satoshi)",
+      "source": "https://api.fontshare.com/v2/fonts/download/satoshi",
+      "copiedFrom": "Satoshi_Complete/License/FFL.txt in the Fontshare download",
+      "sha256": "145e7fe2429a3336ba215c070ef722000e01348a3e1baaa127e871bb5012f554"
+    },
+    "licenses/LLVM-OpenMP.txt": {
+      "title": "LLVM OpenMP runtime licence",
+      "source": "https://github.com/llvm/llvm-project/blob/llvmorg-20.1.8/openmp/LICENSE.TXT",
+      "copiedFrom": "LICENSE-LLVM-OpenMP in https://github.com/ggml-org/llama.cpp/releases/download/b10566/llama-b10566-bin-win-cpu-x64.zip, byte-identical to the llvm-project file",
+      "sha256": "fdad1758a9e1f9d5a81e18879b3406772115edc92c24bfa36b70c654f325e8e4"
+    },
+    "licenses/NSIS-COPYING.txt": {
+      "title": "NSIS licence (COPYING)",
+      "source": "https://github.com/electron-userland/electron-builder-binaries/releases/download/nsis-3.0.4.1/nsis-3.0.4.1.7z",
+      "copiedFrom": "COPYING in electron-builder's NSIS 3.0.4.1 package (its download cache)",
+      "sha256": "3c8de989f6504d52f5f8dfafedb6668cd47201f5d01f1319570727c091425dd6"
+    },
+    "licenses/websocketpp-COPYING.txt": {
+      "title": "WebSocket++ licence (COPYING)",
+      "source": "https://github.com/zaphoyd/websocketpp/blob/b9aeec6eaf3d5610503439b4fae3581d9aff08e8/COPYING",
+      "copiedFrom": "Downloaded from the source URL",
+      "sha256": "5ba81a1ed402517dce2581fa2d4042baf6a9c8ca0fe94fa6a7043ce6ab23064f"
+    },
+    "licenses/onnxruntime-1.23.2-ThirdPartyNotices.txt": {
+      "title": "ONNX Runtime 1.23.2 third-party notices",
+      "source": "https://github.com/microsoft/onnxruntime/blob/v1.23.2/ThirdPartyNotices.txt",
+      "copiedFrom": "Downloaded from the source URL",
+      "sha256": "e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc"
+    }
+  },
+  "components": [
+    {
+      "name": "OpenWhispr",
+      "version": "copy taken in early 2026",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2024 OpenWhispr Team"],
+      "source": "https://github.com/OpenWhispr/openwhispr",
+      "files": ["app.asar"],
+      "licenseText": "MIT License\n\nCopyright (c) 2024 OpenWhispr Team\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "PrivateTranscribe started in early 2026 as a private copy of\n[OpenWhispr](https://github.com/OpenWhispr/openwhispr), which is released under\nthe MIT licence. Nearly all of it has been rewritten since and the two products\nare developed separately, but code may still derive from that origin, so the\nOpenWhispr notice below ships with every copy of PrivateTranscribe as the MIT\nlicence requires."
+    },
+    {
+      "name": "PrivateTranscribe helper programs",
+      "version": "same as the app",
+      "license": "LicenseRef-PrivateTranscribe",
+      "copyright": ["Copyright (c) 2026 Julsgaard Products. All rights reserved."],
+      "source": "https://privatetranscribe.com",
+      "files": [
+        "bin/windows-key-listener.exe",
+        "bin/windows-fast-paste.exe",
+        "bin/windows-mic-watch.exe",
+        "bin/windows-hold-key.exe",
+        "readaloud-copy-worker.ps1",
+        "readaloud-highlight-worker.ps1"
+      ],
+      "note": "PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs and windows-hold-key.cs in the PrivateTranscribe repository, and fall under PrivateTranscribe's own licence (its LICENSE file). windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr."
+    },
+    {
+      "name": "Electron (with Chromium, Node.js and V8)",
+      "version": "41.5.0",
+      "license": "MIT",
+      "copyright": ["Copyright (c) Electron contributors", "Copyright (c) 2013-2020 GitHub Inc."],
+      "source": "https://github.com/electron/electron/tree/v41.5.0",
+      "files": [
+        "../PrivateTranscribe.exe",
+        "../*.dll",
+        "../*.pak",
+        "../locales/*.pak",
+        "../*.bin",
+        "../icudtl.dat",
+        "../vk_swiftshader_icd.json",
+        "../LICENSE.electron.txt",
+        "../LICENSES.chromium.html"
+      ],
+      "licenseText": "Copyright (c) Electron contributors\nCopyright (c) 2013-2020 GitHub Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+      "note": "Electron contains Chromium, Node.js, V8 and many other open-source projects. Their licences are listed in LICENSES.chromium.html, installed next to PrivateTranscribe.exe; that list covers libEGL.dll and libGLESv2.dll (ANGLE), vk_swiftshader.dll (SwiftShader), vulkan-1.dll (Vulkan Loader) and Chromium's FFmpeg in ffmpeg.dll. d3dcompiler_47.dll, dxcompiler.dll and dxil.dll are Microsoft files that come with Electron's Windows build; LICENSES.chromium.html does not name them."
+    },
+    {
+      "name": "whisper.cpp",
+      "version": "0.0.10 (OpenWhispr/whisper.cpp release, commit 6ac1454)",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2023-2026 The ggml authors"],
+      "source": "https://github.com/OpenWhispr/whisper.cpp/tree/0.0.10",
+      "files": ["bin/whisper-server-*", "bin/whisper-cpp-*", "bin/whisper.dll"],
+      "licenseText": "MIT License\n\nCopyright (c) 2023-2026 The ggml authors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "whisper-server-win32-x64.exe comes from whisper-server-win32-x64-cpu.zip in OpenWhispr/whisper.cpp release 0.0.10. The download script takes the latest release, so a later build may carry a newer one. OpenWhispr/whisper.cpp is a fork of https://github.com/ggml-org/whisper.cpp. A whisper.dll in bin is a leftover from an older download: nothing imports it and the current release does not contain it."
+    },
+    {
+      "name": "llama.cpp and ggml",
+      "version": "b10566 (commit bb4caa754)",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2023-2026 The ggml authors"],
+      "source": "https://github.com/ggml-org/llama.cpp/tree/b10566",
+      "files": ["bin/llama-server-*", "bin/llama*.dll", "bin/mtmd.dll", "bin/ggml*.dll"],
+      "licenseText": "MIT License\n\nCopyright (c) 2023-2026 The ggml authors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "From llama-b10566-bin-win-cpu-x64.zip. At run time llama-server loads the ggml-cpu DLL that matches the processor. A GGMLCPU.dll in bin is a leftover from an older download: nothing imports it and no current release archive contains it."
+    },
+    {
+      "name": "LLVM OpenMP runtime",
+      "version": "20.1.8 (shipped with llama.cpp b10566)",
+      "license": "Apache-2.0 WITH LLVM-exception AND (NCSA OR MIT)",
+      "copyright": ["Copyright (c) 1997-2019 Intel Corporation"],
+      "source": "https://github.com/llvm/llvm-project/tree/llvmorg-20.1.8/openmp",
+      "files": ["bin/libomp.dll"],
+      "licenseText": "licenses/LLVM-OpenMP.txt",
+      "note": "libomp.dll comes from the llama.cpp b10566 archive; ggml-base.dll and the ggml-cpu DLLs import it. llama.cpp's build takes it from the official LLVM 20.1.8 installer and puts LLVM's OpenMP licence file next to it; that file matches LLVM 20.1.8's openmp/LICENSE.TXT byte for byte."
+    },
+    {
+      "name": "Microsoft Visual C++ runtime",
+      "version": "14.44.35211.0",
+      "license": "LicenseRef-Microsoft-Visual-Cpp-Redistributable",
+      "copyright": ["© Microsoft Corporation. All rights reserved."],
+      "source": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+      "files": [
+        "bin/msvcp140.dll",
+        "bin/vcruntime140.dll",
+        "bin/vcruntime140_1.dll",
+        "bin/vcomp140.dll"
+      ],
+      "licenseUrl": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+      "note": "Unmodified Visual C++ runtime files, taken from whisper-server-win32-x64-cpu.zip (OpenWhispr/whisper.cpp 0.0.10). vcomp140.dll is the Visual C++ OpenMP runtime. Microsoft's Distributable Code terms for Visual Studio 2022 allow these files to be copied and distributed unmodified with a program, and limit that to licensed Visual Studio users."
+    },
+    {
+      "name": "cpp-httplib",
+      "version": "0.20.0 (in whisper.cpp 0.0.10), 0.53.1 (in llama.cpp b10566)",
+      "license": "MIT",
+      "copyright": [
+        "Copyright (c) 2017 yhirose",
+        "Copyright (c) 2025 Yuji Hirose. All rights reserved.",
+        "Copyright (c) 2026 Yuji Hirose. All rights reserved."
+      ],
+      "source": "https://github.com/yhirose/cpp-httplib",
+      "files": [
+        "bin/whisper-server-*",
+        "bin/llama-common.dll",
+        "bin/llama-server-impl.dll",
+        "bin/llama-cli-impl.dll"
+      ],
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2017 yhirose\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "The licence text is the LICENSE file llama.cpp b10566 ships with its copy. The 2025 and 2026 lines are from the httplib.h headers in whisper.cpp 0.0.10 and llama.cpp b10566."
+    },
+    {
+      "name": "JSON for Modern C++ (nlohmann/json)",
+      "version": "3.11.2 (in whisper.cpp 0.0.10), 3.12.0 (in llama.cpp b10566 and sherpa-onnx 1.13.8)",
+      "license": "MIT",
+      "copyright": [
+        "Copyright (c) 2013-2022 Niels Lohmann",
+        "Copyright (c) 2013-2025 Niels Lohmann"
+      ],
+      "source": "https://github.com/nlohmann/json",
+      "files": [
+        "bin/whisper-server-*",
+        "bin/llama-common.dll",
+        "bin/llama-server-impl.dll",
+        "bin/llama-cli-impl.dll",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": [
+        "MIT License \n\nCopyright (c) 2013-2022 Niels Lohmann\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+        "MIT License \n\nCopyright (c) 2013-2025 Niels Lohmann\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
+      ],
+      "note": "The two texts are LICENSE.MIT at tags v3.11.2 and v3.12.0."
+    },
+    {
+      "name": "BoringSSL",
+      "version": "0.20260813.0 (in llama.cpp b10566)",
+      "license": "Apache-2.0",
+      "copyright": ["Copyright 2001-2016 The OpenSSL Project Authors. All Rights Reserved."],
+      "source": "https://github.com/google/boringssl/tree/0.20260813.0",
+      "files": ["bin/llama-common.dll", "bin/llama-server-impl.dll", "bin/llama-cli-impl.dll"],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "llama.cpp b10566 builds BoringSSL in for HTTPS. The copyright line is from include/openssl/base.h; other files name their own holders. BoringSSL's LICENSE also covers Go test code under the Go licence; that code is not compiled into these files."
+    },
+    {
+      "name": "miniaudio",
+      "version": "0.11.24 (in whisper.cpp 0.0.10)",
+      "license": "Unlicense OR MIT-0",
+      "copyright": ["Copyright 2025 David Reid"],
+      "source": "https://github.com/mackron/miniaudio",
+      "files": ["bin/whisper-server-*"],
+      "licenseText": "This software is available as a choice of the following licenses. Choose\nwhichever you prefer.\n\n===============================================================================\nALTERNATIVE 1 - Public Domain (www.unlicense.org)\n===============================================================================\nThis is free and unencumbered software released into the public domain.\n\nAnyone is free to copy, modify, publish, use, compile, sell, or distribute this\nsoftware, either in source code form or as a compiled binary, for any purpose,\ncommercial or non-commercial, and by any means.\n\nIn jurisdictions that recognize copyright laws, the author or authors of this\nsoftware dedicate any and all copyright interest in the software to the public\ndomain. We make this dedication for the benefit of the public at large and to\nthe detriment of our heirs and successors. We intend this dedication to be an\novert act of relinquishment in perpetuity of all present and future rights to\nthis software under copyright law.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN\nACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\nFor more information, please refer to <http://unlicense.org/>\n\n===============================================================================\nALTERNATIVE 2 - MIT No Attribution\n===============================================================================\nCopyright 2025 David Reid\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."
+    },
+    {
+      "name": "stb_image and stb_vorbis",
+      "version": "stb_image 2.30 (in llama.cpp b10566), stb_vorbis 1.22 (in whisper.cpp 0.0.10)",
+      "license": "MIT OR Unlicense",
+      "copyright": ["Copyright (c) 2017 Sean Barrett"],
+      "source": "https://github.com/nothings/stb",
+      "files": ["bin/mtmd.dll", "bin/whisper-server-*"],
+      "licenseText": "------------------------------------------------------------------------------\nThis software is available under 2 licenses -- choose whichever you prefer.\n------------------------------------------------------------------------------\nALTERNATIVE A - MIT License\nCopyright (c) 2017 Sean Barrett\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies\nof the Software, and to permit persons to whom the Software is furnished to do\nso, subject to the following conditions:\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n------------------------------------------------------------------------------\nALTERNATIVE B - Public Domain (www.unlicense.org)\nThis is free and unencumbered software released into the public domain.\nAnyone is free to copy, modify, publish, use, compile, sell, or distribute this\nsoftware, either in source code form or as a compiled binary, for any purpose,\ncommercial or non-commercial, and by any means.\nIn jurisdictions that recognize copyright laws, the author or authors of this\nsoftware dedicate any and all copyright interest in the software to the public\ndomain. We make this dedication for the benefit of the public at large and to\nthe detriment of our heirs and successors. We intend this dedication to be an\novert act of relinquishment in perpetuity of all present and future rights to\nthis software under copyright law.\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN\nACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n------------------------------------------------------------------------------"
+    },
+    {
+      "name": "subprocess.h",
+      "version": "as vendored by llama.cpp b10566",
+      "license": "Unlicense",
+      "copyright": [],
+      "source": "https://github.com/sheredom/subprocess.h",
+      "files": ["bin/llama-common.dll", "bin/mtmd.dll"],
+      "licenseText": "This is free and unencumbered software released into the public domain.\n\nAnyone is free to copy, modify, publish, use, compile, sell, or\ndistribute this software, either in source code form or as a compiled\nbinary, for any purpose, commercial or non-commercial, and by any\nmeans.\n\nIn jurisdictions that recognize copyright laws, the author or authors\nof this software dedicate any and all copyright interest in the\nsoftware to the public domain. We make this dedication for the benefit\nof the public at large and to the detriment of our heirs and\nsuccessors. We intend this dedication to be an overt act of\nrelinquishment in perpetuity of all present and future rights to this\nsoftware under copyright law.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR\nOTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,\nARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\nOTHER DEALINGS IN THE SOFTWARE.\n\nFor more information, please refer to <http://unlicense.org/>"
+    },
+    {
+      "name": "sherpa-onnx",
+      "version": "1.12.23 (in bin), 1.13.8 (sherpa-onnx-node and sherpa-onnx-win-x64)",
+      "license": "Apache-2.0",
+      "copyright": ["Copyright (c) 2022-2023 Xiaomi Corporation"],
+      "source": "https://github.com/k2-fsa/sherpa-onnx",
+      "files": [
+        "bin/sherpa-onnx-*",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/**",
+        "app.asar.unpacked/node_modules/sherpa-onnx-node/**"
+      ],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "bin/sherpa-onnx-ws-win32-x64.exe is sherpa-onnx-offline-websocket-server.exe from https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-win-x64-shared.tar.bz2, and builds also copy that archive's sherpa-onnx-c-api.dll and sherpa-onnx-cxx-api.dll into bin. The copyright line is from sherpa-onnx/csrc/offline-websocket-server.cc; other files name their own contributors."
+    },
+    {
+      "name": "kaldi-native-fbank",
+      "version": "1.22.3 (in sherpa-onnx 1.12.23 and 1.13.8)",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://github.com/csukuangfj/kaldi-native-fbank/tree/v1.22.3",
+      "files": [
+        "bin/sherpa-onnx-*",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "Its LICENSE is the plain Apache License 2.0 and names no copyright holder."
+    },
+    {
+      "name": "kaldi-decoder",
+      "version": "0.2.10 (in sherpa-onnx 1.12.23), 0.3.0 (in sherpa-onnx 1.13.8)",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://github.com/k2-fsa/kaldi-decoder",
+      "files": [
+        "bin/sherpa-onnx-*",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "Its LICENSE is the plain Apache License 2.0 and names no copyright holder."
+    },
+    {
+      "name": "kaldifst",
+      "version": "1.7.17 (in sherpa-onnx 1.12.23)",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://github.com/k2-fsa/kaldifst/tree/v1.7.17",
+      "files": ["bin/sherpa-onnx-*"],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "Its LICENSE adds a note before the Apache License 2.0: authors, or their employers where individual files say so, own their contributions, as the git history shows."
+    },
+    {
+      "name": "OpenFst",
+      "version": "sherpa-onnx-2024-06-19 (in sherpa-onnx 1.12.23), v1.8.5-2026-07-09 (in sherpa-onnx 1.13.8)",
+      "license": "Apache-2.0",
+      "copyright": ["Copyright 2005-2015 Google, Inc.", "Copyright 2005-2026 Google LLC."],
+      "source": "https://github.com/csukuangfj/openfst",
+      "files": [
+        "bin/sherpa-onnx-*",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "The copyright lines are from COPYING at the two tags of this fork of OpenFst."
+    },
+    {
+      "name": "simple-sentencepiece",
+      "version": "0.7 (in sherpa-onnx 1.12.23 and 1.13.8)",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://github.com/pkufool/simple-sentencepiece/tree/v0.7",
+      "files": [
+        "bin/sherpa-onnx-*",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "licenses/Apache-2.0.txt",
+      "note": "Its LICENSE is the plain Apache License 2.0 and names no copyright holder."
+    },
+    {
+      "name": "WebSocket++",
+      "version": "commit b9aeec6 (in sherpa-onnx 1.12.23)",
+      "license": "BSD-3-Clause AND Zlib AND MIT",
+      "copyright": [
+        "Copyright (c) 2014, Peter Thorson. All rights reserved.",
+        "Copyright (C) 2004-2008 René Nyffenegger",
+        "Copyright (c) 2011, Micael Hildenborg",
+        "Copyright (C) 1999, 2002 Aladdin Enterprises. All rights reserved.",
+        "Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>"
+      ],
+      "source": "https://github.com/zaphoyd/websocketpp/tree/b9aeec6eaf3d5610503439b4fae3581d9aff08e8",
+      "files": ["bin/sherpa-onnx-ws-win32-x64.exe"],
+      "licenseText": "licenses/websocketpp-COPYING.txt"
+    },
+    {
+      "name": "Asio",
+      "version": "1.24.0 (in sherpa-onnx 1.12.23)",
+      "license": "BSL-1.0",
+      "copyright": ["Copyright (c) 2003-2022 Christopher M. Kohlhoff (chris at kohlhoff dot com)"],
+      "source": "https://github.com/chriskohlhoff/asio/tree/asio-1-24-0",
+      "files": ["bin/sherpa-onnx-ws-win32-x64.exe"],
+      "licenseText": [
+        "Copyright (c) 2003-2022 Christopher M. Kohlhoff (chris at kohlhoff dot com)\n\nDistributed under the Boost Software License, Version 1.0. (See accompanying\nfile LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)",
+        "Boost Software License - Version 1.0 - August 17th, 2003\n\nPermission is hereby granted, free of charge, to any person or organization\nobtaining a copy of the software and accompanying documentation covered by\nthis license (the \"Software\") to use, reproduce, display, distribute,\nexecute, and transmit the Software, and to prepare derivative works of the\nSoftware, and to permit third-parties to whom the Software is furnished to\ndo so, all subject to the following:\n\nThe copyright notices in the Software and this entire statement, including\nthe above license grant, this restriction and the following disclaimer,\nmust be included in all copies of the Software, in whole or in part, and\nall derivative works of the Software, unless such copies or derivative\nworks are solely in the form of machine-executable object code generated by\na source language processor.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT\nSHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE\nFOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,\nARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE."
+      ]
+    },
+    {
+      "name": "piper-phonemize",
+      "version": "commit 78a788e (in sherpa-onnx 1.12.23), commit f3ff95a (in sherpa-onnx 1.13.8)",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2023 Michael Hansen"],
+      "source": "https://github.com/csukuangfj/piper-phonemize",
+      "files": [
+        "bin/sherpa-onnx-c-api.dll",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "MIT License\n\nCopyright (c) 2023 Michael Hansen\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "A fork of https://github.com/rhasspy/piper-phonemize."
+    },
+    {
+      "name": "fastcluster (hclust-cpp)",
+      "version": "2024-09-29 (in sherpa-onnx 1.12.23), 2026-02-25 (in sherpa-onnx 1.13.8)",
+      "license": "BSD-2-Clause",
+      "copyright": [
+        "© 2011 Daniel Müllner <http://danifold.net>",
+        "© 2018 Christoph Dalitz <http://www.hsnr.de/ipattern/>"
+      ],
+      "source": "https://github.com/csukuangfj/hclust-cpp",
+      "files": [
+        "bin/sherpa-onnx-c-api.dll",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "Copyright:\n  * fastcluster_dm.cpp & fastcluster_R_dm.cpp:\n     © 2011 Daniel Müllner <http://danifold.net>\n  * fastcluster.(h|cpp) & demo.cpp & plotresult.r:\n     © 2018 Christoph Dalitz <http://www.hsnr.de/ipattern/>\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n  * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
+    },
+    {
+      "name": "eSpeak NG",
+      "version": "exact source commit unknown in phonemizer 1.2.1; csukuangfj/espeak-ng commit ed530aa (in sherpa-onnx 1.13.8) and f6fed6c (in sherpa-onnx 1.12.23)",
+      "license": "GPL-3.0-or-later",
+      "copyright": [
+        "Copyright (C) 2005 to 2013 by Jonathan Duddington",
+        "Copyright (C) 2013-2017 Reece H. Dunn"
+      ],
+      "source": "https://github.com/espeak-ng/espeak-ng",
+      "files": [
+        "app.asar/node_modules/phonemizer/dist/*",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll",
+        "bin/sherpa-onnx-c-api.dll"
+      ],
+      "licenseText": "licenses/GPL-3.0.txt",
+      "note": "eSpeak NG is released under the GPL version 3 or later. That licence applies to it wherever it ships, whatever licence the package around it declares: the phonemizer package is Apache-2.0 for its own code, but the eSpeak NG WebAssembly build inside phonemizer/dist stays GPL. The eSpeak NG source commit behind phonemizer's build is unknown. sherpa-onnx builds eSpeak NG from the fork https://github.com/csukuangfj/espeak-ng at commit ed530aa113046142eb5115cf2fc9157854d0ffe1 (sherpa-onnx 1.13.8) and f6fed6c58b5e0998b8e68c6610125e2d07d595a7 (sherpa-onnx 1.12.23). The copyright lines are from src/libespeak-ng/speech.c; other files name other contributors."
+    },
+    {
+      "name": "cargs",
+      "version": "1.0.3",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2022 Leonard Iklé"],
+      "source": "https://github.com/likle/cargs/tree/v1.0.3",
+      "files": ["bin/cargs.dll"],
+      "licenseText": "MIT License\n\nCopyright (c) 2022 Leonard Iklé\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "cargs.dll comes with the sherpa-onnx 1.12.23 archive (lib/cargs.dll). Nothing in bin imports it."
+    },
+    {
+      "name": "ONNX Runtime",
+      "version": "1.23.2 (in bin), 1.21.0 (onnxruntime-node), 1.28.2 (sherpa-onnx-win-x64), 1.22.0-dev (onnxruntime-web)",
+      "license": "MIT",
+      "copyright": ["Copyright (c) Microsoft Corporation"],
+      "source": "https://github.com/microsoft/onnxruntime",
+      "files": [
+        "bin/onnxruntime.dll",
+        "bin/onnxruntime_providers_shared.dll",
+        "app.asar.unpacked/node_modules/onnxruntime-node/bin/**",
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/onnxruntime*.dll",
+        "app.asar/node_modules/onnxruntime-web/dist/*"
+      ],
+      "licenseText": [
+        "MIT License\n\nCopyright (c) Microsoft Corporation\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+        "licenses/onnxruntime-1.23.2-ThirdPartyNotices.txt"
+      ],
+      "note": "The copy in bin comes from the sherpa-onnx 1.12.23 archive. ONNX Runtime contains third-party code listed in its ThirdPartyNotices.txt; the 1.23.2 list is included below, and the lists for the other copies are at https://github.com/microsoft/onnxruntime/blob/v1.21.0/ThirdPartyNotices.txt and https://github.com/microsoft/onnxruntime/blob/v1.28.2/ThirdPartyNotices.txt. onnxruntime-web holds the WebAssembly build from commit 89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0, as the package records, whose list is https://github.com/microsoft/onnxruntime/blob/89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0/ThirdPartyNotices.txt. onnxruntime-node also ships its macOS, Linux and Windows arm64 builds, which PrivateTranscribe does not use."
+    },
+    {
+      "name": "DirectML",
+      "version": "1.15.4",
+      "license": "LicenseRef-Microsoft-DirectML",
+      "copyright": ["© Microsoft Corporation. All rights reserved."],
+      "source": "https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4",
+      "files": ["app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v3/win32/*/DirectML.dll"],
+      "licenseUrl": "https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4/license",
+      "note": "Microsoft's DirectML redistributable library, shipped inside the onnxruntime-node package (x64 and arm64 copies)."
+    },
+    {
+      "name": "FFmpeg",
+      "version": "6.1.1 (gyan.dev essentials build, from ffmpeg-static 5.3.0)",
+      "license": "GPL-3.0-or-later",
+      "copyright": ["Copyright (c) 2000-2023 the FFmpeg developers"],
+      "source": "https://github.com/FFmpeg/FFmpeg/commit/e38092ef93",
+      "files": ["app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg.exe*"],
+      "licenseText": "licenses/GPL-3.0.txt",
+      "note": "This ffmpeg.exe is a GPL build: it was configured with --enable-gpl and --enable-version3, and its README states \"License: GPL v3\". It is distributed under the GNU General Public License version 3, not the LGPL. ffmpeg.exe.README, installed next to it, names FFmpeg commit e38092ef93 as the source and lists the external libraries compiled into the build; this file does not link the sources of those libraries. The ffmpeg.dll in the install folder is Chromium's separate build and belongs to Electron."
+    },
+    {
+      "name": "libvips",
+      "version": "8.17.3 (sharp-libvips 1.2.4, in @img/sharp-win32-x64 0.34.5)",
+      "license": "LGPL-3.0-or-later",
+      "copyright": [],
+      "source": "https://github.com/libvips/libvips/tree/v8.17.3",
+      "files": ["app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/*"],
+      "licenseText": ["licenses/LGPL-3.0.txt", "licenses/GPL-3.0.txt"],
+      "note": "libvips is LGPL-2.1-or-later; sharp distributes it under LGPL-3.0-or-later through the \"or later\" clause. The LGPL-3.0 adds to the GPL-3.0, so both texts apply. The Windows build and the scripts that make it are at https://github.com/lovell/sharp-libvips/tree/v1.2.4. libvips-42.dll also contains the libraries listed in https://github.com/lovell/sharp-libvips/blob/v1.2.4/THIRD-PARTY-NOTICES.md (among them glib, cairo, pango, librsvg, libheif and aom) at the versions in the package's versions.json; their own licence texts are not reproduced here. The libvips source header checked (libvips/iofuncs/init.c) names no copyright holder."
+    },
+    {
+      "name": "SQLite",
+      "version": "3.53.0 (in better-sqlite3 12.9.0)",
+      "license": "blessing",
+      "copyright": [],
+      "source": "https://www.sqlite.org",
+      "files": ["app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node"],
+      "licenseText": "The author disclaims copyright to this source code.  In place of\na legal notice, here is a blessing:\n\n   May you do good and not evil.\n   May you find forgiveness for yourself and forgive others.\n   May you share freely, never taking more than you give.",
+      "note": "SQLite is in the public domain. Source id: 2026-04-09 11:41:38 4525003a53a7fc63ca75c59b22c79608659ca12f0131f52c18637f829977f20b."
+    },
+    {
+      "name": "Silero VAD",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2020-present Silero Team"],
+      "source": "https://github.com/snakers4/silero-vad",
+      "files": ["models/silero-vad.onnx"],
+      "licenseText": "MIT License\n\nCopyright (c) 2020-present Silero Team\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "PrivateTranscribe bundles the Silero speech-detection model, used locally through sherpa-onnx. The file is the ONNX export that sherpa-onnx publishes at https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx."
+    },
+    {
+      "name": "Tailwind CSS",
+      "version": "4.1.18",
+      "license": "MIT",
+      "copyright": ["Copyright (c) Tailwind Labs, Inc."],
+      "source": "https://github.com/tailwindlabs/tailwindcss/tree/v4.1.18",
+      "files": ["app.asar/src/dist/assets/*.css"],
+      "licenseText": "MIT License\n\nCopyright (c) Tailwind Labs, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "The app's stylesheet is generated by Tailwind CSS and contains its base styles."
+    },
+    {
+      "name": "Vite",
+      "version": "6.4.2",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2019-present, VoidZero Inc. and Vite contributors"],
+      "source": "https://github.com/vitejs/vite/tree/v6.4.2",
+      "files": ["app.asar/src/dist/assets/*.js"],
+      "licenseText": "MIT License\n\nCopyright (c) 2019-present, VoidZero Inc. and Vite contributors\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "Vite bundles the app's interface code and adds small module-loading helpers of its own to the bundle."
+    },
+    {
+      "name": "JetBrains Mono",
+      "version": "2.211",
+      "license": "OFL-1.1",
+      "copyright": [
+        "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)"
+      ],
+      "source": "https://github.com/JetBrains/JetBrainsMono",
+      "files": [
+        "src/assets/fonts/jetbrains-mono-*.woff2",
+        "app.asar/src/dist/assets/jetbrains-mono-*.woff2"
+      ],
+      "licenseText": "licenses/OFL-1.1-JetBrainsMono.txt",
+      "note": "The font files report version 2.211, which has no tag in the JetBrains Mono repository. The licence text is OFL.txt at tag v2.221, identical to v2.210."
+    },
+    {
+      "name": "Satoshi",
+      "version": "2.000",
+      "license": "LicenseRef-ITF-FFL-2.0",
+      "copyright": ["Copyright 2017-2021 Indian Type Foundry. All rights reserved."],
+      "source": "https://www.fontshare.com/fonts/satoshi",
+      "files": [
+        "src/assets/fonts/satoshi-variable.woff2",
+        "app.asar/src/dist/assets/satoshi-variable-*.woff2"
+      ],
+      "licenseText": "licenses/ITF-FFL-2.0-Satoshi.txt",
+      "note": "Satoshi is a trademark of the Indian Type Foundry. The shipped font is byte-identical to Satoshi-Variable.woff2 in the Fontshare download, and the licence text is that download's License/FFL.txt (version 2.0, 17 Aug 2026)."
+    },
+    {
+      "name": "AI provider logos",
+      "license": "None (trademarks of their owners)",
+      "copyright": [],
+      "source": "https://github.com/OpenWhispr/openwhispr/tree/main/src/assets/icons/providers",
+      "files": ["src/assets/icons/providers/*.svg", "app.asar/src/dist/assets/*.svg"],
+      "note": "Logos of the AI providers the app can connect to: Anthropic, Gemini, Groq, Llama, Mistral, NVIDIA, OpenAI and Qwen. They came with the OpenWhispr code. Each logo is a trademark of its owner and is shown only to name that provider."
+    },
+    {
+      "name": "NSIS (installer and uninstaller)",
+      "version": "3.0.4.1 (electron-builder package)",
+      "license": "Zlib",
+      "copyright": ["Copyright (C) 1999-2018 Contributors"],
+      "source": "https://github.com/electron-userland/electron-builder-binaries/releases/tag/nsis-3.0.4.1",
+      "files": ["../Uninstall PrivateTranscribe.exe"],
+      "licenseText": "licenses/NSIS-COPYING.txt",
+      "note": "electron-builder builds the installer and the uninstaller with NSIS and sets its zlib compressor, so the bzip2 and LZMA modules that COPYING also covers are not used. The installer also carries NSIS plug-ins from electron-builder's nsis-resources 3.4.1 package; which ones depends on the installer script. Their version information reads: nsis7z.dll, 7-Zip NSIS Plug-in 19.00, Copyright (c) 1999-2016 Igor Pavlov, Nik Medved, Marek Mizanin, Stuart Welch; StdUtils.dll, Copyright (C) 2004-2018 LoRd_MuldeR; INetC.dll, Copyright © Takhir Bedertdinov; EmbedHTML.dll, Copyright © Stuart Welch 2014; UAC.dll, nsProcess.dll, SpiderBanner.dll, nsisunz.dll and WinShell.dll carry none. The installer unpacks these plug-ins to a temporary folder while it runs; their own licence terms are not reproduced here."
+    },
+    {
+      "name": "elevate.exe",
+      "version": "1.0.0.2894",
+      "license": "MIT",
+      "copyright": ["Copyright (C) 2007"],
+      "source": "https://github.com/jpassing/elevate/tree/d5cfc93d1ce0",
+      "files": ["elevate.exe"],
+      "note": "electron-builder copies this helper from its NSIS package into resources, so the installer can restart itself with administrator rights. Its version information names Johannes Passing (\"Elevate Application\"), whose elevate project is released under the MIT licence; the text below is that project's LICENSE.md, which leaves the year and holder as placeholders.",
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) <year> <copyright holders>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\n of this software and associated documentation files (the \"Software\"), to deal\n in the Software without restriction, including without limitation the rights\n to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n copies of the Software, and to permit persons to whom the Software is\n furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\n all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\n THE SOFTWARE."
+    }
+  ],
+  "downloaded": [
+    {
+      "name": "Whisper speech models",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2022 OpenAI"],
+      "source": "https://huggingface.co/ggerganov/whisper.cpp",
+      "note": "The tiny, base, small, medium, large-v3 and large-v3-turbo models in ggml format, converted by the whisper.cpp project from OpenAI's Whisper weights (https://github.com/openai/whisper, MIT)."
+    },
+    {
+      "name": "tinydiarize small.en",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2022 OpenAI"],
+      "source": "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp",
+      "note": "The file ggml-small.en-tdrz.bin, a Whisper small.en fine-tune that marks speaker turns, from https://github.com/akashmjn/tinydiarize."
+    },
+    {
+      "name": "NVIDIA Parakeet TDT 0.6B v3",
+      "license": "CC-BY-4.0",
+      "copyright": [],
+      "source": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "note": "Created by NVIDIA. The app downloads the int8 ONNX export that the sherpa-onnx project publishes as https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2."
+    },
+    {
+      "name": "Kokoro-82M v1.0",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "note": "The app downloads the ONNX export at https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped (revision dd4401a), also apache-2.0. The voice files ship inside the kokoro-js package; see the npm packages."
+    },
+    {
+      "name": "pyannote segmentation 3.0",
+      "license": "MIT",
+      "copyright": [],
+      "source": "https://huggingface.co/pyannote/segmentation-3.0",
+      "note": "Used for speaker separation. Downloaded as https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2."
+    },
+    {
+      "name": "3D-Speaker ERes2Net base",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://modelscope.cn/models/iic/speech_eres2net_base_sv_zh-cn_3dspeaker_16k",
+      "note": "Used for speaker separation. Downloaded as https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx."
+    },
+    {
+      "name": "Qwen3 GGUF models",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://huggingface.co/Qwen",
+      "note": "Qwen/Qwen3-0.6B-GGUF, Qwen/Qwen3-1.7B-GGUF, Qwen/Qwen3-4B-GGUF, Qwen/Qwen3-8B-GGUF and Qwen/Qwen3-32B-GGUF on Hugging Face; each model card states apache-2.0."
+    },
+    {
+      "name": "Qwen3.8 2B Distill GGUF",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://huggingface.co/empero-ai/Qwen3.8-2B-Distill-GGUF"
+    },
+    {
+      "name": "gpt-oss-20b GGUF",
+      "license": "Apache-2.0",
+      "copyright": [],
+      "source": "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF"
+    },
+    {
+      "name": "CUDA engine for NVIDIA graphics cards",
+      "license": "MIT AND LicenseRef-NVIDIA-CUDA-EULA",
+      "copyright": ["Copyright (c) 2023-2026 The ggml authors"],
+      "source": "https://updates.privatetranscribe.com/binaries/<version>/whisper-server-win32-x64-cuda.zip",
+      "licenseUrl": "https://docs.nvidia.com/cuda/eula/index.html",
+      "note": "Downloaded only when the user installs the CUDA engine from Settings. It holds a CUDA build of whisper.cpp from https://github.com/ggml-org/whisper.cpp (MIT) and NVIDIA's CUDA 12.8 runtime libraries cudart64_12.dll, cublas64_12.dll and cublasLt64_12.dll, which NVIDIA licenses under the CUDA Toolkit End User License Agreement linked here."
+    }
+  ]
+}

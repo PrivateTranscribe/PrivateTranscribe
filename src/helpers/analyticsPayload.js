@@ -7,10 +7,6 @@ const ALLOWED_ANALYTICS_EVENTS = new Set([
   "transcription_completed",
   "first_transcription_completed",
   "settings_opened",
-  "starter_words_used",
-  "starter_limit_reached",
-  "starter_limit_hit",
-  "starter_file_words_used",
 ]);
 
 const ALLOWED_ANALYTICS_PROPERTY_KEYS = new Set([
@@ -25,10 +21,6 @@ const ALLOWED_ANALYTICS_PROPERTY_KEYS = new Set([
   "model",
   "compute_mode",
   "realtime_factor_x100",
-  "words_added",
-  "words_used",
-  "daily_limit",
-  "limit_reached",
 ]);
 
 const STRING_ENUMS = {
@@ -140,9 +132,6 @@ const ALLOWED_ANALYTICS_SOURCES = new Set([
 const INTEGER_RANGES = {
   step: [1, 20],
   step_count: [1, 20],
-  words_added: [0, 1_000_000_000],
-  words_used: [0, 1_000_000_000],
-  daily_limit: [0, 1_000_000_000],
   realtime_factor_x100: [1, 1_000_000],
 };
 
@@ -181,11 +170,6 @@ function sanitizeAnalyticsProperties(properties) {
 
     const range = INTEGER_RANGES[key];
     if (range && Number.isInteger(value) && value >= range[0] && value <= range[1]) {
-      safe[key] = value;
-      continue;
-    }
-
-    if (key === "limit_reached" && typeof value === "boolean") {
       safe[key] = value;
     }
   }

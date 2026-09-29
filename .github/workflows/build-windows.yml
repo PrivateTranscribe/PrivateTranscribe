@@ -35,7 +35,6 @@ jobs:
         run: |
           npm run compile:native
           npm run download:whisper-cpp
-          node scripts/download-nircmd.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LLAMA_CPP_VERSION: b9016
@@ -44,7 +43,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "resources/bin/windows-fast-paste.exe")) {
-            Write-Error "windows-fast-paste.exe is missing. Auto-paste into terminals would silently fall back to Ctrl+V."
+            Write-Error "windows-fast-paste.exe is missing. Auto-paste would be skipped and every dictation left on the clipboard."
             exit 1
           }
 

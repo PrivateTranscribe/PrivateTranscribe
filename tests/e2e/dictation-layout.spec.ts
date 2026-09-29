@@ -29,11 +29,10 @@ test("Dictation keeps controls and models visible and reveals optional settings"
   );
   await capture(page, "dictation-performance");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByPlaceholder(/Search settings/).fill("Agent Mode hotkey");
-  await page.getByRole("option", { name: /Coding prompt hotkey/ }).click();
-  await expect(disclosure(page, "Coding prompt shortcut").locator("..")).toHaveAttribute(
-    "open",
-    ""
-  );
-  await expect(page.getByText("Coding prompt hotkey", { exact: true })).toBeInViewport();
+  // Agent mode has no hotkey of its own since it moved onto the dictation
+  // shortcut, so search lands on its switch inside the collapsed section.
+  await page.getByPlaceholder(/Search settings/).fill("Agent mode");
+  await page.getByRole("option", { name: /Enable agent mode/ }).click();
+  await expect(disclosure(page, "Agent mode").locator("..")).toHaveAttribute("open", "");
+  await expect(page.getByText("Enable agent mode", { exact: true })).toBeInViewport();
 });

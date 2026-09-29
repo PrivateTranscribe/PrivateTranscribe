@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessagesSquare,
-  Lock,
   FolderOpen,
   Headphones,
   Square,
@@ -19,7 +18,6 @@ import { InfoBox } from "../ui/InfoBox";
 import { SectionLabel } from "../ui/SectionLabel";
 import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { SettingsRow } from "../ui/SettingsSection";
-import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { VoicePicker } from "../ui/VoicePicker";
 import { getTranscriptionProvider } from "../../models/ModelRegistry";
@@ -28,7 +26,6 @@ import {
   KOKORO_MODEL_ID,
   VOICE_STORAGE_KEY,
 } from "../../models/kokoroVoices";
-import { isFeatureUnlocked } from "../../hooks/useProStatus";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useConverseVoice, type ConverseVoicePhase } from "../../hooks/useConverseVoice";
 import { END_OF_TURN_CHOICES, VAD_DEFAULT_END_OF_TURN_MS } from "../../utils/converseVad";
@@ -474,20 +471,6 @@ function VoiceBar({
 }
 
 export default function ConversePage() {
-  const [isUnlocked, setIsUnlocked] = useState(() => isFeatureUnlocked("converse"));
-
-  // Pro is activated in the settings window, not here, so this page has to
-  // re-read the entitlement when it comes back to the front.
-  useEffect(() => {
-    const refresh = () => setIsUnlocked(isFeatureUnlocked("converse"));
-    window.addEventListener("focus", refresh);
-    window.addEventListener("privatetranscribe-pro-preview-changed", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("privatetranscribe-pro-preview-changed", refresh);
-    };
-  }, []);
-
   const [projects, setProjects] = useState<RememberedProject[]>(() => readProjects());
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [muteWhileSpeaking, setMuteWhileSpeaking] = useLocalStorage<boolean>(
@@ -690,7 +673,6 @@ export default function ConversePage() {
   // treated as "not installed" rather than retried — the start button already
   // says so properly if the model is really missing.
   useEffect(() => {
-    if (!isUnlocked) return undefined;
     let cancelled = false;
     void (async () => {
       try {
@@ -704,7 +686,7 @@ export default function ConversePage() {
     return () => {
       cancelled = true;
     };
-  }, [isUnlocked]);
+  }, []);
 
   // A session started before this page was opened is still the live one, so the
   // page joins it instead of pretending nothing is running.
@@ -1008,40 +990,11 @@ export default function ConversePage() {
         <div className="flex items-center gap-3 mb-2">
           <MessagesSquare size={28} className="text-primary" />
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Converse</h1>
-          {!isUnlocked && <Badge variant="pro">Pro</Badge>}
         </div>
         <p className="text-sm text-muted-foreground">Talk through a project with Claude Code.</p>
       </div>
 
-      {!isUnlocked && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center space-y-3">
-          <Lock size={24} className="mx-auto text-primary/60" />
-          <h3 className="text-base font-semibold text-foreground">
-            Talk through Claude Code tasks
-          </h3>
-          <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-            Converse points Claude Code at a folder, speaks its status and questions out loud, and
-            takes your approval by voice. It never reads code aloud.
-          </p>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() =>
-              void window.electronAPI?.openControlPanel?.({
-                page: "settings",
-                settingsTab: "pro",
-              })
-            }
-          >
-            Get PrivateTranscribe Pro - €29
-          </Button>
-          <p className="text-[12px] text-muted-foreground">
-            Pro includes Converse and unlimited coding prompt shortcuts. One licence, this PC.
-          </p>
-        </div>
-      )}
-
-      {isUnlocked && !sessionActive && (
+      {!sessionActive && (
         <div className="space-y-8">
           <div>
             <SectionLabel className="mb-3">Project folder</SectionLabel>
@@ -1245,7 +1198,7 @@ export default function ConversePage() {
         </div>
       )}
 
-      {isUnlocked && sessionActive && (
+      {sessionActive && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle/50 bg-surface-raised/50 px-5 py-3.5">
             <div className="min-w-0">

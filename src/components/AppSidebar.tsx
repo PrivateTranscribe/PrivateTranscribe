@@ -13,8 +13,7 @@ import {
   Settings,
   FlaskConical,
 } from "lucide-react";
-import { hasTesterAccess, isFeatureUnlocked, shouldShowProBadge } from "../hooks/useProStatus";
-import { Badge } from "./ui/badge";
+import { isBetaFeature, useBetaFeaturesEnabled } from "../utils/betaFeatures";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import FeedbackDialog from "./FeedbackDialog";
@@ -36,12 +35,6 @@ interface NavItem {
   id: PageId;
   label: string;
   icon: typeof LayoutDashboard;
-  /**
-   * Sold rather than hidden: the item stays in the sidebar when it is locked
-   * and carries a Pro badge, because its page is the locked state that says
-   * what Pro buys. Tester-only items are filtered out instead.
-   */
-  proGated?: boolean;
 }
 
 interface NavGroup {
@@ -50,12 +43,8 @@ interface NavGroup {
 }
 
 /**
- * Every feature the app has. Entries whose feature is still tester-only are
- * filtered out at render time for everyone without tester access, so a new
- * install sees only what it can open. AI Enhancement also contains shipped
- * coding shortcuts, so that page stays visible and gates its beta controls.
- * The "Early access features" row below
- * the groups is the one door to the rest.
+ * Every feature the app has. Beta pages are listed only while beta features are
+ * on, except AI Enhancement: its coding prompt shortcuts are not beta.
  */
 const navGroups: NavGroup[] = [
   {
@@ -77,7 +66,7 @@ const navGroups: NavGroup[] = [
     label: "INTELLIGENCE",
     items: [
       { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
-      { id: "converse", label: "Converse", icon: MessagesSquare, proGated: true },
+      { id: "converse", label: "Converse", icon: MessagesSquare },
     ],
   },
   {
@@ -95,29 +84,23 @@ interface AppSidebarProps {
    * instead of competing with the brand in the title bar.
    */
   updateSlot?: React.ReactNode;
-  /** Opens the Pro tab, where the tester-only features are listed. */
-  onOpenEarlyAccess?: () => void;
+  /** Opens the Beta features tab in Settings, where the switch is. */
+  onOpenBetaFeatures?: () => void;
 }
 
 export default function AppSidebar({
   activePage,
   onPageChange,
   updateSlot,
-  onOpenEarlyAccess,
+  onOpenBetaFeatures,
 }: AppSidebarProps) {
   const [hotkey] = useLocalStorage("dictationKey", "", {
     serialize: String,
     deserialize: String,
   });
+  const [betaFeaturesEnabled] = useBetaFeaturesEnabled();
   const [currentVersion, setCurrentVersion] = useState("");
   const [buildLabel, setBuildLabel] = useState("");
-  // Re-render when the Pro preview toggle changes so badges update immediately.
-  const [, forceUpdate] = useState(0);
-  useEffect(() => {
-    const handler = () => forceUpdate((n) => n + 1);
-    window.addEventListener("privatetranscribe-pro-preview-changed", handler);
-    return () => window.removeEventListener("privatetranscribe-pro-preview-changed", handler);
-  }, []);
 
   useEffect(() => {
     const getVersion = async () => {
@@ -140,12 +123,11 @@ export default function AppSidebar({
     getVersion();
   }, []);
 
-  const testerAccess = hasTesterAccess();
   const visibleGroups = navGroups
     .map((group) => ({
       ...group,
       items: group.items.filter(
-        (item) => item.id === "ai-enhancement" || item.proGated || isFeatureUnlocked(item.id)
+        (item) => item.id === "ai-enhancement" || betaFeaturesEnabled || !isBetaFeature(item.id)
       ),
     }))
     .filter((group) => group.items.length > 0);
@@ -235,53 +217,46 @@ export default function AppSidebar({
                     }}
                   />
                   <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.proGated && shouldShowProBadge(item.id) && (
-                    <Badge variant="pro" className="px-1.5 py-px text-[9px] font-semibold">
-                      Pro
-                    </Badge>
-                  )}
                 </button>
               );
             })}
           </div>
         ))}
 
-        {/* The one door to the tester-only features, for people who cannot open them yet */}
-        {!testerAccess && (
-          <button
-            type="button"
-            onClick={() => onOpenEarlyAccess?.()}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              width: "100%",
-              padding: "8px 12px",
-              marginTop: "6px",
-              backgroundColor: "transparent",
-              color: "var(--color-foreground-faint)",
-              border: "none",
-              borderRadius: "8px",
-              borderLeft: "2px solid transparent",
-              cursor: "pointer",
-              fontSize: "12px",
-              textAlign: "left",
-              transition: "all 0.15s ease",
-              fontFamily: "inherit",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--color-popover)";
-              e.currentTarget.style.color = "var(--color-foreground-subtle)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--color-foreground-faint)";
-            }}
-          >
-            <FlaskConical size={15} style={{ opacity: 0.6, flexShrink: 0 }} />
-            <span style={{ flex: 1 }}>Beta features</span>
-          </button>
-        )}
+        {/* Shown in both states, since this is also where the switch goes back off */}
+        <button
+          type="button"
+          onClick={() => onOpenBetaFeatures?.()}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            width: "100%",
+            padding: "8px 12px",
+            marginTop: "6px",
+            backgroundColor: "transparent",
+            color: "var(--color-foreground-faint)",
+            border: "none",
+            borderRadius: "8px",
+            borderLeft: "2px solid transparent",
+            cursor: "pointer",
+            fontSize: "12px",
+            textAlign: "left",
+            transition: "all 0.15s ease",
+            fontFamily: "inherit",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--color-popover)";
+            e.currentTarget.style.color = "var(--color-foreground-subtle)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+            e.currentTarget.style.color = "var(--color-foreground-faint)";
+          }}
+        >
+          <FlaskConical size={15} style={{ opacity: 0.6, flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>Beta features</span>
+        </button>
 
         {/* Divider */}
         <div

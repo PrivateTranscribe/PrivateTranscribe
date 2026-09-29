@@ -27,6 +27,7 @@ import { ConversePlayer } from "./helpers/conversePlayer";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
+import { readStoredReadAloudSpeed } from "./utils/readAloudSpeed";
 import { VOICE_STORAGE_KEY, readStoredVoiceId } from "./models/kokoroVoices";
 
 const OVERLAY_SNOOZE_DURATION_MS = 60 * 60 * 1000;
@@ -599,17 +600,14 @@ export default function App() {
 
     readAloudRef.current = { player, sync: startPolling };
 
-    // The picker lives in the control panel, which may not even be open. Rather
-    // than plumbing a cross-window event for a value that is only needed at one
-    // instant, the voice is re-read from localStorage immediately before every
-    // speak() — so the next read always uses the current choice, and a stale or
-    // hand-edited value falls back to the default instead of throwing inside
-    // Kokoro. speak() clears the buffer cache anyway, so switching mid-session
-    // can never replay the old voice.
-    const applyStoredVoice = () => {
+    // Read the control panel's saved voice and speed before each new reading.
+    // Changes leave the current read alone; speak() clears cached audio so the
+    // next read uses the new settings. Invalid saved values use the defaults.
+    const applyStoredReadSettings = () => {
       player.voice = readStoredVoiceId(VOICE_STORAGE_KEY);
+      player.speed = readStoredReadAloudSpeed();
     };
-    applyStoredVoice();
+    applyStoredReadSettings();
 
     let noticeTimer = null;
     const clearNotice = () => {
@@ -630,7 +628,7 @@ export default function App() {
         // A real read supersedes whatever the last press had to say.
         clearNotice();
         setReadAloudSource(data?.source ?? null);
-        applyStoredVoice();
+        applyStoredReadSettings();
         player.speak(text);
         startPolling();
       }
@@ -690,7 +688,7 @@ export default function App() {
       speak: (text) => {
         // No capture happened, so there is no source to attribute this to.
         setReadAloudSource(null);
-        applyStoredVoice();
+        applyStoredReadSettings();
         const result = player.speak(text);
         startPolling();
         return result;
@@ -732,7 +730,7 @@ export default function App() {
   // one day start would poll forever for every user who never opens Converse.
   // Sampling backs off to once a second whenever nothing is being spoken.
   useEffect(() => {
-    // Same reasoning as Read Aloud's applyStoredVoice above, except the player
+    // Same reasoning as Read Aloud's applyStoredReadSettings above, except the player
     // asks for itself: it re-reads the Converse voice at every turn boundary,
     // so a change made in the control panel is heard on the next answer.
     const player = new ConversePlayer({

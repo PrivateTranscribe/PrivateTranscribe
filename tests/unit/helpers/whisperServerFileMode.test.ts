@@ -61,6 +61,10 @@ describe("WhisperServer file mode", () => {
     expect(body).toContain('name="temperature_inc"');
     expect(body).toMatch(/name="temperature_inc"[\s\S]*0\.2/);
     expect(body).toContain('name="no_speech_thold"');
+    expect(body).toContain('name="token_timestamps"');
+    // Token timestamps trigger server-side cue wrapping. It must wrap on words,
+    // otherwise the formatter turns a split Danish word into two separate words.
+    expect(body).toMatch(/name="split_on_word"\r\n\r\ntrue/);
   });
 
   it("uses conservative decoding controls for live long-session chunks", async () => {
@@ -145,5 +149,41 @@ describe("WhisperServer file mode", () => {
       verboseJsonFallback: true,
       segments: [{ start: 0, end: 12, text: "fallback transcript" }],
     });
+  });
+
+  it("offsets nested word times together with each chunk's segments", async () => {
+    const manager: any = new WhisperServerManager();
+    manager.ready = true;
+    manager.process = {};
+    manager.canConvert = true;
+    manager._scheduleIdleCheck = vi.fn();
+    manager._convertToWav = vi.fn().mockResolvedValue(Buffer.from("wav"));
+    manager._splitWavIntoTranscriptionChunks = vi.fn().mockReturnValue([
+      { buffer: Buffer.from("a"), durationSeconds: 60, offsetSeconds: 0 },
+      { buffer: Buffer.from("b"), durationSeconds: 10, offsetSeconds: 60 },
+    ]);
+    const segment = {
+      start: 1,
+      end: 3,
+      text: " Ja.",
+      words: [
+        { word: " Ja", start: 1, end: 2 },
+        { word: ".", start: -0.01, end: -0.01 },
+      ],
+    };
+    manager._postInference = vi.fn().mockResolvedValue({ text: "Ja.", segments: [segment] });
+    const result = await manager.transcribe(Buffer.from("audio"), {
+      fileMode: true,
+      language: "da",
+    });
+    expect(result.segments[1]).toMatchObject({
+      start: 61,
+      end: 63,
+      words: [
+        { word: " Ja", start: 61, end: 62 },
+        { word: ".", start: -0.01, end: -0.01 },
+      ],
+    });
+    expect(segment.words[0].start).toBe(1);
   });
 });
