@@ -77,9 +77,9 @@
     {
       "name": "PrivateTranscribe helper programs",
       "version": "same as the app",
-      "license": "LicenseRef-PrivateTranscribe",
-      "copyright": ["Copyright (c) 2026 Julsgaard Products. All rights reserved."],
-      "source": "https://privatetranscribe.com",
+      "license": "GPL-3.0-or-later",
+      "copyright": ["Copyright (c) 2026 Julsgaard Products"],
+      "source": "https://github.com/PrivateTranscribe/PrivateTranscribe",
       "files": [
         "bin/windows-key-listener.exe",
         "bin/windows-fast-paste.exe",
@@ -88,7 +88,8 @@
         "readaloud-copy-worker.ps1",
         "readaloud-highlight-worker.ps1"
       ],
-      "note": "PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs and windows-hold-key.cs in the PrivateTranscribe repository, and fall under PrivateTranscribe's own licence (its LICENSE file). windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr."
+      "licenseText": "licenses/GPL-3.0.txt",
+      "note": "PrivateTranscribe's own code, not a third-party part. The helpers are built from resources/windows-key-listener.c, windows-fast-paste.cs, windows-mic-watch.cs and windows-hold-key.cs in the PrivateTranscribe repository, and are released under the GNU GPL, version 3 or later, like the rest of PrivateTranscribe. windows-key-listener.c arrived with the first commit, which imported the OpenWhispr-derived code, so the OpenWhispr notice covers anything in it that still derives from OpenWhispr."
     },
     {
       "name": "Electron (with Chromium, Node.js and V8)",

@@ -39,5 +39,8 @@ Releases are deployed automatically via GitHub Actions when pushing to the `prod
 
 ## License
 
-Copyright © 2026 Kristian Julsgaard. All rights reserved.
-This software is proprietary and not licensed for redistribution or modification.
+Copyright © 2026 Julsgaard Products.
+
+PrivateTranscribe is free software under the GNU General Public License, version 3 or (at your option) any later version. See [LICENSE](LICENSE).
+
+The whole history of this repository is released under the same licence, including the commits from before the code was opened, whose LICENSE file said otherwise. OpenWhispr's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) covers every commit, and the third-party parts listed there keep their own licences.

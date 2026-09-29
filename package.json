@@ -84,7 +84,7 @@
     "name": "PrivateTranscribe Team",
     "email": "support@privatetranscribe.com"
   },
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-or-later",
   "devDependencies": {
     "@electron/notarize": "^3.0.1",
     "@eslint/js": "^9.25.0",
