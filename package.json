@@ -63,6 +63,7 @@
     "uninstall:full:linux": "bash scripts/complete-uninstall-linux.sh",
     "uninstall:full:windows": "scripts\\complete-uninstall-windows.bat",
     "audit:branding": "node scripts/audit-branding.js",
+    "notices": "node scripts/generate-third-party-notices.js",
     "fixture:long-transcribe": "node scripts/create-long-transcribe-fixture.js",
     "fixture:long-dictation": "node scripts/long-dictation-test.js prepare",
     "start:long-dictation-test": "node scripts/long-dictation-test.js launch",
