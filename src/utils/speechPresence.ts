@@ -44,6 +44,30 @@ export const SPEECH_MIN_FRAMES = 2;
 /** Below this many samples there is not enough evidence to call it either way. */
 export const SPEECH_MIN_READINGS = 5;
 
+/**
+ * RMS of consecutive frames across every channel of a decoded recording: the
+ * same kind of reading the live meter takes, taken from the audio that was
+ * actually recorded. A trailing partial frame is left out.
+ */
+export function frameRmsLevels(channels: readonly Float32Array[], frameLength: number): number[] {
+  const levels: number[] = [];
+  const length = channels[0]?.length ?? 0;
+  if (frameLength < 1) {
+    return levels;
+  }
+
+  for (let start = 0; start + frameLength <= length; start += frameLength) {
+    let sumOfSquares = 0;
+    for (const channel of channels) {
+      for (let i = start; i < start + frameLength; i += 1) {
+        sumOfSquares += channel[i] * channel[i];
+      }
+    }
+    levels.push(Math.sqrt(sumOfSquares / (frameLength * channels.length)));
+  }
+  return levels;
+}
+
 export interface SpeechLevelSummary {
   /** False when the microphone level was never readable - never treated as silence. */
   measured: boolean;

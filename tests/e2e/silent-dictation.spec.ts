@@ -277,3 +277,37 @@ test.describe("speech in", () => {
     expect(row.text.toLowerCase()).toContain("backpack");
   });
 });
+
+test.describe("speech past a deaf level meter", () => {
+  test.use({ fakeAudioCaptureFile: SPEECH_WAV, appEnv: SILENT_ENV });
+
+  // The silence case above reads exact zero on the meter and in the recording,
+  // so it is dropped. A meter cut off from the stream reads the same zero, so
+  // before dropping, the gate measures the recording - and this one holds speech.
+  test("still reaches the engine and lands in history", async ({
+    electronApp,
+    overlayWindow,
+    controlPanel,
+    userDataDir,
+  }) => {
+    test.setTimeout(300_000);
+    await overlayWindow.addInitScript(() => {
+      AnalyserNode.prototype.getFloatTimeDomainData = function (samples: Float32Array) {
+        samples.fill(0);
+      };
+    });
+    await prepare(controlPanel, overlayWindow);
+    expect(await readHistory(controlPanel)).toHaveLength(0);
+
+    await dictate(electronApp, overlayWindow);
+
+    await expect
+      .poll(async () => (await readHistory(controlPanel)).length, {
+        timeout: 180_000,
+        intervals: [1000],
+      })
+      .toBe(1);
+    expect((await readHistory(controlPanel))[0].text.toLowerCase()).toContain("backpack");
+    expect(readAppLog(userDataDir)).toContain("Level meter heard nothing");
+  });
+});

@@ -24,6 +24,14 @@ import {
 
 const silentBlob = () => new Blob(["x"], { type: "audio/webm" });
 
+const transcribed = {
+  result: { text: "hello" },
+  useLocalWhisper: true,
+  localProvider: "whisper",
+  activeModel: "base",
+  computeMode: "cpu",
+} as never;
+
 const speechLevel = (over: Record<string, unknown> = {}) => ({
   measured: true,
   speechDetected: false,
@@ -102,6 +110,100 @@ describe("AudioManager silent dictation gate", () => {
       measured: false,
       speechDetected: true,
     });
+  });
+});
+
+describe("AudioManager speech gate on a meter that read exact zero", () => {
+  const zeroMeter = () => speechLevel({ peakRms: 0, floorRms: 0 });
+
+  /** Makes the recording decode to `samples` at 16 kHz, or fail to decode. */
+  const decodeRecordingAs = (samples: Float32Array | Error) => {
+    const decodeAudioData = vi.fn(async () => {
+      if (samples instanceof Error) throw samples;
+      return { numberOfChannels: 1, sampleRate: 16000, getChannelData: () => samples };
+    });
+    (window as any).OfflineAudioContext = class {
+      decodeAudioData = decodeAudioData;
+    };
+    return decodeAudioData;
+  };
+
+  const recordingWithSpeech = () => {
+    // One second of digital silence, then one second of speech-level sound.
+    const samples = new Float32Array(32000);
+    samples.fill(0.2, 16000);
+    return samples;
+  };
+
+  const makeManager = () => {
+    const manager = new AudioManager();
+    const runTranscription = vi.spyOn(manager, "runTranscription").mockResolvedValue(transcribed);
+    manager.setCallbacks({ onTranscriptionComplete: vi.fn() });
+    manager.isProcessing = true;
+    return { manager, runTranscription };
+  };
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    (globalThis as any).localStorage = localStorageMock;
+    (window as any).electronAPI = {};
+  });
+
+  afterEach(() => {
+    delete (window as any).OfflineAudioContext;
+  });
+
+  it("transcribes speech the recording holds even though the meter heard none", async () => {
+    const decode = decodeRecordingAs(recordingWithSpeech());
+    const { manager, runTranscription } = makeManager();
+
+    await manager.processAudio(silentBlob(), { durationSeconds: 2, speechLevel: zeroMeter() });
+
+    expect(decode).toHaveBeenCalledTimes(1);
+    expect(runTranscription).toHaveBeenCalledTimes(1);
+  });
+
+  it("still drops a recording that is digital silence as well", async () => {
+    decodeRecordingAs(new Float32Array(32000));
+    const { manager, runTranscription } = makeManager();
+
+    await manager.processAudio(silentBlob(), { durationSeconds: 2, speechLevel: zeroMeter() });
+
+    expect(runTranscription).not.toHaveBeenCalled();
+    expect(manager.isProcessing).toBe(false);
+  });
+
+  it("transcribes when the recording cannot be decoded", async () => {
+    decodeRecordingAs(new Error("Unable to decode audio data"));
+    const { manager, runTranscription } = makeManager();
+
+    await manager.processAudio(silentBlob(), { durationSeconds: 2, speechLevel: zeroMeter() });
+
+    expect(runTranscription).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes a meter that heard room tone at its word", async () => {
+    const decode = decodeRecordingAs(recordingWithSpeech());
+    const { manager, runTranscription } = makeManager();
+
+    await manager.processAudio(silentBlob(), { durationSeconds: 2, speechLevel: speechLevel() });
+
+    expect(decode).not.toHaveBeenCalled();
+    expect(runTranscription).not.toHaveBeenCalled();
+  });
+
+  it("stops if the dictation is cancelled while the recording is measured", async () => {
+    decodeRecordingAs(recordingWithSpeech());
+    const { manager, runTranscription } = makeManager();
+
+    const processing = manager.processAudio(silentBlob(), {
+      durationSeconds: 2,
+      speechLevel: zeroMeter(),
+    });
+    manager.cancelProcessing();
+    await processing;
+
+    expect(runTranscription).not.toHaveBeenCalled();
   });
 });
 
