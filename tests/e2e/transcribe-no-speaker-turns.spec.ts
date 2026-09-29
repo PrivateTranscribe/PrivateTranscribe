@@ -72,9 +72,20 @@ test.describe("Transcribe page speaker reporting", () => {
     });
     await expect(controlPanel.locator("textarea[readonly]")).not.toBeEmpty();
 
-    // The detector ran and found no speaker change. That is what it says.
-    await expect(controlPanel.getByText("No speaker turns found").first()).toBeVisible();
-    await expect(controlPanel.getByText(/\b\d+ speakers?\b/)).toHaveCount(0);
+    // The detector ran and found no speaker change. That is what it says, in
+    // both places the result appears. Only those are searched for a count: the
+    // speaker-count picker in the settings above lists "1 speaker" to
+    // "10 speakers" as choices, which claims nothing about this file.
+    const doneCard = controlPanel
+      .getByRole("button")
+      .filter({ has: controlPanel.getByRole("heading", { name: "Done" }) });
+    const transcript = controlPanel
+      .locator("section")
+      .filter({ has: controlPanel.locator("textarea[readonly]") });
+    for (const result of [doneCard, transcript]) {
+      await expect(result.getByText("No speaker turns found")).toBeVisible();
+      await expect(result.getByText(/\b\d+ speakers?\b/)).toHaveCount(0);
+    }
 
     await controlPanel.screenshot({
       path: path.join(GOAL_EVIDENCE_DIR, "transcribe-no-speakers.png"),

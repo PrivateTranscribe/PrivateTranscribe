@@ -29,8 +29,10 @@ test.describe("microphone picker in settings", () => {
     const row = controlPanel.locator('[data-settings-label="Microphone"]');
     await expect(row).toContainText("Automatic prefers a built-in mic");
     // The permission and the device live on one screen now.
-    await expect(controlPanel.getByText("System Permissions")).toBeVisible();
-    await expect(controlPanel.getByText("Audio Input")).toBeVisible();
+    await expect(
+      controlPanel.getByText("Required for voice recording and dictation", { exact: true })
+    ).toBeVisible();
+    await expect(row.getByRole("combobox")).toBeVisible();
 
     await controlPanel.screenshot({
       path: "test-results/e2e/mic-picker-settings.png",

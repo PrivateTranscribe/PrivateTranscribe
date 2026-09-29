@@ -129,11 +129,10 @@ test.describe("read aloud ducking", () => {
       const row = controlPanel.getByTestId("readaloud-duck-others-row");
       await expect(row).toBeVisible();
       await expect(row.getByText("Quiet other apps while reading", { exact: true })).toBeVisible();
-      // The description has to be specific about the number and the limit, not
-      // "smart audio management".
+      // The description has to be specific about the number and the way back,
+      // not "smart audio management".
       await expect(row).toContainText("30%");
-      await expect(row).toContainText("The reading voice is not touched.");
-      await expect(row).toContainText("start playing part-way through");
+      await expect(row).toContainText("then restores the volume");
 
       const toggle = row.locator("button");
       await expect(toggle).toBeEnabled();

@@ -173,6 +173,8 @@ async function expectNothingDictated(
         { timeout: 60_000, intervals: [500] }
       )
       .toBe(true);
+    const log = readAppLog(userDataDir);
+    console.log(`[${label}] stopped by: ${logMarkers.filter((m) => log.includes(m)).join(", ")}`);
   }
 
   await controlPanel.waitForTimeout(SETTLE_MS);
@@ -207,6 +209,10 @@ test.describe("faint breath and rustle", () => {
   test.use({ fakeAudioCaptureFile: path.join(FIXTURE_DIR, "breath.wav"), appEnv: SILENT_ENV });
 
   // Produced "Thank you." with the defences removed - the phrase users report.
+  // Which check ends it varies. Since aa47e51 speech preparation trims the
+  // recording to the short stretch its detector takes for speech, and whisper
+  // often returns nothing for that clip, so the engine's own "No audio
+  // detected" can end it before the transcript check sees any text.
   test("does not become an invented stock phrase", async ({
     electronApp,
     overlayWindow,
@@ -214,12 +220,16 @@ test.describe("faint breath and rustle", () => {
     userDataDir,
   }) => {
     test.setTimeout(300_000);
-    await expectNothingDictated("breath", ["Dropped a non-speech transcript"], {
-      electronApp,
-      overlayWindow,
-      controlPanel,
-      userDataDir,
-    });
+    await expectNothingDictated(
+      "breath",
+      ["Dictation held no speech", "Dropped a non-speech transcript", "No audio detected"],
+      {
+        electronApp,
+        overlayWindow,
+        controlPanel,
+        userDataDir,
+      }
+    );
   });
 });
 
@@ -275,5 +285,39 @@ test.describe("speech in", () => {
     const row = (await readHistory(controlPanel))[0];
     console.log(`[speech] transcript: ${JSON.stringify(row.text)}`);
     expect(row.text.toLowerCase()).toContain("backpack");
+  });
+});
+
+test.describe("speech past a deaf level meter", () => {
+  test.use({ fakeAudioCaptureFile: SPEECH_WAV, appEnv: SILENT_ENV });
+
+  // The silence case above reads exact zero on the meter and in the recording,
+  // so it is dropped. A meter cut off from the stream reads the same zero, so
+  // before dropping, the gate measures the recording - and this one holds speech.
+  test("still reaches the engine and lands in history", async ({
+    electronApp,
+    overlayWindow,
+    controlPanel,
+    userDataDir,
+  }) => {
+    test.setTimeout(300_000);
+    await overlayWindow.addInitScript(() => {
+      AnalyserNode.prototype.getFloatTimeDomainData = function (samples: Float32Array) {
+        samples.fill(0);
+      };
+    });
+    await prepare(controlPanel, overlayWindow);
+    expect(await readHistory(controlPanel)).toHaveLength(0);
+
+    await dictate(electronApp, overlayWindow);
+
+    await expect
+      .poll(async () => (await readHistory(controlPanel)).length, {
+        timeout: 180_000,
+        intervals: [1000],
+      })
+      .toBe(1);
+    expect((await readHistory(controlPanel))[0].text.toLowerCase()).toContain("backpack");
+    expect(readAppLog(userDataDir)).toContain("Level meter heard nothing");
   });
 });
