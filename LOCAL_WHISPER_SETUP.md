@@ -4,33 +4,36 @@ PrivateTranscribe transcribes locally with whisper.cpp by default. With a local 
 
 ## Quick Start
 
-1. Open the **Control Panel** (right-click the tray icon or click the overlay)
+1. Open the **Control Panel**: click the tray icon, or right-click it and choose **Open PrivateTranscribe**
 2. Open **Dictation** in the sidebar
 3. Under **Speech model**, choose local transcription
-4. Pick a model (recommended: `base`) and let the app download it
+4. Click **Download** on a model. Turbo is the recommended default; Base suits older or slower PCs
+
+Clicking the overlay starts and stops dictation.
 
 ## Model Selection
 
-| Model  | Size   | Speed    | Quality | RAM    | Best For              |
-|--------|--------|----------|---------|--------|-----------------------|
-| tiny   | 75MB   | Fastest  | Basic   | ~1GB   | Quick notes           |
-| base   | 142MB  | Fast     | Good    | ~1GB   | **Recommended**       |
-| small  | 466MB  | Medium   | Better  | ~2GB   | Professional use      |
-| medium | 1.5GB  | Slow     | High    | ~5GB   | High accuracy         |
-| large  | 3GB    | Slowest  | Best    | ~10GB  | Maximum quality       |
+| Model | Download | Notes |
+|-------|----------|-------|
+| Turbo | 1.6GB | **Recommended.** Best quality for most users, fast and accurate |
+| Base | 142MB | Lightweight option for older or slower hardware |
+| Tiny | 75MB | Smallest download, lowest quality |
+| Small | 466MB | Higher accuracy than Base |
+| Small EN TDRZ | 466MB | English only, with speaker turn detection for multi-speaker files |
+| Medium | 1.5GB | Near-flagship accuracy |
+| Large | 3GB | Highest quality, slowest |
 
 ## How It Works
 
 PrivateTranscribe uses whisper.cpp, a high-performance C++ implementation of OpenAI's Whisper model:
 
 1. The whisper.cpp engine is bundled with the app
-2. GGML models are downloaded on first use to `%USERPROFILE%\.cache\PrivateTranscribe\whisper-models\`
+2. A model is downloaded when you click **Download**, to `%USERPROFILE%\.cache\PrivateTranscribe\whisper-models\`
 3. Audio is processed locally using FFmpeg (bundled with the app)
 
 ## Requirements
 
-- **Disk Space**: 75MB–3GB depending on model
-- **RAM**: 1GB–10GB depending on model
+- **Disk Space**: 75MB to 3GB depending on model
 - **No additional dependencies required** - whisper.cpp is bundled in packaged builds
 
 ## Running From Source

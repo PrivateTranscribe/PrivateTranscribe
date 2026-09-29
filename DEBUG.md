@@ -4,9 +4,17 @@ Turn on verbose logging to diagnose problems such as "no audio detected" or a fa
 
 ## Turn on debug logging
 
+PrivateTranscribe keeps running in the tray, and starting it a second time only brings the open window forward. So first right-click the tray icon and choose **Exit PrivateTranscribe**.
+
 ### Option 1: Command line
 
-Start the app from the folder it is installed in (usually `C:\Program Files\PrivateTranscribe`):
+Start the app with the flag. For the default install, which is for your user only:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\PrivateTranscribe\PrivateTranscribe.exe" --log-level=debug
+```
+
+For an install for all users:
 
 ```powershell
 & "C:\Program Files\PrivateTranscribe\PrivateTranscribe.exe" --log-level=debug
@@ -14,13 +22,13 @@ Start the app from the folder it is installed in (usually `C:\Program Files\Priv
 
 ### Option 2: Settings file
 
-Add this line to `%APPDATA%\PrivateTranscribe\.env` and restart the app:
+Add this line to `%APPDATA%\PrivateTranscribe\.env`, then start the app again:
 
 ```
 PT_LOG_LEVEL=debug
 ```
 
-A development build (`npm run dev`) also has a **Debug Logging** switch under **Settings → Diagnostics & Data**.
+A development build (`npm run dev`) also has a **Debug Logging** switch under **Settings → Developer**.
 
 ## Log file location
 
@@ -38,21 +46,20 @@ A development build (`npm run dev`) also has a **Debug Logging** switch under **
 ## Common Issues
 
 ### "No Audio Detected"
-Look for:
-- `Microphone Access Denied` → Windows blocks the microphone for desktop apps
-- `FFmpeg not available` → Path resolution failed
+- A **Microphone Access Denied** message in the app → Windows blocks the microphone for desktop apps
+- `FFmpeg not found anywhere` in the log → the bundled FFmpeg is missing or blocked
 
 ### Transcription Fails
 Look for:
 - `Failed to start whisper-server` or `whisper-server spawn failed` → the local engine did not start
 - `whisper-server failed readiness check` → the engine started but never answered
 - `CUDA binary failed ... falling back to CPU binary` → the GPU engine could not load, so the CPU engine took over
-- `Failed to parse Whisper output` → Invalid JSON
+- `Local Whisper transcription error` → the engine failed on this recording; the error beside it says why
 
 ### Hotkey / Push-to-Talk Issues
 Look for:
 - `[WindowsKeyManager] Starting key listener` (confirms the native listener is being used)
-- `Windows key listener binary not found` (fallback mode; push-to-talk reliability may be reduced)
+- `[Activation] Windows key listener not available` (fallback mode; push-to-talk reliability may be reduced)
 
 Mouse side buttons:
 - Use `Mouse4` / `Mouse5` (aka back/forward side buttons).

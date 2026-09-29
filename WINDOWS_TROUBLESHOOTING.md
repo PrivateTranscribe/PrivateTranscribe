@@ -8,8 +8,8 @@
 
 **Solutions:**
 1. Check system tray (click ^ caret) for PrivateTranscribe icon
-2. Run with debug: `PrivateTranscribe.exe --log-level=debug`
-3. Try disabling GPU: `PrivateTranscribe.exe --disable-gpu`
+2. Right-click the tray icon, choose **Exit PrivateTranscribe**, then run with debug: `PrivateTranscribe.exe --log-level=debug` (see [DEBUG.md](DEBUG.md))
+3. Exit it the same way, then try disabling GPU: `PrivateTranscribe.exe --disable-gpu`
 
 ### No Transcriptions
 
@@ -71,6 +71,8 @@ Restart PrivateTranscribe after changing `.env`.
 
 ## Debug Mode
 
+Exit PrivateTranscribe from its tray icon first, because a second start only brings the open window forward. Then:
+
 ```batch
 # Run with debug logging
 PrivateTranscribe.exe --log-level=debug
@@ -79,7 +81,7 @@ PrivateTranscribe.exe --log-level=debug
 PT_LOG_LEVEL=debug
 ```
 
-Logs saved to: `%APPDATA%\PrivateTranscribe\logs\`
+Logs saved to: `%APPDATA%\PrivateTranscribe\logs\`. [DEBUG.md](DEBUG.md) has the install paths and what to look for.
 
 ## Common Errors
 
