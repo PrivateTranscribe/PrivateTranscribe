@@ -1,6 +1,16 @@
 const path = require("path");
-const { existsSync } = require("fs");
+const { existsSync, readdirSync } = require("fs");
 const { execFileSync } = require("child_process");
+const { findUncoveredFiles, loadManifest } = require("./generate-third-party-notices");
+
+function listFiles(dir, prefix) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = `${prefix}/${entry.name}`;
+    return entry.isDirectory()
+      ? listFiles(path.join(dir, entry.name), relativePath)
+      : [relativePath];
+  });
+}
 
 module.exports = async function afterPack(context) {
   if (context.electronPlatformName !== "win32") {
@@ -25,6 +35,19 @@ module.exports = async function afterPack(context) {
           "Refresh its CPU binary and matching runtime libraries before rebuilding."
       );
     }
+  }
+
+  if (!existsSync(path.join(context.appOutDir, "resources", "THIRD_PARTY_NOTICES.md"))) {
+    throw new Error(
+      "[after-pack-win] resources/THIRD_PARTY_NOTICES.md is missing from the package"
+    );
+  }
+  const uncovered = findUncoveredFiles(listFiles(binDir, "bin"), loadManifest());
+  if (uncovered.length > 0) {
+    throw new Error(
+      `[after-pack-win] No third-party notice covers ${uncovered.join(", ")}. ` +
+        "Add each file to resources/third-party/components.json, then run npm run notices."
+    );
   }
 
   const appInfo = context.packager.appInfo;

@@ -9,7 +9,7 @@ import { readSpokenLanguages } from "../utils/spokenLanguages";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
 import { assessTranscriptionCompleteness } from "../utils/transcriptionCompleteness";
 import { getSharedAudioContext } from "../utils/sharedAudioContext";
-import { summarizeSpeechLevels } from "../utils/speechPresence";
+import { frameRmsLevels, summarizeSpeechLevels } from "../utils/speechPresence";
 import { classifyNonSpeechArtifact } from "../utils/nonSpeechArtifact";
 import { buildDictionaryPrompt } from "../utils/dictionaryPrompt";
 import {
@@ -48,6 +48,9 @@ const LONG_SESSION_SEGMENT_PAUSE_RMS = 0.015;
 // How often the microphone level is sampled across a whole dictation, so the
 // recording can be judged for speech before it is handed to any engine.
 const SPEECH_LEVEL_POLL_MS = 50;
+// Rate a recording is decoded at when it has to be measured after the fact.
+// Plenty for telling speech from silence, and a third of the work of 48 kHz.
+const RECORDED_LEVEL_SAMPLE_RATE = 16000;
 const LONG_SESSION_CHUNK_MAX_ATTEMPTS = 3;
 // Retrying a failed chunk instantly just re-runs it against whatever broke it.
 // A short pause lets a busy or restarting whisper-server come back first.
@@ -955,6 +958,10 @@ class AudioManager {
 
   disposeSegmentLevelAnalyser() {
     this.stopSpeechLevelMonitor();
+    this.releaseSegmentLevelNode();
+  }
+
+  releaseSegmentLevelNode() {
     const node = this.segmentLevelAnalyser;
     this.segmentLevelAnalyser = null;
     if (!node) {
@@ -1031,10 +1038,51 @@ class AudioManager {
     return summarizeSpeechLevels(levels);
   }
 
+  /**
+   * The same verdict, read from the finished recording instead of the live
+   * meter. A recording that cannot be decoded reports "not measured", which
+   * callers treat as speech.
+   */
+  async measureRecordedSpeechLevel(audioBlob) {
+    try {
+      const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!OfflineContext) {
+        return summarizeSpeechLevels([]);
+      }
+
+      const decoder = new OfflineContext(1, 1, RECORDED_LEVEL_SAMPLE_RATE);
+      const audio = await decoder.decodeAudioData(await audioBlob.arrayBuffer());
+      const channels = Array.from({ length: audio.numberOfChannels }, (_, index) =>
+        audio.getChannelData(index)
+      );
+      const frameLength = Math.round((audio.sampleRate * SPEECH_LEVEL_POLL_MS) / 1000);
+      return summarizeSpeechLevels(frameRmsLevels(channels, frameLength));
+    } catch (error) {
+      logger.debug(
+        "Could not measure the recording; transcribing it",
+        { error: error?.message },
+        "audio"
+      );
+      return summarizeSpeechLevels([]);
+    }
+  }
+
   readSegmentLevelRms() {
-    const node = this.segmentLevelAnalyser;
+    let node = this.segmentLevelAnalyser;
     if (!node) {
       return null;
+    }
+
+    // The overlay's level meter replaces the shared context when it stops
+    // rendering. Follow it: an analyser left on the closed context reads
+    // nothing for the rest of the recording, and the speech gate would judge
+    // the whole dictation on what it heard before the swap.
+    if (node.context !== getSharedAudioContext()) {
+      this.releaseSegmentLevelNode();
+      node = this.ensureSegmentLevelAnalyser();
+      if (!node) {
+        return null;
+      }
     }
 
     // A suspended context hands back zeros forever. Treating that as a pause
@@ -2006,11 +2054,35 @@ class AudioManager {
       // instead. Handled like the engines' own "No audio detected": the
       // recording is dropped and the overlay returns to idle without a toast,
       // because a hotkey pressed with nothing spoken is not an error.
-      const speechLevel = metadata.speechLevel;
+      let speechLevel = metadata.speechLevel;
+      let measuredFrom = "meter";
+      // An unmuted microphone never reads exact digital zero from start to
+      // finish. A muted one does, and so does a meter cut off from the stream -
+      // and dropping on a deaf meter's word loses a real dictation. The
+      // recording itself settles which.
+      if (speechLevel?.measured && !speechLevel.speechDetected && speechLevel.peakRms === 0) {
+        speechLevel = await this.measureRecordedSpeechLevel(audioBlob);
+        measuredFrom = "recording";
+        if (!this.isCurrentProcessingGeneration(processingGeneration)) {
+          return;
+        }
+        if (speechLevel.measured && speechLevel.speechDetected) {
+          logger.warn(
+            "Level meter heard nothing, but the recording holds speech; transcribing",
+            {
+              readings: speechLevel.readings,
+              peakRms: Number(speechLevel.peakRms.toFixed(5)),
+              loudFrames: speechLevel.loudFrames,
+            },
+            "audio"
+          );
+        }
+      }
       if (speechLevel && speechLevel.measured && !speechLevel.speechDetected) {
         logger.info(
           "Dictation held no speech; skipped transcription",
           {
+            measuredFrom,
             durationSeconds: metadata.durationSeconds ?? null,
             readings: speechLevel.readings,
             peakRms: Number(speechLevel.peakRms.toFixed(5)),

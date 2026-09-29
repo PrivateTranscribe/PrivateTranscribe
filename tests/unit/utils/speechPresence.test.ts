@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { summarizeSpeechLevels } from "../../../src/utils/speechPresence";
+import { frameRmsLevels, summarizeSpeechLevels } from "../../../src/utils/speechPresence";
 
 /** A stationary level, as room tone or a muted microphone reads. */
 const flat = (level: number, frames = 60) =>
@@ -86,5 +86,30 @@ describe("summarizeSpeechLevels floor under the dynamic bar", () => {
     expect(summarizeSpeechLevels([...suppressed, ...speech])).toMatchObject({
       speechDetected: true,
     });
+  });
+});
+
+describe("frameRmsLevels", () => {
+  test("reads one level per whole frame and leaves out the trailing partial one", () => {
+    const samples = new Float32Array([0.5, -0.5, 0.5, -0.5, 0.1, -0.1, 0.1, -0.1, 0.9]);
+    const levels = frameRmsLevels([samples], 4);
+    expect(levels).toHaveLength(2);
+    expect(levels[0]).toBeCloseTo(0.5);
+    expect(levels[1]).toBeCloseTo(0.1);
+  });
+
+  test("measures every channel together", () => {
+    const left = new Float32Array([0.3, 0.3, 0.3, 0.3]);
+    const right = new Float32Array(4);
+    expect(frameRmsLevels([left, right], 4)[0]).toBeCloseTo(Math.sqrt(0.09 / 2));
+  });
+
+  test("reads digital silence as exact zero", () => {
+    expect(frameRmsLevels([new Float32Array(800)], 400)).toEqual([0, 0]);
+  });
+
+  test("has nothing to read without channels or a frame length", () => {
+    expect(frameRmsLevels([], 400)).toEqual([]);
+    expect(frameRmsLevels([new Float32Array(800)], 0)).toEqual([]);
   });
 });
