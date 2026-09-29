@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../../src/models/kokoroVoices";
 
 /**
  * Ledger gate `readaloud-first-audio`: the press should speak sooner than half
@@ -32,8 +33,16 @@ const SETTLE_MS = 40;
 /** Mirrors CLIPBOARD_POLL_INTERVAL_MS in selectionCapture.js: one poll tick. */
 const POLL_TICK_MS = 30;
 
-/** The gate's bar for warm press→first-audio, median of 5. */
-const FIRST_AUDIO_BUDGET_MS = 350;
+/**
+ * The gate's bar for warm press→first-audio, median of 5, in the default voice.
+ *
+ * It was 350ms, met with Heart. Lewis became the default on 2026-08-30 and
+ * speaks the same head chunk as 3.0s of audio against Heart's 2.3s, ~50ms more
+ * synthesis. The same machine measured 338ms with Heart and 367-382ms with
+ * Lewis, so on 2026-09-29 Kristian moved the bar to 400ms rather than time a
+ * voice nobody hears by default. A new default voice means measuring again.
+ */
+const FIRST_AUDIO_BUDGET_MS = 400;
 /** The gate also requires this much improvement over the same-run baseline. */
 const REQUIRED_IMPROVEMENT = 0.3;
 const RUNS = 5;
@@ -90,6 +99,13 @@ async function medianWorkerRtt(overlay: Page, samples: number): Promise<number> 
 async function measureCondition(overlay: Page, label: string): Promise<number> {
   await overlay.waitForFunction(() => Boolean((window as any).__readAloudTest), null, {
     timeout: 30_000,
+  });
+
+  // The bar is set for the default voice, and speak() re-reads the stored one
+  // before every run, so pin it rather than trust the profile.
+  await overlay.evaluate(({ key, voice }) => localStorage.setItem(key, voice), {
+    key: VOICE_STORAGE_KEY,
+    voice: DEFAULT_KOKORO_VOICE_ID,
   });
 
   // The gate says "warm", and readaloud-trigger-lag already proved the pre-warm
@@ -197,7 +213,8 @@ test.describe("read aloud first audio — first chunk", () => {
     const improvement = (baseline - chunked) / baseline;
 
     console.log(
-      `FIRST_AUDIO_GATE baselineMedianMs=${baseline} chunkedMedianMs=${chunked} ` +
+      `FIRST_AUDIO_GATE voice=${DEFAULT_KOKORO_VOICE_ID} ` +
+        `baselineMedianMs=${baseline} chunkedMedianMs=${chunked} ` +
         `improvement=${(improvement * 100).toFixed(1)}%`
     );
 
