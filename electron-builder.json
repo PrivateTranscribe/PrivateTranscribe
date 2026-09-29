@@ -173,6 +173,11 @@
           "windows-mic-watch.exe",
           "windows-hold-key.exe"
         ]
+      },
+      {
+        "from": "resources/bin/",
+        "to": "app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/",
+        "filter": ["msvcp140.dll", "msvcp140_1.dll", "vcruntime140.dll", "vcruntime140_1.dll"]
       }
     ]
   },

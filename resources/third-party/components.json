@@ -148,12 +148,15 @@
       "source": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
       "files": [
         "bin/msvcp140.dll",
+        "bin/msvcp140_1.dll",
         "bin/vcruntime140.dll",
         "bin/vcruntime140_1.dll",
-        "bin/vcomp140.dll"
+        "bin/vcomp140.dll",
+        "app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/msvcp140*.dll",
+        "app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/vcruntime140*.dll"
       ],
       "licenseUrl": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
-      "note": "Unmodified Visual C++ runtime files, taken from whisper-server-win32-x64-cpu.zip (OpenWhispr/whisper.cpp 0.0.10). vcomp140.dll is the Visual C++ OpenMP runtime. Microsoft's Distributable Code terms for Visual Studio 2022 allow these files to be copied and distributed unmodified with a program, and limit that to licensed Visual Studio users."
+      "note": "Unmodified Visual C++ runtime files. `scripts/copy-vc-runtime.js` copies `msvcp140.dll`, `msvcp140_1.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` from the Visual Studio redistributable folder (`VC\\Redist\\MSVC\\<version>\\x64\\Microsoft.VC143.CRT`) on the GitHub Actions runner that builds the release, and the installer puts a second copy of them next to onnxruntime-node's `onnxruntime.dll`, which looks for them in its own folder. `vcomp140.dll`, the Visual C++ OpenMP runtime, is taken from whisper-server-win32-x64-cpu.zip (OpenWhispr/whisper.cpp 0.0.10). Microsoft's Distributable Code terms for Visual Studio 2022 allow these files to be copied and distributed unmodified with a program, and limit that to licensed Visual Studio users."
     },
     {
       "name": "cpp-httplib",

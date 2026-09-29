@@ -152,14 +152,14 @@ Licence text: LLVM OpenMP runtime licence, under "Full licence texts" at the end
 
 ### Microsoft Visual C++ runtime
 
-Unmodified Visual C++ runtime files, taken from whisper-server-win32-x64-cpu.zip (OpenWhispr/whisper.cpp 0.0.10). vcomp140.dll is the Visual C++ OpenMP runtime. Microsoft's Distributable Code terms for Visual Studio 2022 allow these files to be copied and distributed unmodified with a program, and limit that to licensed Visual Studio users.
+Unmodified Visual C++ runtime files. `scripts/copy-vc-runtime.js` copies `msvcp140.dll`, `msvcp140_1.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` from the Visual Studio redistributable folder (`VC\Redist\MSVC\<version>\x64\Microsoft.VC143.CRT`) on the GitHub Actions runner that builds the release, and the installer puts a second copy of them next to onnxruntime-node's `onnxruntime.dll`, which looks for them in its own folder. `vcomp140.dll`, the Visual C++ OpenMP runtime, is taken from whisper-server-win32-x64-cpu.zip (OpenWhispr/whisper.cpp 0.0.10). Microsoft's Distributable Code terms for Visual Studio 2022 allow these files to be copied and distributed unmodified with a program, and limit that to licensed Visual Studio users.
 
 - Version: 14.44.35211.0
 - Licence: `LicenseRef-Microsoft-Visual-Cpp-Redistributable`
 - © Microsoft Corporation. All rights reserved.
 - Source: <https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution>
 - Licence terms: <https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution>
-- Files: `bin/msvcp140.dll`, `bin/vcruntime140.dll`, `bin/vcruntime140_1.dll`, `bin/vcomp140.dll`
+- Files: `bin/msvcp140.dll`, `bin/msvcp140_1.dll`, `bin/vcruntime140.dll`, `bin/vcruntime140_1.dll`, `bin/vcomp140.dll`, `app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/msvcp140*.dll`, `app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/vcruntime140*.dll`
 
 ### cpp-httplib
 
@@ -1207,7 +1207,7 @@ This is the app's production dependency tree for Windows x64, taken from `packag
 - `once@1.4.0`: `ISC`, <https://github.com/isaacs/once>, licence text 7
 - `onnxruntime-common@1.21.0`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package
 - `onnxruntime-common@1.22.0-dev.20250409-89f8206ba4`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package
-- `onnxruntime-node@1.21.0`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package, contains ONNX Runtime, DirectML (see above)
+- `onnxruntime-node@1.21.0`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package, contains Microsoft Visual C++ runtime, ONNX Runtime, DirectML (see above)
 - `onnxruntime-web@1.22.0-dev.20250409-89f8206ba4`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package, contains ONNX Runtime (see above)
 - `parse-cache-control@1.0.1`: `BSD`, <https://github.com/roryf/parse-cache-control>, licence text 97
 - `parse-entities@4.0.2`: `MIT`, <https://github.com/wooorm/parse-entities>, licence text 98

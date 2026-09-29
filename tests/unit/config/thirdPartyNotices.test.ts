@@ -60,6 +60,7 @@ const SHIPPED_BIN = [
   "llama-server-win32-x64.exe",
   "llama.dll",
   "msvcp140.dll",
+  "msvcp140_1.dll",
   "mtmd.dll",
   "onnxruntime.dll",
   "onnxruntime_providers_shared.dll",
