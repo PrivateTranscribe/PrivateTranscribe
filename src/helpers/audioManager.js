@@ -955,6 +955,10 @@ class AudioManager {
 
   disposeSegmentLevelAnalyser() {
     this.stopSpeechLevelMonitor();
+    this.releaseSegmentLevelNode();
+  }
+
+  releaseSegmentLevelNode() {
     const node = this.segmentLevelAnalyser;
     this.segmentLevelAnalyser = null;
     if (!node) {
@@ -1032,9 +1036,21 @@ class AudioManager {
   }
 
   readSegmentLevelRms() {
-    const node = this.segmentLevelAnalyser;
+    let node = this.segmentLevelAnalyser;
     if (!node) {
       return null;
+    }
+
+    // The overlay's level meter replaces the shared context when it stops
+    // rendering. Follow it: an analyser left on the closed context reads
+    // nothing for the rest of the recording, and the speech gate would judge
+    // the whole dictation on what it heard before the swap.
+    if (node.context !== getSharedAudioContext()) {
+      this.releaseSegmentLevelNode();
+      node = this.ensureSegmentLevelAnalyser();
+      if (!node) {
+        return null;
+      }
     }
 
     // A suspended context hands back zeros forever. Treating that as a pause

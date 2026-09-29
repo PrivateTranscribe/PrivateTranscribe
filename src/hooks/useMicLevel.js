@@ -5,6 +5,7 @@ import {
   resetSharedAudioContext,
   waitForAudioContextRunning,
 } from "../utils/sharedAudioContext";
+import { createMeterStallWatchdog } from "../utils/meterStallWatchdog";
 
 /**
  * useMicLevel - real-time microphone amplitude tracking for voice-reactive UI.
@@ -97,17 +98,12 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // Speech RMS typically 0.01–0.25; 0.25 normalizes loud speech to ~1.0
         const SCALE = 0.25;
 
-        // Stall self-heal watchdog. A live mic always has a small noise floor,
-        // so a sustained EXACT-zero RMS while the context still claims to be
-        // "running" means the audio graph has silently gone stale (a zombie
-        // context after display sleep/wake, or a fast re-record). When that
-        // happens we rebuild the context + analyser once; this never touches
-        // the recording stream, so transcription is unaffected.
-        const STALL_EPS = 1e-6;
-        const STALL_MS = 3000;
-        const MAX_SELF_HEAL = 3;
-        let lastSignalAt = performance.now();
-        let selfHealCount = 0;
+        // Stall self-heal watchdog. When the shared context stops rendering
+        // (suspended by the OS, or a zombie whose clock froze after display
+        // sleep/wake) the context + analyser are rebuilt; this never touches
+        // the recording stream, so transcription is unaffected. Silence alone
+        // never triggers it - see meterStallWatchdog.js for why.
+        const watchdog = createMeterStallWatchdog(performance.now());
 
         const tick = () => {
           if (cancelled) return;
@@ -115,11 +111,12 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
           if (!analyser || !dataArray) return;
 
-          if (ctx.state === "running") {
+          const running = ctx.state === "running";
+          if (running) {
             analyser.getFloatTimeDomainData(dataArray);
           } else {
-            // A suspended analyser can repeat its last nonzero frame forever.
-            // Do not let stale samples reset the recovery watchdog.
+            // A suspended analyser can repeat its last nonzero frame forever;
+            // show silence rather than a frozen level.
             dataArray.fill(0);
           }
 
@@ -130,12 +127,14 @@ export function useMicLevel(audioManagerRef, isRecording) {
           }
           const rms = Math.sqrt(sum / dataArray.length);
 
-          const nowTs = performance.now();
-          if (rms > STALL_EPS) {
-            lastSignalAt = nowTs;
-            selfHealCount = 0;
-          } else if (selfHealCount < MAX_SELF_HEAL && nowTs - lastSignalAt > STALL_MS) {
-            // Recover both a silent running graph and one suspended mid-recording.
+          if (
+            watchdog.shouldReplaceContext({
+              running,
+              clock: ctx.currentTime,
+              now: performance.now(),
+            })
+          ) {
+            // Recover both a frozen running graph and one suspended mid-recording.
             selfHealStalledGraph();
             return;
           }
@@ -222,17 +221,17 @@ export function useMicLevel(audioManagerRef, isRecording) {
           rafRef.current = requestAnimationFrame(tick);
         };
 
-        // Rebuild the shared context + analyser graph when the meter detects a
-        // stalled (silent-but-"running") pipe. Only the audio graph is rebuilt;
-        // the recording stream is left untouched so transcription is unaffected.
+        // Rebuild the shared context + analyser graph when the watchdog finds
+        // the context no longer rendering. Only the audio graph is rebuilt; the
+        // recording stream is left untouched so transcription is unaffected.
         const selfHealStalledGraph = () => {
           if (cancelled) return;
-          selfHealCount += 1;
-          console.debug("[mic-meter] self-healing stalled audio graph", { selfHealCount });
+          console.debug("[mic-meter] self-healing stalled audio graph", {
+            selfHealCount: watchdog.heals,
+          });
 
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
-          lastSignalAt = performance.now();
 
           const recoveredCtx = resetSharedAudioContext();
           if (!recoveredCtx) {

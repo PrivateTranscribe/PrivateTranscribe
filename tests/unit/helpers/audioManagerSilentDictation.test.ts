@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { localStorageMock } from "../../setup";
 
 vi.mock("../../../src/services/ReasoningService", () => ({
@@ -17,6 +17,10 @@ vi.mock("../../../src/helpers/contextPipeline", () => ({
 }));
 
 import AudioManager from "../../../src/helpers/audioManager";
+import {
+  __resetSharedAudioContextForTests,
+  resetSharedAudioContext,
+} from "../../../src/utils/sharedAudioContext";
 
 const silentBlob = () => new Blob(["x"], { type: "audio/webm" });
 
@@ -98,5 +102,60 @@ describe("AudioManager silent dictation gate", () => {
       measured: false,
       speechDetected: true,
     });
+  });
+});
+
+describe("AudioManager live speech level monitor", () => {
+  /** Level the fake analyser reports; a constant-filled buffer has RMS === level. */
+  let micLevel = 0;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    micLevel = 0;
+    localStorageMock.clear();
+    (globalThis as any).localStorage = localStorageMock;
+    (window as any).electronAPI = {};
+
+    class MockAnalyserNode {
+      fftSize = 1024;
+      connect = vi.fn();
+      disconnect = vi.fn();
+      getFloatTimeDomainData(target: Float32Array) {
+        target.fill(micLevel);
+      }
+    }
+    (window as any).AudioContext = class {
+      state = "running";
+      createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
+      createAnalyser = vi.fn(() => new MockAnalyserNode());
+      resume = vi.fn(async () => {});
+      close = vi.fn(async () => {
+        this.state = "closed";
+      });
+    };
+    __resetSharedAudioContextForTests();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    __resetSharedAudioContextForTests();
+    delete (window as any).AudioContext;
+  });
+
+  it("keeps hearing the microphone after the level meter replaces the shared context", async () => {
+    const manager = new AudioManager();
+    manager.recordingStream = { active: true } as never;
+    expect(manager.startSpeechLevelMonitor()).toBe(true);
+
+    // Three seconds of digital silence, then the overlay meter swaps the
+    // context out from under the monitor - and only then does speech start.
+    await vi.advanceTimersByTimeAsync(3_000);
+    resetSharedAudioContext();
+    micLevel = 0.2;
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const summary = manager.takeSpeechLevelSummary();
+    expect(summary).toMatchObject({ measured: true, speechDetected: true });
+    expect(summary.readings).toBeGreaterThanOrEqual(95);
   });
 });
