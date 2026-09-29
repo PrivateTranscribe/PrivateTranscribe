@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.1 - 2026-09-29
+
+### Fixed
+
+- Parakeet transcription and Read Aloud start on PCs without the Microsoft Visual C++ Redistributable. The app now ships the Microsoft runtime files both engines need, instead of relying on a copy another program installed.
+
 ## 0.20.0 - 2026-09-29
 
 ### Changed
