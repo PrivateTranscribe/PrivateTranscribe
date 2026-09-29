@@ -38,8 +38,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The whole of prepare:resources, not the shorter list build-windows.yml
-      # uses. The installer users actually get is built by release-production.yml
+      # The whole of prepare:resources, never a shorter hand-picked list. The
+      # installer users actually get is built by release-production.yml
       # via `npm run build:win`, whose prebuild:win runs this — and it is what
       # fetches llama-server, whose ggml/llama DLLs are the local reasoning
       # runtime. A Store build that skipped it shipped 13 MB light and silently

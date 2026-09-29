@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: {
@@ -15,6 +15,15 @@ const GpuBinaryManager = require("../../../src/helpers/gpuBinaryManager");
 
 describe("WhisperServerManager CUDA startup fallback", () => {
   let tempDir: string | null = null;
+  let provideCudaRuntime: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // The real one copies DLLs into the user bin folder, which here is the OS
+    // temp folder.
+    provideCudaRuntime = vi
+      .spyOn(GpuBinaryManager.prototype, "provideCudaRuntime")
+      .mockResolvedValue(null);
+  });
 
   afterEach(() => {
     vi.useRealTimers();
@@ -148,6 +157,40 @@ describe("WhisperServerManager CUDA startup fallback", () => {
     expect(startWithBinary).toHaveBeenNthCalledWith(2, cpuPath, modelPath, {});
     expect(manager.cudaDisabledForSession).toBe(true);
     expect(manager.cachedServerBinaryPath).toBe(cpuPath);
+  });
+
+  it("hands the CUDA engine the Visual C++ runtime before starting it", async () => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+    const modelPath = path.join(tempDir, "ggml-test.bin");
+    writeFileSync(modelPath, "model");
+
+    const manager = new WhisperServerManager();
+    const cudaPath = path.join(tempDir, "whisper-server-win32-x64-cuda.exe");
+    const startWithBinary = vi.spyOn(manager, "_startWithBinary").mockResolvedValue(undefined);
+    vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(cudaPath);
+
+    await manager._doStart(modelPath);
+
+    expect(provideCudaRuntime).toHaveBeenCalledTimes(1);
+    expect(provideCudaRuntime.mock.invocationCallOrder[0]).toBeLessThan(
+      startWithBinary.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("leaves the CPU engine's runtime alone", async () => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "pt-whisper-"));
+    const modelPath = path.join(tempDir, "ggml-test.bin");
+    writeFileSync(modelPath, "model");
+
+    const manager = new WhisperServerManager();
+    vi.spyOn(manager, "_startWithBinary").mockResolvedValue(undefined);
+    vi.spyOn(manager, "getServerBinaryPath").mockReturnValue(
+      path.join(tempDir, "whisper-server-win32-x64.exe")
+    );
+
+    await manager._doStart(modelPath);
+
+    expect(provideCudaRuntime).not.toHaveBeenCalled();
   });
 
   it("stops a running CUDA server when CPU mode is selected", async () => {

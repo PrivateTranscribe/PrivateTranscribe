@@ -1,6 +1,6 @@
 # Whisper CUDA Engine Notes
 
-Last updated: 2026-05-01
+Last updated: 2026-09-29
 
 This documents the CUDA engine fixes shipped in PrivateTranscribe `0.8.2` → `0.8.4`, and the important lessons for future agents/devs.
 
@@ -51,6 +51,31 @@ Package contents must include:
   - `libwhisper.so*`
   - `libggml*.so*`
   - CUDA/runtime `.so` dependencies when packaged by the build
+
+The Windows package deliberately carries **no Visual C++ runtime**. See the next section.
+
+### Visual C++ runtime (Windows)
+
+The engine and its DLLs import `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll` and
+`vcomp140.dll`. Windows looks for them in the engine's own folder, then in System32, which has
+them only where the Visual C++ redistributable is installed. Up to `v0.0.10` the engine therefore
+fell back to CPU on a PC without it.
+
+The app provides them instead of the package:
+
+- `GpuBinaryManager.provideCudaRuntime()` runs before every CUDA spawn and makes the runtime
+  files in `%APPDATA%\PrivateTranscribe\bin` match the app's copies in `resources/bin`, writing
+  only a missing or different file. It never throws; a failure leaves System32 as the source.
+- The list lives in `src/helpers/vcRuntime.js` (`VC_RUNTIME_LIBRARIES`). afterPack fails a build
+  whose `resources/bin` lacks one of them.
+- `build-cuda-binary.yml` runs `scripts/check-cuda-runtime.js`, which fails an engine that
+  imports a runtime DLL outside that list or carries its own copy, which the app would overwrite.
+
+Why not inside the package: every GPU user auto-downloads a whole new engine (about 1 GB
+installed) when `BINARY_VERSION` changes, and this way every existing `v0.0.10` install is fixed
+by an app update alone. It relies on the app's runtime being at least as new as the engine's
+build toolset. The app takes the newest on `windows-latest`; the engine builds on the older
+`windows-2022` image.
 
 ### App-side install and validation
 

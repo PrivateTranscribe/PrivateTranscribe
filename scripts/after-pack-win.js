@@ -4,11 +4,7 @@ const { execFileSync } = require("child_process");
 const { Arch } = require("electron-builder");
 const { findUncoveredFiles, loadManifest } = require("./generate-third-party-notices");
 const { MACHINE, readImports } = require("./lib/pe-file");
-
-// Windows finds these only in the importing file's own folder or in System32, and
-// System32 has them only where the Visual C++ redistributable is installed.
-const VC_RUNTIME_DLL =
-  /^(msvcp140(_\w+)?|vcruntime140(_\w+)?|vcomp140|concrt140|vccorlib140)\.dll$/i;
+const { VC_RUNTIME_DLL, VC_RUNTIME_LIBRARIES } = require("../src/helpers/vcRuntime");
 
 function listFiles(dir, prefix) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -90,6 +86,19 @@ module.exports = async function afterPack(context) {
         "file's folder, then in System32, which has them only where the Visual C++ " +
         "redistributable is installed. Ship them with scripts/copy-vc-runtime.js and " +
         "electron-builder.json."
+    );
+  }
+
+  // The app copies these beside the downloaded CUDA engine before starting it,
+  // and nothing packaged here may need them, so the check above cannot notice one.
+  const missingForCuda = VC_RUNTIME_LIBRARIES.filter(
+    (name) => !existsSync(path.join(binDir, name))
+  );
+  if (missingForCuda.length > 0) {
+    throw new Error(
+      `[after-pack-win] resources/bin lacks ${missingForCuda.join(", ")}, which the app ` +
+        "copies beside the CUDA engine. Without them GPU transcription starts only where " +
+        "the Visual C++ redistributable is installed."
     );
   }
 
