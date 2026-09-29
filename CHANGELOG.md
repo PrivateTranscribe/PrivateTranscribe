@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.20.0 - 2026-09-29
+
+### Changed
+
+- PrivateTranscribe is free. Every feature is included, with no account, no license key and nothing to buy.
+- There is no daily word limit for dictation or file transcription, and coding prompt shortcuts no longer have a daily allowance.
+- Converse is included for everyone.
+- Dictation enhancement, Correction Memory, Smart Context and Action Engine are unfinished, so they stay off until you turn on Beta features in Settings. Approved testers keep them on after updating.
+- The installer lists every open-source part it ships, with its license, in THIRD_PARTY_NOTICES.md. NirCmd is no longer bundled.
+
+### Added
+
+- Read Aloud has a reading speed setting from 0.75x to 2x. It applies from your next reading.
+- File transcription lets you set the speaker count from 1 to 10, and Auto finds up to six voices. On Auto, laughter, crosstalk and short fragments are less likely to be counted as extra speakers.
+
+### Fixed
+
+- A dictation is no longer dropped as silent when the microphone sends a few seconds of exact silence first, as a noise-gated microphone can. When the level meter reads nothing, the app now checks the recording itself before discarding it.
+- The first Read Aloud of a session starts about 0.1 seconds sooner again.
+- Local speaker labels keep short and repeated replies with the right speaker and are more reliable on recordings that are not in English.
+- An updated speaker labeling engine fixes a crash on some recordings.
+- Timestamped and subtitle output keeps each word whole instead of splitting it across two cues.
+- Speech cleanup runs in its own process, so a crash there keeps your recording and no longer closes the app.
+
 ## 0.19.1 - 2026-09-14
 
 ### Fixed
