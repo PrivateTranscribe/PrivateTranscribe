@@ -1,9 +1,9 @@
 /**
  * Converse session: the voice-loop state machine, main-process side.
  *
- * Ported from the validated voice-loop spike (C:\tmp\voice-loop-spike,
- * main.cjs). It owns the turn generation counter, the agent, the incremental
- * sentence splitter, and the state log the ledger gate reads.
+ * Ported from the validated voice-loop spike's main.cjs. It owns the turn
+ * generation counter, the agent, the incremental sentence splitter, and the
+ * state log the ledger gate reads.
  *
  * States:
  *   idle      before the first utterance

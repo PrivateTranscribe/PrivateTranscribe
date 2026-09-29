@@ -104,7 +104,7 @@ describe("write before the volume moves", () => {
     const lines = buildWindowsDuckScriptLines({
       mode: "duck",
       duckLevel: 0.2,
-      statePath: "C:\\Users\\KT\\AppData\\state.json",
+      statePath: "C:\\Users\\me\\AppData\\state.json",
     });
 
     const writeIndex = lines.findIndex((l: string) => l.includes("WriteAllText"));

@@ -25,8 +25,8 @@
  *    active SMTC session, which is not always the app that is playing. Could
  *    accidentally start a paused Spotify while YouTube was focused, etc.
  *
- * 2. PowerShell VBScript approach: used wscript.exe to avoid PowerShell AV
- *    heuristics. Triggered a Windows Script Host popup bug — reverted.
+ * 2. PowerShell VBScript approach: used wscript.exe to avoid antivirus false
+ *    positives on PowerShell. Triggered a Windows Script Host popup bug — reverted.
  *
  * 3. SMTC direct session control: used WinRT GlobalSystemMediaTransportControls
  *    SessionManager via PowerShell reflection to call TryPauseAsync on the

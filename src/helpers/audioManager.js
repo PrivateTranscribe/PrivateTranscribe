@@ -2348,8 +2348,8 @@ class AudioManager {
     const timings = {};
 
     try {
-      // Correction Memory is an approved-tester beta. Never read or inject its
-      // hints for Starter or ordinary paid Pro users.
+      // Correction Memory is a beta. Only read or inject its hints when beta
+      // features are on.
       const correctionMemoryEnabled =
         typeof this._checkBetaFeatureAccess === "function" &&
         this._checkBetaFeatureAccess("correction-memory");

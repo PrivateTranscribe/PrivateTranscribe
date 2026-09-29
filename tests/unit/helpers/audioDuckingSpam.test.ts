@@ -274,7 +274,7 @@ describe("the Windows script", () => {
     const lines: string[] = buildWindowsDuckScriptLines({
       mode: "duck",
       duckLevel: 0.5,
-      statePath: "C:\\Users\\KT\\AppData\\state.json",
+      statePath: "C:\\Users\\me\\AppData\\state.json",
       previous: { mode: "duck", volume: 0.8, muted: false, duckTarget: 0.4 },
     });
     const script = lines.join("\n");

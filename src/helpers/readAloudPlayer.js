@@ -1,7 +1,7 @@
 /**
  * Read Aloud playback (renderer side).
  *
- * Ported from the validated spike at C:\tmp\readaloud-spike. The important part
+ * Ported from the validated Read Aloud spike. The important part
  * is the generation counter: `index` and `offset` are the only truth about
  * where playback is, and every async continuation captures the generation it
  * started under. Anything that lands after a seek, pause, or new speak() is

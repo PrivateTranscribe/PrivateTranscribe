@@ -2,9 +2,9 @@
 # clean Ctrl+C to the foreground window.
 #
 # Deliberately uses only managed APIs. An earlier version P/Invoked
-# keybd_event + GetAsyncKeyState and Windows Defender AMSI blocked the whole
-# script as "malicious content" - those two calls are a textbook keylogger
-# signature. Control::ModifierKeys and SendKeys do the same job unflagged.
+# keybd_event + GetAsyncKeyState, and Windows Defender AMSI falsely flagged the
+# whole script as malicious. Control::ModifierKeys and SendKeys do the same job
+# through .NET.
 #
 # Protocol on stdin/stdout, one line each way:
 #   <- READY               once, at startup

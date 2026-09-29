@@ -209,7 +209,7 @@ test.describe("faint breath and rustle", () => {
   test.use({ fakeAudioCaptureFile: path.join(FIXTURE_DIR, "breath.wav"), appEnv: SILENT_ENV });
 
   // Produced "Thank you." with the defences removed - the phrase users report.
-  // Which check ends it varies. Since aa47e51 speech preparation trims the
+  // Which check ends it varies. Speech preparation now trims the
   // recording to the short stretch its detector takes for speech, and whisper
   // often returns nothing for that clip, so the engine's own "No audio
   // detected" can end it before the transcript check sees any text.

@@ -1,8 +1,8 @@
 /**
  * Converse playback (renderer side).
  *
- * Ported from the validated voice-loop spike (C:\tmp\voice-loop-spike,
- * renderer/app.js). It is the Read Aloud generation-counter engine rewritten
+ * Ported from the validated voice-loop spike's renderer/app.js. It is the Read
+ * Aloud generation-counter engine rewritten
  * for a queue that arrives one sentence at a time from a live agent stream,
  * instead of a fixed list produced by splitting a finished document.
  *

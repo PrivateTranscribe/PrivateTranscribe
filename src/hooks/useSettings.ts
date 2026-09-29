@@ -936,7 +936,7 @@ export function useSettings() {
     false,
     boolSerializer
   );
-  // On by default: whoever buys Agent Mode already has Claude Code installed
+  // On by default: whoever turns on Agent Mode already has Claude Code installed
   // and logged in. The settings page disables the toggle itself when the CLI
   // is not found, so the default never points at something that cannot run.
   const [agentModeRewrite, setAgentModeRewrite] = useLocalStorage(

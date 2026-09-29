@@ -55,7 +55,7 @@ const KOKORO_DEVICE = "cpu";
  * 12 threads is free on this machine — synthesis speed is unchanged while a
  * quarter of the CPU burn and ~11 points of system pressure disappear, so the
  * first-audio gate's 350ms bar is untouched. 8 would buy more machine-freedom
- * for +40ms on the first chunk; that trade is Kristian's if he wants it.
+ * for +40ms on the first chunk, a trade not taken here.
  * Only machines big enough to be measured (>= 24 logical cores) are capped;
  * everything else keeps onnxruntime's default of one thread per physical core,
  * because a cap tuned on 32 cores is a guess everywhere else.

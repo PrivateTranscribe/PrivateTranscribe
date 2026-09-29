@@ -119,7 +119,7 @@ describe("temporary app paths", () => {
   // scratch copy wrote `electron.exe <temp path> --launch-at-login` into the Run key, and
   // every login after the temp folder was cleaned up showed Electron's error dialog.
   const SCRATCH_PATH =
-    "C:\\Users\\KRISTI~1\\AppData\\Local\\Temp\\claude\\c--Projects-PrivateTranscribe\\b58a70dd\\scratchpad";
+    "C:\\Users\\USERNA~1\\AppData\\Local\\Temp\\claude\\c--Projects-PrivateTranscribe\\b58a70dd\\scratchpad";
 
   it("recognises Windows temp locations in either slash or short-name form", () => {
     expect(isEphemeralAppPath(SCRATCH_PATH, {})).toBe(true);

@@ -1,8 +1,8 @@
 /**
  * One persistent `claude` child process for a whole Converse session.
  *
- * Ported from the validated voice-loop spike (C:\tmp\voice-loop-spike,
- * lib/agent.cjs). Spawning `claude` per utterance costs ~2-4s of CLI startup
+ * Ported from the validated voice-loop spike's lib/agent.cjs. Spawning `claude`
+ * per utterance costs ~2-4s of CLI startup
  * before a single token arrives, which destroys the conversational feel — so
  * the process is started once and each turn is a stream-json user message
  * written to its stdin.

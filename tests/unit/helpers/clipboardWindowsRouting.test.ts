@@ -19,7 +19,7 @@ const HELPER_PATH = "C:\\app\\resources\\bin\\windows-fast-paste.exe";
 
 describe("ClipboardManager Windows paste routing", () => {
   test("the legacy nircmd and PowerShell paste paths no longer exist", () => {
-    // Commit ff275a1 stopped routing to these after a failed helper paste, because an
+    // Paste routing stopped falling back to these after a failed helper paste, because an
     // unconfirmed second attempt could report success when nothing was pasted. Keeping
     // the methods around invited a future caller to reintroduce that bug, so they are
     // gone entirely. This test fails if either one comes back.

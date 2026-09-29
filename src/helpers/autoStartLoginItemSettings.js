@@ -91,7 +91,7 @@ function isEphemeralAppPath(appPath, env = process.env) {
     return false;
   }
 
-  // TEMP/TMP can be the 8.3 short form (KRISTI~1) while appPath is long, or the reverse,
+  // TEMP/TMP can be the 8.3 short form (USERNA~1) while appPath is long, or the reverse,
   // so the literal segments above still have to carry the check on their own.
   const roots = [env?.TEMP, env?.TMP, env?.TMPDIR]
     .filter(Boolean)

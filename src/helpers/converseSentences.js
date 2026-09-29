@@ -2,8 +2,8 @@
  * Pull complete sentences out of a growing stream of text deltas, so TTS can
  * start on the FIRST finished sentence instead of waiting for the whole answer.
  *
- * Ported from the validated voice-loop spike (C:\tmp\voice-loop-spike,
- * lib/sentences.cjs). Read Aloud splits a finished document with kokoro-js's
+ * Ported from the validated voice-loop spike's lib/sentences.cjs. Read Aloud
+ * splits a finished document with kokoro-js's
  * own splitter; that splitter needs the whole text up front, which is exactly
  * what a streaming reply does not have. This one is incremental and never waits
  * for the tail.

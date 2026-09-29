@@ -1,10 +1,10 @@
 # Persistent worker: finds WHERE on screen the text Read Aloud is speaking sits
 # in the app it was copied from, through Windows UI Automation.
 #
-# Managed APIs only. No P/Invoke: a script that declares user32 imports next
-# to UI Automation calls gets blocked by Windows Defender AMSI as "malicious
-# content" (measured 2026-09-02), while the focused element and a tree walk
-# reach the same window unflagged.
+# Managed APIs only. No P/Invoke: Windows Defender AMSI falsely flagged a
+# version that declared user32 imports next to UI Automation calls
+# (2026-09-02). The focused element and a tree walk reach the same window
+# through UI Automation alone.
 #
 # Protocol on stdin/stdout, one line each way:
 #   <- READY                     once, at startup
