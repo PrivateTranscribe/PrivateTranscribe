@@ -145,6 +145,13 @@ jobs:
 
           Get-ChildItem $packageDir
 
+      # The package carries no Visual C++ runtime: the app copies its own beside
+      # the engine before starting it. Fail if the engine needs a runtime DLL
+      # outside that set, or if the package holds a copy the app would overwrite.
+      - name: Check the engine needs only the runtime the app provides
+        shell: pwsh
+        run: node scripts/check-cuda-runtime.js cuda-package-win32-x64
+
       # Fail before the signing action so a missing credential surfaces here
       # rather than as an opaque Azure auth error inside the action.
       - name: Verify Azure signing credentials are present
