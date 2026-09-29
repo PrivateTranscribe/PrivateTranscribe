@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.2 - 2026-09-29
+
+### Fixed
+
+- GPU transcription starts on PCs without the Microsoft Visual C++ Redistributable, instead of falling back to the CPU. The app now places the Microsoft runtime files the GPU engine needs beside it, so an engine you already downloaded works without downloading it again.
+
 ## 0.20.1 - 2026-09-29
 
 ### Fixed
