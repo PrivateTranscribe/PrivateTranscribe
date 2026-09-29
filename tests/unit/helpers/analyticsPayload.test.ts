@@ -6,8 +6,10 @@ import {
   ALLOWED_TRANSCRIPTION_ANALYTICS_LANGUAGES,
   ALLOWED_TRANSCRIPTION_ANALYTICS_SOURCES,
 } from "../../../src/utils/analytics";
+import { privateFile } from "../../privateCheckout";
 
 const require = createRequire(import.meta.url);
+const migrationsDir = privateFile("supabase", "migrations");
 const {
   ALLOWED_ANALYTICS_EVENTS,
   ALLOWED_ANALYTICS_LANGUAGES,
@@ -160,16 +162,15 @@ describe("analytics payload privacy", () => {
     );
   });
 
-  it("keeps the client and database allowlists aligned", () => {
-    const migrationsDir = path.join(process.cwd(), "supabase", "migrations");
+  it.skipIf(!migrationsDir)("keeps the client and database allowlists aligned", () => {
     const migrations = fs
-      .readdirSync(migrationsDir)
+      .readdirSync(migrationsDir!)
       .filter((name) => name.endsWith(".sql"))
       .sort()
-      .map((name) => fs.readFileSync(path.join(migrationsDir, name), "utf8"))
+      .map((name) => fs.readFileSync(path.join(migrationsDir!, name), "utf8"))
       .join("\n");
     const performanceMigration = fs.readFileSync(
-      path.join(migrationsDir, "20260823160000_add_transcription_performance_analytics.sql"),
+      path.join(migrationsDir!, "20260823160000_add_transcription_performance_analytics.sql"),
       "utf8"
     );
 

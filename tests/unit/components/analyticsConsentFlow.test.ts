@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { privateFile } from "../../privateCheckout";
+
+const privacyPath = privateFile("legal", "PRIVACY.md");
 
 describe("Analytics consent flow regression checks", () => {
   it("requests consent before first-run onboarding and keeps a dashboard fallback", () => {
@@ -54,16 +57,18 @@ describe("Analytics consent flow regression checks", () => {
     expect(ipcHandlers).toContain('ipcMain.handle("analytics-set-consent"');
   });
 
-  it("keeps the privacy policy current with the disclosed performance fields", () => {
-    const privacyPath = path.join(process.cwd(), "legal", "PRIVACY.md");
-    const contents = fs.readFileSync(privacyPath, "utf8");
+  it.skipIf(!privacyPath)(
+    "keeps the privacy policy current with the disclosed performance fields",
+    () => {
+      const contents = fs.readFileSync(privacyPath!, "utf8");
 
-    expect(contents).toContain("**Last updated:** August 23, 2026");
-    expect(contents).toContain("exact real-time transcription speed");
-    expect(contents).toContain(
-      "They do not run a benchmark, hardware scan, or additional transcription"
-    );
-  });
+      expect(contents).toContain("**Last updated:** August 23, 2026");
+      expect(contents).toContain("exact real-time transcription speed");
+      expect(contents).toContain(
+        "They do not run a benchmark, hardware scan, or additional transcription"
+      );
+    }
+  );
 
   it("lets users withdraw or restore analytics consent from Privacy settings", () => {
     const settingsPath = path.join(process.cwd(), "src", "components", "SettingsPage.tsx");

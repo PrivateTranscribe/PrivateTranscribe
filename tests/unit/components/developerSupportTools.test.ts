@@ -1,6 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { privateFile } from "../../privateCheckout";
+
+const feedbackFunctionPath = privateFile("supabase", "functions", "feedback", "index.ts");
+const attachmentMigrationPath = privateFile(
+  "supabase",
+  "migrations",
+  "202606230001_add_feedback_attachments.sql"
+);
+const rateLimitMigrationPath = privateFile(
+  "supabase",
+  "migrations",
+  "202606030002_add_feedback_device_rate_limit_key.sql"
+);
 
 describe("Settings support and diagnostics tools", () => {
   it("does not access Node process directly from the renderer support buttons", () => {
@@ -118,30 +131,22 @@ describe("Settings support and diagnostics tools", () => {
     expect(feedbackDialog).not.toContain("Quick tester templates");
   });
 
-  it("feedback backend stores screenshot attachments and forwards links to Discord", () => {
-    const feedbackFunction = fs.readFileSync(
-      path.join(process.cwd(), "supabase", "functions", "feedback", "index.ts"),
-      "utf8"
-    );
-    const attachmentMigration = fs.readFileSync(
-      path.join(
-        process.cwd(),
-        "supabase",
-        "migrations",
-        "202606230001_add_feedback_attachments.sql"
-      ),
-      "utf8"
-    );
+  it.skipIf(!feedbackFunctionPath || !attachmentMigrationPath)(
+    "feedback backend stores screenshot attachments and forwards links to Discord",
+    () => {
+      const feedbackFunction = fs.readFileSync(feedbackFunctionPath!, "utf8");
+      const attachmentMigration = fs.readFileSync(attachmentMigrationPath!, "utf8");
 
-    expect(feedbackFunction).toContain("FEEDBACK_ATTACHMENT_BUCKET");
-    expect(feedbackFunction).toContain("uploadFeedbackAttachments");
-    expect(feedbackFunction).toContain("createSignedUrl");
-    expect(feedbackFunction).toContain("Attachment");
-    expect(feedbackFunction).toContain("feature: 0x38bdf8");
-    expect(feedbackFunction).toContain("general: 0x8b5cf6");
-    expect(attachmentMigration).toContain("feedback-attachments");
-    expect(attachmentMigration).toContain("attachments jsonb");
-  });
+      expect(feedbackFunction).toContain("FEEDBACK_ATTACHMENT_BUCKET");
+      expect(feedbackFunction).toContain("uploadFeedbackAttachments");
+      expect(feedbackFunction).toContain("createSignedUrl");
+      expect(feedbackFunction).toContain("Attachment");
+      expect(feedbackFunction).toContain("feature: 0x38bdf8");
+      expect(feedbackFunction).toContain("general: 0x8b5cf6");
+      expect(attachmentMigration).toContain("feedback-attachments");
+      expect(attachmentMigration).toContain("attachments jsonb");
+    }
+  );
 
   it("formats the app version object instead of rendering [object Object]", () => {
     const developerSection = fs.readFileSync(
@@ -153,27 +158,19 @@ describe("Settings support and diagnostics tools", () => {
     expect(developerSection).toContain("PrivateTranscribe v${version}");
   });
 
-  it("feedback backend hashes device identity and rate-limits per device", () => {
-    const feedbackFunction = fs.readFileSync(
-      path.join(process.cwd(), "supabase", "functions", "feedback", "index.ts"),
-      "utf8"
-    );
-    const rateLimitMigration = fs.readFileSync(
-      path.join(
-        process.cwd(),
-        "supabase",
-        "migrations",
-        "202606030002_add_feedback_device_rate_limit_key.sql"
-      ),
-      "utf8"
-    );
+  it.skipIf(!feedbackFunctionPath || !rateLimitMigrationPath)(
+    "feedback backend hashes device identity and rate-limits per device",
+    () => {
+      const feedbackFunction = fs.readFileSync(feedbackFunctionPath!, "utf8");
+      const rateLimitMigration = fs.readFileSync(rateLimitMigrationPath!, "utf8");
 
-    expect(feedbackFunction).toContain("FEEDBACK_PER_DEVICE_PER_HOUR = 100");
-    expect(feedbackFunction).toContain("sha256Hex(deviceId)");
-    expect(feedbackFunction).toContain("status: 429");
-    expect(rateLimitMigration).toContain("device_id_hash");
-    expect(rateLimitMigration).toContain("feedback_device_id_hash_created_at_idx");
-  });
+      expect(feedbackFunction).toContain("FEEDBACK_PER_DEVICE_PER_HOUR = 100");
+      expect(feedbackFunction).toContain("sha256Hex(deviceId)");
+      expect(feedbackFunction).toContain("status: 429");
+      expect(rateLimitMigration).toContain("device_id_hash");
+      expect(rateLimitMigration).toContain("feedback_device_id_hash_created_at_idx");
+    }
+  );
 
   it("keeps diagnostics labeled for dev while production shows data storage", () => {
     const settingsPage = fs.readFileSync(
