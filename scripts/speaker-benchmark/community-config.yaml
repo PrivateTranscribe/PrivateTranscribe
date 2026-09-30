@@ -1,3 +1,7 @@
+# Values extracted from config.yaml of pyannote/speaker-diarization-community-1
+# (https://huggingface.co/pyannote/speaker-diarization-community-1) by pyannote,
+# licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+# This file stays under CC BY 4.0. Nothing reads it; it records the settings.
 dependencies:
   pyannote.audio: 4.0.0
 pipeline:

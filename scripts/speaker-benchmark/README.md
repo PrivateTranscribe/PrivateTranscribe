@@ -77,7 +77,10 @@ Do not bypass the gate or upload recordings to a hosted service.
 
 The adapter completed all six excerpts after approved access and manual model
 downloads. `community-config.yaml` preserves the model's official configuration
-values. Set `HF_HUB_OFFLINE=1` for
+values, extracted from pyannote's
+[speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+and kept under its [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) licence.
+Set `HF_HUB_OFFLINE=1` for
 local inference. The adapter uses overlap-aware output for DER and exclusive output
 for app text assignment. Its warm inference and separate pipeline-load times are
 **not directly comparable** to native cold-process time. Runtime footprint and peak
