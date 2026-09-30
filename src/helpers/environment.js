@@ -178,29 +178,67 @@ class EnvironmentManager {
    * Secrets are intentionally omitted here; they live in the encrypted store.
    * On platforms where encryption is unavailable, secrets are included as a
    * safe fallback so the app remains functional.
+   * Every line it does not manage is kept: the user guides tell people to add
+   * debug and privacy switches here by hand. Managing those keys instead would
+   * copy a dev run's process.env into the installed app, which shares this file.
    */
   _persistPlainEnvFile() {
-    let content = `# PrivateTranscribe — non-secret settings\n# Generated automatically — do not edit manually.\n`;
+    const header =
+      "# PrivateTranscribe settings. The app rewrites its own keys and keeps every other line.";
     const sanitizeEnvValue = (value) => String(value).replace(/[\r\n]+/g, "");
+    const lines = [header];
 
     for (const key of PLAIN_ENV_KEYS) {
-      if (process.env[key]) content += `${key}=${sanitizeEnvValue(process.env[key])}\n`;
+      if (process.env[key]) lines.push(`${key}=${sanitizeEnvValue(process.env[key])}`);
     }
 
     // Fallback: if encryption is unavailable, include secrets in the plain file
     // so that API keys survive restarts even without OS-keychain support.
     if (!this._encryptionAvailable) {
       for (const key of SECRET_ENV_KEYS) {
-        if (process.env[key]) content += `${key}=${sanitizeEnvValue(process.env[key])}\n`;
+        if (process.env[key]) lines.push(`${key}=${sanitizeEnvValue(process.env[key])}`);
       }
     }
 
+    const kept = this._readUnmanagedPlainEnvLines(header);
+    if (kept.length > 0) lines.push("", ...kept);
+
     try {
-      fs.writeFileSync(this._plainEnvPath, content, "utf8");
+      fs.writeFileSync(this._plainEnvPath, `${lines.join("\n")}\n`, "utf8");
       this._restrictEnvFilePermissions(this._plainEnvPath);
     } catch (err) {
       console.error("Failed to persist plain env file:", err.message);
     }
+  }
+
+  _readUnmanagedPlainEnvLines(header) {
+    let contents;
+    try {
+      contents = fs.readFileSync(this._plainEnvPath, "utf8");
+    } catch {
+      return [];
+    }
+    const appHeaders = new Set([
+      header,
+      "# PrivateTranscribe — non-secret settings",
+      "# Generated automatically — do not edit manually.",
+      "# PrivateTranscribe Environment Variables",
+      "# Privoca Environment Variables",
+      "# DictateVoice Environment Variables",
+      "# This file was created automatically for production use",
+    ]);
+    const dotenvAssignment = /^\s*(?:export\s+)?([\w.-]+)(?:\s*=|:\s)/;
+    const kept = contents
+      .replace(/^\uFEFF/, "")
+      .split(/\r\n?|\n/)
+      .filter((line) => {
+        const key = dotenvAssignment.exec(line)?.[1];
+        const managed = PLAIN_ENV_KEYS.includes(key) || SECRET_ENV_KEYS.has(key);
+        return !managed && !appHeaders.has(line.trim());
+      });
+    while (kept.length > 0 && !kept[0].trim()) kept.shift();
+    while (kept.length > 0 && !kept[kept.length - 1].trim()) kept.pop();
+    return kept;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
