@@ -32,13 +32,13 @@ const DEFAULT_KOKORO_MODEL = "kokoro-82m-v1.0-fp32";
  * this file is CommonJS in the main process and cannot import that module.
  */
 const DEFAULT_KOKORO_VOICE = "bm_lewis";
-/** Measured: fp32 beats q8 by ~5x on CPU. See docs/GOALS.md. */
+/** Measured: fp32 beats q8 by ~5x on CPU. */
 const KOKORO_DTYPE = "fp32";
 /**
  * CPU on purpose. DirectML was measured 2026-08-24 and fails outright on this
  * model: onnxruntime's DML execution provider rejects Kokoro's ConvTranspose
  * nodes ("The parameter is incorrect"), so there is no GPU path with the
- * runtime this stack ships. See docs/GOALS.md readaloud-gpu-synthesis.
+ * runtime this stack ships.
  */
 const KOKORO_DEVICE = "cpu";
 

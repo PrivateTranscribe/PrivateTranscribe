@@ -1,5 +1,5 @@
 /**
- * Repro tests for docs/TRANSCRIBE_AUDIT.md — the UI-surface findings from
+ * Repro tests for the Transcribe page audit: the UI-surface findings from
  * driving the real Transcribe page.
  *
  * These read the shipped source rather than rendering it, matching the other

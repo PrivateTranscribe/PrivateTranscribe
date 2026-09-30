@@ -9,8 +9,7 @@
  * wrong. The ratings are now split by language, because the gap between
  * models is far wider outside English than inside it.
  *
- * Measured on FLEURS, 100 utterances per language (see
- * docs/TRANSCRIPTION_ACCURACY.md, reproduce with
+ * Measured on FLEURS, 100 utterances per language (reproduce with
  * scripts/benchmark-transcription-accuracy.js):
  *
  *   model    English WER   Danish WER

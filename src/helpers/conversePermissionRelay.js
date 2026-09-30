@@ -1,7 +1,7 @@
 /**
  * Relay for the harness's own permission questions (Converse).
  *
- * Settled product decision (docs/GOALS.md): the app adds NO permission rules
+ * Settled product decision: the app adds NO permission rules
  * of its own. When the `claude` process wants to use a tool that its own
  * settings do not already allow, it asks through `--permission-prompt-tool`,
  * an MCP tool served by conversePermissionMcp.cjs. That script forwards the

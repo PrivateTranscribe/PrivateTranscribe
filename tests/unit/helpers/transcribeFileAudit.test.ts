@@ -1,5 +1,5 @@
 /**
- * Repro tests for docs/TRANSCRIBE_AUDIT.md — the pipeline-layer findings from
+ * Repro tests for the Transcribe page audit: the pipeline-layer findings from
  * driving the real file-transcription feature (WhisperManager.transcribeFileV2
  * plus formatTranscript, which together are the body of the "transcribe-file-v2"
  * IPC handler).
@@ -9,7 +9,7 @@
  * not deliver it. When one of them starts failing, the bug is fixed and the
  * `.fails` should be dropped — not the assertion.
  *
- * Each finding id below matches a row in the audit's summary table.
+ * Each finding id below is the audit's own id for that finding.
  */
 import { tmpdir } from "os";
 import { describe, expect, it, vi } from "vitest";

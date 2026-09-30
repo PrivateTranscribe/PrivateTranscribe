@@ -76,9 +76,8 @@ The model's access agreement must be accepted by an authorized person first.
 Do not bypass the gate or upload recordings to a hosted service.
 
 The adapter completed all six excerpts after approved access and manual model
-downloads. See the [follow-up evaluation](../../docs/community-1-evaluation-2026-09-21.md)
-for scores, hashes and exact dependency versions. `community-config.yaml` preserves
-the official configuration values supplied by the user. Set `HF_HUB_OFFLINE=1` for
+downloads. `community-config.yaml` preserves the model's official configuration
+values. Set `HF_HUB_OFFLINE=1` for
 local inference. The adapter uses overlap-aware output for DER and exclusive output
 for app text assignment. Its warm inference and separate pipeline-load times are
 **not directly comparable** to native cold-process time. Runtime footprint and peak
@@ -89,9 +88,8 @@ Python inference only, not an Electron integration.
 
 `baseline` accepts `--threshold`, `--min-cluster-seconds` and `--min-cluster-share`,
 passed straight to the app's diarization manager. Any non-default value needs a
-unique `--label` so a tuned run can never overwrite the baseline. The threshold
-sweep and the merge evaluation are in
-[speaker-count-merge](../../docs/speaker-count-merge-2026-09-21.md). Clusters
+unique `--label` so a tuned run can never overwrite the baseline. The app's
+defaults come from a threshold sweep and a merge evaluation on these fixtures. Clusters
 below the larger of the two floors are attached to the most similar remaining
 voice using the app's own embedding model; merges are listed as
 `smallClusterMerges` in each engine output.
@@ -109,7 +107,7 @@ no overlap or crosstalk and are not a substitute for a real Danish meeting.
 python scripts/speaker-benchmark/prepare-danish-multi.py
 $env:PT_SPEAKER_RELIABILITY='1'; $env:PT_SPEAKER_DANISH_MULTI='1'; $env:PT_SPEAKER_RUN_LABEL='merge'
 node node_modules/@playwright/test/cli.js test tests/e2e/speaker-reliability.spec.ts -g "Danish multi-speaker"
-python scripts/speaker-benchmark/score-danish-multi.py --app merge-auto merge-exact --output docs/<artifact>.json
+python scripts/speaker-benchmark/score-danish-multi.py --app merge-auto merge-exact --output tmp/speaker-comparison/danish-multi-scores.json
 ```
 
 The scorer reads raw diarizer outputs (`<fixture>.<label>.json`) and real-app

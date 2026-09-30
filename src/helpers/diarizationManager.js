@@ -19,8 +19,8 @@ const {
 const DEFAULT_BUNDLE_ID = "sherpa-onnx-multilingual-v1";
 // Automatic counting: clusters shorter than both floors are attached to the most
 // similar remaining voice instead of becoming an extra speaker. Values were
-// chosen on the AMI excerpts and simulated Danish conversations in
-// docs/speaker-count-merge-2026-09-21.md.
+// chosen on the AMI excerpts and simulated Danish conversations of
+// scripts/speaker-benchmark.
 const DEFAULT_MIN_CLUSTER_SECONDS = 4;
 const DEFAULT_MIN_CLUSTER_SHARE = 0.05;
 // Longest audio embedded per representative segment; bounds the extra work.

@@ -2,7 +2,7 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 
 /**
- * Repro for docs/TRANSCRIBE_AUDIT.md F7, observed at the UI layer by dropping
+ * Repro for Transcribe page audit finding F7, observed at the UI layer by dropping
  * the committed control fixture on the real Transcribe page with no Whisper
  * model on disk.
  *

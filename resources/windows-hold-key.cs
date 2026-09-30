@@ -679,7 +679,7 @@ internal static class WindowsHoldKey
         // key-up, so Discord unmutes, re-mutes, and plays both sounds every
         // interval. A beep twice a second for the length of every dictation is
         // not a fix, it is a different bug. Still available behind
-        // --repress-ms= for measuring. See docs/VOICE_CALL_MUTE.md.
+        // --repress-ms= for measuring.
         if (repressIntervalMs <= 0)
         {
             done.WaitOne(maxHoldMs);
