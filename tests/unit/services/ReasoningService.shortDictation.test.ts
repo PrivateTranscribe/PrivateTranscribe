@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 describe("short dictation survives empty enhancement", () => {
-  it.each(["Maren", "year", "Okay", "Thank you", "Not yet", "42", "mange tak", "東京"])(
+  it.each(["Alice", "year", "Okay", "Thank you", "Not yet", "42", "mange tak", "東京"])(
     "preserves %s through local IPC",
     async (text) => {
       expect(
