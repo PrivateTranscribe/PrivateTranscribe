@@ -93,3 +93,20 @@ runs/
 .env.production
 /website
 shots/
+
+# Kept out of the public repo. Plans, the backend, legal texts and QA evidence
+# live in the private PrivateTranscribe-workspace repo.
+/docs/*
+!/docs/DESIGN_TASTE_GUIDE.md
+!/docs/WHISPER_CUDA_ENGINE.md
+/.claude/
+/drafts/
+/outputs/
+/supabase/
+/legal/
+/automation/
+/infra/
+/tests/test-clips/
+# Satoshi's licence forbids passing the font file on through a public repo.
+/src/assets/fonts/satoshi-variable.woff2
+/resources/third-party/licenses/ITF-FFL-2.0-Satoshi.txt
