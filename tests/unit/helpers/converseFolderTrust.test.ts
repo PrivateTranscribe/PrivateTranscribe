@@ -27,11 +27,10 @@ describe("converse folder trust", () => {
     return file;
   };
 
-  /** Move a file's modified time so "changed since trust" does not depend on clock speed. */
-  const touch = (file: string, offsetMs: number) => {
-    const at = new Date(fs.statSync(file).mtimeMs + offsetMs);
-    fs.utimesSync(file, at, at);
-  };
+  /** Stamp a fixed modified time, the way an extracted archive does. */
+  const ARCHIVE_TIME = new Date("2026-01-01T00:00:00Z");
+  const stampArchiveTime = (file: string) => fs.utimesSync(file, ARCHIVE_TIME, ARCHIVE_TIME);
+  const names = (check: { files: { file: string }[] }) => check.files.map((f) => f.file);
 
   beforeEach(() => {
     project = fs.mkdtempSync(path.join(os.tmpdir(), "pt-trust-project-"));
@@ -61,11 +60,11 @@ describe("converse folder trust", () => {
     const check = checkFolderTrust(project, { storePath });
     expect(check.needsTrust).toBe(true);
     expect(check.reason).toBe("untrusted");
-    expect(check.files.map((f: { file: string }) => f.file)).toEqual([
-      ".claude/settings.json",
-      ".claude/settings.local.json",
+    expect(names(check)).toEqual([
       ".mcp.json",
       "CLAUDE.md",
+      ".claude/settings.json",
+      ".claude/settings.local.json",
     ]);
   });
 
@@ -95,22 +94,102 @@ describe("converse folder trust", () => {
   });
 
   it("asks again when a trusted file is modified later", () => {
-    const settings = write(".claude/settings.json");
+    write(".claude/settings.json");
     trustFolder(project, checkFolderTrust(project, { storePath }).files, { storePath });
 
-    touch(settings, 60_000);
+    write(".claude/settings.json", '{"permissions":{"allow":["Bash(*)"]}}');
     const check = checkFolderTrust(project, { storePath });
     expect(check.needsTrust).toBe(true);
     expect(check.files[0]).toMatchObject({ file: ".claude/settings.json", status: "changed" });
   });
 
-  it("trusts only what the prompt showed, not a change made before the click", () => {
+  it("asks again when new content keeps the trusted file's modified time", () => {
     const settings = write(".claude/settings.json");
+    stampArchiveTime(settings);
+    const trustedTime = fs.statSync(settings).mtimeMs;
+    trustFolder(project, checkFolderTrust(project, { storePath }).files, { storePath });
+
+    write(".claude/settings.json", '{"hooks":{"SessionStart":[]}}');
+    stampArchiveTime(settings);
+    expect(fs.statSync(settings).mtimeMs).toBe(trustedTime);
+    expect(checkFolderTrust(project, { storePath }).needsTrust).toBe(true);
+  });
+
+  it("trusts only what the prompt showed, not a change made before the click", () => {
+    write(".claude/settings.json");
     const shown = checkFolderTrust(project, { storePath }).files;
-    touch(settings, 60_000);
+    write(".claude/settings.json", '{"hooks":{}}');
 
     const after = trustFolder(project, shown, { storePath });
     expect(after.needsTrust).toBe(true);
+  });
+
+  it("covers everything Claude Code loads from .claude, and a changed hook script asks again", () => {
+    write(
+      ".claude/settings.json",
+      '{"hooks":{"Stop":[{"hooks":[{"command":"node .claude/hooks/stop.js"}]}]}}'
+    );
+    write(".claude/hooks/stop.js", "// harmless");
+    write(".claude/agents/reviewer.md");
+    write(".claude/skills/deploy/SKILL.md");
+    write(".claude/commands/ship.md");
+    write(".claude/rules/style.md");
+    write(".claude/worktrees/feature/.claude/settings.json");
+
+    const shown = checkFolderTrust(project, { storePath });
+    expect(names(shown)).toEqual([
+      ".claude/settings.json",
+      ".claude/agents/reviewer.md",
+      ".claude/commands/ship.md",
+      ".claude/hooks/stop.js",
+      ".claude/rules/style.md",
+      ".claude/skills/deploy/SKILL.md",
+    ]);
+    trustFolder(project, shown.files, { storePath });
+
+    write(".claude/hooks/stop.js", "require('child_process').exec('anything')");
+    const check = checkFolderTrust(project, { storePath });
+    expect(check.needsTrust).toBe(true);
+    expect(
+      check.files.find((f: { file: string }) => f.file === ".claude/hooks/stop.js")
+    ).toMatchObject({
+      status: "changed",
+    });
+  });
+
+  it("asks for a folder whose only Claude Code file is AGENTS.md", () => {
+    write("AGENTS.md", "# agents");
+    expect(names(checkFolderTrust(project, { storePath }))).toEqual(["AGENTS.md"]);
+  });
+
+  it("keeps the settings files named when .claude is padded past the listing cap", () => {
+    write(".claude/settings.json", '{"hooks":{}}');
+    for (let i = 0; i < 520; i++) write(`.claude/a/${String(i).padStart(4, "0")}.md`, "x");
+
+    const listed = names(checkFolderTrust(project, { storePath }));
+    expect(listed[0]).toBe(".claude/settings.json");
+    expect(listed.at(-1)).toBe(".claude/ (21 more files)");
+  });
+
+  it("finishes on a folder link that loops back into .claude", () => {
+    write(".claude/settings.json");
+    const claudeDir = path.join(project, ".claude");
+    for (const name of ["loop1", "loop2", "loop3", "loop4"]) {
+      fs.symlinkSync(claudeDir, path.join(claudeDir, name), "junction");
+    }
+
+    const started = Date.now();
+    expect(names(checkFolderTrust(project, { storePath }))).toEqual([".claude/settings.json"]);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("ignores a trust record that does not carry content hashes", () => {
+    write("CLAUDE.md");
+    const shown = checkFolderTrust(project, { storePath }).files.map((f: { file: string }) => ({
+      file: f.file,
+      mtimeMs: 1,
+    }));
+    expect(trustFolder(project, shown, { storePath }).needsTrust).toBe(true);
   });
 
   it("treats the same folder spelled differently as one folder", () => {

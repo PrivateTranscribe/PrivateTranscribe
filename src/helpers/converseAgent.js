@@ -12,6 +12,7 @@
  */
 
 const { spawn } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -120,16 +121,27 @@ function resolveClaudeBin(explicit, { cwd } = {}) {
 
 /**
  * Project files Claude Code loads on its own. --print mode shows no "trust this
- * folder?" prompt, so their hooks and allow rules would apply unseen.
+ * folder?" prompt, so their hooks and allow rules would apply unseen. All of
+ * .claude counts: agents, skills, commands and rules load from it, and hook
+ * scripts usually live there, so a trusted settings file cannot run a changed one.
  */
-const FOLDER_CONFIG_FILES = [
+const FOLDER_CONFIG_FILES = [".mcp.json", "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"];
+const FOLDER_CONFIG_DIR = ".claude";
+/** Listed first, so padding .claude with junk cannot push them out of sight. */
+const FOLDER_CONFIG_FIRST = [
   ".claude/settings.json",
   ".claude/settings.local.json",
-  ".mcp.json",
-  "CLAUDE.md",
-  "CLAUDE.local.md",
   ".claude/CLAUDE.md",
+  ".claude/AGENTS.md",
 ];
+/** Claude Code's own worktrees are whole checkouts, not configuration. */
+const FOLDER_CONFIG_SKIP = new Set([".claude/worktrees"]);
+/** Past this many files the rest count as one entry, so a change in them still asks. */
+const MAX_TRUST_FILES = 500;
+/** The walk stops here, so a link to a huge folder cannot stall the main process. */
+const MAX_WALK_FILES = 5000;
+/** Config files are small; a bigger file is fingerprinted by size and time instead of read. */
+const MAX_HASH_BYTES = 4 * 1024 * 1024;
 
 const TRUST_STORE_FILE = "converse-folder-trust.json";
 
@@ -156,16 +168,109 @@ function resolveTrustStorePath(explicitPath) {
   return null;
 }
 
-/** The Claude Code config files present in `folder`, with their modified times. */
+function sha256(data) {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+function hashFile(file) {
+  const stat = fs.statSync(file);
+  if (stat.size > MAX_HASH_BYTES) return sha256(`large:${stat.size}:${stat.mtimeMs}`);
+  return sha256(fs.readFileSync(file));
+}
+
+const rankConfigPath = (rel) => {
+  const i = FOLDER_CONFIG_FIRST.indexOf(rel);
+  return i === -1 ? FOLDER_CONFIG_FIRST.length : i;
+};
+
+/**
+ * Relative paths of every file under .claude, skipping FOLDER_CONFIG_SKIP, with
+ * FOLDER_CONFIG_FIRST ahead of the rest. Linked folders are followed, because
+ * Claude Code follows them too; each real folder is walked once, so a link loop ends.
+ */
+function listConfigDir(folder) {
+  const out = [];
+  const seen = new Set();
+  let truncated = false;
+  const walk = (rel) => {
+    const abs = path.join(folder, ...rel.split("/"));
+    let real;
+    try {
+      real = fs.realpathSync(abs);
+    } catch {
+      return; // A broken link loads nothing.
+    }
+    const key = process.platform === "win32" ? real.toLowerCase() : real;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    let entries;
+    try {
+      entries = fs.readdirSync(abs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (out.length >= MAX_WALK_FILES) {
+        truncated = true;
+        return;
+      }
+      const child = `${rel}/${entry.name}`;
+      if (FOLDER_CONFIG_SKIP.has(child)) continue;
+      let isDir = entry.isDirectory();
+      if (entry.isSymbolicLink()) {
+        try {
+          isDir = fs.statSync(path.join(folder, ...child.split("/"))).isDirectory();
+        } catch {
+          continue;
+        }
+      }
+      if (isDir) walk(child);
+      else out.push(child);
+    }
+  };
+  walk(FOLDER_CONFIG_DIR);
+  out.sort((a, b) => rankConfigPath(a) - rankConfigPath(b) || (a < b ? -1 : a > b ? 1 : 0));
+  return { files: out, truncated };
+}
+
+/**
+ * The Claude Code config files present in `folder`, each with a SHA-256 of its
+ * content. A modified time is not enough: an archive can restore the one the
+ * user trusted on different content.
+ */
 function scanFolderConfig(folder) {
   const found = [];
-  for (const rel of FOLDER_CONFIG_FILES) {
+  const add = (rel) => {
+    const file = path.join(folder, ...rel.split("/"));
     try {
-      const stat = fs.statSync(path.join(folder, ...rel.split("/")));
-      if (stat.isFile()) found.push({ file: rel, mtimeMs: stat.mtimeMs });
+      if (fs.statSync(file).isFile()) found.push({ file: rel, sha256: hashFile(file) });
     } catch {
-      // Not there.
+      // Not there, or unreadable now; an unreadable file is not loaded either.
     }
+  };
+  for (const rel of FOLDER_CONFIG_FILES) add(rel);
+
+  const { files: inDir, truncated } = listConfigDir(folder);
+  for (const rel of inDir.slice(0, MAX_TRUST_FILES)) add(rel);
+  const rest = inDir.slice(MAX_TRUST_FILES);
+  if (rest.length > 0 || truncated) {
+    const digest = crypto.createHash("sha256");
+    if (truncated) digest.update(`truncated at ${MAX_WALK_FILES}\n`);
+    for (const rel of rest) {
+      const file = path.join(folder, ...rel.split("/"));
+      let content = "";
+      try {
+        content = hashFile(file);
+      } catch {
+        // Counted by name only.
+      }
+      digest.update(`${rel}\0${content}\n`);
+    }
+    found.push({
+      file: `${FOLDER_CONFIG_DIR}/ (${rest.length}${truncated ? "+" : ""} more files)`,
+      sha256: digest.digest("hex"),
+    });
   }
   return found;
 }
@@ -182,8 +287,8 @@ function readTrustStore(storePath) {
 
 /**
  * Whether `folder` needs the user's trust before Claude Code starts in it. A
- * trusted folder asks again when a file is new or its modified time differs
- * from the one the user was shown; each file is "new", "changed" or "trusted".
+ * trusted folder asks again when a file is new or its content differs from
+ * what the user was shown; each file is "new", "changed" or "trusted".
  */
 function checkFolderTrust(folder, { storePath } = {}) {
   const files = scanFolderConfig(folder);
@@ -203,7 +308,7 @@ function checkFolderTrust(folder, { storePath } = {}) {
     ...f,
     status: !Object.hasOwn(known, f.file)
       ? "new"
-      : known[f.file] !== f.mtimeMs
+      : known[f.file] !== f.sha256
         ? "changed"
         : "trusted",
   }));
@@ -223,9 +328,9 @@ function trustFolder(folder, shownFiles, { storePath } = {}) {
   const snapshot = Array.isArray(shownFiles) ? shownFiles : scanFolderConfig(folder);
   const files = {};
   for (const entry of snapshot) {
-    if (!entry || !FOLDER_CONFIG_FILES.includes(entry.file)) continue;
-    if (typeof entry.mtimeMs !== "number" || !Number.isFinite(entry.mtimeMs)) continue;
-    files[entry.file] = entry.mtimeMs;
+    if (!entry || typeof entry.file !== "string") continue;
+    if (typeof entry.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(entry.sha256)) continue;
+    files[entry.file] = entry.sha256;
   }
 
   const store = readTrustStore(file);

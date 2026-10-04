@@ -91,9 +91,9 @@ describe("folder trust prompt", () => {
             needsTrust: true,
             reason: "changed",
             files: [
-              { file: ".claude/settings.json", mtimeMs: 2, status: "changed" },
-              { file: ".mcp.json", mtimeMs: 1, status: "new" },
-              { file: "CLAUDE.md", mtimeMs: 1, status: "trusted" },
+              { file: ".claude/settings.json", sha256: "b".repeat(64), status: "changed" },
+              { file: ".mcp.json", sha256: "a".repeat(64), status: "new" },
+              { file: "CLAUDE.md", sha256: "a".repeat(64), status: "trusted" },
             ],
           },
           busy: false,

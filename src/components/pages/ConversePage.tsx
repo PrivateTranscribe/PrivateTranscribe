@@ -60,7 +60,7 @@ const POLL_MS = 200;
 /** Start of the main process's refusal for an untrusted folder (converseAgent.js). */
 const FOLDER_TRUST_REQUIRED = "This folder has Claude Code settings you have not trusted yet";
 
-type FolderTrustFile = { file: string; mtimeMs: number; status: "new" | "changed" | "trusted" };
+type FolderTrustFile = { file: string; sha256: string; status: "new" | "changed" | "trusted" };
 type FolderTrustCheck = {
   needsTrust: boolean;
   reason: "no-config" | "untrusted" | "changed" | "trusted";
@@ -407,17 +407,18 @@ export function FolderTrustPrompt({
               : "Trust this folder's Claude Code files?"}
           </p>
           <p className="text-[13px] text-muted-foreground leading-relaxed">
-            Claude Code loads these from the folder without asking. Settings can run commands on
-            this computer, add MCP servers, and pre-approve tools so no permission question appears
-            here. CLAUDE.md files are instructions it follows. Trust the folder only if you know
-            where these files came from.
+            Claude Code loads these from the folder without asking. Hooks in its settings can run
+            commands on this computer, .mcp.json can start MCP servers, and a skill can pre-approve
+            tools so no permission question appears here. CLAUDE.md, AGENTS.md, agents, skills and
+            commands are instructions it follows. Trust the folder only if you know where these
+            files came from.
           </p>
         </div>
       </div>
 
       <ul
         data-testid="converse-folder-trust-files"
-        className="rounded-md border border-border-subtle/60 bg-surface-1 px-3 py-2 space-y-1 font-mono text-[12px]"
+        className="max-h-48 overflow-y-auto rounded-md border border-border-subtle/60 bg-surface-1 px-3 py-2 space-y-1 font-mono text-[12px]"
       >
         {check.files.map((entry) => (
           <li key={entry.file} className="flex items-center justify-between gap-3">
