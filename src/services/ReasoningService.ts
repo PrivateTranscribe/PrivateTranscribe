@@ -4,7 +4,7 @@ import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
 import { isShortDictation } from "../utils/shortDictation";
-import codingPrompt from "../config/codingPrompt.json";
+import { getCodingPrompt } from "../config/codingPrompt";
 import logger from "../utils/logger";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import {
@@ -676,7 +676,7 @@ class ReasoningService {
     }
     const provider = getModelProvider(trimmedModel);
     if (config.writingStyle === "coding") {
-      config = { ...config, promptTemplate: codingPrompt.systemPrompt };
+      config = { ...config, promptTemplate: config.promptTemplate ?? getCodingPrompt() };
     }
 
     logger.logReasoning("PROVIDER_SELECTION", {
@@ -733,6 +733,14 @@ class ReasoningService {
           break;
         default:
           throw new Error(`Unsupported reasoning provider: ${provider}`);
+      }
+
+      // A coding prompt is dictated prose for another agent, not generated code.
+      // Throw so the dictation pipeline preserves the original words on failure.
+      if (config.writingStyle === "coding" && result.includes("```") && !text.includes("```")) {
+        throw new Error(
+          "The model wrote code instead of editing your words. Try another model or edit the coding instructions."
+        );
       }
 
       // Short dictation is often a deliberate insertion into existing text.
