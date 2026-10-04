@@ -2,6 +2,7 @@ const { clipboard, app } = require("electron");
 const { spawn, spawnSync } = require("child_process");
 const { killProcess } = require("../utils/process");
 const debugLogger = require("./debugLogger");
+const { snapshotClipboard, restoreClipboard } = require("./clipboardSnapshot");
 const { WindowsPasteDiagnostics, STAGES } = require("./windowsPasteDiagnostics");
 const path = require("path");
 const {
@@ -142,43 +143,11 @@ class ClipboardManager {
   }
 
   _snapshotClipboard() {
-    // Preserve common clipboard payloads (including images), so auto-paste doesn't destroy
-    // whatever the user had (e.g. screenshot/snippet images).
-    const text = clipboard.readText();
-    const html = clipboard.readHTML();
-    const rtf = clipboard.readRTF();
-    const image = clipboard.readImage();
-
-    // Note: We intentionally do NOT log clipboard contents (privacy). Only sizes/flags.
-    return {
-      text,
-      html,
-      rtf,
-      hasImage: image && typeof image.isEmpty === "function" ? !image.isEmpty() : false,
-      image,
-    };
+    return snapshotClipboard(clipboard);
   }
 
   _restoreClipboard(snapshot) {
-    if (!snapshot) return;
-
-    // clipboard.write overwrites the clipboard in one call, which is important for consistency.
-    const payload = {};
-    if (typeof snapshot.text === "string" && snapshot.text.length > 0) payload.text = snapshot.text;
-    if (typeof snapshot.html === "string" && snapshot.html.length > 0) payload.html = snapshot.html;
-    if (typeof snapshot.rtf === "string" && snapshot.rtf.length > 0) payload.rtf = snapshot.rtf;
-    if (snapshot.hasImage && snapshot.image) payload.image = snapshot.image;
-
-    try {
-      clipboard.write(payload);
-    } catch {
-      // Last resort: restore at least text.
-      try {
-        clipboard.writeText(snapshot.text || "");
-      } catch {
-        // ignore
-      }
-    }
+    restoreClipboard(clipboard, snapshot);
   }
 
   _restoreClipboardAfter(snapshot, delayMs) {
