@@ -35,6 +35,12 @@ const SEGMENTATION_ARCHIVE_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
 const EMBEDDING_MODEL_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
+// Release assets can be replaced under the same URL, so their bytes are pinned.
+// GitHub lists no digest for these older assets: both were hashed from a download
+// and cross-checked against the models' Hugging Face copies.
+const SEGMENTATION_ARCHIVE_SHA256 =
+  "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488";
+const EMBEDDING_MODEL_SHA256 = "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b";
 
 function copyFloat32Samples(samples) {
   if (samples instanceof Float32Array) {
@@ -146,6 +152,7 @@ class DiarizationManager {
 
     emit("segmentation-download", 0);
     await downloadFile(SEGMENTATION_ARCHIVE_URL, archivePath, {
+      sha256: SEGMENTATION_ARCHIVE_SHA256,
       onProgress: (downloadedBytes, totalBytes) => {
         const percentage = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 45) : 0;
         emit("segmentation-download", percentage, { downloadedBytes, totalBytes });
@@ -158,6 +165,7 @@ class DiarizationManager {
 
     emit("embedding-download", 55);
     await downloadFile(EMBEDDING_MODEL_URL, embeddingPath, {
+      sha256: EMBEDDING_MODEL_SHA256,
       onProgress: (downloadedBytes, totalBytes) => {
         const partial = totalBytes > 0 ? downloadedBytes / totalBytes : 0;
         emit("embedding-download", 55 + Math.round(partial * 44), { downloadedBytes, totalBytes });
@@ -507,7 +515,9 @@ module.exports = {
   DEFAULT_MIN_CLUSTER_SECONDS,
   DEFAULT_MIN_CLUSTER_SHARE,
   DEFAULT_SEGMENTATION_RELATIVE_PATH,
+  EMBEDDING_MODEL_SHA256,
   EMBEDDING_MODEL_URL,
+  SEGMENTATION_ARCHIVE_SHA256,
   SEGMENTATION_ARCHIVE_URL,
   copyFloat32Samples,
   normalizeDiarizationResult,

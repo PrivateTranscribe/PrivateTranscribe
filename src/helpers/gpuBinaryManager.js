@@ -35,11 +35,15 @@ const LATEST_MANIFEST_CACHE_MS = 60 * 60 * 1000; // successful lookups
 const LATEST_MANIFEST_RETRY_MS = 5 * 60 * 1000; // failed lookups (offline, 404)
 const ENGINE_VERSION_PATTERN = /^v\d+\.\d+\.\d+$/;
 
+// sha256 is the zip's pinned SHA-256, checked before extraction; set it with every
+// BINARY_VERSION bump. v0.0.10 was published without a recorded hash, so null
+// leaves it unverified (logged) rather than blocking every GPU install.
 const CUDA_BINARIES = {
   "linux-x64": {
     outputName: "whisper-server-linux-x64-cuda",
     archiveName: "whisper-server-linux-x64-cuda.zip",
     remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-linux-x64-cuda.zip`,
+    sha256: null,
     companionPattern: /\.so(?:\.\d+)*$/,
     approxBytes: 300000000, // CUDA server + runtime libs package
   },
@@ -47,6 +51,7 @@ const CUDA_BINARIES = {
     outputName: "whisper-server-win32-x64-cuda.exe",
     archiveName: "whisper-server-win32-x64-cuda.zip",
     remoteUrl: `${R2_BASE_URL}/binaries/${BINARY_VERSION}/whisper-server-win32-x64-cuda.zip`,
+    sha256: null,
     companionPattern: /\.dll$/i,
     approxBytes: 700000000, // CUDA server + cudart/cublas DLL package
   },
@@ -531,11 +536,18 @@ class GpuBinaryManager {
         archiveName: spec.archiveName,
         outputName: spec.outputName,
       });
+      if (!spec.sha256) {
+        debugLogger.warn("GpuBinaryManager: no pinned SHA-256 for this CUDA package", {
+          version: BINARY_VERSION,
+          archiveName: spec.archiveName,
+        });
+      }
 
       await downloadFile(spec.remoteUrl, archivePath, {
         signal,
         timeout: 600000, // 10 min for large packages
         maxRetries: 2,
+        sha256: spec.sha256,
         onProgress: (bytesDownloaded, total) => {
           const effectiveTotal = total || totalBytes;
           const percent =
@@ -585,7 +597,6 @@ class GpuBinaryManager {
       try {
         const sha256 = await this.computeSha256(binaryPath);
         debugLogger.info("GpuBinaryManager: CUDA binary SHA256", { binaryPath, sha256 });
-        // TODO: Compare SHA256 against a signed manifest and fail download on mismatch.
       } catch (hashError) {
         debugLogger.warn("GpuBinaryManager: failed to compute CUDA binary SHA256", {
           binaryPath,

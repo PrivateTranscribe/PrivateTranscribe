@@ -14,6 +14,7 @@ function getParakeetModelConfig(modelName) {
   if (!modelInfo) return null;
   return {
     url: modelInfo.downloadUrl,
+    sha256: modelInfo.sha256,
     size: modelInfo.sizeMb * 1_000_000,
     language: modelInfo.language,
     supportedLanguages: modelInfo.supportedLanguages || [],
@@ -261,6 +262,7 @@ class ParakeetManager {
       await downloadFile(modelConfig.url, archivePath, {
         timeout: 600000,
         signal,
+        sha256: modelConfig.sha256,
         onProgress: (downloadedBytes, totalBytes) => {
           if (progressCallback) {
             progressCallback({

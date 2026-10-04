@@ -1,6 +1,5 @@
 const path = require("path");
 const fs = require("fs");
-const crypto = require("crypto");
 const { promises: fsPromises } = require("fs");
 const { app } = require("electron");
 const { downloadFile: sharedDownloadFile, createDownloadSignal } = require("./downloadUtils");
@@ -27,49 +26,6 @@ class ModelError extends Error {
 class ModelNotFoundError extends ModelError {
   constructor(modelId) {
     super(`Model ${modelId} not found`, "MODEL_NOT_FOUND", { modelId });
-  }
-}
-
-function throwIfDownloadCancelled(signal) {
-  if (signal?.aborted) {
-    throw Object.assign(new Error("Download cancelled"), { isAbort: true });
-  }
-}
-
-async function verifyModelDownload(filePath, model, signal) {
-  throwIfDownloadCancelled(signal);
-  const stats = await fsPromises.stat(filePath);
-
-  if (Number.isFinite(model.sizeBytes) && stats.size !== model.sizeBytes) {
-    throw new ModelError(
-      "Downloaded model size does not match the expected artifact",
-      "DOWNLOAD_CORRUPTED",
-      {
-        expectedSize: model.sizeBytes,
-        actualSize: stats.size,
-      }
-    );
-  }
-
-  if (!model.sha256) return;
-
-  const hash = crypto.createHash("sha256");
-  for await (const chunk of fs.createReadStream(filePath)) {
-    throwIfDownloadCancelled(signal);
-    hash.update(chunk);
-  }
-  throwIfDownloadCancelled(signal);
-
-  const actualSha256 = hash.digest("hex");
-  if (actualSha256.toLowerCase() !== model.sha256.toLowerCase()) {
-    throw new ModelError(
-      "Downloaded model checksum does not match the expected artifact",
-      "DOWNLOAD_CORRUPTED",
-      {
-        expectedSha256: model.sha256,
-        actualSha256,
-      }
-    );
   }
 }
 
@@ -239,6 +195,8 @@ class ModelManager {
 
       await sharedDownloadFile(downloadUrl, modelPath, {
         signal,
+        // Hashed before the rename, so a mismatching file never reaches modelPath.
+        sha256: model.sha256,
         onProgress: (downloadedBytes, totalBytes) => {
           const progress = totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0;
           this.downloadProgress.set(modelId, {
@@ -263,19 +221,17 @@ class ModelManager {
         );
       }
 
-      if (model.sha256) {
-        try {
-          await verifyModelDownload(modelPath, model, signal);
-        } catch (error) {
-          await fsPromises.unlink(modelPath).catch(() => {});
-          throw error;
-        }
-      }
-
       return modelPath;
     } catch (error) {
       if (error.isAbort) {
         throw new ModelError("Download cancelled by user", "DOWNLOAD_CANCELLED", { modelId });
+      }
+      if (error.code === "CHECKSUM_MISMATCH") {
+        throw new ModelError(
+          "Downloaded model checksum does not match the expected artifact",
+          "DOWNLOAD_CORRUPTED",
+          { expectedSha256: error.expectedSha256, actualSha256: error.actualSha256 }
+        );
       }
       if (error.isHttpError) {
         throw new ModelError(`Download failed with status ${error.statusCode}`, "DOWNLOAD_FAILED", {
@@ -517,5 +473,4 @@ module.exports = {
   default: new ModelManager(),
   ModelError,
   ModelNotFoundError,
-  verifyModelDownload,
 };

@@ -225,6 +225,7 @@ class KokoroManager {
         await downloadFile(file.url, destPath, {
           timeout: DOWNLOAD_TIMEOUT_MS,
           signal,
+          sha256: file.sha256,
           onProgress: (downloadedBytes) => {
             if (!progressCallback) return;
             const overall = fileStartBytes + downloadedBytes;

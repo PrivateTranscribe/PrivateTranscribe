@@ -3,6 +3,7 @@ const { promises: fsPromises } = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
+const crypto = require("crypto");
 const { pipeline } = require("stream");
 const debugLogger = require("./debugLogger");
 
@@ -14,6 +15,8 @@ const DEFAULT_MAX_RETRIES = 3;
 const MAX_BACKOFF_MS = 30000;
 // Temp files older than this are considered abandoned and eligible for deletion.
 const STALE_TMP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+const HASH_CHUNK_BYTES = 1024 * 1024;
 
 const RETRYABLE_CODES = new Set([
   "ECONNRESET",
@@ -306,13 +309,56 @@ async function cleanStaleTmpFiles(dir) {
   );
 }
 
+function normalizeSha256(value) {
+  const sha256 = String(value ?? "").toLowerCase();
+  if (!SHA256_HEX_PATTERN.test(sha256)) {
+    throw new Error(`Invalid pinned SHA-256: ${value}`);
+  }
+  return sha256;
+}
+
+/**
+ * Check a finished file against its pinned SHA-256. The file is streamed
+ * through the hash, never read whole: models run to tens of GB. On a mismatch
+ * the file is deleted and the error carries code CHECKSUM_MISMATCH.
+ *
+ * @param {string} filePath
+ * @param {string} expectedSha256 64 hex characters
+ * @param {{ signal?: { aborted: boolean } }} [options]
+ * @returns {Promise<string>} the verified digest
+ */
+async function verifySha256(filePath, expectedSha256, { signal } = {}) {
+  const expected = normalizeSha256(expectedSha256);
+  const hash = crypto.createHash("sha256");
+  for await (const chunk of fs.createReadStream(filePath, { highWaterMark: HASH_CHUNK_BYTES })) {
+    if (signal?.aborted) {
+      throw Object.assign(new Error("Download cancelled"), { isAbort: true });
+    }
+    hash.update(chunk);
+  }
+
+  const actual = hash.digest("hex");
+  if (actual === expected) return actual;
+
+  await fsPromises.unlink(filePath).catch(() => {});
+  debugLogger.warn("Download failed its SHA-256 check", { filePath, expected, actual });
+  throw Object.assign(new Error("Downloaded file does not match its pinned SHA-256 checksum"), {
+    code: "CHECKSUM_MISMATCH",
+    expectedSha256: expected,
+    actualSha256: actual,
+  });
+}
+
 async function downloadFile(url, destPath, options = {}) {
   const {
     onProgress,
     timeout = DEFAULT_TIMEOUT,
     maxRetries = DEFAULT_MAX_RETRIES,
     signal,
+    sha256,
   } = options;
+  // Validated up front so a malformed pin fails before gigabytes are fetched.
+  const expectedSha256 = sha256 ? normalizeSha256(sha256) : null;
 
   const tempPath = `${destPath}.tmp`;
 
@@ -358,6 +404,12 @@ async function downloadFile(url, destPath, options = {}) {
     try {
       await downloadAttempt(finalUrl, tempPath, { timeout, onProgress, signal, startOffset });
 
+      // Hash only the finished file (resumed parts included), and move it into
+      // place only when it matches; a mismatch is fatal and deletes the .tmp.
+      if (expectedSha256) {
+        await verifySha256(tempPath, expectedSha256, { signal });
+      }
+
       // Atomic move to final path
       try {
         await fsPromises.rename(tempPath, destPath);
@@ -370,7 +422,7 @@ async function downloadFile(url, destPath, options = {}) {
         }
       }
 
-      debugLogger.info("Download complete", { destPath });
+      debugLogger.info("Download complete", { destPath, sha256Verified: Boolean(expectedSha256) });
       return destPath;
     } catch (error) {
       lastError = error;
@@ -427,4 +479,5 @@ module.exports = {
   cleanStaleTmpFiles,
   isRetryable,
   assertSecureDownloadUrl,
+  verifySha256,
 };

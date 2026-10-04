@@ -35,6 +35,7 @@
       ],
       "recommended": true,
       "downloadUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+      "sha256": "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf",
       "extractDir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
     }
   },
@@ -47,23 +48,27 @@
       "files": [
         {
           "relPath": "config.json",
-          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a/config.json",
-          "bytes": 44
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/config.json",
+          "bytes": 44,
+          "sha256": "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f"
         },
         {
           "relPath": "tokenizer.json",
-          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a/tokenizer.json",
-          "bytes": 3497
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/tokenizer.json",
+          "bytes": 3497,
+          "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34"
         },
         {
           "relPath": "tokenizer_config.json",
-          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a/tokenizer_config.json",
-          "bytes": 113
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/tokenizer_config.json",
+          "bytes": 113,
+          "sha256": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20"
         },
         {
           "relPath": "onnx/model.onnx",
-          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a/onnx/model.onnx",
-          "bytes": 325532171
+          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/dd4401a9add81ac692d20e240d22ec9dda82cc29/onnx/model.onnx",
+          "bytes": 325532171,
+          "sha256": "651ea8291843a92276a4a003581a215cb07d15e47dde6fcfb1b768f9a1682054"
         }
       ]
     }
@@ -75,7 +80,8 @@
       "size": "1.6GB",
       "sizeMb": 1600,
       "fileName": "ggml-large-v3-turbo.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo.bin",
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
       "recommended": true
     },
     "base": {
@@ -84,7 +90,8 @@
       "size": "142MB",
       "sizeMb": 142,
       "fileName": "ggml-base.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin",
+      "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
     },
     "small-en-tdrz": {
       "name": "Small EN TDRZ",
@@ -92,7 +99,8 @@
       "size": "466MB",
       "sizeMb": 466,
       "fileName": "ggml-small.en-tdrz.bin",
-      "downloadUrl": "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/main/ggml-small.en-tdrz.bin"
+      "downloadUrl": "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/d44ba793fc67e509623a88a409723311fa677744/ggml-small.en-tdrz.bin",
+      "sha256": "ceac3ec06d1d98ef71aec665283564631055fd6129b79d8e1be4f9cc33cc54b4"
     },
     "tiny": {
       "name": "Tiny",
@@ -100,7 +108,8 @@
       "size": "75MB",
       "sizeMb": 75,
       "fileName": "ggml-tiny.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.bin",
+      "sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"
     },
     "small": {
       "name": "Small",
@@ -108,7 +117,8 @@
       "size": "466MB",
       "sizeMb": 466,
       "fileName": "ggml-small.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.bin",
+      "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
     },
     "medium": {
       "name": "Medium",
@@ -116,7 +126,8 @@
       "size": "1.5GB",
       "sizeMb": 1500,
       "fileName": "ggml-medium.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-medium.bin",
+      "sha256": "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208"
     },
     "large": {
       "name": "Large",
@@ -124,7 +135,8 @@
       "size": "3GB",
       "sizeMb": 3000,
       "fileName": "ggml-large-v3.bin",
-      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3.bin",
+      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
     }
   },
   "transcriptionProviders": [
@@ -379,67 +391,79 @@
           "id": "qwen3-8b-q4_k_m",
           "name": "Qwen3 8B",
           "size": "5.0GB",
-          "sizeBytes": 5402263552,
+          "sizeBytes": 5027783488,
           "description": "Latest Qwen3 with thinking mode support",
           "fileName": "Qwen3-8B-Q4_K_M.gguf",
           "quantization": "q4_k_m",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-8B-GGUF"
+          "hfRepo": "Qwen/Qwen3-8B-GGUF",
+          "hfRevision": "7c41481f57cb95916b40956ab2f0b139b296d974",
+          "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"
         },
         {
           "id": "qwen3-8b-q5_k_m",
           "name": "Qwen3 8B (Q5)",
           "size": "5.9GB",
-          "sizeBytes": 6281625600,
+          "sizeBytes": 5851112224,
           "description": "Higher quality Qwen3 with thinking mode",
           "fileName": "Qwen3-8B-Q5_K_M.gguf",
           "quantization": "q5_k_m",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-8B-GGUF"
+          "hfRepo": "Qwen/Qwen3-8B-GGUF",
+          "hfRevision": "7c41481f57cb95916b40956ab2f0b139b296d974",
+          "sha256": "068bae163faa96ad48032daf4e071a6a28fe67d8dcc95367609c2ff165e52738"
         },
         {
           "id": "qwen3-4b-q4_k_m",
           "name": "Qwen3 4B",
           "size": "2.5GB",
-          "sizeBytes": 2684354560,
+          "sizeBytes": 2497280256,
           "description": "Compact Qwen3 with reasoning capabilities",
           "fileName": "Qwen3-4B-Q4_K_M.gguf",
           "quantization": "q4_k_m",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-4B-GGUF"
+          "hfRepo": "Qwen/Qwen3-4B-GGUF",
+          "hfRevision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
+          "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
         },
         {
           "id": "qwen3-1.7b-q8_0",
           "name": "Qwen3 1.7B",
           "size": "1.8GB",
-          "sizeBytes": 1965555712,
+          "sizeBytes": 1834426016,
           "description": "Small but capable Qwen3 model",
           "fileName": "Qwen3-1.7B-Q8_0.gguf",
           "quantization": "q8_0",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-1.7B-GGUF"
+          "hfRepo": "Qwen/Qwen3-1.7B-GGUF",
+          "hfRevision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
+          "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a"
         },
         {
           "id": "qwen3-0.6b-q8_0",
           "name": "Qwen3 0.6B",
           "size": "0.6GB",
-          "sizeBytes": 686817280,
+          "sizeBytes": 639446688,
           "description": "Tiny Qwen3 for edge devices",
           "fileName": "Qwen3-0.6B-Q8_0.gguf",
           "quantization": "q8_0",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-0.6B-GGUF"
+          "hfRepo": "Qwen/Qwen3-0.6B-GGUF",
+          "hfRevision": "23749fefcc72300e3a2ad315e1317431b06b590a",
+          "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
         },
         {
           "id": "qwen3-32b-q4_k_m",
           "name": "Qwen3 32B",
           "size": "19.8GB",
-          "sizeBytes": 21260251955,
+          "sizeBytes": 19762149024,
           "description": "Most powerful local Qwen3 with deep reasoning",
           "fileName": "Qwen3-32B-Q4_K_M.gguf",
           "quantization": "q4_k_m",
           "contextLength": 131072,
-          "hfRepo": "Qwen/Qwen3-32B-GGUF"
+          "hfRepo": "Qwen/Qwen3-32B-GGUF",
+          "hfRevision": "938a7432affaec9157f883a87164e2646ae17555",
+          "sha256": "efd971561896866f0e910cce52761ca77b1b138090c7f15fe284676d57d1f689"
         }
       ]
     },
@@ -453,12 +477,14 @@
           "id": "gpt-oss-20b-mxfp4",
           "name": "GPT-OSS 20B",
           "size": "12.1GB",
-          "sizeBytes": 12999763968,
+          "sizeBytes": 12109566560,
           "description": "OpenAI's open-weight model for consumer hardware",
           "fileName": "gpt-oss-20b-mxfp4.gguf",
           "quantization": "mxfp4",
           "contextLength": 128000,
           "hfRepo": "ggml-org/gpt-oss-20b-GGUF",
+          "hfRevision": "e1dc459feff949ff451ce107337a2026daa80df8",
+          "sha256": "be37a636aca0fc1aae0d32325f82f6b4d21495f06823b5fbc1898ae0303e9935",
           "recommended": true
         }
       ]

@@ -26,6 +26,7 @@ function getWhisperModelConfig(modelName) {
     url: modelInfo.downloadUrl,
     size: modelInfo.sizeMb * 1_000_000,
     fileName: modelInfo.fileName,
+    sha256: modelInfo.sha256,
   };
 }
 
@@ -876,6 +877,7 @@ class WhisperManager {
       await downloadFile(modelConfig.url, modelPath, {
         timeout: 600000,
         signal,
+        sha256: modelConfig.sha256,
         onProgress: (downloadedBytes, totalBytes) => {
           if (progressCallback) {
             progressCallback({
@@ -892,7 +894,6 @@ class WhisperManager {
       const stats = await fsPromises.stat(modelPath);
       const minSize = getMinimumValidModelBytes(modelName);
 
-      // TODO: Verify downloaded Whisper models against a SHA256 manifest.
       if (stats.size < minSize) {
         await fsPromises.unlink(modelPath).catch(() => {});
         throw new Error(getInvalidModelMessage(modelName, stats.size));

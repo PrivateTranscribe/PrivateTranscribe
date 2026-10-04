@@ -243,6 +243,10 @@ jobs:
           }
           Get-ChildItem $packageDir
           Get-Item whisper-server-win32-x64-cuda.zip
+          # The app pins this hash (sha256 in gpuBinaryManager.js) with the BINARY_VERSION bump.
+          $sha256 = (Get-FileHash whisper-server-win32-x64-cuda.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "whisper-server-win32-x64-cuda.zip SHA-256: ``$sha256``" | Add-Content $env:GITHUB_STEP_SUMMARY
+          Write-Host "SHA-256: $sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -361,6 +365,10 @@ jobs:
           fi
           ls -lh "$PACKAGE_DIR"
           ls -lh whisper-server-linux-x64-cuda.zip
+          # The app pins this hash (sha256 in gpuBinaryManager.js) with the BINARY_VERSION bump.
+          SHA256=$(sha256sum whisper-server-linux-x64-cuda.zip | cut -d' ' -f1)
+          echo "whisper-server-linux-x64-cuda.zip SHA-256: \`$SHA256\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: $SHA256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

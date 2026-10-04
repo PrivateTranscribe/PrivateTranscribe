@@ -132,7 +132,10 @@ To make that state visible, the `build-cuda-binary.yml` workflow also publishes 
 Release checklist for a new engine version:
 
 1. Run the `Build CUDA Binary` workflow with `engine_version: vX.Y.Z` and `upload_to_r2: true` (uploads both packages + manifest).
-2. Bump `BINARY_VERSION` in `gpuBinaryManager.js` to the same value.
+2. Bump `BINARY_VERSION` in `gpuBinaryManager.js` to the same value, and set each
+   package's `sha256` in `CUDA_BINARIES` to the SHA-256 the workflow wrote to its job
+   summary. The app checks the zip against it before extracting. `v0.0.10` predates
+   this step, so its `sha256` is `null` and its zip goes unchecked.
 3. Ship the app release; its CUDA auto-update installs the new engine.
 
 Always publish a _new_ version rather than overwriting an existing one. Installs

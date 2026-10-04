@@ -10,8 +10,10 @@ export interface ModelDefinition {
   quantization: string;
   contextLength: number;
   hfRepo: string;
-  hfRevision?: string;
-  sha256?: string;
+  /** Commit the file is downloaded from; a branch name like "main" can move. */
+  hfRevision: string;
+  /** Checked before the downloaded file is used. */
+  sha256: string;
   recommended?: boolean;
 }
 
@@ -71,6 +73,8 @@ export interface WhisperModelInfo {
   sizeMb: number;
   fileName: string;
   downloadUrl: string;
+  /** Checked before the downloaded file is used. */
+  sha256: string;
   recommended?: boolean;
 }
 
@@ -91,6 +95,8 @@ export interface ParakeetModelInfo {
   supportedLanguages: string[];
   recommended?: boolean;
   downloadUrl: string;
+  /** SHA-256 of the archive, checked before it is extracted. */
+  sha256: string;
   extractDir: string;
 }
 
@@ -103,6 +109,8 @@ export interface KokoroModelFile {
   url: string;
   /** Expected size on disk, used to tell a complete file from a truncated one. */
   bytes: number;
+  /** Checked before the downloaded file is used. */
+  sha256: string;
 }
 
 export interface KokoroModelInfo {
