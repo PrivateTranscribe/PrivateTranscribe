@@ -213,7 +213,8 @@ export function useMicLevel(audioManagerRef, isRecording) {
         // constructor is not called synchronously from a renderer user-gesture.
         // Recording is triggered via IPC → React state update, so the renderer
         // never sees a synchronous gesture event. Always call resume() first,
-        // then poll until ctx.state === "running" before starting the tick loop.
+        // then verify that the sample clock advances before accepting the engine.
+        // A stale "running" state must not defer recovery to the 3s watchdog.
         // This also re-wakes a context that was suspended by a display sleep event.
         const startLoop = () => {
           if (cancelled) return;
@@ -248,13 +249,13 @@ export function useMicLevel(audioManagerRef, isRecording) {
           }
 
           void (async () => {
-            await waitForAudioContextRunning(recoveredCtx);
+            await waitForAudioContextRunning(recoveredCtx, { requireClockProgress: true });
             startLoop();
           })();
         };
 
         const startWhenAudioContextRuns = async () => {
-          if (await waitForAudioContextRunning(ctx)) {
+          if (await waitForAudioContextRunning(ctx, { requireClockProgress: true })) {
             startLoop();
             return;
           }
@@ -275,7 +276,7 @@ export function useMicLevel(audioManagerRef, isRecording) {
             return;
           }
 
-          await waitForAudioContextRunning(recoveredCtx);
+          await waitForAudioContextRunning(recoveredCtx, { requireClockProgress: true });
           startLoop();
         };
 
@@ -286,28 +287,21 @@ export function useMicLevel(audioManagerRef, isRecording) {
       }
     };
 
-    // Small delay to ensure AudioManager has set recordingStream before we read it.
-    const startTimer = setTimeout(() => {
+    // AudioManager stores the stream before announcing recording. Attach now
+    // so the first syllable is visible; retry only if the stream is not ready.
+    let startTimer = null;
+    const attachWhenReady = () => {
       if (cancelled) return;
 
       const stream = audioManagerRef.current?.recordingStream;
       if (!stream || !stream.active) {
-        // Stream not ready yet - retry once after a further 100ms.  This handles the
-        // rare race where getUserMedia resolves and sets isRecording=true before
-        // recordingStream is stored in audioManagerRef (e.g. on slow getUserMedia paths).
-        const retryTimer = setTimeout(() => {
-          if (cancelled) return;
-          const retryStream = audioManagerRef.current?.recordingStream;
-          if (!retryStream || !retryStream.active) return;
-          setupAnalyser(retryStream);
-        }, 100);
-        // Ensure the retry timer is cancelled if the effect cleans up first.
-        cleanupRef.current = () => clearTimeout(retryTimer);
+        startTimer = setTimeout(attachWhenReady, 100);
         return;
       }
 
       setupAnalyser(stream);
-    }, 60);
+    };
+    attachWhenReady();
 
     return () => {
       cancelled = true;
