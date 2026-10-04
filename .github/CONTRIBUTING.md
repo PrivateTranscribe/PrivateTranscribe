@@ -52,7 +52,7 @@ npm run build:renderer
 
 End-to-end tests start the real app. Run only the spec you touched, for example `npm run test:e2e -- tests/e2e/settings-search.spec.ts`. Keep your hands off the keyboard and mouse while it runs, because some specs use the clipboard and send key presses.
 
-UI changes need before-and-after screenshots in the pull request. Read [docs/DESIGN_TASTE_GUIDE.md](docs/DESIGN_TASTE_GUIDE.md) before you change a screen.
+UI changes need before-and-after screenshots in the pull request. Read [docs/DESIGN_TASTE_GUIDE.md](../docs/DESIGN_TASTE_GUIDE.md) before you change a screen.
 
 ## Pull requests
 
@@ -80,4 +80,4 @@ Report a vulnerability privately through the repository's **Security** tab, as [
 
 ## Finding your way around
 
-The tables in [CLAUDE.md](CLAUDE.md) map each part of the app to its files. Start with "Key Module Locations" and "Control Panel Page Architecture".
+The tables in [CLAUDE.md](../CLAUDE.md) map each part of the app to its files. Start with "Key Module Locations" and "Control Panel Page Architecture".

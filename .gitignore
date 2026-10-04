@@ -110,3 +110,6 @@ shots/
 # Satoshi's licence forbids passing the font file on through a public repo.
 /src/assets/fonts/satoshi-variable.woff2
 /resources/third-party/licenses/ITF-FFL-2.0-Satoshi.txt
+
+# T3 Code sidebar icon, a local editor setting
+t3.json

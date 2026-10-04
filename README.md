@@ -17,7 +17,7 @@ PrivateTranscribe began as a private copy of [OpenWhispr](https://github.com/Ope
 - **Control Panel** — transcription history, settings, model management
 - **Privacy-first** — with a local model, audio stays on your device
 
-[SECURITY.md](SECURITY.md) explains how to report a vulnerability, what the app can do on your PC and what leaves it.
+[SECURITY.md](.github/SECURITY.md) explains how to report a vulnerability, what the app can do on your PC and what leaves it.
 
 ## Requirements
 
@@ -25,7 +25,7 @@ PrivateTranscribe began as a private copy of [OpenWhispr](https://github.com/Ope
 
 ## Development
 
-You need Node.js 22. [CONTRIBUTING.md](CONTRIBUTING.md) has the full setup and the checks to run before a pull request.
+You need Node.js 22. [CONTRIBUTING.md](.github/CONTRIBUTING.md) has the full setup and the checks to run before a pull request.
 
 ```bash
 npm ci
@@ -47,7 +47,7 @@ Copies you build yourself do not check for app updates or send usage events.
 
 ## Contributing
 
-Bug fixes and bug reports are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and see [SUPPORT.md](SUPPORT.md) for where to ask questions.
+Bug fixes and bug reports are welcome. Start with [CONTRIBUTING.md](.github/CONTRIBUTING.md), and see [SUPPORT.md](.github/SUPPORT.md) for where to ask questions.
 
 ## License
 

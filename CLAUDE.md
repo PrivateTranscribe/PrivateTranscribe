@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Follow `CONTRIBUTING.md` to set up a fresh clone or prepare a pull request.
+Follow `.github/CONTRIBUTING.md` to set up a fresh clone or prepare a pull request.
 
 ## Project Overview
 
