@@ -859,11 +859,44 @@ Licence text: ITF Free Font License 2.0 (Satoshi), under "Full licence texts" at
 
 ### AI provider logos
 
-Logos of the AI providers the app can connect to: Anthropic, Gemini, Groq, Llama, Mistral, NVIDIA, OpenAI and Qwen. They came with the OpenWhispr code. Each logo is a trademark of its owner and is shown only to name that provider.
+Logos of the AI providers the app can connect to: Anthropic, Gemini, Groq, Llama, Mistral, NVIDIA, OpenAI and Qwen. They came with the OpenWhispr code. Each logo is a trademark of its owner and is shown only to name that provider. The Anthropic, Gemini and Meta drawings come from LobeHub Icons, listed next.
 
 - Licence: `None (trademarks of their owners)`
 - Source: <https://github.com/OpenWhispr/openwhispr/tree/main/src/assets/icons/providers>
 - Files: `src/assets/icons/providers/*.svg`, `app.asar/src/dist/assets/*.svg`
+
+### LobeHub Icons (the Anthropic, Gemini and Meta logo drawings)
+
+These three SVG drawings come from LobeHub's icon set by way of the OpenWhispr code. The MIT licence covers the drawings; the logos stay trademarks of Anthropic, Google and Meta.
+
+- Licence: `MIT`
+- Copyright (c) 2023 LobeHub
+- Source: <https://github.com/lobehub/lobe-icons>
+- Files: `src/assets/icons/providers/anthropic.svg`, `src/assets/icons/providers/gemini.svg`, `src/assets/icons/providers/llama.svg`
+
+```text
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ### NSIS (installer and uninstaller)
 

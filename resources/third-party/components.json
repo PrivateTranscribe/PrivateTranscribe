@@ -517,7 +517,20 @@
       "copyright": [],
       "source": "https://github.com/OpenWhispr/openwhispr/tree/main/src/assets/icons/providers",
       "files": ["src/assets/icons/providers/*.svg", "app.asar/src/dist/assets/*.svg"],
-      "note": "Logos of the AI providers the app can connect to: Anthropic, Gemini, Groq, Llama, Mistral, NVIDIA, OpenAI and Qwen. They came with the OpenWhispr code. Each logo is a trademark of its owner and is shown only to name that provider."
+      "note": "Logos of the AI providers the app can connect to: Anthropic, Gemini, Groq, Llama, Mistral, NVIDIA, OpenAI and Qwen. They came with the OpenWhispr code. Each logo is a trademark of its owner and is shown only to name that provider. The Anthropic, Gemini and Meta drawings come from LobeHub Icons, listed next."
+    },
+    {
+      "name": "LobeHub Icons (the Anthropic, Gemini and Meta logo drawings)",
+      "license": "MIT",
+      "copyright": ["Copyright (c) 2023 LobeHub"],
+      "source": "https://github.com/lobehub/lobe-icons",
+      "files": [
+        "src/assets/icons/providers/anthropic.svg",
+        "src/assets/icons/providers/gemini.svg",
+        "src/assets/icons/providers/llama.svg"
+      ],
+      "licenseText": "MIT License\n\nCopyright (c) 2023 LobeHub\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "These three SVG drawings come from LobeHub's icon set by way of the OpenWhispr code. The MIT licence covers the drawings; the logos stay trademarks of Anthropic, Google and Meta."
     },
     {
       "name": "NSIS (installer and uninstaller)",
