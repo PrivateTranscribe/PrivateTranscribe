@@ -68,7 +68,7 @@ Free and open source, for Windows.
 
 ## What leaves your PC
 
-With a local model, your audio and text stay on your PC. They leave only when you pick a cloud service for transcription or AI enhancement, and then only to that service. Official builds check for updates, and send usage events under a random ID only if you agree. Models download when you ask for them. [SECURITY.md](.github/SECURITY.md) lists everything the app can do on your PC and everything that can leave it.
+With a local model, your audio and text stay on your PC. They leave only for a cloud service you choose, such as a transcription or AI provider or Claude Code, and then only to that service. Official builds check for updates, and send usage events under a random ID only if you agree. Models download when you ask for them. [SECURITY.md](.github/SECURITY.md) lists the parts of the app that reach furthest on your PC, and everything that can leave it.
 
 ## Requirements
 
