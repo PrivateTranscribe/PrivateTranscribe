@@ -20,6 +20,9 @@ const readConsent = (userDataDir: string) =>
   fs.readFileSync(path.join(userDataDir, CONSENT_FILE), "utf8").trim();
 
 test.describe("analytics consent after an upgrade", () => {
+  // A copy built from source never asks, so these runs act as an official build.
+  test.use({ appEnv: { PRIVATETRANSCRIBE_OFFICIAL_BUILD: "1" } });
+
   test.describe("upgrading from a build that asked less", () => {
     test.use({ seedConsentFile: "granted" });
 

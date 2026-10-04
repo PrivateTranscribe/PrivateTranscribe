@@ -1,7 +1,12 @@
 const { autoUpdater } = require("electron-updater");
 const { app } = require("electron");
 const { existsSync } = require("fs");
+const debugLogger = require("./helpers/debugLogger");
+const { OFFICIAL_BUILD_FIELD, isOfficialBuild } = require("./helpers/officialBuild");
 const { resolveUpdateRuntime } = require("./helpers/updateRuntime");
+
+const UNOFFICIAL_BUILD_MESSAGE =
+  "Updates are off in copies built from source. Official builds are at privatetranscribe.com.";
 
 class UpdateManager {
   constructor() {
@@ -35,6 +40,20 @@ class UpdateManager {
       resourcesPath: process.resourcesPath,
       configExists: existsSync,
     });
+
+    // An installer built from source is packaged and carries app-update.yml too,
+    // so only the official-build flag may let a copy follow the update feed.
+    if (!isOfficialBuild()) {
+      this.updateRuntime = {
+        ...this.updateRuntime,
+        automaticUpdatesAvailable: false,
+        message: UNOFFICIAL_BUILD_MESSAGE,
+      };
+      debugLogger.info(
+        `Auto-updater off: package.json has no ${OFFICIAL_BUILD_FIELD} flag, so this copy was built from source`
+      );
+      return;
+    }
 
     if (!this.updateRuntime.automaticUpdatesAvailable) {
       console.warn(`Auto-updater unavailable: ${this.updateRuntime.message}`);

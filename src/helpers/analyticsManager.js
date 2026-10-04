@@ -4,6 +4,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { isAllowedAnalyticsEvent, sanitizeAnalyticsProperties } = require("./analyticsPayload");
+const { OFFICIAL_BUILD_FIELD, isOfficialBuild } = require("./officialBuild");
 
 const SUPABASE_URL = "https://wsfrykhacxjfsgvqnlbq.supabase.co";
 // Publishable key - safe to embed. Supabase RLS / Edge Function auth decides what it can do.
@@ -11,17 +12,27 @@ const SUPABASE_ANON_KEY = "sb_publishable_QN2jW34xQsNcVBT9Q76HNw_Yyo8gnao";
 const DEVICE_ID_FILE = "device-id.txt";
 const CONSENT_FILE = "analytics-consent.txt";
 const CONSENT_VERSION = 2;
+const UNOFFICIAL_BUILD = "unofficial-build";
 
 class AnalyticsManager {
   constructor() {
     this._deviceId = null;
     this._consent = null; // null = not decided yet
     this._supabaseAnonKey = SUPABASE_ANON_KEY;
+    this._officialBuild = null;
   }
 
   initialize(supabaseAnonKey) {
     // Key is hardcoded (publishable, safe to embed); param kept for backward compatibility.
     this._supabaseAnonKey = supabaseAnonKey || SUPABASE_ANON_KEY;
+    // A copy built from source can share userData with the installed app, so it
+    // must not read, act on, or rewrite that install's consent file.
+    if (!this._isOfficialBuild()) {
+      debugLogger.info(
+        `Analytics off: package.json has no ${OFFICIAL_BUILD_FIELD} flag, so this copy was built from source`
+      );
+      return;
+    }
     this._consent = this._loadConsent();
     if (this._consent === "granted") {
       this._deviceId = this._getOrCreateDeviceId();
@@ -30,7 +41,7 @@ class AnalyticsManager {
   }
 
   needsConsentPrompt() {
-    return this._consent === null;
+    return this._isOfficialBuild() && this._consent === null;
   }
 
   getConsentStatus() {
@@ -38,6 +49,9 @@ class AnalyticsManager {
   }
 
   setConsent(granted) {
+    if (!this._isOfficialBuild()) {
+      return { saved: false, reason: UNOFFICIAL_BUILD };
+    }
     const previousConsent = this._consent;
     this._consent = granted ? "granted" : "denied";
     this._saveConsent(this._consent);
@@ -58,6 +72,9 @@ class AnalyticsManager {
 
   // Fire and forget - never throws.
   async track(event, properties = {}) {
+    if (!this._isOfficialBuild()) {
+      return { sent: false, reason: UNOFFICIAL_BUILD };
+    }
     if (this._consent !== "granted") {
       return { sent: false, reason: "consent-not-granted" };
     }
@@ -115,6 +132,14 @@ class AnalyticsManager {
       url: SUPABASE_URL,
       anonKey: this._supabaseAnonKey || SUPABASE_ANON_KEY,
     };
+  }
+
+  // Cached because track() runs on every dictation; the answer cannot change at runtime.
+  _isOfficialBuild() {
+    if (this._officialBuild === null) {
+      this._officialBuild = isOfficialBuild();
+    }
+    return this._officialBuild;
   }
 
   _getOrCreateDeviceId() {

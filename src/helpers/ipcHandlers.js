@@ -9,6 +9,7 @@ const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 const AppUtils = require("../utils");
 const debugLogger = require("./debugLogger");
+const { isOfficialBuild } = require("./officialBuild");
 const { getSystemPrompt } = require("./prompts");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
@@ -2811,6 +2812,8 @@ class IPCHandlers {
     ipcMain.handle("get-app-version", async () => {
       return this.updateManager.getAppVersion();
     });
+
+    ipcMain.handle("is-official-build", () => isOfficialBuild());
 
     ipcMain.handle("get-update-status", async () => {
       return this.updateManager.getUpdateStatus();

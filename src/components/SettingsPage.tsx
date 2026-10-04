@@ -1361,6 +1361,8 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [isRemovingModels, setIsRemovingModels] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  // Assumed until the main process answers, so release builds never flash the source-build notes.
+  const [officialBuild, setOfficialBuild] = useState(true);
 
   // GPU support status and model recommendation - fetched only when the picker is visible.
   const [gpuSupportedForPicker, setGpuSupportedForPicker] = useState(false);
@@ -1435,6 +1437,13 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       ?.analyticsGetConsent?.()
       .then((status) => setAnalyticsEnabled(status === "granted"))
       .catch(() => setAnalyticsEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    window.electronAPI
+      ?.isOfficialBuild?.()
+      .then(setOfficialBuild)
+      .catch(() => {});
   }, []);
 
   const handleAnalyticsEnabledChange = useCallback(async (enabled: boolean) => {
@@ -2274,9 +2283,17 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Optional product analytics"
-                    description="Share setup milestones, feature usage, transcription speed, language and model settings, and CPU, GPU, or cloud mode using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
+                    description={
+                      officialBuild
+                        ? "Share setup milestones, feature usage, transcription speed, language and model settings, and CPU, GPU, or cloud mode using a random app ID. Never sends audio, transcripts, window titles, filenames, or API keys."
+                        : "Analytics are off in copies built from source."
+                    }
                   >
-                    <Toggle checked={analyticsEnabled} onChange={handleAnalyticsEnabledChange} />
+                    <Toggle
+                      checked={analyticsEnabled}
+                      onChange={handleAnalyticsEnabledChange}
+                      disabled={!officialBuild}
+                    />
                   </SettingsRow>
                 </SettingsPanelRow>
 
@@ -2590,13 +2607,15 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                   <SettingsRow
                     label="Current version"
                     description={
-                      updateStatus.isDevelopment
-                        ? "Running in development mode"
-                        : updateStatus.manualInstallRequired
-                          ? "This unpacked copy needs the official installer"
-                          : isUpdateAvailable
-                            ? "A newer version is available"
-                            : "You're on the latest version"
+                      !officialBuild
+                        ? "Updates are off in copies built from source. Official builds are at privatetranscribe.com."
+                        : updateStatus.isDevelopment
+                          ? "Running in development mode"
+                          : updateStatus.manualInstallRequired
+                            ? "This unpacked copy needs the official installer"
+                            : isUpdateAvailable
+                              ? "A newer version is available"
+                              : "You're on the latest version"
                     }
                   >
                     <div className="flex items-center gap-2.5">
@@ -2605,7 +2624,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                       </span>
                       {updateStatus.isDevelopment ? (
                         <Badge variant="warning">Dev</Badge>
-                      ) : updateStatus.manualInstallRequired ? (
+                      ) : !officialBuild ? null : updateStatus.manualInstallRequired ? (
                         <Badge variant="warning">Installer</Badge>
                       ) : isUpdateAvailable ? (
                         <Badge variant="success">Update</Badge>
@@ -2616,142 +2635,144 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                   </SettingsRow>
                 </SettingsPanelRow>
 
-                <SettingsPanelRow>
-                  <div className="space-y-2.5">
-                    {updateStatus.manualInstallRequired ? (
-                      <Button
-                        onClick={() =>
-                          window.electronAPI.openExternal(
-                            updateStatus.manualInstallUrl ||
-                              "https://privatetranscribe.com/download/windows"
-                          )
-                        }
-                        variant="success"
-                        className="w-full"
-                        size="sm"
-                      >
-                        <Download size={13} className="mr-1.5" />
-                        Download Official Installer
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={async () => {
-                          try {
-                            const result = await checkForUpdates();
-                            if (result?.updateAvailable) {
-                              showAlertDialog({
-                                title: "Update Available",
-                                description: `Update available - v${result.version || "new version"}`,
-                              });
-                            } else {
-                              showAlertDialog({
-                                title: "No Updates",
-                                description: result?.message || "No updates available",
-                              });
-                            }
-                          } catch (error: any) {
-                            showAlertDialog({
-                              title: "Update Check Failed",
-                              description: `Error checking for updates: ${error.message}`,
-                            });
-                          }
-                        }}
-                        disabled={checkingForUpdates || updateStatus.isDevelopment}
-                        variant="outline"
-                        className="w-full"
-                        size="sm"
-                      >
-                        <RefreshCw
-                          size={13}
-                          className={`mr-1.5 ${checkingForUpdates ? "animate-spin" : ""}`}
-                        />
-                        {checkingForUpdates ? "Checking..." : "Check for Updates"}
-                      </Button>
-                    )}
-
-                    {isUpdateAvailable && !updateStatus.updateDownloaded && (
-                      <div className="space-y-2">
+                {officialBuild && (
+                  <SettingsPanelRow>
+                    <div className="space-y-2.5">
+                      {updateStatus.manualInstallRequired ? (
                         <Button
-                          onClick={async () => {
-                            try {
-                              await downloadUpdate();
-                            } catch (error: any) {
-                              showAlertDialog({
-                                title: "Download Failed",
-                                description: `Failed to download update: ${error.message}`,
-                              });
-                            }
-                          }}
-                          disabled={downloadingUpdate}
+                          onClick={() =>
+                            window.electronAPI.openExternal(
+                              updateStatus.manualInstallUrl ||
+                                "https://privatetranscribe.com/download/windows"
+                            )
+                          }
                           variant="success"
                           className="w-full"
                           size="sm"
                         >
-                          <Download
-                            size={13}
-                            className={`mr-1.5 ${downloadingUpdate ? "animate-pulse" : ""}`}
-                          />
-                          {downloadingUpdate
-                            ? `Downloading... ${Math.round(updateDownloadProgress)}%`
-                            : `Download Update${updateInfo?.version ? ` v${updateInfo.version}` : ""}`}
+                          <Download size={13} className="mr-1.5" />
+                          Download Official Installer
                         </Button>
-
-                        {downloadingUpdate && (
-                          <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
-                            <div
-                              className="h-full bg-success transition-all duration-200 rounded-full"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, updateDownloadProgress))}%`,
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {updateStatus.updateDownloaded && (
-                      <Button
-                        onClick={() => {
-                          showConfirmDialog({
-                            title: "Install Update",
-                            description: `Ready to install update${updateInfo?.version ? ` v${updateInfo.version}` : ""}. The app will restart to complete installation.`,
-                            confirmText: "Install & Restart",
-                            onConfirm: async () => {
-                              try {
-                                await installUpdateAction();
-                              } catch (error: any) {
+                      ) : (
+                        <Button
+                          onClick={async () => {
+                            try {
+                              const result = await checkForUpdates();
+                              if (result?.updateAvailable) {
                                 showAlertDialog({
-                                  title: "Install Failed",
-                                  description: `Failed to install update: ${error.message}`,
+                                  title: "Update Available",
+                                  description: `Update available - v${result.version || "new version"}`,
+                                });
+                              } else {
+                                showAlertDialog({
+                                  title: "No Updates",
+                                  description: result?.message || "No updates available",
                                 });
                               }
-                            },
-                          });
-                        }}
-                        disabled={installInitiated}
-                        className="w-full"
-                        size="sm"
-                      >
-                        <RefreshCw
-                          size={14}
-                          className={`mr-2 ${installInitiated ? "animate-spin" : ""}`}
-                        />
-                        {installInitiated ? "Restarting..." : "Install & Restart"}
-                      </Button>
-                    )}
-                  </div>
+                            } catch (error: any) {
+                              showAlertDialog({
+                                title: "Update Check Failed",
+                                description: `Error checking for updates: ${error.message}`,
+                              });
+                            }
+                          }}
+                          disabled={checkingForUpdates || updateStatus.isDevelopment}
+                          variant="outline"
+                          className="w-full"
+                          size="sm"
+                        >
+                          <RefreshCw
+                            size={13}
+                            className={`mr-1.5 ${checkingForUpdates ? "animate-spin" : ""}`}
+                          />
+                          {checkingForUpdates ? "Checking..." : "Check for Updates"}
+                        </Button>
+                      )}
 
-                  {updateInfo?.releaseNotes && (
-                    <div className="mt-4 pt-4 border-t border-border/30">
-                      <SectionLabel className="mb-2">
-                        What's new in v{updateInfo.version}
-                      </SectionLabel>
-                      <div className="text-[12px] text-muted-foreground">
-                        <MarkdownRenderer content={updateInfo.releaseNotes} />
-                      </div>
+                      {isUpdateAvailable && !updateStatus.updateDownloaded && (
+                        <div className="space-y-2">
+                          <Button
+                            onClick={async () => {
+                              try {
+                                await downloadUpdate();
+                              } catch (error: any) {
+                                showAlertDialog({
+                                  title: "Download Failed",
+                                  description: `Failed to download update: ${error.message}`,
+                                });
+                              }
+                            }}
+                            disabled={downloadingUpdate}
+                            variant="success"
+                            className="w-full"
+                            size="sm"
+                          >
+                            <Download
+                              size={13}
+                              className={`mr-1.5 ${downloadingUpdate ? "animate-pulse" : ""}`}
+                            />
+                            {downloadingUpdate
+                              ? `Downloading... ${Math.round(updateDownloadProgress)}%`
+                              : `Download Update${updateInfo?.version ? ` v${updateInfo.version}` : ""}`}
+                          </Button>
+
+                          {downloadingUpdate && (
+                            <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
+                              <div
+                                className="h-full bg-success transition-all duration-200 rounded-full"
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, updateDownloadProgress))}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {updateStatus.updateDownloaded && (
+                        <Button
+                          onClick={() => {
+                            showConfirmDialog({
+                              title: "Install Update",
+                              description: `Ready to install update${updateInfo?.version ? ` v${updateInfo.version}` : ""}. The app will restart to complete installation.`,
+                              confirmText: "Install & Restart",
+                              onConfirm: async () => {
+                                try {
+                                  await installUpdateAction();
+                                } catch (error: any) {
+                                  showAlertDialog({
+                                    title: "Install Failed",
+                                    description: `Failed to install update: ${error.message}`,
+                                  });
+                                }
+                              },
+                            });
+                          }}
+                          disabled={installInitiated}
+                          className="w-full"
+                          size="sm"
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={`mr-2 ${installInitiated ? "animate-spin" : ""}`}
+                          />
+                          {installInitiated ? "Restarting..." : "Install & Restart"}
+                        </Button>
+                      )}
                     </div>
-                  )}
-                </SettingsPanelRow>
+
+                    {updateInfo?.releaseNotes && (
+                      <div className="mt-4 pt-4 border-t border-border/30">
+                        <SectionLabel className="mb-2">
+                          What's new in v{updateInfo.version}
+                        </SectionLabel>
+                        <div className="text-[12px] text-muted-foreground">
+                          <MarkdownRenderer content={updateInfo.releaseNotes} />
+                        </div>
+                      </div>
+                    )}
+                  </SettingsPanelRow>
+                )}
               </SettingsPanel>
             </div>
 

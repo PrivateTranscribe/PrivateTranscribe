@@ -106,11 +106,15 @@ jobs:
       # `npm run pack` never reaches Azure and never needs credentials. It is
       # turned on here instead. Forgetting it does not ship an unsigned build:
       # the verification step below fails first.
+      #
+      # privatetranscribeOfficialBuild lands in the packaged package.json. Only
+      # builds that carry it check for app updates and send analytics; a copy
+      # built from source never does.
       - name: Build Windows installer
         # --publish never: we handle upload manually to R2 below
         # Long-form --config.* on purpose. The short -c.win.signAndEditExecutable
         # form is parsed as a config *file path* and the build dies with ENOENT.
-        run: npm run build:win -- --publish never --config.forceCodeSigning=true --config.win.signAndEditExecutable=true
+        run: npm run build:win -- --publish never --config.forceCodeSigning=true --config.win.signAndEditExecutable=true --config.extraMetadata.privatetranscribeOfficialBuild=true
         env:
           GH_TOKEN: ${{ github.token }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -156,6 +160,11 @@ jobs:
           }
 
           Write-Host "Verified $($artifacts.Count) signed artifact(s) as '$env:EXPECTED_PUBLISHER', all timestamped."
+
+      # Also before the upload: a release without the flag never checks for
+      # updates, so its users would stay on it until they reinstall by hand.
+      - name: Verify the official-build flag
+        run: node scripts/verify-official-build.js dist/win-unpacked/resources/app.asar
 
       - name: Upload artifacts to R2
         shell: bash

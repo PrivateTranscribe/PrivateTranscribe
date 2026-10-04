@@ -101,8 +101,12 @@ jobs:
       #
       # Long-form --config.* on purpose. The short -c.win.signAndEditExecutable
       # form is parsed as a config *file path* and the build dies with ENOENT.
+      #
+      # The extraMetadata flag marks this as an official build, so the Store
+      # install treats app updates and analytics like the public installer does.
+      # It stays out of build:store, which local Store builds also run.
       - name: Package (Store NSIS, silent)
-        run: npm run build:store --ignore-scripts -- --config.forceCodeSigning=true --config.win.signAndEditExecutable=true
+        run: npm run build:store --ignore-scripts -- --config.forceCodeSigning=true --config.win.signAndEditExecutable=true --config.extraMetadata.privatetranscribeOfficialBuild=true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -194,6 +198,11 @@ jobs:
           }
 
           Write-Host "Verified $($artifacts.Count) signed artifact(s) as '$env:EXPECTED_PUBLISHER', all timestamped."
+
+      # A Store build without the flag never checks for updates, so its users
+      # would stay on it until they reinstall by hand.
+      - name: Verify the official-build flag
+        run: node scripts/verify-official-build.js dist-store/win-unpacked/resources/app.asar
 
       - name: Upload Store installer
         uses: actions/upload-artifact@v7

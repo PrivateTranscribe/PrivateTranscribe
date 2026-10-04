@@ -998,6 +998,8 @@ declare global {
       downloadUpdate: () => Promise<UpdateResult>;
       installUpdate: () => Promise<UpdateResult>;
       getAppVersion: () => Promise<AppVersionResult>;
+      /** False for copies built from source, which never check for updates or send analytics. */
+      isOfficialBuild?: () => Promise<boolean>;
       getUpdateStatus: () => Promise<UpdateStatusResult>;
       getUpdateInfo: () => Promise<UpdateInfoResult | null>;
 

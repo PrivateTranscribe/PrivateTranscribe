@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: {
@@ -13,9 +13,15 @@ async function loadAnalyticsManager() {
   return (module.default ?? module) as any;
 }
 
+beforeEach(() => {
+  // These cover an official build; a copy built from source never sends.
+  vi.stubEnv("PRIVATETRANSCRIBE_OFFICIAL_BUILD", "1");
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.resetModules();
 });
 

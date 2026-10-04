@@ -5,6 +5,10 @@ name: Build Windows test installer
 # users only through release-production.yml, which also checks the version bump.
 # This workflow used to upload to the update feed and to run on any pushed v*
 # tag, and 0.14.1 and 0.14.2 reached users that way.
+#
+# It is not marked as an official build (no privatetranscribeOfficialBuild
+# extraMetadata), so an installed test copy never checks for app updates or
+# sends analytics.
 
 on:
   workflow_dispatch:
