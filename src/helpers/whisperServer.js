@@ -353,6 +353,12 @@ function isCancelledError(error) {
   return error?.cancelled === true || error?.code === "TRANSCRIPTION_CANCELLED";
 }
 
+// The request path is the server's only lock, so it is masked in anything that
+// leaves this process: logs, diagnostics and error messages.
+function maskRequestPath(text, requestPath) {
+  return requestPath ? String(text).split(requestPath).join("[REDACTED]") : String(text);
+}
+
 function throwIfCancelled(signal) {
   if (signal?.aborted) throw createCancelledError();
 }
@@ -385,6 +391,7 @@ class WhisperServerManager {
   constructor() {
     this.process = null;
     this.port = null;
+    this.requestPathPrefix = null;
     this.ready = false;
     this.modelPath = null;
     this.loadedModelPath = null;
@@ -541,6 +548,11 @@ class WhisperServerManager {
    * producing a working server that quietly used the wrong backend.
    */
   buildServerArgs(modelPath, options = {}) {
+    // Refuse outright rather than build a command line for an unlocked server.
+    if (!this.requestPathPrefix) {
+      throw new Error("whisper-server cannot start without a request path");
+    }
+
     const args = ["--model", modelPath, "--host", "127.0.0.1", "--port", String(this.port)];
 
     // Reduce repetition hallucinations: lower entropy threshold triggers
@@ -571,6 +583,11 @@ class WhisperServerManager {
       "--language",
       options.language && options.language !== "auto" ? options.language : "auto"
     );
+
+    // whisper-server has no password option, so every route sits under a random
+    // prefix only this app knows. It goes last: a rejected flag stops parsing,
+    // and the usage text printed then shows every value already read.
+    args.push("--request-path", this.requestPathPrefix);
 
     return args;
   }
@@ -1059,6 +1076,9 @@ class WhisperServerManager {
   async _startWithBinary(serverBinary, modelPath, options = {}) {
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;
+    // A new one per launch, so a prefix that ever leaks dies with its process.
+    const requestPathPrefix = `/pt-${crypto.randomBytes(16).toString("hex")}`;
+    this.requestPathPrefix = requestPathPrefix;
 
     // Check for FFmpeg first - only use --convert flag if FFmpeg is available
     const ffmpegPath = this.getFFmpegPath();
@@ -1088,12 +1108,13 @@ class WhisperServerManager {
     }
 
     const args = this.buildServerArgs(modelPath, options);
+    const shownArgs = args.map((arg) => maskRequestPath(arg, requestPathPrefix));
 
     debugLogger.debug("Starting whisper-server", {
       port: this.port,
       modelPath,
       serverBinary,
-      args,
+      args: shownArgs,
       cwd: serverBinaryDir,
     });
 
@@ -1106,7 +1127,7 @@ class WhisperServerManager {
     this.backendScanBuffer = "";
 
     try {
-      this.process = spawn(serverBinary, args, {
+      this.process = this._spawnServer(serverBinary, args, {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
         env: spawnEnv,
@@ -1124,10 +1145,10 @@ class WhisperServerManager {
     }
 
     // The argv this process was handed, taken from the same array that was
-    // passed to spawn() rather than rebuilt afterwards.
+    // passed to spawn() rather than rebuilt afterwards, request path masked.
     this.lastSpawn = {
       binary: serverBinary,
-      args: [...args],
+      args: shownArgs,
       pid: this.process?.pid ?? null,
       forceCpu: this.forceCpu,
       startedAt: Date.now(),
@@ -1142,10 +1163,13 @@ class WhisperServerManager {
 
     this.process.stderr.on("data", (data) => {
       const text = data.toString();
-      stderrBuffer = appendBoundedText(stderrBuffer, text);
+      // The usage text whisper-server prints when it rejects an argument lists
+      // the request path, and startup errors quote this buffer.
+      const shown = maskRequestPath(text, requestPathPrefix);
+      stderrBuffer = appendBoundedText(stderrBuffer, shown);
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
       this.scanForBackend(text);
-      debugLogger.debug("whisper-server stderr", { data: text.trim() });
+      debugLogger.debug("whisper-server stderr", { data: shown.trim() });
     });
 
     this.process.on("error", (error) => {
@@ -1207,6 +1231,10 @@ class WhisperServerManager {
     });
   }
 
+  _spawnServer(serverBinary, args, options) {
+    return spawn(serverBinary, args, options);
+  }
+
   async waitForReady(getProcessInfo) {
     const startTime = Date.now();
     let pollCount = 0;
@@ -1256,17 +1284,21 @@ class WhisperServerManager {
   }
 
   checkHealth() {
+    if (!this.requestPathPrefix) return Promise.resolve(false);
+
     return new Promise((resolve) => {
       const req = http.request(
         {
           hostname: "127.0.0.1",
           port: this.port,
-          path: "/",
+          path: `${this.requestPathPrefix}/health`,
           method: "GET",
           timeout: HEALTH_CHECK_TIMEOUT_MS,
         },
         (res) => {
-          resolve(true);
+          // 200, not just any answer: it proves the server serves this launch's
+          // prefix and has its model loaded (it answers 503 while loading one).
+          resolve(res.statusCode === 200);
           res.resume();
         }
       );
@@ -1735,6 +1767,10 @@ class WhisperServerManager {
       return Promise.reject(error);
     }
     if (signal?.aborted) return Promise.reject(createCancelledError());
+    // Without a request path no server of ours is running, and the port may
+    // already belong to another program, so the audio is not sent anywhere.
+    const requestPathPrefix = this.requestPathPrefix;
+    if (!requestPathPrefix) return Promise.reject(new Error("whisper-server is not running"));
 
     const form = new FormData();
     const fileName = chunkCount > 1 ? `audio-part-${chunkIndex + 1}.wav` : "audio.wav";
@@ -1820,7 +1856,7 @@ class WhisperServerManager {
         {
           hostname: "127.0.0.1",
           port: this.port,
-          path: "/inference",
+          path: `${requestPathPrefix}/inference`,
           method: "POST",
           headers: form.getHeaders(),
           timeout: timeoutMs,
@@ -1831,6 +1867,8 @@ class WhisperServerManager {
             data += chunk;
           });
           res.on("end", () => {
+            // whisper-server's 404 body quotes the path it was asked for.
+            const shown = res.statusCode === 200 ? data : maskRequestPath(data, requestPathPrefix);
             debugLogger.debug("whisper-server transcription completed", {
               statusCode: res.statusCode,
               elapsed: Date.now() - startTime,
@@ -1838,11 +1876,11 @@ class WhisperServerManager {
               chunk: chunkIndex + 1,
               chunks: chunkCount,
               responseLength: data.length,
-              responsePreview: data.slice(0, 500),
+              responsePreview: shown.slice(0, 500),
             });
 
             if (res.statusCode !== 200) {
-              failWith(new Error(`whisper-server returned status ${res.statusCode}: ${data}`));
+              failWith(new Error(`whisper-server returned status ${res.statusCode}: ${shown}`));
               return;
             }
 
@@ -2104,6 +2142,7 @@ class WhisperServerManager {
 
     if (!this.process) {
       this.ready = false;
+      this.requestPathPrefix = null;
       return;
     }
 
@@ -2137,6 +2176,7 @@ class WhisperServerManager {
     this.process = null;
     this.ready = false;
     this.port = null;
+    this.requestPathPrefix = null;
     this.modelPath = null;
     this.loadedModelPath = null;
     this.activeServerBinaryPath = null;

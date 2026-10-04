@@ -10,6 +10,14 @@ vi.mock("electron", () => ({
 
 const WhisperServerManager = require("../../../src/helpers/whisperServer");
 
+// buildServerArgs refuses to run without the per-launch request path, which
+// _startWithBinary sets just before it builds the arguments.
+function launchingManager() {
+  const manager = new WhisperServerManager();
+  manager.requestPathPrefix = "/pt-unit-test";
+  return manager;
+}
+
 /**
  * whisper-server loads every ggml-*.dll it finds beside its own executable.
  * Selecting the non-CUDA binary is therefore not enough to get a CPU run: if a
@@ -21,21 +29,21 @@ describe("whisper-server engine-mode flags", () => {
   const modelPath = "/models/ggml-turbo.bin";
 
   it("passes --no-gpu when CPU mode is forced", () => {
-    const manager = new WhisperServerManager();
+    const manager = launchingManager();
     manager.forceCpu = true;
 
     expect(manager.buildServerArgs(modelPath)).toContain("--no-gpu");
   });
 
   it("does not pass --no-gpu when CPU mode is not forced", () => {
-    const manager = new WhisperServerManager();
+    const manager = launchingManager();
     manager.forceCpu = false;
 
     expect(manager.buildServerArgs(modelPath)).not.toContain("--no-gpu");
   });
 
   it("still carries the model, host and port", () => {
-    const manager = new WhisperServerManager();
+    const manager = launchingManager();
     manager.forceCpu = true;
     const args = manager.buildServerArgs(modelPath);
 
@@ -44,7 +52,7 @@ describe("whisper-server engine-mode flags", () => {
   });
 
   it("always states a thread count rather than leaning on whisper.cpp's default", () => {
-    const manager = new WhisperServerManager();
+    const manager = launchingManager();
     const args = manager.buildServerArgs(modelPath);
 
     // The default is min(4, cores), which is what left every machine on 4.
@@ -55,14 +63,14 @@ describe("whisper-server engine-mode flags", () => {
   });
 
   it("lets an explicit thread count win", () => {
-    const manager = new WhisperServerManager();
+    const manager = launchingManager();
     const args = manager.buildServerArgs(modelPath, { threads: 12 });
 
     expect(args[args.indexOf("--threads") + 1]).toBe("12");
   });
 
   it("defaults language to auto and honours an explicit one", () => {
-    const manager = new WhisperServerManager();
+    const manager = launchingManager();
 
     const auto = manager.buildServerArgs(modelPath);
     expect(auto[auto.indexOf("--language") + 1]).toBe("auto");

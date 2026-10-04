@@ -193,6 +193,7 @@ describe("Whisper detection request format", () => {
 
     const manager: any = new WhisperServerManager();
     manager.port = address.port;
+    manager.requestPathPrefix = "/pt-unit-test";
 
     try {
       await manager._postInference(Buffer.from("wav"), {

@@ -137,6 +137,7 @@ describe("F4 — a dead whisper-server is not handed the next request (FIXED)", 
 
     const manager: any = new WhisperServerManager();
     manager.port = port;
+    manager.requestPathPrefix = "/pt-unit-test";
     manager.ready = true;
 
     await expect(
@@ -167,6 +168,7 @@ describe("F1 — an in-flight decode can be cancelled (FIXED)", () => {
 
     const manager: any = new WhisperServerManager();
     manager.port = address.port;
+    manager.requestPathPrefix = "/pt-unit-test";
     manager.ready = true;
 
     const controller = new AbortController();
@@ -257,6 +259,7 @@ describe("F3 — an unknown language code no longer reaches whisper-server (FIXE
   it("accepts a language whisper knows at the same boundary", async () => {
     const manager: any = new WhisperServerManager();
     manager.port = 1;
+    manager.requestPathPrefix = "/pt-unit-test";
     manager.ready = true;
 
     // Rejects on the connection, not on validation — proof the guard let it by.
