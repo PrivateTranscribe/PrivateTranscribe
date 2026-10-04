@@ -32,11 +32,11 @@
       "copiedFrom": "Downloaded from the source URL; identical to OFL.txt at tag v2.210",
       "sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d"
     },
-    "licenses/ITF-FFL-2.0-Satoshi.txt": {
-      "title": "ITF Free Font License 2.0 (Satoshi)",
-      "source": "https://api.fontshare.com/v2/fonts/download/satoshi",
-      "copiedFrom": "Satoshi_Complete/License/FFL.txt in the Fontshare download",
-      "sha256": "145e7fe2429a3336ba215c070ef722000e01348a3e1baaa127e871bb5012f554"
+    "licenses/OFL-1.1-Manrope.txt": {
+      "title": "SIL Open Font License 1.1 (Manrope)",
+      "source": "https://github.com/google/fonts/blob/8f9a401dbb3793e0d1264b15d96aa253f05280f5/ofl/manrope/OFL.txt",
+      "copiedFrom": "LICENSE in @fontsource-variable/manrope 5.2.8. Its copyright line says 2019 like the font files themselves, where the source file says 2018; the licence text is the same apart from one trailing space",
+      "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30"
     },
     "licenses/LLVM-OpenMP.txt": {
       "title": "LLVM OpenMP runtime licence",
@@ -499,17 +499,16 @@
       "note": "The font files report version 2.211, which has no tag in the JetBrains Mono repository. The licence text is OFL.txt at tag v2.221, identical to v2.210."
     },
     {
-      "name": "Satoshi",
-      "version": "2.000",
-      "license": "LicenseRef-ITF-FFL-2.0",
-      "copyright": ["Copyright 2017-2021 Indian Type Foundry. All rights reserved."],
-      "source": "https://www.fontshare.com/fonts/satoshi",
-      "files": [
-        "src/assets/fonts/satoshi-variable.woff2",
-        "app.asar/src/dist/assets/satoshi-variable-*.woff2"
+      "name": "Manrope",
+      "version": "4.504",
+      "license": "OFL-1.1",
+      "copyright": [
+        "Copyright 2019 The Manrope Project Authors (https://github.com/sharanda/manrope)"
       ],
-      "licenseText": "licenses/ITF-FFL-2.0-Satoshi.txt",
-      "note": "Satoshi is a trademark of the Indian Type Foundry. The shipped font is byte-identical to Satoshi-Variable.woff2 in the Fontshare download, and the licence text is that download's License/FFL.txt (version 2.0, 17 Aug 2026)."
+      "source": "https://github.com/sharanda/manrope",
+      "files": ["src/assets/fonts/manrope-*.woff2", "app.asar/src/dist/assets/manrope-*.woff2"],
+      "licenseText": "licenses/OFL-1.1-Manrope.txt",
+      "note": "The six files are the variable-weight script subsets from `@fontsource-variable/manrope` 5.2.8, byte-identical to its `files/manrope-*-wght-normal.woff2`, which Fontsource builds from Google Fonts."
     },
     {
       "name": "AI provider logos",

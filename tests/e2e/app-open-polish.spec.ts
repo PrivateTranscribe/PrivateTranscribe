@@ -73,9 +73,7 @@ test.describe("app open", () => {
 
     const fonts = await controlPanel.evaluate(async () => {
       await document.fonts.ready;
-      const resources = performance.getEntriesByType(
-        "resource"
-      ) as PerformanceResourceTiming[];
+      const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
       return {
         remote: resources
           .map((r) => r.name)
@@ -83,7 +81,7 @@ test.describe("app open", () => {
         renderBlocking: resources
           .filter((r) => r.renderBlockingStatus === "blocking")
           .map((r) => r.name),
-        satoshiLoaded: document.fonts.check('16px "Satoshi"'),
+        manropeLoaded: document.fonts.check('16px "Manrope"'),
         bodyFont: getComputedStyle(document.body).fontFamily,
       };
     });
@@ -92,8 +90,8 @@ test.describe("app open", () => {
     expect(fonts.remote.filter((n) => /fontshare|googleapis|gstatic/.test(n))).toEqual([]);
     // Nothing render-blocking may live off-machine.
     expect(fonts.renderBlocking.filter((n) => /^https?:\/\//.test(n))).toEqual([]);
-    expect(fonts.satoshiLoaded).toBe(true);
-    expect(fonts.bodyFont).toContain("Satoshi");
+    expect(fonts.manropeLoaded).toBe(true);
+    expect(fonts.bodyFont).toContain("Manrope");
   });
 
   test("the renderer reports its first real paint, which is what reveals the window", async ({

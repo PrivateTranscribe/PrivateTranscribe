@@ -845,17 +845,17 @@ The font files report version 2.211, which has no tag in the JetBrains Mono repo
 
 Licence text: SIL Open Font License 1.1 (JetBrains Mono), under "Full licence texts" at the end.
 
-### Satoshi
+### Manrope
 
-Satoshi is a trademark of the Indian Type Foundry. The shipped font is byte-identical to Satoshi-Variable.woff2 in the Fontshare download, and the licence text is that download's License/FFL.txt (version 2.0, 17 Aug 2026).
+The six files are the variable-weight script subsets from `@fontsource-variable/manrope` 5.2.8, byte-identical to its `files/manrope-*-wght-normal.woff2`, which Fontsource builds from Google Fonts.
 
-- Version: 2.000
-- Licence: `LicenseRef-ITF-FFL-2.0`
-- Copyright 2017-2021 Indian Type Foundry. All rights reserved.
-- Source: <https://www.fontshare.com/fonts/satoshi>
-- Files: `src/assets/fonts/satoshi-variable.woff2`, `app.asar/src/dist/assets/satoshi-variable-*.woff2`
+- Version: 4.504
+- Licence: `OFL-1.1`
+- Copyright 2019 The Manrope Project Authors (https://github.com/sharanda/manrope)
+- Source: <https://github.com/sharanda/manrope>
+- Files: `src/assets/fonts/manrope-*.woff2`, `app.asar/src/dist/assets/manrope-*.woff2`
 
-Licence text: ITF Free Font License 2.0 (Satoshi), under "Full licence texts" at the end.
+Licence text: SIL Open Font License 1.1 (Manrope), under "Full licence texts" at the end.
 
 ### AI provider logos
 
@@ -7247,143 +7247,104 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
-### ITF Free Font License 2.0 (Satoshi)
+### SIL Open Font License 1.1 (Manrope)
 
-Source: <https://api.fontshare.com/v2/fonts/download/satoshi>
+Source: <https://github.com/google/fonts/blob/8f9a401dbb3793e0d1264b15d96aa253f05280f5/ofl/manrope/OFL.txt>
 
 ```text
-Fontshare
-
-------------------------------------------------------------------
-ITF Free Font License (FFL)
-Version 2.0 - 17 Aug 2026
-------------------------------------------------------------------
-
-Notice to User
-
-Indian Type Foundry designs, produces and distributes font software as digital fonts to end users worldwide. In addition to commercial fonts that are available for a fee, ITF also offers several fonts that can be used free of charge. These free fonts are distributed through a dedicated platform called www.fontshare.com (“Fontshare”) to end users worldwide. Fonts identified on Fontshare as being licensed under the ITF Free Font License are subject to this legally binding EULA between Indian Type Foundry (“Indian Type Foundry”, “ITF” or “Licensor”) and you (“Licensee”).
-
-You acknowledge that the Font Software and the designs embodied therein are protected by copyright, other intellectual property and industrial property rights, and international treaties. They are and shall remain at all times the intellectual property of Indian Type Foundry.
-
-In addition to direct download, Fontshare may also make the Font Software available through the Fontshare API. In this case, the Font Software is delivered directly from servers used by Indian Type Foundry to the Licensee's website, without the Licensee having to download or host the Font Software.
-
-By downloading, accessing, self-hosting, installing, storing, embedding, copying or otherwise using the Font Software, you agree to the following terms.
-
-
-Definitions
-
-“Font Software” refers to the computer files or programs released under this License that enable the display, reproduction and rendering of the typeface designs, including letters, numerals, punctuation, symbols, ornaments and other typographic characters. Font Software includes all font formats and bitmap or vector representations distributed by Indian Type Foundry under this License.
-
-“Official Version” refers to the Font Software as officially distributed by Indian Type Foundry through Fontshare.
-
-“Derivative Work” refers to any modified, adapted, altered or otherwise derived version of the Font Software or the typeface designs embodied therein, including modifications to font files (such as OTF, TTF, WOFF, WOFF2 or variable fonts), glyphs, characters, spacing, kerning, metrics, naming, subsetting, format conversion or other font data.
-
-Derivative Work does not include any logo, document, graphic, image, website, application or other creative work created through the normal use of the Font Software, ownership of which remains with its respective creator or rights holder.
-
-
-01 Grant of License
-
-You are hereby granted a non-exclusive, non-assignable, non-transferable and terminable license to access, download, install, store and use the Font Software for personal or commercial purposes, free of charge and for an unlimited period of time, subject to the terms of this License.
-
-You may use the Font Software in any media, including Print, Websites, Mobile or Desktop Applications, Digital Images, Digital Advertising, Social Media, ePublishing, Video, Broadcasting and Games, at any scale and in any location worldwide.
-
-You may self-host the Font Software on your own servers or infrastructure for use on your own websites and applications, including through standard webfont technologies such as CSS @font-face. Self-hosting by end users is permitted and recommended for greater control, reliability and performance. Use of the Fontshare API is optional and is not required for web use.
-
-You may embed the Font Software in mobile or desktop applications and digital documents for the uses permitted under this License.
-
-You may use the Font Software to create logos, wordmarks, graphic elements, images, vector files, scalable drawings and other creative works. Logos and wordmarks created using the Font Software may be registered as trademarks. Any rights in the resulting creative works, including any trademark rights, remain with their respective creator or rights holder. Such rights do not grant any ownership or exclusive rights in the Font Software or the underlying typeface designs.
-
-You may use the Font Software on any number of devices, including computers, tablets and phones. The number of output devices, including printers, is not restricted. Where the Licensee is an organization, the Font Software may be installed, stored, copied and shared internally among its employees for the Licensee's own permitted uses under this License. Such internal sharing does not constitute redistribution under this License.
-
-You may make a reasonable number of backup copies of the Font Software as necessary for your permitted use.
-
-You may, but are not required to, identify or credit Indian Type Foundry or Fontshare in works created using the Font Software.
-
-
-02 Limitations of Usage
-
-You may not modify, edit, adapt, translate, reverse engineer, decompile, disassemble or otherwise alter the Font Software or the typeface designs embodied therein, in whole or in part, without the prior written consent of the Licensor. This includes modifying or replacing glyphs, subsetting, format conversion, or altering font names, copyright information, ownership information or other metadata.
-
-The Font Software may not, beyond the permitted copies and uses defined herein, be distributed, duplicated, loaned, resold, sublicensed, transferred, donated, given away or otherwise made available to any other person or entity, whether for free or for a fee. This includes distributing the Font Software through another font website, font library, marketplace, repository, download service, application or platform, or by email, removable media, publicly accessible servers, file-sharing services, peer-to-peer networks or any other means.
-
-You may not provide the Font Software directly to external designers, agencies, contractors, printers or other service providers. Any third party wishing to use the Font Software must obtain their own copy directly from Fontshare and be independently bound by this License.
-
-You may not host, serve, embed or otherwise make the Font Software available for use by third parties through any website, application, online service, SaaS platform, design tool, template editor or similar service. This includes making the Font Software available as a selectable font for third-party users to create, edit, customize or generate their own content, even where such users cannot download or extract the Font Software itself.
-
-For the avoidance of doubt, nothing in this Section 02 restricts the self-hosting, embedding or other use of the Font Software by the Licensee for the Licensee's own websites, applications or other permitted uses under Section 01.
-
-
-03 Embedding
-
-You may embed the Font Software in PDFs and other digital documents for your permitted uses under this License, provided that the embeddedFont Software cannot be extracted or used independently from the document.
-
-Documents containing embedded Font Software may be distributed without restriction as to the number of recipients.
-
-The extraction of the Font Software, in whole or in part, for independent use is prohibited.
-
-
-04 Third-party use, Commercial print service providers
-
-You may provide documents, artwork or other files created using the Font Software to commercial printers and other service providers for printing, production or display purposes.
-
-If a service provider requires access to the Font Software itself, they must obtain their own copy directly from Fontshare and be independently bound by this License.
-
-
-05 Derivative Work
-
-You may not create a Derivative Work from the Font Software without the prior written consent of the Licensor.
-
-Where the Licensor expressly permits the creation of a Derivative Work, such permission is limited to the specific use authorized by the Licensor and does not grant any ownership or other rights in the Official Version of the Font Software or the underlying typefacedesigns.
-
-A Derivative Work may not be sublicensed, sold, leased, rented, loaned, distributed, transferred or otherwise made available to any third party without the prior written consent of the Licensor.
-
-
-06 Warranty and Liability
-
-THE FONT SOFTWARE IS PROVIDED FREE OF CHARGE AND ON AN “AS IS” AND “AS AVAILABLE” BASIS. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, INDIAN TYPE FOUNDRY MAKES NO WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, COMPATIBILITY, AVAILABILITY OR OTHERWISE.
-
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, INDIAN TYPE FOUNDRY SHALL NOT BE LIABLE TO THE LICENSEEOR ANY THIRD PARTY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL OR CONSEQUENTIAL DAMAGES, INCLUDING LOSS OF PROFITS, REVENUE, DATA, BUSINESS OR SAVINGS, OR BUSINESS INTERRUPTION, ARISING OUT OF THE USE OF OR INABILITY TO USE THE FONT SOFTWARE.
-
-IF THE LICENSEE CHOOSES TO ACCESS OR SERVE THE FONT SOFTWARE THROUGH THE FONTSHARE API, THE LICENSEE DOES SO AT ITS OWN RISK. THE FONTSHARE API IS PROVIDED AS A CONVENIENCE AND DOES NOT FORM PART OF THE RIGHTS GRANTED TO THE LICENSEE TO USE THE FONT SOFTWARE UNDER THIS LICENSE.
-
-INDIAN TYPE FOUNDRY DOES NOT GUARANTEE THE AVAILABILITY, PERFORMANCE OR CONTINUED OPERATION OF THE FONTSHARE API. INDIAN TYPE FOUNDRY MAY, AT ITS SOLE DISCRETION AND WITHOUT PRIOR NOTICE, MODIFY, RESTRICT, SUSPEND OR DISCONTINUE ACCESS TO THE FONTSHARE API, WHETHER GENERALLY OR FOR ANY PARTICULAR USER, WEBSITE OR APPLICATION. INDIAN TYPE FOUNDRY SHALL NOT BE RESPONSIBLE OR LIABLE FOR ANY INTERRUPTION, MALFUNCTION, DOWNTIME, CHANGE, RESTRICTION OR DISCONTINUATION OF THE API, OR FOR ANY RESULTING IMPACT ON THE LICENSEE'S WEBSITE, APPLICATION OR OTHER SERVICES.
-
-
-07 Updates, Maintenance and Support Services
-
-Indian Type Foundry is under no obligation to provide updates, upgrades, maintenance, technical support or other support services for the Font Software under this License.
-
-Indian Type Foundry may, at its sole discretion, update, modify, replace or discontinue any Font Software made available through Fontshare.
-
-
-08 Termination
-
-Any breach of the terms of this License shall be grounds for termination. Where the breach is capable of being remedied, the Licensor may notify the Licensee in writing and require the breach to be remedied within 30 days of receipt of such notice.
-
-Notwithstanding the foregoing, the Licensor may terminatethis License immediately in the event of any deliberate or material unauthorized modification, redistribution, sale, sublicensing, transfer or other misuse of the Font Software or the intellectual property rights of Indian Type Foundry.
-
-Upon termination, and without limitation of any other remedies available under law or equity, the Licensee must immediately cease all use of the Font Software and delete the Font Software and all copies thereof inits possession or control. Proof of deletion must be provided upon request of the Licensor.
-
-Indian Type Foundry reserves the right to seek damages and any other remedies available under applicable law for any breach of this License.
-
-
-09 Final Provisions
-
-If any provision of this License is found to be invalid, illegal or unenforceable, the remaining provisions shall remain in full force and effect. Any invalid, illegal or unenforceable provision shall, to the extent legally permissible, be interpreted or replaced in a manner that most closely reflects its original purpose.
-
-The failure of Indian Type Foundry to enforce any provision of this License shall not constitute a waiver of that provision or of its right to enforce it subsequently.
-
-The uses expressly permitted under this License require no additional license or fee. If a Licensee requires additional rights or permissions, exceptions to any restrictions under this License, modifications or customizations to the Font Software or typeface designs, additional styles, weights, widths, characters or language extensions, technical support ormaintenance services, warranties or indemnities, or other customized licensing terms, they may contact Indian Type Foundry to discuss a separate custom license or arrangement.
-
-This License shall be governed by the laws ofthe Republic of India. To the extent legally permissible, the courts located in Ahmedabad, Gujarat, India shall have exclusive jurisdiction over any dispute arising out of or in connection with this License.
-
-------------------------------------------------------------------
-ITF Free Font License (FFL)
-Version 2.0 - 17 Aug 2026
-
-Copyright © 2026 Indian Type Foundry. All rights reserved.
-https://www.fontshare.com
-------------------------------------------------------------------
+Copyright 2019 The Manrope Project Authors (https://github.com/sharanda/manrope)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
 ### LLVM OpenMP runtime licence

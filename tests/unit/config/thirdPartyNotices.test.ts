@@ -119,7 +119,7 @@ describe("third-party notices", () => {
     /^ONNX Runtime$/,
     /^libvips$/,
     /^JetBrains Mono$/,
-    /^Satoshi$/,
+    /^Manrope$/,
     /^Silero VAD$/,
     /^OpenWhispr$/,
     /^Microsoft Visual C\+\+ runtime$/,
