@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Follow `CONTRIBUTING.md` to set up a fresh clone or prepare a pull request.
+
 ## Project Overview
 
 PrivateTranscribe is an Electron desktop dictation app. It originated from OpenWhispr, but the product rename is complete and new work must treat PrivateTranscribe as the canonical product. It uses whisper.cpp and NVIDIA Parakeet (via sherpa-onnx) for local speech-to-text, plus OpenAI, Groq, and custom cloud APIs for cloud transcription. AI reasoning is multi-provider (OpenAI, Anthropic, Gemini, Groq, local GGUF). React 19 + TypeScript + Tailwind CSS v4 frontend, better-sqlite3 for history, shadcn/ui components.

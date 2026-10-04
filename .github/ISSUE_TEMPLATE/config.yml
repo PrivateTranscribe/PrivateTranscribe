@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/q-a
+    about: Ask how something works or get help with setup in Discussions.
+  - name: Suggest an idea
+    url: https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/ideas
+    about: Share an idea for a new feature or a change in Discussions.
+  - name: Report a security problem
+    url: https://github.com/PrivateTranscribe/PrivateTranscribe/security/advisories/new
+    about: Report a vulnerability privately, never in a public issue.
+  - name: Windows troubleshooting
+    url: https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/WINDOWS_TROUBLESHOOTING.md
+    about: Fixes for common problems such as no window, no transcription or slow typing.

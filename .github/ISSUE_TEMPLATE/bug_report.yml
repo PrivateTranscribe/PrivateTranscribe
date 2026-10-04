@@ -1,0 +1,77 @@
+name: Bug report
+description: Something in PrivateTranscribe does not work as it should.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. For a question, use [Discussions](https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/q-a). Report a security problem privately through the Security tab, as [SECURITY.md](https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/SECURITY.md) describes.
+  - type: input
+    id: app-version
+    attributes:
+      label: PrivateTranscribe version
+      description: Shown at the bottom of the sidebar and under Current version in Settings. Write "built from source" and the commit if you built it yourself.
+      placeholder: "0.20.2"
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      description: Press Win+R and run `winver` to see it.
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Transcription engine
+      options:
+        - Local Whisper GPU
+        - Local Whisper CPU
+        - Cloud OpenAI
+        - Cloud Groq
+        - Custom endpoint
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: The transcription model you use.
+      placeholder: "Whisper base"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Press ...
+        3. Say ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Add a screenshot if it helps.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: |
+        Debug logs are saved in `%APPDATA%\PrivateTranscribe\logs`. [DEBUG.md](https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/DEBUG.md) explains how to turn them on. Paste the lines around the problem and remove anything private first.
+      render: text
+    validations:
+      required: false

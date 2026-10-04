@@ -2,6 +2,8 @@
 
 Guidance for Codex and other coding agents working in this repository.
 
+Follow `CONTRIBUTING.md` to set up a fresh clone or prepare a pull request.
+
 ## Project
 
 PrivateTranscribe is an Electron desktop dictation app for private/local transcription and AI-assisted text processing.
