@@ -1,3 +1,6 @@
+const path = require("path");
+const { fileURLToPath } = require("url");
+
 /**
  * Hand a URL to the OS default browser / mail client.
  * Resolved lazily so this module can be loaded without a live Electron runtime.
@@ -26,17 +29,37 @@ function isAllowedExternalUrl(url) {
   }
 }
 
+function isSameFilePath(a, b) {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  // Windows paths ignore case, so a URL with c: or INDEX.HTML still names the entry.
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function isAppEntryFileUrl(parsed, appEntryPath) {
+  // A file URL with a host is a network share (file://server/share), never the bundle.
+  if (!appEntryPath || parsed.host) return false;
+  try {
+    return isSameFilePath(fileURLToPath(parsed), appEntryPath);
+  } catch {
+    // Not a local path at all, e.g. an encoded slash or a malformed escape.
+    return false;
+  }
+}
+
 /**
  * True when `url` is app content we ship ourselves.
  *
- * Production loads the renderer from disk (file:), development loads it from the
- * Vite dev server. Nothing else is app content, so nothing else may be navigated
- * to inside a window that has the preload bridge attached.
+ * Production loads the renderer entry from disk (file:), development loads it from the
+ * Vite dev server. Nothing else is app content, not even a file beside the entry, so
+ * nothing else may be navigated to inside a window that has the preload bridge attached.
  *
  * @param {string} url
- * @param {string|null} [devServerUrl] - dev server origin, only set in development
+ * @param {{ devServerUrl?: string|null, appEntryPath?: string|null }} [sources]
+ *   devServerUrl: dev server origin, only set in development.
+ *   appEntryPath: the renderer's index.html on disk, only set in production.
  */
-function isInternalUrl(url, devServerUrl = null) {
+function isInternalUrl(url, { devServerUrl = null, appEntryPath = null } = {}) {
   let parsed;
   try {
     parsed = new URL(url);
@@ -44,7 +67,7 @@ function isInternalUrl(url, devServerUrl = null) {
     return false;
   }
 
-  if (parsed.protocol === "file:") return true;
+  if (parsed.protocol === "file:") return isAppEntryFileUrl(parsed, appEntryPath);
 
   if (devServerUrl) {
     try {
@@ -75,12 +98,18 @@ function isInternalUrl(url, devServerUrl = null) {
  * @param {Electron.WebContents} webContents
  * @param {{
  *   devServerUrl?: string|null,
+ *   appEntryPath?: string|null,
  *   onBlocked?: (url: string) => void,
  *   openExternal?: (url: string) => Promise<unknown>,
  * }} [options]
  */
 function applyNavigationGuard(webContents, options = {}) {
-  const { devServerUrl = null, onBlocked = null, openExternal = defaultOpenExternal } = options;
+  const {
+    devServerUrl = null,
+    appEntryPath = null,
+    onBlocked = null,
+    openExternal = defaultOpenExternal,
+  } = options;
 
   const forwardExternally = (url) => {
     if (!isAllowedExternalUrl(url)) return;
@@ -98,7 +127,7 @@ function applyNavigationGuard(webContents, options = {}) {
   };
 
   webContents.on("will-navigate", (event, url) => {
-    if (isInternalUrl(url, devServerUrl)) return;
+    if (isInternalUrl(url, { devServerUrl, appEntryPath })) return;
 
     event.preventDefault();
     reportBlocked(url);

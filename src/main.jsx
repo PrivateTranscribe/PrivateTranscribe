@@ -21,6 +21,21 @@ applyStoredHotkeyMigrations();
 // switch has to be on before then.
 cleanUpLegacyPlanState();
 
+// A file dragged anywhere but a drop area is refused, so it can never open as a page with the
+// preload bridge, even if Electron's navigateOnDragDrop gets turned on. Drop areas cancel
+// dragover before it bubbles up here, and nothing here stops propagation, so they keep working.
+function isFileDrag(event) {
+  return Boolean(event.dataTransfer?.types.includes("Files"));
+}
+window.addEventListener("dragover", (event) => {
+  if (!isFileDrag(event) || event.defaultPrevented) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (event) => {
+  if (isFileDrag(event)) event.preventDefault();
+});
+
 // Tell the main process the window now has real content on it.
 //
 // Electron's own `ready-to-show` fires at the first composited frame, which for

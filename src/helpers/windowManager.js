@@ -814,6 +814,8 @@ class WindowManager {
   _guardWindowNavigation(window, label) {
     applyNavigationGuard(window.webContents, {
       devServerUrl: process.env.NODE_ENV === "development" ? DEV_SERVER_URL : null,
+      // The index.html loadWindowContent() loads; there is none in development.
+      appEntryPath: DevServerManager.getAppFilePath()?.path ?? null,
       onBlocked: (url) => {
         debugLogger.log(`Blocked in-app navigation from ${label}`, { url });
       },
