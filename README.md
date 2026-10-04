@@ -89,8 +89,8 @@ Most of the code is written with AI coding agents, mainly Claude Code, directed 
 ## Building
 
 ```bash
-npm run build:win    # Windows installer + portable
-npm run pack         # Unsigned build for local testing
+npm run build:win    # Unsigned Windows installer
+npm run pack         # Unpacked app folder for local testing
 ```
 
 Official releases are built and signed by GitHub Actions. Copies you build yourself do not check for app updates or send usage events.
