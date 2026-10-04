@@ -98,6 +98,7 @@ describe("ReasoningService Smart Context prompt assembly", () => {
     expect(mockedGetContext).not.toHaveBeenCalled();
     expect(mockedExtractFileContent).toHaveBeenCalledWith(
       "ReasoningService.ts — PrivateTranscribe",
+      "code",
       { timeoutMs: 300, maxChars: 4000 }
     );
 

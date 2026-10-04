@@ -100,6 +100,43 @@ export function isLlmFileContentEnabled() {
 // ─── Filename parsing ─────────────────────────────────────────────────────────
 
 /**
+ * Editors whose title bar names the open file, as lowercase process names without ".exe".
+ * Any other app can show a title that looks like a filename (a web page sets its own), and
+ * Smart Context would then read that file off disk into the AI prompt.
+ */
+const EDITOR_PROCESS_NAMES = new Set([
+  "code",
+  "cursor",
+  "windsurf",
+  "zed",
+  "devenv",
+  "sublime_text",
+  "notepad++",
+  "notepad",
+  // JetBrains IDEs; studio64 is Android Studio.
+  "idea64",
+  "pycharm64",
+  "webstorm64",
+  "rider64",
+  "clion64",
+  "goland64",
+  "phpstorm64",
+  "rubymine64",
+  "datagrip64",
+  "studio64",
+]);
+
+/**
+ * @param {string|null|undefined} processName  Foreground process, e.g. "Code" or "notepad.exe".
+ * @returns {boolean}
+ */
+export function isKnownEditorProcess(processName) {
+  if (typeof processName !== "string") return false;
+  const name = processName.trim().toLowerCase();
+  return EDITOR_PROCESS_NAMES.has(name.replace(/\.exe$/, ""));
+}
+
+/**
  * Common window title patterns for extracting the active filename.
  *
  * VS Code default:  "filename.ext — rootName — Visual Studio Code"
@@ -144,6 +181,7 @@ export function parseFilenameFromTitle(windowTitle) {
  * home-dir safety checks, and size limits.
  *
  * @param {string|null|undefined} windowTitle  Active window title (used to derive filename).
+ * @param {string|null|undefined} processName  Its process; only a known editor's title is used.
  * @param {object}  [options]
  * @param {number}  [options.timeoutMs=200]  Max wait in ms.
  *
@@ -155,8 +193,12 @@ export function parseFilenameFromTitle(windowTitle) {
  * @property {string}    [filename]
  * @property {string}    [reason]
  */
-export async function extractFileIdentifiers(windowTitle, options = {}) {
+export async function extractFileIdentifiers(windowTitle, processName, options = {}) {
   const timeoutMs = typeof options.timeoutMs === "number" ? options.timeoutMs : 200;
+
+  if (!isKnownEditorProcess(processName)) {
+    return { available: false, reason: "foreground app is not a known editor" };
+  }
 
   const filename = parseFilenameFromTitle(windowTitle);
   if (!filename) {
@@ -192,9 +234,13 @@ export async function extractFileIdentifiers(windowTitle, options = {}) {
   }
 }
 
-export async function extractFileContent(windowTitle, options = {}) {
+export async function extractFileContent(windowTitle, processName, options = {}) {
   const timeoutMs = typeof options.timeoutMs === "number" ? options.timeoutMs : 250;
   const maxChars = typeof options.maxChars === "number" ? options.maxChars : 4000;
+
+  if (!isKnownEditorProcess(processName)) {
+    return { available: false, reason: "foreground app is not a known editor" };
+  }
 
   const filename = parseFilenameFromTitle(windowTitle);
   if (!filename) {
@@ -305,7 +351,9 @@ export async function getContext(options = {}) {
 
   if (wantFileIdentifiers && ctx?.available && ctx?.windowTitle) {
     try {
-      const fileCtx = await extractFileIdentifiers(ctx.windowTitle, { timeoutMs: 200 });
+      const fileCtx = await extractFileIdentifiers(ctx.windowTitle, ctx.processName, {
+        timeoutMs: 200,
+      });
       ctx = { ...ctx, fileIdentifiers: fileCtx };
     } catch {
       // Non-fatal — just omit file identifiers

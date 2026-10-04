@@ -261,7 +261,10 @@ class ReasoningService {
 
       let fileContentBlock = "";
       if (isLlmFileContentEnabled() && c.windowTitle) {
-        const fileCtx = await extractFileContent(c.windowTitle, { timeoutMs: 300, maxChars: 4000 });
+        const fileCtx = await extractFileContent(c.windowTitle, c.processName, {
+          timeoutMs: 300,
+          maxChars: 4000,
+        });
         if (fileCtx?.available && fileCtx.excerpt) {
           const truncationNote = fileCtx.truncated ? "\n[Excerpt truncated for prompt size.]" : "";
           fileContentBlock = `Active file excerpt (${fileCtx.filename || "current file"}):\n\n\`\`\`\n${fileCtx.excerpt}\n\`\`\`${truncationNote}\n\n`;

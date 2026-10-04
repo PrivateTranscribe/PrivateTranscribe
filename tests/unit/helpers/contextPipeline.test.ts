@@ -17,14 +17,20 @@ import {
   isSmartContextEnabled,
   isFileIdentifiersEnabled,
   isLlmContextEnhancementEnabled,
+  extractFileContent,
   extractFileIdentifiers,
+  isKnownEditorProcess,
   parseFilenameFromTitle,
 } from "../../../src/helpers/contextPipeline";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Import pure helpers from fileIdentifierExtractor for sensitivity tests
 // ─────────────────────────────────────────────────────────────────────────────
-import { isSafeFilePath, isFileTooLarge, extractIdentifiers } from "../../../src/helpers/fileIdentifierExtractor";
+import {
+  isSafeFilePath,
+  isFileTooLarge,
+  extractIdentifiers,
+} from "../../../src/helpers/fileIdentifierExtractor";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -114,7 +120,11 @@ describe("buildWhisperContextHint", () => {
 
   it("truncates long window titles to 80 chars with ellipsis", () => {
     const longTitle = "A".repeat(100);
-    const hint = buildWhisperContextHint({ available: true, source: "ipc", windowTitle: longTitle });
+    const hint = buildWhisperContextHint({
+      available: true,
+      source: "ipc",
+      windowTitle: longTitle,
+    });
     expect(hint).not.toBeNull();
     expect(hint!.length).toBeLessThanOrEqual("Window: ".length + 80);
     expect(hint).toContain("...");
@@ -271,7 +281,9 @@ describe("getContext", () => {
   it("returns timeout result when IPC takes longer than timeoutMs", async () => {
     vi.useFakeTimers();
 
-    const neverResolves = new Promise(() => {/* intentionally never settles */});
+    const neverResolves = new Promise(() => {
+      /* intentionally never settles */
+    });
     globalThis.window = makeWindow({
       electronAPI: {
         getActiveWindowContext: vi.fn().mockReturnValue(neverResolves),
@@ -499,7 +511,7 @@ describe("extractFileIdentifiers", () => {
   });
 
   it("returns unavailable when no filename found in title", async () => {
-    const result = await extractFileIdentifiers("Google Chrome");
+    const result = await extractFileIdentifiers("Welcome — Visual Studio Code", "Code");
     expect(result.available).toBe(false);
     expect(result.reason).toContain("no filename");
   });
@@ -517,7 +529,7 @@ describe("extractFileIdentifiers", () => {
       localStorage: { getItem: vi.fn(() => null) },
     });
 
-    const result = await extractFileIdentifiers("App.jsx — VS Code — privoca");
+    const result = await extractFileIdentifiers("App.jsx — VS Code — privoca", "Code");
     expect(result.available).toBe(true);
     expect(result.identifiers).toContain("getContext");
     expect(result.filename).toBe("App.jsx");
@@ -528,7 +540,7 @@ describe("extractFileIdentifiers", () => {
 
   it("returns unavailable when IPC not available", async () => {
     globalThis.window = makeWindow({ electronAPI: undefined });
-    const result = await extractFileIdentifiers("App.jsx — VS Code");
+    const result = await extractFileIdentifiers("App.jsx — VS Code", "Code");
     expect(result.available).toBe(false);
     expect(result.reason).toContain("IPC not available");
   });
@@ -546,7 +558,7 @@ describe("extractFileIdentifiers", () => {
       localStorage: { getItem: vi.fn(() => null) },
     });
 
-    const result = await extractFileIdentifiers("App.jsx — VS Code");
+    const result = await extractFileIdentifiers("App.jsx — VS Code", "Code");
     expect(result.available).toBe(false);
     expect(result.reason).toBe("outside home dir");
   });
@@ -563,7 +575,7 @@ describe("extractFileIdentifiers", () => {
       localStorage: { getItem: vi.fn(() => null) },
     });
 
-    const resultPromise = extractFileIdentifiers("App.jsx — VS Code", { timeoutMs: 50 });
+    const resultPromise = extractFileIdentifiers("App.jsx — VS Code", "Code", { timeoutMs: 50 });
     vi.advanceTimersByTime(100);
     const result = await resultPromise;
 
@@ -571,6 +583,167 @@ describe("extractFileIdentifiers", () => {
     expect(result.reason).toContain("timed out");
 
     vi.useRealTimers();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Editor allowlist — only a known editor's window title may name a file to read
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VS_CODE_TITLE = "App.jsx — privoca — Visual Studio Code";
+const NOTEPAD_TITLE = "notes.txt - Notepad";
+const NOT_AN_EDITOR = { available: false, reason: "foreground app is not a known editor" };
+
+describe("isKnownEditorProcess", () => {
+  it.each([
+    "Code",
+    "code.exe",
+    "CODE.EXE",
+    "Cursor",
+    "Windsurf.exe",
+    "zed",
+    "devenv.exe",
+    "sublime_text.exe",
+    "notepad++.exe",
+    "Notepad",
+    "notepad.exe",
+    "idea64.exe",
+    "pycharm64",
+    "webstorm64.exe",
+    "rider64",
+    "clion64.exe",
+    "goland64",
+    "phpstorm64.exe",
+    "rubymine64",
+    "datagrip64.exe",
+    "studio64",
+  ])("accepts %s", (processName) => {
+    expect(isKnownEditorProcess(processName)).toBe(true);
+  });
+
+  it.each([
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+    "WindowsTerminal.exe",
+    "powershell.exe",
+    "Slack.exe",
+    "Teams.exe",
+    "unknown-app.exe",
+  ])("rejects %s", (processName) => {
+    expect(isKnownEditorProcess(processName)).toBe(false);
+  });
+
+  it("rejects a missing or blank process name", () => {
+    expect(isKnownEditorProcess(undefined)).toBe(false);
+    expect(isKnownEditorProcess(null)).toBe(false);
+    expect(isKnownEditorProcess("")).toBe(false);
+    expect(isKnownEditorProcess("   ")).toBe(false);
+  });
+});
+
+describe("Smart Context file reads", () => {
+  let originalWindow: typeof globalThis.window;
+
+  beforeEach(() => {
+    originalWindow = globalThis.window;
+  });
+
+  afterEach(() => {
+    globalThis.window = originalWindow;
+    vi.unstubAllGlobals();
+  });
+
+  /** Both file IPC calls, stubbed, so a test can tell whether a file was asked for. */
+  function stubFileIpc() {
+    const electronAPI = {
+      getActiveWindowContext: vi.fn(),
+      extractFileIdentifiers: vi.fn().mockResolvedValue({ blocked: false, identifiers: ["run"] }),
+      extractFileContext: vi.fn().mockResolvedValue({ blocked: false, excerpt: "run();" }),
+    };
+    globalThis.window = makeWindow({ electronAPI });
+    return electronAPI;
+  }
+
+  it.each([
+    ["VS Code", "Code", VS_CODE_TITLE, "App.jsx"],
+    ["Notepad", "notepad.exe", NOTEPAD_TITLE, "notes.txt"],
+  ])("takes the filename from a %s title", async (_editor, processName, title, filename) => {
+    const ipc = stubFileIpc();
+
+    const identifiers = await extractFileIdentifiers(title, processName);
+    const content = await extractFileContent(title, processName);
+
+    expect(identifiers).toMatchObject({ available: true, filename });
+    expect(content).toMatchObject({ available: true, filename, excerpt: "run();" });
+    expect(ipc.extractFileIdentifiers).toHaveBeenCalledWith(filename);
+    expect(ipc.extractFileContext).toHaveBeenCalledWith(filename, { maxChars: 4000 });
+  });
+
+  it.each(["chrome.exe", "msedge.exe", "firefox.exe", "WindowsTerminal.exe", "unknown-app.exe"])(
+    "takes no filename from the same titles shown by %s, and asks for no file",
+    async (processName) => {
+      const ipc = stubFileIpc();
+
+      for (const title of [VS_CODE_TITLE, NOTEPAD_TITLE]) {
+        expect(await extractFileIdentifiers(title, processName)).toEqual(NOT_AN_EDITOR);
+        expect(await extractFileContent(title, processName)).toEqual(NOT_AN_EDITOR);
+      }
+      expect(ipc.extractFileIdentifiers).not.toHaveBeenCalled();
+      expect(ipc.extractFileContext).not.toHaveBeenCalled();
+    }
+  );
+
+  it("asks for no file when the caller has no process name", async () => {
+    const ipc = stubFileIpc();
+
+    expect(await extractFileIdentifiers(VS_CODE_TITLE, undefined)).toEqual(NOT_AN_EDITOR);
+    expect(await extractFileContent(VS_CODE_TITLE, undefined)).toEqual(NOT_AN_EDITOR);
+    expect(ipc.extractFileIdentifiers).not.toHaveBeenCalled();
+    expect(ipc.extractFileContext).not.toHaveBeenCalled();
+  });
+
+  describe("getContext with file identifiers switched on", () => {
+    /** The foreground window shows VS_CODE_TITLE and belongs to `processName`. */
+    function stubForegroundWindow(processName: string) {
+      setBetaFeatures(true);
+      const electronAPI = {
+        getActiveWindowContext: vi.fn().mockResolvedValue({
+          available: true,
+          platform: "win32",
+          processName,
+          windowTitle: VS_CODE_TITLE,
+        }),
+        extractFileIdentifiers: vi.fn().mockResolvedValue({ blocked: false, identifiers: ["run"] }),
+      };
+      globalThis.window = makeWindow({
+        electronAPI,
+        localStorage: {
+          getItem: vi.fn((key: string) =>
+            key === "smartContextEnabled" || key === "enableFileIdentifiers" ? "true" : null
+          ),
+        },
+      });
+      return electronAPI;
+    }
+
+    it("reads identifiers from the file an editor names", async () => {
+      const ipc = stubForegroundWindow("Code");
+
+      const ctx = await getContext();
+
+      expect(ctx.fileIdentifiers).toMatchObject({ available: true, filename: "App.jsx" });
+      expect(ipc.extractFileIdentifiers).toHaveBeenCalledWith("App.jsx");
+    });
+
+    it("reads nothing when a browser shows the same title", async () => {
+      const ipc = stubForegroundWindow("chrome");
+
+      const ctx = await getContext();
+
+      expect(ctx.fileIdentifiers).toEqual(NOT_AN_EDITOR);
+      expect(ipc.extractFileIdentifiers).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -587,7 +760,9 @@ describe("isSafeFilePath", () => {
   });
 
   it("returns true for a file in a subdirectory of home", () => {
-    expect(isSafeFilePath(path.join(homeDir, "projects", "app", "src", "App.jsx"), homeDir)).toBe(true);
+    expect(isSafeFilePath(path.join(homeDir, "projects", "app", "src", "App.jsx"), homeDir)).toBe(
+      true
+    );
   });
 
   it("sensitivity: returns false for a file outside home dir", () => {
