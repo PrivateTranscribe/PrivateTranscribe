@@ -24,13 +24,19 @@ permissions:
 jobs:
   build-store:
     runs-on: windows-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
           cache: "npm"
@@ -39,8 +45,8 @@ jobs:
         run: npm ci
 
       # The whole of prepare:resources, never a shorter hand-picked list. The
-      # installer users actually get is built by release-production.yml
-      # via `npm run build:win`, whose prebuild:win runs this — and it is what
+      # installer users actually get is built by release.yml,
+      # which runs this before `npm run build:win` — and it is what
       # fetches llama-server, whose ggml/llama DLLs are the local reasoning
       # runtime. A Store build that skipped it shipped 13 MB light and silently
       # lost local GGUF reasoning.
@@ -78,21 +84,21 @@ jobs:
 
           Write-Host "resources/bin has $($dlls.Count) DLLs including the llama.cpp runtime."
 
-      # Fail here rather than 10 minutes later inside electron-builder, where a
-      # missing credential surfaces as an opaque Azure auth error.
-      - name: Verify Azure signing credentials are present
-        shell: pwsh
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        run: |
-          $missing = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET') |
-            Where-Object { -not (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value }
+      # OIDC login and an immediate token fetch, as in release.yml: GitHub's
+      # assertion lives 5 minutes and the Azure CLI cannot renew it.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
 
-          if ($missing) {
-            throw "The Store rejects unsigned installers outright. Missing secrets: $($missing -join ', '). The client secret expires; if it was working and now is not, renew it on the PrivateTranscribe-Signing-CI app registration."
-          }
+      - name: Prefetch the code signing token
+        shell: pwsh
+        run: |
+          $expires = az account get-access-token --resource https://codesigning.azure.net --query expiresOn --output tsv
+          if ($LASTEXITCODE -ne 0) { throw "Could not get a code signing token from Azure. The Store rejects unsigned installers outright." }
+          Write-Host "Code signing token valid until $expires"
 
       # Goes through `npm run build:store` rather than restating its flags, so
       # the silent include and the separate output directory cannot drift from
@@ -106,12 +112,9 @@ jobs:
       # install treats app updates and analytics like the public installer does.
       # It stays out of build:store, which local Store builds also run.
       - name: Package (Store NSIS, silent)
-        run: npm run build:store --ignore-scripts -- --config.forceCodeSigning=true --config.win.signAndEditExecutable=true --config.extraMetadata.privatetranscribeOfficialBuild=true
+        run: npm run build:store --ignore-scripts -- --config.forceCodeSigning=true --config.win.signAndEditExecutable=true --config.win.signExecutable=true --config.extraMetadata.privatetranscribeOfficialBuild=true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
       # The one thing that makes this build different from the public one is
       # invisible until somebody runs it, and a wizard would fail certification.
@@ -205,7 +208,7 @@ jobs:
         run: node scripts/verify-official-build.js dist-store/win-unpacked/resources/app.asar
 
       - name: Upload Store installer
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: privatetranscribe-store-setup
           path: dist-store/*.exe
@@ -219,9 +222,10 @@ jobs:
         if: ${{ github.event.inputs.publish == 'true' }}
         shell: bash
         env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
         run: |
           set -euo pipefail
 
@@ -239,8 +243,6 @@ jobs:
             exit 1
           fi
 
-          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
           KEY="store/${VERSION}/PrivateTranscribe-Store-Setup-${VERSION}.exe"

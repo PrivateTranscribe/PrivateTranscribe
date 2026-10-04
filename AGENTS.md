@@ -14,7 +14,7 @@ PrivateTranscribe is an Electron desktop dictation app for private/local transcr
 
 ## Critical Rules
 
-- **Do not merge to `main` or `production` unless explicitly asked.**
+- **Do not merge to `main` unless explicitly asked.**
 - **Do not create or switch to a new branch unless explicitly asked. Work on the current branch by default.**
 - Keep commits atomic. Do not bundle unrelated changes.
 - Prefer small, focused fixes with tests or a clear verification step.
@@ -68,7 +68,7 @@ Important files:
 - `src/helpers/whisper.js` — local Whisper manager
 - `src/helpers/whisperServer.js` — whisper-server lifecycle/engine state
 - `src/helpers/gpuBinaryManager.js` — CUDA engine download/install/versioning
-- `.github/workflows/release-production.yml` — Windows production updater release to R2
+- `.github/workflows/release.yml` — the Release button: Windows installer to R2 and GitHub Releases
 - `.github/workflows/build-cuda-binary.yml` — CUDA engine package build/upload
 
 ## Whisper CUDA Engine: Read Before Touching
@@ -90,19 +90,14 @@ Hard-earned rules from the `0.8.2` → `0.8.4` stabilization:
 
 ## Release Notes
 
-Branch model:
-
-- `main` is the default/development branch.
-- `production` is the deploy trigger branch for Windows updater releases.
-- Pushing `production` triggers `Release to Production (R2)` and uploads to `updates.privatetranscribe.com`.
+Releases run from `main` through the `Release` workflow (`release.yml`). Its build job waits in the protected `production` environment until Kristian approves it. The `production` branch is retired and triggers nothing.
 
 Do not release unless explicitly asked. If releasing:
 
-1. Ensure version bump and changelog are committed on `main`.
-2. Push `main` if needed.
-3. Merge `origin/main` to `production` with a release commit message.
-4. Push `production` and watch the production workflow.
-5. Verify `https://updates.privatetranscribe.com/win/latest.yml` has the expected version and installer HTTP 200.
+1. Commit the version bump in `package.json` and a `## X.Y.Z - YYYY-MM-DD` section in `CHANGELOG.md` on `main`, and push.
+2. Start the workflow: `gh workflow run release.yml --ref main`.
+3. The run fails early if the tag `vX.Y.Z` exists or the changelog has no entry. Otherwise it waits for the approval.
+4. Verify `https://updates.privatetranscribe.com/win/latest.yml` names the new version and the installer returns HTTP 200.
 
 ## Verification Expectations
 

@@ -20,34 +20,34 @@ jobs:
   publish:
     name: Validate packages and publish latest-cuda.json
     runs-on: ubuntu-latest
+    environment: production
     env:
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET: privatetranscribe-assets
+      VERSION: ${{ inputs.engine_version }}
 
     steps:
       - name: Validate inputs and credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.engine_version }}"
           if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "ERROR: engine_version '$VERSION' must look like v0.0.9"
             exit 1
           fi
           test -n "$R2_ACCOUNT_ID" || (echo "Missing R2_ACCOUNT_ID" && exit 1)
-          test -n "$R2_ACCESS_KEY_ID" || (echo "Missing R2_ACCESS_KEY_ID" && exit 1)
-          test -n "$R2_SECRET_ACCESS_KEY" || (echo "Missing R2_SECRET_ACCESS_KEY" && exit 1)
-
-      - name: Configure R2 credentials
-        run: |
-          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          test -n "$AWS_ACCESS_KEY_ID" || (echo "Missing R2_ACCESS_KEY_ID" && exit 1)
+          test -n "$AWS_SECRET_ACCESS_KEY" || (echo "Missing R2_SECRET_ACCESS_KEY" && exit 1)
 
       - name: Verify both CUDA packages exist
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.engine_version }}"
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           for PACKAGE in \
             whisper-server-win32-x64-cuda.zip \
@@ -62,9 +62,12 @@ jobs:
           done
 
       - name: Publish manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.engine_version }}"
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           printf '{"version":"%s","updatedAt":"%s"}\n' \
             "$VERSION" "$(date -u +%FT%TZ)" > latest-cuda.json
@@ -80,7 +83,6 @@ jobs:
       - name: Verify public CDN manifest
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.engine_version }}"
           URL="https://updates.privatetranscribe.com/binaries/latest-cuda.json"
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error \
