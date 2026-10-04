@@ -6,6 +6,8 @@ import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Ledger gate `converse-permission-ux`: the user half of the permission relay.
  *
@@ -104,7 +106,10 @@ async function readDecisions(file: string, timeoutMs = 30_000): Promise<StubDeci
 async function startSessionFromPage(controlPanel: Page, overlayWindow: Page, projectDir: string) {
   await controlPanel.evaluate(
     (dir) =>
-      localStorage.setItem("converseProjects", JSON.stringify([{ path: dir, lastUsedAt: Date.now() }])),
+      localStorage.setItem(
+        "converseProjects",
+        JSON.stringify([{ path: dir, lastUsedAt: Date.now() }])
+      ),
     projectDir
   );
   await unlockTesterAccess(controlPanel);
@@ -361,9 +366,9 @@ test.describe("converse permission ux", () => {
         await expect(card).toBeVisible({ timeout: 60_000 });
         // The countdown is honest about the shortened deadline rather than
         // showing a hardcoded 55.
-        await expect(controlPanel.getByTestId("converse-permission-countdown").first()).toContainText(
-          /Denies itself in [1-6]s|Denying now/
-        );
+        await expect(
+          controlPanel.getByTestId("converse-permission-countdown").first()
+        ).toContainText(/Denies itself in [1-6]s|Denying now/);
 
         // Nobody clicks. The relay's timer is what settles this.
         const record = controlPanel.getByTestId("converse-permission-record").first();

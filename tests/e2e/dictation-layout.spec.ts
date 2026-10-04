@@ -1,7 +1,8 @@
 import { expect, test } from "./fixtures/electron-app";
 import { captureTab, disclosure } from "./fixtures/tab-layout";
 const capture = captureTab;
-test.use({ seedWhisperModels: ["base"] });
+// The search step below lands on Agent mode, which only exists with the switch on.
+test.use({ seedWhisperModels: ["base"], experimentalFeatures: true });
 
 test("Dictation keeps controls and models visible and reveals optional settings", async ({
   controlPanel: page,

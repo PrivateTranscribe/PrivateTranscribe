@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { useEnhancementPreferences } from "../hooks/useEnhancementPreferences";
 import { isFeatureUnlocked } from "../utils/betaFeatures";
+import { useExperimentalFeatures } from "../utils/experimentalFeatures";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import { SettingsDisclosure } from "./ui/SettingsDisclosure";
 import { SettingsRow } from "./ui/SettingsSection";
@@ -48,6 +49,11 @@ function SettingsPanelRow({
 }
 
 export default function CodingPromptSettings() {
+  const [experimentalFeaturesEnabled] = useExperimentalFeatures();
+  return experimentalFeaturesEnabled ? <AgentModeSettings /> : null;
+}
+
+function AgentModeSettings() {
   const {
     agentModeEnabled,
     setAgentModeEnabled,

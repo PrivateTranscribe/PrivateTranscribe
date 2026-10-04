@@ -3,6 +3,8 @@ import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Agent Mode end to end: the normal dictation key starts an Agent Mode recording, the
  * ramble is decoded by a real whisper model, the rewrite goes out to the

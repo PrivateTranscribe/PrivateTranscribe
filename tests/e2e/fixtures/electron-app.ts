@@ -133,6 +133,8 @@ export type PrivateTranscribeOptions = {
    * control panel instead of the first-run wizard. Set false to test onboarding.
    */
   completeOnboarding: boolean;
+  /** Turn on Settings → Experimental features (Converse, Agent Mode, Action Engine). */
+  experimentalFeatures: boolean;
   /** Extra environment variables for the launched app (overrides defaults). */
   appEnv: Record<string, string>;
   /**
@@ -493,7 +495,11 @@ async function closeApp(app: ElectronApplication): Promise<void> {
  * that is showing the real UI. localStorage lives in the renderer's LevelDB
  * store, so it can only be seeded after first paint — hence the reload.
  */
-async function ensureOnboarded(app: ElectronApplication, complete: boolean): Promise<Page> {
+async function ensureOnboarded(
+  app: ElectronApplication,
+  complete: boolean,
+  experimental = false
+): Promise<Page> {
   let page = await findWindow(app, (w) => isControlPanelUrl(w.url()), "control panel");
   // Tests requesting the panel intend to use it. Open it through the real app
   // action so Windows startup minimization does not block clicks or screenshots.
@@ -502,10 +508,16 @@ async function ensureOnboarded(app: ElectronApplication, complete: boolean): Pro
   if (!complete) return page;
 
   const alreadyDone = await page.evaluate(
-    () => localStorage.getItem("onboardingCompleted") === "true"
+    (experimental) =>
+      localStorage.getItem("onboardingCompleted") === "true" &&
+      (!experimental || localStorage.getItem("experimentalFeatures") === "true"),
+    experimental
   );
   if (!alreadyDone) {
-    await page.evaluate(() => localStorage.setItem("onboardingCompleted", "true"));
+    await page.evaluate((experimental) => {
+      localStorage.setItem("onboardingCompleted", "true");
+      if (experimental) localStorage.setItem("experimentalFeatures", "true");
+    }, experimental);
     await page.reload({ waitUntil: "domcontentloaded" });
     page = await findWindow(app, (w) => isControlPanelUrl(w.url()), "control panel");
   }
@@ -537,6 +549,7 @@ export const test = base.extend<
   PrivateTranscribeOptions & PrivateTranscribeFixtures & InternalFixtures
 >({
   completeOnboarding: [true, { option: true }],
+  experimentalFeatures: [false, { option: true }],
   appEnv: [{}, { option: true }],
   appArgs: [[], { option: true }],
   seedConsentFile: ["denied", { option: true }],
@@ -666,6 +679,7 @@ export const test = base.extend<
       consoleMessages,
       seedKokoroModel,
       completeOnboarding,
+      experimentalFeatures,
       fakeAudioCaptureFile,
     },
     use,
@@ -714,7 +728,7 @@ export const test = base.extend<
         await closeApp(app);
 
         app = await launchApp(inputs);
-        const controlPanel = await ensureOnboarded(app, completeOnboarding);
+        const controlPanel = await ensureOnboarded(app, completeOnboarding, experimentalFeatures);
         const overlayWindow = isFlagOn(env.PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW)
           ? null
           : await findWindow(app, (w) => isOverlayUrl(w.url()), "overlay");
@@ -757,12 +771,16 @@ export const test = base.extend<
     await use(() => appController.relaunch());
   },
 
-  controlPanel: async ({ electronApp, completeOnboarding }, use) => {
-    await use(await ensureOnboarded(electronApp, completeOnboarding));
+  controlPanel: async ({ electronApp, completeOnboarding, experimentalFeatures }, use) => {
+    await use(await ensureOnboarded(electronApp, completeOnboarding, experimentalFeatures));
   },
 
-  overlayWindow: async ({ electronApp }, use) => {
+  overlayWindow: async ({ electronApp, experimentalFeatures }, use) => {
     const page = await findWindow(electronApp, (w) => isOverlayUrl(w.url()), "dictation overlay");
+    // Overlay-only specs never touch the control panel, so the switch is set here too.
+    if (experimentalFeatures) {
+      await page.evaluate(() => localStorage.setItem("experimentalFeatures", "true"));
+    }
     await use(page);
   },
 });

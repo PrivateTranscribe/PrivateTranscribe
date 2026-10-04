@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Ledger gate `converse-barge-in`.
  *

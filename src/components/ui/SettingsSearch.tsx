@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import {
   SETTINGS_SEARCH_INDEX,
+  isExperimentalEntry,
   searchSettings,
   type SettingsSearchEntry,
 } from "../../config/settingsSearchIndex";
+import { useExperimentalFeatures } from "../../utils/experimentalFeatures";
 
 const MAX_RESULTS = 8;
 
@@ -26,10 +28,15 @@ export default function SettingsSearch({ onSelect }: SettingsSearchProps) {
   const [highlighted, setHighlighted] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const results = useMemo(
-    () => searchSettings(query, SETTINGS_SEARCH_INDEX).slice(0, MAX_RESULTS),
-    [query]
+  const [experimentalFeaturesEnabled] = useExperimentalFeatures();
+  const index = useMemo(
+    () =>
+      experimentalFeaturesEnabled
+        ? SETTINGS_SEARCH_INDEX
+        : SETTINGS_SEARCH_INDEX.filter((entry) => !isExperimentalEntry(entry)),
+    [experimentalFeaturesEnabled]
   );
+  const results = useMemo(() => searchSettings(query, index).slice(0, MAX_RESULTS), [query, index]);
 
   useEffect(() => setHighlighted(0), [query]);
 

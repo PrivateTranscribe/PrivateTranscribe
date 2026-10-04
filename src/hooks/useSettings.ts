@@ -10,6 +10,7 @@ import {
 } from "../utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
 import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../models/kokoroVoices";
+import { EXPERIMENTAL_FEATURES_KEY } from "../utils/experimentalFeatures";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -944,6 +945,11 @@ export function useSettings() {
     true,
     boolSerializer
   );
+  const [experimentalFeatures, setExperimentalFeatures] = useLocalStorage(
+    EXPERIMENTAL_FEATURES_KEY,
+    false,
+    boolSerializer
+  );
   const [errorNotifications, setErrorNotifications] = useLocalStorage(
     "errorNotifications",
     true,
@@ -1235,6 +1241,8 @@ export function useSettings() {
     setAgentModeEnabled,
     agentModeRewrite,
     setAgentModeRewrite,
+    experimentalFeatures,
+    setExperimentalFeatures,
     errorNotifications,
     setErrorNotifications,
     successConfirmation,

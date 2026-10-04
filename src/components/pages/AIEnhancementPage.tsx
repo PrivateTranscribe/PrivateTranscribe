@@ -145,7 +145,7 @@ export default function AIEnhancementPage() {
             </div>
           </ReasoningModelSelector>
 
-          <div className="mt-5">
+          <div className="mt-5 empty:hidden">
             <CodingPromptSettings />
           </div>
 

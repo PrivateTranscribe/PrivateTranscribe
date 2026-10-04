@@ -8,6 +8,7 @@ import { useDialogs } from "../hooks/useDialogs";
 import { useToast } from "./ui/Toast";
 import { useUpdater } from "../hooks/useUpdater";
 import { trackAnalyticsEvent } from "../utils/analytics";
+import { resolveExperimentalPage, useExperimentalFeatures } from "../utils/experimentalFeatures";
 
 import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -24,8 +25,15 @@ import type { SettingsSectionType } from "./SettingsPage";
 import { AnalyticsConsentModal } from "./AnalyticsConsentModal";
 
 export default function ControlPanelShell() {
-  const [activePage, setActivePage] = useState<PageId>("home");
+  const [requestedPage, setActivePage] = useState<PageId>("home");
+  const [experimentalFeaturesEnabled] = useExperimentalFeatures();
+  // Resolved at render, so a stale saved or requested id never mounts a hidden page.
+  const activePage = resolveExperimentalPage(requestedPage, experimentalFeaturesEnabled);
   const contentRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (activePage !== requestedPage) setActivePage(activePage);
+  }, [activePage, requestedPage]);
 
   useLayoutEffect(() => {
     contentRef.current?.scrollTo({ top: 0 });

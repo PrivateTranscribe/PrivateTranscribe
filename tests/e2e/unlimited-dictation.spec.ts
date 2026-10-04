@@ -2,6 +2,8 @@ import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Dictation and Agent mode have no daily cap.
  *

@@ -66,7 +66,7 @@ function mount() {
 
 beforeEach(() => {
   harness.effects = [];
-  const values = new Map<string, string>();
+  const values = new Map<string, string>([["experimentalFeatures", "true"]]);
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),

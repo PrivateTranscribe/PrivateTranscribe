@@ -12,6 +12,7 @@ import {
   type KokoroVoiceAccent,
 } from "../../models/kokoroVoices";
 import { getSharedAudioContext, waitForAudioContextRunning } from "../../utils/sharedAudioContext";
+import { useExperimentalFeatures } from "../../utils/experimentalFeatures";
 
 /**
  * The voice picker, shared by every feature that speaks.
@@ -177,6 +178,7 @@ export function VoicePicker({
   collapsible = false,
 }: VoicePickerProps) {
   const [expanded, setExpanded] = useState(!collapsible);
+  const [experimentalFeaturesEnabled] = useExperimentalFeatures();
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -349,7 +351,10 @@ export function VoicePicker({
               <span data-testid={`${testIdPrefix}-voice-current`} className="text-foreground">
                 {selected.name}
               </span>
-              {` · ${selected.accent} · ${testIdPrefix === "converse" ? "Also used in Read Aloud" : "Also used in Converse"}`}
+              {` · ${selected.accent}`}
+              {testIdPrefix === "converse"
+                ? " · Also used in Read Aloud"
+                : experimentalFeaturesEnabled && " · Also used in Converse"}
             </p>
           </div>
           <Button

@@ -285,6 +285,13 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
       "action engine",
     ],
   },
+  {
+    label: "Experimental features",
+    group: "Beta features",
+    page: "settings",
+    section: "beta",
+    keywords: ["experimental", "converse", "agent mode", "action engine", "voice commands"],
+  },
 
   // ── Settings › Permissions ────────────────────────────────────────────────
   {
@@ -435,6 +442,10 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
 /** Lowercased haystack for one entry: label, group, and keywords together. */
 function haystack(entry: SettingsSearchEntry): string {
   return [entry.label, entry.group, ...(entry.keywords || [])].join(" ").toLowerCase();
+}
+
+export function isExperimentalEntry(entry: SettingsSearchEntry): boolean {
+  return entry.page === "converse" || entry.group === "Agent mode";
 }
 
 /**
