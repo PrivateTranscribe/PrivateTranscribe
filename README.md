@@ -16,6 +16,8 @@ PrivateTranscribe began as a private copy of [OpenWhispr](https://github.com/Ope
 - **Control Panel** — transcription history, settings, model management
 - **Privacy-first** — with a local model, audio stays on your device
 
+[SECURITY.md](SECURITY.md) explains how to report a vulnerability, what the app can do on your PC and what leaves it.
+
 ## Requirements
 
 - Windows 10 or later
@@ -36,6 +38,8 @@ npm run pack         # Unsigned build for local testing
 ```
 
 Releases are deployed automatically via GitHub Actions when pushing to the `production` branch.
+
+Copies you build yourself do not check for app updates or send usage events.
 
 ## License
 
