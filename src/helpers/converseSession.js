@@ -217,6 +217,8 @@ class ConverseSession {
       sessionId: status.sessionId || this.sessionId,
       /** The id this session was started with `--resume`, or null for a fresh one. */
       resumedFrom: this.resumedFrom,
+      /** "folder" when Claude Code loads the folder's own setup, "user-only" when not. */
+      projectSetup: status.projectSetup || null,
       turnGen: this.turnGen,
       stateLog: this.stateLog.slice(),
       player: this.player,

@@ -259,6 +259,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   converseCheckFolderTrust: (cwd) => ipcRenderer.invoke("converse-check-folder-trust", cwd),
   converseTrustFolder: (cwd, shownFiles) =>
     ipcRenderer.invoke("converse-trust-folder", cwd, shownFiles),
+  converseForgetFolder: (cwd) => ipcRenderer.invoke("converse-forget-folder", cwd),
   conversePermissionAutoAnswer: (behavior) =>
     ipcRenderer.invoke("converse-permission-auto-answer", behavior),
   conversePermissionAnswer: (id, behavior) =>

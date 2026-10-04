@@ -57,19 +57,18 @@ const MAX_REMEMBERED_PROJECTS = 8;
 /** Fast enough that sentences appear while they are still being spoken. */
 const POLL_MS = 200;
 
-/** Start of the main process's refusal for an untrusted folder (converseAgent.js). */
-const FOLDER_TRUST_REQUIRED = "This folder has Claude Code settings you have not trusted yet";
-
 type FolderTrustFile = { file: string; sha256: string; status: "new" | "changed" | "trusted" };
 type FolderTrustCheck = {
-  needsTrust: boolean;
-  reason: "no-config" | "untrusted" | "changed" | "trusted";
+  /** True only when the user opted the folder in and none of its files changed since. */
+  usesProjectSetup: boolean;
+  reason: "untrusted" | "changed" | "trusted";
   files: FolderTrustFile[];
 };
-/** The two folder-trust channels preload.js exposes for this page. */
+/** The folder-setup channels preload.js exposes for this page. */
 type FolderTrustApi = {
   converseCheckFolderTrust?: (cwd: string) => Promise<FolderTrustCheck>;
   converseTrustFolder?: (cwd: string, shownFiles: FolderTrustFile[]) => Promise<FolderTrustCheck>;
+  converseForgetFolder?: (cwd: string) => Promise<FolderTrustCheck>;
 };
 const folderTrustApi = () => window.electronAPI as unknown as FolderTrustApi | undefined;
 
@@ -380,9 +379,63 @@ export function PermissionCard({
   );
 }
 
+const PROJECT_SETUP_COPY: Record<FolderTrustCheck["reason"], { title: string; help: string }> = {
+  untrusted: {
+    title: "Your Claude Code settings only",
+    help: "This folder's hooks, MCP servers, skills and settings are not loaded.",
+  },
+  changed: {
+    title: "Your Claude Code settings only",
+    help: "This folder's Claude Code files changed since you allowed them, so its setup is off again.",
+  },
+  trusted: {
+    title: "This folder's Claude Code setup",
+    help: "Its hooks, MCP servers, skills and settings load with Converse.",
+  },
+};
+
+/** Which Claude Code setup the next session in this folder starts with. */
+export function ProjectSetupRow({
+  check,
+  busy,
+  onUse,
+  onStopUsing,
+}: {
+  check: FolderTrustCheck;
+  busy: boolean;
+  onUse: () => void;
+  onStopUsing: () => void;
+}) {
+  const copy = PROJECT_SETUP_COPY[check.reason];
+  return (
+    <div
+      data-testid="converse-project-setup"
+      data-reason={check.reason}
+      className="flex items-center justify-between gap-4"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{copy.title}</p>
+        <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">{copy.help}</p>
+      </div>
+      <div className="shrink-0">
+        {check.reason === "trusted" ? (
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onStopUsing}>
+            Stop using it
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled={busy} onClick={onUse}>
+            Use this folder&apos;s setup
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
- * Asked before Claude Code starts in a folder that carries its own Claude Code
- * files, because --print mode loads them without the CLI's own trust prompt.
+ * Confirm before Converse loads a folder's own Claude Code setup, because
+ * --print mode loads it without the CLI's own trust prompt. Allowing it never
+ * starts a session; Start does that.
  */
 export function FolderTrustPrompt({
   check,
@@ -403,8 +456,8 @@ export function FolderTrustPrompt({
         <div className="min-w-0 space-y-1.5">
           <p className="text-sm font-medium text-foreground">
             {changed
-              ? "This folder's Claude Code files changed since you trusted it"
-              : "Trust this folder's Claude Code files?"}
+              ? "This folder's Claude Code files changed since you allowed them"
+              : "Use this folder's Claude Code setup?"}
           </p>
           <p className="text-[13px] text-muted-foreground leading-relaxed">
             Claude Code loads these from the folder without asking. Hooks in its settings can run
@@ -416,28 +469,38 @@ export function FolderTrustPrompt({
         </div>
       </div>
 
-      <ul
-        data-testid="converse-folder-trust-files"
-        className="max-h-48 overflow-y-auto rounded-md border border-border-subtle/60 bg-surface-1 px-3 py-2 space-y-1 font-mono text-[12px]"
-      >
-        {check.files.map((entry) => (
-          <li key={entry.file} className="flex items-center justify-between gap-3">
-            <span className="min-w-0 [overflow-wrap:anywhere] text-foreground">{entry.file}</span>
-            {changed && entry.status !== "trusted" && (
-              <span className="shrink-0 font-sans text-[11px] font-medium text-warning">
-                {entry.status === "new" ? "New" : "Changed"}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {check.files.length > 0 ? (
+        <ul
+          data-testid="converse-folder-trust-files"
+          className="max-h-48 overflow-y-auto rounded-md border border-border-subtle/60 bg-surface-1 px-3 py-2 space-y-1 font-mono text-[12px]"
+        >
+          {check.files.map((entry) => (
+            <li key={entry.file} className="flex items-center justify-between gap-3">
+              <span className="min-w-0 [overflow-wrap:anywhere] text-foreground">{entry.file}</span>
+              {changed && entry.status !== "trusted" && (
+                <span className="shrink-0 font-sans text-[11px] font-medium text-warning">
+                  {entry.status === "new" ? "New" : "Changed"}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p
+          data-testid="converse-folder-trust-empty"
+          className="text-[12px] text-muted-foreground leading-relaxed"
+        >
+          No Claude Code files in this folder itself. Files in folders above or below it can still
+          load.
+        </p>
+      )}
 
       <div className="flex items-center justify-end gap-2">
         <Button variant="outline" size="sm" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
         <Button size="sm" disabled={busy} onClick={onTrust}>
-          {busy ? "Starting session" : "Trust and start"}
+          Use this setup
         </Button>
       </div>
     </InfoBox>
@@ -638,8 +701,14 @@ export default function ConversePage() {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [startError, setStartError] = useState<string | null>(null);
-  /** The folder-trust question on screen, or null. Never carried to another folder. */
-  const [folderTrust, setFolderTrust] = useState<FolderTrustCheck | null>(null);
+  /** Which setup the chosen folder would start with; null until checked. */
+  const [folderSetup, setFolderSetup] = useState<FolderTrustCheck | null>(null);
+  /** The "use this folder's setup?" confirm on screen, or null. Never carried to another folder. */
+  const [setupConfirm, setSetupConfirm] = useState<FolderTrustCheck | null>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  /** Bumped per check, so a slow answer for an earlier folder never lands on a later one. */
+  const setupRequestRef = useRef(0);
   const [sendError, setSendError] = useState<string | null>(null);
 
   /**
@@ -914,71 +983,90 @@ export default function ConversePage() {
     rememberProject(chosen);
   }, [rememberProject]);
 
-  useEffect(() => {
-    setFolderTrust(null);
-  }, [projectPath]);
-
-  /** Start the session itself; the folder has already been checked. */
-  const startSession = useCallback(
-    async (cwd: string) => {
-      try {
-        const started = await window.electronAPI.converseStart({ cwd });
-        lastInterruptAtRef.current = 0;
-        setTranscript([]);
-        setPermissions([]);
-        setAnswering([]);
-        setLiveState(started);
-        setSessionActive(true);
-        rememberProject(cwd);
-      } catch (error) {
-        const message = invokeErrorMessage(error);
-        // The folder changed between the check and the start: ask again.
-        const recheck = message.startsWith(FOLDER_TRUST_REQUIRED)
-          ? await folderTrustApi()
-              ?.converseCheckFolderTrust?.(cwd)
-              .catch(() => undefined)
-          : undefined;
-        if (recheck?.needsTrust) setFolderTrust(recheck);
-        else setStartError(message);
+  const refreshFolderSetup = useCallback(
+    async (cwd: string | null): Promise<FolderTrustCheck | null> => {
+      const request = ++setupRequestRef.current;
+      let check: FolderTrustCheck | null = null;
+      if (cwd) {
+        try {
+          check = (await folderTrustApi()?.converseCheckFolderTrust?.(cwd)) ?? null;
+        } catch {
+          check = null;
+        }
       }
+      if (request === setupRequestRef.current) setFolderSetup(check);
+      return check;
     },
-    [rememberProject]
+    []
   );
+
+  // Re-read on a new folder and whenever a session ends: files can change while one runs.
+  useEffect(() => {
+    if (sessionActive) return;
+    setSetupConfirm(null);
+    setSetupError(null);
+    void refreshFolderSetup(projectPath);
+  }, [projectPath, sessionActive, refreshFolderSetup]);
+
+  /** Open the confirm on a fresh scan, so it lists the files as they are now. */
+  const handleUseFolderSetup = useCallback(async () => {
+    if (!projectPath) return;
+    setSetupError(null);
+    const check = await refreshFolderSetup(projectPath);
+    if (check && check.reason !== "trusted") setSetupConfirm(check);
+  }, [projectPath, refreshFolderSetup]);
+
+  /** Allow exactly the files the confirm showed; never starts a session. */
+  const handleConfirmFolderSetup = useCallback(async () => {
+    if (!projectPath || !setupConfirm) return;
+    setSetupBusy(true);
+    setSetupError(null);
+    try {
+      await folderTrustApi()?.converseTrustFolder?.(projectPath, setupConfirm.files);
+      setSetupConfirm(null);
+    } catch (error) {
+      setSetupError(invokeErrorMessage(error));
+    } finally {
+      await refreshFolderSetup(projectPath);
+      setSetupBusy(false);
+    }
+  }, [projectPath, setupConfirm, refreshFolderSetup]);
+
+  const handleStopUsingFolderSetup = useCallback(async () => {
+    if (!projectPath) return;
+    setSetupBusy(true);
+    setSetupError(null);
+    try {
+      await folderTrustApi()?.converseForgetFolder?.(projectPath);
+    } catch (error) {
+      setSetupError(invokeErrorMessage(error));
+    } finally {
+      await refreshFolderSetup(projectPath);
+      setSetupBusy(false);
+    }
+  }, [projectPath, refreshFolderSetup]);
 
   const handleStart = useCallback(async () => {
     if (!projectPath) return;
     setStarting(true);
     setStartError(null);
     setSendError(null);
+    setSetupConfirm(null);
     try {
-      const check = await folderTrustApi()?.converseCheckFolderTrust?.(projectPath);
-      if (check?.needsTrust) {
-        setFolderTrust(check);
-        return;
-      }
-      await startSession(projectPath);
+      const started = await window.electronAPI.converseStart({ cwd: projectPath });
+      lastInterruptAtRef.current = 0;
+      setTranscript([]);
+      setPermissions([]);
+      setAnswering([]);
+      setLiveState(started);
+      setSessionActive(true);
+      rememberProject(projectPath);
     } catch (error) {
       setStartError(invokeErrorMessage(error));
     } finally {
       setStarting(false);
     }
-  }, [projectPath, startSession]);
-
-  const handleTrustAndStart = useCallback(async () => {
-    if (!projectPath || !folderTrust) return;
-    setStarting(true);
-    setStartError(null);
-    setSendError(null);
-    try {
-      await folderTrustApi()?.converseTrustFolder?.(projectPath, folderTrust.files);
-      setFolderTrust(null);
-      await startSession(projectPath);
-    } catch (error) {
-      setStartError(invokeErrorMessage(error));
-    } finally {
-      setStarting(false);
-    }
-  }, [projectPath, folderTrust, startSession]);
+  }, [projectPath, rememberProject]);
 
   /**
    * The one way a turn leaves this page. The microphone calls exactly what the
@@ -1188,6 +1276,29 @@ export default function ConversePage() {
                 )}
               </SettingsPanelRow>
 
+              {projectPath && folderSetup && (
+                <SettingsPanelRow>
+                  {setupConfirm ? (
+                    <FolderTrustPrompt
+                      check={setupConfirm}
+                      busy={setupBusy}
+                      onTrust={() => void handleConfirmFolderSetup()}
+                      onCancel={() => setSetupConfirm(null)}
+                    />
+                  ) : (
+                    <ProjectSetupRow
+                      check={folderSetup}
+                      busy={setupBusy || starting}
+                      onUse={() => void handleUseFolderSetup()}
+                      onStopUsing={() => void handleStopUsingFolderSetup()}
+                    />
+                  )}
+                  {setupError && (
+                    <p className="text-[12px] text-warning mt-2 leading-relaxed">{setupError}</p>
+                  )}
+                </SettingsPanelRow>
+              )}
+
               {!projectPath && projects.length > 0 && (
                 <SettingsPanelRow>
                   <SectionLabel className="mb-2">Recent folders</SectionLabel>
@@ -1345,21 +1456,12 @@ export default function ConversePage() {
                 </InfoBox>
               )}
 
-              {folderTrust ? (
-                <FolderTrustPrompt
-                  check={folderTrust}
-                  busy={starting}
-                  onTrust={() => void handleTrustAndStart()}
-                  onCancel={() => setFolderTrust(null)}
-                />
-              ) : (
-                <div className="flex items-center gap-3">
-                  <Button onClick={handleStart} disabled={starting} className="gap-2">
-                    <MessagesSquare size={15} />
-                    {starting ? "Starting session" : "Start session"}
-                  </Button>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                <Button onClick={handleStart} disabled={starting} className="gap-2">
+                  <MessagesSquare size={15} />
+                  {starting ? "Starting session" : "Start session"}
+                </Button>
+              </div>
             </>
           )}
         </div>
@@ -1389,6 +1491,17 @@ export default function ConversePage() {
               <p className="text-[11px] text-muted-foreground/70 font-mono truncate mt-1">
                 {liveState?.cwd || projectPath}
               </p>
+              {liveState?.projectSetup && (
+                <p
+                  data-testid="converse-session-project-setup"
+                  data-mode={liveState.projectSetup}
+                  className="text-[11px] text-muted-foreground/70 truncate mt-0.5"
+                >
+                  {liveState.projectSetup === "folder"
+                    ? "With this folder's Claude Code setup"
+                    : "Your Claude Code settings only"}
+                </p>
+              )}
             </div>
 
             <div className="flex shrink-0 items-center gap-2">

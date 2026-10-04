@@ -21,7 +21,7 @@ const ReadAloudDucking = require("./readAloudDucking");
 const { buildExcludedPids } = require("./readAloudDucking");
 const { checkReadAloudLanguage } = require("./readAloudLanguageGuard");
 const { ConverseSession } = require("./converseSession");
-const { checkFolderTrust, trustFolder } = require("./converseAgent");
+const { checkFolderTrust, trustFolder, forgetFolder } = require("./converseAgent");
 const audioDuckingManager = require("./audioDuckingManager");
 const mediaController = require("./mediaController");
 const micWatcher = require("./micWatcher");
@@ -1706,11 +1706,12 @@ class IPCHandlers {
       }
     });
 
-    // Folder trust: Claude Code loads a project's own settings, hooks and MCP
-    // servers without asking in --print mode, so the Converse page asks first.
+    // Folder setup: a folder's own Claude Code settings, hooks and MCP servers
+    // load only once the user opts it in on the Converse page and its files
+    // still match; otherwise Converse starts Claude Code on the user's settings.
     ipcMain.handle("converse-check-folder-trust", async (_event, cwd) => {
       if (typeof cwd !== "string" || !cwd.trim()) {
-        return { needsTrust: false, reason: "no-config", files: [] };
+        return { usesProjectSetup: false, reason: "untrusted", files: [] };
       }
       return checkFolderTrust(cwd);
     });
@@ -1718,6 +1719,11 @@ class IPCHandlers {
     ipcMain.handle("converse-trust-folder", async (_event, cwd, shownFiles) => {
       if (typeof cwd !== "string" || !cwd.trim()) throw new Error("No folder to trust");
       return trustFolder(cwd, Array.isArray(shownFiles) ? shownFiles : []);
+    });
+
+    ipcMain.handle("converse-forget-folder", async (_event, cwd) => {
+      if (typeof cwd !== "string" || !cwd.trim()) throw new Error("No folder to forget");
+      return forgetFolder(cwd);
     });
 
     ipcMain.handle("converse-send-utterance", async (_event, text) => {

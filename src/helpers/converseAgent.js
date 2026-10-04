@@ -121,9 +121,10 @@ function resolveClaudeBin(explicit, { cwd } = {}) {
 
 /**
  * Project files Claude Code loads on its own. --print mode shows no "trust this
- * folder?" prompt, so their hooks and allow rules would apply unseen. All of
- * .claude counts: agents, skills, commands and rules load from it, and hook
- * scripts usually live there, so a trusted settings file cannot run a changed one.
+ * folder?" prompt, so a folder only gets its own setup once the user has seen
+ * these files. All of .claude counts: agents, skills, commands and rules load
+ * from it, and hook scripts usually live there, so an allowed settings file
+ * cannot run a changed one.
  */
 const FOLDER_CONFIG_FILES = [".mcp.json", "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"];
 const FOLDER_CONFIG_DIR = ".claude";
@@ -136,20 +137,16 @@ const FOLDER_CONFIG_FIRST = [
 ];
 /** Claude Code's own worktrees are whole checkouts, not configuration. */
 const FOLDER_CONFIG_SKIP = new Set([".claude/worktrees"]);
-/** Past this many files the rest count as one entry, so a change in them still asks. */
+/** Past this many files the rest count as one entry, so a change in them still counts. */
 const MAX_TRUST_FILES = 500;
 /**
  * The walk stops here and a file this big is not read, so a link to a huge folder
- * cannot stall the main process. Either one makes the folder impossible to trust.
+ * cannot stall the main process. Either one keeps the folder on the user's settings only.
  */
 const MAX_WALK_FILES = 5000;
 const MAX_HASH_BYTES = 64 * 1024 * 1024;
 
 const TRUST_STORE_FILE = "converse-folder-trust.json";
-
-/** Start of the error start() throws for an untrusted folder; the page matches on it. */
-const FOLDER_TRUST_REQUIRED_MESSAGE =
-  "This folder has Claude Code settings you have not trusted yet";
 
 /**
  * Where trust decisions live: Electron's userData, never the folder itself (a
@@ -251,8 +248,8 @@ function listConfigDir(folder) {
 /**
  * The Claude Code config files present in `folder`, each with a SHA-256 of its
  * content. A modified time is not enough: an archive can restore the one the
- * user trusted on different content. Anything the scan cannot verify gets a
- * value that never matches, so the folder keeps asking rather than passing.
+ * user allowed on different content. Anything the scan cannot verify gets a
+ * value that never matches, so the folder stays on the user's settings only.
  */
 function scanFolderConfig(folder) {
   const found = [];
@@ -299,19 +296,18 @@ function readTrustStore(storePath) {
 }
 
 /**
- * Whether `folder` needs the user's trust before Claude Code starts in it. A
- * trusted folder asks again when a file is new or its content differs from
- * what the user was shown; each file is "new", "changed" or "trusted".
+ * Whether Claude Code may load `folder`'s own setup. "trusted" means the user
+ * opted the folder in and every file still matches what they were shown, with
+ * none new; "changed" means something differs since; "untrusted" means never
+ * opted in. Each file is "new", "changed" or "trusted".
  */
 function checkFolderTrust(folder, { storePath } = {}) {
   const files = scanFolderConfig(folder);
-  if (files.length === 0) return { needsTrust: false, reason: "no-config", files: [] };
-
   const record = readTrustStore(resolveTrustStorePath(storePath))[dirKey(folder)];
   const known = record && record.files && typeof record.files === "object" ? record.files : null;
   if (!known) {
     return {
-      needsTrust: true,
+      usesProjectSetup: false,
       reason: "untrusted",
       files: files.map((f) => ({ ...f, status: "new" })),
     };
@@ -326,13 +322,27 @@ function checkFolderTrust(folder, { storePath } = {}) {
         : "trusted",
   }));
   const changed = marked.some((f) => f.status !== "trusted");
-  return { needsTrust: changed, reason: changed ? "changed" : "trusted", files: marked };
+  return {
+    usesProjectSetup: !changed,
+    reason: changed ? "changed" : "trusted",
+    files: marked,
+  };
+}
+
+/** Write the whole store through a temporary file, so a crash never leaves half of it. */
+function writeTrustStore(file, store) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8");
+  fs.renameSync(tmp, file);
 }
 
 /**
- * Record that the user trusts `folder` as they saw it. `shownFiles` is the
- * snapshot the prompt listed, so a file that changes between the prompt and
- * the click is still not trusted. Returns the fresh check.
+ * Record that the user opted `folder` in as they saw it. `shownFiles` is the
+ * snapshot the confirm listed, so a file that changes between the confirm and
+ * the click is still not allowed. A folder with no files of its own can be
+ * opted in too: its setup may live in folders above or below it. Returns the
+ * fresh check.
  */
 function trustFolder(folder, shownFiles, { storePath } = {}) {
   const file = resolveTrustStorePath(storePath);
@@ -348,10 +358,21 @@ function trustFolder(folder, shownFiles, { storePath } = {}) {
 
   const store = readTrustStore(file);
   store[dirKey(folder)] = { trustedAt: Date.now(), files };
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8");
-  fs.renameSync(tmp, file);
+  writeTrustStore(file, store);
+  return checkFolderTrust(folder, { storePath: file });
+}
+
+/** Drop the user's opt-in for `folder`, so it starts on their own settings only again. */
+function forgetFolder(folder, { storePath } = {}) {
+  const file = resolveTrustStorePath(storePath);
+  if (file) {
+    const store = readTrustStore(file);
+    const key = dirKey(folder);
+    if (Object.hasOwn(store, key)) {
+      delete store[key];
+      writeTrustStore(file, store);
+    }
+  }
   return checkFolderTrust(folder, { storePath: file });
 }
 
@@ -465,6 +486,8 @@ class ConverseAgent {
     this.settingsFile = settingsFile || null;
     /** Where folder trust is remembered; null means Electron's userData. */
     this.trustStorePath = trustStorePath || null;
+    /** "folder" when the CLI loads the folder's own setup, else "user-only"; null before start. */
+    this.projectSetup = null;
 
     /** "live" while the real CLI is answering; "mock" once it cannot. */
     this.agentMode = mock ? "mock" : "live";
@@ -516,15 +539,13 @@ class ConverseAgent {
       throw Object.assign(new Error(message), { code: "claude-bin-not-found" });
     }
 
-    // The page asks before this point; refusing here as well means no other
-    // caller can start the CLI in a folder whose own config was never shown.
-    const trust = checkFolderTrust(this.cwd, { storePath: this.trustStorePath });
-    if (trust.needsTrust) {
-      const message = `${FOLDER_TRUST_REQUIRED_MESSAGE} (${trust.files.map((f) => f.file).join(", ")})`;
-      this.lastError = message;
-      this.ready = false;
-      throw Object.assign(new Error(message), { code: "folder-trust-required", trust });
+    let trust = null;
+    try {
+      trust = checkFolderTrust(this.cwd, { storePath: this.trustStorePath });
+    } catch (err) {
+      log("folder check failed, using the user's settings only:", err.message);
     }
+    this.projectSetup = trust && trust.usesProjectSetup ? "folder" : "user-only";
 
     const args = [
       "--print",
@@ -541,6 +562,11 @@ class ConverseAgent {
     if (!this.sessionPersistence) args.push("--no-session-persistence");
 
     args.push("--model", this.model, "--system-prompt", VOICE_SYSTEM_PROMPT);
+
+    // --print loads a folder's hooks, .mcp.json and skills without asking; with
+    // `--setting-sources user` it reads neither its settings nor its .mcp.json
+    // (code.claude.com/docs/en/permissions, "What runs before you trust a folder").
+    if (this.projectSetup !== "folder") args.push("--setting-sources", "user");
 
     // Resuming restores the conversation, not the invocation: the CLI does not
     // remember the flags the original session was started with, so every flag
@@ -890,6 +916,7 @@ class ConverseAgent {
       sessionId: this.sessionId,
       resumedFrom: this.resumeSessionId,
       sessionPersistence: this.sessionPersistence,
+      projectSetup: this.projectSetup,
       lastError: this.lastError,
       fellBackAt: this.fellBackAt,
     };
@@ -905,9 +932,9 @@ module.exports = {
   hasPathComponents,
   findOnPath,
   FOLDER_CONFIG_FILES,
-  FOLDER_TRUST_REQUIRED_MESSAGE,
   checkFolderTrust,
   trustFolder,
+  forgetFolder,
   resolveTrustStorePath,
   MOCK_REPLY: MOCK_REPLY_PARTS.join(""),
 };
