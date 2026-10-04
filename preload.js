@@ -256,6 +256,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   converseGetState: () => ipcRenderer.invoke("converse-get-state"),
   converseInterrupt: (reason) => ipcRenderer.invoke("converse-interrupt-turn", reason),
   converseStop: () => ipcRenderer.invoke("converse-stop"),
+  converseCheckFolderTrust: (cwd) => ipcRenderer.invoke("converse-check-folder-trust", cwd),
+  converseTrustFolder: (cwd, shownFiles) =>
+    ipcRenderer.invoke("converse-trust-folder", cwd, shownFiles),
   conversePermissionAutoAnswer: (behavior) =>
     ipcRenderer.invoke("converse-permission-auto-answer", behavior),
   conversePermissionAnswer: (id, behavior) =>

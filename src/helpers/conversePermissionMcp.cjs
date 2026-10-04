@@ -3,8 +3,9 @@
  * Stdio MCP server the `claude` CLI spawns to ask Converse's user about
  * permissions (`--permission-prompt-tool mcp__pt-permissions__approve`).
  *
- * Deliberately dependency-free and Electron-free: the CLI launches this with a
- * bare node, so it cannot require anything from the app. It speaks
+ * Deliberately dependency-free and Electron-free: the CLI launches this with the
+ * app's own executable in Node mode (ELECTRON_RUN_AS_NODE=1, an absolute path),
+ * so it cannot require anything from the app. It speaks
  * newline-delimited JSON-RPC 2.0 (MCP stdio framing) and exposes exactly one
  * tool. Every question is forwarded to the app's loopback relay
  * (conversePermissionRelay.js) and the relay's decision is returned verbatim.

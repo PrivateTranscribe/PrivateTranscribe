@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   MessagesSquare,
   FolderOpen,
@@ -10,6 +10,7 @@ import {
   Check,
   Mic,
   MicOff,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -56,6 +57,28 @@ const MAX_REMEMBERED_PROJECTS = 8;
 /** Fast enough that sentences appear while they are still being spoken. */
 const POLL_MS = 200;
 
+/** Start of the main process's refusal for an untrusted folder (converseAgent.js). */
+const FOLDER_TRUST_REQUIRED = "This folder has Claude Code settings you have not trusted yet";
+
+type FolderTrustFile = { file: string; mtimeMs: number; status: "new" | "changed" | "trusted" };
+type FolderTrustCheck = {
+  needsTrust: boolean;
+  reason: "no-config" | "untrusted" | "changed" | "trusted";
+  files: FolderTrustFile[];
+};
+/** The two folder-trust channels preload.js exposes for this page. */
+type FolderTrustApi = {
+  converseCheckFolderTrust?: (cwd: string) => Promise<FolderTrustCheck>;
+  converseTrustFolder?: (cwd: string, shownFiles: FolderTrustFile[]) => Promise<FolderTrustCheck>;
+};
+const folderTrustApi = () => window.electronAPI as unknown as FolderTrustApi | undefined;
+
+/** Electron wraps invoke rejections; keep only the sentence written for the user. */
+function invokeErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
+}
+
 type RememberedProject = { path: string; lastUsedAt: number };
 
 type TranscriptTurn =
@@ -74,12 +97,8 @@ type TranscriptTurn =
    */
   | { kind: "permission"; id: number };
 
-/** Longest a single tool-input value is shown before it is cut. */
-const MAX_INPUT_VALUE_CHARS = 160;
 /** Longest the one-line summary on a settled record gets. */
 const MAX_SUMMARY_CHARS = 72;
-/** Tool inputs can be large; more rows than this is noise, not information. */
-const MAX_INPUT_ROWS = 4;
 
 /** Keys worth leading with, in the order a person would look for them. */
 const SUMMARY_KEYS = ["file_path", "command", "path", "pattern", "url", "notebook_path", "prompt"];
@@ -91,34 +110,34 @@ function truncate(value: string, max: number): string {
 
 function stringifyValue(value: unknown): string {
   if (typeof value === "string") return value;
-  if (value === null || value === undefined) return "";
+  if (value === undefined) return "";
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(value, null, 2) ?? String(value);
   } catch {
     return String(value);
   }
 }
 
-/** The tool input as readable rows: what the tool would touch, in its own words. */
-function inputRows(input: unknown): { key: string; value: string }[] {
+/**
+ * Every field of the tool input, whole: Allow approves the full input, so the
+ * card never cuts, collapses or drops anything the user is agreeing to.
+ */
+function permissionInputRows(input: unknown): { key: string; value: string }[] {
   if (input === null || input === undefined) return [];
-  if (typeof input !== "object") {
-    return [{ key: "", value: truncate(stringifyValue(input), MAX_INPUT_VALUE_CHARS) }];
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return [{ key: "", value: stringifyValue(input) }];
   }
   const entries = Object.entries(input as Record<string, unknown>);
   const ordered = [
     ...entries.filter(([key]) => SUMMARY_KEYS.includes(key)),
     ...entries.filter(([key]) => !SUMMARY_KEYS.includes(key)),
   ];
-  return ordered.slice(0, MAX_INPUT_ROWS).map(([key, value]) => ({
-    key,
-    value: truncate(stringifyValue(value), MAX_INPUT_VALUE_CHARS),
-  }));
+  return ordered.map(([key, value]) => ({ key, value: stringifyValue(value) }));
 }
 
 /** The single most telling value, for the one-line record after it is settled. */
 function inputSummary(input: unknown): string {
-  const rows = inputRows(input);
+  const rows = permissionInputRows(input);
   if (rows.length === 0) return "";
   const lead = rows.find((row) => SUMMARY_KEYS.includes(row.key)) ?? rows[0];
   return truncate(lead.value, MAX_SUMMARY_CHARS);
@@ -235,7 +254,7 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
  * owns the deadline and records the outcome, and this card disappears when the
  * log says the question is settled — not when the number reaches zero.
  */
-function PermissionCard({
+export function PermissionCard({
   entry,
   nowMs,
   busy,
@@ -250,7 +269,23 @@ function PermissionCard({
   total: number;
   onAnswer: (id: number, behavior: "allow" | "deny") => void;
 }) {
-  const rows = inputRows(entry.input);
+  const rows = useMemo(() => permissionInputRows(entry.input), [entry.input]);
+  const inputRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  // Says so when the block scrolls, so the bottom of a long command is never
+  // hidden without a word.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return undefined;
+    const measure = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [rows]);
+
   const secondsLeft =
     typeof entry.deadline === "number"
       ? Math.max(0, Math.ceil((entry.deadline - nowMs) / 1000))
@@ -286,15 +321,31 @@ function PermissionCard({
           </div>
 
           {rows.length > 0 && (
-            <div data-testid="converse-permission-input" className="space-y-1">
-              {rows.map((row) => (
-                <div key={row.key} className="flex gap-2 text-[12px] leading-relaxed">
-                  {row.key && (
-                    <span className="shrink-0 text-muted-foreground/70 font-mono">{row.key}</span>
-                  )}
-                  <span className="min-w-0 break-all font-mono text-foreground">{row.value}</span>
-                </div>
-              ))}
+            <div className="space-y-1.5">
+              <div
+                ref={inputRef}
+                data-testid="converse-permission-input"
+                tabIndex={0}
+                aria-label="Everything Allow approves"
+                className="max-h-64 overflow-auto rounded-md border border-border-subtle/60 bg-surface-1 px-3 py-2.5 space-y-2.5 font-mono text-[12px] leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
+              >
+                {rows.map((row, index) => (
+                  <div key={row.key || index} data-testid="converse-permission-field">
+                    {row.key && <div className="text-muted-foreground/70">{row.key}</div>}
+                    <pre className="m-0 whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-foreground">
+                      {row.value}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+              {overflowing && (
+                <p
+                  data-testid="converse-permission-scroll-hint"
+                  className="text-[11px] text-muted-foreground"
+                >
+                  Scroll the box to read all of it. Allow approves everything in it.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -326,6 +377,69 @@ function PermissionCard({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Asked before Claude Code starts in a folder that carries its own Claude Code
+ * files, because --print mode loads them without the CLI's own trust prompt.
+ */
+export function FolderTrustPrompt({
+  check,
+  busy,
+  onTrust,
+  onCancel,
+}: {
+  check: FolderTrustCheck;
+  busy: boolean;
+  onTrust: () => void;
+  onCancel: () => void;
+}) {
+  const changed = check.reason === "changed";
+  return (
+    <InfoBox variant="warning" className="p-4 space-y-3" data-testid="converse-folder-trust">
+      <div className="flex items-start gap-2.5">
+        <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden />
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-sm font-medium text-foreground">
+            {changed
+              ? "This folder's Claude Code files changed since you trusted it"
+              : "Trust this folder's Claude Code files?"}
+          </p>
+          <p className="text-[13px] text-muted-foreground leading-relaxed">
+            Claude Code loads these from the folder without asking. Settings can run commands on
+            this computer, add MCP servers, and pre-approve tools so no permission question appears
+            here. CLAUDE.md files are instructions it follows. Trust the folder only if you know
+            where these files came from.
+          </p>
+        </div>
+      </div>
+
+      <ul
+        data-testid="converse-folder-trust-files"
+        className="rounded-md border border-border-subtle/60 bg-surface-1 px-3 py-2 space-y-1 font-mono text-[12px]"
+      >
+        {check.files.map((entry) => (
+          <li key={entry.file} className="flex items-center justify-between gap-3">
+            <span className="min-w-0 [overflow-wrap:anywhere] text-foreground">{entry.file}</span>
+            {changed && entry.status !== "trusted" && (
+              <span className="shrink-0 font-sans text-[11px] font-medium text-warning">
+                {entry.status === "new" ? "New" : "Changed"}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="sm" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button size="sm" disabled={busy} onClick={onTrust}>
+          {busy ? "Starting session" : "Trust and start"}
+        </Button>
+      </div>
+    </InfoBox>
   );
 }
 
@@ -523,6 +637,8 @@ export default function ConversePage() {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [startError, setStartError] = useState<string | null>(null);
+  /** The folder-trust question on screen, or null. Never carried to another folder. */
+  const [folderTrust, setFolderTrust] = useState<FolderTrustCheck | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 
   /**
@@ -797,30 +913,71 @@ export default function ConversePage() {
     rememberProject(chosen);
   }, [rememberProject]);
 
+  useEffect(() => {
+    setFolderTrust(null);
+  }, [projectPath]);
+
+  /** Start the session itself; the folder has already been checked. */
+  const startSession = useCallback(
+    async (cwd: string) => {
+      try {
+        const started = await window.electronAPI.converseStart({ cwd });
+        lastInterruptAtRef.current = 0;
+        setTranscript([]);
+        setPermissions([]);
+        setAnswering([]);
+        setLiveState(started);
+        setSessionActive(true);
+        rememberProject(cwd);
+      } catch (error) {
+        const message = invokeErrorMessage(error);
+        // The folder changed between the check and the start: ask again.
+        const recheck = message.startsWith(FOLDER_TRUST_REQUIRED)
+          ? await folderTrustApi()
+              ?.converseCheckFolderTrust?.(cwd)
+              .catch(() => undefined)
+          : undefined;
+        if (recheck?.needsTrust) setFolderTrust(recheck);
+        else setStartError(message);
+      }
+    },
+    [rememberProject]
+  );
+
   const handleStart = useCallback(async () => {
     if (!projectPath) return;
     setStarting(true);
     setStartError(null);
     setSendError(null);
     try {
-      const started = await window.electronAPI.converseStart({ cwd: projectPath });
-      lastInterruptAtRef.current = 0;
-      setTranscript([]);
-      setPermissions([]);
-      setAnswering([]);
-      setLiveState(started);
-      setSessionActive(true);
-      rememberProject(projectPath);
+      const check = await folderTrustApi()?.converseCheckFolderTrust?.(projectPath);
+      if (check?.needsTrust) {
+        setFolderTrust(check);
+        return;
+      }
+      await startSession(projectPath);
     } catch (error) {
-      // Electron wraps invoke rejections as "Error invoking remote method
-      // 'converse-start': Error: <real message>" — strip the plumbing so the
-      // user reads only the sentence written for them.
-      const raw = error instanceof Error ? error.message : String(error);
-      setStartError(raw.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, ""));
+      setStartError(invokeErrorMessage(error));
     } finally {
       setStarting(false);
     }
-  }, [projectPath, rememberProject]);
+  }, [projectPath, startSession]);
+
+  const handleTrustAndStart = useCallback(async () => {
+    if (!projectPath || !folderTrust) return;
+    setStarting(true);
+    setStartError(null);
+    setSendError(null);
+    try {
+      await folderTrustApi()?.converseTrustFolder?.(projectPath, folderTrust.files);
+      setFolderTrust(null);
+      await startSession(projectPath);
+    } catch (error) {
+      setStartError(invokeErrorMessage(error));
+    } finally {
+      setStarting(false);
+    }
+  }, [projectPath, folderTrust, startSession]);
 
   /**
    * The one way a turn leaves this page. The microphone calls exactly what the
@@ -1187,12 +1344,21 @@ export default function ConversePage() {
                 </InfoBox>
               )}
 
-              <div className="flex items-center gap-3">
-                <Button onClick={handleStart} disabled={starting} className="gap-2">
-                  <MessagesSquare size={15} />
-                  {starting ? "Starting session" : "Start session"}
-                </Button>
-              </div>
+              {folderTrust ? (
+                <FolderTrustPrompt
+                  check={folderTrust}
+                  busy={starting}
+                  onTrust={() => void handleTrustAndStart()}
+                  onCancel={() => setFolderTrust(null)}
+                />
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleStart} disabled={starting} className="gap-2">
+                    <MessagesSquare size={15} />
+                    {starting ? "Starting session" : "Start session"}
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </div>
