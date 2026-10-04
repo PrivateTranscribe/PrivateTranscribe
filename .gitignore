@@ -99,6 +99,11 @@ shots/
 /docs/*
 !/docs/DESIGN_TASTE_GUIDE.md
 !/docs/WHISPER_CUDA_ENGINE.md
+!/docs/DEBUG.md
+!/docs/LOCAL_WHISPER_SETUP.md
+!/docs/TROUBLESHOOTING.md
+!/docs/WINDOWS_TROUBLESHOOTING.md
+!/docs/assets/
 /.claude/
 /drafts/
 /outputs/
