@@ -17,6 +17,16 @@ const STARTUP_TIMEOUT_MS = 60000;
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const TRANSCRIPTION_TIMEOUT_MS = 300000;
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 30;
+const RETIRED_MESSAGE = "Parakeet was retired; use Whisper.";
+
+// sherpa-onnx's WebSocket server listens on every network interface with no
+// password, and upstream has no option to keep it on loopback, so it must never
+// start. The engine code stays until it is removed on its own.
+function refuseToStart() {
+  const error = new Error(RETIRED_MESSAGE);
+  error.code = "PARAKEET_RETIRED";
+  throw error;
+}
 
 class ParakeetWsServer {
   constructor() {
@@ -67,6 +77,8 @@ class ParakeetWsServer {
   }
 
   async _doStart(modelName, modelDir) {
+    refuseToStart();
+
     const wsBinary = this.getWsBinaryPath();
     if (!wsBinary) throw new Error("sherpa-onnx WS server binary not found");
     if (!fs.existsSync(modelDir)) throw new Error(`Model directory not found: ${modelDir}`);
@@ -86,7 +98,7 @@ class ParakeetWsServer {
 
     debugLogger.debug("Starting parakeet WS server", { port: this.port, modelName, args });
 
-    this.process = spawn(wsBinary, args, {
+    this.process = this._spawnServer(wsBinary, args, {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       cwd: getSafeTempDir(),
@@ -139,6 +151,10 @@ class ParakeetWsServer {
     this.stoppedDueToIdle = false;
     this.lastUsedTime = Date.now();
     this._scheduleIdleCheck();
+  }
+
+  _spawnServer(wsBinary, args, options) {
+    return spawn(wsBinary, args, options);
   }
 
   async _warmUp() {
