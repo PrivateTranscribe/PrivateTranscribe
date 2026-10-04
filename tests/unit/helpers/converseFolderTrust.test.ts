@@ -168,8 +168,20 @@ describe("converse folder trust", () => {
 
     const listed = names(checkFolderTrust(project, { storePath }));
     expect(listed[0]).toBe(".claude/settings.json");
-    expect(listed.at(-1)).toBe(".claude/ (21 more files)");
+    expect(listed.at(-1)).toBe(".claude/ (20 more files)");
   });
+
+  it("never trusts a .claude too big to check, and still hashes its settings", () => {
+    write(".claude/settings.json", '{"hooks":{}}');
+    const many = path.join(project, ".claude", "a");
+    fs.mkdirSync(many, { recursive: true });
+    for (let i = 0; i < 5001; i++) fs.writeFileSync(path.join(many, `${i}.md`), "");
+
+    const shown = checkFolderTrust(project, { storePath });
+    expect(names(shown)[0]).toBe(".claude/settings.json");
+    expect(names(shown).at(-1)).toMatch(/too many to check/);
+    expect(trustFolder(project, shown.files, { storePath }).needsTrust).toBe(true);
+  }, 60_000);
 
   it("finishes on a folder link that loops back into .claude", () => {
     write(".claude/settings.json");

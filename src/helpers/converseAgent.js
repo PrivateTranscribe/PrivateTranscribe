@@ -127,7 +127,7 @@ function resolveClaudeBin(explicit, { cwd } = {}) {
  */
 const FOLDER_CONFIG_FILES = [".mcp.json", "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"];
 const FOLDER_CONFIG_DIR = ".claude";
-/** Listed first, so padding .claude with junk cannot push them out of sight. */
+/** Hashed directly and listed first, whatever the walk of .claude does. */
 const FOLDER_CONFIG_FIRST = [
   ".claude/settings.json",
   ".claude/settings.local.json",
@@ -138,10 +138,12 @@ const FOLDER_CONFIG_FIRST = [
 const FOLDER_CONFIG_SKIP = new Set([".claude/worktrees"]);
 /** Past this many files the rest count as one entry, so a change in them still asks. */
 const MAX_TRUST_FILES = 500;
-/** The walk stops here, so a link to a huge folder cannot stall the main process. */
+/**
+ * The walk stops here and a file this big is not read, so a link to a huge folder
+ * cannot stall the main process. Either one makes the folder impossible to trust.
+ */
 const MAX_WALK_FILES = 5000;
-/** Config files are small; a bigger file is fingerprinted by size and time instead of read. */
-const MAX_HASH_BYTES = 4 * 1024 * 1024;
+const MAX_HASH_BYTES = 64 * 1024 * 1024;
 
 const TRUST_STORE_FILE = "converse-folder-trust.json";
 
@@ -172,20 +174,32 @@ function sha256(data) {
   return crypto.createHash("sha256").update(data).digest("hex");
 }
 
+/** A value no trust record can hold, for anything the scan could not read. */
+const unverifiable = () => crypto.randomBytes(32).toString("hex");
+
+/** Content hash read in chunks; unverifiable() when the file is too big or unreadable. */
 function hashFile(file) {
-  const stat = fs.statSync(file);
-  if (stat.size > MAX_HASH_BYTES) return sha256(`large:${stat.size}:${stat.mtimeMs}`);
-  return sha256(fs.readFileSync(file));
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    if (fs.fstatSync(fd).size > MAX_HASH_BYTES) return unverifiable();
+    const hash = crypto.createHash("sha256");
+    const chunk = Buffer.alloc(1024 * 1024);
+    let read;
+    while ((read = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+      hash.update(chunk.subarray(0, read));
+    }
+    return hash.digest("hex");
+  } catch {
+    return unverifiable();
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
 }
 
-const rankConfigPath = (rel) => {
-  const i = FOLDER_CONFIG_FIRST.indexOf(rel);
-  return i === -1 ? FOLDER_CONFIG_FIRST.length : i;
-};
-
 /**
- * Relative paths of every file under .claude, skipping FOLDER_CONFIG_SKIP, with
- * FOLDER_CONFIG_FIRST ahead of the rest. Linked folders are followed, because
+ * Relative paths of every file under .claude apart from FOLDER_CONFIG_FIRST,
+ * skipping FOLDER_CONFIG_SKIP, sorted. Linked folders are followed, because
  * Claude Code follows them too; each real folder is walked once, so a link loop ends.
  */
 function listConfigDir(folder) {
@@ -226,49 +240,48 @@ function listConfigDir(folder) {
         }
       }
       if (isDir) walk(child);
-      else out.push(child);
+      else if (!FOLDER_CONFIG_FIRST.includes(child)) out.push(child);
     }
   };
   walk(FOLDER_CONFIG_DIR);
-  out.sort((a, b) => rankConfigPath(a) - rankConfigPath(b) || (a < b ? -1 : a > b ? 1 : 0));
+  out.sort();
   return { files: out, truncated };
 }
 
 /**
  * The Claude Code config files present in `folder`, each with a SHA-256 of its
  * content. A modified time is not enough: an archive can restore the one the
- * user trusted on different content.
+ * user trusted on different content. Anything the scan cannot verify gets a
+ * value that never matches, so the folder keeps asking rather than passing.
  */
 function scanFolderConfig(folder) {
   const found = [];
   const add = (rel) => {
     const file = path.join(folder, ...rel.split("/"));
     try {
-      if (fs.statSync(file).isFile()) found.push({ file: rel, sha256: hashFile(file) });
+      if (!fs.statSync(file).isFile()) return;
     } catch {
-      // Not there, or unreadable now; an unreadable file is not loaded either.
+      return; // Not there.
     }
+    found.push({ file: rel, sha256: hashFile(file) });
   };
-  for (const rel of FOLDER_CONFIG_FILES) add(rel);
+  for (const rel of [...FOLDER_CONFIG_FILES, ...FOLDER_CONFIG_FIRST]) add(rel);
 
   const { files: inDir, truncated } = listConfigDir(folder);
   for (const rel of inDir.slice(0, MAX_TRUST_FILES)) add(rel);
   const rest = inDir.slice(MAX_TRUST_FILES);
-  if (rest.length > 0 || truncated) {
+  if (truncated) {
+    found.push({
+      file: `${FOLDER_CONFIG_DIR}/ (over ${MAX_WALK_FILES} files, too many to check)`,
+      sha256: unverifiable(),
+    });
+  } else if (rest.length > 0) {
     const digest = crypto.createHash("sha256");
-    if (truncated) digest.update(`truncated at ${MAX_WALK_FILES}\n`);
     for (const rel of rest) {
-      const file = path.join(folder, ...rel.split("/"));
-      let content = "";
-      try {
-        content = hashFile(file);
-      } catch {
-        // Counted by name only.
-      }
-      digest.update(`${rel}\0${content}\n`);
+      digest.update(`${rel}\0${hashFile(path.join(folder, ...rel.split("/")))}\n`);
     }
     found.push({
-      file: `${FOLDER_CONFIG_DIR}/ (${rest.length}${truncated ? "+" : ""} more files)`,
+      file: `${FOLDER_CONFIG_DIR}/ (${rest.length} more files)`,
       sha256: digest.digest("hex"),
     });
   }
