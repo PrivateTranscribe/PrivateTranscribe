@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
@@ -17,6 +18,9 @@ const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
 const DEFAULT_INFERENCE_TIMEOUT_MS = 300000;
 const MAX_ERROR_DETAIL_CHARS = 500;
+// Endpoints name the model by this alias rather than by its file, whose path
+// sits under the Windows user's profile.
+const MODEL_ALIAS = "privatetranscribe-local";
 
 const stripLeadingThinkingBlock = (text) => {
   const trimmed = String(text || "").trim();
@@ -53,6 +57,7 @@ class LlamaServerManager {
     this.ready = false;
     this.modelPath = null;
     this.contextSize = null;
+    this.apiKey = null;
     this.startupPromise = null;
     this.healthCheckInterval = null;
     this.healthCheckFailures = 0;
@@ -164,6 +169,10 @@ class LlamaServerManager {
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;
     this.contextSize = options.contextSize || 4096;
+    // A fresh key per start keeps every other program, web pages included, out of
+    // the server. It travels in the environment, so neither the command line nor
+    // the args logged below ever carry it.
+    this.apiKey = crypto.randomBytes(32).toString("hex");
 
     const args = [
       "--model",
@@ -176,6 +185,12 @@ class LlamaServerManager {
       String(this.contextSize),
       "--threads",
       String(options.threads || 4),
+      "--alias",
+      MODEL_ALIAS,
+      // The app needs neither the slots endpoint, which shows the prompts being
+      // processed, nor the browser chat page.
+      "--no-slots",
+      "--no-webui",
     ];
 
     // Add GPU layers if specified
@@ -187,7 +202,7 @@ class LlamaServerManager {
 
     // Set library path for dynamic library loading
     const binDir = path.dirname(serverBinary);
-    const env = { ...process.env };
+    const env = { ...process.env, LLAMA_API_KEY: this.apiKey };
 
     if (process.platform === "darwin") {
       // macOS: Set DYLD_LIBRARY_PATH to find .dylib files
@@ -197,7 +212,7 @@ class LlamaServerManager {
       env.LD_LIBRARY_PATH = binDir + (env.LD_LIBRARY_PATH ? `:${env.LD_LIBRARY_PATH}` : "");
     }
 
-    this.process = spawn(serverBinary, args, {
+    this.process = this._spawnServer(serverBinary, args, {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       cwd: getSafeTempDir(),
@@ -241,6 +256,14 @@ class LlamaServerManager {
     });
   }
 
+  _spawnServer(serverBinary, args, options) {
+    return spawn(serverBinary, args, options);
+  }
+
+  _authHeaders() {
+    return { Authorization: `Bearer ${this.apiKey}` };
+  }
+
   async waitForReady(getProcessInfo) {
     const startTime = Date.now();
     let pollCount = 0;
@@ -277,6 +300,7 @@ class LlamaServerManager {
           port: this.port,
           path: "/health",
           method: "GET",
+          headers: this._authHeaders(),
           timeout: HEALTH_CHECK_TIMEOUT_MS,
         },
         (res) => {
@@ -392,6 +416,7 @@ class LlamaServerManager {
           path: "/v1/chat/completions",
           method: "POST",
           headers: {
+            ...this._authHeaders(),
             "Content-Type": "application/json",
             "Content-Length": Buffer.byteLength(body),
           },
@@ -451,6 +476,7 @@ class LlamaServerManager {
 
     if (!this.process) {
       this.ready = false;
+      this.apiKey = null;
       return;
     }
 
@@ -486,6 +512,7 @@ class LlamaServerManager {
     this.port = null;
     this.modelPath = null;
     this.contextSize = null;
+    this.apiKey = null;
   }
 
   getStatus() {
