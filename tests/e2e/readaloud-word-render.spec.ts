@@ -2,11 +2,10 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 const bulletPreview = process.env.PT_READALOUD_BULLET_PREVIEW === "1";
-const evidence = path.resolve(
-  bulletPreview ? "docs/qa-readaloud-bullets" : "docs/qa-readaloud-word-follow"
-);
+const evidence = evidenceDir(bulletPreview ? "qa-readaloud-bullets" : "qa-readaloud-word-follow");
 const sourceText = "A quiet morning makes room for a little reading.";
 const copiedText = `${bulletPreview ? "- " : ""}${sourceText}`;
 test.use({ seedKokoroModel: true });

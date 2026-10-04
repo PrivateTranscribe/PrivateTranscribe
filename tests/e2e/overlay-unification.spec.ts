@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * Ledger gate `overlay-unification`: the overlay is one control, not three.
@@ -24,7 +25,7 @@ import { expect, test } from "./fixtures/electron-app";
  * each state is captured as well as asserted.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("overlay-unification");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Mirrors the constants in src/App.jsx. A change here is a change of design. */

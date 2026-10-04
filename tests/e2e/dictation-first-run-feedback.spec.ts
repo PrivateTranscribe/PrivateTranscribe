@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * The first dictation must explain itself when it is slow, and must hand the
@@ -23,7 +24,7 @@ import { expect, test } from "./fixtures/electron-app";
  */
 
 const FIXTURE_DIR = path.resolve(__dirname, "..", "fixtures", "dictation");
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("dictation-first-run-feedback");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 const RECORD_MS = 8_000;

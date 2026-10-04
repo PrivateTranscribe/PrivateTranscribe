@@ -1,9 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { isBetaFeaturesOn } from "./fixtures/tester-access";
 
-const evidence = path.resolve(process.env.PT_READALOUD_EVIDENCE_DIR || "docs/qa-readaloud-layout");
+const evidence = path.resolve(
+  process.env.PT_READALOUD_EVIDENCE_DIR || evidenceDir("qa-readaloud-layout")
+);
 test.use({ useThrowawayHome: true, seedKokoroModel: true });
 
 test("Read Aloud layout", async ({ controlPanel }) => {

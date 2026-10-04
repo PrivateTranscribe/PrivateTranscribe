@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * A dictation that was not delivered must say so.
@@ -24,7 +25,7 @@ import { expect, test } from "./fixtures/electron-app";
  */
 
 const FIXTURE_DIR = path.resolve(__dirname, "..", "fixtures", "dictation");
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "qa-0.17.1");
+const EVIDENCE_DIR = evidenceDir("qa-0.17.1");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Fixture speech plus a cold whisper model load, with slack. */

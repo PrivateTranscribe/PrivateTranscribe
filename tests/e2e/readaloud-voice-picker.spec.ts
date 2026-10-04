@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 import {
   DEFAULT_KOKORO_VOICE_ID,
@@ -29,7 +30,7 @@ test.use({ seedKokoroModel: true });
 /** Above the noise floor of a decoded buffer; matches readaloud-engine.spec.ts. */
 const SILENCE_RMS_FLOOR = 0.01;
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("readaloud-voice-picker");
 
 type PreviewReport = {
   voice: string;

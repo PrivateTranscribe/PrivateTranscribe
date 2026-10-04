@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
@@ -31,7 +32,7 @@ import type { Page } from "@playwright/test";
  * chain is faked except the model, and no live Claude prompt is spent.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("converse-permission-ui");
 const STUB_PATH = path.join(__dirname, "fixtures", "claude-stub.cjs");
 
 /** A screenshot that is present but blank would pass a bare existence check. */

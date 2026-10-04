@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
-const shots = path.resolve("docs/qa-0.17.1");
+const shots = evidenceDir("qa-0.17.1");
 const phase = "after";
 
 test.describe("microphone recovery", () => {

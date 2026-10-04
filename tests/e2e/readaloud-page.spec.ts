@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { isBetaFeaturesOn } from "./fixtures/tester-access";
 import type { Page } from "@playwright/test";
 
@@ -17,16 +18,16 @@ import type { Page } from "@playwright/test";
  * What is added is the move itself: the sidebar carries the entry, Settings no
  * longer offers the tab. None of it turns the beta switch on.
  *
- * Screenshots land in docs/goal-evidence/ because a design critic reads them
- * afterwards; every state the page can be in gets one, since a state with
- * no picture is a state nobody judged.
+ * Screenshots land in test-results/readaloud-page/ because a design critic
+ * reads them afterwards; every state the page can be in gets one, since a
+ * state with no picture is a state nobody judged.
  *
  * The download test spends real bandwidth on Hugging Face — a few megabytes,
  * then cancel. That is the point: a mocked download would prove nothing about
  * whether the button is wired to the model manager.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("readaloud-page");
 
 /** A screenshot that is present but blank would pass a bare existence check. */
 const MIN_SCREENSHOT_BYTES = 10_000;

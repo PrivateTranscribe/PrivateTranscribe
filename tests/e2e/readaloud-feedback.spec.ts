@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * Ledger gate `readaloud-empty-selection-feedback`: pressing the read hotkey
@@ -23,7 +24,7 @@ import { expect, test } from "./fixtures/electron-app";
  * through the real preload bridge and the real App.jsx listeners.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("readaloud-feedback");
 
 /** The overlay is a small window; its screenshots are much smaller than a page. */
 const MIN_SCREENSHOT_BYTES = 3_000;

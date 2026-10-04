@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
 test("correction toggles keep their shape beside explanatory text", async ({ controlPanel }) => {
-  const shots = path.resolve("docs/qa-settings-clarity/toggle-layout");
+  const shots = evidenceDir("qa-settings-clarity/toggle-layout");
   fs.mkdirSync(shots, { recursive: true });
   await unlockTesterAccess(controlPanel);
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();

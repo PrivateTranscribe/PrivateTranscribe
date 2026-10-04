@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
 /**
@@ -23,7 +24,7 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
  * machine, Kokoro — is the real thing.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("converse-voice");
 const STUB_PATH = path.join(__dirname, "fixtures", "claude-stub.cjs");
 const SPEECH_WAV = path.resolve(__dirname, "..", "fixtures", "dictation", "banana.wav");
 

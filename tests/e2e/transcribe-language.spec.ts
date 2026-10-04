@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * The Transcribe page's language control, checked at both ends: the picker the
@@ -38,7 +39,7 @@ const BASE_MODEL = path.join(
   "whisper-models",
   "ggml-base.bin"
 );
-const GOAL_EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const GOAL_EVIDENCE_DIR = evidenceDir("transcribe-language");
 
 /** Every option the shared LanguageSelector offers: 57 languages plus auto. */
 const LANGUAGE_OPTION_COUNT = 58;

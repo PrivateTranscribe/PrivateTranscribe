@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * The overlay's resting shape.
@@ -14,13 +15,13 @@ import { expect, test } from "./fixtures/electron-app";
  *
  * Each state is captured as well as asserted, so a change to the shape can be
  * judged by eye. Set PT_SHOT_DIR to choose where the shots land; it defaults
- * to docs/goal-evidence.
+ * to test-results/overlay-rest-shape.
  */
 
 const FIXTURE_DIR = path.resolve(__dirname, "..", "fixtures", "dictation");
 const SHOT_DIR = process.env.PT_SHOT_DIR
   ? path.resolve(process.env.PT_SHOT_DIR)
-  : path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+  : evidenceDir("overlay-rest-shape");
 const MIN_SCREENSHOT_BYTES = 500;
 
 /** The bottom of the 400x500 window, where the button and its halo live. */

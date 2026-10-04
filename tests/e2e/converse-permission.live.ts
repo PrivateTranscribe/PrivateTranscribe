@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * Ledger gate `converse-permission-relay`, LIVE ONLY — this file spends real
@@ -24,7 +25,7 @@ function writeSettingsFile(dir: string): string {
   return file;
 }
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("converse-permission-live");
 
 type PermissionLogEntry = {
   id: number;

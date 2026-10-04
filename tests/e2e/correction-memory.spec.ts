@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { enableBetaFeatures, enableBetaFeaturesInOverlay } from "./fixtures/tester-access";
 
 /**
@@ -54,7 +55,7 @@ const BASE_MODEL = path.join(
   "whisper-models",
   "ggml-base.bin"
 );
-const GOAL_EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const GOAL_EVIDENCE_DIR = evidenceDir("correction-memory");
 
 /**
  * Record for two full clip lengths.

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
 /**
@@ -23,7 +24,7 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
  *      purpose — a run must never bind a machine-global key).
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("readaloud-playback-controls");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 /** Five sentences, each carrying a word that appears nowhere else in the text. */

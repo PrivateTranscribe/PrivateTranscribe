@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * What the page says about speakers — audit F8.
@@ -39,7 +40,7 @@ test.use({
 });
 
 const INTERVIEW_WAV = path.resolve(__dirname, "..", "fixtures", "multispeaker", "interview.wav");
-const GOAL_EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const GOAL_EVIDENCE_DIR = evidenceDir("transcribe-no-speaker-turns");
 
 async function prepare(page: Page, speakerLabels: boolean): Promise<void> {
   await page.evaluate((labels) => {

@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 const phase = process.env.PT_COMPACT_PLAYER_BEFORE === "1" ? "before" : "after";
-const evidence = path.resolve("docs/qa-readaloud-compact");
+const evidence = evidenceDir("qa-readaloud-compact");
 test.use({ seedKokoroModel: true });
 
 test("compact read aloud controls stay readable and still", async ({

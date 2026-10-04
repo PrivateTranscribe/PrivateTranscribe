@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
-const shots = path.resolve("docs/qa-settings-clarity/dictation");
+const shots = evidenceDir("qa-settings-clarity/dictation");
 const phase = "after";
 
 test("dictation settings explain optional correction learning", async ({ controlPanel }) => {

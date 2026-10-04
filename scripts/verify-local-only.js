@@ -20,12 +20,12 @@
  *
  * Usage:
  *   node scripts/verify-local-only.js
- *   node scripts/verify-local-only.js --model small --out docs/goal-evidence
+ *   node scripts/verify-local-only.js --model small --out test-results/local-only-small
  *
  * Options:
  *   --model <id>   Whisper model to use (default: base)
  *   --audio <path> WAV to transcribe (default: resources/benchmark.wav)
- *   --out <dir>    Where to write the evidence files (default: docs/goal-evidence)
+ *   --out <dir>    Where to write the evidence files (default: test-results/verify-local-only)
  *
  * What this establishes, and what it does not:
  *
@@ -202,7 +202,11 @@ async function runSampler(rootPid, outPath) {
 }
 
 function parseArgs(argv) {
-  const args = { model: "base", audio: "resources/benchmark.wav", out: "docs/goal-evidence" };
+  const args = {
+    model: "base",
+    audio: "resources/benchmark.wav",
+    out: "test-results/verify-local-only",
+  };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--model") args.model = argv[++i];
     else if (argv[i] === "--audio") args.audio = argv[++i];
@@ -436,8 +440,9 @@ observation. It is a demonstration that the network is not on the path.
 `
   );
 
-  console.log(`  wrote docs/goal-evidence/local-only-${stamp}.json`);
-  console.log(`  wrote docs/goal-evidence/local-only-${stamp}.md\n`);
+  const written = path.relative(REPO_ROOT, path.join(outDir, `local-only-${stamp}`));
+  console.log(`  wrote ${written}.json`);
+  console.log(`  wrote ${written}.md\n`);
 
   if (typeof manager.cleanup === "function") {
     try {

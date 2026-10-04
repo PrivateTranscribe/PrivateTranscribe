@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 
-// Reviewed evidence lives in docs/qa-tab-cleanup. Test runs never overwrite it.
+// Screenshots for review land in the gitignored test-results/qa-tab-cleanup.
 export async function captureTab(page: Page, name: string) {
   const dir = path.resolve("test-results/qa-tab-cleanup");
   fs.mkdirSync(dir, { recursive: true });

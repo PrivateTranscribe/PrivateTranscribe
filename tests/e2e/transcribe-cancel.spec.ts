@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * Stopping a running file transcription — audit F1.
@@ -39,7 +40,7 @@ const BASE_MODEL = path.join(
   "whisper-models",
   "ggml-base.bin"
 );
-const GOAL_EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const GOAL_EVIDENCE_DIR = evidenceDir("transcribe-cancel");
 
 async function readWhisperPid(page: Page): Promise<number | null> {
   const diagnostics = await page.evaluate(() =>

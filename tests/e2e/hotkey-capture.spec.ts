@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 import type { Locator, Page } from "@playwright/test";
 
@@ -65,7 +66,7 @@ async function focusDictationHotkey(page: Page) {
 const storedHotkey = (page: Page, key: string) =>
   page.evaluate((name) => localStorage.getItem(name), key);
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("hotkey-capture");
 
 /**
  * Shoot the field itself rather than the page: these states are a few lines of

@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 const before = process.env.PT_READALOUD_BEFORE === "1";
-const evidence = path.resolve("docs/qa-readaloud-stability");
+const evidence = evidenceDir("qa-readaloud-stability");
 test.use({ seedKokoroModel: true });
 
 test("read aloud bar stays still across highlight loss, pause and sentence changes", async ({

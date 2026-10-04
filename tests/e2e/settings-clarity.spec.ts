@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
-const shots = path.resolve("docs/qa-settings-clarity");
+const shots = evidenceDir("qa-settings-clarity");
 test.beforeAll(() => {
   fs.mkdirSync(shots, { recursive: true });
 });

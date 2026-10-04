@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 /**
  * Ledger gate `readaloud-nonenglish-guard`: Kristian pressed the Read Aloud
@@ -25,7 +26,7 @@ import { expect, test } from "./fixtures/electron-app";
  *      what's unproven by that is only what the overlay does with the event.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("readaloud-nonenglish");
 const MIN_SCREENSHOT_BYTES = 1_000;
 
 const DANISH_PARAGRAPH =

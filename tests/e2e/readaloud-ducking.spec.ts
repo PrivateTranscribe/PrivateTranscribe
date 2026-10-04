@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
 /**
@@ -25,7 +26,7 @@ import { unlockTesterAccess } from "./fixtures/tester-access";
  * shows the module was reached, AND that it went no further.
  */
 
-const EVIDENCE_DIR = path.resolve(__dirname, "..", "..", "docs", "goal-evidence");
+const EVIDENCE_DIR = evidenceDir("readaloud-ducking");
 const MIN_SCREENSHOT_BYTES = 10_000;
 
 type DuckingStatus = {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./fixtures/electron-app";
+import { evidenceDir } from "./fixtures/evidence";
 
 const enabled = process.env.PT_RUN_DICTATION_ACCURACY === "1";
 const fixturePath = path.resolve("tmp/dictation-integrated-comparison/four-minute-mid-pause.wav");
@@ -121,12 +122,13 @@ for (const recording of recordings)
         .filter((f) => f.endsWith(".log"))
         .map((f) => fs.readFileSync(path.join(logsDir, f), "utf8"))
         .join("\n");
-      const evidenceDir = path.resolve("docs/qa-dictation-comparison-2026-09-09");
+      const resultsDir = evidenceDir("qa-dictation-comparison-2026-09-09");
+      fs.mkdirSync(resultsDir, { recursive: true });
       const evidenceName = suitePath
         ? `recording-${recording.name}-${recording.model}.json`
         : "electron-recording-result.json";
       fs.writeFileSync(
-        path.join(evidenceDir, evidenceName),
+        path.join(resultsDir, evidenceName),
         JSON.stringify(
           {
             name: recording.name,
