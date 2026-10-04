@@ -46,18 +46,19 @@ Voice triggers work only while **Beta features** is on in Settings, the switch o
 
 **Local servers.** The app starts these only when a feature needs them:
 
-- `whisper-server` (local Whisper) listens on 127.0.0.1, on a port from 8178 to 8199.
-- `llama-server` (local AI models) listens on 127.0.0.1, on a port from 8200 to 8220.
+- `whisper-server` (local Whisper) listens on 127.0.0.1, on a port from 8178 to 8199. It has no password option, so every route sits under a random path the app picks at each start, and any other address returns 404.
+- `llama-server` (local AI models) listens on 127.0.0.1, on a port from 8200 to 8220. It requires a random key the app creates at each start and hands over in the server's environment, never on its command line. Its slots endpoint and web page are off.
 - The Converse permission relay listens on 127.0.0.1, on a port Windows picks, and rejects requests without the session token.
-- The Parakeet engine, which current settings no longer offer, runs sherpa-onnx's WebSocket server. The app gives it only a port, from 6006 to 6029, and that server listens on all IPv4 interfaces. While it runs, other devices on your network can reach it unless Windows Firewall blocks them.
 - Kokoro, the voice for Read Aloud and Converse, runs in an Electron utility process and opens no network port.
 
-`whisper-server`, `llama-server` and the Parakeet server ask for no password, so any program on your PC can use them while they run.
+The Parakeet engine is retired. Its sherpa-onnx WebSocket server would listen on every network interface with no password, so the app no longer starts it.
+
+A web page in your browser cannot use these servers, because it cannot learn the path or the key. A program already running under your Windows account can read both from the server processes.
 
 ## What leaves your PC
 
 - **Audio** leaves your PC only for a cloud transcription service you set up with your own API key or endpoint (OpenAI, Groq or a custom one). Your custom dictionary words go with it as a hint.
-- **Text** goes to an AI provider only when you use AI enhancement, a beta, with a cloud provider you pick (OpenAI, Anthropic, Google Gemini, Groq or a custom endpoint). With a local model it stays on your PC. If you also turn on LLM Context Enhancement in the Smart Context beta, the request includes the active window's app and process name, its title and the focused field's text, plus an excerpt of the open file if you turn on Include active file content.
+- **Text** goes to an AI provider only when you use AI enhancement, a beta, with a cloud provider you pick (OpenAI, Anthropic, Google Gemini, Groq or a custom endpoint). With a local model it stays on your PC. If you also turn on LLM Context Enhancement in the Smart Context beta, the request includes the active window's app and process name, its title and the focused field's text, plus an excerpt of the open file if you turn on Include active file content. The app reads that file only when the active app is a known code editor, finds it by the name in the window title, and looks only in your user folder.
 - **Converse, Agent mode and the Claude Code option in AI enhancement** pass your words to the Claude Code CLI on your PC. The CLI sends them on using your own Claude Code login and configuration.
 - **API keys** are stored in your Windows user profile. The app encrypts them with Electron's `safeStorage`, or saves them in a plain `.env` file in the same folder when Windows cannot encrypt them. The settings screen also keeps a copy in the app's local storage, which is not encrypted.
 - **Feedback** is sent only when you submit the feedback form. It carries your message, any contact details and screenshots you add, the app version, a random install ID and basic machine specs.
