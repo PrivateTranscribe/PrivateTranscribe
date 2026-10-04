@@ -1,5 +1,6 @@
 const { execFile } = require("child_process");
 const debugLogger = require("./debugLogger");
+const { psQuote, withUtf8Bom } = require("./powershellQuote");
 
 /**
  * Set by the e2e fixture so a test run never touches the machine's audio.
@@ -118,7 +119,7 @@ function runPs(scriptBody) {
       scriptBody,
     ].join("\n");
 
-    fs.writeFile(scriptPath, fullScript, "utf8", (writeErr) => {
+    fs.writeFile(scriptPath, withUtf8Bom(fullScript), "utf8", (writeErr) => {
       if (writeErr) return reject(writeErr);
 
       execFile(
@@ -198,11 +199,6 @@ const linux = {
 //
 // For duck(): a single PS invocation reads the current state (to stdout) AND
 // applies the duck level. This halves the number of PS process launches.
-
-/** PowerShell single-quoted literal: only ' needs escaping. */
-function psQuote(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
 
 /**
  * Is `previous` a duck that never got its restore?

@@ -65,6 +65,7 @@ const nodeFs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 const debugLogger = require("./debugLogger");
+const { psQuote, withUtf8Bom } = require("./powershellQuote");
 
 /** Every other app drops to this fraction of its own current level. */
 const DEFAULT_DUCK_FRACTION = 0.3;
@@ -374,11 +375,6 @@ public static class AudioSessions {
 }
 `.trim();
 
-/** PowerShell single-quoted string literal: only ' needs escaping. */
-function psQuote(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
 /** Invariant decimal, so a Danish locale never turns 0.3 into 0,3. */
 function psFloat(value) {
   return `[float]::Parse('${Number(value).toFixed(4)}', [System.Globalization.CultureInfo]::InvariantCulture)`;
@@ -395,7 +391,7 @@ function defaultRunPowerShell(scriptBody, { timeout = 15000 } = {}) {
     const scriptPath = path.join(os.tmpdir(), "privatetranscribe_session_duck.ps1");
     const fullScript = ['Add-Type -TypeDefinition @"', SESSION_CS, '"@', "", scriptBody].join("\n");
 
-    nodeFs.writeFile(scriptPath, fullScript, "utf8", (writeErr) => {
+    nodeFs.writeFile(scriptPath, withUtf8Bom(fullScript), "utf8", (writeErr) => {
       if (writeErr) return reject(writeErr);
       execFile(
         "powershell.exe",
