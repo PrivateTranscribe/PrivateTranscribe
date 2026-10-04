@@ -118,6 +118,18 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
 }
 
 async function main() {
+  // `npm run dev` runs this on every start, so a present engine must not need the network.
+  const early = parseArgs();
+  const currentConfig = early.isCurrent ? BINARIES[early.platformArch] : null;
+  if (
+    currentConfig &&
+    !early.isForce &&
+    fs.existsSync(path.join(BIN_DIR, currentConfig.outputName))
+  ) {
+    console.log(`[whisper-server] ${early.platformArch}: Already present, skipping the download`);
+    return;
+  }
+
   if (VERSION_OVERRIDE) {
     console.log(`\n[whisper-server] Using pinned version: ${VERSION_OVERRIDE}`);
   } else {
