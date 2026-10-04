@@ -9,4 +9,6 @@ PrivateTranscribe is a small open-source project. Here is where to go.
 
 [WINDOWS_TROUBLESHOOTING.md](WINDOWS_TROUBLESHOOTING.md) covers common problems, and [DEBUG.md](DEBUG.md) shows how to turn on debug logs.
 
+Everyone taking part follows our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 We read everything, but we do not promise a response time.

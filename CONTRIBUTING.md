@@ -4,6 +4,8 @@ Thank you for helping. This page takes you from a fresh clone to a pull request.
 
 ## What helps
 
+Everyone taking part follows our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 - Bug reports with clear steps and a log excerpt. Use the [bug report form](https://github.com/PrivateTranscribe/PrivateTranscribe/issues/new?template=bug_report.yml).
 - Small fixes, especially issues labelled `good first issue`.
 - New features start as an idea in [Discussions](https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/ideas) or as an issue. We agree on the change there before anyone writes code.
