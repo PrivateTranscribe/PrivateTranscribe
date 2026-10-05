@@ -7,6 +7,8 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
       npm-minor-and-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
