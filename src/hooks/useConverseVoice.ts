@@ -30,13 +30,7 @@ import logger from "../utils/logger";
 
 /** What the microphone is doing, in the order a turn goes through them. */
 export type ConverseVoicePhase =
-  | "off"
-  | "starting"
-  | "listening"
-  | "hearing"
-  | "transcribing"
-  | "muted"
-  | "error";
+  "off" | "starting" | "listening" | "hearing" | "transcribing" | "muted" | "error";
 
 export interface ConverseVoiceOptions {
   /** The user wants to talk instead of type. */

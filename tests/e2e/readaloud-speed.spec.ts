@@ -66,7 +66,11 @@ test.describe("installed voice model", () => {
     await capture(controlPanel, info, "read-speed-after-selected.png");
     await speed.focus();
     await controlPanel.keyboard.press("Space");
+    // Radix Select moves focus after a key on a timer, so each key waits for
+    // the focus it causes; otherwise Enter can pick the option before Home moved.
+    await expect(controlPanel.getByRole("option", { name: "2×", exact: true })).toBeFocused();
     await controlPanel.keyboard.press("Home");
+    await expect(controlPanel.getByRole("option", { name: "0.75×", exact: true })).toBeFocused();
     await controlPanel.keyboard.press("Enter");
     await expect(speed).toHaveText("0.75×");
     await controlPanel.evaluate(() => localStorage.setItem("readAloudSpeed", "invalid"));

@@ -200,8 +200,7 @@ export function useModelDownload({
           if (!success) errorMsg = result?.error || "The voice model could not be downloaded.";
         } else {
           const result = (await window.electronAPI?.modelDownload?.(modelId)) as
-            | { success: boolean; error?: string }
-            | undefined;
+            { success: boolean; error?: string } | undefined;
           if (result && !result.success && result.error) {
             errorMsg = result.error;
           } else {

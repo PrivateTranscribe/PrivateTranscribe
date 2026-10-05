@@ -200,19 +200,16 @@ export default function LocalModelPicker({
         </h5>
 
         <ModelCardList
-          models={visibleModels.map(
-            (model): ModelCardOption => ({
-              value: model.id,
-              label: model.name,
-              description: model.size,
-              icon: getProviderIcon(selectedProvider),
-              invertInDark: isMonochromeProvider(selectedProvider),
-              recommended: compact ? false : model.recommended,
-              isDownloaded:
-                downloadedModels.has(model.id) || model.isDownloaded || model.downloaded,
-              isDownloading: isDownloadingModel(model.id),
-            })
-          )}
+          models={visibleModels.map((model): ModelCardOption => ({
+            value: model.id,
+            label: model.name,
+            description: model.size,
+            icon: getProviderIcon(selectedProvider),
+            invertInDark: isMonochromeProvider(selectedProvider),
+            recommended: compact ? false : model.recommended,
+            isDownloaded: downloadedModels.has(model.id) || model.isDownloaded || model.downloaded,
+            isDownloading: isDownloadingModel(model.id),
+          }))}
           selectedModel={selectedModel}
           onModelSelect={onModelSelect}
           onDownload={handleDownload}
