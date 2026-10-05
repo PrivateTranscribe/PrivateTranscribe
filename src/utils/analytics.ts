@@ -13,8 +13,7 @@ export async function trackAnalyticsEvent(
 ): Promise<boolean> {
   try {
     const result = (await window.electronAPI?.analyticsTrack?.(event, properties)) as
-      | AnalyticsTrackResult
-      | undefined;
+      AnalyticsTrackResult | undefined;
     return result?.sent === true;
   } catch {
     return false;

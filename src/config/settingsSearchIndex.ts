@@ -14,12 +14,7 @@
  */
 
 export type SettingsSearchPage =
-  | "settings"
-  | "dictation"
-  | "dictionary"
-  | "read-aloud"
-  | "converse"
-  | "ai-enhancement";
+  "settings" | "dictation" | "dictionary" | "read-aloud" | "converse" | "ai-enhancement";
 
 export type SettingsSearchSection = "general" | "permissions" | "beta" | "developer";
 

@@ -1024,299 +1024,297 @@ Downloaded only when the user installs the CUDA engine from Settings. It holds a
 This is the app's production dependency tree for Windows x64, taken from `package-lock.json`. The packages ship inside `app.asar` or `app.asar.unpacked`, or are built into the app's interface code; the packaging rules leave out a few, such as type definitions. Each line gives the version, the licence the package declares, its repository, which licence text below is its own and any bundled component above that it contains.
 
 - `@derhuerst/http-basic@8.2.4`: `MIT`, <https://github.com/derhuerst/http-basic>, licence text 1
-- `@emnapi/runtime@1.8.1`: `MIT`, author not named, <https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.8.1.tgz>, no licence file in the package
-- `@floating-ui/core@1.7.3`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 2
-- `@floating-ui/dom@1.7.4`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 2
-- `@floating-ui/react-dom@2.1.6`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 2
-- `@floating-ui/utils@0.2.10`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 2
-- `@huggingface/jinja@0.5.9`: `MIT`, <https://github.com/huggingface/huggingface.js>, licence text 3
-- `@huggingface/transformers@3.8.1`: `Apache-2.0`, <https://github.com/huggingface/transformers.js>, licence text 4
-- `@img/colour@1.0.0`: `MIT`, <https://github.com/lovell/colour>, licence text 5
-- `@img/sharp-win32-x64@0.34.5`: `Apache-2.0 AND LGPL-3.0-or-later`, <https://github.com/lovell/sharp>, licence text 6, contains libvips (see above)
-- `@isaacs/fs-minipass@4.0.1`: `ISC`, <https://github.com/npm/fs-minipass>, licence text 7
-- `@protobufjs/aspromise@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/base64@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/codegen@2.0.5`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/eventemitter@1.1.1`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/fetch@1.1.1`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/float@1.0.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/path@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/pool@1.1.0`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 8
-- `@protobufjs/utf8@1.1.2`: `BSD-3-Clause`, <https://github.com/protobufjs/protobuf.js>, licence text 8
-- `@radix-ui/number@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/primitive@1.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-arrow@1.1.7`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-collection@1.1.7`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-compose-refs@1.1.2`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-context@1.1.2`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-context@1.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-dialog@1.1.15`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-direction@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-dismissable-layer@1.1.11`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-dropdown-menu@2.1.16`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-focus-guards@1.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-focus-scope@1.1.7`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-id@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-label@2.1.8`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-menu@2.1.16`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-popper@1.2.8`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-portal@1.1.9`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-presence@1.1.5`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-primitive@2.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-primitive@2.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-progress@1.1.8`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-roving-focus@1.1.11`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-select@2.2.6`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-slot@1.2.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-slot@1.2.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-tabs@1.1.13`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-use-callback-ref@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-use-controllable-state@1.2.2`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-use-effect-event@0.0.2`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/react-use-escape-keydown@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-use-layout-effect@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-use-previous@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-use-rect@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-use-size@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@radix-ui/react-visually-hidden@1.2.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 9
-- `@radix-ui/rect@1.1.1`: `MIT`, author not named, <https://github.com/radix-ui/primitives>, no licence file in the package
-- `@types/debug@4.1.12`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/estree@1.0.8`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/estree-jsx@1.0.5`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/hast@3.0.4`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/mdast@4.0.4`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/ms@2.1.0`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/node@10.17.60`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/node@22.19.7`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/react@19.2.9`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/react-dom@19.2.3`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/unist@2.0.11`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@types/unist@3.0.3`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 10
-- `@ungap/structured-clone@1.3.0`: `ISC`, <https://github.com/ungap/structured-clone>, licence text 11
+- `@emnapi/runtime@1.11.3`: `MIT`, <https://github.com/toyobayashi/emnapi>, licence text 2
+- `@floating-ui/core@1.7.3`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/dom@1.7.4`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/react-dom@2.1.6`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/utils@0.2.10`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@huggingface/jinja@0.5.9`: `MIT`, <https://github.com/huggingface/huggingface.js>, licence text 4
+- `@huggingface/transformers@3.8.1`: `Apache-2.0`, <https://github.com/huggingface/transformers.js>, licence text 5
+- `@img/colour@1.1.0`: `MIT`, <https://github.com/lovell/colour>, licence text 6
+- `@img/sharp-win32-x64@0.34.5`: `Apache-2.0 AND LGPL-3.0-or-later`, <https://github.com/lovell/sharp>, licence text 7, contains libvips (see above)
+- `@isaacs/fs-minipass@4.0.1`: `ISC`, <https://github.com/npm/fs-minipass>, licence text 8
+- `@protobufjs/aspromise@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/base64@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/codegen@2.0.5`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/eventemitter@1.1.1`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/fetch@1.1.1`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/float@1.0.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/path@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/pool@1.1.0`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
+- `@protobufjs/utf8@1.1.2`: `BSD-3-Clause`, <https://github.com/protobufjs/protobuf.js>, licence text 9
+- `@radix-ui/number@1.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/primitive@1.1.7`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-arrow@1.1.15`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-collection@1.1.15`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-compose-refs@1.1.5`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-context@1.2.2`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-dialog@1.1.23`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-direction@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-dismissable-layer@1.1.19`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-dropdown-menu@2.1.24`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-focus-guards@1.1.6`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-focus-scope@1.1.16`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-id@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-label@2.1.15`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-menu@2.1.24`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-popper@1.3.7`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-portal@1.1.17`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-presence@1.1.10`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-primitive@2.1.10`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-progress@1.1.16`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-roving-focus@1.1.19`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-select@2.3.7`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-slot@1.3.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-tabs@1.1.21`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-callback-ref@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-controllable-state@1.2.6`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-effect-event@0.0.5`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-is-hydrated@0.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-layout-effect@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-previous@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-rect@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-use-size@1.1.4`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/react-visually-hidden@1.2.11`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@radix-ui/rect@1.1.3`: `MIT`, <https://github.com/radix-ui/primitives>, licence text 10
+- `@types/debug@4.1.12`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/estree@1.0.8`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/estree-jsx@1.0.5`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/hast@3.0.4`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/mdast@4.0.4`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/ms@2.1.0`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/node@10.17.60`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/node@22.19.7`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/react@19.3.0`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/react-dom@19.3.0`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/unist@2.0.11`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@types/unist@3.0.3`: `MIT`, <https://github.com/DefinitelyTyped/DefinitelyTyped>, licence text 11
+- `@ungap/structured-clone@1.3.0`: `ISC`, <https://github.com/ungap/structured-clone>, licence text 12
 - `agent-base@6.0.2`: `MIT`, by Nathan Rajlich, <https://github.com/TooTallNate/node-agent-base>, no licence file in the package
-- `argparse@2.0.1`: `Python-2.0`, <https://github.com/nodeca/argparse>, licence text 12
-- `aria-hidden@1.2.6`: `MIT`, <https://github.com/theKashey/aria-hidden>, licence text 13
-- `asynckit@0.4.0`: `MIT`, <https://github.com/alexindigo/asynckit>, licence text 14
-- `bail@2.0.2`: `MIT`, <https://github.com/wooorm/bail>, licence text 15
-- `base64-js@1.5.1`: `MIT`, <https://github.com/beatgammit/base64-js>, licence text 16
-- `better-sqlite3@12.9.0`: `MIT`, <https://github.com/WiseLibs/better-sqlite3>, licence text 17, contains SQLite (see above)
-- `bindings@1.5.0`: `MIT`, <https://github.com/TooTallNate/node-bindings>, licence text 18
-- `bl@4.1.0`: `MIT`, <https://github.com/rvagg/bl>, licence text 19
-- `bluebird@3.7.2`: `MIT`, <https://github.com/petkaantonov/bluebird>, licence text 20
-- `boolean@3.2.0`: `MIT`, <https://github.com/thenativeweb/boolean>, licence text 21
-- `buffer@5.7.1`: `MIT`, <https://github.com/feross/buffer>, licence text 22
-- `buffer-from@1.1.2`: `MIT`, <https://github.com/LinusU/buffer-from>, licence text 23
-- `builder-util-runtime@9.5.1`: `MIT`, <https://github.com/electron-userland/electron-builder>, licence text 24
-- `call-bind-apply-helpers@1.0.2`: `MIT`, <https://github.com/ljharb/call-bind-apply-helpers>, licence text 25
-- `caseless@0.12.0`: `Apache-2.0`, <https://github.com/mikeal/caseless>, licence text 26
-- `ccount@2.0.1`: `MIT`, <https://github.com/wooorm/ccount>, licence text 15
-- `character-entities@2.0.2`: `MIT`, <https://github.com/wooorm/character-entities>, licence text 15
-- `character-entities-html4@2.1.0`: `MIT`, <https://github.com/wooorm/character-entities-html4>, licence text 15
-- `character-entities-legacy@3.0.0`: `MIT`, <https://github.com/wooorm/character-entities-legacy>, licence text 15
-- `character-reference-invalid@2.0.1`: `MIT`, <https://github.com/wooorm/character-reference-invalid>, licence text 15
-- `chownr@1.1.4`: `ISC`, <https://github.com/isaacs/chownr>, licence text 7
-- `chownr@3.0.0`: `BlueOak-1.0.0`, <https://github.com/isaacs/chownr>, licence text 27
-- `class-variance-authority@0.7.1`: `Apache-2.0`, <https://github.com/joe-bell/cva>, licence text 28
-- `clsx@2.1.1`: `MIT`, <https://github.com/lukeed/clsx>, licence text 29
-- `combined-stream@1.0.8`: `MIT`, <https://github.com/felixge/node-combined-stream>, licence text 30
-- `comma-separated-tokens@2.0.3`: `MIT`, <https://github.com/wooorm/comma-separated-tokens>, licence text 31
-- `concat-stream@2.0.0`: `MIT`, <http://github.com/maxogden/concat-stream>, licence text 32
-- `core-util-is@1.0.2`: `MIT`, <https://github.com/isaacs/core-util-is>, licence text 33
-- `csstype@3.2.3`: `MIT`, <https://github.com/frenic/csstype>, licence text 34
-- `debug@4.4.3`: `MIT`, <https://github.com/debug-js/debug>, licence text 35
-- `decode-named-character-reference@1.3.0`: `MIT`, <https://github.com/wooorm/decode-named-character-reference>, licence text 36
-- `decompress-response@6.0.0`: `MIT`, <https://github.com/sindresorhus/decompress-response>, licence text 37
-- `deep-extend@0.6.0`: `MIT`, <https://github.com/unclechu/node-deep-extend>, licence text 38
-- `define-data-property@1.1.4`: `MIT`, <https://github.com/ljharb/define-data-property>, licence text 39
-- `define-properties@1.2.1`: `MIT`, <https://github.com/ljharb/define-properties>, licence text 40
-- `delayed-stream@1.0.0`: `MIT`, <https://github.com/felixge/node-delayed-stream>, licence text 30
-- `dequal@2.0.3`: `MIT`, <https://github.com/lukeed/dequal>, licence text 41
-- `detect-libc@2.1.2`: `Apache-2.0`, <https://github.com/lovell/detect-libc>, licence text 42
-- `detect-node@2.1.0`: `MIT`, <https://github.com/iliakan/detect-node>, licence text 43
-- `detect-node-es@1.1.0`: `MIT`, <https://github.com/thekashey/detect-node>, licence text 43
-- `devlop@1.1.0`: `MIT`, <https://github.com/wooorm/devlop>, licence text 44
-- `dotenv@16.6.1`: `BSD-2-Clause`, <https://github.com/motdotla/dotenv>, licence text 45
-- `dunder-proto@1.0.1`: `MIT`, <https://github.com/es-shims/dunder-proto>, licence text 46
-- `duplexer2@0.1.4`: `BSD-3-Clause`, <https://github.com/deoxxa/duplexer2>, licence text 47
-- `electron-updater@6.7.3`: `MIT`, <https://github.com/electron-userland/electron-builder>, licence text 24
-- `end-of-stream@1.4.5`: `MIT`, <https://github.com/mafintosh/end-of-stream>, licence text 48
-- `env-paths@2.2.1`: `MIT`, <https://github.com/sindresorhus/env-paths>, licence text 49
-- `es-define-property@1.0.1`: `MIT`, <https://github.com/ljharb/es-define-property>, licence text 25
-- `es-errors@1.3.0`: `MIT`, <https://github.com/ljharb/es-errors>, licence text 25
-- `es-object-atoms@1.1.1`: `MIT`, <https://github.com/ljharb/es-object-atoms>, licence text 25
-- `es-set-tostringtag@2.1.0`: `MIT`, <https://github.com/es-shims/es-set-tostringtag>, licence text 50
-- `es6-error@4.1.1`: `MIT`, <https://github.com/bjyoungblood/es6-error>, licence text 51
-- `escape-string-regexp@4.0.0`: `MIT`, <https://github.com/sindresorhus/escape-string-regexp>, licence text 37
-- `estree-util-is-identifier-name@3.0.0`: `MIT`, <https://github.com/syntax-tree/estree-util-is-identifier-name>, licence text 52
-- `expand-template@2.0.3`: `(MIT OR WTFPL)`, <https://github.com/ralphtheninja/expand-template>, licence text 53
-- `extend@3.0.2`: `MIT`, <https://github.com/justmoon/node-extend>, licence text 54
-- `ffmpeg-static@5.3.0`: `GPL-3.0-or-later`, <https://github.com/eugeneware/ffmpeg-static>, licence text 55, contains FFmpeg (see above)
-- `file-uri-to-path@1.0.0`: `MIT`, <https://github.com/TooTallNate/file-uri-to-path>, licence text 56
-- `flatbuffers@25.9.23`: `Apache-2.0`, <https://github.com/google/flatbuffers>, licence text 4
-- `form-data@4.0.5`: `MIT`, <https://github.com/form-data/form-data>, licence text 57
-- `fs-constants@1.0.0`: `MIT`, <https://github.com/mafintosh/fs-constants>, licence text 58
-- `fs-extra@10.1.0`: `MIT`, <https://github.com/jprichardson/node-fs-extra>, licence text 59
-- `fs-extra@11.3.3`: `MIT`, <https://github.com/jprichardson/node-fs-extra>, licence text 60
-- `function-bind@1.1.2`: `MIT`, <https://github.com/Raynos/function-bind>, licence text 61
-- `get-intrinsic@1.3.0`: `MIT`, <https://github.com/ljharb/get-intrinsic>, licence text 62
-- `get-nonce@1.0.1`: `MIT`, <https://github.com/theKashey/get-nonce>, licence text 63
-- `get-proto@1.0.1`: `MIT`, <https://github.com/ljharb/get-proto>, licence text 64
-- `github-from-package@0.0.0`: `MIT`, <https://github.com/substack/github-from-package>, licence text 65
-- `global-agent@3.0.0`: `BSD-3-Clause`, <https://github.com/gajus/global-agent>, licence text 66
-- `globalthis@1.0.4`: `MIT`, <https://github.com/ljharb/System.global>, licence text 67
-- `gopd@1.2.0`: `MIT`, <https://github.com/ljharb/gopd>, licence text 68
-- `graceful-fs@4.2.11`: `ISC`, <https://github.com/isaacs/node-graceful-fs>, licence text 69
+- `argparse@2.0.1`: `Python-2.0`, <https://github.com/nodeca/argparse>, licence text 13
+- `aria-hidden@1.2.6`: `MIT`, <https://github.com/theKashey/aria-hidden>, licence text 14
+- `asynckit@0.4.0`: `MIT`, <https://github.com/alexindigo/asynckit>, licence text 15
+- `bail@2.0.2`: `MIT`, <https://github.com/wooorm/bail>, licence text 16
+- `base64-js@1.5.1`: `MIT`, <https://github.com/beatgammit/base64-js>, licence text 17
+- `better-sqlite3@12.9.0`: `MIT`, <https://github.com/WiseLibs/better-sqlite3>, licence text 18, contains SQLite (see above)
+- `bindings@1.5.0`: `MIT`, <https://github.com/TooTallNate/node-bindings>, licence text 19
+- `bl@4.1.0`: `MIT`, <https://github.com/rvagg/bl>, licence text 20
+- `bluebird@3.7.2`: `MIT`, <https://github.com/petkaantonov/bluebird>, licence text 21
+- `boolean@3.2.0`: `MIT`, <https://github.com/thenativeweb/boolean>, licence text 22
+- `buffer@5.7.1`: `MIT`, <https://github.com/feross/buffer>, licence text 23
+- `buffer-from@1.1.2`: `MIT`, <https://github.com/LinusU/buffer-from>, licence text 24
+- `builder-util-runtime@9.7.0`: `MIT`, <https://github.com/electron-userland/electron-builder>, licence text 25
+- `call-bind-apply-helpers@1.0.2`: `MIT`, <https://github.com/ljharb/call-bind-apply-helpers>, licence text 26
+- `caseless@0.12.0`: `Apache-2.0`, <https://github.com/mikeal/caseless>, licence text 27
+- `ccount@2.0.1`: `MIT`, <https://github.com/wooorm/ccount>, licence text 16
+- `character-entities@2.0.2`: `MIT`, <https://github.com/wooorm/character-entities>, licence text 16
+- `character-entities-html4@2.1.0`: `MIT`, <https://github.com/wooorm/character-entities-html4>, licence text 16
+- `character-entities-legacy@3.0.0`: `MIT`, <https://github.com/wooorm/character-entities-legacy>, licence text 16
+- `character-reference-invalid@2.0.1`: `MIT`, <https://github.com/wooorm/character-reference-invalid>, licence text 16
+- `chownr@1.1.4`: `ISC`, <https://github.com/isaacs/chownr>, licence text 8
+- `chownr@3.0.0`: `BlueOak-1.0.0`, <https://github.com/isaacs/chownr>, licence text 28
+- `class-variance-authority@0.7.1`: `Apache-2.0`, <https://github.com/joe-bell/cva>, licence text 29
+- `clsx@2.1.1`: `MIT`, <https://github.com/lukeed/clsx>, licence text 30
+- `combined-stream@1.0.8`: `MIT`, <https://github.com/felixge/node-combined-stream>, licence text 31
+- `comma-separated-tokens@2.0.3`: `MIT`, <https://github.com/wooorm/comma-separated-tokens>, licence text 32
+- `concat-stream@2.0.0`: `MIT`, <http://github.com/maxogden/concat-stream>, licence text 33
+- `core-util-is@1.0.2`: `MIT`, <https://github.com/isaacs/core-util-is>, licence text 34
+- `csstype@3.2.3`: `MIT`, <https://github.com/frenic/csstype>, licence text 35
+- `debug@4.4.3`: `MIT`, <https://github.com/debug-js/debug>, licence text 36
+- `decode-named-character-reference@1.3.0`: `MIT`, <https://github.com/wooorm/decode-named-character-reference>, licence text 37
+- `decompress-response@6.0.0`: `MIT`, <https://github.com/sindresorhus/decompress-response>, licence text 38
+- `deep-extend@0.6.0`: `MIT`, <https://github.com/unclechu/node-deep-extend>, licence text 39
+- `define-data-property@1.1.4`: `MIT`, <https://github.com/ljharb/define-data-property>, licence text 40
+- `define-properties@1.2.1`: `MIT`, <https://github.com/ljharb/define-properties>, licence text 41
+- `delayed-stream@1.0.0`: `MIT`, <https://github.com/felixge/node-delayed-stream>, licence text 31
+- `dequal@2.0.3`: `MIT`, <https://github.com/lukeed/dequal>, licence text 42
+- `detect-libc@2.1.2`: `Apache-2.0`, <https://github.com/lovell/detect-libc>, licence text 43
+- `detect-node@2.1.0`: `MIT`, <https://github.com/iliakan/detect-node>, licence text 44
+- `detect-node-es@1.1.0`: `MIT`, <https://github.com/thekashey/detect-node>, licence text 44
+- `devlop@1.1.0`: `MIT`, <https://github.com/wooorm/devlop>, licence text 45
+- `dotenv@16.6.1`: `BSD-2-Clause`, <https://github.com/motdotla/dotenv>, licence text 46
+- `dunder-proto@1.0.1`: `MIT`, <https://github.com/es-shims/dunder-proto>, licence text 47
+- `duplexer2@0.1.4`: `BSD-3-Clause`, <https://github.com/deoxxa/duplexer2>, licence text 48
+- `electron-updater@6.8.9`: `MIT`, <https://github.com/electron-userland/electron-builder>, licence text 25
+- `end-of-stream@1.4.5`: `MIT`, <https://github.com/mafintosh/end-of-stream>, licence text 49
+- `env-paths@2.2.1`: `MIT`, <https://github.com/sindresorhus/env-paths>, licence text 50
+- `es-define-property@1.0.1`: `MIT`, <https://github.com/ljharb/es-define-property>, licence text 26
+- `es-errors@1.3.0`: `MIT`, <https://github.com/ljharb/es-errors>, licence text 26
+- `es-object-atoms@1.1.1`: `MIT`, <https://github.com/ljharb/es-object-atoms>, licence text 26
+- `es-set-tostringtag@2.1.0`: `MIT`, <https://github.com/es-shims/es-set-tostringtag>, licence text 51
+- `es6-error@4.1.1`: `MIT`, <https://github.com/bjyoungblood/es6-error>, licence text 52
+- `escape-string-regexp@4.0.0`: `MIT`, <https://github.com/sindresorhus/escape-string-regexp>, licence text 38
+- `estree-util-is-identifier-name@3.0.0`: `MIT`, <https://github.com/syntax-tree/estree-util-is-identifier-name>, licence text 53
+- `expand-template@2.0.3`: `(MIT OR WTFPL)`, <https://github.com/ralphtheninja/expand-template>, licence text 54
+- `extend@3.0.2`: `MIT`, <https://github.com/justmoon/node-extend>, licence text 55
+- `ffmpeg-static@5.3.0`: `GPL-3.0-or-later`, <https://github.com/eugeneware/ffmpeg-static>, licence text 56, contains FFmpeg (see above)
+- `file-uri-to-path@1.0.0`: `MIT`, <https://github.com/TooTallNate/file-uri-to-path>, licence text 57
+- `flatbuffers@25.9.23`: `Apache-2.0`, <https://github.com/google/flatbuffers>, licence text 5
+- `form-data@4.0.6`: `MIT`, <https://github.com/form-data/form-data>, licence text 58
+- `fs-constants@1.0.0`: `MIT`, <https://github.com/mafintosh/fs-constants>, licence text 59
+- `fs-extra@10.1.0`: `MIT`, <https://github.com/jprichardson/node-fs-extra>, licence text 60
+- `fs-extra@11.3.1`: `MIT`, <https://github.com/jprichardson/node-fs-extra>, licence text 61
+- `function-bind@1.1.2`: `MIT`, <https://github.com/Raynos/function-bind>, licence text 62
+- `get-intrinsic@1.3.0`: `MIT`, <https://github.com/ljharb/get-intrinsic>, licence text 63
+- `get-nonce@1.0.1`: `MIT`, <https://github.com/theKashey/get-nonce>, licence text 64
+- `get-proto@1.0.1`: `MIT`, <https://github.com/ljharb/get-proto>, licence text 65
+- `github-from-package@0.0.0`: `MIT`, <https://github.com/substack/github-from-package>, licence text 66
+- `global-agent@3.0.0`: `BSD-3-Clause`, <https://github.com/gajus/global-agent>, licence text 67
+- `globalthis@1.0.4`: `MIT`, <https://github.com/ljharb/System.global>, licence text 68
+- `gopd@1.2.0`: `MIT`, <https://github.com/ljharb/gopd>, licence text 69
+- `graceful-fs@4.2.11`: `ISC`, <https://github.com/isaacs/node-graceful-fs>, licence text 70
 - `guid-typescript@1.0.9`: `ISC`, by nicolas, <https://github.com/NicolasDeveloper/guid-typescript>, no licence file in the package
-- `has-property-descriptors@1.0.2`: `MIT`, <https://github.com/inspect-js/has-property-descriptors>, licence text 70
-- `has-symbols@1.1.0`: `MIT`, <https://github.com/inspect-js/has-symbols>, licence text 71
-- `has-tostringtag@1.0.2`: `MIT`, <https://github.com/inspect-js/has-tostringtag>, licence text 72
-- `hasown@2.0.3`: `MIT`, <https://github.com/inspect-js/hasOwn>, licence text 73
-- `hast-util-to-jsx-runtime@2.3.6`: `MIT`, <https://github.com/syntax-tree/hast-util-to-jsx-runtime>, licence text 36
-- `hast-util-whitespace@3.0.0`: `MIT`, <https://github.com/syntax-tree/hast-util-whitespace>, licence text 31
-- `html-url-attributes@3.0.1`: `MIT`, <https://github.com/rehypejs/rehype-minify/tree/main/packages/html-url-attributes>, licence text 74
-- `http-response-object@3.0.2`: `MIT`, <https://github.com/ForbesLindesay/http-response-object>, licence text 75
+- `has-property-descriptors@1.0.2`: `MIT`, <https://github.com/inspect-js/has-property-descriptors>, licence text 71
+- `has-symbols@1.1.0`: `MIT`, <https://github.com/inspect-js/has-symbols>, licence text 72
+- `has-tostringtag@1.0.2`: `MIT`, <https://github.com/inspect-js/has-tostringtag>, licence text 73
+- `hasown@2.0.4`: `MIT`, <https://github.com/inspect-js/hasOwn>, licence text 74
+- `hast-util-to-jsx-runtime@2.3.6`: `MIT`, <https://github.com/syntax-tree/hast-util-to-jsx-runtime>, licence text 37
+- `hast-util-whitespace@3.0.0`: `MIT`, <https://github.com/syntax-tree/hast-util-whitespace>, licence text 32
+- `html-url-attributes@3.0.1`: `MIT`, <https://github.com/rehypejs/rehype-minify/tree/main/packages/html-url-attributes>, licence text 75
+- `http-response-object@3.0.2`: `MIT`, <https://github.com/ForbesLindesay/http-response-object>, licence text 76
 - `https-proxy-agent@5.0.1`: `MIT`, by Nathan Rajlich, <https://github.com/TooTallNate/node-https-proxy-agent>, no licence file in the package
-- `ieee754@1.2.1`: `BSD-3-Clause`, <https://github.com/feross/ieee754>, licence text 76
-- `inherits@2.0.4`: `ISC`, <https://github.com/isaacs/inherits>, licence text 77
-- `ini@1.3.8`: `ISC`, <https://github.com/isaacs/ini>, licence text 7
-- `inline-style-parser@0.2.7`: `MIT`, <https://github.com/remarkablemark/inline-style-parser>, licence text 78
-- `is-alphabetical@2.0.1`: `MIT`, <https://github.com/wooorm/is-alphabetical>, licence text 31
-- `is-alphanumerical@2.0.1`: `MIT`, <https://github.com/wooorm/is-alphanumerical>, licence text 31
-- `is-decimal@2.0.1`: `MIT`, <https://github.com/wooorm/is-decimal>, licence text 31
-- `is-hexadecimal@2.0.1`: `MIT`, <https://github.com/wooorm/is-hexadecimal>, licence text 31
-- `is-plain-obj@4.1.0`: `MIT`, <https://github.com/sindresorhus/is-plain-obj>, licence text 37
+- `ieee754@1.2.1`: `BSD-3-Clause`, <https://github.com/feross/ieee754>, licence text 77
+- `inherits@2.0.4`: `ISC`, <https://github.com/isaacs/inherits>, licence text 78
+- `ini@1.3.8`: `ISC`, <https://github.com/isaacs/ini>, licence text 8
+- `inline-style-parser@0.2.7`: `MIT`, <https://github.com/remarkablemark/inline-style-parser>, licence text 79
+- `is-alphabetical@2.0.1`: `MIT`, <https://github.com/wooorm/is-alphabetical>, licence text 32
+- `is-alphanumerical@2.0.1`: `MIT`, <https://github.com/wooorm/is-alphanumerical>, licence text 32
+- `is-decimal@2.0.1`: `MIT`, <https://github.com/wooorm/is-decimal>, licence text 32
+- `is-hexadecimal@2.0.1`: `MIT`, <https://github.com/wooorm/is-hexadecimal>, licence text 32
+- `is-plain-obj@4.1.0`: `MIT`, <https://github.com/sindresorhus/is-plain-obj>, licence text 38
 - `isarray@1.0.0`: `MIT`, by Julian Gruber, <https://github.com/juliangruber/isarray>, no licence file in the package
-- `js-yaml@4.1.1`: `MIT`, <https://github.com/nodeca/js-yaml>, licence text 79
-- `json-stringify-safe@5.0.1`: `ISC`, <https://github.com/isaacs/json-stringify-safe>, licence text 7
-- `jsonfile@6.2.0`: `MIT`, <https://github.com/jprichardson/node-jsonfile>, licence text 80
-- `kokoro-js@1.2.1`: `Apache-2.0`, <https://github.com/hexgrad/kokoro>, licence text 81
+- `js-yaml@4.1.1`: `MIT`, <https://github.com/nodeca/js-yaml>, licence text 80
+- `json-stringify-safe@5.0.1`: `ISC`, <https://github.com/isaacs/json-stringify-safe>, licence text 8
+- `jsonfile@6.2.0`: `MIT`, <https://github.com/jprichardson/node-jsonfile>, licence text 81
+- `jsonfile@6.2.1`: `MIT`, <https://github.com/jprichardson/node-jsonfile>, licence text 81
+- `kokoro-js@1.2.1`: `Apache-2.0`, <https://github.com/hexgrad/kokoro>, licence text 82
 - `lazy-val@1.0.5`: `MIT`, by Vladimir Krivosheev, <https://github.com/develar/lazy-val>, no licence file in the package
-- `lodash.escaperegexp@4.1.2`: `MIT`, <https://github.com/lodash/lodash>, licence text 82
-- `lodash.isequal@4.5.0`: `MIT`, <https://github.com/lodash/lodash>, licence text 83
-- `long@5.3.2`: `Apache-2.0`, <https://github.com/dcodeIO/long.js>, licence text 4
-- `longest-streak@3.1.0`: `MIT`, <https://github.com/wooorm/longest-streak>, licence text 84
-- `lucide-react@0.518.0`: `ISC`, <https://github.com/lucide-icons/lucide>, licence text 85
-- `matcher@3.0.0`: `MIT`, <https://github.com/sindresorhus/matcher>, licence text 37
-- `math-intrinsics@1.1.0`: `MIT`, <https://github.com/es-shims/math-intrinsics>, licence text 46
-- `mdast-util-from-markdown@2.0.2`: `MIT`, <https://github.com/syntax-tree/mdast-util-from-markdown>, licence text 36
-- `mdast-util-mdx-expression@2.0.1`: `MIT`, <https://github.com/syntax-tree/mdast-util-mdx-expression>, licence text 52
-- `mdast-util-mdx-jsx@3.2.0`: `MIT`, <https://github.com/syntax-tree/mdast-util-mdx-jsx>, licence text 52
-- `mdast-util-mdxjs-esm@2.0.1`: `MIT`, <https://github.com/syntax-tree/mdast-util-mdxjs-esm>, licence text 52
-- `mdast-util-phrasing@4.1.0`: `MIT`, <https://github.com/syntax-tree/mdast-util-phrasing>, licence text 86
-- `mdast-util-to-hast@13.2.1`: `MIT`, <https://github.com/syntax-tree/mdast-util-to-hast>, licence text 31
-- `mdast-util-to-markdown@2.1.2`: `MIT`, <https://github.com/syntax-tree/mdast-util-to-markdown>, licence text 36
-- `mdast-util-to-string@4.0.0`: `MIT`, <https://github.com/syntax-tree/mdast-util-to-string>, licence text 15
-- `micromark@4.0.2`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark>, licence text 36
-- `micromark-core-commonmark@2.0.3`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark>, licence text 36
-- `micromark-factory-destination@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-destination>, licence text 36
-- `micromark-factory-label@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-label>, licence text 36
-- `micromark-factory-space@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-space>, licence text 36
-- `micromark-factory-title@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-title>, licence text 36
-- `micromark-factory-whitespace@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-whitespace>, licence text 36
-- `micromark-util-character@2.1.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-character>, licence text 36
-- `micromark-util-chunked@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-chunked>, licence text 36
-- `micromark-util-classify-character@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-classify-character>, licence text 36
-- `micromark-util-combine-extensions@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-combine-extensions>, licence text 36
-- `micromark-util-decode-numeric-character-reference@2.0.2`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference>, licence text 36
-- `micromark-util-decode-string@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-string>, licence text 36
-- `micromark-util-encode@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-encode>, licence text 36
-- `micromark-util-html-tag-name@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-html-tag-name>, licence text 36
-- `micromark-util-normalize-identifier@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-normalize-identifier>, licence text 36
-- `micromark-util-resolve-all@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-resolve-all>, licence text 36
-- `micromark-util-sanitize-uri@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri>, licence text 36
-- `micromark-util-subtokenize@2.1.0`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-subtokenize>, licence text 36
-- `micromark-util-symbol@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol>, licence text 36
-- `micromark-util-types@2.0.2`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-types>, licence text 36
-- `mime-db@1.52.0`: `MIT`, <https://github.com/jshttp/mime-db>, licence text 87
-- `mime-types@2.1.35`: `MIT`, <https://github.com/jshttp/mime-types>, licence text 88
-- `mimic-response@3.1.0`: `MIT`, <https://github.com/sindresorhus/mimic-response>, licence text 37
-- `minimist@1.2.8`: `MIT`, <https://github.com/minimistjs/minimist>, licence text 65
-- `minipass@7.1.2`: `ISC`, <https://github.com/isaacs/minipass>, licence text 89
-- `minizlib@3.1.0`: `MIT`, <https://github.com/isaacs/minizlib>, licence text 90
-- `mkdirp-classic@0.5.3`: `MIT`, <https://github.com/mafintosh/mkdirp-classic>, licence text 91
-- `ms@2.1.3`: `MIT`, <https://github.com/vercel/ms>, licence text 92
-- `napi-build-utils@2.0.0`: `MIT`, <https://github.com/inspiredware/napi-build-utils>, licence text 93
-- `node-abi@3.87.0`: `MIT`, <https://github.com/electron/node-abi>, licence text 94
-- `node-int64@0.4.0`: `MIT`, <https://github.com/broofa/node-int64>, licence text 95
-- `object-keys@1.1.1`: `MIT`, <https://github.com/ljharb/object-keys>, licence text 96
-- `once@1.4.0`: `ISC`, <https://github.com/isaacs/once>, licence text 7
+- `lodash.escaperegexp@4.1.2`: `MIT`, <https://github.com/lodash/lodash>, licence text 83
+- `lodash.isequal@4.5.0`: `MIT`, <https://github.com/lodash/lodash>, licence text 84
+- `long@5.3.2`: `Apache-2.0`, <https://github.com/dcodeIO/long.js>, licence text 5
+- `longest-streak@3.1.0`: `MIT`, <https://github.com/wooorm/longest-streak>, licence text 85
+- `lucide-react@0.518.0`: `ISC`, <https://github.com/lucide-icons/lucide>, licence text 86
+- `matcher@3.0.0`: `MIT`, <https://github.com/sindresorhus/matcher>, licence text 38
+- `math-intrinsics@1.1.0`: `MIT`, <https://github.com/es-shims/math-intrinsics>, licence text 47
+- `mdast-util-from-markdown@2.0.2`: `MIT`, <https://github.com/syntax-tree/mdast-util-from-markdown>, licence text 37
+- `mdast-util-mdx-expression@2.0.1`: `MIT`, <https://github.com/syntax-tree/mdast-util-mdx-expression>, licence text 53
+- `mdast-util-mdx-jsx@3.2.0`: `MIT`, <https://github.com/syntax-tree/mdast-util-mdx-jsx>, licence text 53
+- `mdast-util-mdxjs-esm@2.0.1`: `MIT`, <https://github.com/syntax-tree/mdast-util-mdxjs-esm>, licence text 53
+- `mdast-util-phrasing@4.1.0`: `MIT`, <https://github.com/syntax-tree/mdast-util-phrasing>, licence text 87
+- `mdast-util-to-hast@13.2.1`: `MIT`, <https://github.com/syntax-tree/mdast-util-to-hast>, licence text 32
+- `mdast-util-to-markdown@2.1.2`: `MIT`, <https://github.com/syntax-tree/mdast-util-to-markdown>, licence text 37
+- `mdast-util-to-string@4.0.0`: `MIT`, <https://github.com/syntax-tree/mdast-util-to-string>, licence text 16
+- `micromark@4.0.2`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark>, licence text 37
+- `micromark-core-commonmark@2.0.3`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark>, licence text 37
+- `micromark-factory-destination@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-destination>, licence text 37
+- `micromark-factory-label@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-label>, licence text 37
+- `micromark-factory-space@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-space>, licence text 37
+- `micromark-factory-title@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-title>, licence text 37
+- `micromark-factory-whitespace@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-factory-whitespace>, licence text 37
+- `micromark-util-character@2.1.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-character>, licence text 37
+- `micromark-util-chunked@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-chunked>, licence text 37
+- `micromark-util-classify-character@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-classify-character>, licence text 37
+- `micromark-util-combine-extensions@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-combine-extensions>, licence text 37
+- `micromark-util-decode-numeric-character-reference@2.0.2`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference>, licence text 37
+- `micromark-util-decode-string@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-string>, licence text 37
+- `micromark-util-encode@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-encode>, licence text 37
+- `micromark-util-html-tag-name@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-html-tag-name>, licence text 37
+- `micromark-util-normalize-identifier@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-normalize-identifier>, licence text 37
+- `micromark-util-resolve-all@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-resolve-all>, licence text 37
+- `micromark-util-sanitize-uri@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri>, licence text 37
+- `micromark-util-subtokenize@2.1.0`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-subtokenize>, licence text 37
+- `micromark-util-symbol@2.0.1`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol>, licence text 37
+- `micromark-util-types@2.0.2`: `MIT`, <https://github.com/micromark/micromark/tree/main/packages/micromark-util-types>, licence text 37
+- `mime-db@1.52.0`: `MIT`, <https://github.com/jshttp/mime-db>, licence text 88
+- `mime-types@2.1.35`: `MIT`, <https://github.com/jshttp/mime-types>, licence text 89
+- `mimic-response@3.1.0`: `MIT`, <https://github.com/sindresorhus/mimic-response>, licence text 38
+- `minimist@1.2.8`: `MIT`, <https://github.com/minimistjs/minimist>, licence text 66
+- `minipass@7.1.2`: `ISC`, <https://github.com/isaacs/minipass>, licence text 90
+- `minizlib@3.1.0`: `MIT`, <https://github.com/isaacs/minizlib>, licence text 91
+- `mkdirp-classic@0.5.3`: `MIT`, <https://github.com/mafintosh/mkdirp-classic>, licence text 92
+- `ms@2.1.3`: `MIT`, <https://github.com/vercel/ms>, licence text 93
+- `napi-build-utils@2.0.0`: `MIT`, <https://github.com/inspiredware/napi-build-utils>, licence text 94
+- `node-abi@3.87.0`: `MIT`, <https://github.com/electron/node-abi>, licence text 95
+- `node-int64@0.4.0`: `MIT`, <https://github.com/broofa/node-int64>, licence text 96
+- `object-keys@1.1.1`: `MIT`, <https://github.com/ljharb/object-keys>, licence text 97
+- `once@1.4.0`: `ISC`, <https://github.com/isaacs/once>, licence text 8
 - `onnxruntime-common@1.21.0`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package
 - `onnxruntime-common@1.22.0-dev.20250409-89f8206ba4`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package
 - `onnxruntime-node@1.21.0`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package, contains Microsoft Visual C++ runtime, ONNX Runtime, DirectML (see above)
 - `onnxruntime-web@1.22.0-dev.20250409-89f8206ba4`: `MIT`, by fs-eire, <https://github.com/Microsoft/onnxruntime>, no licence file in the package, contains ONNX Runtime (see above)
-- `parse-cache-control@1.0.1`: `BSD`, <https://github.com/roryf/parse-cache-control>, licence text 97
-- `parse-entities@4.0.2`: `MIT`, <https://github.com/wooorm/parse-entities>, licence text 98
-- `phonemizer@1.2.1`: `Apache-2.0`, <https://github.com/xenova/phonemizer.js>, licence text 81, contains eSpeak NG (see above)
-- `platform@1.3.6`: `MIT`, <https://github.com/bestiejs/platform.js>, licence text 99
-- `prebuild-install@7.1.3`: `MIT`, <https://github.com/prebuild/prebuild-install>, licence text 100
-- `process-nextick-args@2.0.1`: `MIT`, <https://github.com/calvinmetcalf/process-nextick-args>, licence text 101
-- `progress@2.0.3`: `MIT`, <https://github.com/visionmedia/node-progress>, licence text 102
-- `property-information@7.1.0`: `MIT`, <https://github.com/wooorm/property-information>, licence text 98
-- `protobufjs@7.6.5`: `BSD-3-Clause`, <https://github.com/protobufjs/protobuf.js>, licence text 103
-- `pump@3.0.3`: `MIT`, <https://github.com/mafintosh/pump>, licence text 48
-- `rc@1.2.8`: `(BSD-2-Clause OR MIT OR Apache-2.0)`, <https://github.com/dominictarr/rc>, licence text 104
-- `react@19.2.3`: `MIT`, <https://github.com/facebook/react>, licence text 105
-- `react-dom@19.2.3`: `MIT`, <https://github.com/facebook/react>, licence text 105
-- `react-markdown@10.1.0`: `MIT`, <https://github.com/remarkjs/react-markdown>, licence text 106
-- `react-remove-scroll@2.7.2`: `MIT`, <https://github.com/theKashey/react-remove-scroll>, licence text 13
+- `parse-cache-control@1.0.1`: `BSD`, <https://github.com/roryf/parse-cache-control>, licence text 98
+- `parse-entities@4.0.2`: `MIT`, <https://github.com/wooorm/parse-entities>, licence text 99
+- `phonemizer@1.2.1`: `Apache-2.0`, <https://github.com/xenova/phonemizer.js>, licence text 82, contains eSpeak NG (see above)
+- `platform@1.3.6`: `MIT`, <https://github.com/bestiejs/platform.js>, licence text 100
+- `prebuild-install@7.1.3`: `MIT`, <https://github.com/prebuild/prebuild-install>, licence text 101
+- `process-nextick-args@2.0.1`: `MIT`, <https://github.com/calvinmetcalf/process-nextick-args>, licence text 102
+- `progress@2.0.3`: `MIT`, <https://github.com/visionmedia/node-progress>, licence text 103
+- `property-information@7.1.0`: `MIT`, <https://github.com/wooorm/property-information>, licence text 99
+- `protobufjs@7.6.5`: `BSD-3-Clause`, <https://github.com/protobufjs/protobuf.js>, licence text 104
+- `pump@3.0.3`: `MIT`, <https://github.com/mafintosh/pump>, licence text 49
+- `rc@1.2.8`: `(BSD-2-Clause OR MIT OR Apache-2.0)`, <https://github.com/dominictarr/rc>, licence text 105
+- `react@19.3.0`: `MIT`, <https://github.com/react/react>, licence text 106
+- `react-dom@19.3.0`: `MIT`, <https://github.com/react/react>, licence text 106
+- `react-markdown@10.1.0`: `MIT`, <https://github.com/remarkjs/react-markdown>, licence text 107
+- `react-remove-scroll@2.7.2`: `MIT`, <https://github.com/theKashey/react-remove-scroll>, licence text 14
 - `react-remove-scroll-bar@2.3.8`: `MIT`, by Anton Korzunov, <https://github.com/theKashey/react-remove-scroll-bar>, no licence file in the package
-- `react-style-singleton@2.2.3`: `MIT`, <https://github.com/theKashey/react-style-singleton>, licence text 13
-- `readable-stream@2.3.8`: `MIT`, <https://github.com/nodejs/readable-stream>, licence text 107
-- `readable-stream@3.6.2`: `MIT`, <https://github.com/nodejs/readable-stream>, licence text 107
-- `remark-parse@11.0.0`: `MIT`, <https://github.com/remarkjs/remark/tree/main/packages/remark-parse>, licence text 108
-- `remark-rehype@11.1.2`: `MIT`, <https://github.com/remarkjs/remark-rehype>, licence text 36
-- `roarr@2.15.4`: `BSD-3-Clause`, <https://github.com/gajus/roarr>, licence text 66
-- `safe-buffer@5.1.2`: `MIT`, <https://github.com/feross/safe-buffer>, licence text 109
-- `safe-buffer@5.2.1`: `MIT`, <https://github.com/feross/safe-buffer>, licence text 109
-- `sax@1.4.4`: `BlueOak-1.0.0`, <https://github.com/isaacs/sax-js>, licence text 110
-- `scheduler@0.27.0`: `MIT`, <https://github.com/facebook/react>, licence text 105
-- `semver@7.7.3`: `ISC`, <https://github.com/npm/node-semver>, licence text 7
-- `semver@7.7.4`: `ISC`, <https://github.com/npm/node-semver>, licence text 7
-- `semver-compare@1.0.0`: `MIT`, <https://github.com/substack/semver-compare>, licence text 65
-- `serialize-error@7.0.1`: `MIT`, <https://github.com/sindresorhus/serialize-error>, licence text 37
-- `sharp@0.34.5`: `Apache-2.0`, <https://github.com/lovell/sharp>, licence text 6
+- `react-style-singleton@2.2.3`: `MIT`, <https://github.com/theKashey/react-style-singleton>, licence text 14
+- `readable-stream@2.3.8`: `MIT`, <https://github.com/nodejs/readable-stream>, licence text 108
+- `readable-stream@3.6.2`: `MIT`, <https://github.com/nodejs/readable-stream>, licence text 108
+- `remark-parse@11.0.0`: `MIT`, <https://github.com/remarkjs/remark/tree/main/packages/remark-parse>, licence text 109
+- `remark-rehype@11.1.2`: `MIT`, <https://github.com/remarkjs/remark-rehype>, licence text 37
+- `roarr@2.15.4`: `BSD-3-Clause`, <https://github.com/gajus/roarr>, licence text 67
+- `safe-buffer@5.1.2`: `MIT`, <https://github.com/feross/safe-buffer>, licence text 110
+- `safe-buffer@5.2.1`: `MIT`, <https://github.com/feross/safe-buffer>, licence text 110
+- `sax@1.4.4`: `BlueOak-1.0.0`, <https://github.com/isaacs/sax-js>, licence text 111
+- `scheduler@0.28.0`: `MIT`, <https://github.com/react/react>, licence text 106
+- `semver@7.7.3`: `ISC`, <https://github.com/npm/node-semver>, licence text 8
+- `semver@7.8.5`: `ISC`, <https://github.com/npm/node-semver>, licence text 8
+- `semver-compare@1.0.0`: `MIT`, <https://github.com/substack/semver-compare>, licence text 66
+- `serialize-error@7.0.1`: `MIT`, <https://github.com/sindresorhus/serialize-error>, licence text 38
+- `sharp@0.34.5`: `Apache-2.0`, <https://github.com/lovell/sharp>, licence text 7
 - `sherpa-onnx-node@1.13.8`: `Apache-2.0`, by The next-gen Kaldi team, <https://github.com/csukuangfj/sherpa-onnx>, no licence file in the package, contains sherpa-onnx (see above)
 - `sherpa-onnx-win-x64@1.13.8`: `Apache-2.0`, by The next-gen Kaldi team, <https://github.com/csukuangfj/sherpa-onnx>, no licence file in the package, contains JSON for Modern C++ (nlohmann/json), sherpa-onnx, kaldi-native-fbank, kaldi-decoder, OpenFst, simple-sentencepiece, piper-phonemize, fastcluster (hclust-cpp), eSpeak NG, ONNX Runtime (see above)
-- `simple-concat@1.0.1`: `MIT`, <https://github.com/feross/simple-concat>, licence text 111
-- `simple-get@4.0.1`: `MIT`, <https://github.com/feross/simple-get>, licence text 111
-- `space-separated-tokens@2.0.2`: `MIT`, <https://github.com/wooorm/space-separated-tokens>, licence text 31
-- `sprintf-js@1.1.3`: `BSD-3-Clause`, <https://github.com/alexei/sprintf.js>, licence text 112
-- `string_decoder@1.1.1`: `MIT`, <https://github.com/nodejs/string_decoder>, licence text 107
-- `string_decoder@1.3.0`: `MIT`, <https://github.com/nodejs/string_decoder>, licence text 107
-- `stringify-entities@4.0.4`: `MIT`, <https://github.com/wooorm/stringify-entities>, licence text 84
-- `strip-json-comments@2.0.1`: `MIT`, <https://github.com/sindresorhus/strip-json-comments>, licence text 113
-- `style-to-js@1.1.21`: `MIT`, <https://github.com/remarkablemark/style-to-js>, licence text 114
-- `style-to-object@1.0.14`: `MIT`, <https://github.com/remarkablemark/style-to-object>, licence text 115
-- `tailwind-merge@3.4.0`: `MIT`, <https://github.com/dcastil/tailwind-merge>, licence text 116
-- `tar@7.5.13`: `BlueOak-1.0.0`, <https://github.com/isaacs/node-tar>, licence text 110
-- `tar-fs@2.1.4`: `MIT`, <https://github.com/mafintosh/tar-fs>, licence text 48
-- `tar-stream@2.2.0`: `MIT`, <https://github.com/mafintosh/tar-stream>, licence text 48
-- `tiny-typed-emitter@2.1.0`: `MIT`, <https://github.com/binier/tiny-typed-emitter>, licence text 117
-- `tinyld@1.3.4`: `MIT`, <https://github.com/komodojp/tinyld>, licence text 118
-- `trim-lines@3.0.1`: `MIT`, <https://github.com/wooorm/trim-lines>, licence text 84
-- `trough@2.2.0`: `MIT`, <https://github.com/wooorm/trough>, licence text 119
-- `tslib@2.8.1`: `0BSD`, <https://github.com/Microsoft/tslib>, licence text 120
-- `tunnel-agent@0.6.0`: `Apache-2.0`, <https://github.com/mikeal/tunnel-agent>, licence text 121
-- `type-fest@0.13.1`: `(MIT OR CC0-1.0)`, <https://github.com/sindresorhus/type-fest>, licence text 122
-- `typedarray@0.0.6`: `MIT`, <https://github.com/substack/typedarray>, licence text 123
-- `undici-types@6.21.0`: `MIT`, <https://github.com/nodejs/undici>, licence text 124
-- `unified@11.0.5`: `MIT`, <https://github.com/unifiedjs/unified>, licence text 125
-- `unist-util-is@6.0.1`: `MIT`, <https://github.com/syntax-tree/unist-util-is>, licence text 126
-- `unist-util-position@5.0.0`: `MIT`, <https://github.com/syntax-tree/unist-util-position>, licence text 15
-- `unist-util-stringify-position@4.0.0`: `MIT`, <https://github.com/syntax-tree/unist-util-stringify-position>, licence text 31
-- `unist-util-visit@5.1.0`: `MIT`, <https://github.com/syntax-tree/unist-util-visit>, licence text 15
-- `unist-util-visit-parents@6.0.2`: `MIT`, <https://github.com/syntax-tree/unist-util-visit-parents>, licence text 31
-- `universalify@2.0.1`: `MIT`, <https://github.com/RyanZim/universalify>, licence text 127
-- `unzipper@0.12.3`: `MIT`, <https://github.com/ZJONSSON/node-unzipper>, licence text 128
-- `use-callback-ref@1.3.3`: `MIT`, <https://github.com/theKashey/use-callback-ref/>, licence text 13
-- `use-sidecar@1.1.3`: `MIT`, <https://github.com/theKashey/use-sidecar>, licence text 13
-- `util-deprecate@1.0.2`: `MIT`, <https://github.com/TooTallNate/util-deprecate>, licence text 129
-- `vfile@6.0.3`: `MIT`, <https://github.com/vfile/vfile>, licence text 125
-- `vfile-message@4.0.3`: `MIT`, <https://github.com/vfile/vfile-message>, licence text 36
-- `wrappy@1.0.2`: `ISC`, <https://github.com/npm/wrappy>, licence text 7
-- `ws@8.20.1`: `MIT`, <https://github.com/websockets/ws>, licence text 130
-- `yallist@5.0.0`: `BlueOak-1.0.0`, <https://github.com/isaacs/yallist>, licence text 27
-- `zwitch@2.0.4`: `MIT`, <https://github.com/wooorm/zwitch>, licence text 31
+- `simple-concat@1.0.1`: `MIT`, <https://github.com/feross/simple-concat>, licence text 112
+- `simple-get@4.0.1`: `MIT`, <https://github.com/feross/simple-get>, licence text 112
+- `space-separated-tokens@2.0.2`: `MIT`, <https://github.com/wooorm/space-separated-tokens>, licence text 32
+- `sprintf-js@1.1.3`: `BSD-3-Clause`, <https://github.com/alexei/sprintf.js>, licence text 113
+- `string_decoder@1.1.1`: `MIT`, <https://github.com/nodejs/string_decoder>, licence text 108
+- `string_decoder@1.3.0`: `MIT`, <https://github.com/nodejs/string_decoder>, licence text 108
+- `stringify-entities@4.0.4`: `MIT`, <https://github.com/wooorm/stringify-entities>, licence text 85
+- `strip-json-comments@2.0.1`: `MIT`, <https://github.com/sindresorhus/strip-json-comments>, licence text 114
+- `style-to-js@1.1.21`: `MIT`, <https://github.com/remarkablemark/style-to-js>, licence text 115
+- `style-to-object@1.0.14`: `MIT`, <https://github.com/remarkablemark/style-to-object>, licence text 116
+- `tailwind-merge@3.7.0`: `MIT`, <https://github.com/dcastil/tailwind-merge>, licence text 117
+- `tar@7.5.22`: `BlueOak-1.0.0`, <https://github.com/isaacs/node-tar>, licence text 111
+- `tar-fs@2.1.4`: `MIT`, <https://github.com/mafintosh/tar-fs>, licence text 49
+- `tar-stream@2.2.0`: `MIT`, <https://github.com/mafintosh/tar-stream>, licence text 49
+- `tiny-typed-emitter@2.1.0`: `MIT`, <https://github.com/binier/tiny-typed-emitter>, licence text 118
+- `tinyld@1.3.4`: `MIT`, <https://github.com/komodojp/tinyld>, licence text 119
+- `trim-lines@3.0.1`: `MIT`, <https://github.com/wooorm/trim-lines>, licence text 85
+- `trough@2.2.0`: `MIT`, <https://github.com/wooorm/trough>, licence text 120
+- `tslib@2.8.1`: `0BSD`, <https://github.com/Microsoft/tslib>, licence text 121
+- `tunnel-agent@0.6.0`: `Apache-2.0`, <https://github.com/mikeal/tunnel-agent>, licence text 122
+- `type-fest@0.13.1`: `(MIT OR CC0-1.0)`, <https://github.com/sindresorhus/type-fest>, licence text 123
+- `typedarray@0.0.6`: `MIT`, <https://github.com/substack/typedarray>, licence text 124
+- `undici-types@6.21.0`: `MIT`, <https://github.com/nodejs/undici>, licence text 125
+- `unified@11.0.5`: `MIT`, <https://github.com/unifiedjs/unified>, licence text 126
+- `unist-util-is@6.0.1`: `MIT`, <https://github.com/syntax-tree/unist-util-is>, licence text 127
+- `unist-util-position@5.0.0`: `MIT`, <https://github.com/syntax-tree/unist-util-position>, licence text 16
+- `unist-util-stringify-position@4.0.0`: `MIT`, <https://github.com/syntax-tree/unist-util-stringify-position>, licence text 32
+- `unist-util-visit@5.1.0`: `MIT`, <https://github.com/syntax-tree/unist-util-visit>, licence text 16
+- `unist-util-visit-parents@6.0.2`: `MIT`, <https://github.com/syntax-tree/unist-util-visit-parents>, licence text 32
+- `universalify@2.0.1`: `MIT`, <https://github.com/RyanZim/universalify>, licence text 128
+- `unzipper@0.12.5`: `MIT`, <https://github.com/ZJONSSON/node-unzipper>, licence text 129
+- `use-callback-ref@1.3.3`: `MIT`, <https://github.com/theKashey/use-callback-ref/>, licence text 14
+- `use-sidecar@1.1.3`: `MIT`, <https://github.com/theKashey/use-sidecar>, licence text 14
+- `util-deprecate@1.0.2`: `MIT`, <https://github.com/TooTallNate/util-deprecate>, licence text 130
+- `vfile@6.0.3`: `MIT`, <https://github.com/vfile/vfile>, licence text 126
+- `vfile-message@4.0.3`: `MIT`, <https://github.com/vfile/vfile-message>, licence text 37
+- `wrappy@1.0.2`: `ISC`, <https://github.com/npm/wrappy>, licence text 8
+- `ws@8.22.0`: `MIT`, <https://github.com/websockets/ws>, licence text 131
+- `yallist@5.0.0`: `BlueOak-1.0.0`, <https://github.com/isaacs/yallist>, licence text 28
+- `zwitch@2.0.4`: `MIT`, <https://github.com/wooorm/zwitch>, licence text 32
 
 ### Licence texts of npm packages
 
@@ -1348,6 +1346,34 @@ THE SOFTWARE.
 
 #### Licence text 2
 
+Used by `@emnapi/runtime@1.11.3`.
+
+```text
+MIT License
+
+Copyright (c) 2021-present Toyobayashi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+#### Licence text 3
+
 Used by `@floating-ui/core@1.7.3`, `@floating-ui/dom@1.7.4`, `@floating-ui/react-dom@2.1.6`, `@floating-ui/utils@0.2.10`.
 
 ```text
@@ -1373,7 +1399,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 3
+#### Licence text 4
 
 Used by `@huggingface/jinja@0.5.9`.
 
@@ -1401,15 +1427,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 4
+#### Licence text 5
 
 Used by `@huggingface/transformers@3.8.1`, `flatbuffers@25.9.23`, `long@5.3.2`.
 
 The same as Apache License 2.0, under "Full licence texts".
 
-#### Licence text 5
+#### Licence text 6
 
-Used by `@img/colour@1.0.0`.
+Used by `@img/colour@1.1.0`.
 
 ```text
 # Licensing
@@ -1496,7 +1522,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 6
+#### Licence text 7
 
 Used by `@img/sharp-win32-x64@0.34.5`, `sharp@0.34.5`.
 
@@ -1694,9 +1720,9 @@ third-party archives.
    limitations under the License.
 ```
 
-#### Licence text 7
+#### Licence text 8
 
-Used by `@isaacs/fs-minipass@4.0.1`, `chownr@1.1.4`, `ini@1.3.8`, `json-stringify-safe@5.0.1`, `once@1.4.0`, `semver@7.7.3`, `semver@7.7.4`, `wrappy@1.0.2`.
+Used by `@isaacs/fs-minipass@4.0.1`, `chownr@1.1.4`, `ini@1.3.8`, `json-stringify-safe@5.0.1`, `once@1.4.0`, `semver@7.7.3`, `semver@7.8.5`, `wrappy@1.0.2`.
 
 ```text
 The ISC License
@@ -1716,7 +1742,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 8
+#### Licence text 9
 
 Used by `@protobufjs/aspromise@1.1.2`, `@protobufjs/base64@1.1.2`, `@protobufjs/codegen@2.0.5`, `@protobufjs/eventemitter@1.1.1`, `@protobufjs/fetch@1.1.1`, `@protobufjs/float@1.0.2`, `@protobufjs/path@1.1.2`, `@protobufjs/pool@1.1.0`, `@protobufjs/utf8@1.1.2`.
 
@@ -1749,9 +1775,9 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### Licence text 9
+#### Licence text 10
 
-Used by `@radix-ui/primitive@1.1.3`, `@radix-ui/react-arrow@1.1.7`, `@radix-ui/react-collection@1.1.7`, `@radix-ui/react-context@1.1.3`, `@radix-ui/react-dialog@1.1.15`, `@radix-ui/react-dismissable-layer@1.1.11`, `@radix-ui/react-dropdown-menu@2.1.16`, `@radix-ui/react-focus-guards@1.1.3`, `@radix-ui/react-focus-scope@1.1.7`, `@radix-ui/react-label@2.1.8`, `@radix-ui/react-menu@2.1.16`, `@radix-ui/react-popper@1.2.8`, `@radix-ui/react-portal@1.1.9`, `@radix-ui/react-presence@1.1.5`, `@radix-ui/react-primitive@2.1.3`, `@radix-ui/react-primitive@2.1.4`, `@radix-ui/react-progress@1.1.8`, `@radix-ui/react-roving-focus@1.1.11`, `@radix-ui/react-select@2.2.6`, `@radix-ui/react-slot@1.2.3`, `@radix-ui/react-slot@1.2.4`, `@radix-ui/react-tabs@1.1.13`, `@radix-ui/react-use-controllable-state@1.2.2`, `@radix-ui/react-use-effect-event@0.0.2`, `@radix-ui/react-visually-hidden@1.2.3`.
+Used by `@radix-ui/number@1.1.3`, `@radix-ui/primitive@1.1.7`, `@radix-ui/react-arrow@1.1.15`, `@radix-ui/react-collection@1.1.15`, `@radix-ui/react-compose-refs@1.1.5`, `@radix-ui/react-context@1.2.2`, `@radix-ui/react-dialog@1.1.23`, `@radix-ui/react-direction@1.1.4`, `@radix-ui/react-dismissable-layer@1.1.19`, `@radix-ui/react-dropdown-menu@2.1.24`, `@radix-ui/react-focus-guards@1.1.6`, `@radix-ui/react-focus-scope@1.1.16`, `@radix-ui/react-id@1.1.4`, `@radix-ui/react-label@2.1.15`, `@radix-ui/react-menu@2.1.24`, `@radix-ui/react-popper@1.3.7`, `@radix-ui/react-portal@1.1.17`, `@radix-ui/react-presence@1.1.10`, `@radix-ui/react-primitive@2.1.10`, `@radix-ui/react-progress@1.1.16`, `@radix-ui/react-roving-focus@1.1.19`, `@radix-ui/react-select@2.3.7`, `@radix-ui/react-slot@1.3.3`, `@radix-ui/react-tabs@1.1.21`, `@radix-ui/react-use-callback-ref@1.1.4`, `@radix-ui/react-use-controllable-state@1.2.6`, `@radix-ui/react-use-effect-event@0.0.5`, `@radix-ui/react-use-is-hydrated@0.1.3`, `@radix-ui/react-use-layout-effect@1.1.4`, `@radix-ui/react-use-previous@1.1.4`, `@radix-ui/react-use-rect@1.1.4`, `@radix-ui/react-use-size@1.1.4`, `@radix-ui/react-visually-hidden@1.2.11`, `@radix-ui/rect@1.1.3`.
 
 ```text
 MIT License
@@ -1777,9 +1803,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 10
+#### Licence text 11
 
-Used by `@types/debug@4.1.12`, `@types/estree@1.0.8`, `@types/estree-jsx@1.0.5`, `@types/hast@3.0.4`, `@types/mdast@4.0.4`, `@types/ms@2.1.0`, `@types/node@10.17.60`, `@types/node@22.19.7`, `@types/react@19.2.9`, `@types/react-dom@19.2.3`, `@types/unist@2.0.11`, `@types/unist@3.0.3`.
+Used by `@types/debug@4.1.12`, `@types/estree@1.0.8`, `@types/estree-jsx@1.0.5`, `@types/hast@3.0.4`, `@types/mdast@4.0.4`, `@types/ms@2.1.0`, `@types/node@10.17.60`, `@types/node@22.19.7`, `@types/react@19.3.0`, `@types/react-dom@19.3.0`, `@types/unist@2.0.11`, `@types/unist@3.0.3`.
 
 ```text
     MIT License
@@ -1805,7 +1831,7 @@ Used by `@types/debug@4.1.12`, `@types/estree@1.0.8`, `@types/estree-jsx@1.0.5`,
     SOFTWARE
 ```
 
-#### Licence text 11
+#### Licence text 12
 
 Used by `@ungap/structured-clone@1.3.0`.
 
@@ -1827,7 +1853,7 @@ OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 12
+#### Licence text 13
 
 Used by `argparse@2.0.1`.
 
@@ -2088,7 +2114,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 13
+#### Licence text 14
 
 Used by `aria-hidden@1.2.6`, `react-remove-scroll@2.7.2`, `react-style-singleton@2.2.3`, `use-callback-ref@1.3.3`, `use-sidecar@1.1.3`.
 
@@ -2116,7 +2142,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 14
+#### Licence text 15
 
 Used by `asynckit@0.4.0`.
 
@@ -2144,7 +2170,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 15
+#### Licence text 16
 
 Used by `bail@2.0.2`, `ccount@2.0.1`, `character-entities@2.0.2`, `character-entities-html4@2.1.0`, `character-entities-legacy@3.0.0`, `character-reference-invalid@2.0.1`, `mdast-util-to-string@4.0.0`, `unist-util-position@5.0.0`, `unist-util-visit@5.1.0`.
 
@@ -2173,7 +2199,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 16
+#### Licence text 17
 
 Used by `base64-js@1.5.1`.
 
@@ -2201,7 +2227,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 17
+#### Licence text 18
 
 Used by `better-sqlite3@12.9.0`.
 
@@ -2229,7 +2255,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 18
+#### Licence text 19
 
 Used by `bindings@1.5.0`.
 
@@ -2258,7 +2284,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 19
+#### Licence text 20
 
 Used by `bl@4.1.0`.
 
@@ -2278,7 +2304,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 20
+#### Licence text 21
 
 Used by `bluebird@3.7.2`.
 
@@ -2306,7 +2332,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 21
+#### Licence text 22
 
 Used by `boolean@3.2.0`.
 
@@ -2342,7 +2368,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 }
 ```
 
-#### Licence text 22
+#### Licence text 23
 
 Used by `buffer@5.7.1`.
 
@@ -2370,7 +2396,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 23
+#### Licence text 24
 
 Used by `buffer-from@1.1.2`.
 
@@ -2398,9 +2424,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 24
+#### Licence text 25
 
-Used by `builder-util-runtime@9.5.1`, `electron-updater@6.7.3`.
+Used by `builder-util-runtime@9.7.0`, `electron-updater@6.8.9`.
 
 ```text
 The MIT License (MIT)
@@ -2426,7 +2452,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 25
+#### Licence text 26
 
 Used by `call-bind-apply-helpers@1.0.2`, `es-define-property@1.0.1`, `es-errors@1.3.0`, `es-object-atoms@1.1.1`.
 
@@ -2454,7 +2480,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 26
+#### Licence text 27
 
 Used by `caseless@0.12.0`.
 
@@ -2489,7 +2515,7 @@ If the Work includes a "NOTICE" text file as part of its distribution, then any 
 END OF TERMS AND CONDITIONS
 ```
 
-#### Licence text 27
+#### Licence text 28
 
 Used by `chownr@3.0.0`, `yallist@5.0.0`.
 
@@ -2559,7 +2585,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-#### Licence text 28
+#### Licence text 29
 
 Used by `class-variance-authority@0.7.1`.
 
@@ -2756,7 +2782,7 @@ Used by `class-variance-authority@0.7.1`.
    limitations under the License.
 ```
 
-#### Licence text 29
+#### Licence text 30
 
 Used by `clsx@2.1.1`.
 
@@ -2772,7 +2798,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 30
+#### Licence text 31
 
 Used by `combined-stream@1.0.8`, `delayed-stream@1.0.0`.
 
@@ -2798,7 +2824,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 31
+#### Licence text 32
 
 Used by `comma-separated-tokens@2.0.3`, `hast-util-whitespace@3.0.0`, `is-alphabetical@2.0.1`, `is-alphanumerical@2.0.1`, `is-decimal@2.0.1`, `is-hexadecimal@2.0.1`, `mdast-util-to-hast@13.2.1`, `space-separated-tokens@2.0.2`, `unist-util-stringify-position@4.0.0`, `unist-util-visit-parents@6.0.2`, `zwitch@2.0.4`.
 
@@ -2827,7 +2853,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 32
+#### Licence text 33
 
 Used by `concat-stream@2.0.0`.
 
@@ -2858,7 +2884,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 33
+#### Licence text 34
 
 Used by `core-util-is@1.0.2`.
 
@@ -2884,7 +2910,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ```
 
-#### Licence text 34
+#### Licence text 35
 
 Used by `csstype@3.2.3`.
 
@@ -2910,7 +2936,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 35
+#### Licence text 36
 
 Used by `debug@4.4.3`.
 
@@ -2936,7 +2962,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 36
+#### Licence text 37
 
 Used by `decode-named-character-reference@1.3.0`, `hast-util-to-jsx-runtime@2.3.6`, `mdast-util-from-markdown@2.0.2`, `mdast-util-to-markdown@2.1.2`, `micromark@4.0.2`, `micromark-core-commonmark@2.0.3`, `micromark-factory-destination@2.0.1`, `micromark-factory-label@2.0.1`, `micromark-factory-space@2.0.1`, `micromark-factory-title@2.0.1`, `micromark-factory-whitespace@2.0.1`, `micromark-util-character@2.1.1`, `micromark-util-chunked@2.0.1`, `micromark-util-classify-character@2.0.1`, `micromark-util-combine-extensions@2.0.1`, `micromark-util-decode-numeric-character-reference@2.0.2`, `micromark-util-decode-string@2.0.1`, `micromark-util-encode@2.0.1`, `micromark-util-html-tag-name@2.0.1`, `micromark-util-normalize-identifier@2.0.1`, `micromark-util-resolve-all@2.0.1`, `micromark-util-sanitize-uri@2.0.1`, `micromark-util-subtokenize@2.1.0`, `micromark-util-symbol@2.0.1`, `micromark-util-types@2.0.2`, `remark-rehype@11.1.2`, `vfile-message@4.0.3`.
 
@@ -2965,7 +2991,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 37
+#### Licence text 38
 
 Used by `decompress-response@6.0.0`, `escape-string-regexp@4.0.0`, `is-plain-obj@4.1.0`, `matcher@3.0.0`, `mimic-response@3.1.0`, `serialize-error@7.0.1`.
 
@@ -2981,7 +3007,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 38
+#### Licence text 39
 
 Used by `deep-extend@0.6.0`.
 
@@ -3008,7 +3034,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 39
+#### Licence text 40
 
 Used by `define-data-property@1.1.4`.
 
@@ -3036,7 +3062,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 40
+#### Licence text 41
 
 Used by `define-properties@1.2.1`.
 
@@ -3064,7 +3090,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 41
+#### Licence text 42
 
 Used by `dequal@2.0.3`.
 
@@ -3092,7 +3118,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 42
+#### Licence text 43
 
 Used by `detect-libc@2.1.2`.
 
@@ -3300,7 +3326,7 @@ Used by `detect-libc@2.1.2`.
    limitations under the License.
 ```
 
-#### Licence text 43
+#### Licence text 44
 
 Used by `detect-node@2.1.0`, `detect-node-es@1.1.0`.
 
@@ -3328,7 +3354,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 44
+#### Licence text 45
 
 Used by `devlop@1.1.0`.
 
@@ -3357,7 +3383,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 45
+#### Licence text 46
 
 Used by `dotenv@16.6.1`.
 
@@ -3387,7 +3413,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### Licence text 46
+#### Licence text 47
 
 Used by `dunder-proto@1.0.1`, `math-intrinsics@1.1.0`.
 
@@ -3415,7 +3441,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 47
+#### Licence text 48
 
 Used by `duplexer2@0.1.4`.
 
@@ -3448,7 +3474,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### Licence text 48
+#### Licence text 49
 
 Used by `end-of-stream@1.4.5`, `pump@3.0.3`, `tar-fs@2.1.4`, `tar-stream@2.2.0`.
 
@@ -3476,7 +3502,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 49
+#### Licence text 50
 
 Used by `env-paths@2.2.1`.
 
@@ -3492,7 +3518,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 50
+#### Licence text 51
 
 Used by `es-set-tostringtag@2.1.0`.
 
@@ -3520,7 +3546,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 51
+#### Licence text 52
 
 Used by `es6-error@4.1.1`.
 
@@ -3548,7 +3574,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 52
+#### Licence text 53
 
 Used by `estree-util-is-identifier-name@3.0.0`, `mdast-util-mdx-expression@2.0.1`, `mdast-util-mdx-jsx@3.2.0`, `mdast-util-mdxjs-esm@2.0.1`.
 
@@ -3577,7 +3603,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 53
+#### Licence text 54
 
 Used by `expand-template@2.0.3`.
 
@@ -3605,7 +3631,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 54
+#### Licence text 55
 
 Used by `extend@3.0.2`.
 
@@ -3634,13 +3660,13 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 55
+#### Licence text 56
 
 Used by `ffmpeg-static@5.3.0`.
 
 The same as GNU General Public License v3.0, under "Full licence texts".
 
-#### Licence text 56
+#### Licence text 57
 
 Used by `file-uri-to-path@1.0.0`.
 
@@ -3667,9 +3693,9 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 57
+#### Licence text 58
 
-Used by `form-data@4.0.5`.
+Used by `form-data@4.0.6`.
 
 ```text
 Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors
@@ -3693,7 +3719,7 @@ Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors
  THE SOFTWARE.
 ```
 
-#### Licence text 58
+#### Licence text 59
 
 Used by `fs-constants@1.0.0`.
 
@@ -3721,7 +3747,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 59
+#### Licence text 60
 
 Used by `fs-extra@10.1.0`.
 
@@ -3743,9 +3769,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 60
+#### Licence text 61
 
-Used by `fs-extra@11.3.3`.
+Used by `fs-extra@11.3.1`.
 
 ```text
 (The MIT License)
@@ -3765,7 +3791,7 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 61
+#### Licence text 62
 
 Used by `function-bind@1.1.2`.
 
@@ -3791,7 +3817,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 62
+#### Licence text 63
 
 Used by `get-intrinsic@1.3.0`.
 
@@ -3819,7 +3845,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 63
+#### Licence text 64
 
 Used by `get-nonce@1.0.1`.
 
@@ -3847,7 +3873,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 64
+#### Licence text 65
 
 Used by `get-proto@1.0.1`.
 
@@ -3875,7 +3901,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 65
+#### Licence text 66
 
 Used by `github-from-package@0.0.0`, `minimist@1.2.8`, `semver-compare@1.0.0`.
 
@@ -3900,7 +3926,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 66
+#### Licence text 67
 
 Used by `global-agent@3.0.0`, `roarr@2.15.4`.
 
@@ -3931,7 +3957,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### Licence text 67
+#### Licence text 68
 
 Used by `globalthis@1.0.4`.
 
@@ -3959,7 +3985,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 68
+#### Licence text 69
 
 Used by `gopd@1.2.0`.
 
@@ -3987,7 +4013,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 69
+#### Licence text 70
 
 Used by `graceful-fs@4.2.11`.
 
@@ -4009,7 +4035,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 70
+#### Licence text 71
 
 Used by `has-property-descriptors@1.0.2`.
 
@@ -4037,7 +4063,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 71
+#### Licence text 72
 
 Used by `has-symbols@1.1.0`.
 
@@ -4065,7 +4091,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 72
+#### Licence text 73
 
 Used by `has-tostringtag@1.0.2`.
 
@@ -4093,9 +4119,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 73
+#### Licence text 74
 
-Used by `hasown@2.0.3`.
+Used by `hasown@2.0.4`.
 
 ```text
 MIT License
@@ -4121,7 +4147,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 74
+#### Licence text 75
 
 Used by `html-url-attributes@3.0.1`.
 
@@ -4149,7 +4175,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 75
+#### Licence text 76
 
 Used by `http-response-object@3.0.2`.
 
@@ -4175,7 +4201,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 76
+#### Licence text 77
 
 Used by `ieee754@1.2.1`.
 
@@ -4193,7 +4219,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### Licence text 77
+#### Licence text 78
 
 Used by `inherits@2.0.4`.
 
@@ -4215,7 +4241,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 78
+#### Licence text 79
 
 Used by `inline-style-parser@0.2.7`.
 
@@ -4231,7 +4257,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 79
+#### Licence text 80
 
 Used by `js-yaml@4.1.1`.
 
@@ -4259,9 +4285,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 80
+#### Licence text 81
 
-Used by `jsonfile@6.2.0`.
+Used by `jsonfile@6.2.0`, `jsonfile@6.2.1`.
 
 ```text
 (The MIT License)
@@ -4281,7 +4307,7 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 81
+#### Licence text 82
 
 Used by `kokoro-js@1.2.1`, `phonemizer@1.2.1`.
 
@@ -4489,7 +4515,7 @@ Used by `kokoro-js@1.2.1`, `phonemizer@1.2.1`.
    limitations under the License.
 ```
 
-#### Licence text 82
+#### Licence text 83
 
 Used by `lodash.escaperegexp@4.1.2`.
 
@@ -4543,7 +4569,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-#### Licence text 83
+#### Licence text 84
 
 Used by `lodash.isequal@4.5.0`.
 
@@ -4597,7 +4623,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-#### Licence text 84
+#### Licence text 85
 
 Used by `longest-streak@3.1.0`, `stringify-entities@4.0.4`, `trim-lines@3.0.1`.
 
@@ -4626,7 +4652,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 85
+#### Licence text 86
 
 Used by `lucide-react@0.518.0`.
 
@@ -4648,7 +4674,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 86
+#### Licence text 87
 
 Used by `mdast-util-phrasing@4.1.0`.
 
@@ -4678,7 +4704,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 87
+#### Licence text 88
 
 Used by `mime-db@1.52.0`.
 
@@ -4708,7 +4734,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 88
+#### Licence text 89
 
 Used by `mime-types@2.1.35`.
 
@@ -4738,7 +4764,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 89
+#### Licence text 90
 
 Used by `minipass@7.1.2`.
 
@@ -4760,7 +4786,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 90
+#### Licence text 91
 
 Used by `minizlib@3.1.0`.
 
@@ -4793,7 +4819,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 ```
 
-#### Licence text 91
+#### Licence text 92
 
 Used by `mkdirp-classic@0.5.3`.
 
@@ -4821,7 +4847,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 92
+#### Licence text 93
 
 Used by `ms@2.1.3`.
 
@@ -4849,7 +4875,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 93
+#### Licence text 94
 
 Used by `napi-build-utils@2.0.0`.
 
@@ -4877,7 +4903,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 94
+#### Licence text 95
 
 Used by `node-abi@3.87.0`.
 
@@ -4905,7 +4931,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 95
+#### Licence text 96
 
 Used by `node-int64@0.4.0`.
 
@@ -4931,7 +4957,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 96
+#### Licence text 97
 
 Used by `object-keys@1.1.1`.
 
@@ -4959,7 +4985,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 97
+#### Licence text 98
 
 Used by `parse-cache-control@1.0.1`.
 
@@ -4992,7 +5018,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                                   *   *   *
 ```
 
-#### Licence text 98
+#### Licence text 99
 
 Used by `parse-entities@4.0.2`, `property-information@7.1.0`.
 
@@ -5021,7 +5047,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 99
+#### Licence text 100
 
 Used by `platform@1.3.6`.
 
@@ -5049,7 +5075,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 100
+#### Licence text 101
 
 Used by `prebuild-install@7.1.3`.
 
@@ -5077,7 +5103,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 101
+#### Licence text 102
 
 Used by `process-nextick-args@2.0.1`.
 
@@ -5103,7 +5129,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.**
 ```
 
-#### Licence text 102
+#### Licence text 103
 
 Used by `progress@2.0.3`.
 
@@ -5132,7 +5158,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 103
+#### Licence text 104
 
 Used by `protobufjs@7.6.5`.
 
@@ -5178,7 +5204,7 @@ standalone and requires a support library to be linked with it. This
 support library is itself covered by the above license.
 ```
 
-#### Licence text 104
+#### Licence text 105
 
 Used by `rc@1.2.8`.
 
@@ -5258,9 +5284,9 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 105
+#### Licence text 106
 
-Used by `react@19.2.3`, `react-dom@19.2.3`, `scheduler@0.27.0`.
+Used by `react@19.3.0`, `react-dom@19.3.0`, `scheduler@0.28.0`.
 
 ```text
 MIT License
@@ -5286,7 +5312,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 106
+#### Licence text 107
 
 Used by `react-markdown@10.1.0`.
 
@@ -5314,7 +5340,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 107
+#### Licence text 108
 
 Used by `readable-stream@2.3.8`, `readable-stream@3.6.2`, `string_decoder@1.1.1`, `string_decoder@1.3.0`.
 
@@ -5368,7 +5394,7 @@ IN THE SOFTWARE.
 """
 ```
 
-#### Licence text 108
+#### Licence text 109
 
 Used by `remark-parse@11.0.0`.
 
@@ -5396,7 +5422,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 109
+#### Licence text 110
 
 Used by `safe-buffer@5.1.2`, `safe-buffer@5.2.1`.
 
@@ -5424,9 +5450,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 110
+#### Licence text 111
 
-Used by `sax@1.4.4`, `tar@7.5.13`.
+Used by `sax@1.4.4`, `tar@7.5.22`.
 
 ```text
 # Blue Oak Model License
@@ -5486,7 +5512,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-#### Licence text 111
+#### Licence text 112
 
 Used by `simple-concat@1.0.1`, `simple-get@4.0.1`.
 
@@ -5513,7 +5539,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 112
+#### Licence text 113
 
 Used by `sprintf-js@1.1.3`.
 
@@ -5544,7 +5570,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-#### Licence text 113
+#### Licence text 114
 
 Used by `strip-json-comments@2.0.1`.
 
@@ -5572,7 +5598,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 114
+#### Licence text 115
 
 Used by `style-to-js@1.1.21`.
 
@@ -5601,7 +5627,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 115
+#### Licence text 116
 
 Used by `style-to-object@1.0.14`.
 
@@ -5630,9 +5656,9 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 116
+#### Licence text 117
 
-Used by `tailwind-merge@3.4.0`.
+Used by `tailwind-merge@3.7.0`.
 
 ```text
 MIT License
@@ -5658,7 +5684,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 117
+#### Licence text 118
 
 Used by `tiny-typed-emitter@2.1.0`.
 
@@ -5686,7 +5712,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 118
+#### Licence text 119
 
 Used by `tinyld@1.3.4`.
 
@@ -5714,7 +5740,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 119
+#### Licence text 120
 
 Used by `trough@2.2.0`.
 
@@ -5742,7 +5768,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 120
+#### Licence text 121
 
 Used by `tslib@2.8.1`.
 
@@ -5761,7 +5787,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-#### Licence text 121
+#### Licence text 122
 
 Used by `tunnel-agent@0.6.0`.
 
@@ -5823,7 +5849,7 @@ If the Work includes a "NOTICE" text file as part of its distribution, then any 
 END OF TERMS AND CONDITIONS
 ```
 
-#### Licence text 122
+#### Licence text 123
 
 Used by `type-fest@0.13.1`.
 
@@ -5839,7 +5865,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 123
+#### Licence text 124
 
 Used by `typedarray@0.0.6`.
 
@@ -5881,7 +5907,7 @@ Used by `typedarray@0.0.6`.
 //  * Allows typed_array.get/set() as alias for subscripts (typed_array[])
 ```
 
-#### Licence text 124
+#### Licence text 125
 
 Used by `undici-types@6.21.0`.
 
@@ -5909,7 +5935,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-#### Licence text 125
+#### Licence text 126
 
 Used by `unified@11.0.5`, `vfile@6.0.3`.
 
@@ -5937,7 +5963,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-#### Licence text 126
+#### Licence text 127
 
 Used by `unist-util-is@6.0.1`.
 
@@ -5966,7 +5992,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 127
+#### Licence text 128
 
 Used by `universalify@2.0.1`.
 
@@ -5993,9 +6019,9 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 128
+#### Licence text 129
 
-Used by `unzipper@0.12.3`.
+Used by `unzipper@0.12.5`.
 
 ```text
 Copyright (c) 2012 - 2013 Near Infinity Corporation
@@ -6025,7 +6051,7 @@ Commits in this fork are (c) Ziggy Jonsson (ziggy.jonsson.nyc@gmail.com)
 and fall under same licence structure as the original repo (MIT)
 ```
 
-#### Licence text 129
+#### Licence text 130
 
 Used by `util-deprecate@1.0.2`.
 
@@ -6056,9 +6082,9 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-#### Licence text 130
+#### Licence text 131
 
-Used by `ws@8.20.1`.
+Used by `ws@8.22.0`.
 
 ```text
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
