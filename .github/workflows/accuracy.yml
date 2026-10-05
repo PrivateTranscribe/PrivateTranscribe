@@ -61,10 +61,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "20"
           cache: npm
@@ -82,14 +84,14 @@ jobs:
       # conditioned on `always()` so a red gate still leaves a warm cache.
       - name: Restore Whisper models
         id: cache-models
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/PrivateTranscribe/whisper-models
           key: whisper-models-${{ hashFiles('benchmarks/accuracy-config.json') }}
 
       - name: Restore FLEURS benchmark data
         id: cache-fleurs
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/PrivateTranscribe/benchmarks
           key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}
@@ -121,16 +123,19 @@ jobs:
       # and their download is the same work whatever the gate decides.
       - name: Save Whisper models
         if: always() && steps.cache-models.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/PrivateTranscribe/whisper-models
           key: whisper-models-${{ hashFiles('benchmarks/accuracy-config.json') }}
 
       - name: Check accuracy against baseline
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.update_baseline }}
+        env:
+          TOLERANCE: ${{ inputs.tolerance }}
         run: |
-          node scripts/check-accuracy-regression.js \
-            ${{ inputs.tolerance && format('--tolerance {0}', inputs.tolerance) || '' }}
+          args=()
+          if [ -n "$TOLERANCE" ]; then args=(--tolerance "$TOLERANCE"); fi
+          node scripts/check-accuracy-regression.js "${args[@]}"
 
       - name: Re-measure baseline
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baseline }}
@@ -141,7 +146,7 @@ jobs:
       # cache save so housekeeping can never cost us the actual deliverable.
       - name: Upload baseline for review
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baseline }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: accuracy-baseline
           path: benchmarks/accuracy-baseline.json
@@ -151,7 +156,7 @@ jobs:
       # gate is the case where a warm cache matters most.
       - name: Save FLEURS benchmark data
         if: always() && steps.cache-fleurs.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/PrivateTranscribe/benchmarks
           key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}

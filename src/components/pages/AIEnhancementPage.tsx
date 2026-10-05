@@ -15,6 +15,7 @@ import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { modelRegistry } from "../../models/ModelRegistry";
 import { useEnhancementPreferences } from "../../hooks/useEnhancementPreferences";
 import CodingPromptSettings from "../CodingPromptSettings";
+import { CodingPromptEditor } from "../CodingPromptEditor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 
 export default function AIEnhancementPage() {
@@ -138,10 +139,10 @@ export default function AIEnhancementPage() {
                   Remove fillers and fix spoken corrections, while keeping your natural voice.
                 </TabsContent>
                 <TabsContent value="coding" className="text-xs text-muted-foreground">
-                  Turn a spoken description into clear instructions, preserving paths and technical
-                  details.
+                  Clean up your wording and spoken file paths, preserving technical details.
                 </TabsContent>
               </Tabs>
+              {writingStyle === "coding" && <CodingPromptEditor />}
             </div>
           </ReasoningModelSelector>
 

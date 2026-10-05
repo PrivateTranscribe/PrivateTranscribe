@@ -8,6 +8,13 @@ const buildInferenceRequestBody =
   llamaServerModule.default?.buildInferenceRequestBody;
 
 describe("llama-server completion integrity", () => {
+  it("passes a requested response schema to the engine without changing plain-text requests", () => {
+    const responseFormat = { type: "json_object", schema: { type: "object" } };
+    expect(buildInferenceRequestBody([], { responseFormat }).response_format).toEqual(
+      responseFormat
+    );
+    expect(buildInferenceRequestBody([], {})).not.toHaveProperty("response_format");
+  });
   it("rejects partial cleanup output stopped by the token limit", () => {
     expect(() =>
       extractCompletionText({

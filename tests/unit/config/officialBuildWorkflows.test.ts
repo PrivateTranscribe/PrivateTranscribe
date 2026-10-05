@@ -34,7 +34,7 @@ const withoutComments = (yaml: string) =>
 describe("official build flag", () => {
   test.each([
     // The installer on the website and the update feed.
-    { workflow: ".github/workflows/release-production.yml", script: "npm run build:win" },
+    { workflow: ".github/workflows/release.yml", script: "npm run build:win" },
     // The Microsoft Store installer.
     { workflow: ".github/workflows/build-store.yml", script: "npm run build:store" },
   ])("$workflow marks its build official", ({ workflow, script }) => {
@@ -42,7 +42,7 @@ describe("official build flag", () => {
   });
 
   test.each([
-    { workflow: ".github/workflows/release-production.yml", outputDir: "dist" },
+    { workflow: ".github/workflows/release.yml", outputDir: "dist" },
     { workflow: ".github/workflows/build-store.yml", outputDir: "dist-store" },
   ])("$workflow checks the packaged app for the flag", ({ workflow, outputDir }) => {
     expect(read(workflow)).toContain(

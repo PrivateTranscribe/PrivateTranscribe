@@ -67,8 +67,7 @@
 
 **Fix:**
 1. Reinstall dependencies: `rm -rf node_modules && npm ci`
-2. Run `npm run setup` to verify FFmpeg
-3. If using packaged app, try reinstalling
+2. If using packaged app, try reinstalling
 
 ### whisper.cpp Issues
 

@@ -147,6 +147,7 @@
   "win": {
     "target": ["nsis"],
     "signAndEditExecutable": false,
+    "signExecutable": false,
     "verifyUpdateCodeSignature": true,
     "azureSignOptions": {
       "endpoint": "https://neu.codesigning.azure.net/",

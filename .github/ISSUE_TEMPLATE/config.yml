@@ -10,5 +10,5 @@ contact_links:
     url: https://github.com/PrivateTranscribe/PrivateTranscribe/security/advisories/new
     about: Report a vulnerability privately, never in a public issue.
   - name: Windows troubleshooting
-    url: https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/WINDOWS_TROUBLESHOOTING.md
+    url: https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/docs/WINDOWS_TROUBLESHOOTING.md
     about: Fixes for common problems such as no window, no transcription or slow typing.

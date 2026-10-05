@@ -18,7 +18,7 @@ const storeInclude = read("resources/nsis/store-installer.nsh");
 const publicInclude = read("resources/nsis/cleanup-models.nsh");
 const storeBuildScript = packageJson.scripts["build:store"];
 const storeWorkflow = read(".github/workflows/build-store.yml");
-const releaseWorkflow = read(".github/workflows/release-production.yml");
+const releaseWorkflow = read(".github/workflows/release.yml");
 
 /** Comment lines explain what a workflow deliberately does not do, so asserting
  *  an absence has to look at what actually runs. */
@@ -94,8 +94,8 @@ describe("Microsoft Store installer variant", () => {
   test("CI bundles the same payload the public installer ships", () => {
     // Run #1 shipped 13 MB light with no ggml/llama DLLs at all, because it
     // copied the shorter download list build-windows.yml had then. The
-    // installer users actually get comes from release-production.yml, whose
-    // prebuild:win runs the full prepare:resources — that is what fetches
+    // installer users actually get comes from release.yml, which runs
+    // the full prepare:resources — that is what fetches
     // llama-server.
     expect(storeWorkflow).toContain("npm run prepare:resources");
     expect(storeWorkflow).toContain("Verify the local AI runtime was bundled");

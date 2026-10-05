@@ -47,6 +47,7 @@ const buildInferenceRequestBody = (messages, options = {}) => ({
   temperature: options.temperature ?? 0.7,
   max_tokens: options.max_tokens ?? 512,
   stream: false,
+  ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
   ...(options.disableThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}),
 });
 
