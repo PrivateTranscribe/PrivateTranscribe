@@ -1186,7 +1186,7 @@ This is the app's production dependency tree for Windows x64, taken from `packag
 - `is-hexadecimal@2.0.1`: `MIT`, <https://github.com/wooorm/is-hexadecimal>, licence text 31
 - `is-plain-obj@4.1.0`: `MIT`, <https://github.com/sindresorhus/is-plain-obj>, licence text 37
 - `isarray@1.0.0`: `MIT`, by Julian Gruber, <https://github.com/juliangruber/isarray>, no licence file in the package
-- `js-yaml@4.1.1`: `MIT`, <https://github.com/nodeca/js-yaml>, licence text 79
+- `js-yaml@4.3.2`: `MIT`, <https://github.com/nodeca/js-yaml>, licence text 79
 - `json-stringify-safe@5.0.1`: `ISC`, <https://github.com/isaacs/json-stringify-safe>, licence text 7
 - `jsonfile@6.2.0`: `MIT`, <https://github.com/jprichardson/node-jsonfile>, licence text 80
 - `kokoro-js@1.2.1`: `Apache-2.0`, <https://github.com/hexgrad/kokoro>, licence text 81
@@ -4233,7 +4233,7 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #### Licence text 79
 
-Used by `js-yaml@4.1.1`.
+Used by `js-yaml@4.3.2`.
 
 ```text
 (The MIT License)
