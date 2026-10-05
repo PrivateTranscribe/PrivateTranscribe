@@ -99,7 +99,7 @@
     "electron-builder": "^26.15.3",
     "electron-winstaller": "5.4.0",
     "eslint": "^9.25.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^17.12.0",
     "prettier": "^3.4.2",

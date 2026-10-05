@@ -4,6 +4,17 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
+// v7 adds compiler diagnostics to recommended. Keep the v5 Hooks enforcement
+// while exposing the new diagnostics as warnings for incremental adoption.
+// Do not turn them off or make a tooling update require unrelated UI rewrites.
+const reactHookRules = {
+  ...Object.fromEntries(
+    Object.keys(reactHooks.configs.recommended.rules).map((rule) => [rule, "warn"])
+  ),
+  "react-hooks/rules-of-hooks": "error",
+  "react-hooks/exhaustive-deps": "warn",
+};
+
 // Design-system guardrails. Every rule here exists because the same mistake was
 // already made and shipped — see docs/DESIGN_TASTE_GUIDE.md for the reasoning.
 const uiPrimitive = (element, replacement) => ({
@@ -69,7 +80,7 @@ export default [
     },
     rules: {
       ...js.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
+      ...reactHookRules,
       "no-unused-vars": [
         "warn",
         { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^_|^event|^err|^error" },
@@ -105,7 +116,7 @@ export default [
       "@typescript-eslint": tseslint.plugin,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      ...reactHookRules,
       "no-undef": "off",
       "no-unused-vars": "off",
       "no-console": "off",
