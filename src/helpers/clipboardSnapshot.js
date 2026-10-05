@@ -21,11 +21,16 @@ function snapshotClipboard(clipboard) {
   };
 }
 
-function restoreClipboard(clipboard, snapshot) {
+/**
+ * Electron ignores `clipboard.write({})`, so restoring an empty snapshot leaves
+ * whatever was written since. Pass `clearWhenEmpty` when that would leak our
+ * own data, such as Read Aloud's sentinel.
+ */
+function restoreClipboard(clipboard, snapshot, { clearWhenEmpty = false } = {}) {
   if (!snapshot) return;
 
   // One write restores all formats together; sequential writeText/writeHTML
-  // calls would replace earlier formats. An empty payload clears the sentinel.
+  // calls would replace earlier formats.
   const payload = {};
   if (typeof snapshot.text === "string" && snapshot.text.length > 0) payload.text = snapshot.text;
   if (typeof snapshot.html === "string" && snapshot.html.length > 0) payload.html = snapshot.html;
@@ -33,7 +38,8 @@ function restoreClipboard(clipboard, snapshot) {
   if (snapshot.hasImage && snapshot.image) payload.image = snapshot.image;
 
   try {
-    clipboard.write(payload);
+    if (Object.keys(payload).length > 0) clipboard.write(payload);
+    else if (clearWhenEmpty) clipboard.clear();
   } catch {
     // Keep paste's existing best-effort text fallback. Restoration must not
     // mask the original capture error if the clipboard remains unavailable.

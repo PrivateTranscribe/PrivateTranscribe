@@ -318,7 +318,8 @@ class SelectionCapture {
       }
     } finally {
       // The user's clipboard is not ours to lose, including when the copy threw.
-      restoreClipboard(clipboard, originalClipboard);
+      // An empty one is cleared, or the sentinel or the selection would stay.
+      restoreClipboard(clipboard, originalClipboard, { clearWhenEmpty: true });
     }
 
     const waitedMs = parseWaitedMs(detail);

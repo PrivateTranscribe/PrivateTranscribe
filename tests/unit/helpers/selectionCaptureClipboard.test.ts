@@ -19,6 +19,7 @@ type ClipboardContents = {
 // Load the real CommonJS capture implementation with an isolated clipboard.
 // writeText deliberately replaces every format, as Electron does; a mock that
 // only changed text would hide the data loss this regression test exercises.
+// Like Electron, write({}) changes nothing, so only clear() empties it.
 function createCapture(original: ClipboardContents, platform = "win32") {
   let contents = { ...original };
   const clipboard = {
@@ -30,7 +31,10 @@ function createCapture(original: ClipboardContents, platform = "win32") {
       contents = { text };
     }),
     write: vi.fn((payload: ClipboardContents) => {
-      contents = { ...payload };
+      if (Object.keys(payload).length > 0) contents = { ...payload };
+    }),
+    clear: vi.fn(() => {
+      contents = {};
     }),
   };
   const module = { exports: undefined as any };
@@ -82,7 +86,6 @@ describe("Read Aloud selection capture clipboard preservation", () => {
         image: screenshot,
       },
     },
-    { name: "an empty clipboard", original: {} },
   ])("restores $name after a successful capture", async ({ original }) => {
     const { capture, clipboard, contents } = createCapture(original);
 
@@ -96,6 +99,26 @@ describe("Read Aloud selection capture clipboard preservation", () => {
     expect(contents()).toEqual(original);
     expect(clipboard.write).toHaveBeenCalledTimes(1);
     expect(clipboard.write).toHaveBeenCalledWith(original);
+  });
+
+  test("clears an originally empty clipboard instead of leaving the selection on it", async () => {
+    const { capture, clipboard, contents } = createCapture({});
+
+    expect(await capture.captureSelection()).toMatchObject({ source: "selection" });
+    expect(contents()).toEqual({});
+    expect(clipboard.clear).toHaveBeenCalledTimes(1);
+  });
+
+  test("clears an originally empty clipboard instead of leaving the sentinel on it", async () => {
+    vi.useFakeTimers();
+    const { capture, contents } = createCapture({});
+    capture.sendCopyKeystroke.mockResolvedValue("ERR timeout");
+
+    const pending = capture.captureSelection();
+    await vi.runAllTimersAsync();
+
+    expect(await pending).toMatchObject({ text: "", source: "none" });
+    expect(contents()).toEqual({});
   });
 
   test("recognizes a selection equal to the original clipboard text", async () => {
