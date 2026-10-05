@@ -202,6 +202,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                 </p>
               </div>
               <Toggle
+                aria-label="Learn corrections"
                 checked={enableCorrectionLearning}
                 onChange={setEnableCorrectionLearning}
                 disabled={!isUnlocked}
@@ -217,6 +218,7 @@ export default function CorrectionMemoryPage({ embedded = false }: { embedded?: 
                 </p>
               </div>
               <Toggle
+                aria-label="Learn phrase and sentence rewrites"
                 checked={enablePhraseCorrectionLearning}
                 onChange={setEnablePhraseCorrectionLearning}
                 disabled={!isUnlocked || !enableCorrectionLearning}

@@ -61,7 +61,7 @@ test("Dictionary keeps optional tools compact and retains learning state", async
 }) => {
   await controlPanel.getByRole("button", { name: "Dictionary", exact: true }).click();
   const corrections = controlPanel.locator("summary").filter({ hasText: "Correction Memory" });
-  await controlPanel.getByRole("button", { name: "Remove word", exact: true }).click();
+  await controlPanel.getByRole("button", { name: "Remove PrivateTranscribe", exact: true }).click();
   await expect(controlPanel.getByText("No words added yet")).toBeVisible();
   await expect(corrections.getByText("Beta", { exact: true })).toBeVisible();
   await controlPanel.screenshot({

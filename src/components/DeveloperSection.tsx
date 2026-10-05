@@ -240,6 +240,7 @@ export default function DeveloperSection() {
             </div>
             <div className="shrink-0">
               <Toggle
+                aria-label="Debug mode"
                 checked={debugEnabled}
                 onChange={handleToggleDebug}
                 disabled={isLoading || isToggling}

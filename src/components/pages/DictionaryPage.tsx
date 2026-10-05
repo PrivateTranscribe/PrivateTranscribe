@@ -1,7 +1,7 @@
 import { SettingsDisclosure } from "../ui/SettingsDisclosure";
 import { BetaBadge } from "../ui/BetaBadge";
 import { isBetaFeature, useBetaFeaturesEnabled } from "../../utils/betaFeatures";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useId } from "react";
 import { BookOpen } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -25,6 +25,8 @@ function SettingsPanelRow({ children }: { children: React.ReactNode }) {
 }
 
 export default function DictionaryPage({ showCorrections = false }: { showCorrections?: boolean }) {
+  const addWordLabelId = useId();
+  const addWordHelpId = useId();
   const correctionsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showCorrections) return;
@@ -100,9 +102,13 @@ export default function DictionaryPage({ showCorrections = false }: { showCorrec
         <SettingsPanel>
           <SettingsPanelRow>
             <div className="space-y-2">
-              <p className="text-[12px] font-medium text-foreground">Add a word or phrase</p>
+              <p id={addWordLabelId} className="text-[12px] font-medium text-foreground">
+                Add a word or phrase
+              </p>
               <div className="flex gap-2">
                 <Input
+                  aria-labelledby={addWordLabelId}
+                  aria-describedby={addWordHelpId}
                   placeholder="e.g. PrivateTranscribe, Kubernetes, Dr. Martinez..."
                   value={newWord}
                   onChange={(e) => setNewWord(e.target.value)}
@@ -115,7 +121,7 @@ export default function DictionaryPage({ showCorrections = false }: { showCorrec
                   Add
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground/50">
+              <p id={addWordHelpId} className="text-[10px] text-muted-foreground/50">
                 Type it exactly how you want it written. Press Enter to add.
               </p>
             </div>
@@ -130,6 +136,7 @@ export default function DictionaryPage({ showCorrections = false }: { showCorrec
           <div className="flex items-center gap-3">
             {customDictionary.length > 5 && (
               <Input
+                aria-label="Filter dictionary words"
                 placeholder="Filter words..."
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
@@ -170,6 +177,7 @@ export default function DictionaryPage({ showCorrections = false }: { showCorrec
                       onClick={() => handleRemove(word)}
                       className="ml-0.5 p-0.5 rounded-sm text-muted-foreground/40 hover:text-destructive transition-colors"
                       title="Remove word"
+                      aria-label={`Remove ${word}`}
                     >
                       <svg
                         width="10"

@@ -1,10 +1,13 @@
-import React from "react";
+import React, { useContext } from "react";
+import { SettingsControlContext } from "./settingsControlContext";
 
 interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export const Toggle = ({
@@ -12,7 +15,10 @@ export const Toggle = ({
   onChange,
   disabled = false,
   "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: ToggleProps) => {
+  const settingsRow = useContext(SettingsControlContext);
   const getTrackClasses = () => {
     if (disabled) {
       // bg-muted matches the settings panel surface, which left disabled
@@ -25,6 +31,8 @@ export const Toggle = ({
   return (
     <button
       aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy ?? (ariaLabel ? undefined : settingsRow?.labelId)}
+      aria-describedby={ariaDescribedBy ?? settingsRow?.descriptionId}
       aria-pressed={checked}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
