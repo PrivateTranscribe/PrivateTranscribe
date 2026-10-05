@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting a bug. For a question, use [Discussions](https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/q-a). Report a security problem privately through the Security tab, as [SECURITY.md](https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/SECURITY.md) describes.
+        Thank you for reporting a bug. For a question, use [Discussions](https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/q-a). Report a security problem privately through the Security tab, as [SECURITY.md](https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/.github/SECURITY.md) describes.
   - type: input
     id: app-version
     attributes:
@@ -71,7 +71,7 @@ body:
     attributes:
       label: Log excerpt
       description: |
-        Debug logs are saved in `%APPDATA%\PrivateTranscribe\logs`. [DEBUG.md](https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/DEBUG.md) explains how to turn them on. Paste the lines around the problem and remove anything private first.
+        Debug logs are saved in `%APPDATA%\PrivateTranscribe\logs`. [DEBUG.md](https://github.com/PrivateTranscribe/PrivateTranscribe/blob/main/docs/DEBUG.md) explains how to turn them on. Paste the lines around the problem and remove anything private first.
       render: text
     validations:
       required: false
