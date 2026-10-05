@@ -2,7 +2,7 @@
  * Tests for how EnvironmentManager rewrites the plain userData/.env file.
  * @module tests/unit/helpers/environmentPlainEnvFile
  *
- * DEBUG.md and WINDOWS_TROUBLESHOOTING.md tell users to add PT_LOG_LEVEL and the
+ * docs/DEBUG.md and docs/WINDOWS_TROUBLESHOOTING.md tell users to add PT_LOG_LEVEL and the
  * PRIVOCA_DISABLE_* privacy switches to this file by hand. The app owns only its
  * own keys, so a rewrite must keep every other line.
  */
