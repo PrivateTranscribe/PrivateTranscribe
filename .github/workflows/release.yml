@@ -1,0 +1,328 @@
+name: Release
+
+# The Release button. Kristian runs it on main; the release job then waits for
+# his approval in the protected `production` environment. Design and reasons:
+# PrivateTranscribe-workspace/docs/public-repo-move/release-system-research.md
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check version, changelog and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      notes: ${{ steps.notes.outputs.notes }}
+
+    steps:
+      - name: Refuse anything but main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "ERROR: releases run from main only, not $GITHUB_REF."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: package.json version '$VERSION' is not X.Y.Z."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION"
+
+      # Anonymous ls-remote: this job holds no token. --exit-code returns 2 when
+      # nothing matches, so any other failure is a network error, not "free".
+      - name: Refuse a version that is already tagged
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set +e
+          git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/v${VERSION}"
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ]; then
+            echo "ERROR: tag v${VERSION} already exists. Bump the version in package.json first."
+            exit 1
+          elif [ "$STATUS" -ne 2 ]; then
+            echo "ERROR: could not list tags (git ls-remote exit $STATUS)."
+            exit 1
+          fi
+          echo "Tag v${VERSION} is free."
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Headings look like "## 0.20.2 - 2026-09-29"; take everything up to the next "## ".
+          awk -v v="$VERSION" '
+            /^## / { if (found) exit; split($0, h, " "); if (h[2] == v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "ERROR: CHANGELOG.md has no entry for $VERSION. Add a '## $VERSION - YYYY-MM-DD' section."
+            exit 1
+          fi
+          cat release-notes.md
+          DELIM="NOTES_$(openssl rand -hex 16)"
+          {
+            echo "notes<<$DELIM"
+            cat release-notes.md
+            echo "$DELIM"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+  release:
+    name: Build, sign and publish
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    environment: production
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      R2_BUCKET: privatetranscribe-assets
+      LIVE_FEED_URL: https://updates.privatetranscribe.com/win/latest.yml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Whisper, llama-server, sherpa-onnx, the native helpers and the Visual C++
+      # runtime: what prebuild:win runs. Done here so only this step gets the
+      # token, and the build below skips it with --ignore-scripts (as build-store does).
+      - name: Prepare bundled resources
+        run: npm run prepare:resources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Verify fast paste helper was built
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "resources/bin/windows-fast-paste.exe")) {
+            Write-Error "windows-fast-paste.exe is missing. Auto-paste would be skipped and every dictation left on the clipboard."
+            exit 1
+          }
+
+      # OIDC: no stored Azure secret. Logged in just before the build because
+      # GitHub's assertion lives 5 minutes and the Azure CLI cannot renew it.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      # Caches a signing token (about an hour) while the assertion is fresh;
+      # each file electron-builder signs then reads it. Prints the expiry only.
+      - name: Prefetch the code signing token
+        shell: pwsh
+        run: |
+          $expires = az account get-access-token --resource https://codesigning.azure.net --query expiresOn --output tsv
+          if ($LASTEXITCODE -ne 0) { throw "Could not get a code signing token from Azure." }
+          Write-Host "Code signing token valid until $expires"
+
+      # Signing is off in electron-builder.json, so a local build never reaches
+      # Azure. privatetranscribeOfficialBuild marks this as an official build:
+      # only those check for updates and send analytics.
+      - name: Build and sign the Windows installer
+        # Long-form --config.* on purpose. The short -c.win.signAndEditExecutable
+        # form is parsed as a config *file path* and the build dies with ENOENT.
+        run: npm run build:win --ignore-scripts -- --publish never --config.forceCodeSigning=true --config.win.signAndEditExecutable=true --config.win.signExecutable=true --config.extraMetadata.privatetranscribeOfficialBuild=true
+
+      - name: Verify Windows signatures
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: Julsgaard Products
+        run: |
+          $artifacts = @()
+          $artifacts += Get-ChildItem -Path dist -Filter "*.exe" -File
+          $artifacts += Get-ChildItem -Path dist/win-unpacked -Filter "PrivateTranscribe.exe" -File -ErrorAction SilentlyContinue
+
+          if ($artifacts.Count -eq 0) {
+            throw "No Windows executable artifacts found to verify."
+          }
+
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid Authenticode signature for $($artifact.Name): $($signature.StatusMessage)"
+            }
+
+            $subject = $signature.SignerCertificate.Subject
+            if ($subject -notlike "*CN=$env:EXPECTED_PUBLISHER*") {
+              throw "Unexpected signing publisher for $($artifact.Name): $subject"
+            }
+
+            # Artifact Signing certificates last a few days, so an untimestamped
+            # signature soon stops verifying (electron-builder#8626).
+            if (-not $signature.TimeStamperCertificate) {
+              throw "No timestamp on $($artifact.Name). The signature would expire with the certificate within days."
+            }
+          }
+
+          Write-Host "Verified $($artifacts.Count) signed artifact(s) as '$env:EXPECTED_PUBLISHER', all timestamped."
+
+      # A release without the flag never checks for updates, so its users would
+      # stay on it until they reinstall by hand.
+      - name: Verify the official-build flag
+        run: node scripts/verify-official-build.js dist/win-unpacked/resources/app.asar
+
+      # latest.yml names the installer the updater fetches, so it decides the
+      # R2 keys. GitHub renames asset files with spaces, so the release copies
+      # take electron-builder's own dashed name.
+      - name: Stage release files and SHA256SUMS
+        id: stage
+        shell: pwsh
+        run: |
+          $feed = node -e "const y=require('js-yaml');const f=y.load(require('fs').readFileSync('dist/latest.yml','utf8'));process.stdout.write(JSON.stringify(f))" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not read dist/latest.yml." }
+          if ($feed.version -ne $env:VERSION) {
+            throw "dist/latest.yml says $($feed.version), package.json says $env:VERSION."
+          }
+
+          $installer = Join-Path dist $feed.path
+          $blockmap = "$installer.blockmap"
+          foreach ($file in @($installer, $blockmap)) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing $file." }
+          }
+
+          $safeName = $feed.path -replace ' ', '-'
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Copy-Item -LiteralPath $installer -Destination "release-assets/$safeName"
+          Copy-Item -LiteralPath $blockmap -Destination "release-assets/$safeName.blockmap"
+
+          $lines = foreach ($name in @($safeName, "$safeName.blockmap")) {
+            $hash = (Get-FileHash -LiteralPath "release-assets/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $name"
+          }
+          [System.IO.File]::WriteAllText("$PWD/release-assets/SHA256SUMS.txt", (($lines -join "`n") + "`n"))
+          Get-Content release-assets/SHA256SUMS.txt
+
+          "feed_path=$($feed.path)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "installer=release-assets/$safeName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.stage.outputs.installer }}
+
+      - name: Upload installer and blockmap to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          FEED_PATH: ${{ steps.stage.outputs.feed_path }}
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          for f in "$FEED_PATH" "$FEED_PATH.blockmap"; do
+            aws s3 cp "dist/$f" "s3://$R2_BUCKET/win/$f" --endpoint-url "$ENDPOINT" --no-progress
+            echo "Uploaded: win/$f"
+          done
+
+      - name: Publish the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_NOTES: ${{ needs.check.outputs.notes }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.md
+          gh release create "v$VERSION" release-assets/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "PrivateTranscribe $VERSION" \
+            --notes-file release-notes.md
+          gh release edit "v$VERSION" --draft=false --latest
+          echo "Published release v$VERSION"
+
+      # The update manifest goes last: installed apps update the moment it
+      # names the new version, so the installer must already be in place.
+      - name: Upload latest.yml to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          aws s3 cp dist/latest.yml "s3://$R2_BUCKET/win/latest.yml" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress \
+            --cache-control "no-cache, no-store"
+          echo "Update manifest uploaded last."
+
+      - name: Verify the live update feed
+        shell: bash
+        run: |
+          set -uo pipefail
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error \
+              --user-agent "PrivateTranscribe/release-verifier" \
+              --header "Cache-Control: no-cache" \
+              "$LIVE_FEED_URL?verify=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+              --output live-latest.yml; then
+              LIVE_VERSION=$(node -e "process.stdout.write(String(require('js-yaml').load(require('fs').readFileSync('live-latest.yml','utf8')).version||''))")
+              if [ "$LIVE_VERSION" = "$VERSION" ]; then
+                echo "Live feed names $VERSION."
+                cat live-latest.yml
+                exit 0
+              fi
+              echo "Live feed says ${LIVE_VERSION:-nothing}, expected $VERSION."
+            fi
+            sleep 10
+          done
+          echo "ERROR: the live update feed never named $VERSION."
+          exit 1

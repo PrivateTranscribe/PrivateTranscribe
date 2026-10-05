@@ -185,7 +185,12 @@ function SectionHeader({
 
 const SMART_CONTEXT_DESCRIPTION = "Use your app name and window title to improve local dictation.";
 
-const BETA_FEATURE_CARDS: { name: string; description: string; page?: string }[] = [
+const BETA_FEATURE_CARDS: {
+  name: string;
+  description: string;
+  page?: string;
+  experimental?: boolean;
+}[] = [
   {
     name: "AI Enhancement",
     description:
@@ -203,6 +208,7 @@ const BETA_FEATURE_CARDS: { name: string; description: string; page?: string }[]
     name: "Action Engine",
     description: "Runs your own voice commands to open apps, run scripts and automate tasks.",
     page: "action-engine",
+    experimental: true,
   },
 ];
 
@@ -1329,6 +1335,8 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     setAgentModeEnabled,
     agentModeRewrite,
     setAgentModeRewrite,
+    experimentalFeatures,
+    setExperimentalFeatures,
     apiKeySyncError,
     clearApiKeySyncError,
   } = useSettings();
@@ -3196,12 +3204,28 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 <SettingsPanelRow>
                   <SettingsRow
                     label="Beta features"
-                    description="Turns on AI Enhancement, Correction Memory, Smart Context and the Action Engine on this PC."
+                    description={
+                      experimentalFeatures
+                        ? "Turns on AI Enhancement, Correction Memory, Smart Context and the Action Engine on this PC."
+                        : "Turns on AI Enhancement, Correction Memory and Smart Context on this PC."
+                    }
                   >
                     <Toggle
                       aria-label="Beta features"
                       checked={betaFeaturesEnabled}
                       onChange={setBetaFeaturesEnabled}
+                    />
+                  </SettingsRow>
+                </SettingsPanelRow>
+                <SettingsPanelRow>
+                  <SettingsRow
+                    label="Experimental features"
+                    description="Converse, Agent Mode and the Action Engine. Less tested; may change or go away."
+                  >
+                    <Toggle
+                      aria-label="Experimental features"
+                      checked={experimentalFeatures}
+                      onChange={setExperimentalFeatures}
                     />
                   </SettingsRow>
                 </SettingsPanelRow>
@@ -3211,7 +3235,9 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
             <div>
               <SectionLabel className="mb-3">What it turns on</SectionLabel>
               <div className="space-y-3">
-                {BETA_FEATURE_CARDS.map(({ name, description, page }) => (
+                {BETA_FEATURE_CARDS.filter(
+                  (card) => experimentalFeatures || !card.experimental
+                ).map(({ name, description, page }) => (
                   <BetaFeatureCard
                     key={name}
                     name={name}

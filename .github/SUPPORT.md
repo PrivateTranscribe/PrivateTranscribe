@@ -7,6 +7,8 @@ PrivateTranscribe is a small open-source project. Here is where to go.
 - **Ideas** go to [Discussions Ideas](https://github.com/PrivateTranscribe/PrivateTranscribe/discussions/categories/ideas).
 - **Security problems** go privately through the repository's **Security** tab, as [SECURITY.md](SECURITY.md) describes.
 
-[WINDOWS_TROUBLESHOOTING.md](WINDOWS_TROUBLESHOOTING.md) covers common problems, and [DEBUG.md](DEBUG.md) shows how to turn on debug logs.
+[WINDOWS_TROUBLESHOOTING.md](../docs/WINDOWS_TROUBLESHOOTING.md) covers common problems, and [DEBUG.md](../docs/DEBUG.md) shows how to turn on debug logs.
+
+Everyone taking part follows our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 We read everything, but we do not promise a response time.

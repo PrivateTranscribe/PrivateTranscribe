@@ -31,6 +31,35 @@ Fix: ship the CUDA engine as a self-contained package with the required runtime 
 
 ## Important implementation details
 
+### Whole-word wrapping for dictation and files
+
+Checked 2026-10-05. Every `/inference` request must send `split_on_word=true`,
+including ordinary dictation, language detection, long sessions, and file-mode
+compatibility retries. Keeping this field inside `if (fileMode)` left dictation
+unprotected.
+
+In [whisper.cpp v1.8.3's server](https://github.com/ggml-org/whisper.cpp/blob/v1.8.3/examples/server/server.cpp),
+`verbose_json` enables token timestamps and the default segment wrap limit is 60.
+The [wrapping implementation](https://github.com/ggml-org/whisper.cpp/blob/v1.8.3/src/whisper.cpp)
+can split at a subword token unless `split_on_word` is enabled. The server inserts
+a newline between segments; our whitespace cleanup then turns that newline into
+a space inside the word. The CPU engine's
+[OpenWhispr fork](https://github.com/OpenWhispr/whisper.cpp/blob/master/examples/server/server.cpp)
+(inspected 2026-10-05) also defaults token timestamps on for plain JSON. Protect
+both response formats instead of relying on either engine's timestamp defaults.
+
+Verified with the installed CUDA package v0.0.10, `ggml-base.bin`, and cached
+[FLEURS Danish](https://huggingface.co/datasets/google/fleurs) test audio
+`10016401698104160032.wav`: the old request returned `objekt\niver`, normalized
+to `objekt iver`; the fixed request returned `objektiver`. All other words stayed
+the same. This reproduced with both JSON and verbose JSON. The reported
+`ligegy ldigt` dictation was present in local history, but its audio was not
+retained, so that exact recording could not be replayed.
+
+`tests/unit/helpers/whisperServerFileMode.test.ts` checks the actual multipart
+requests across these paths. This guard prevents formatting-induced splits; it
+does not guess corrections for spaces that the model itself transcribes.
+
 ### CUDA package build
 
 Workflow: `.github/workflows/build-cuda-binary.yml`

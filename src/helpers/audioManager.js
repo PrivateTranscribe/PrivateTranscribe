@@ -12,6 +12,7 @@ import { getSharedAudioContext } from "../utils/sharedAudioContext";
 import { frameRmsLevels, summarizeSpeechLevels } from "../utils/speechPresence";
 import { classifyNonSpeechArtifact } from "../utils/nonSpeechArtifact";
 import { buildDictionaryPrompt } from "../utils/dictionaryPrompt";
+import { areExperimentalFeaturesEnabled } from "../utils/experimentalFeatures";
 import {
   getContext,
   isSmartContextEnabled,
@@ -2989,7 +2990,7 @@ class AudioManager {
     // Persisted to localStorage so this plain-JS class can read it without
     // requiring React state to be threaded down.
     const dictationMode =
-      typeof window !== "undefined" && window.localStorage
+      typeof window !== "undefined" && window.localStorage && areExperimentalFeaturesEnabled()
         ? localStorage.getItem("activeDictationMode") || undefined
         : undefined;
     // User's preferred output language (BCP-47, e.g. "en"). Passed to the

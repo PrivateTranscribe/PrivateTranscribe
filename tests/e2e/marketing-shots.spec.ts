@@ -4,6 +4,8 @@ import { expect, test, type Page } from "./fixtures/electron-app";
 import { seedShowcaseDatabase } from "./fixtures/showcase-data";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Captures the gallery images for the AlternativeTo listing.
  *

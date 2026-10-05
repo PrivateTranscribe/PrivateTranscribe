@@ -17,7 +17,7 @@ on:
         default: ""
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-cuda-windows:
@@ -25,10 +25,16 @@ jobs:
     # windows-latest moved to VS 2025 (MSVC 19.5x), which CUDA 12.8's cudafe++
     # crashes on. Pin to the VS 2022 image that CUDA 12.8 officially supports.
     runs-on: windows-2022
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout PrivateTranscribe
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Install CUDA 12.8 (Windows)
         shell: pwsh
@@ -54,8 +60,9 @@ jobs:
 
       - name: Clone whisper.cpp
         shell: bash
+        env:
+          TAG: ${{ github.event.inputs.whisper_tag }}
         run: |
-          TAG="${{ github.event.inputs.whisper_tag }}"
           if [ -n "$TAG" ]; then
             git clone --depth=1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp.git whisper-src
           else
@@ -152,21 +159,21 @@ jobs:
         shell: pwsh
         run: node scripts/check-cuda-runtime.js cuda-package-win32-x64
 
-      # Fail before the signing action so a missing credential surfaces here
-      # rather than as an opaque Azure auth error inside the action.
-      - name: Verify Azure signing credentials are present
-        shell: pwsh
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        run: |
-          $missing = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET') |
-            Where-Object { -not (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value }
+      # OIDC login after the long build and an immediate token fetch, as in
+      # release.yml: GitHub's assertion lives 5 minutes and the CLI cannot renew it.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
 
-          if ($missing) {
-            throw "The CUDA engine must be signed. Missing secrets: $($missing -join ', '). The client secret expires; if it was working and now is not, renew it on the PrivateTranscribe-Signing-CI app registration."
-          }
+      - name: Prefetch the code signing token
+        shell: pwsh
+        run: |
+          $expires = az account get-access-token --resource https://codesigning.azure.net --query expiresOn --output tsv
+          if ($LASTEXITCODE -ne 0) { throw "Could not get a code signing token from Azure. The CUDA engine must be signed." }
+          Write-Host "Code signing token valid until $expires"
 
       # Windows Smart App Control blocks unsigned executables outright ("An
       # Application Control policy has blocked this file"), and the app has no
@@ -176,21 +183,18 @@ jobs:
       # including the NVIDIA runtime DLLs, which ship unsigned from the CUDA
       # toolkit. Signing must happen before the zip is created.
       - name: Sign CUDA package (exe + DLLs)
-        uses: azure/trusted-signing-action@v2
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: https://neu.codesigning.azure.net/
-          trusted-signing-account-name: PrivateTranscribe
+          signing-account-name: PrivateTranscribe
           certificate-profile-name: PrivateTranscribe
           files-folder: ${{ github.workspace }}\cuda-package-win32-x64
           files-folder-filter: exe,dll
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-          description: PrivateTranscribe CUDA transcription engine
-          description-url: https://privatetranscribe.com
+          exclude-environment-credential: true
+          cache-dependencies: false
 
       - name: Verify CUDA package signatures
         shell: pwsh
@@ -249,7 +253,7 @@ jobs:
           Write-Host "SHA-256: $sha256"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: whisper-server-win32-x64-cuda-package
           path: whisper-server-win32-x64-cuda.zip
@@ -259,18 +263,17 @@ jobs:
         if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
         shell: bash
         env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          VERSION: ${{ github.event.inputs.engine_version }}
         run: |
-          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           SIZE=$(stat -c%s whisper-server-win32-x64-cuda.zip 2>/dev/null)
           if [ -z "$SIZE" ] || [ "$SIZE" -lt 10000000 ]; then
             echo "ERROR: Refusing to upload CUDA package — size is only $SIZE bytes"
             exit 1
           fi
-          VERSION="${{ github.event.inputs.engine_version }}"
           aws s3 cp whisper-server-win32-x64-cuda.zip \
             "s3://privatetranscribe-assets/binaries/${VERSION}/whisper-server-win32-x64-cuda.zip" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
@@ -280,10 +283,13 @@ jobs:
   build-cuda-linux:
     name: Build Linux CUDA binary
     runs-on: ubuntu-22.04
+    environment: production
 
     steps:
       - name: Checkout PrivateTranscribe
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Install CUDA 12.8 (Linux)
         run: |
@@ -304,8 +310,9 @@ jobs:
         run: /usr/local/cuda-12.8/bin/nvcc --version
 
       - name: Clone whisper.cpp
+        env:
+          TAG: ${{ github.event.inputs.whisper_tag }}
         run: |
-          TAG="${{ github.event.inputs.whisper_tag }}"
           if [ -n "$TAG" ]; then
             git clone --depth=1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp.git whisper-src
           else
@@ -371,7 +378,7 @@ jobs:
           echo "SHA-256: $SHA256"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: whisper-server-linux-x64-cuda-package
           path: whisper-server-linux-x64-cuda.zip
@@ -380,18 +387,17 @@ jobs:
       - name: Upload to R2
         if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
         env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          VERSION: ${{ github.event.inputs.engine_version }}
         run: |
-          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           SIZE=$(stat -c%s whisper-server-linux-x64-cuda.zip 2>/dev/null)
           if [ -z "$SIZE" ] || [ "$SIZE" -lt 10000000 ]; then
             echo "ERROR: Refusing to upload CUDA package — size is only $SIZE bytes"
             exit 1
           fi
-          VERSION="${{ github.event.inputs.engine_version }}"
           aws s3 cp whisper-server-linux-x64-cuda.zip \
             "s3://privatetranscribe-assets/binaries/${VERSION}/whisper-server-linux-x64-cuda.zip" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
@@ -406,23 +412,23 @@ jobs:
     needs: [build-cuda-windows, build-cuda-linux]
     if: ${{ github.event.inputs.upload_to_r2 == 'true' }}
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Write and upload manifest
         env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          VERSION: ${{ github.event.inputs.engine_version }}
         run: |
-          VERSION="${{ github.event.inputs.engine_version }}"
           if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "ERROR: engine_version '$VERSION' must look like v0.0.9"
             exit 1
           fi
           printf '{"version":"%s","updatedAt":"%s"}\n' "$VERSION" "$(date -u +%FT%TZ)" > latest-cuda.json
           cat latest-cuda.json
-          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           aws s3 cp latest-cuda.json \
             s3://privatetranscribe-assets/binaries/latest-cuda.json \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \

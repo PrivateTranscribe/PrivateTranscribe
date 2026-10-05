@@ -2,6 +2,9 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 import { captureTab, disclosure } from "./fixtures/tab-layout";
+
+test.use({ experimentalFeatures: true });
+
 const capture = captureTab;
 
 test.use({ useThrowawayHome: true });

@@ -1,19 +1,8 @@
 import React, { useState, useEffect } from "react";
-import {
-  LayoutDashboard,
-  Clock,
-  Upload,
-  Mic,
-  BookOpen,
-  Brain,
-  MessageSquare,
-  MessagesSquare,
-  AudioLines,
-  Zap,
-  Settings,
-  FlaskConical,
-} from "lucide-react";
-import { isBetaFeature, useBetaFeaturesEnabled } from "../utils/betaFeatures";
+import { MessageSquare, Settings, FlaskConical } from "lucide-react";
+import { useBetaFeaturesEnabled } from "../utils/betaFeatures";
+import { useExperimentalFeatures } from "../utils/experimentalFeatures";
+import { navGroups, visibleNavGroups } from "./sidebarNav";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { formatHotkeyLabel } from "../utils/hotkeys";
 import FeedbackDialog from "./FeedbackDialog";
@@ -30,50 +19,6 @@ export type PageId =
   | "correction-memory"
   | "action-engine"
   | "settings";
-
-interface NavItem {
-  id: PageId;
-  label: string;
-  icon: typeof LayoutDashboard;
-}
-
-interface NavGroup {
-  label?: string;
-  items: NavItem[];
-}
-
-/**
- * Every feature the app has. Beta pages are listed only while beta features are
- * on, except AI Enhancement: its coding prompt shortcuts are not beta.
- */
-const navGroups: NavGroup[] = [
-  {
-    items: [
-      { id: "home", label: "Home", icon: LayoutDashboard },
-      { id: "history", label: "History", icon: Clock },
-      { id: "transcribe", label: "Transcribe File", icon: Upload },
-    ],
-  },
-  {
-    label: "SPEECH",
-    items: [
-      { id: "dictation", label: "Dictation", icon: Mic },
-      { id: "dictionary", label: "Dictionary", icon: BookOpen },
-      { id: "read-aloud", label: "Read Aloud", icon: AudioLines },
-    ],
-  },
-  {
-    label: "INTELLIGENCE",
-    items: [
-      { id: "ai-enhancement", label: "AI Enhancement", icon: Brain },
-      { id: "converse", label: "Converse", icon: MessagesSquare },
-    ],
-  },
-  {
-    label: "ADVANCED",
-    items: [{ id: "action-engine", label: "Action Engine", icon: Zap }],
-  },
-];
 
 interface AppSidebarProps {
   activePage: PageId;
@@ -99,6 +44,7 @@ export default function AppSidebar({
     deserialize: String,
   });
   const [betaFeaturesEnabled] = useBetaFeaturesEnabled();
+  const [experimentalFeaturesEnabled] = useExperimentalFeatures();
   const [currentVersion, setCurrentVersion] = useState("");
   const [buildLabel, setBuildLabel] = useState("");
 
@@ -123,14 +69,10 @@ export default function AppSidebar({
     getVersion();
   }, []);
 
-  const visibleGroups = navGroups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter(
-        (item) => item.id === "ai-enhancement" || betaFeaturesEnabled || !isBetaFeature(item.id)
-      ),
-    }))
-    .filter((group) => group.items.length > 0);
+  const visibleGroups = visibleNavGroups(navGroups, {
+    betaOn: betaFeaturesEnabled,
+    experimentalOn: experimentalFeaturesEnabled,
+  });
 
   return (
     <div

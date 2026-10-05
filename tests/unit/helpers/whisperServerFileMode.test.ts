@@ -11,6 +11,42 @@ afterEach(() => {
 });
 
 describe("WhisperServer file mode", () => {
+  it.each([
+    { mode: "pinned-language dictation", options: { language: "da" } },
+    { mode: "auto-detected dictation", options: { detectLanguage: true } },
+    { mode: "long-session dictation", options: { longSessionChunk: true } },
+    { mode: "file fallback", options: { fileMode: false, detectLanguage: true } },
+  ])("requests whole-word wrapping for $mode", async ({ options }) => {
+    let body = "";
+    const server = http.createServer((req, res) => {
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ text: "ok" }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Failed to start test server");
+    const manager: any = new WhisperServerManager();
+    manager.port = address.port;
+    manager.requestPathPrefix = "/pt-unit-test";
+    manager._scheduleIdleCheck = vi.fn();
+
+    try {
+      await manager._postInference(Buffer.from("wav"), { ...options, durationSeconds: 1 });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+
+    // Both verbose_json language detection and engines that default to token
+    // timestamps can wrap inside words. Newline cleanup then inserts a space.
+    expect(body).toMatch(/name="split_on_word"\r\n\r\ntrue/);
+  });
+
   it("contains the file-mode noise reduction filter", () => {
     const source = fs.readFileSync("src/helpers/whisperServer.js", "utf8");
     expect(source).toContain("afftdn=nf=-25");

@@ -6,6 +6,8 @@ import { expect, test } from "./fixtures/electron-app";
 import { evidenceDir } from "./fixtures/evidence";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Talking to Claude Code, out loud, with no keyboard.
  *

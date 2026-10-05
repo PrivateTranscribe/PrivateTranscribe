@@ -240,6 +240,8 @@ export interface ConverseState {
   sessionId?: string | null;
   /** The id passed to `--resume` at start, or null for a fresh conversation. */
   resumedFrom?: string | null;
+  /** "folder" when Claude Code loads the folder's own setup, "user-only" when not. */
+  projectSetup?: "user-only" | "folder" | null;
   stateLog?: ConverseTransition[];
   player?: ConversePlayerReport | null;
   agent?: Record<string, unknown>;

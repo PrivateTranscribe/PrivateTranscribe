@@ -4,6 +4,8 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import type { Page } from "@playwright/test";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Ledger gate `converse-ui`: the Converse page and the overlay's conversation
  * state exist and survive a blind design review.

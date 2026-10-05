@@ -1793,12 +1793,14 @@ class WhisperServerManager {
     // requests that already know it keep the cheaper response.
     const responseFormat = fileMode || detectLanguage ? "verbose_json" : "json";
     form.append("response_format", responseFormat);
+    // verbose_json enables token timestamps even for auto-detected dictation;
+    // some engines enable them for json too. Their default 60-character wrap
+    // can split a word, then output_str adds a newline that our cleanup turns
+    // into a space ("ligegy\nldigt" -> "ligegy ldigt"). Apply word wrapping to
+    // every request, including long sessions and file compatibility retries.
+    form.append("split_on_word", "true");
     if (fileMode) {
       form.append("token_timestamps", "true");
-      // Token timestamps enable whisper-server's segment-length wrapping.
-      // Wrap at whole words so joining subtitle cues cannot add spaces inside
-      // words (for example, Danish "objektiver" becoming "objekt iver").
-      form.append("split_on_word", "true");
     }
 
     if (fileMode || longSessionChunk) {

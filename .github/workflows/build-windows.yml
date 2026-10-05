@@ -2,7 +2,7 @@ name: Build Windows test installer
 
 # A signed installer to try before a release, for example on a PC with Smart App
 # Control on, which blocks unsigned builds. It never publishes. Installers reach
-# users only through release-production.yml, which also checks the version bump.
+# users only through release.yml, which also checks the version is untagged.
 # This workflow used to upload to the update feed and to run on any pushed v*
 # tag, and 0.14.1 and 0.14.2 reached users that way.
 #
@@ -19,15 +19,21 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 20
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
@@ -53,21 +59,21 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
-      # Fail here rather than 10 minutes later inside electron-builder, where a
-      # missing credential surfaces as an opaque Azure auth error.
-      - name: Verify Azure signing credentials are present
-        shell: pwsh
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        run: |
-          $missing = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET') |
-            Where-Object { -not (Get-Item "env:$_" -ErrorAction SilentlyContinue).Value }
+      # OIDC login and an immediate token fetch, as in release.yml: GitHub's
+      # assertion lives 5 minutes and the Azure CLI cannot renew it.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
 
-          if ($missing) {
-            throw "Windows releases must be signed. Missing secrets: $($missing -join ', '). The client secret expires; if it was working and now is not, renew it on the PrivateTranscribe-Signing-CI app registration."
-          }
+      - name: Prefetch the code signing token
+        shell: pwsh
+        run: |
+          $expires = az account get-access-token --resource https://codesigning.azure.net --query expiresOn --output tsv
+          if ($LASTEXITCODE -ne 0) { throw "Could not get a code signing token from Azure." }
+          Write-Host "Code signing token valid until $expires"
 
       # signAndEditExecutable is false in electron-builder.json so a local
       # `npm run pack` never reaches Azure and never needs credentials. It is
@@ -76,12 +82,9 @@ jobs:
       - name: Package (Windows NSIS + Portable)
         # Long-form --config.* on purpose. The short -c.win.signAndEditExecutable
         # form is parsed as a config *file path* and the build dies with ENOENT.
-        run: npx electron-builder --win --publish never --config.forceCodeSigning=true --config.win.signAndEditExecutable=true
+        run: npx electron-builder --win --publish never --config.forceCodeSigning=true --config.win.signAndEditExecutable=true --config.win.signExecutable=true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
       - name: Verify Windows signatures
         shell: pwsh
@@ -125,7 +128,7 @@ jobs:
         shell: cmd
 
       - name: Upload NSIS installer
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: privatetranscribe-windows-setup
           path: |
@@ -134,7 +137,7 @@ jobs:
           retention-days: 7
 
       - name: Upload portable
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: privatetranscribe-windows-portable
           path: |

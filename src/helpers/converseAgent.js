@@ -12,6 +12,7 @@
  */
 
 const { spawn } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -57,17 +58,54 @@ const MOCK_REPLY_PARTS = ["Mock reply sentence one. ", "Mock reply sentence two.
 const MOCK_FIRST_DELTA_MS = 150;
 const MOCK_SECOND_DELTA_MS = 40;
 
+/** True when `dir` is a full path that cannot mean "relative to the cwd". */
+function isFullyQualifiedDir(dir) {
+  if (process.platform === "win32") return /^([a-zA-Z]:[\\/]|\\\\)/.test(dir);
+  return path.isAbsolute(dir);
+}
+
+/** Same directory spelled two ways must compare equal. */
+function dirKey(dir) {
+  const resolved = path.resolve(String(dir || "")).replace(/[\\/]+$/, "");
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 /**
- * Where the `claude` CLI lives.
- *
- * Never hardcoded blindly: an explicit option wins, then the
- * PT_CONVERSE_CLAUDE_BIN override (which is how a test points at a stub), then
- * the per-user install path if it exists on disk, and finally the bare name so
- * PATH resolution gets a chance.
+ * Absolute path of `name` in a fully qualified PATH directory, or null. Never the
+ * cwd or `exclude`: Windows `where` and spawn() try the cwd first, so a planted
+ * `claude.exe` in a cloned repo would run instead of the real one.
  */
-function resolveClaudeBin(explicit) {
-  if (explicit) return explicit;
-  if (process.env.PT_CONVERSE_CLAUDE_BIN) return process.env.PT_CONVERSE_CLAUDE_BIN;
+function findOnPath(name, { exclude = [] } = {}) {
+  const pathVar = process.env.PATH || process.env.Path || "";
+  const names = process.platform === "win32" && !path.extname(name) ? [`${name}.exe`] : [name];
+  const excluded = new Set(exclude.filter(Boolean).map(dirKey));
+  for (const raw of pathVar.split(path.delimiter)) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !isFullyQualifiedDir(dir) || excluded.has(dirKey(dir))) continue;
+    for (const candidate of names) {
+      const full = path.join(dir, candidate);
+      try {
+        if (fs.statSync(full).isFile()) return full;
+      } catch {
+        // Not in this directory.
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The `claude` CLI as an absolute path: explicit option, PT_CONVERSE_CLAUDE_BIN
+ * (test stubs), the per-user install, then PATH minus `opts.cwd`. Not found
+ * returns the bare name, which start() refuses to spawn.
+ */
+function resolveClaudeBin(explicit, { cwd } = {}) {
+  const exclude = cwd ? [cwd] : [];
+  const override = explicit || process.env.PT_CONVERSE_CLAUDE_BIN;
+  if (override) {
+    if (hasPathComponents(override)) return path.resolve(override);
+    return findOnPath(override, { exclude }) || override;
+  }
 
   const exe = process.platform === "win32" ? "claude.exe" : "claude";
   const userInstall = path.join(os.homedir(), ".local", "bin", exe);
@@ -76,7 +114,266 @@ function resolveClaudeBin(explicit) {
   } catch {
     // Unreadable home directory — fall through to PATH.
   }
-  return exe;
+  return findOnPath(exe, { exclude }) || exe;
+}
+
+// ------------------------------------------------------------ folder trust
+
+/**
+ * Project files Claude Code loads on its own. --print mode shows no "trust this
+ * folder?" prompt, so a folder only gets its own setup once the user has seen
+ * these files. All of .claude counts: agents, skills, commands and rules load
+ * from it, and hook scripts usually live there, so an allowed settings file
+ * cannot run a changed one.
+ */
+const FOLDER_CONFIG_FILES = [".mcp.json", "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"];
+const FOLDER_CONFIG_DIR = ".claude";
+/** Hashed directly and listed first, whatever the walk of .claude does. */
+const FOLDER_CONFIG_FIRST = [
+  ".claude/settings.json",
+  ".claude/settings.local.json",
+  ".claude/CLAUDE.md",
+  ".claude/AGENTS.md",
+];
+/** Claude Code's own worktrees are whole checkouts, not configuration. */
+const FOLDER_CONFIG_SKIP = new Set([".claude/worktrees"]);
+/** Past this many files the rest count as one entry, so a change in them still counts. */
+const MAX_TRUST_FILES = 500;
+/**
+ * The walk stops here and a file this big is not read, so a link to a huge folder
+ * cannot stall the main process. Either one keeps the folder on the user's settings only.
+ */
+const MAX_WALK_FILES = 5000;
+const MAX_HASH_BYTES = 64 * 1024 * 1024;
+
+const TRUST_STORE_FILE = "converse-folder-trust.json";
+
+/**
+ * Where trust decisions live: Electron's userData, never the folder itself (a
+ * repo could otherwise ship its own "already trusted" mark). Outside Electron
+ * with no explicit path there is no store, so nothing counts as trusted.
+ */
+function resolveTrustStorePath(explicitPath) {
+  if (explicitPath) return explicitPath;
+  if (process.env.PT_CONVERSE_TRUST_STORE) return process.env.PT_CONVERSE_TRUST_STORE;
+  try {
+    const { app } = require("electron");
+    if (app && typeof app.getPath === "function") {
+      return path.join(app.getPath("userData"), TRUST_STORE_FILE);
+    }
+  } catch {
+    // Not running inside Electron.
+  }
+  return null;
+}
+
+function sha256(data) {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+/** A value no trust record can hold, for anything the scan could not read. */
+const unverifiable = () => crypto.randomBytes(32).toString("hex");
+
+/** Content hash read in chunks; unverifiable() when the file is too big or unreadable. */
+function hashFile(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    if (fs.fstatSync(fd).size > MAX_HASH_BYTES) return unverifiable();
+    const hash = crypto.createHash("sha256");
+    const chunk = Buffer.alloc(1024 * 1024);
+    let read;
+    while ((read = fs.readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+      hash.update(chunk.subarray(0, read));
+    }
+    return hash.digest("hex");
+  } catch {
+    return unverifiable();
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+/**
+ * Relative paths of every file under .claude apart from FOLDER_CONFIG_FIRST,
+ * skipping FOLDER_CONFIG_SKIP, sorted. Linked folders are followed, because
+ * Claude Code follows them too; each real folder is walked once, so a link loop ends.
+ */
+function listConfigDir(folder) {
+  const out = [];
+  const seen = new Set();
+  let truncated = false;
+  const walk = (rel) => {
+    const abs = path.join(folder, ...rel.split("/"));
+    let real;
+    try {
+      real = fs.realpathSync(abs);
+    } catch {
+      return; // A broken link loads nothing.
+    }
+    const key = process.platform === "win32" ? real.toLowerCase() : real;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    let entries;
+    try {
+      entries = fs.readdirSync(abs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (out.length >= MAX_WALK_FILES) {
+        truncated = true;
+        return;
+      }
+      const child = `${rel}/${entry.name}`;
+      if (FOLDER_CONFIG_SKIP.has(child)) continue;
+      let isDir = entry.isDirectory();
+      if (entry.isSymbolicLink()) {
+        try {
+          isDir = fs.statSync(path.join(folder, ...child.split("/"))).isDirectory();
+        } catch {
+          continue;
+        }
+      }
+      if (isDir) walk(child);
+      else if (!FOLDER_CONFIG_FIRST.includes(child)) out.push(child);
+    }
+  };
+  walk(FOLDER_CONFIG_DIR);
+  out.sort();
+  return { files: out, truncated };
+}
+
+/**
+ * The Claude Code config files present in `folder`, each with a SHA-256 of its
+ * content. A modified time is not enough: an archive can restore the one the
+ * user allowed on different content. Anything the scan cannot verify gets a
+ * value that never matches, so the folder stays on the user's settings only.
+ */
+function scanFolderConfig(folder) {
+  const found = [];
+  const add = (rel) => {
+    const file = path.join(folder, ...rel.split("/"));
+    try {
+      if (!fs.statSync(file).isFile()) return;
+    } catch {
+      return; // Not there.
+    }
+    found.push({ file: rel, sha256: hashFile(file) });
+  };
+  for (const rel of [...FOLDER_CONFIG_FILES, ...FOLDER_CONFIG_FIRST]) add(rel);
+
+  const { files: inDir, truncated } = listConfigDir(folder);
+  for (const rel of inDir.slice(0, MAX_TRUST_FILES)) add(rel);
+  const rest = inDir.slice(MAX_TRUST_FILES);
+  if (truncated) {
+    found.push({
+      file: `${FOLDER_CONFIG_DIR}/ (over ${MAX_WALK_FILES} files, too many to check)`,
+      sha256: unverifiable(),
+    });
+  } else if (rest.length > 0) {
+    const digest = crypto.createHash("sha256");
+    for (const rel of rest) {
+      digest.update(`${rel}\0${hashFile(path.join(folder, ...rel.split("/")))}\n`);
+    }
+    found.push({
+      file: `${FOLDER_CONFIG_DIR}/ (${rest.length} more files)`,
+      sha256: digest.digest("hex"),
+    });
+  }
+  return found;
+}
+
+function readTrustStore(storePath) {
+  if (!storePath) return {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(storePath, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Whether Claude Code may load `folder`'s own setup. "trusted" means the user
+ * opted the folder in and every file still matches what they were shown, with
+ * none new; "changed" means something differs since; "untrusted" means never
+ * opted in. Each file is "new", "changed" or "trusted".
+ */
+function checkFolderTrust(folder, { storePath } = {}) {
+  const files = scanFolderConfig(folder);
+  const record = readTrustStore(resolveTrustStorePath(storePath))[dirKey(folder)];
+  const known = record && record.files && typeof record.files === "object" ? record.files : null;
+  if (!known) {
+    return {
+      usesProjectSetup: false,
+      reason: "untrusted",
+      files: files.map((f) => ({ ...f, status: "new" })),
+    };
+  }
+
+  const marked = files.map((f) => ({
+    ...f,
+    status: !Object.hasOwn(known, f.file)
+      ? "new"
+      : known[f.file] !== f.sha256
+        ? "changed"
+        : "trusted",
+  }));
+  const changed = marked.some((f) => f.status !== "trusted");
+  return {
+    usesProjectSetup: !changed,
+    reason: changed ? "changed" : "trusted",
+    files: marked,
+  };
+}
+
+/** Write the whole store through a temporary file, so a crash never leaves half of it. */
+function writeTrustStore(file, store) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8");
+  fs.renameSync(tmp, file);
+}
+
+/**
+ * Record that the user opted `folder` in as they saw it. `shownFiles` is the
+ * snapshot the confirm listed, so a file that changes between the confirm and
+ * the click is still not allowed. A folder with no files of its own can be
+ * opted in too: its setup may live in folders above or below it. Returns the
+ * fresh check.
+ */
+function trustFolder(folder, shownFiles, { storePath } = {}) {
+  const file = resolveTrustStorePath(storePath);
+  if (!file) throw new Error("There is nowhere to remember trusted folders.");
+
+  const snapshot = Array.isArray(shownFiles) ? shownFiles : scanFolderConfig(folder);
+  const files = {};
+  for (const entry of snapshot) {
+    if (!entry || typeof entry.file !== "string") continue;
+    if (typeof entry.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(entry.sha256)) continue;
+    files[entry.file] = entry.sha256;
+  }
+
+  const store = readTrustStore(file);
+  store[dirKey(folder)] = { trustedAt: Date.now(), files };
+  writeTrustStore(file, store);
+  return checkFolderTrust(folder, { storePath: file });
+}
+
+/** Drop the user's opt-in for `folder`, so it starts on their own settings only again. */
+function forgetFolder(folder, { storePath } = {}) {
+  const file = resolveTrustStorePath(storePath);
+  if (file) {
+    const store = readTrustStore(file);
+    const key = dirKey(folder);
+    if (Object.hasOwn(store, key)) {
+      delete store[key];
+      writeTrustStore(file, store);
+    }
+  }
+  return checkFolderTrust(folder, { storePath: file });
 }
 
 /**
@@ -105,77 +402,23 @@ function log(...args) {
   console.log("[converse-agent]", ...args);
 }
 
-/** How long a `where`/`which` PATH lookup gets before it counts as not found. */
-const PREFLIGHT_TIMEOUT_MS = 3000;
-
 /** True when `bin` names a specific location rather than a bare command name. */
 function hasPathComponents(bin) {
   return path.basename(bin) !== bin;
 }
 
 /**
- * Resolve whether `claudeBin` will actually spawn, before the real spawn runs.
- *
- * Two cases, because `spawn()` resolves a bare name against PATH itself:
- *   - a path (absolute, relative, or the per-user install path already
- *     verified once by resolveClaudeBin) — checked with fs.existsSync, which
- *     is instant and cannot hang.
- *   - a bare command name (the production default: "claude"/"claude.exe") —
- *     resolved with `where`/`which`, the same PATH scan a user gets by typing
- *     that command in a terminal. This is what the failure copy tells them to
- *     do, so the check and the instruction agree. Actually spawning `claude
- *     --version` was rejected: real CLI startup costs ~2-4s (see the module
- *     doc comment above), which would make every session start pay for it,
- *     and a hung/misbehaving install could block start() far longer than a
- *     PATH lookup ever can.
+ * Whether `claudeBin` exists, checked before the real spawn. Spawning `claude
+ * --version` was rejected: CLI startup costs ~2-4s. A bare name is looked up
+ * with findOnPath rather than `where`, which would search the cwd first.
  */
 function probeClaudeBin(bin) {
-  return new Promise((resolve) => {
-    if (hasPathComponents(bin)) {
-      let exists = false;
-      try {
-        exists = fs.existsSync(bin);
-      } catch {
-        exists = false;
-      }
-      resolve(exists);
-      return;
-    }
-
-    const finder = process.platform === "win32" ? "where" : "which";
-    let child;
-    try {
-      child = spawn(finder, [bin], { stdio: "ignore", windowsHide: true });
-    } catch {
-      resolve(false);
-      return;
-    }
-
-    let settled = false;
-    const finish = (found) => {
-      if (settled) return;
-      settled = true;
-      resolve(found);
-    };
-
-    const timer = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {
-        // Already gone.
-      }
-      finish(false);
-    }, PREFLIGHT_TIMEOUT_MS);
-
-    child.on("error", () => {
-      clearTimeout(timer);
-      finish(false);
-    });
-    child.on("exit", (code) => {
-      clearTimeout(timer);
-      finish(code === 0);
-    });
-  });
+  if (!hasPathComponents(bin)) return Promise.resolve(Boolean(findOnPath(bin)));
+  try {
+    return Promise.resolve(fs.existsSync(bin));
+  } catch {
+    return Promise.resolve(false);
+  }
 }
 
 class ConverseAgent {
@@ -211,6 +454,7 @@ class ConverseAgent {
     permissionRelay = null,
     strictMcpConfig = false,
     settingsFile = null,
+    trustStorePath = null,
   } = {}) {
     this.onDelta = onDelta || (() => {});
     /** Fired when a turn becomes the one producing output — immediately for a
@@ -221,7 +465,7 @@ class ConverseAgent {
     this.onSessionId = onSessionId || (() => {});
     this.model = model;
     this.cwd = cwd;
-    this.claudeBin = resolveClaudeBin(claudeBin);
+    this.claudeBin = resolveClaudeBin(claudeBin, { cwd });
     this.claudeArgPrefix = resolveClaudeArgPrefix();
     this.resumeSessionId = resumeSessionId || null;
     this.sessionPersistence = sessionPersistence !== false;
@@ -240,6 +484,10 @@ class ConverseAgent {
     this.strictMcpConfig = Boolean(strictMcpConfig);
     /** Path to a --settings file (tests use it to force an empty allowlist). */
     this.settingsFile = settingsFile || null;
+    /** Where folder trust is remembered; null means Electron's userData. */
+    this.trustStorePath = trustStorePath || null;
+    /** "folder" when the CLI loads the folder's own setup, else "user-only"; null before start. */
+    this.projectSetup = null;
 
     /** "live" while the real CLI is answering; "mock" once it cannot. */
     this.agentMode = mock ? "mock" : "live";
@@ -281,13 +529,23 @@ class ConverseAgent {
     // ready", and the user only learned the truth after typing a message that
     // came back refused. Checking first means a bad binary fails start()
     // itself, before anything downstream believes the session is usable.
-    const found = await probeClaudeBin(this.claudeBin);
+    // A bare name never reaches spawn(): on Windows it would search the cwd,
+    // which is the user's project folder, before PATH.
+    const found = hasPathComponents(this.claudeBin) && (await probeClaudeBin(this.claudeBin));
     if (!found) {
       const message = `Claude Code CLI not found (tried "${this.claudeBin}"). Check that the claude command runs in a terminal.`;
       this.lastError = message;
       this.ready = false;
       throw Object.assign(new Error(message), { code: "claude-bin-not-found" });
     }
+
+    let trust = null;
+    try {
+      trust = checkFolderTrust(this.cwd, { storePath: this.trustStorePath });
+    } catch (err) {
+      log("folder check failed, using the user's settings only:", err.message);
+    }
+    this.projectSetup = trust && trust.usesProjectSetup ? "folder" : "user-only";
 
     const args = [
       "--print",
@@ -305,6 +563,11 @@ class ConverseAgent {
 
     args.push("--model", this.model, "--system-prompt", VOICE_SYSTEM_PROMPT);
 
+    // --print loads a folder's hooks, .mcp.json and skills without asking; with
+    // `--setting-sources user` it reads neither its settings nor its .mcp.json
+    // (code.claude.com/docs/en/permissions, "What runs before you trust a folder").
+    if (this.projectSetup !== "folder") args.push("--setting-sources", "user");
+
     // Resuming restores the conversation, not the invocation: the CLI does not
     // remember the flags the original session was started with, so every flag
     // above is re-passed here rather than assumed.
@@ -312,18 +575,17 @@ class ConverseAgent {
 
     if (this.settingsFile) args.push("--settings", this.settingsFile);
 
-    // Relay the harness's own permission questions to the app. The MCP server
-    // is spawned by the CLI itself with a bare node (process.execPath would be
-    // electron.exe here, which cannot run a plain script), and reaches the app
-    // back over loopback HTTP. Never any bypass flag — the CLI's own
-    // permission model stays in charge; the app only answers its questions.
+    // Relay the harness's own permission questions to the app over loopback
+    // HTTP. The relay runs on the app's own executable in Node mode: a bare
+    // `node` would be looked up in the project folder first on Windows.
     if (this.permissionRelay) {
       const mcpConfig = {
         mcpServers: {
           "pt-permissions": {
-            command: process.env.PT_CONVERSE_NODE_BIN || "node",
+            command: process.execPath,
             args: [path.join(__dirname, "conversePermissionMcp.cjs")],
             env: {
+              ELECTRON_RUN_AS_NODE: "1",
               PT_PERMISSION_RELAY_PORT: String(this.permissionRelay.port),
               PT_PERMISSION_RELAY_TOKEN: this.permissionRelay.token,
             },
@@ -654,6 +916,7 @@ class ConverseAgent {
       sessionId: this.sessionId,
       resumedFrom: this.resumeSessionId,
       sessionPersistence: this.sessionPersistence,
+      projectSetup: this.projectSetup,
       lastError: this.lastError,
       fellBackAt: this.fellBackAt,
     };
@@ -667,5 +930,11 @@ module.exports = {
   resolveClaudeArgPrefix,
   probeClaudeBin,
   hasPathComponents,
+  findOnPath,
+  FOLDER_CONFIG_FILES,
+  checkFolderTrust,
+  trustFolder,
+  forgetFolder,
+  resolveTrustStorePath,
   MOCK_REPLY: MOCK_REPLY_PARTS.join(""),
 };

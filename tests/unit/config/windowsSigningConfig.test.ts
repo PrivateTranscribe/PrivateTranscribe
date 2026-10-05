@@ -9,6 +9,7 @@ const builderConfig = JSON.parse(
 ) as {
   win: {
     signAndEditExecutable: boolean;
+    signExecutable: boolean;
     verifyUpdateCodeSignature: boolean;
     azureSignOptions: Record<string, string>;
   };
@@ -16,7 +17,7 @@ const builderConfig = JSON.parse(
 
 const workflows = [
   ".github/workflows/build-windows.yml",
-  ".github/workflows/release-production.yml",
+  ".github/workflows/release.yml",
   // The Store rejects unsigned installers outright, so this one is not optional
   // either — it just ships to a different destination.
   ".github/workflows/build-store.yml",
@@ -61,6 +62,9 @@ describe("Windows signing configuration", () => {
     // true, it would reach Azure and fail for anyone without the service
     // principal. CI turns it on per-build instead.
     expect(builderConfig.win.signAndEditExecutable).toBe(false);
+    // electron-builder 26.15 signs the NSIS installer whenever azureSignOptions is
+    // set, unless signExecutable is false; without it a local installer build hangs.
+    expect(builderConfig.win.signExecutable).toBe(false);
   });
 
   test("every workflow that packages Windows turns signing on and verifies it", () => {
@@ -70,6 +74,7 @@ describe("Windows signing configuration", () => {
       // Long form only. `-c.win.signAndEditExecutable=true` is read as a config
       // file path and the build dies with ENOENT.
       expect(contents).toContain("--config.win.signAndEditExecutable=true");
+      expect(contents).toContain("--config.win.signExecutable=true");
       expect(contents).toContain("--config.forceCodeSigning=true");
 
       // The backstop: if the flag above is ever dropped, this fails the build

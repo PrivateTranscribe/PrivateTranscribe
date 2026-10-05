@@ -82,12 +82,21 @@ export function resetSharedAudioContext() {
   return getSharedAudioContext();
 }
 
-export async function waitForAudioContextRunning(ctx, { attempts = 10, delayMs = 50 } = {}) {
+export async function waitForAudioContextRunning(
+  ctx,
+  { attempts = 10, delayMs = 50, requireClockProgress = false } = {}
+) {
   if (!ctx || ctx.state === "closed") {
     return false;
   }
 
-  if (ctx.state === "running") {
+  // Windows can report "running" while the device graph is still frozen.
+  // Meter startup needs proof of rendering, even when its samples are silent.
+  const initialTime = ctx.currentTime;
+  const ready = () =>
+    ctx.state === "running" && (!requireClockProgress || ctx.currentTime > initialTime);
+
+  if (ready()) {
     return true;
   }
 
@@ -95,19 +104,21 @@ export async function waitForAudioContextRunning(ctx, { attempts = 10, delayMs =
     // resume() can remain pending after startup or sleep. Poll state with a
     // deadline instead of awaiting the operation that needs to time out.
     // Consume late rejection even after the caller has replaced this context.
-    void Promise.resolve(ctx.resume?.()).catch(() => {});
+    if (ctx.state !== "running") {
+      void Promise.resolve(ctx.resume?.()).catch(() => {});
+    }
   } catch {
     return false;
   }
 
   for (let attempt = 0; attempt < attempts; attempt++) {
-    if (ctx.state === "running") {
+    if (ready()) {
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  return ctx.state === "running";
+  return ready();
 }
 
 export function __resetSharedAudioContextForTests() {

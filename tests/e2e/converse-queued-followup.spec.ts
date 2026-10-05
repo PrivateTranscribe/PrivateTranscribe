@@ -4,6 +4,8 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * A message sent while Claude Code is still working is queued and answered
  * next — never bounced with "busy". This is the Codex-style follow-up flow:

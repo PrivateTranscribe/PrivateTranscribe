@@ -10,6 +10,41 @@ describe("useMicLevel audio context recovery", () => {
     __resetMicLevelAudioContextForTests();
   });
 
+  it("rejects a running context whose clock never advances during startup", async () => {
+    vi.useFakeTimers();
+    const ctx = { state: "running", currentTime: 42, resume: vi.fn() };
+    const result = waitForAudioContextRunning(ctx, { requireClockProgress: true });
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(result).resolves.toBe(false);
+    expect(ctx.resume).not.toHaveBeenCalled();
+  });
+
+  it("accepts a rendering context without requiring any microphone volume", async () => {
+    vi.useFakeTimers();
+    const ctx = { state: "running", currentTime: 42, resume: vi.fn() };
+    const result = waitForAudioContextRunning(ctx, { requireClockProgress: true });
+    ctx.currentTime += 0.01;
+    await vi.advanceTimersByTimeAsync(50);
+    await expect(result).resolves.toBe(true);
+  });
+
+  it("requires clock progress after a suspended context resumes", async () => {
+    vi.useFakeTimers();
+    const ctx = {
+      state: "suspended",
+      currentTime: 0,
+      resume: vi.fn(async () => {
+        ctx.state = "running";
+      }),
+    };
+    const result = waitForAudioContextRunning(ctx, { requireClockProgress: true });
+    await vi.advanceTimersByTimeAsync(100);
+    ctx.currentTime = 0.01;
+    await vi.advanceTimersByTimeAsync(50);
+    await expect(result).resolves.toBe(true);
+    expect(ctx.resume).toHaveBeenCalledOnce();
+  });
+
   it("reports running when resume wakes a suspended AudioContext", async () => {
     const ctx = {
       state: "suspended",

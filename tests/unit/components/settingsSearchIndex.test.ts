@@ -141,7 +141,7 @@ describe("every settings section can actually be opened", () => {
     expect([...tabSections].sort()).toEqual([...tabIds].sort());
     for (const id of pageOwnedSections) {
       expect(sectionMembers).toContain(id);
-      expect(readFileSync(join(ROOT, "src/components/AppSidebar.tsx"), "utf8")).toContain(
+      expect(readFileSync(join(ROOT, "src/components/sidebarNav.ts"), "utf8")).toContain(
         `id: "${id}"`
       );
     }

@@ -1,5 +1,7 @@
 import { expect, test } from "./fixtures/electron-app";
 
+test.use({ experimentalFeatures: true });
+
 /**
  * Ledger gate `converse-loop-headless`: prove the whole voice loop runs inside
  * the app without a microphone — a text utterance goes to a persistent agent,

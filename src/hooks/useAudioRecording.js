@@ -8,6 +8,7 @@ import {
   trackAnalyticsEventOnce,
 } from "../utils/analytics";
 import { isFeatureUnlocked } from "../utils/betaFeatures";
+import { areExperimentalFeaturesEnabled, isAgentModeActive } from "../utils/experimentalFeatures";
 import { deliverDictation } from "../utils/dictationDelivery";
 import { formatHotkeyLabel, readStoredHotkey } from "../utils/hotkeys";
 
@@ -477,6 +478,7 @@ export const useAudioRecording = (toast, options = {}) => {
             // A ramble aimed at a coding agent is never a voice command.
             !wasAgentSession &&
             aeEnabled &&
+            areExperimentalFeaturesEnabled() &&
             isBetaFeatureUnlocked("action-engine") &&
             window.electronAPI?.actionEngineMatch
           ) {
@@ -910,7 +912,7 @@ export const useAudioRecording = (toast, options = {}) => {
       }
 
       // Read at session start so settings changes apply to the next recording.
-      setAgentSession(localStorage.getItem("agentModeDictationEnabled") === "true");
+      setAgentSession(isAgentModeActive());
 
       if (playSound) {
         playFeedback("playStartSound");

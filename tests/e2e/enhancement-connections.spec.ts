@@ -2,6 +2,8 @@ import path from "node:path";
 import { expect, test } from "./fixtures/electron-app";
 import { unlockTesterAccess } from "./fixtures/tester-access";
 
+test.use({ experimentalFeatures: true });
+
 test.use({
   appEnv: {
     PRIVATETRANSCRIBE_DIAG_DISABLE_AGENT_REWRITE: "",

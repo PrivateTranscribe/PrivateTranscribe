@@ -27,6 +27,68 @@ beforeEach(() => {
 });
 
 describe("shared enhancement connections and writing styles", () => {
+  it.each(["claude-code", "qwen3-4b", "claude-haiku-4-5"])(
+    "uses saved coding instructions with %s",
+    async (model) => {
+      window.localStorage.setItem(
+        "customCodingPrompt",
+        JSON.stringify("Preserve my technical wording.")
+      );
+      await ReasoningService.processText("fix the login", model, null, { writingStyle: "coding" });
+      const prompt =
+        model === "claude-code"
+          ? vi.mocked(window.electronAPI.enhanceWithClaudeCode!).mock.calls[0][1]
+          : (model === "qwen3-4b"
+              ? vi.mocked(window.electronAPI.processLocalReasoning).mock.calls[0][3]
+              : vi.mocked(window.electronAPI.processAnthropicReasoning).mock.calls[0][3]
+            ).customSystemPrompt;
+      expect(prompt).toContain("Preserve my technical wording.");
+    }
+  );
+
+  it.each(["bad JSON", "42", '"   "'])(
+    "falls back from invalid coding instructions %s",
+    async (saved) => {
+      window.localStorage.setItem("customCodingPrompt", saved);
+      await ReasoningService.processText("fix login", "claude-code", null, {
+        writingStyle: "coding",
+      });
+      expect(vi.mocked(window.electronAPI.enhanceWithClaudeCode!).mock.calls[0][1]).toContain(
+        codingPrompt.systemPrompt
+      );
+    }
+  );
+
+  it("uses an explicit test draft before saved coding instructions", async () => {
+    window.localStorage.setItem("customCodingPrompt", JSON.stringify("Saved instructions."));
+    await ReasoningService.processText("fix login", "claude-code", null, {
+      writingStyle: "coding",
+      promptTemplate: "Draft instructions.",
+    });
+    expect(vi.mocked(window.electronAPI.enhanceWithClaudeCode!).mock.calls[0][1]).toContain(
+      "Draft instructions."
+    );
+  });
+
+  it("rejects generated code so dictation can retain the original words", async () => {
+    vi.mocked(window.electronAPI.enhanceWithClaudeCode!).mockResolvedValue({
+      ok: true,
+      text: "```python\ndef main(): pass\n```",
+    });
+    await expect(
+      ReasoningService.processText("write a Python function", "claude-code", null, {
+        writingStyle: "coding",
+      })
+    ).rejects.toThrow("wrote code instead of editing");
+  });
+
+  it("preserves code fences that were already dictated", async () => {
+    const text = "Keep this example: ```python\nx = 1\n```";
+    vi.mocked(window.electronAPI.enhanceWithClaudeCode!).mockResolvedValue({ ok: true, text });
+    expect(
+      await ReasoningService.processText(text, "claude-code", null, { writingStyle: "coding" })
+    ).toBe(text);
+  });
   it("routes Claude Code separately from Anthropic API keys", async () => {
     expect(getModelProvider("claude-code")).toBe("claude-code");
     expect(
