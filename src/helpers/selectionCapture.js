@@ -18,8 +18,8 @@
  *      a hotkey. So the worker is spawned once and kept alive on a line
  *      protocol rather than spawned per capture.
  *
- * The clipboard is saved before and restored after, always - a read must not
- * cost the user whatever they had copied.
+ * Text, HTML, RTF and images are saved before the sentinel overwrites them and
+ * restored together afterwards, including when copying or polling fails.
  */
 
 const { spawn } = require("child_process");
@@ -27,6 +27,7 @@ const path = require("path");
 const fs = require("fs");
 const { clipboard } = require("electron");
 const debugLogger = require("./debugLogger");
+const { snapshotClipboard, restoreClipboard } = require("./clipboardSnapshot");
 
 /** How long a single "copy" command may take before we give up on it. */
 const COMMAND_TIMEOUT_MS = 4000;
@@ -290,7 +291,11 @@ class SelectionCapture {
     if (!this.worker) this.start();
     await this.waitForReady();
 
-    const previous = clipboard.readText();
+    // Snapshot every supported format before the first clipboard write. If a
+    // read fails, leave the original clipboard untouched rather than clearing
+    // formats we could not save. Text alone still drives the spoken fallback.
+    const originalClipboard = snapshotClipboard(clipboard);
+    const previous = originalClipboard.text;
     // Sentinel so we can tell "copy produced nothing" from "copy produced the
     // same text that was already on the clipboard".
     const sentinel = `__pt_sentinel_${Date.now()}__`;
@@ -313,7 +318,7 @@ class SelectionCapture {
       }
     } finally {
       // The user's clipboard is not ours to lose, including when the copy threw.
-      clipboard.writeText(previous);
+      restoreClipboard(clipboard, originalClipboard);
     }
 
     const waitedMs = parseWaitedMs(detail);
