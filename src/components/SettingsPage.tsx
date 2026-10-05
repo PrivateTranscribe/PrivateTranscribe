@@ -68,6 +68,8 @@ import { SettingsRow } from "./ui/SettingsSection";
 import { InfoBox } from "./ui/InfoBox";
 import { LANGUAGE_OPTIONS } from "../utils/languages";
 import { getValidWhisperModelNames } from "../models/ModelRegistry";
+import { findVoice } from "../models/kokoroVoices";
+import { READ_ALOUD_SPEEDS } from "../utils/readAloudSpeed";
 import { SectionLabel } from "./ui/SectionLabel";
 import { setAgentName as persistAgentName } from "../utils/agentName";
 
@@ -1327,6 +1329,10 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     setOverlaySnapToTaskbar,
     readAloudEnabled,
     setReadAloudEnabled,
+    readAloudVoice,
+    setReadAloudVoice,
+    readAloudSpeed,
+    setReadAloudSpeed,
     readAloudHotkey,
     readAloudPlaybackHotkeys,
     setReadAloudPlaybackHotkeys,
@@ -1512,12 +1518,16 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
           copyToClipboard,
           showPanelOnError,
           pauseMediaOnRecord,
+          muteVoiceCallOnRecord,
+          voiceCallMuteKey,
           audioFeedback,
           errorNotifications,
           successConfirmation,
           overlaySnapToTaskbar,
           // Read Aloud
           readAloudEnabled,
+          readAloudVoice,
+          readAloudSpeed,
           readAloudHotkey,
           readAloudPlaybackHotkeys,
           // Agent Mode
@@ -1594,11 +1604,15 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       copyToClipboard,
       showPanelOnError,
       pauseMediaOnRecord,
+      muteVoiceCallOnRecord,
+      voiceCallMuteKey,
       audioFeedback,
       errorNotifications,
       successConfirmation,
       overlaySnapToTaskbar,
       readAloudEnabled,
+      readAloudVoice,
+      readAloudSpeed,
       readAloudHotkey,
       readAloudPlaybackHotkeys,
       agentModeEnabled,
@@ -1788,6 +1802,29 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       if (typeof s.copyToClipboard === "boolean") setCopyToClipboard(s.copyToClipboard);
       if (typeof s.showPanelOnError === "boolean") setShowPanelOnError(s.showPanelOnError);
       if (typeof s.pauseMediaOnRecord === "boolean") setPauseMediaOnRecord(s.pauseMediaOnRecord);
+      if (s.muteVoiceCallOnRecord !== undefined) {
+        if (typeof s.muteVoiceCallOnRecord === "boolean") {
+          setMuteVoiceCallOnRecord(s.muteVoiceCallOnRecord);
+        } else {
+          skipField("muteVoiceCallOnRecord", "must be a boolean");
+        }
+      }
+      if (s.voiceCallMuteKey !== undefined) {
+        // An empty shortcut deliberately clears the binding. Keep the raw
+        // storage format through the setter, as the dictation hook reads it directly.
+        if (
+          typeof s.voiceCallMuteKey === "string" &&
+          !isPathLikeString(s.voiceCallMuteKey) &&
+          !/[\u0000-\u001f\u007f]/.test(s.voiceCallMuteKey)
+        ) {
+          setVoiceCallMuteKey(s.voiceCallMuteKey);
+        } else {
+          skipField(
+            "voiceCallMuteKey",
+            "must be a shortcut string without paths or control characters"
+          );
+        }
+      }
       if (typeof s.audioFeedback === "boolean") setAudioFeedback(s.audioFeedback);
       if (typeof s.errorNotifications === "boolean") setErrorNotifications(s.errorNotifications);
       if (typeof s.successConfirmation === "boolean") setSuccessConfirmation(s.successConfirmation);
@@ -1797,6 +1834,22 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       }
 
       if (typeof s.readAloudEnabled === "boolean") setReadAloudEnabled(s.readAloudEnabled);
+      // Missing fields in older backups leave the current preference alone.
+      // Validate against the same voice catalogue and speed choices as the pickers.
+      if (s.readAloudVoice !== undefined) {
+        if (typeof s.readAloudVoice === "string" && findVoice(s.readAloudVoice)) {
+          setReadAloudVoice(s.readAloudVoice);
+        } else {
+          skipField("readAloudVoice", "must be a supported voice ID");
+        }
+      }
+      if (s.readAloudSpeed !== undefined) {
+        if (READ_ALOUD_SPEEDS.some((speed) => speed === s.readAloudSpeed)) {
+          setReadAloudSpeed(s.readAloudSpeed);
+        } else {
+          skipField("readAloudSpeed", "must be a supported playback speed");
+        }
+      }
       if (s.readAloudPlaybackHotkeys && typeof s.readAloudPlaybackHotkeys === "object") {
         const keys = s.readAloudPlaybackHotkeys;
         if ([keys.toggle, keys.back, keys.forward].every(isSafeImportedIdentifier)) {
@@ -1899,6 +1952,10 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       setEnableCorrectionLearning,
       setEnablePhraseCorrectionLearning,
       setPauseMediaOnRecord,
+      setMuteVoiceCallOnRecord,
+      setVoiceCallMuteKey,
+      setReadAloudVoice,
+      setReadAloudSpeed,
       setPreferBuiltInMic,
       setSelectedMicDeviceId,
       persistAgentName,
@@ -1920,7 +1977,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       } catch {
         throw new Error("Settings file is not valid JSON");
       }
-      await applyImportedSettings(parsed);
+      return await applyImportedSettings(parsed);
     },
     [applyImportedSettings]
   );

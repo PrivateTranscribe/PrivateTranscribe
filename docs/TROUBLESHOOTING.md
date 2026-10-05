@@ -11,6 +11,26 @@
 
 ## Common Issues
 
+### Restoring reading and call-mute preferences
+
+Use **Settings > Data & Storage > Export** to save a JSON backup. It includes the
+Read Aloud voice and speed, the call-mute shortcut, and whether call muting is
+enabled. API keys are excluded unless you explicitly opt in.
+
+Import restores these preferences through the existing settings setters. A blank
+call-mute shortcut clears the binding. Older backups that omit these preferences
+leave your current choices unchanged. Unknown voice IDs, unsupported speeds,
+invalid types, and shortcuts containing paths or control characters are skipped;
+the import dialog lists skipped fields while applying the valid ones.
+
+Supported reading speeds are `0.75`, `1`, `1.25`, `1.5`, `1.75`, and `2`. Voice IDs
+must exist in the app's voice catalogue. The backup format remains schema version
+1, with these fields added as optional settings.
+
+Call muting still requires Windows, an active supported call, and the same
+push-to-mute binding in your voice app. A settings backup does not configure that
+other app or include downloaded voice models.
+
 ### Architecture Mismatch (Apple Silicon)
 
 **Symptoms:** Crashes on launch, "wrong architecture" errors
