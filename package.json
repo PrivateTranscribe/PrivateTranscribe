@@ -1,6 +1,6 @@
 {
   "name": "privatetranscribe",
-  "version": "0.20.2",
+  "version": "0.21.0",
   "description": "PrivateTranscribe",
   "main": "main.js",
   "private": true,
@@ -92,22 +92,22 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.4.1",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "5.0.2",
     "concurrently": "^8.2.2",
     "cross-env": "^10.0.0",
-    "electron": "^41.5.0",
+    "electron": "^41.10.6",
     "electron-builder": "^26.15.3",
     "electron-winstaller": "5.4.4",
     "eslint": "^9.25.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
-    "globals": "^16.0.0",
+    "globals": "^17.12.0",
     "prettier": "^3.9.9",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.1.10",
     "typescript-eslint": "^8.70.1",
-    "vite": "^6.3.5",
-    "vitest": "^4.0.18"
+    "vite": "^6.4.2",
+    "vitest": "5.0.2"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -143,6 +143,6 @@
     "uuid": "^14.0.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   }
 }

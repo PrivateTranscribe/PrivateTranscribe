@@ -63,11 +63,11 @@ Licence text: GNU General Public License v3.0, under "Full licence texts" at the
 
 Electron contains Chromium, Node.js, V8 and many other open-source projects. Their licences are listed in LICENSES.chromium.html, installed next to PrivateTranscribe.exe; that list covers libEGL.dll and libGLESv2.dll (ANGLE), vk_swiftshader.dll (SwiftShader), vulkan-1.dll (Vulkan Loader) and Chromium's FFmpeg in ffmpeg.dll. d3dcompiler_47.dll, dxcompiler.dll and dxil.dll are Microsoft files that come with Electron's Windows build; LICENSES.chromium.html does not name them.
 
-- Version: 41.5.0
+- Version: 41.10.6
 - Licence: `MIT`
 - Copyright (c) Electron contributors
 - Copyright (c) 2013-2020 GitHub Inc.
-- Source: <https://github.com/electron/electron/tree/v41.5.0>
+- Source: <https://github.com/electron/electron/tree/v41.10.6>
 - Files: `../PrivateTranscribe.exe`, `../*.dll`, `../*.pak`, `../locales/*.pak`, `../*.bin`, `../icudtl.dat`, `../vk_swiftshader_icd.json`, `../LICENSE.electron.txt`, `../LICENSES.chromium.html`
 
 ```text
@@ -1025,10 +1025,10 @@ This is the app's production dependency tree for Windows x64, taken from `packag
 
 - `@derhuerst/http-basic@8.2.4`: `MIT`, <https://github.com/derhuerst/http-basic>, licence text 1
 - `@emnapi/runtime@1.11.3`: `MIT`, <https://github.com/toyobayashi/emnapi>, licence text 2
-- `@floating-ui/core@1.7.3`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
-- `@floating-ui/dom@1.7.4`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
-- `@floating-ui/react-dom@2.1.6`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
-- `@floating-ui/utils@0.2.10`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/core@1.8.0`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/dom@1.8.0`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/react-dom@2.1.9`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
+- `@floating-ui/utils@0.2.12`: `MIT`, <https://github.com/floating-ui/floating-ui>, licence text 3
 - `@huggingface/jinja@0.5.9`: `MIT`, <https://github.com/huggingface/huggingface.js>, licence text 4
 - `@huggingface/transformers@3.8.1`: `Apache-2.0`, <https://github.com/huggingface/transformers.js>, licence text 5
 - `@img/colour@1.1.0`: `MIT`, <https://github.com/lovell/colour>, licence text 6
@@ -1183,7 +1183,7 @@ This is the app's production dependency tree for Windows x64, taken from `packag
 - `is-hexadecimal@2.0.1`: `MIT`, <https://github.com/wooorm/is-hexadecimal>, licence text 32
 - `is-plain-obj@4.1.0`: `MIT`, <https://github.com/sindresorhus/is-plain-obj>, licence text 38
 - `isarray@1.0.0`: `MIT`, by Julian Gruber, <https://github.com/juliangruber/isarray>, no licence file in the package
-- `js-yaml@4.1.1`: `MIT`, <https://github.com/nodeca/js-yaml>, licence text 80
+- `js-yaml@4.3.2`: `MIT`, <https://github.com/nodeca/js-yaml>, licence text 80
 - `json-stringify-safe@5.0.1`: `ISC`, <https://github.com/isaacs/json-stringify-safe>, licence text 8
 - `jsonfile@6.2.0`: `MIT`, <https://github.com/jprichardson/node-jsonfile>, licence text 81
 - `jsonfile@6.2.1`: `MIT`, <https://github.com/jprichardson/node-jsonfile>, licence text 81
@@ -1374,7 +1374,7 @@ SOFTWARE.
 
 #### Licence text 3
 
-Used by `@floating-ui/core@1.7.3`, `@floating-ui/dom@1.7.4`, `@floating-ui/react-dom@2.1.6`, `@floating-ui/utils@0.2.10`.
+Used by `@floating-ui/core@1.8.0`, `@floating-ui/dom@1.8.0`, `@floating-ui/react-dom@2.1.9`, `@floating-ui/utils@0.2.12`.
 
 ```text
 MIT License
@@ -4259,7 +4259,7 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #### Licence text 80
 
-Used by `js-yaml@4.1.1`.
+Used by `js-yaml@4.3.2`.
 
 ```text
 (The MIT License)

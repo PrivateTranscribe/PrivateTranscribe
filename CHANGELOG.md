@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.21.0 - 2026-10-06
+
+### Changed
+
+- PrivateTranscribe is open source under GPL-3.0-or-later, and the source code is on GitHub at github.com/PrivateTranscribe/PrivateTranscribe.
+- Converse, Agent mode and the Action Engine are behind a new Experimental features switch in Settings, off by default. If you use them, turn the switch on and your saved settings for them come back.
+- Every Whisper, Parakeet, Read Aloud, speaker detection and local AI model download is checked against a fixed SHA-256 fingerprint before it is used. A file that does not match is deleted.
+- The app uses the Manrope font.
+- Copies built from the source code never check for updates and send no usage analytics. The official installer is unchanged.
+
+### Added
+
+- Coding prompt instructions you can edit, with save and reset, kept separate from the writing style.
+
+### Fixed
+
+- Local Whisper dictation no longer splits words with stray spaces.
+- Coding enhancement with a local model keeps to the words you said instead of writing code of its own.
+- The microphone meter recovers when it freezes during startup.
+- Saving settings keeps lines you added to the .env file yourself, such as the debug log level.
+- Lowering the music while you record works when your Windows profile path contains a curly quote.
+- GPT-OSS 20B downloads again.
+
+### Security
+
+- The local AI server and the local Whisper server answer only the app. Each start makes a new random key or path, so a web page can no longer reach them.
+- The retired Parakeet server can no longer start. It listened on every network interface without a password.
+- Smart Context takes a file name only from a known code editor's window, so a web page title cannot choose which file is sent to a cloud model.
+- The app opens only its own page as a local file, and a file dropped outside the Transcribe drop zone is refused instead of opened.
+- Converse starts Claude Code with only your own Claude Code settings. A project's hooks, MCP servers, skills and instruction files load only after you choose "Use this folder's setup", and only while those files match what you were shown. The approval card shows the whole request.
+
 ## 0.20.2 - 2026-09-29
 
 ### Fixed
