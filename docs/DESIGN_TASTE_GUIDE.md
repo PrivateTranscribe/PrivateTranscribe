@@ -151,6 +151,25 @@ Rules:
 - If a primitive is close but not quite right, extend the primitive rather than
   overriding it with a pile of classNames at the call site.
 
+## Accessible names use the visible text
+
+`Toggle` inside a `SettingsRow` inherits the row's visible label and description
+through `aria-labelledby` and `aria-describedby`. This also works through layout
+wrappers and adds no DOM elements. Explicit `aria-label`, `aria-labelledby` and
+`aria-describedby` props override the corresponding inherited text. A toggle
+outside a `SettingsRow` needs an explicit accessible name. Other control types do
+not consume the row context automatically.
+
+Link text fields to their visible labels and help text with stable IDs. A
+placeholder is an example, not a substitute for the field's name. Icon-only
+actions need a specific name: **Remove Kubernetes** distinguishes dictionary
+removal buttons that would otherwise all be announced as **Remove word**.
+
+Keep the native keyboard interaction and state attributes. Toggles remain
+buttons with `aria-pressed` and support Space and Enter. Check computed accessible
+names and keyboard operation in Electron, and include before/after screenshots
+even when the change is semantic and the visible layout stays the same.
+
 ## Colour comes from the theme, always
 
 Every colour in the app is a token in the `@theme` block of `src/index.css`. Semantic

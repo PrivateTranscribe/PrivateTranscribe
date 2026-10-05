@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useId } from "react";
+import { SettingsControlContext } from "./settingsControlContext";
 
 interface SettingsSectionProps {
   title: string;
@@ -70,6 +71,9 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
   children,
   className = "",
 }) => {
+  const id = useId();
+  const labelId = `${id}-label`;
+  const descriptionId = description ? `${id}-description` : undefined;
   return (
     // The label doubles as the row's address: settings search scrolls to
     // `[data-settings-label="..."]` after it switches tab or page. Tagging the
@@ -81,14 +85,22 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-foreground">{label}</p>
+          <p id={labelId} className="text-sm font-medium text-foreground">
+            {label}
+          </p>
           {badge}
         </div>
         {description && (
-          <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">{description}</p>
+          <p id={descriptionId} className="text-[13px] text-muted-foreground mt-1 leading-relaxed">
+            {description}
+          </p>
         )}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="shrink-0">
+        <SettingsControlContext.Provider value={{ labelId, descriptionId }}>
+          {children}
+        </SettingsControlContext.Provider>
+      </div>
     </div>
   );
 };

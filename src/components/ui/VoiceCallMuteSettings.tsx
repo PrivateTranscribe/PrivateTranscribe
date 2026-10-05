@@ -131,7 +131,11 @@ export default function VoiceCallMuteSettings({
             hear it. Only fires when you are actually in a call.
           </p>
         </div>
-        <Toggle checked={enabled} onChange={onEnabledChange} />
+        <Toggle
+          aria-label="Mute my voice call while dictating"
+          checked={enabled}
+          onChange={onEnabledChange}
+        />
       </div>
 
       {enabled && !supported && (
