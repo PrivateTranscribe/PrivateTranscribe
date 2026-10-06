@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.21.1 - 2026-10-06
+
+### Fixed
+
+- Read Aloud puts back everything you had copied, including images and formatted text. It used to keep only the plain text.
+- Settings backups include your Read Aloud voice and reading speed and the call-mute shortcut and switch.
+- Importing settings no longer shows Import Failed after the import worked.
+- Screen readers announce the name of every settings switch and every dictionary remove button.
+
+### Security
+
+- The app runs on Electron 41.10.6, up from 41.5.0, which fixes several Electron security issues.
+- The tar, js-yaml, ws, form-data and electron-updater libraries the app ships with are updated to versions that fix published security advisories.
+
 ## 0.21.0 - 2026-10-06
 
 ### Changed
