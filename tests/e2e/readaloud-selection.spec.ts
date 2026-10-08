@@ -46,9 +46,16 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
  * clipboard round-trips both exactly — CR LF stays CR LF, and there is no
  * trailing newline added. The file is written without one so equality is
  * literal on both sides.
+ *
+ * It must also read as English to the Read Aloud language guard
+ * (readAloudLanguageGuard.js), or the app sends a non-English notice instead of
+ * speaking it and the overlay never sees the text. The earlier, shorter text
+ * scored as Finnish because åäö weighed too much against so few English words.
+ * This one scores en=0.91, fi=0.02 with tinyld 1.3.4.
  */
 const KNOWN_CONTENT =
-  "PrivateTranscribe selection capture proof.\r\nSecond line with åäö and 1234.";
+  "Read Aloud should capture this selected text from Notepad exactly as it was written.\r\n" +
+  "The second line includes a few accented letters, åäö, and the number 1234.";
 
 /** Set before every capture; the capture must put it back afterwards. */
 const CLIPBOARD_MARKER = "pre-existing clipboard content";
