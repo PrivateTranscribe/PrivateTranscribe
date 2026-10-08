@@ -1,0 +1,108 @@
+name: Parakeet CPU speed
+
+# Parakeet is about to become the default engine on PCs without an NVIDIA GPU,
+# so its CPU speed is now a product promise, not a nice-to-have. Our numbers
+# come from a 16-core desktop, which says little about a 4-core laptop. GitHub's
+# hosted Windows runner gives a public repo 4 vCPUs, which is much closer to
+# the machines this default lands on.
+#
+# The bar is the in-app speed test's: 10 s of speech must decode in 1.5 s or
+# less, judged on the median of five runs so one noisy run cannot decide it.
+# The clip ends mid-word, so this job judges speed only, never accuracy.
+#
+# Runs when the engine, its thread policy, or its dependencies change, and on
+# demand. The 680 MB model is cached, so a warm run is mostly inference.
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - "src/helpers/parakeet*.js"
+      - "src/helpers/wavPcm.js"
+      - "src/helpers/cpuThreads.js"
+      - "scripts/benchmark-parakeet-speed.js"
+      - "package-lock.json"
+      - ".github/workflows/parakeet-speed.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/helpers/parakeet*.js"
+      - "src/helpers/wavPcm.js"
+      - "src/helpers/cpuThreads.js"
+      - "scripts/benchmark-parakeet-speed.js"
+      - "package-lock.json"
+      - ".github/workflows/parakeet-speed.yml"
+
+concurrency:
+  group: parakeet-speed-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  speed:
+    name: Parakeet decode under 1.5 s on a hosted Windows runner
+    runs-on: windows-latest
+    # npm ci on Windows, a cold 680 MB model download, then about a minute of CPU work.
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Keyed on the model's own pinned SHA-256, so an unrelated registry edit
+      # (a Kokoro voice, say) does not throw away a 680 MB download.
+      - name: Read pinned model hash
+        id: model
+        run: |
+          sha=$(node -p "require('./src/models/modelRegistryData.json').parakeetModels['parakeet-tdt-0.6b-v3'].sha256")
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      # Restore and save are split for the same reason as in accuracy.yml: the
+      # combined action skips its save when the job fails, and this job exists
+      # to fail. The model is saved before the gate, once it is complete.
+      - name: Restore Parakeet model
+        id: cache-model
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/PrivateTranscribe/parakeet-models/parakeet-tdt-0.6b-v3
+          key: parakeet-model-${{ steps.model.outputs.sha256 }}
+
+      # The app's own download path, which checks the pinned SHA-256 before
+      # extracting. A no-op when the cache hit.
+      - name: Download Parakeet model
+        id: prepare-model
+        run: node scripts/benchmark-parakeet-speed.js --prepare-only
+
+      # Extraction renames the folder into place only when complete, so this
+      # never caches a half-written model.
+      - name: Save Parakeet model
+        if: always() && steps.cache-model.outputs.cache-hit != 'true' && steps.prepare-model.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/PrivateTranscribe/parakeet-models/parakeet-tdt-0.6b-v3
+          key: parakeet-model-${{ steps.model.outputs.sha256 }}
+
+      - name: Time Parakeet on the runner's CPU
+        run: node scripts/benchmark-parakeet-speed.js
