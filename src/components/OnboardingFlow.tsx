@@ -31,6 +31,7 @@ import { useDialogs } from "../hooks/useDialogs";
 import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useSettings } from "../hooks/useSettings";
+import { useParakeetSetup } from "../hooks/useParakeetSetup";
 import { setAgentNameIfEmpty as saveAgentName } from "../utils/agentName";
 import { formatHotkeyLabel, getDefaultHotkey } from "../utils/hotkeys";
 import { HotkeyInput } from "./ui/HotkeyInput";
@@ -88,6 +89,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const {
     useLocalWhisper,
     whisperModel,
+    localTranscriptionProvider,
     whisperForceCpu,
     cloudTranscriptionProvider,
     cloudTranscriptionModel,
@@ -166,6 +168,39 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     showSuccessToast: false, // Don't show toast during onboarding auto-registration
     showErrorToast: false,
   });
+
+  const parakeet = useParakeetSetup({
+    spokenLanguages,
+    localTranscriptionProvider,
+    applyEngine: updateTranscriptionSettings,
+  });
+  const usingParakeet = useLocalWhisper && localTranscriptionProvider === "nvidia";
+  // Parakeet needs its model and a passed speed test; Whisper needs its model.
+  const localModelReady = usingParakeet ? parakeet.ready : isModelDownloaded;
+
+  // Setup picks the engine until the user picks one by hand. Languages are
+  // asked on this step, so the choice follows them as they change.
+  const { fit: parakeetFit, fellBackToWhisper, engineChosenByUser } = parakeet;
+  const { selectParakeet, selectWhisper } = parakeet;
+  useEffect(() => {
+    if (currentStep !== 2 || !useLocalWhisper || !parakeetFit) return;
+    if (engineChosenByUser || fellBackToWhisper || parakeet.speedTest === "running") return;
+    if (parakeetFit.qualifies && localTranscriptionProvider !== "nvidia") {
+      void selectParakeet({ byUser: false });
+    } else if (!parakeetFit.qualifies && localTranscriptionProvider === "nvidia") {
+      selectWhisper({ byUser: false });
+    }
+  }, [
+    currentStep,
+    useLocalWhisper,
+    parakeetFit,
+    engineChosenByUser,
+    fellBackToWhisper,
+    parakeet.speedTest,
+    localTranscriptionProvider,
+    selectParakeet,
+    selectWhisper,
+  ]);
 
   const permissionsHook = usePermissions(showAlertDialog);
   useClipboard(showAlertDialog); // Initialize clipboard hook for permission checks
@@ -500,6 +535,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   /** Local Whisper on a CUDA-capable machine that has no usable GPU engine yet. */
   const gpuEngineWanted =
     useLocalWhisper &&
+    !usingParakeet &&
     isModelDownloaded &&
     !skippedModelSetup &&
     !whisperForceCpu &&
@@ -650,10 +686,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         const ratingLanguage = resolveRatingLanguage(preferredLanguage, spokenLanguages);
         const selectedLanguageLabel = getLanguageLabel(ratingLanguage || preferredLanguage);
         const showSmallModelLanguageWarning =
-          useLocalWhisper && isWeakForNonEnglish(whisperModel, ratingLanguage);
+          useLocalWhisper && !usingParakeet && isWeakForNonEnglish(whisperModel, ratingLanguage);
 
         const shouldShowCudaDownload =
           useLocalWhisper &&
+          !usingParakeet &&
           isModelDownloaded &&
           !whisperForceCpu &&
           cudaStatus?.supported &&
@@ -699,8 +736,8 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 {spokenLanguages.length > 1 && (
                   <>
                     {" "}
-                    Use one language per dictation. Switching mid-sentence is not something Whisper
-                    can follow.
+                    Use one language per dictation. Switching mid-sentence is not something the
+                    speech engine can follow.
                   </>
                 )}
               </p>
@@ -733,12 +770,11 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               onLocalModelSelect={(modelId) =>
                 updateTranscriptionSettings({ whisperModel: modelId })
               }
-              selectedLocalProvider="whisper"
-              onLocalProviderSelect={() =>
-                updateTranscriptionSettings({
-                  localTranscriptionProvider: "whisper",
-                })
+              selectedLocalProvider={localTranscriptionProvider}
+              onLocalProviderSelect={(provider) =>
+                updateTranscriptionSettings({ localTranscriptionProvider: provider })
               }
+              spokenLanguages={spokenLanguages}
               whisperForceCpu={whisperForceCpu}
               onWhisperForceCpuChange={setWhisperForceCpu}
               gpuSupported={onboardingGpuSupported}
@@ -824,6 +860,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               </div>
             )}
             {useLocalWhisper &&
+              !usingParakeet &&
               isModelDownloaded &&
               !whisperForceCpu &&
               cudaStatus?.supported &&
@@ -839,7 +876,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 Checking setup status...
               </div>
             )}
-            {useLocalWhisper && !isModelDownloaded && (
+            {useLocalWhisper && !localModelReady && (
               <div>
                 <Button
                   type="button"
@@ -1118,6 +1155,9 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           if (isLoadingStatus) {
             return false;
           }
+          if (usingParakeet) {
+            return skippedModelSetup || parakeet.ready;
+          }
           if (whisperModel === "") {
             return false;
           }
@@ -1177,9 +1217,13 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             : "Choose OpenAI or Groq to continue"
         : isLoadingStatus
           ? "Checking setup status..."
-          : !skippedModelSetup && !isModelDownloaded
-            ? "Download a model, or skip for now"
-            : "Select a setup option to continue"
+          : usingParakeet
+            ? parakeet.speedTest === "running"
+              ? "Testing Parakeet on this PC"
+              : "Download Parakeet, or skip for now"
+            : !skippedModelSetup && !isModelDownloaded
+              ? "Download a model, or skip for now"
+              : "Select a setup option to continue"
       : null;
 
   return (

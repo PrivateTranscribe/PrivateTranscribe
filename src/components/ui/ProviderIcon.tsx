@@ -1,4 +1,4 @@
-import { Brain, Wrench, HardDrive } from "lucide-react";
+import { Brain, Wrench, HardDrive, Gauge } from "lucide-react";
 import { getProviderIcon } from "@/utils/providerIcons";
 
 interface ProviderIconProps {
@@ -15,6 +15,12 @@ export function ProviderIcon({ provider, className = "w-5 h-5" }: ProviderIconPr
 
   if (provider === "local") {
     return <HardDrive className={className} />;
+  }
+
+  // Parakeet is offered to PCs without an NVIDIA card, where NVIDIA's logo
+  // would read as "needs NVIDIA".
+  if (provider === "parakeet") {
+    return <Gauge className={`${className} text-primary`} />;
   }
 
   const iconUrl = getProviderIcon(provider);

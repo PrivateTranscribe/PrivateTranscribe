@@ -43,6 +43,7 @@ import MicrophoneSettings from "./ui/MicrophoneSettings";
 import PermissionCard from "./ui/PermissionCard";
 import PasteToolsInfo from "./ui/PasteToolsInfo";
 import TranscriptionModelPicker from "./TranscriptionModelPicker";
+import ParakeetOfferCard from "./ParakeetOfferCard";
 import { ConfirmDialog, AlertDialog } from "./ui/dialog";
 import { useSettings } from "../hooks/useSettings";
 import { useDialogs } from "../hooks/useDialogs";
@@ -1744,7 +1745,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
         useLocalWhisper: typeof s.useLocalWhisper === "boolean" ? s.useLocalWhisper : undefined,
         localTranscriptionProvider:
           s.localTranscriptionProvider === "nvidia" || s.localTranscriptionProvider === "whisper"
-            ? "whisper"
+            ? s.localTranscriptionProvider
             : undefined,
         whisperModel: importedWhisperModel,
         whisperForceCpu: typeof s.whisperForceCpu === "boolean" ? s.whisperForceCpu : undefined,
@@ -2921,6 +2922,13 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
               description="Choose local or cloud transcription."
             />
 
+            <ParakeetOfferCard
+              useLocalWhisper={useLocalWhisper}
+              localTranscriptionProvider={localTranscriptionProvider}
+              spokenLanguages={spokenLanguages}
+              onEngineChange={updateTranscriptionSettings}
+            />
+
             <TranscriptionModelPicker
               selectedCloudProvider={cloudTranscriptionProvider}
               onCloudProviderSelect={(provider) =>
@@ -2945,6 +2953,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
               gpuSupported={gpuSupportedForPicker}
               recommendedLocalModel={recommendedWhisperModelForPicker}
               preferredLanguage={resolveRatingLanguage(preferredLanguage, spokenLanguages)}
+              spokenLanguages={spokenLanguages}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => {
                 updateTranscriptionSettings({ useLocalWhisper: isLocal });

@@ -77,7 +77,7 @@ export default function HardwareSetupStep({
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: rec.whisperModel || "turbo",
+      whisperModel: rec.whisperModel || "base",
       whisperForceCpu: rec.gpuCategory !== "nvidia_cuda",
     });
     setApplied(true);
@@ -88,7 +88,7 @@ export default function HardwareSetupStep({
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "turbo",
+      whisperModel: "base",
       whisperForceCpu: true,
     });
     setApplied(true);
@@ -98,7 +98,7 @@ export default function HardwareSetupStep({
     onApplyRecommendations({
       useLocalWhisper: true,
       localTranscriptionProvider: "whisper",
-      whisperModel: "turbo",
+      whisperModel: "base",
       whisperForceCpu: true,
     });
     setApplied(true);

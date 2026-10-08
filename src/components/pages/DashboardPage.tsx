@@ -317,7 +317,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
       if (cloudTranscriptionProvider === "custom") return "Cloud (Custom)";
       return "Cloud (OpenAI)";
     }
-    if (localTranscriptionProvider === "nvidia") return "NVIDIA Parakeet";
+    if (localTranscriptionProvider === "nvidia") return "Parakeet";
     return whisperModel
       ? `Whisper ${whisperModel.charAt(0).toUpperCase() + whisperModel.slice(1)}`
       : "Whisper";
@@ -325,9 +325,9 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const engineLabel = useMemo(() => {
     if (!useLocalWhisper) return "Cloud API";
-    // Parakeet runs via sherpa-onnx on CPU threads ("NVIDIA" is the model's
-    // maker, not the execution device) — don't claim GPU on machines without one.
-    if (localTranscriptionProvider === "nvidia") return "CPU - Parakeet";
+    // Parakeet runs on CPU threads ("NVIDIA" is the model's maker, not the
+    // device), and the Model row already names it.
+    if (localTranscriptionProvider === "nvidia") return "CPU";
     if (whisperForceCpu || cudaStatus?.forceCpu) return "CPU";
 
     const engineStatus = cudaStatus?.engineStatus;

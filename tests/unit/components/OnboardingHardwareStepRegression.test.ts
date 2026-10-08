@@ -51,10 +51,12 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     const contents = fs.readFileSync(stepPath, "utf8");
 
-    // When hardware detection fails or returns no recommendations, the defaults
-    // use "turbo" as the whisper model — it's the recommended default for all users.
-    const hasTurboDefault = /whisperModel:\s*["']turbo["']/.test(contents);
-    expect(hasTurboDefault).toBe(true);
+    // When hardware is unknown the model must run on a CPU. Turbo is the slowest
+    // model there, and the detector's own failure default is already base.
+    expect(/whisperModel:\s*["']base["']/.test(contents)).toBe(true);
+    expect(/rec\.whisperModel \|\| ["']base["']/.test(contents)).toBe(true);
+    expect(/whisperModel:\s*["']turbo["']/.test(contents)).toBe(false);
+    expect(/\|\|\s*["']turbo["']/.test(contents)).toBe(false);
   });
 
   it("HardwareSetupStep renders 'Continue with Safe Defaults' button in the error state panel", () => {
@@ -143,6 +145,8 @@ describe("Onboarding flow – hardware step regression checks", () => {
 
     const usesLocalWhisper = /useLocalWhisper:\s*true/.test(defaultsBlock);
     expect(usesLocalWhisper).toBe(true);
+
+    expect(/whisperModel:\s*["']base["']/.test(defaultsBlock)).toBe(true);
   });
 
   it("modelRegistryData.json marks turbo as the sole recommended whisper model", () => {

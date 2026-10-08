@@ -1,7 +1,20 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type ComponentType } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Download, Trash2, Cloud, Lock, X, RefreshCw, HardDrive, Cpu, Zap } from "lucide-react";
+import {
+  Download,
+  Trash2,
+  Cloud,
+  Lock,
+  X,
+  RefreshCw,
+  HardDrive,
+  Cpu,
+  Zap,
+  Loader2,
+  Gauge,
+  AudioLines,
+} from "lucide-react";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { ProviderTabs } from "./ui/ProviderTabs";
 import ModelCardList from "./ui/ModelCardList";
@@ -22,6 +35,13 @@ import { API_ENDPOINTS, normalizeBaseUrl } from "../config/constants";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 import { isValidApiUrl } from "../helpers/urlValidation";
 import { getWhisperPerfRating } from "../utils/modelAccuracy";
+import { useParakeetSetup, PARAKEET_FALLBACK_LINE } from "../hooks/useParakeetSetup";
+import {
+  PARAKEET_DOWNLOAD_MB,
+  PARAKEET_MODEL_ID,
+  describeUnsupportedLanguages,
+} from "../utils/parakeetLanguages";
+import type { LocalTranscriptionProvider } from "../types/electron";
 
 interface LocalModel {
   model: string;
@@ -205,6 +225,71 @@ function LocalModelCard({
   );
 }
 
+interface EngineOptionButtonProps {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  subtitle: string;
+  isActive: boolean;
+  recommended: boolean;
+  disabled: boolean;
+  title?: string;
+  testId?: string;
+  onClick: () => void;
+}
+
+// One look for every engine and device choice in the picker.
+function EngineOptionButton({
+  icon: Icon,
+  label,
+  subtitle,
+  isActive,
+  recommended,
+  disabled,
+  title,
+  testId,
+  onClick,
+}: EngineOptionButtonProps) {
+  const active = isActive && !disabled;
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onClick()}
+      disabled={disabled}
+      title={title}
+      aria-pressed={active}
+      data-testid={testId}
+      className={`flex flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-all duration-150 ${
+        disabled
+          ? "opacity-40 cursor-not-allowed border-border-subtle/40 bg-surface-raised/20"
+          : active
+            ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
+            : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
+      }`}
+    >
+      <div className="flex items-center justify-between w-full mb-0.5">
+        <div className="flex items-center gap-1 min-w-0">
+          <Icon
+            className={`w-3 h-3 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`}
+          />
+          <span
+            className={`text-[10px] font-semibold leading-tight truncate ${active ? "text-foreground" : "text-muted-foreground"}`}
+          >
+            {label}
+          </span>
+        </div>
+        {active && <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 ml-1" />}
+      </div>
+      <span className="text-[9px] text-muted-foreground/50 leading-tight">{subtitle}</span>
+      {/* The badge marks the right choice, even on the active card. */}
+      {recommended && !disabled && (
+        <span className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-primary/70 bg-primary/10 px-1 py-0.5 rounded leading-none">
+          Recommended
+        </span>
+      )}
+    </button>
+  );
+}
+
 interface TranscriptionModelPickerProps {
   selectedCloudProvider: string;
   onCloudProviderSelect: (providerId: string) => void;
@@ -213,7 +298,9 @@ interface TranscriptionModelPickerProps {
   selectedLocalModel: string;
   onLocalModelSelect: (modelId: string) => void;
   selectedLocalProvider?: string;
-  onLocalProviderSelect?: (providerId: string) => void;
+  onLocalProviderSelect?: (providerId: LocalTranscriptionProvider) => void;
+  /** The languages the user speaks, for Parakeet's language check. */
+  spokenLanguages?: string[];
   useLocalWhisper: boolean;
   onModeChange: (useLocal: boolean) => void;
   openaiApiKey: string;
@@ -311,6 +398,7 @@ export default function TranscriptionModelPicker({
   gpuSupported = false,
   recommendedLocalModel,
   preferredLanguage,
+  spokenLanguages = [],
   onDownloadComplete,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
@@ -323,12 +411,17 @@ export default function TranscriptionModelPicker({
   } | null>(null);
   const hasLoadedRef = useRef(false);
 
-  // Normalize legacy provider selections to Whisper-only local mode.
-  useEffect(() => {
-    if (selectedLocalProvider && selectedLocalProvider !== "whisper") {
-      onLocalProviderSelect?.("whisper");
-    }
-  }, [selectedLocalProvider, onLocalProviderSelect]);
+  const localProvider: LocalTranscriptionProvider =
+    selectedLocalProvider === "nvidia" ? "nvidia" : "whisper";
+  const parakeet = useParakeetSetup({
+    spokenLanguages,
+    localTranscriptionProvider: localProvider,
+    applyEngine: ({ localTranscriptionProvider, whisperModel }) => {
+      if (whisperModel) onLocalModelSelect(whisperModel);
+      onLocalProviderSelect?.(localTranscriptionProvider);
+    },
+  });
+  const usingParakeet = localProvider === "nvidia";
 
   // Fetch engine status to show actual backend state
   useEffect(() => {
@@ -556,19 +649,16 @@ export default function TranscriptionModelPicker({
 
   const handleEngineChange = useCallback(
     (engine: LocalEngine) => {
-      onLocalProviderSelect?.("whisper");
       onWhisperForceCpuChange?.(engine === "cpu");
     },
-    [onLocalProviderSelect, onWhisperForceCpuChange]
+    [onWhisperForceCpuChange]
   );
 
-  // Wrapper to set both model and provider when selecting a local model
   const handleWhisperModelSelect = useCallback(
     (modelId: string) => {
-      onLocalProviderSelect?.("whisper");
       onLocalModelSelect(modelId);
     },
-    [onLocalModelSelect, onLocalProviderSelect]
+    [onLocalModelSelect]
   );
 
   const handleBaseUrlBlur = useCallback(() => {
@@ -791,6 +881,146 @@ export default function TranscriptionModelPicker({
     );
   };
 
+  const handleParakeetDelete = useCallback(() => {
+    showConfirmDialog({
+      title: "Delete Parakeet",
+      description: `Dictating with Parakeet again needs the ${PARAKEET_DOWNLOAD_MB} MB download.`,
+      onConfirm: () => void parakeet.deleteParakeet(),
+      variant: "destructive",
+    });
+  }, [showConfirmDialog, parakeet]);
+
+  const renderEngineChoice = () => {
+    const fit = parakeet.fit;
+    const parakeetDisabled = !!fit && !fit.hardwareEligible && !usingParakeet;
+    // A failed speed test on this PC outranks the hardware and language checks.
+    const recommendParakeet = !!fit?.qualifies && parakeet.lastResult?.passed !== false;
+    const languageWarning = fit && !parakeetDisabled ? describeUnsupportedLanguages(fit) : null;
+    return (
+      <div className="space-y-2 p-2.5 pb-0">
+        <div role="group" aria-label="Speech engine" className="grid grid-cols-2 gap-1.5">
+          <EngineOptionButton
+            icon={Gauge}
+            label="Parakeet (faster)"
+            subtitle={parakeetDisabled ? "Not available on this PC" : "Runs on the CPU"}
+            isActive={usingParakeet}
+            recommended={recommendParakeet}
+            disabled={parakeetDisabled}
+            testId="engine-parakeet"
+            onClick={() => void parakeet.selectParakeet()}
+          />
+          <EngineOptionButton
+            icon={AudioLines}
+            label="Whisper"
+            subtitle={gpuSupported ? "More languages, GPU option" : "More languages"}
+            isActive={!usingParakeet}
+            recommended={!!fit && !recommendParakeet}
+            disabled={false}
+            testId="engine-whisper"
+            onClick={() => parakeet.selectWhisper()}
+          />
+        </div>
+        {parakeetDisabled && fit && fit.hardwareReasons.length > 0 && (
+          <ul
+            className="space-y-0.5 px-0.5 text-[10px] leading-snug text-muted-foreground/70"
+            data-testid="parakeet-hardware-reasons"
+          >
+            {fit.hardwareReasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
+        {languageWarning && (
+          <div
+            className="rounded-md border border-warning/25 bg-warning/8 px-2.5 py-1.5 text-[11px] leading-snug text-warning"
+            data-testid="parakeet-language-warning"
+          >
+            {languageWarning}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderParakeetPanel = () => {
+    const downloaded = parakeet.modelDownloaded === true;
+    const showSpeedResult =
+      downloaded && parakeet.speedTest !== "running" && parakeet.lastResult?.passed === true;
+    return (
+      <div data-testid="parakeet-panel">
+        {variant === "onboarding" &&
+          parakeet.fit?.qualifies &&
+          parakeet.lastResult?.passed !== false && (
+            <p className="px-2.5 pt-2 text-xs text-foreground/80" data-testid="parakeet-reason">
+              Parakeet is the fastest engine for this PC.
+            </p>
+          )}
+        {parakeet.isDownloading && (
+          <div className="mt-2">
+            <DownloadProgressBar
+              modelName="Parakeet"
+              progress={parakeet.downloadProgress}
+              isInstalling={parakeet.isInstalling}
+            />
+          </div>
+        )}
+        {parakeet.downloadFailed && !parakeet.isDownloading && (
+          <div className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/8 px-3 py-2">
+            <span className="text-xs text-destructive truncate">Parakeet did not download</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2.5 text-[11px] shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+              onClick={parakeet.retryDownload}
+            >
+              <RefreshCw size={11} className="mr-1" />
+              Retry
+            </Button>
+          </div>
+        )}
+        <div className="space-y-2 p-3">
+          <LocalModelCard
+            modelId={PARAKEET_MODEL_ID}
+            name="Parakeet"
+            description="NVIDIA Parakeet TDT 0.6B v3"
+            size={`${PARAKEET_DOWNLOAD_MB} MB`}
+            isSelected={downloaded}
+            isDownloaded={downloaded}
+            isDownloading={parakeet.isDownloading}
+            isCancelling={parakeet.isCancelling}
+            provider="parakeet"
+            languageLabel="25 European languages"
+            onSelect={() => {}}
+            onDelete={handleParakeetDelete}
+            onDownload={parakeet.downloadParakeet}
+            onCancel={parakeet.cancelDownload}
+            styles={styles}
+          />
+          <div
+            className="flex items-center gap-1.5 px-0.5 text-[11px] text-muted-foreground"
+            data-testid="parakeet-speed"
+          >
+            {parakeet.speedTest === "running" ? (
+              <>
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                <span>Testing speed on this PC</span>
+              </>
+            ) : showSpeedResult && parakeet.lastResultText ? (
+              <>
+                <Gauge className="h-3 w-3 shrink-0 text-primary" />
+                <span>{parakeet.lastResultText}</span>
+              </>
+            ) : !downloaded && !parakeet.isDownloading ? (
+              <span>
+                After the download, a short speed test checks that Parakeet suits this PC.
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`space-y-3 ${className}`}>
       {/* Integrated mode toggle - always visible */}
@@ -896,118 +1126,102 @@ export default function TranscriptionModelPicker({
         </div>
       ) : (
         <div className={styles.container}>
-          <div className="grid grid-cols-2 gap-1.5 p-2.5 pb-2.5">
-            {(
-              [
-                {
-                  id: "cpu" as const,
-                  icon: Cpu,
-                  label: "CPU only",
-                  subtitle: "Never uses GPU",
-                  recommended: !gpuSupported,
-                  disabled: false,
-                  title: undefined,
-                },
-                {
-                  id: "gpu" as const,
-                  icon: Zap,
-                  label: "GPU (CUDA)",
-                  subtitle: gpuSupported ? "Faster · translation" : "Needs NVIDIA GPU",
-                  recommended: gpuSupported,
-                  disabled: !gpuSupported,
-                  title: !gpuSupported ? "Requires an NVIDIA GPU with CUDA support" : undefined,
-                },
-              ] as const
-            ).map((engine) => {
-              const isActive = selectedEngine === engine.id;
-              const Icon = engine.icon;
-              // Show "Recommended" badge on the recommended engine, even when it's the
-              // active/selected card — the badge marks the right choice, not a suggestion to switch.
-              const showRecommended = engine.recommended && !engine.disabled;
-              return (
-                <button
-                  key={engine.id}
-                  onClick={() => !engine.disabled && handleEngineChange(engine.id)}
-                  disabled={engine.disabled}
-                  title={engine.title}
-                  className={`flex flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-all duration-150 ${
-                    engine.disabled
-                      ? "opacity-40 cursor-not-allowed border-border-subtle/40 bg-surface-raised/20"
-                      : isActive
-                        ? "border-primary bg-primary/10 shadow-sm cursor-pointer"
-                        : "border-border-subtle/60 bg-surface-raised/30 hover:bg-surface-raised/60 hover:border-border-subtle cursor-pointer"
-                  }`}
+          {renderEngineChoice()}
+
+          {usingParakeet ? (
+            renderParakeetPanel()
+          ) : (
+            <>
+              {parakeet.fellBackToWhisper && (
+                <p
+                  className="mx-2.5 mt-2 rounded-md border border-border-subtle bg-surface-raised/40 px-2.5 py-1.5 text-xs text-foreground"
+                  data-testid="parakeet-fallback"
                 >
-                  <div className="flex items-center justify-between w-full mb-0.5">
-                    <div className="flex items-center gap-1 min-w-0">
-                      <Icon
-                        className={`w-3 h-3 shrink-0 ${isActive && !engine.disabled ? "text-primary" : "text-muted-foreground"}`}
-                      />
-                      <span
-                        className={`text-[10px] font-semibold leading-tight truncate ${isActive && !engine.disabled ? "text-foreground" : "text-muted-foreground"}`}
-                      >
-                        {engine.label}
-                      </span>
-                    </div>
-                    {isActive && !engine.disabled && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 ml-1" />
-                    )}
-                  </div>
-                  <span className="text-[9px] text-muted-foreground/50 leading-tight">
-                    {engine.subtitle}
-                  </span>
-                  {showRecommended && (
-                    <span className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-primary/70 bg-primary/10 px-1 py-0.5 rounded leading-none">
-                      Recommended
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                  {PARAKEET_FALLBACK_LINE}
+                </p>
+              )}
 
-          <p className="px-2.5 pb-2 text-[10px] leading-snug text-muted-foreground/60">
-            CPU runs on any computer. GPU (CUDA) is several times faster but needs an NVIDIA
-            graphics card — pick it only if you have one.
-          </p>
-
-          {engineStatus && (
-            <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
-              <div
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  engineStatus.fallback?.active
-                    ? "bg-warning"
-                    : engineStatus.running
-                      ? "bg-success"
-                      : "bg-muted-foreground"
-                }`}
-              />
-              <span className="text-[9px] text-muted-foreground/60">
-                {engineStatus.fallback?.active
-                  ? "CPU fallback (retrying CUDA automatically)"
-                  : engineStatus.effectiveEngine === "cuda"
-                    ? "CUDA active"
-                    : engineStatus.effectiveEngine === "cpu"
-                      ? "CPU active"
-                      : engineStatus.running
-                        ? "Running"
-                        : "Idle"}
-              </span>
-            </div>
-          )}
-
-          {progressDisplay}
-          {retryBanner}
-
-          <div className="p-3 pt-0">
-            {renderLocalModels()}
-            {diskUsageMb > 0 && (
-              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-                <HardDrive size={10} />
-                <span>{diskUsageMb} MB used</span>
+              <div className="grid grid-cols-2 gap-1.5 p-2.5 pb-2.5">
+                {(
+                  [
+                    {
+                      id: "cpu" as const,
+                      icon: Cpu,
+                      label: "CPU only",
+                      subtitle: "Never uses GPU",
+                      recommended: !gpuSupported,
+                      disabled: false,
+                      title: undefined,
+                    },
+                    {
+                      id: "gpu" as const,
+                      icon: Zap,
+                      label: "GPU (CUDA)",
+                      subtitle: gpuSupported ? "Faster · translation" : "Needs NVIDIA GPU",
+                      recommended: gpuSupported,
+                      disabled: !gpuSupported,
+                      title: !gpuSupported ? "Requires an NVIDIA GPU with CUDA support" : undefined,
+                    },
+                  ] as const
+                ).map((engine) => (
+                  <EngineOptionButton
+                    key={engine.id}
+                    icon={engine.icon}
+                    label={engine.label}
+                    subtitle={engine.subtitle}
+                    isActive={selectedEngine === engine.id}
+                    recommended={engine.recommended}
+                    disabled={engine.disabled}
+                    title={engine.title}
+                    onClick={() => handleEngineChange(engine.id)}
+                  />
+                ))}
               </div>
-            )}
-          </div>
+
+              <p className="px-2.5 pb-2 text-[10px] leading-snug text-muted-foreground/60">
+                CPU runs on any computer. GPU (CUDA) is several times faster but needs an NVIDIA
+                graphics card — pick it only if you have one.
+              </p>
+
+              {engineStatus && (
+                <div className="flex items-center gap-1.5 px-2.5 pb-1.5">
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      engineStatus.fallback?.active
+                        ? "bg-warning"
+                        : engineStatus.running
+                          ? "bg-success"
+                          : "bg-muted-foreground"
+                    }`}
+                  />
+                  <span className="text-[9px] text-muted-foreground/60">
+                    {engineStatus.fallback?.active
+                      ? "CPU fallback (retrying CUDA automatically)"
+                      : engineStatus.effectiveEngine === "cuda"
+                        ? "CUDA active"
+                        : engineStatus.effectiveEngine === "cpu"
+                          ? "CPU active"
+                          : engineStatus.running
+                            ? "Running"
+                            : "Idle"}
+                  </span>
+                </div>
+              )}
+
+              {progressDisplay}
+              {retryBanner}
+
+              <div className="p-3 pt-0">
+                {renderLocalModels()}
+                {diskUsageMb > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+                    <HardDrive size={10} />
+                    <span>{diskUsageMb} MB used</span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

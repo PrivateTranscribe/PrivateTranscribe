@@ -16,6 +16,11 @@ import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
 import ReasoningService from "../services/ReasoningService";
 import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
+import { markEngineChosen, migrateRetiredParakeetSetting } from "../utils/parakeetEngineMigration";
+
+// At import, so it lands before either window renders or records: every window
+// loads this module through main.jsx, and audioManager reads localStorage raw.
+migrateRetiredParakeetSetting();
 
 export interface TranscriptionSettings {
   useLocalWhisper: boolean;
@@ -98,8 +103,7 @@ export function useSettings() {
   const [localTranscriptionProvider, setLocalTranscriptionProvider] =
     useLocalStorage<LocalTranscriptionProvider>("localTranscriptionProvider", "whisper", {
       serialize: String,
-      // Legacy cleanup: "nvidia" is mapped to whisper.
-      deserialize: () => "whisper",
+      deserialize: (value) => (value === "nvidia" ? "nvidia" : "whisper"),
     });
 
   const [whisperForceCpu, setWhisperForceCpu] = useLocalStorage("whisperForceCpu", false, {
@@ -997,8 +1001,10 @@ export function useSettings() {
     (settings: Partial<TranscriptionSettings>) => {
       if (settings.useLocalWhisper !== undefined) setUseLocalWhisper(settings.useLocalWhisper);
       if (settings.whisperModel !== undefined) setWhisperModel(settings.whisperModel);
-      if (settings.localTranscriptionProvider !== undefined)
+      if (settings.localTranscriptionProvider !== undefined) {
         setLocalTranscriptionProvider(settings.localTranscriptionProvider);
+        markEngineChosen();
+      }
       if (settings.whisperForceCpu !== undefined) setWhisperForceCpu(settings.whisperForceCpu);
       if (settings.whisperServerIdleTimeoutMinutes !== undefined)
         setWhisperServerIdleTimeoutMinutes(settings.whisperServerIdleTimeoutMinutes);
