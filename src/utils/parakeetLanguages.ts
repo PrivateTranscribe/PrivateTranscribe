@@ -43,12 +43,20 @@ export function unsupportedParakeetLanguages(codes: readonly string[]): string[]
   return codes.filter((code) => !PARAKEET_LANGUAGES.includes(code));
 }
 
+const WEAK_GPU_WHISPER_MODELS = new Set(["tiny", "base", "small"]);
+
+/** Whisper models Parakeet beats on accuracy. Larger ones beat Parakeet. */
+export function isWeakWhisperModel(model: string | null | undefined): boolean {
+  return WEAK_GPU_WHISPER_MODELS.has(model ?? "");
+}
+
 export interface ParakeetFit {
   /** Cores, AVX2 and memory pass. Without this Parakeet cannot be picked. */
   hardwareEligible: boolean;
   hardwareReasons: string[];
-  /** NVIDIA CUDA PCs run Whisper on the GPU, so Parakeet is never their default. */
   isCudaPc: boolean;
+  /** A CUDA card with room for Turbo or Large, which beat Parakeet; Base and Small do not. */
+  strongGpuWhisper: boolean;
   unsupportedLanguages: string[];
   languagesFromLocale: boolean;
   /** Passes every check, so Parakeet is the default or the one-time offer. */
@@ -63,16 +71,32 @@ export function evaluateParakeetFit(
   const hardware = recommendations?.parakeetHardware;
   const hardwareEligible = hardware?.eligible === true;
   const isCudaPc = recommendations?.gpuCategory === "nvidia_cuda";
+  // Under 6 GB of video memory the detector picks Base or Small, which make
+  // more mistakes than Parakeet on the CPU (Danish WER 38-63% against 31%).
+  const strongGpuWhisper = isCudaPc && !isWeakWhisperModel(recommendations?.whisperModel);
   const { codes, fromLocale } = languagesToCheck(spokenLanguages, uiLocale);
   const unsupportedLanguages = unsupportedParakeetLanguages(codes);
   return {
     hardwareEligible,
     hardwareReasons: hardware?.reasons ?? [],
     isCudaPc,
+    strongGpuWhisper,
     unsupportedLanguages,
     languagesFromLocale: fromLocale,
-    qualifies: hardwareEligible && !isCudaPc && unsupportedLanguages.length === 0,
+    qualifies: hardwareEligible && !strongGpuWhisper && unsupportedLanguages.length === 0,
   };
+}
+
+/**
+ * Whether to recommend Parakeet to someone on `whisperModel`. On an NVIDIA PC a
+ * larger Whisper model picked by hand already beats Parakeet, whatever the card.
+ */
+export function recommendsParakeet(
+  fit: ParakeetFit | null | undefined,
+  whisperModel: string | null | undefined
+): boolean {
+  if (!fit?.qualifies) return false;
+  return !fit.isCudaPc || isWeakWhisperModel(whisperModel);
 }
 
 /** "Japanese", "Japanese and Korean", "Japanese, Korean and Thai". */

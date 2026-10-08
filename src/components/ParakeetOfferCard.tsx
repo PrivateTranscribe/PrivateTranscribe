@@ -3,12 +3,13 @@ import { Gauge } from "lucide-react";
 import { Button } from "./ui/button";
 import { IconTile } from "./ui/IconTile";
 import { useParakeetSetup, PARAKEET_OFFER_DISMISSED_KEY } from "../hooks/useParakeetSetup";
-import { PARAKEET_DOWNLOAD_MB } from "../utils/parakeetLanguages";
+import { PARAKEET_DOWNLOAD_MB, recommendsParakeet } from "../utils/parakeetLanguages";
 import type { LocalTranscriptionProvider } from "../types/electron";
 
 interface ParakeetOfferCardProps {
   useLocalWhisper: boolean;
   localTranscriptionProvider: LocalTranscriptionProvider;
+  whisperModel: string;
   spokenLanguages: string[];
   onEngineChange: (change: {
     localTranscriptionProvider: LocalTranscriptionProvider;
@@ -25,12 +26,13 @@ function readDismissed(): boolean {
 }
 
 /**
- * One-time offer for an existing Whisper user on a PC without an NVIDIA GPU
- * that passes Parakeet's hardware and language checks.
+ * One-time offer for an existing Whisper user whose PC has no NVIDIA GPU, or
+ * one too small for Turbo, and passes Parakeet's hardware and language checks.
  */
 export default function ParakeetOfferCard({
   useLocalWhisper,
   localTranscriptionProvider,
+  whisperModel,
   spokenLanguages,
   onEngineChange,
 }: ParakeetOfferCardProps) {
@@ -48,7 +50,7 @@ export default function ParakeetOfferCard({
     useLocalWhisper &&
     localTranscriptionProvider === "whisper" &&
     !testedAndFailed &&
-    parakeet.fit?.qualifies === true;
+    recommendsParakeet(parakeet.fit, whisperModel);
   if (!visible) return null;
 
   const dismiss = () => {
@@ -72,10 +74,11 @@ export default function ParakeetOfferCard({
         <div className="space-y-0.5">
           <p className="text-sm font-medium text-foreground">Try Parakeet on this PC</p>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            On a PC without an NVIDIA graphics card, Parakeet transcribes about twice as fast as
-            Whisper Base with fewer mistakes, and it covers the languages you speak. It is a{" "}
-            {PARAKEET_DOWNLOAD_MB} MB download followed by a short speed test. If your PC is too
-            slow for it, you stay on Whisper.
+            {parakeet.fit?.isCudaPc
+              ? "Your graphics card only has room for a small Whisper model. Parakeet runs on the processor instead and makes fewer mistakes,"
+              : "On a PC without an NVIDIA graphics card, Parakeet transcribes about twice as fast as Whisper Base with fewer mistakes,"}{" "}
+            and it covers the languages you speak. It is a {PARAKEET_DOWNLOAD_MB} MB download
+            followed by a short speed test. If your PC is too slow for it, you stay on Whisper.
           </p>
         </div>
         <div className="flex items-center gap-2">

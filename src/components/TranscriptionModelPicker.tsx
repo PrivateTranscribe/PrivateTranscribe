@@ -40,6 +40,7 @@ import {
   PARAKEET_DOWNLOAD_MB,
   PARAKEET_MODEL_ID,
   describeUnsupportedLanguages,
+  recommendsParakeet,
 } from "../utils/parakeetLanguages";
 import type { LocalTranscriptionProvider } from "../types/electron";
 
@@ -893,15 +894,18 @@ export default function TranscriptionModelPicker({
   const renderEngineChoice = () => {
     const fit = parakeet.fit;
     const parakeetDisabled = !!fit && !fit.hardwareEligible && !usingParakeet;
+    // Setup compares with the detector's pick; settings with the model in use.
     // A failed speed test on this PC outranks the hardware and language checks.
-    const recommendParakeet = !!fit?.qualifies && parakeet.lastResult?.passed !== false;
+    const recommendParakeet =
+      (variant === "onboarding" ? !!fit?.qualifies : recommendsParakeet(fit, selectedLocalModel)) &&
+      parakeet.lastResult?.passed !== false;
     const languageWarning = fit && !parakeetDisabled ? describeUnsupportedLanguages(fit) : null;
     return (
       <div className="space-y-2 p-2.5 pb-0">
         <div role="group" aria-label="Speech engine" className="grid grid-cols-2 gap-1.5">
           <EngineOptionButton
             icon={Gauge}
-            label="Parakeet (faster)"
+            label={fit?.isCudaPc ? "Parakeet" : "Parakeet (faster)"}
             subtitle={parakeetDisabled ? "Not available on this PC" : "Runs on the CPU"}
             isActive={usingParakeet}
             recommended={recommendParakeet}
@@ -952,7 +956,9 @@ export default function TranscriptionModelPicker({
           parakeet.fit?.qualifies &&
           parakeet.lastResult?.passed !== false && (
             <p className="px-2.5 pt-2 text-xs text-foreground/80" data-testid="parakeet-reason">
-              Parakeet is the fastest engine for this PC.
+              {parakeet.fit.isCudaPc
+                ? "Parakeet makes fewer mistakes than the Whisper model your graphics card has room for."
+                : "Parakeet is the fastest engine for this PC."}
             </p>
           )}
         {parakeet.isDownloading && (

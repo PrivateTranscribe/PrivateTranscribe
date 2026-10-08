@@ -17,8 +17,8 @@ export function ProviderIcon({ provider, className = "w-5 h-5" }: ProviderIconPr
     return <HardDrive className={className} />;
   }
 
-  // Parakeet is offered to PCs without an NVIDIA card, where NVIDIA's logo
-  // would read as "needs NVIDIA".
+  // Parakeet runs on the processor, so NVIDIA's logo would read as "needs
+  // NVIDIA".
   if (provider === "parakeet") {
     return <Gauge className={`${className} text-primary`} />;
   }

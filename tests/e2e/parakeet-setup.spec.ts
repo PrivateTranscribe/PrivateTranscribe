@@ -4,9 +4,10 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { test, expect } from "./fixtures/electron-app";
 
 /**
- * Parakeet as the local engine on PCs without an NVIDIA CUDA GPU: chosen in
- * setup when the PC passes the hardware and language checks, kept only when
- * the speed test passes, offered once to existing Whisper users.
+ * Parakeet as the local engine on PCs without an NVIDIA CUDA GPU, or with one
+ * too small for Whisper Turbo: chosen in setup when the PC passes the hardware
+ * and language checks, kept only when the speed test passes, offered once to
+ * existing Whisper users.
  *
  * Hardware detection and every Parakeet model handler are faked in the main
  * process, so no run downloads the 487 MB model or depends on this PC.
@@ -23,6 +24,9 @@ type FakePc = {
   gpuCategory: "non_nvidia_gpu" | "nvidia_cuda" | "cpu_only";
   parakeetHardware: { eligible: boolean; reasons: string[] };
   physicalCores: number;
+  /** The detector's Whisper pick; an NVIDIA card's video memory decides it. */
+  whisperModel?: string;
+  vramMb?: number;
 };
 
 const AMD_LAPTOP: FakePc = {
@@ -30,6 +34,17 @@ const AMD_LAPTOP: FakePc = {
   parakeetHardware: { eligible: true, reasons: [] },
   physicalCores: 6,
 };
+
+// Under 6 GB of video memory the detector picks Small, which Parakeet beats.
+const SMALL_NVIDIA: FakePc = {
+  gpuCategory: "nvidia_cuda",
+  parakeetHardware: { eligible: true, reasons: [] },
+  physicalCores: 6,
+  whisperModel: "small",
+  vramMb: 4096,
+};
+
+const LARGE_NVIDIA: FakePc = { ...SMALL_NVIDIA, whisperModel: "turbo", vramMb: 8192 };
 
 const WEAK_PC: FakePc = {
   gpuCategory: "cpu_only",
@@ -46,6 +61,7 @@ async function fakeHardware(electronApp: ElectronApplication, page: Page, pc: Fa
   const real: any = await page.evaluate(() => (window as any).electronAPI.detectHardware());
   const d = real.detection;
   const amd = pc.gpuCategory === "non_nvidia_gpu";
+  const nvidia = pc.gpuCategory === "nvidia_cuda";
   const fake = {
     ...real,
     success: true,
@@ -53,29 +69,31 @@ async function fakeHardware(electronApp: ElectronApplication, page: Page, pc: Fa
       ...d,
       gpu: {
         ...d.gpu,
-        available: amd,
-        vendor: amd ? "amd" : "unknown",
-        model: amd ? "AMD Radeon Graphics" : "",
-        vram: 0,
-        cuda: { ...(d.gpu?.cuda || {}), available: false },
+        available: amd || nvidia,
+        vendor: nvidia ? "nvidia" : amd ? "amd" : "unknown",
+        model: nvidia ? "NVIDIA GeForce GTX 1650" : amd ? "AMD Radeon Graphics" : "",
+        vram: pc.vramMb ?? 0,
+        cuda: { ...(d.gpu?.cuda || {}), available: nvidia },
       },
       cpu: {
         ...d.cpu,
         count: pc.physicalCores * 2,
         physicalCores: pc.physicalCores,
         avx2: true,
-        model: amd ? "AMD Ryzen 5 5500U with Radeon Graphics" : "Intel Celeron N4020",
+        model: amd || nvidia ? "AMD Ryzen 5 5500U with Radeon Graphics" : "Intel Celeron N4020",
       },
       memory: { totalBytes: 16 * 1024 ** 3 },
       recommendations: {
         transcriptionProvider: "local",
         localTranscriptionProvider: "whisper",
-        whisperModel: "base",
+        whisperModel: pc.whisperModel ?? "base",
         gpuCategory: pc.gpuCategory,
         reasoning: [
-          amd
-            ? "AMD GPU detected - Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA)"
-            : "No dedicated GPU detected - Whisper will run on CPU",
+          nvidia
+            ? "NVIDIA GPU detected - Whisper will run on the GPU"
+            : amd
+              ? "AMD GPU detected - Whisper will run on CPU (GPU acceleration currently requires NVIDIA CUDA)"
+              : "No dedicated GPU detected - Whisper will run on CPU",
           "Whisper Base keeps transcription quick without a GPU.",
         ],
         recoverySteps: [],
@@ -254,6 +272,43 @@ test.describe("Parakeet in setup", () => {
     await shoot(page, "after-5-setup-speed-test-fallback");
   });
 
+  test("a small NVIDIA card gets Parakeet, since Whisper only fits Small on it", async ({
+    controlPanel: page,
+    electronApp,
+  }) => {
+    await page.setViewportSize(VIEWPORT);
+    await fakeHardware(electronApp, page, SMALL_NVIDIA);
+    await stubParakeet(electronApp, PASS);
+    await openSetupThroughHardware(page, ["da", "en"]);
+
+    const parakeet = page.getByTestId("engine-parakeet");
+    await expect(parakeet).toHaveAttribute("aria-pressed", "true");
+    await expect(parakeet).not.toContainText("faster");
+    await expect(page.getByTestId("parakeet-reason")).toHaveText(
+      "Parakeet makes fewer mistakes than the Whisper model your graphics card has room for."
+    );
+    await expect.poll(() => stored(page, "localTranscriptionProvider")).toBe("nvidia");
+    await page.getByTestId("parakeet-panel").scrollIntoViewIfNeeded();
+    await shoot(page, "after-12-setup-small-nvidia-parakeet");
+  });
+
+  test("an NVIDIA card with room for Turbo keeps GPU Whisper", async ({
+    controlPanel: page,
+    electronApp,
+  }) => {
+    await page.setViewportSize(VIEWPORT);
+    await fakeHardware(electronApp, page, LARGE_NVIDIA);
+    await stubParakeet(electronApp, PASS);
+    await openSetupThroughHardware(page, ["da", "en"]);
+
+    await expect(page.getByTestId("engine-whisper")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("parakeet-reason")).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(await stored(page, "localTranscriptionProvider")).toBe("whisper");
+    await page.getByTestId("engine-whisper").scrollIntoViewIfNeeded();
+    await shoot(page, "after-13-setup-large-nvidia-whisper");
+  });
+
   test("an ineligible PC stays on Whisper with no Parakeet push", async ({
     controlPanel: page,
     electronApp,
@@ -362,6 +417,39 @@ test.describe("Parakeet in settings", () => {
 
     await page.getByTestId("engine-whisper").click();
     await expect.poll(() => stored(page, "localTranscriptionProvider")).toBe("whisper");
+  });
+
+  test("a small NVIDIA card gets its own card copy, and none once on Turbo", async ({
+    controlPanel: page,
+    electronApp,
+  }) => {
+    await page.setViewportSize(VIEWPORT);
+    await fakeHardware(electronApp, page, SMALL_NVIDIA);
+    await stubParakeet(electronApp, PASS);
+    await openDictationPage(page, {
+      spokenLanguages: JSON.stringify(["da"]),
+      whisperModel: "small",
+      whisperForceCpu: "false",
+    });
+
+    const card = page.getByTestId("parakeet-offer");
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card).toContainText("Your graphics card only has room for a small Whisper model");
+    await card.scrollIntoViewIfNeeded();
+    await shoot(page, "after-14-settings-small-nvidia-card");
+
+    // Someone who picked Turbo by hand already runs the stronger engine.
+    await openDictationPage(page, {
+      spokenLanguages: JSON.stringify(["da"]),
+      whisperModel: "turbo",
+      whisperForceCpu: "false",
+    });
+    await expect(page.getByTestId("engine-whisper")).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(800);
+    await expect(page.getByTestId("parakeet-offer")).toHaveCount(0);
+    // The picker agrees with the card: Whisper stays the recommended engine.
+    await expect(page.getByTestId("engine-whisper")).toContainText("Recommended");
+    await expect(page.getByTestId("engine-parakeet")).not.toContainText("Recommended");
   });
 
   test("a spoken language outside the 25 gets a plain warning and no card", async ({

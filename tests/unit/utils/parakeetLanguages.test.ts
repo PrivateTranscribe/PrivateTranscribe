@@ -6,6 +6,7 @@ import {
   evaluateParakeetFit,
   formatSpeedTestResult,
   languagesToCheck,
+  recommendsParakeet,
   speedTestKeepsParakeet,
   unsupportedParakeetLanguages,
 } from "../../../src/utils/parakeetLanguages";
@@ -54,6 +55,29 @@ describe("Parakeet language check", () => {
   });
 });
 
+describe("recommendsParakeet", () => {
+  const smallCuda = () =>
+    evaluateParakeetFit(recs({ gpuCategory: "nvidia_cuda", whisperModel: "small" }), ["en"], "en");
+
+  it("follows the fit on a PC without NVIDIA, whatever Whisper model is in use", () => {
+    expect(recommendsParakeet(evaluateParakeetFit(recs(), ["en"], "en"), "turbo")).toBe(true);
+  });
+
+  it("recommends Parakeet over a small model on a small NVIDIA card", () => {
+    expect(recommendsParakeet(smallCuda(), "small")).toBe(true);
+    expect(recommendsParakeet(smallCuda(), "base")).toBe(true);
+  });
+
+  it.each(["turbo", "large", "medium"])("leaves a hand-picked %s alone on NVIDIA", (model) => {
+    expect(recommendsParakeet(smallCuda(), model)).toBe(false);
+  });
+
+  it("never recommends a PC that does not qualify", () => {
+    expect(recommendsParakeet(null, "base")).toBe(false);
+    expect(recommendsParakeet(evaluateParakeetFit(recs(), ["ja"], "en"), "base")).toBe(false);
+  });
+});
+
 describe("evaluateParakeetFit", () => {
   it("qualifies a non-CUDA PC that passes hardware and languages", () => {
     const fit = evaluateParakeetFit(recs(), ["da", "en"], "en-US");
@@ -61,11 +85,33 @@ describe("evaluateParakeetFit", () => {
     expect(fit.hardwareEligible).toBe(true);
   });
 
-  it("never makes Parakeet the default on an NVIDIA CUDA PC", () => {
-    const fit = evaluateParakeetFit(recs({ gpuCategory: "nvidia_cuda" }), ["en"], "en-US");
+  it.each(["turbo", "large"])("keeps GPU Whisper on a CUDA card with room for %s", (model) => {
+    const fit = evaluateParakeetFit(
+      recs({ gpuCategory: "nvidia_cuda", whisperModel: model }),
+      ["en"],
+      "en-US"
+    );
     expect(fit.isCudaPc).toBe(true);
+    expect(fit.strongGpuWhisper).toBe(true);
     expect(fit.hardwareEligible).toBe(true);
     expect(fit.qualifies).toBe(false);
+  });
+
+  it.each(["base", "small"])("qualifies a CUDA card that only fits Whisper %s", (model) => {
+    const fit = evaluateParakeetFit(
+      recs({ gpuCategory: "nvidia_cuda", whisperModel: model }),
+      ["da", "en"],
+      "en-US"
+    );
+    expect(fit.isCudaPc).toBe(true);
+    expect(fit.strongGpuWhisper).toBe(false);
+    expect(fit.qualifies).toBe(true);
+  });
+
+  it("does not count a non-CUDA PC as strong GPU Whisper", () => {
+    const fit = evaluateParakeetFit(recs({ whisperModel: "turbo" }), ["en"], "en-US");
+    expect(fit.strongGpuWhisper).toBe(false);
+    expect(fit.qualifies).toBe(true);
   });
 
   it("carries the hardware reasons when the PC is not eligible", () => {

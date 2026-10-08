@@ -2925,6 +2925,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
             <ParakeetOfferCard
               useLocalWhisper={useLocalWhisper}
               localTranscriptionProvider={localTranscriptionProvider}
+              whisperModel={whisperModel}
               spokenLanguages={spokenLanguages}
               onEngineChange={updateTranscriptionSettings}
             />
