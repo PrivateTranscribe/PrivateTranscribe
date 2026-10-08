@@ -1032,7 +1032,8 @@ This is the app's production dependency tree for Windows x64, taken from `packag
 - `@huggingface/jinja@0.5.9`: `MIT`, <https://github.com/huggingface/huggingface.js>, licence text 4
 - `@huggingface/transformers@3.8.1`: `Apache-2.0`, <https://github.com/huggingface/transformers.js>, licence text 5
 - `@img/colour@1.1.0`: `MIT`, <https://github.com/lovell/colour>, licence text 6
-- `@img/sharp-win32-x64@0.34.5`: `Apache-2.0 AND LGPL-3.0-or-later`, <https://github.com/lovell/sharp>, licence text 7, contains libvips (see above)
+- `@img/sharp-wasm32@0.35.5`: `Apache-2.0 AND LGPL-3.0-or-later AND MIT`, <https://github.com/lovell/sharp>, licence text 7
+- `@img/sharp-win32-x64@0.35.5`: `Apache-2.0 AND LGPL-3.0-or-later`, <https://github.com/lovell/sharp>, licence text 7, contains libvips (see above)
 - `@isaacs/fs-minipass@4.0.1`: `ISC`, <https://github.com/npm/fs-minipass>, licence text 8
 - `@protobufjs/aspromise@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
 - `@protobufjs/base64@1.1.2`: `BSD-3-Clause`, <https://github.com/dcodeIO/protobuf.js>, licence text 9
@@ -1272,7 +1273,7 @@ This is the app's production dependency tree for Windows x64, taken from `packag
 - `semver@7.8.5`: `ISC`, <https://github.com/npm/node-semver>, licence text 8
 - `semver-compare@1.0.0`: `MIT`, <https://github.com/substack/semver-compare>, licence text 66
 - `serialize-error@7.0.1`: `MIT`, <https://github.com/sindresorhus/serialize-error>, licence text 38
-- `sharp@0.34.5`: `Apache-2.0`, <https://github.com/lovell/sharp>, licence text 7
+- `sharp@0.35.5`: `Apache-2.0`, <https://github.com/lovell/sharp>, licence text 7
 - `sherpa-onnx-node@1.13.8`: `Apache-2.0`, by The next-gen Kaldi team, <https://github.com/csukuangfj/sherpa-onnx>, no licence file in the package, contains sherpa-onnx (see above)
 - `sherpa-onnx-win-x64@1.13.8`: `Apache-2.0`, by The next-gen Kaldi team, <https://github.com/csukuangfj/sherpa-onnx>, no licence file in the package, contains JSON for Modern C++ (nlohmann/json), sherpa-onnx, kaldi-native-fbank, kaldi-decoder, OpenFst, simple-sentencepiece, piper-phonemize, fastcluster (hclust-cpp), eSpeak NG, ONNX Runtime (see above)
 - `simple-concat@1.0.1`: `MIT`, <https://github.com/feross/simple-concat>, licence text 112
@@ -1524,7 +1525,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #### Licence text 7
 
-Used by `@img/sharp-win32-x64@0.34.5`, `sharp@0.34.5`.
+Used by `@img/sharp-wasm32@0.35.5`, `@img/sharp-win32-x64@0.35.5`, `sharp@0.35.5`.
 
 ```text
 Apache License
