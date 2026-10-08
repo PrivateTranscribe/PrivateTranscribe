@@ -226,6 +226,96 @@ describe("downloadFile integration", () => {
 
     expect(fs.existsSync(tmpPath)).toBe(false);
   });
+
+  it("leaves no .tmp after an HTTP error even when the file open is slow", async () => {
+    // fs.createWriteStream opens the file asynchronously. Delay every open so a
+    // stream created before the response would create the .tmp only after
+    // downloadFile had already deleted it (the 0.21.1 release-check flake).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const nodeFs = require("fs");
+    const realOpen = nodeFs.open;
+    const pendingOpens: Promise<void>[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const openSpy = vi.spyOn(nodeFs, "open").mockImplementation((...args: any[]) => {
+      const callback = args.pop();
+      pendingOpens.push(
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            realOpen(...args, (...result: any[]) => {
+              callback(...result);
+              resolve();
+            });
+          }, 100);
+        })
+      );
+    });
+
+    try {
+      const port = await startServer((_req, res) => {
+        res.writeHead(404);
+        res.end("Not Found");
+      });
+
+      const destPath = path.join(tmpDir, "model.bin");
+      const tmpPath = destPath + ".tmp";
+
+      await expect(
+        downloadFile(`http://127.0.0.1:${port}/file`, destPath, { maxRetries: 0 })
+      ).rejects.toMatchObject({ isHttpError: true });
+      await Promise.all(pendingOpens);
+
+      expect(fs.existsSync(tmpPath)).toBe(false);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it("keeps the partial .tmp when the connection drops mid-download", async () => {
+    const content = Buffer.alloc(200, 0x63);
+    const destPath = path.join(tmpDir, "model.bin");
+    const tmpPath = destPath + ".tmp";
+    fs.writeFileSync(tmpPath, content.subarray(0, 100));
+
+    const port = await startServer((req, res) => {
+      if (req.method === "HEAD") {
+        res.writeHead(200, { "content-length": String(content.length) });
+        res.end();
+        return;
+      }
+      res.writeHead(206, {
+        "content-range": `bytes 100-199/${content.length}`,
+        "content-length": "100",
+      });
+      res.write(content.subarray(100, 150));
+      setTimeout(() => res.socket?.destroy(), 100);
+    });
+
+    await expect(
+      downloadFile(`http://127.0.0.1:${port}/file`, destPath, { maxRetries: 0 })
+    ).rejects.toBeTruthy();
+
+    // The resumed bytes were appended and the file was closed before the error surfaced.
+    expect(fs.existsSync(destPath)).toBe(false);
+    expect(fs.statSync(tmpPath).size).toBe(150);
+  });
+
+  it("restarts the .tmp when the server answers a Range request with 200", async () => {
+    const content = Buffer.alloc(200, 0x64);
+    const destPath = path.join(tmpDir, "model.bin");
+    const tmpPath = destPath + ".tmp";
+    fs.writeFileSync(tmpPath, Buffer.alloc(100, 0x78));
+
+    const port = await startServer((_req, res) => {
+      res.writeHead(200, { "content-length": String(content.length) });
+      res.end(content);
+    });
+
+    await downloadFile(`http://127.0.0.1:${port}/file`, destPath);
+
+    expect(fs.readFileSync(destPath)).toEqual(content);
+    expect(fs.existsSync(tmpPath)).toBe(false);
+  });
 });
 
 // ── cleanStaleTmpFiles tests ──────────────────────────────────────────────────

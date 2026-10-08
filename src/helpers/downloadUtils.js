@@ -147,10 +147,14 @@ function resolveRedirects(url, timeout) {
   });
 }
 
+function cancelledError() {
+  return Object.assign(new Error("Download cancelled"), { isAbort: true });
+}
+
 function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffset }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
+      reject(cancelledError());
       return;
     }
 
@@ -168,46 +172,48 @@ function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffs
     }
 
     const client = parsedUrl.protocol === "https:" ? https : http;
-    let activeFile = fs.createWriteStream(tempPath, { flags: startOffset > 0 ? "a" : "w" });
 
+    // The .tmp is opened only once the server answers 200 or 206, and the attempt
+    // settles only after that file has closed. fs.createWriteStream opens (and
+    // with "w" creates) the file asynchronously, so a stream opened earlier
+    // could recreate an empty .tmp after downloadFile had deleted it.
+    let activeFile = null;
     let downloadedSize = startOffset;
     let totalSize = 0;
     let lastProgressUpdate = 0;
     let request = null;
+    let settled = false;
 
-    const cleanup = () => {
-      if (request) {
+    const settle = (error, result) => {
+      if (settled) return;
+      settled = true;
+      if (signal) signal.onAbort = null;
+      if (error && request) {
         request.destroy();
         request = null;
       }
-      activeFile.destroy();
-    };
-
-    const onAbort = () => {
-      cleanup();
-      reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
+      const done = () => (error ? reject(error) : resolve(result));
+      if (!activeFile || activeFile.closed) {
+        done();
+        return;
+      }
+      activeFile.once("close", done);
+      if (error) activeFile.destroy();
     };
 
     if (signal) {
-      signal.onAbort = onAbort;
+      signal.onAbort = () => settle(cancelledError());
     }
 
     request = client.get(url, { headers, timeout }, (response) => {
       if (signal?.aborted) {
-        cleanup();
-        reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
+        settle(cancelledError());
         return;
       }
 
       const statusCode = response.statusCode;
 
-      if (statusCode === 200 && startOffset > 0) {
-        // Server doesn't support Range - restart from beginning
-        downloadedSize = 0;
-        activeFile.destroy();
-        activeFile = fs.createWriteStream(tempPath, { flags: "w" });
-        totalSize = parseInt(response.headers["content-length"], 10) || 0;
-      } else if (statusCode === 206) {
+      if (statusCode === 206) {
         const contentRange = response.headers["content-range"];
         if (contentRange) {
           const match = contentRange.match(/\/(\d+)$/);
@@ -218,19 +224,19 @@ function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffs
           totalSize = startOffset + contentLength;
         }
       } else if (statusCode === 200) {
+        // A 200 to a Range request means the server ignored the range: restart from byte 0.
+        downloadedSize = 0;
         totalSize = parseInt(response.headers["content-length"], 10) || 0;
       } else {
-        cleanup();
-        const err = new Error(`HTTP ${statusCode}`);
-        err.isHttpError = true;
-        err.statusCode = statusCode;
-        reject(err);
+        settle(Object.assign(new Error(`HTTP ${statusCode}`), { isHttpError: true, statusCode }));
         return;
       }
 
+      activeFile = fs.createWriteStream(tempPath, { flags: statusCode === 206 ? "a" : "w" });
+
       response.on("data", (chunk) => {
         if (signal?.aborted) {
-          cleanup();
+          settle(cancelledError());
           return;
         }
         downloadedSize += chunk.length;
@@ -238,33 +244,20 @@ function downloadAttempt(url, tempPath, { timeout, onProgress, signal, startOffs
       });
 
       pipeline(response, activeFile, (err) => {
-        if (signal) signal.onAbort = null;
-        if (err) {
-          if (signal?.aborted) {
-            reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
-          } else {
-            reject(err);
-          }
+        if (!err) {
+          settle(null, { downloadedSize, totalSize });
         } else {
-          resolve({ downloadedSize, totalSize });
+          settle(signal?.aborted ? cancelledError() : err);
         }
       });
     });
 
     request.on("error", (err) => {
-      if (signal) signal.onAbort = null;
-      cleanup();
-      if (signal?.aborted) {
-        reject(Object.assign(new Error("Download cancelled"), { isAbort: true }));
-      } else {
-        reject(err);
-      }
+      settle(signal?.aborted ? cancelledError() : err);
     });
 
     request.on("timeout", () => {
-      if (signal) signal.onAbort = null;
-      cleanup();
-      reject(Object.assign(new Error("Socket timeout"), { code: "ETIMEDOUT" }));
+      settle(Object.assign(new Error("Socket timeout"), { code: "ETIMEDOUT" }));
     });
 
     function emitProgress() {
