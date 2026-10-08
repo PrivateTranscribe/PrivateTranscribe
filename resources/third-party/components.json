@@ -49,18 +49,6 @@
       "source": "https://github.com/electron-userland/electron-builder-binaries/releases/download/nsis-3.0.4.1/nsis-3.0.4.1.7z",
       "copiedFrom": "COPYING in electron-builder's NSIS 3.0.4.1 package (its download cache)",
       "sha256": "3c8de989f6504d52f5f8dfafedb6668cd47201f5d01f1319570727c091425dd6"
-    },
-    "licenses/websocketpp-COPYING.txt": {
-      "title": "WebSocket++ licence (COPYING)",
-      "source": "https://github.com/zaphoyd/websocketpp/blob/b9aeec6eaf3d5610503439b4fae3581d9aff08e8/COPYING",
-      "copiedFrom": "Downloaded from the source URL",
-      "sha256": "5ba81a1ed402517dce2581fa2d4042baf6a9c8ca0fe94fa6a7043ce6ab23064f"
-    },
-    "licenses/onnxruntime-1.23.2-ThirdPartyNotices.txt": {
-      "title": "ONNX Runtime 1.23.2 third-party notices",
-      "source": "https://github.com/microsoft/onnxruntime/blob/v1.23.2/ThirdPartyNotices.txt",
-      "copiedFrom": "Downloaded from the source URL",
-      "sha256": "e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc"
     }
   },
   "components": [
@@ -239,138 +227,82 @@
     },
     {
       "name": "sherpa-onnx",
-      "version": "1.12.23 (in bin), 1.13.8 (sherpa-onnx-node and sherpa-onnx-win-x64)",
+      "version": "1.13.8 (sherpa-onnx-node and sherpa-onnx-win-x64)",
       "license": "Apache-2.0",
       "copyright": ["Copyright (c) 2022-2023 Xiaomi Corporation"],
       "source": "https://github.com/k2-fsa/sherpa-onnx",
       "files": [
-        "bin/sherpa-onnx-*",
         "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/**",
         "app.asar.unpacked/node_modules/sherpa-onnx-node/**"
       ],
       "licenseText": "licenses/Apache-2.0.txt",
-      "note": "bin/sherpa-onnx-ws-win32-x64.exe is sherpa-onnx-offline-websocket-server.exe from https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-win-x64-shared.tar.bz2, and builds also copy that archive's sherpa-onnx-c-api.dll and sherpa-onnx-cxx-api.dll into bin. The copyright line is from sherpa-onnx/csrc/offline-websocket-server.cc; other files name their own contributors."
+      "note": "The copyright line is from sherpa-onnx/csrc/offline-websocket-server.cc; other files name their own contributors."
     },
     {
       "name": "kaldi-native-fbank",
-      "version": "1.22.3 (in sherpa-onnx 1.12.23 and 1.13.8)",
+      "version": "1.22.3 (in sherpa-onnx 1.13.8)",
       "license": "Apache-2.0",
       "copyright": [],
       "source": "https://github.com/csukuangfj/kaldi-native-fbank/tree/v1.22.3",
-      "files": [
-        "bin/sherpa-onnx-*",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
-      ],
+      "files": ["app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"],
       "licenseText": "licenses/Apache-2.0.txt",
       "note": "Its LICENSE is the plain Apache License 2.0 and names no copyright holder."
     },
     {
       "name": "kaldi-decoder",
-      "version": "0.2.10 (in sherpa-onnx 1.12.23), 0.3.0 (in sherpa-onnx 1.13.8)",
+      "version": "0.3.0 (in sherpa-onnx 1.13.8)",
       "license": "Apache-2.0",
       "copyright": [],
       "source": "https://github.com/k2-fsa/kaldi-decoder",
-      "files": [
-        "bin/sherpa-onnx-*",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
-      ],
+      "files": ["app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"],
       "licenseText": "licenses/Apache-2.0.txt",
       "note": "Its LICENSE is the plain Apache License 2.0 and names no copyright holder."
-    },
-    {
-      "name": "kaldifst",
-      "version": "1.7.17 (in sherpa-onnx 1.12.23)",
-      "license": "Apache-2.0",
-      "copyright": [],
-      "source": "https://github.com/k2-fsa/kaldifst/tree/v1.7.17",
-      "files": ["bin/sherpa-onnx-*"],
-      "licenseText": "licenses/Apache-2.0.txt",
-      "note": "Its LICENSE adds a note before the Apache License 2.0: authors, or their employers where individual files say so, own their contributions, as the git history shows."
     },
     {
       "name": "OpenFst",
-      "version": "sherpa-onnx-2024-06-19 (in sherpa-onnx 1.12.23), v1.8.5-2026-07-09 (in sherpa-onnx 1.13.8)",
+      "version": "v1.8.5-2026-07-09 (in sherpa-onnx 1.13.8)",
       "license": "Apache-2.0",
       "copyright": ["Copyright 2005-2015 Google, Inc.", "Copyright 2005-2026 Google LLC."],
       "source": "https://github.com/csukuangfj/openfst",
-      "files": [
-        "bin/sherpa-onnx-*",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
-      ],
+      "files": ["app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"],
       "licenseText": "licenses/Apache-2.0.txt",
-      "note": "The copyright lines are from COPYING at the two tags of this fork of OpenFst."
+      "note": "The copyright lines are from COPYING at tags sherpa-onnx-2024-06-19 and v1.8.5-2026-07-09 of this fork of OpenFst."
     },
     {
       "name": "simple-sentencepiece",
-      "version": "0.7 (in sherpa-onnx 1.12.23 and 1.13.8)",
+      "version": "0.7 (in sherpa-onnx 1.13.8)",
       "license": "Apache-2.0",
       "copyright": [],
       "source": "https://github.com/pkufool/simple-sentencepiece/tree/v0.7",
-      "files": [
-        "bin/sherpa-onnx-*",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
-      ],
+      "files": ["app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"],
       "licenseText": "licenses/Apache-2.0.txt",
       "note": "Its LICENSE is the plain Apache License 2.0 and names no copyright holder."
     },
     {
-      "name": "WebSocket++",
-      "version": "commit b9aeec6 (in sherpa-onnx 1.12.23)",
-      "license": "BSD-3-Clause AND Zlib AND MIT",
-      "copyright": [
-        "Copyright (c) 2014, Peter Thorson. All rights reserved.",
-        "Copyright (C) 2004-2008 René Nyffenegger",
-        "Copyright (c) 2011, Micael Hildenborg",
-        "Copyright (C) 1999, 2002 Aladdin Enterprises. All rights reserved.",
-        "Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>"
-      ],
-      "source": "https://github.com/zaphoyd/websocketpp/tree/b9aeec6eaf3d5610503439b4fae3581d9aff08e8",
-      "files": ["bin/sherpa-onnx-ws-win32-x64.exe"],
-      "licenseText": "licenses/websocketpp-COPYING.txt"
-    },
-    {
-      "name": "Asio",
-      "version": "1.24.0 (in sherpa-onnx 1.12.23)",
-      "license": "BSL-1.0",
-      "copyright": ["Copyright (c) 2003-2022 Christopher M. Kohlhoff (chris at kohlhoff dot com)"],
-      "source": "https://github.com/chriskohlhoff/asio/tree/asio-1-24-0",
-      "files": ["bin/sherpa-onnx-ws-win32-x64.exe"],
-      "licenseText": [
-        "Copyright (c) 2003-2022 Christopher M. Kohlhoff (chris at kohlhoff dot com)\n\nDistributed under the Boost Software License, Version 1.0. (See accompanying\nfile LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)",
-        "Boost Software License - Version 1.0 - August 17th, 2003\n\nPermission is hereby granted, free of charge, to any person or organization\nobtaining a copy of the software and accompanying documentation covered by\nthis license (the \"Software\") to use, reproduce, display, distribute,\nexecute, and transmit the Software, and to prepare derivative works of the\nSoftware, and to permit third-parties to whom the Software is furnished to\ndo so, all subject to the following:\n\nThe copyright notices in the Software and this entire statement, including\nthe above license grant, this restriction and the following disclaimer,\nmust be included in all copies of the Software, in whole or in part, and\nall derivative works of the Software, unless such copies or derivative\nworks are solely in the form of machine-executable object code generated by\na source language processor.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT\nSHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE\nFOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,\nARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE."
-      ]
-    },
-    {
       "name": "piper-phonemize",
-      "version": "commit 78a788e (in sherpa-onnx 1.12.23), commit f3ff95a (in sherpa-onnx 1.13.8)",
+      "version": "commit f3ff95a (in sherpa-onnx 1.13.8)",
       "license": "MIT",
       "copyright": ["Copyright (c) 2023 Michael Hansen"],
       "source": "https://github.com/csukuangfj/piper-phonemize",
-      "files": [
-        "bin/sherpa-onnx-c-api.dll",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
-      ],
+      "files": ["app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"],
       "licenseText": "MIT License\n\nCopyright (c) 2023 Michael Hansen\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
       "note": "A fork of https://github.com/rhasspy/piper-phonemize."
     },
     {
       "name": "fastcluster (hclust-cpp)",
-      "version": "2024-09-29 (in sherpa-onnx 1.12.23), 2026-02-25 (in sherpa-onnx 1.13.8)",
+      "version": "2026-02-25 (in sherpa-onnx 1.13.8)",
       "license": "BSD-2-Clause",
       "copyright": [
         "© 2011 Daniel Müllner <http://danifold.net>",
         "© 2018 Christoph Dalitz <http://www.hsnr.de/ipattern/>"
       ],
       "source": "https://github.com/csukuangfj/hclust-cpp",
-      "files": [
-        "bin/sherpa-onnx-c-api.dll",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
-      ],
+      "files": ["app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"],
       "licenseText": "Copyright:\n  * fastcluster_dm.cpp & fastcluster_R_dm.cpp:\n     © 2011 Daniel Müllner <http://danifold.net>\n  * fastcluster.(h|cpp) & demo.cpp & plotresult.r:\n     © 2018 Christoph Dalitz <http://www.hsnr.de/ipattern/>\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n  * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
     },
     {
       "name": "eSpeak NG",
-      "version": "exact source commit unknown in phonemizer 1.2.1; csukuangfj/espeak-ng commit ed530aa (in sherpa-onnx 1.13.8) and f6fed6c (in sherpa-onnx 1.12.23)",
+      "version": "exact source commit unknown in phonemizer 1.2.1; csukuangfj/espeak-ng commit ed530aa (in sherpa-onnx 1.13.8)",
       "license": "GPL-3.0-or-later",
       "copyright": [
         "Copyright (C) 2005 to 2013 by Jonathan Duddington",
@@ -379,40 +311,24 @@
       "source": "https://github.com/espeak-ng/espeak-ng",
       "files": [
         "app.asar/node_modules/phonemizer/dist/*",
-        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll",
-        "bin/sherpa-onnx-c-api.dll"
+        "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/sherpa-onnx-c-api.dll"
       ],
       "licenseText": "licenses/GPL-3.0.txt",
-      "note": "eSpeak NG is released under the GPL version 3 or later. That licence applies to it wherever it ships, whatever licence the package around it declares: the phonemizer package is Apache-2.0 for its own code, but the eSpeak NG WebAssembly build inside phonemizer/dist stays GPL. The eSpeak NG source commit behind phonemizer's build is unknown. sherpa-onnx builds eSpeak NG from the fork https://github.com/csukuangfj/espeak-ng at commit ed530aa113046142eb5115cf2fc9157854d0ffe1 (sherpa-onnx 1.13.8) and f6fed6c58b5e0998b8e68c6610125e2d07d595a7 (sherpa-onnx 1.12.23). The copyright lines are from src/libespeak-ng/speech.c; other files name other contributors."
-    },
-    {
-      "name": "cargs",
-      "version": "1.0.3",
-      "license": "MIT",
-      "copyright": ["Copyright (c) 2022 Leonard Iklé"],
-      "source": "https://github.com/likle/cargs/tree/v1.0.3",
-      "files": ["bin/cargs.dll"],
-      "licenseText": "MIT License\n\nCopyright (c) 2022 Leonard Iklé\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
-      "note": "cargs.dll comes with the sherpa-onnx 1.12.23 archive (lib/cargs.dll). Nothing in bin imports it."
+      "note": "eSpeak NG is released under the GPL version 3 or later. That licence applies to it wherever it ships, whatever licence the package around it declares: the phonemizer package is Apache-2.0 for its own code, but the eSpeak NG WebAssembly build inside phonemizer/dist stays GPL. The eSpeak NG source commit behind phonemizer's build is unknown. sherpa-onnx builds eSpeak NG from the fork https://github.com/csukuangfj/espeak-ng at commit ed530aa113046142eb5115cf2fc9157854d0ffe1 (sherpa-onnx 1.13.8). The copyright lines are from src/libespeak-ng/speech.c; other files name other contributors."
     },
     {
       "name": "ONNX Runtime",
-      "version": "1.23.2 (in bin), 1.21.0 (onnxruntime-node), 1.28.2 (sherpa-onnx-win-x64), 1.22.0-dev (onnxruntime-web)",
+      "version": "1.21.0 (onnxruntime-node), 1.28.2 (sherpa-onnx-win-x64), 1.22.0-dev (onnxruntime-web)",
       "license": "MIT",
       "copyright": ["Copyright (c) Microsoft Corporation"],
       "source": "https://github.com/microsoft/onnxruntime",
       "files": [
-        "bin/onnxruntime.dll",
-        "bin/onnxruntime_providers_shared.dll",
         "app.asar.unpacked/node_modules/onnxruntime-node/bin/**",
         "app.asar.unpacked/node_modules/sherpa-onnx-win-x64/onnxruntime*.dll",
         "app.asar/node_modules/onnxruntime-web/dist/*"
       ],
-      "licenseText": [
-        "MIT License\n\nCopyright (c) Microsoft Corporation\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
-        "licenses/onnxruntime-1.23.2-ThirdPartyNotices.txt"
-      ],
-      "note": "The copy in bin comes from the sherpa-onnx 1.12.23 archive. ONNX Runtime contains third-party code listed in its ThirdPartyNotices.txt; the 1.23.2 list is included below, and the lists for the other copies are at https://github.com/microsoft/onnxruntime/blob/v1.21.0/ThirdPartyNotices.txt and https://github.com/microsoft/onnxruntime/blob/v1.28.2/ThirdPartyNotices.txt. onnxruntime-web holds the WebAssembly build from commit 89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0, as the package records, whose list is https://github.com/microsoft/onnxruntime/blob/89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0/ThirdPartyNotices.txt. onnxruntime-node also ships its macOS, Linux and Windows arm64 builds, which PrivateTranscribe does not use."
+      "licenseText": "MIT License\n\nCopyright (c) Microsoft Corporation\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
+      "note": "ONNX Runtime contains third-party code listed in its ThirdPartyNotices.txt; the lists for these copies are at https://github.com/microsoft/onnxruntime/blob/v1.21.0/ThirdPartyNotices.txt and https://github.com/microsoft/onnxruntime/blob/v1.28.2/ThirdPartyNotices.txt. onnxruntime-web holds the WebAssembly build from commit 89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0, as the package records, whose list is https://github.com/microsoft/onnxruntime/blob/89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0/ThirdPartyNotices.txt. onnxruntime-node also ships its macOS, Linux and Windows arm64 builds, which PrivateTranscribe does not use."
     },
     {
       "name": "DirectML",

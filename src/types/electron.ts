@@ -104,12 +104,6 @@ export interface WhisperDownloadProgressData {
   result?: any;
 }
 
-export interface ParakeetCheckResult {
-  installed: boolean;
-  working: boolean;
-  path?: string;
-}
-
 export interface ParakeetModelResult {
   success: boolean;
   model: string;
@@ -147,18 +141,47 @@ export interface ParakeetDownloadProgressData {
 export interface ParakeetTranscriptionResult {
   success: boolean;
   text?: string;
+  /** True when the recording held no speech; nothing was decoded or should be pasted. */
+  noSpeech?: boolean;
+  durationSec?: number;
+  decodeMs?: number;
   message?: string;
   error?: string;
 }
 
-export interface ParakeetDiagnosticsResult {
-  platform: string;
-  arch: string;
-  resourcesPath: string | null;
-  isPackaged: boolean;
-  sherpaOnnx: { available: boolean; path: string | null };
-  modelsDir: string;
-  models: string[];
+/** Result of loading the Parakeet model into its utility process. */
+export interface ParakeetEngineStartResult {
+  success: boolean;
+  modelName?: string;
+  alreadyLoaded?: boolean;
+  numThreads?: number;
+  loadMs?: number;
+  reason?: string;
+  code?: string | null;
+}
+
+export interface ParakeetEngineStatus {
+  available: boolean;
+  running: boolean;
+  loading: boolean;
+  modelName: string | null;
+  numThreads: number | null;
+  loadMs: number | null;
+  idleTimeoutMinutes: number;
+  lastUsedTime: number | null;
+  stoppedDueToIdle: boolean;
+  error: string | null;
+}
+
+/** One timed decode of the bundled 10 s clip, after a warm-up decode. */
+export interface ParakeetSpeedTestResult {
+  success: boolean;
+  decodeMs?: number;
+  audioSec?: number;
+  thresholdMs?: number;
+  passed?: boolean;
+  error?: string;
+  message?: string;
 }
 
 /** Progress for a Kokoro model download, aggregated across the model's files. */
@@ -354,6 +377,9 @@ export interface HardwareDetectionCPU {
   count: number;
   model: string;
   speed: number;
+  physicalCores?: number | null;
+  /** null when the check could not tell. */
+  avx2?: boolean | null;
 }
 
 export interface HardwareDetectionGPU {
@@ -368,7 +394,7 @@ export interface HardwareDetectionGPU {
 }
 
 export type HardwareGpuCategory =
-  | "nvidia_cuda" // NVIDIA GPU + CUDA runtime available → Parakeet recommended
+  | "nvidia_cuda" // NVIDIA GPU + CUDA runtime available → Whisper on the GPU
   | "nvidia_no_cuda" // NVIDIA GPU detected but CUDA not usable → recovery steps provided
   | "non_nvidia_gpu" // AMD/Intel/other GPU → Whisper on CPU
   | "metal" // macOS Metal GPU (Apple Silicon or Intel Mac) → Whisper with Metal
@@ -390,6 +416,8 @@ export interface HardwareRecommendations {
    * Empty array for all other categories.
    */
   recoverySteps: string[];
+  /** Whether this PC passes the hardware check for Parakeet on the CPU, and why not. */
+  parakeetHardware?: { eligible: boolean; reasons: string[] };
 }
 
 export interface HardwareDetectionResult {
@@ -398,6 +426,7 @@ export interface HardwareDetectionResult {
   arch: string;
   cpu: HardwareDetectionCPU;
   gpu: HardwareDetectionGPU;
+  memory?: { totalBytes: number };
   /**
    * Recommendations are best-effort.
    *
@@ -697,14 +726,17 @@ declare global {
       whisperServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
 
       parakeetServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
+      parakeetServerStart: (modelName: string) => Promise<ParakeetEngineStartResult>;
+      parakeetServerStop: () => Promise<{ success: boolean }>;
+      parakeetServerStatus: () => Promise<ParakeetEngineStatus>;
+      parakeetSpeedTest: (modelName?: string) => Promise<ParakeetSpeedTestResult>;
       llamaServerSetIdleTimeoutMinutes: (minutes: number) => Promise<any>;
 
-      // Parakeet operations (NVIDIA via sherpa-onnx)
+      // Parakeet operations (NVIDIA's model on sherpa-onnx, in a utility process)
       transcribeLocalParakeet: (
         audioBlob: ArrayBuffer,
         options?: { model?: string; language?: string }
       ) => Promise<ParakeetTranscriptionResult>;
-      checkParakeetInstallation: () => Promise<ParakeetCheckResult>;
       downloadParakeetModel: (modelName: string) => Promise<ParakeetModelResult>;
       onParakeetDownloadProgress: (
         callback: (event: any, data: ParakeetDownloadProgressData) => void
@@ -724,7 +756,6 @@ declare global {
         message?: string;
         error?: string;
       }>;
-      getParakeetDiagnostics: () => Promise<ParakeetDiagnosticsResult>;
 
       // Read Aloud (Kokoro TTS) — engine runs in the main process, renderer plays PCM
       readAloudCheckModelStatus: (modelId?: string) => Promise<KokoroModelStatus>;

@@ -208,6 +208,8 @@ async function initializeManagers() {
   actionEngineManager = new ActionEngineManager(databaseManager);
   clipboardManager = new ClipboardManager();
   whisperManager = new WhisperManager();
+  // Parakeet model files, plus its engine client (parakeetClient.js). The engine's
+  // utility process spawns when a recording starts, never here.
   parakeetManager = new ParakeetManager();
   // Read Aloud (Kokoro TTS). Constructed only — the engine lives in a
   // below-normal-priority utilityProcess (see kokoroClient.js), spawned lazily
@@ -520,22 +522,12 @@ async function startApp() {
     debugLogger.debug("Whisper startup init error (non-fatal)", { error: err.message });
   });
 
-  // Initialize Parakeet manager at startup (don't await to avoid blocking).
-  // Startup init only applies config and dependency checks.
-  // Parakeet server starts on first transcription or explicit server action.
-  const parakeetSettings = {
-    localTranscriptionProvider: process.env.LOCAL_TRANSCRIPTION_PROVIDER || "",
-    parakeetModel: process.env.PARAKEET_MODEL,
-    parakeetServerIdleTimeoutMinutes: (() => {
-      if (process.env.PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES === undefined) return undefined;
-      const raw = parseInt(process.env.PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES, 10);
-      return Number.isFinite(raw) && raw >= 0 ? raw : undefined;
-    })(),
-  };
-  parakeetManager.initializeAtStartup(parakeetSettings).catch((err) => {
-    // Parakeet not being available at startup is not critical
-    debugLogger.debug("Parakeet startup init error (non-fatal)", { error: err.message });
-  });
+  // Parakeet loads its model on record start, never at app start; only the
+  // persisted idle timeout is applied here.
+  const parakeetIdleMinutes = parseInt(process.env.PARAKEET_SERVER_IDLE_TIMEOUT_MINUTES, 10);
+  if (Number.isFinite(parakeetIdleMinutes) && parakeetIdleMinutes >= 0) {
+    parakeetManager.setServerIdleTimeoutMinutes(parakeetIdleMinutes);
+  }
 
   // Pre-warm llama-server if local reasoning is configured
   // Settings can be provided via environment variables:
@@ -1015,7 +1007,7 @@ if (gotSingleInstanceLock) {
   });
 
   // Use before-quit so we can await async server teardown before the process
-  // exits. Without this, whisper-server / parakeet-ws-server / llama-server
+  // exits. Without this, whisper-server / the Parakeet host / llama-server
   // become orphan processes that survive past the app quit.
   let isQuittingAsync = false;
   app.on("before-quit", (event) => {

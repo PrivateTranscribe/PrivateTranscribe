@@ -25,10 +25,10 @@ const nameOf = (location: string) =>
 /**
  * resources/bin on 2026-09-29, without the leftovers electron-builder does not pack
  * (nircmd.exe, log.txt, cublas64_11.dll, cudart64_12.dll, windows-key-listener.locked-old.exe,
- * libomp140.x86_64.dll). Release builds also copy in the two sherpa-onnx API DLLs.
+ * libomp140.x86_64.dll), and the retired Parakeet server's files (sherpa-onnx-ws-win32-x64.exe,
+ * cargs.dll, onnxruntime*.dll), which electron-builder.json now leaves out.
  */
 const SHIPPED_BIN = [
-  "cargs.dll",
   "ggml-base.dll",
   "ggml-cpu-alderlake.dll",
   "ggml-cpu-cannonlake.dll",
@@ -62,9 +62,6 @@ const SHIPPED_BIN = [
   "msvcp140.dll",
   "msvcp140_1.dll",
   "mtmd.dll",
-  "onnxruntime.dll",
-  "onnxruntime_providers_shared.dll",
-  "sherpa-onnx-ws-win32-x64.exe",
   "vcomp140.dll",
   "vcruntime140.dll",
   "vcruntime140_1.dll",
@@ -74,8 +71,6 @@ const SHIPPED_BIN = [
   "windows-hold-key.exe",
   "windows-key-listener.exe",
   "windows-mic-watch.exe",
-  "sherpa-onnx-c-api.dll",
-  "sherpa-onnx-cxx-api.dll",
 ].map((name) => `bin/${name}`);
 
 describe("third-party notices", () => {

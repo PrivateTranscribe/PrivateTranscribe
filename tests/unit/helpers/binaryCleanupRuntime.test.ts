@@ -7,16 +7,6 @@ const { cleanupFiles } = require("../../../scripts/lib/download-utils");
 
 it.each([
   { prefix: "llama-server", keep: "llama-server-win32-x64", libraries: ["llama-server-impl.dll"] },
-  {
-    prefix: "sherpa-onnx",
-    keep: "sherpa-onnx-ws-win32-x64",
-    libraries: [
-      "sherpa-onnx-c-api.dll",
-      "sherpa-onnx-cxx-api.dll",
-      "sherpa-onnx-c-api.so.1.2",
-      "sherpa-onnx-c-api.dylib",
-    ],
-  },
 ])("keeps $prefix companion libraries during CI cleanup", ({ prefix, keep, libraries }) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-cleanup-runtime-"));
   try {

@@ -4,7 +4,8 @@ const path = require("path");
 const { spawn } = require("child_process");
 const debugLogger = require("./debugLogger");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
-const ParakeetServerManager = require("./parakeetServer");
+const ParakeetClient = require("./parakeetClient");
+const { isModelDirComplete } = ParakeetClient;
 const { getModelsDirForService } = require("./modelDirUtils");
 
 const modelRegistryData = require("../models/modelRegistryData.json");
@@ -26,11 +27,28 @@ function getValidModelNames() {
   return Object.keys(modelRegistryData.parakeetModels);
 }
 
+function toAudioBuffer(audioBlob) {
+  if (Buffer.isBuffer(audioBlob)) return audioBlob;
+  if (ArrayBuffer.isView(audioBlob)) {
+    return Buffer.from(audioBlob.buffer, audioBlob.byteOffset, audioBlob.byteLength);
+  }
+  if (audioBlob instanceof ArrayBuffer) return Buffer.from(audioBlob);
+  if (typeof audioBlob === "string") return Buffer.from(audioBlob, "base64");
+  if (audioBlob && audioBlob.buffer && typeof audioBlob.byteLength === "number") {
+    return Buffer.from(audioBlob.buffer, audioBlob.byteOffset || 0, audioBlob.byteLength);
+  }
+  throw new Error(`Unsupported audio data type: ${typeof audioBlob}`);
+}
+
+/**
+ * Parakeet model files (registry lookup, pinned download, extract, status,
+ * delete) plus the engine, which runs in a utility process behind
+ * parakeetClient.js.
+ */
 class ParakeetManager {
   constructor() {
     this.currentDownloadProcess = null;
-    this.isInitialized = false;
-    this.serverManager = new ParakeetServerManager();
+    this.engine = new ParakeetClient({ getModelDir: (modelName) => this.getModelPath(modelName) });
   }
 
   getModelsDir() {
@@ -52,193 +70,59 @@ class ParakeetManager {
     return path.join(this.getModelsDir(), modelName);
   }
 
-  async initializeAtStartup(settings = {}) {
-    const startTime = Date.now();
-
-    try {
-      this.isInitialized = true;
-
-      await this.logDependencyStatus();
-
-      const { localTranscriptionProvider, parakeetModel, parakeetServerIdleTimeoutMinutes } =
-        settings;
-
-      if (
-        typeof parakeetServerIdleTimeoutMinutes === "number" &&
-        Number.isFinite(parakeetServerIdleTimeoutMinutes)
-      ) {
-        this.serverManager.setServerIdleTimeoutMinutes(
-          Math.max(0, parakeetServerIdleTimeoutMinutes)
-        );
-      }
-      if (localTranscriptionProvider || parakeetModel) {
-        debugLogger.debug("Parakeet startup initialization does not pre-warm server", {
-          localTranscriptionProvider,
-          hasModel: Boolean(parakeetModel),
-        });
-      }
-    } catch (error) {
-      debugLogger.warn("Parakeet initialization error", { error: error.message });
-      this.isInitialized = true;
-    }
-
-    debugLogger.info("Parakeet initialization complete", {
-      totalTimeMs: Date.now() - startTime,
-      binaryAvailable: this.serverManager.isAvailable(),
-    });
-  }
-
-  async logDependencyStatus() {
-    const status = {
-      sherpaOnnx: {
-        available: this.serverManager.isAvailable(),
-        path: this.serverManager.getBinaryPath(),
-      },
-      models: [],
-    };
-
-    // Check downloaded models
-    for (const modelName of getValidModelNames()) {
-      const modelPath = this.getModelPath(modelName);
-      if (this.serverManager.isModelDownloaded(modelName)) {
-        try {
-          const encoderPath = path.join(modelPath, "encoder.int8.onnx");
-          const stats = fs.statSync(encoderPath);
-          status.models.push({
-            name: modelName,
-            size: `${Math.round(stats.size / (1024 * 1024))}MB`,
-          });
-        } catch {
-          // Skip if can't stat
-        }
-      }
-    }
-
-    debugLogger.info("Parakeet dependency check", status);
-
-    const binaryStatus = status.sherpaOnnx.available
-      ? `✓ ${status.sherpaOnnx.path}`
-      : "✗ Not found";
-    const modelsStatus =
-      status.models.length > 0
-        ? status.models.map((m) => `${m.name}`).join(", ")
-        : "None downloaded";
-
-    debugLogger.info(`[Parakeet] sherpa-onnx: ${binaryStatus}`);
-    debugLogger.info(`[Parakeet] Models: ${modelsStatus}`);
-  }
-
-  async checkInstallation() {
-    const binaryPath = this.serverManager.getBinaryPath();
-    if (!binaryPath) {
-      return { installed: false, working: false };
-    }
-
-    return {
-      installed: true,
-      working: this.serverManager.isAvailable(),
-      path: binaryPath,
-    };
+  isModelDownloaded(modelName) {
+    return isModelDirComplete(path.join(this.getModelsDir(), modelName));
   }
 
   async startServer(modelName) {
     this.validateModelName(modelName);
-    return this.serverManager.startServer(modelName);
+    return this.engine.start(modelName);
   }
 
   async stopServer() {
-    await this.serverManager.stopServer();
+    return this.engine.stop();
   }
 
   setServerIdleTimeoutMinutes(minutes) {
-    return this.serverManager.setServerIdleTimeoutMinutes(minutes);
+    return this.engine.setIdleTimeoutMinutes(minutes);
   }
 
   getServerStatus() {
-    return this.serverManager.getServerStatus();
+    return this.engine.getStatus();
+  }
+
+  async speedTest(modelName = ParakeetClient.DEFAULT_MODEL) {
+    this.validateModelName(modelName);
+    return this.engine.speedTest(modelName);
   }
 
   async transcribeLocalParakeet(audioBlob, options = {}) {
-    debugLogger.logSTTPipeline("transcribeLocalParakeet - start", {
-      options,
-      audioBlobType: audioBlob?.constructor?.name,
-      audioBlobSize: audioBlob?.byteLength || audioBlob?.size || 0,
-      serverAvailable: this.serverManager.isAvailable(),
-    });
+    const model = options.model || ParakeetClient.DEFAULT_MODEL;
+    this.validateModelName(model);
 
-    if (!this.serverManager.isAvailable()) {
-      throw new Error(
-        "sherpa-onnx binary not found. Please ensure the app is installed correctly."
-      );
-    }
-
-    const model = options.model || "parakeet-tdt-0.6b-v3";
-
-    if (!this.serverManager.isModelDownloaded(model)) {
-      throw new Error(
-        `Parakeet model "${model}" not downloaded. Please download it from Settings.`
-      );
-    }
-
-    let audioBuffer;
-    if (Buffer.isBuffer(audioBlob)) {
-      audioBuffer = audioBlob;
-    } else if (ArrayBuffer.isView(audioBlob)) {
-      audioBuffer = Buffer.from(audioBlob.buffer, audioBlob.byteOffset, audioBlob.byteLength);
-    } else if (audioBlob instanceof ArrayBuffer) {
-      audioBuffer = Buffer.from(audioBlob);
-    } else if (typeof audioBlob === "string") {
-      audioBuffer = Buffer.from(audioBlob, "base64");
-    } else if (audioBlob && audioBlob.buffer && typeof audioBlob.byteLength === "number") {
-      audioBuffer = Buffer.from(audioBlob.buffer, audioBlob.byteOffset || 0, audioBlob.byteLength);
-    } else {
-      throw new Error(`Unsupported audio data type: ${typeof audioBlob}`);
-    }
-
+    const audioBuffer = toAudioBuffer(audioBlob);
     if (!audioBuffer || audioBuffer.length === 0) {
       throw new Error("Audio buffer is empty - no audio data received");
     }
 
-    debugLogger.logSTTPipeline("transcribeLocalParakeet - processing", {
-      bufferSize: audioBuffer.length,
+    debugLogger.logSTTPipeline("transcribeLocalParakeet - start", {
       model,
+      bufferSize: audioBuffer.length,
     });
 
     const startTime = Date.now();
-    const language = options.language || "auto";
-    const result = await this.serverManager.transcribe(audioBuffer, {
-      modelName: model,
-      language,
-      inputFileName: options.inputFileName || null,
+    const result = await this.engine.transcribe(audioBuffer, {
+      model,
+      signal: options.signal,
     });
-    const elapsed = Date.now() - startTime;
 
     debugLogger.logSTTPipeline("transcribeLocalParakeet - completed", {
-      elapsed,
+      elapsed: Date.now() - startTime,
+      noSpeech: Boolean(result.noSpeech),
       textLength: result.text?.length || 0,
     });
 
-    return this.parseParakeetResult(result);
-  }
-
-  parseParakeetResult(output) {
-    debugLogger.debug("parseParakeetResult", {
-      hasOutput: !!output,
-      hasText: !!output?.text,
-      textLength: output?.text?.length || 0,
-    });
-
-    if (!output || !output.text) {
-      return { success: false, message: "No audio detected" };
-    }
-
-    const text = output.text.trim();
-
-    if (!text || text.length === 0) {
-      return { success: false, message: "No audio detected" };
-    }
-
-    return { success: true, text };
+    return result;
   }
 
   async downloadParakeetModel(modelName, progressCallback = null) {
@@ -250,7 +134,7 @@ class ParakeetManager {
 
     await fsPromises.mkdir(modelsDir, { recursive: true });
 
-    if (this.serverManager.isModelDownloaded(modelName)) {
+    if (this.isModelDownloaded(modelName)) {
       return { model: modelName, downloaded: true, path: modelPath, success: true };
     }
 
@@ -285,15 +169,6 @@ class ParakeetManager {
 
       if (progressCallback) {
         progressCallback({ type: "complete", model: modelName, percentage: 100 });
-      }
-
-      if (this.serverManager.isAvailable()) {
-        this.serverManager.startServer(modelName).catch((err) => {
-          debugLogger.warn("Post-download server pre-warm failed (non-fatal)", {
-            error: err.message,
-            model: modelName,
-          });
-        });
       }
 
       return { model: modelName, downloaded: true, path: modelPath, success: true };
@@ -406,7 +281,7 @@ class ParakeetManager {
   async checkModelStatus(modelName) {
     const modelPath = this.getModelPath(modelName);
 
-    if (this.serverManager.isModelDownloaded(modelName)) {
+    if (this.isModelDownloaded(modelName)) {
       try {
         const encoderPath = path.join(modelPath, "encoder.int8.onnx");
         const stats = fs.statSync(encoderPath);
@@ -455,6 +330,8 @@ class ParakeetManager {
           freedBytes = stats.size;
         }
 
+        // The engine holds the weights open, and Windows refuses to delete open files.
+        await this.engine.stop();
         // Async rm — model dirs are ~680MB and must not block the main process.
         await fs.promises.rm(modelPath, { recursive: true, force: true });
 
@@ -482,6 +359,7 @@ class ParakeetManager {
       if (!fs.existsSync(modelsDir)) {
         return { success: true, deleted_count: 0, freed_bytes: 0, freed_mb: 0 };
       }
+      await this.engine.stop();
 
       const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
       for (const entry of entries) {
@@ -512,39 +390,6 @@ class ParakeetManager {
     } catch (error) {
       return { success: false, error: error.message };
     }
-  }
-
-  async getDiagnostics() {
-    const diagnostics = {
-      platform: process.platform,
-      arch: process.arch,
-      resourcesPath: process.resourcesPath || null,
-      isPackaged: !!process.resourcesPath && !process.resourcesPath.includes("node_modules"),
-      sherpaOnnx: { available: false, path: null },
-      modelsDir: this.getModelsDir(),
-      models: [],
-    };
-
-    // Check sherpa-onnx
-    const binaryPath = this.serverManager.getBinaryPath();
-    if (binaryPath) {
-      diagnostics.sherpaOnnx = { available: true, path: binaryPath };
-    }
-
-    // Check downloaded models
-    try {
-      const modelsDir = this.getModelsDir();
-      if (fs.existsSync(modelsDir)) {
-        const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
-        diagnostics.models = entries
-          .filter((e) => e.isDirectory() && this.serverManager.isModelDownloaded(e.name))
-          .map((e) => e.name);
-      }
-    } catch {
-      // Ignore errors reading models dir
-    }
-
-    return diagnostics;
   }
 }
 

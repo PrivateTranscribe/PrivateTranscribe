@@ -92,6 +92,10 @@
       "to": "models/silero-vad.onnx"
     },
     {
+      "from": "resources/benchmark.wav",
+      "to": "benchmark.wav"
+    },
+    {
       "from": "resources/readaloud-copy-worker.ps1",
       "to": "readaloud-copy-worker.ps1"
     },
@@ -106,7 +110,6 @@
         "whisper-cpp-*",
         "whisper-server-*",
         "llama-server-*",
-        "sherpa-onnx-*",
         "windows-key-listener.exe"
       ]
     }
@@ -170,6 +173,9 @@
           "!cublas*.dll",
           "!cudart*.dll",
           "!libomp140.x86_64.dll",
+          "!onnxruntime*.dll",
+          "!cargs.dll",
+          "!sherpa-onnx-*",
           "windows-fast-paste.exe",
           "windows-mic-watch.exe",
           "windows-hold-key.exe"

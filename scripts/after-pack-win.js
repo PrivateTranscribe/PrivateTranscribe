@@ -45,11 +45,7 @@ module.exports = async function afterPack(context) {
   // Source tests can find a working engine in the user's cache and miss stale
   // DLLs in resources/bin. Help must work before signing or publishing a build.
   const binDir = path.join(context.appOutDir, "resources", "bin");
-  for (const name of [
-    "whisper-server-win32-x64.exe",
-    "llama-server-win32-x64.exe",
-    "sherpa-onnx-ws-win32-x64.exe",
-  ]) {
+  for (const name of ["whisper-server-win32-x64.exe", "llama-server-win32-x64.exe"]) {
     try {
       execFileSync(path.join(binDir, name), ["--help"], {
         cwd: binDir,

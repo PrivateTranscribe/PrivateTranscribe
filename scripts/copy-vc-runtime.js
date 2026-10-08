@@ -2,9 +2,9 @@
 /**
  * Copies one matched set of the Visual C++ runtime into resources/bin.
  *
- * The Parakeet engine's onnxruntime.dll and onnxruntime-node's (Read Aloud) import
- * msvcp140_1.dll, which no downloaded archive carries. Without it both start only on
- * PCs where the Visual C++ redistributable is installed. msvcp140_1.dll imports
+ * onnxruntime-node's onnxruntime.dll (Read Aloud) imports msvcp140_1.dll, which no
+ * downloaded archive carries. Without it Read Aloud starts only on PCs where the
+ * Visual C++ redistributable is installed. msvcp140_1.dll imports
  * msvcp140.dll, which imports both vcruntime DLLs, so all four come from one
  * redistributable and replace the copies the whisper.cpp archive brings.
  * electron-builder.json also puts them next to onnxruntime-node's onnxruntime.dll,

@@ -161,25 +161,17 @@ describe("Model curation invariants", () => {
   });
 
   describe("Build script version pinning", () => {
-    it("download-sherpa-onnx.js respects SHERPA_ONNX_VERSION env override", () => {
-      const scriptPath = path.join(process.cwd(), "scripts", "download-sherpa-onnx.js");
-      const contents = fs.readFileSync(scriptPath, "utf8");
-
-      // Must read the env var, not use a bare constant
-      expect(contents).toMatch(/process\.env\.SHERPA_ONNX_VERSION/);
-    });
-
-    it("download-sherpa-onnx.js has a hardcoded fallback version", () => {
-      const scriptPath = path.join(process.cwd(), "scripts", "download-sherpa-onnx.js");
-      const contents = fs.readFileSync(scriptPath, "utf8");
-
-      // Fallback must be a real version string, not empty
-      expect(contents).toMatch(
-        /SHERPA_ONNX_VERSION\s*=\s*process\.env\.SHERPA_ONNX_VERSION\s*\|\|\s*"\d+\.\d+\.\d+"/
+    it("no longer downloads the retired sherpa-onnx WebSocket server", () => {
+      // It listened on every network interface with no password; Parakeet now runs
+      // in a utility process through the sherpa-onnx-node package instead.
+      expect(fs.existsSync(path.join(process.cwd(), "scripts", "download-sherpa-onnx.js"))).toBe(
+        false
       );
+      const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+      expect(JSON.stringify(pkg.scripts)).not.toContain("sherpa-onnx");
     });
 
-    it("download-whisper-cpp.js also uses env override (parity check)", () => {
+    it("download-whisper-cpp.js respects WHISPER_CPP_VERSION env override", () => {
       const scriptPath = path.join(process.cwd(), "scripts", "download-whisper-cpp.js");
       const contents = fs.readFileSync(scriptPath, "utf8");
 

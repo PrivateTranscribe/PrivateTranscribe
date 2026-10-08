@@ -1326,7 +1326,7 @@ class IPCHandlers {
     });
 
     // Parakeet (NVIDIA) handlers
-    ipcMain.handle("transcribe-local-parakeet", async (event, audioBlob, options = {}) => {
+    ipcMain.handle("transcribe-local-parakeet", async (_event, audioBlob, options = {}) => {
       debugLogger.log("transcribe-local-parakeet called", {
         audioBlobType: typeof audioBlob,
         audioBlobSize: audioBlob?.byteLength || audioBlob?.length || 0,
@@ -1339,28 +1339,15 @@ class IPCHandlers {
         debugLogger.log("Parakeet result", {
           success: result.success,
           hasText: !!result.text,
-          message: result.message,
-          error: result.error,
+          noSpeech: Boolean(result.noSpeech),
         });
-
-        if (!result.success && result.message === "No audio detected") {
-          debugLogger.log("Sending no-audio-detected event to renderer");
-          event.sender.send("no-audio-detected");
-        }
 
         return result;
       } catch (error) {
         debugLogger.error("Local Parakeet transcription error", error);
         const errorMessage = error.message || "Unknown error";
 
-        if (errorMessage.includes("sherpa-onnx") && errorMessage.includes("not found")) {
-          return {
-            success: false,
-            error: "parakeet_not_found",
-            message: "Parakeet binary is missing. Please reinstall the app.",
-          };
-        }
-        if (errorMessage.includes("model") && errorMessage.includes("not downloaded")) {
+        if (error.code === "model_not_found") {
           return {
             success: false,
             error: "model_not_found",
@@ -1370,10 +1357,6 @@ class IPCHandlers {
 
         throw error;
       }
-    });
-
-    ipcMain.handle("check-parakeet-installation", async () => {
-      return this.parakeetManager.checkInstallation();
     });
 
     ipcMain.handle("download-parakeet-model", async (event, modelName) => {
@@ -1402,29 +1385,30 @@ class IPCHandlers {
       return this.parakeetManager.cancelDownload();
     });
 
-    ipcMain.handle("get-parakeet-diagnostics", async () => {
-      return this.parakeetManager.getDiagnostics();
-    });
-
-    // Parakeet server handlers (for faster repeated transcriptions)
-    ipcMain.handle("parakeet-server-start", async (event, modelName) => {
-      const result = await this.parakeetManager.startServer(modelName);
-      process.env.LOCAL_TRANSCRIPTION_PROVIDER = "nvidia";
-      process.env.PARAKEET_MODEL = modelName;
-      this.environmentManager.saveAllKeysToEnvFile();
-      return result;
+    // The Parakeet engine runs in a utility process with no network port.
+    // "server" in these channel names now means loading the model into it.
+    ipcMain.handle("parakeet-server-start", async (_event, modelName) => {
+      try {
+        return await this.parakeetManager.startServer(modelName);
+      } catch (error) {
+        return { success: false, reason: error.message };
+      }
     });
 
     ipcMain.handle("parakeet-server-stop", async () => {
-      const result = await this.parakeetManager.stopServer();
-      delete process.env.LOCAL_TRANSCRIPTION_PROVIDER;
-      delete process.env.PARAKEET_MODEL;
-      this.environmentManager.saveAllKeysToEnvFile();
-      return result;
+      return this.parakeetManager.stopServer();
     });
 
     ipcMain.handle("parakeet-server-status", async () => {
       return this.parakeetManager.getServerStatus();
+    });
+
+    ipcMain.handle("parakeet-speed-test", async (_event, modelName) => {
+      try {
+        return await this.parakeetManager.speedTest(modelName || undefined);
+      } catch (error) {
+        return { success: false, error: "speed_test_failed", message: error.message };
+      }
     });
 
     // Read Aloud (Kokoro TTS) handlers.

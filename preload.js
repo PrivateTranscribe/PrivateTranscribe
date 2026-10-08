@@ -163,7 +163,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Local Parakeet (NVIDIA) functions
   transcribeLocalParakeet: (audioBlob, options) =>
     ipcRenderer.invoke("transcribe-local-parakeet", audioBlob, options),
-  checkParakeetInstallation: () => ipcRenderer.invoke("check-parakeet-installation"),
   downloadParakeetModel: (modelName) => ipcRenderer.invoke("download-parakeet-model", modelName),
   onParakeetDownloadProgress: registerListener("parakeet-download-progress"),
   checkParakeetModelStatus: (modelName) =>
@@ -172,12 +171,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteParakeetModel: (modelName) => ipcRenderer.invoke("delete-parakeet-model", modelName),
   deleteAllParakeetModels: () => ipcRenderer.invoke("delete-all-parakeet-models"),
   cancelParakeetDownload: () => ipcRenderer.invoke("cancel-parakeet-download"),
-  getParakeetDiagnostics: () => ipcRenderer.invoke("get-parakeet-diagnostics"),
 
-  // Parakeet server functions (faster repeated transcriptions)
+  // Parakeet engine: load/unload the model in its utility process
   parakeetServerStart: (modelName) => ipcRenderer.invoke("parakeet-server-start", modelName),
   parakeetServerStop: () => ipcRenderer.invoke("parakeet-server-stop"),
   parakeetServerStatus: () => ipcRenderer.invoke("parakeet-server-status"),
+  parakeetSpeedTest: (modelName) => ipcRenderer.invoke("parakeet-speed-test", modelName),
   parakeetServerSetIdleTimeoutMinutes: (minutes) =>
     ipcRenderer.invoke("parakeet-server-set-idle-timeout-minutes", minutes),
 
