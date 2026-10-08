@@ -9,7 +9,11 @@ describe("HardwareDetector.generateRecommendations", () => {
     expect(rec).toBeTruthy();
     expect(rec.transcriptionProvider).toBe("local");
     expect(rec.localTranscriptionProvider).toBe("whisper");
-    expect(rec.whisperModel).toBe("turbo");
+    expect(rec.whisperModel).toBe("base");
+    expect(rec.parakeetHardware).toEqual({
+      eligible: false,
+      reasons: ["Could not check this PC's hardware."],
+    });
     expect(Array.isArray(rec.reasoning)).toBe(true);
     expect(rec.reasoning.length).toBeGreaterThan(0);
   });

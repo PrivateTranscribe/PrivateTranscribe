@@ -1,7 +1,12 @@
 const { exec } = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const debugLogger = require("./debugLogger");
+// Module objects, not destructured, so tests can spy on the probes.
+const cpuFeatures = require("./cpuFeatures");
+const cpuThreads = require("./cpuThreads");
+const { evaluateParakeetHardware } = require("./parakeetEligibility");
 
 /**
  * Hardware detection utility for PrivateTranscribe
@@ -58,12 +63,16 @@ class HardwareDetector {
   }
 
   async buildDetection() {
+    // The CPU probes each spawn a process, so they run alongside GPU detection.
+    const [cpu, gpu] = await Promise.all([this.detectCPU(), this.detectGPU()]);
+
     const detection = {
       timestamp: Date.now(),
       platform: process.platform,
       arch: process.arch,
-      cpu: this.detectCPU(),
-      gpu: await this.detectGPU(),
+      cpu,
+      gpu,
+      memory: this.detectMemory(),
       recommendations: null,
     };
 
@@ -76,19 +85,54 @@ class HardwareDetector {
   /**
    * Detect CPU information
    */
-  detectCPU() {
+  async detectCPU() {
+    let cpu;
     try {
-      const os = require("os");
       const cpus = os.cpus();
-
-      return {
+      cpu = {
         count: cpus.length,
         model: cpus[0]?.model || "Unknown",
         speed: cpus[0]?.speed || 0,
       };
     } catch (error) {
       debugLogger.warn("CPU detection failed", { error: error.message });
-      return { count: 0, model: "Unknown", speed: 0 };
+      cpu = { count: 0, model: "Unknown", speed: 0 };
+    }
+
+    const [physicalCores, avx2] = await Promise.all([
+      this.detectPhysicalCores(),
+      this.detectAvx2(),
+    ]);
+    return { ...cpu, physicalCores, avx2 };
+  }
+
+  /** @returns {Promise<number|null>} */
+  async detectPhysicalCores() {
+    try {
+      const cores = await cpuThreads.warmCpuTopology();
+      return Number.isInteger(cores) && cores > 0 ? cores : null;
+    } catch (error) {
+      debugLogger.debug("Physical core detection failed", { error: error.message });
+      return null;
+    }
+  }
+
+  /** @returns {Promise<boolean|null>} */
+  async detectAvx2() {
+    try {
+      return await cpuFeatures.detectAvx2();
+    } catch (error) {
+      debugLogger.debug("AVX2 detection failed", { error: error.message });
+      return null;
+    }
+  }
+
+  detectMemory() {
+    try {
+      return { totalBytes: os.totalmem() };
+    } catch (error) {
+      debugLogger.warn("Memory detection failed", { error: error.message });
+      return { totalBytes: 0 };
     }
   }
 
@@ -538,13 +582,16 @@ class HardwareDetector {
    * - reasoning: human-readable explanation bullets shown in onboarding UI
    */
   generateRecommendations(detection) {
+    // Every path below overrides whisperModel; only the detection-failed default
+    // keeps it, and with the hardware unknown it must be a model a CPU can run.
     const rec = {
       transcriptionProvider: "local",
-      whisperModel: "turbo",
+      whisperModel: "base",
       localTranscriptionProvider: "whisper",
       gpuCategory: "cpu_only",
       reasoning: [],
       recoverySteps: [],
+      parakeetHardware: { eligible: false, reasons: ["Could not check this PC's hardware."] },
     };
 
     const { gpu, cpu } = detection;
@@ -554,6 +601,15 @@ class HardwareDetector {
       rec.reasoning.push("Unable to detect hardware - using safe CPU defaults with Whisper");
       return rec;
     }
+
+    // Computed for every category: a CUDA PC keeps GPU Whisper as its default
+    // but may still pick Parakeet in Settings when this passes.
+    rec.parakeetHardware = evaluateParakeetHardware({
+      physicalCores: cpu.physicalCores ?? null,
+      avx2: cpu.avx2 ?? null,
+      totalBytes: detection.memory?.totalBytes ?? null,
+      logicalCores: cpu.count ?? null,
+    });
 
     // ── macOS Metal (early return - Whisper with Metal acceleration) ─────────
     if (gpu.metal?.available && gpu.available) {
