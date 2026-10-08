@@ -266,6 +266,30 @@ const isControlPanelUrl = (url: string) => url.includes("panel=true");
 const isOverlayUrl = (url: string) => !isControlPanelUrl(url) && url.includes("index.html");
 const isFlagOn = (value?: string) => ["1", "true", "yes", "on"].includes(value ?? "");
 
+const PROMISE_GC_ERROR = "Resulting promise was garbage collected";
+const PROMISE_GC_ATTEMPTS = 3;
+
+/**
+ * Retry a main-process evaluate that V8 dropped before replying.
+ *
+ * The Node inspector holds the result of an evaluate only weakly until the next
+ * microtask checkpoint. When a GC lands in that gap, Playwright reports
+ * "Resulting promise was garbage collected" (microsoft/playwright#33737, closed
+ * without a fix). It hit about 6% of test launches. The function may already
+ * have run when the reply is lost, so only idempotent evaluates belong in here.
+ */
+async function retryOnPromiseGc<T>(label: string, run: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      const collected = error instanceof Error && error.message.includes(PROMISE_GC_ERROR);
+      if (!collected || attempt >= PROMISE_GC_ATTEMPTS) throw error;
+      console.warn(`[e2e] ${label}: evaluate promise was garbage collected, retrying`);
+    }
+  }
+}
+
 /**
  * Keep the app off the developer's screen. A test run opens the always-on-top
  * overlay and the control panel once per spec; left alone they steal focus,
@@ -280,55 +304,70 @@ const isFlagOn = (value?: string) => ["1", "true", "yes", "on"].includes(value ?
  * `muteAudio` additionally mutes every window's output, for specs that play
  * real audio. Muting only silences the output device — WebAudio's clock keeps
  * running, so playback state and timing assertions are unaffected.
+ *
+ * Safe to run twice, which a retry after a lost reply does: a second pass
+ * would otherwise bind the stubs as the "real" setters and register a second
+ * window listener.
  */
 async function silenceWindows(app: ElectronApplication, muteAudio = false): Promise<void> {
-  await app.evaluate(({ app: electronApp, BrowserWindow }, shouldMute) => {
-    const silence = (win: Electron.BrowserWindow) => {
-      if (!win || win.isDestroyed()) return;
+  await retryOnPromiseGc("silenceWindows", () =>
+    app.evaluate(({ app: electronApp, BrowserWindow }, shouldMute) => {
+      // Lives on the main process's global so a second evaluate sees the first.
+      type SilenceState = { windows: WeakSet<Electron.BrowserWindow>; listening: boolean };
+      const store = globalThis as unknown as { __ptE2eSilence?: SilenceState };
+      const state = (store.__ptE2eSilence ??= { windows: new WeakSet(), listening: false });
 
-      // Keep working references before the public setters are stubbed out.
-      const real = {
-        setAlwaysOnTop: win.setAlwaysOnTop.bind(win),
-        setSkipTaskbar: win.setSkipTaskbar.bind(win),
-        setOpacity: win.setOpacity.bind(win),
-        setIgnoreMouseEvents: win.setIgnoreMouseEvents.bind(win),
+      const silence = (win: Electron.BrowserWindow) => {
+        if (!win || win.isDestroyed() || state.windows.has(win)) return;
+        state.windows.add(win);
+
+        // Keep working references before the public setters are stubbed out.
+        const real = {
+          setAlwaysOnTop: win.setAlwaysOnTop.bind(win),
+          setSkipTaskbar: win.setSkipTaskbar.bind(win),
+          setOpacity: win.setOpacity.bind(win),
+          setIgnoreMouseEvents: win.setIgnoreMouseEvents.bind(win),
+        };
+
+        const enforce = () => {
+          if (win.isDestroyed()) return;
+          try {
+            real.setAlwaysOnTop(false);
+            real.setSkipTaskbar(true);
+            real.setOpacity(0);
+            real.setIgnoreMouseEvents(true);
+            if (shouldMute) win.webContents.setAudioMuted(true);
+          } catch {
+            // Some setters are platform-specific; losing one is not fatal here.
+          }
+        };
+
+        win.setAlwaysOnTop = () => {};
+        win.setOpacity = () => {};
+        win.setIgnoreMouseEvents = () => {};
+        win.moveTop = () => {};
+        win.focus = () => {};
+        win.setSkipTaskbar = () => {};
+        // showInactive() presents the window without activating it, so the app's
+        // own show() calls no longer pull focus away from the foreground app.
+        win.show = () => win.showInactive();
+
+        // browser-window-created fires from inside the constructor, before
+        // Electron applies options like alwaysOnTop, so a single pass here would
+        // be overwritten. Re-assert on every point the window becomes visible.
+        enforce();
+        win.once("ready-to-show", enforce);
+        win.on("show", enforce);
+        win.on("restore", enforce);
       };
 
-      const enforce = () => {
-        if (win.isDestroyed()) return;
-        try {
-          real.setAlwaysOnTop(false);
-          real.setSkipTaskbar(true);
-          real.setOpacity(0);
-          real.setIgnoreMouseEvents(true);
-          if (shouldMute) win.webContents.setAudioMuted(true);
-        } catch {
-          // Some setters are platform-specific; losing one is not fatal here.
-        }
-      };
-
-      win.setAlwaysOnTop = () => {};
-      win.setOpacity = () => {};
-      win.setIgnoreMouseEvents = () => {};
-      win.moveTop = () => {};
-      win.focus = () => {};
-      win.setSkipTaskbar = () => {};
-      // showInactive() presents the window without activating it, so the app's
-      // own show() calls no longer pull focus away from the foreground app.
-      win.show = () => win.showInactive();
-
-      // browser-window-created fires from inside the constructor, before
-      // Electron applies options like alwaysOnTop, so a single pass here would
-      // be overwritten. Re-assert on every point the window becomes visible.
-      enforce();
-      win.once("ready-to-show", enforce);
-      win.on("show", enforce);
-      win.on("restore", enforce);
-    };
-
-    BrowserWindow.getAllWindows().forEach(silence);
-    electronApp.on("browser-window-created", (_event, win) => silence(win));
-  }, muteAudio);
+      BrowserWindow.getAllWindows().forEach(silence);
+      if (!state.listening) {
+        state.listening = true;
+        electronApp.on("browser-window-created", (_event, win) => silence(win));
+      }
+    }, muteAudio)
+  );
 }
 
 async function findWindow(
@@ -429,9 +468,8 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
   // so this takes effect for every later lookup; specs reload the window
   // they assert on, which re-runs the picker's model query.
   if (fakeHomeDir) {
-    await app.evaluate(
-      ({ app: electronApp }, dir) => electronApp.setPath("home", dir),
-      fakeHomeDir
+    await retryOnPromiseGc("setPath(home)", () =>
+      app.evaluate(({ app: electronApp }, dir) => electronApp.setPath("home", dir), fakeHomeDir)
     );
   }
 
