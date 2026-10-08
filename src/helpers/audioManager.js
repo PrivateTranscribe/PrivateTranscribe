@@ -145,6 +145,33 @@ const formatLocalWhisperFailure = (message) => {
   return `Local Whisper failed: ${rawMessage}`;
 };
 
+// Toast buttons useAudioRecording knows how to render for a failed dictation.
+export const TRANSCRIPTION_TOAST_ACTIONS = Object.freeze({
+  SWITCH_TO_WHISPER: "switch-to-whisper",
+  OPEN_SPEECH_MODEL_SETTINGS: "open-speech-model-settings",
+});
+
+/** An error whose toast replaces the generic "Transcription failed" one. */
+const createToastError = (message, toast) => Object.assign(new Error(message), { toast });
+
+/**
+ * One shape for a Parakeet failure, whether the IPC handler returned
+ * `{ success: false, error }` or rejected. A rejection loses the error's code
+ * on its way through ipcRenderer.invoke, so only its message survives.
+ */
+const describeParakeetFailure = (failure) => {
+  const rawMessage = failure?.message || failure?.error || "Parakeet transcription failed";
+  const message = String(rawMessage).replace(
+    /^Error invoking remote method '[^']+':\s*(?:\w*Error:\s*)?/,
+    ""
+  );
+  return {
+    code: failure?.code || (failure?.success === false ? failure.error : null) || null,
+    message,
+    cancelled: failure?.name === "AbortError" || failure?.cancelled === true,
+  };
+};
+
 const isValidApiKey = (key, provider = "openai") => {
   if (!key || key.trim() === "") return false;
   const placeholder = PLACEHOLDER_KEYS[provider] || PLACEHOLDER_KEYS.openai;
@@ -441,10 +468,12 @@ class AudioManager {
     }
   }
 
-  setCallbacks({ onStateChange, onError, onTranscriptionComplete }) {
+  setCallbacks({ onStateChange, onError, onTranscriptionComplete, onNoAudioDetected }) {
     this.onStateChange = onStateChange;
     this.onError = onError;
     this.onTranscriptionComplete = onTranscriptionComplete;
+    // Main sends Whisper's silence as an IPC event; Parakeet's arrives in its result.
+    this.onNoAudioDetected = onNoAudioDetected;
   }
 
   emitStateChange() {
@@ -1280,6 +1309,7 @@ class AudioManager {
           state.errors.push({
             index: item.index,
             message: error?.message || "Chunk transcription failed",
+            toast: error?.toast,
             item,
           });
           logger.warn(
@@ -1339,7 +1369,7 @@ class AudioManager {
       const item = entry.item;
 
       if (state.cancelled) {
-        state.errors.push({ index: entry.index, message: entry.message });
+        state.errors.push({ index: entry.index, message: entry.message, toast: entry.toast });
         continue;
       }
 
@@ -1368,6 +1398,7 @@ class AudioManager {
         state.errors.push({
           index: entry.index,
           message: error?.message || entry.message,
+          toast: error?.toast || entry.toast,
         });
       }
     }
@@ -1434,8 +1465,12 @@ class AudioManager {
     // transcribe and flag it as incomplete; only give up when nothing survived.
     if (!transcribedText) {
       if (state.errors.length > 0) {
-        throw new Error(
-          `Long recording could not be transcribed after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
+        // The chunk's toast button (Switch to Whisper) still applies to the whole recording.
+        throw Object.assign(
+          new Error(
+            `Long recording could not be transcribed after retrying chunk ${state.errors[0].index + 1}: ${state.errors[0].message}`
+          ),
+          { toast: state.errors[0].toast }
         );
       }
       throw new Error("No text transcribed - audio may be silent or unavailable");
@@ -2195,10 +2230,14 @@ class AudioManager {
       );
 
       if (error.message !== "No audio detected") {
-        this.onError?.({
-          title: "Transcription Error",
-          description: `Transcription failed: ${error.message}`,
-        });
+        this.onError?.(
+          error.toast
+            ? { ...error.toast }
+            : {
+                title: "Transcription Error",
+                description: `Transcription failed: ${error.message}`,
+              }
+        );
       }
     } finally {
       this.clearActiveTranscriptionAbortController(processingGeneration);
@@ -2289,6 +2328,7 @@ class AudioManager {
         this.onError?.({
           title: "Transcription Error",
           description: `Transcription failed: ${error.message}`,
+          ...(error.toast?.action ? { action: error.toast.action } : {}),
         });
       }
     } finally {
@@ -2304,7 +2344,7 @@ class AudioManager {
 
   async runTranscription(audioBlob, metadata = {}) {
     const useLocalWhisper = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
-    const localProvider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
+    let localProvider = this.getTranscriptionSetting("localTranscriptionProvider", "whisper");
     const whisperModel = this.getTranscriptionSetting("whisperModel", "base");
     const parakeetModel = this.getTranscriptionSetting("parakeetModel", "parakeet-tdt-0.6b-v3");
 
@@ -2333,14 +2373,12 @@ class AudioManager {
       activeModel = result?.activeModel || activeModel;
     }
 
-    // Parakeet is a literal "cpu" because the bundled sherpa-onnx binaries ship
-    // no GPU execution provider. If one is ever added, this has to start
-    // reading the provider instead of asserting it.
-    const computeMode = source.startsWith("openai")
-      ? "cloud"
-      : useLocalWhisper && localProvider === "nvidia"
-        ? "cpu"
-        : result?.computeMode || "unknown";
+    // A Parakeet failure may have been retried on Whisper, which reports its own
+    // engine; Parakeet's own results carry "cpu" (see processWithLocalParakeet).
+    if (result?.localProvider) {
+      localProvider = result.localProvider;
+    }
+    const computeMode = source.startsWith("openai") ? "cloud" : result?.computeMode || "unknown";
 
     return { result, useLocalWhisper, localProvider, activeModel, computeMode };
   }
@@ -2564,6 +2602,7 @@ class AudioManager {
 
   async processWithLocalParakeet(audioBlob, model = "parakeet-tdt-0.6b-v3", metadata = {}) {
     const timings = {};
+    let result;
 
     try {
       const arrayBuffer = toIpcSafeArrayBuffer(await audioBlob.arrayBuffer());
@@ -2599,61 +2638,198 @@ class AudioManager {
       );
 
       const transcriptionStart = performance.now();
-      const result = await window.electronAPI.transcribeLocalParakeet(arrayBuffer, options);
+      result = await window.electronAPI.transcribeLocalParakeet(arrayBuffer, options);
       timings.transcriptionProcessingDurationMs = Math.round(
         performance.now() - transcriptionStart
       );
+      // Decode time without the model load, as Whisper reports it.
+      if (Number.isFinite(result?.decodeMs) && result.decodeMs > 0) {
+        timings.transcriptionInferenceDurationMs = Math.round(result.decodeMs);
+      }
 
       logger.debug(
         "Parakeet transcription complete",
         {
           transcriptionProcessingDurationMs: timings.transcriptionProcessingDurationMs,
-          success: result.success,
+          transcriptionInferenceDurationMs: timings.transcriptionInferenceDurationMs ?? null,
+          success: result?.success,
+          noSpeech: Boolean(result?.noSpeech),
         },
         "performance"
       );
-
-      if (result.success && result.text) {
-        if (metadata?.skipPostProcessing) {
-          return { success: true, text: result.text, source: "local-parakeet", timings };
-        }
-
-        const reasoningStart = performance.now();
-        const text = await this.processTranscription(result.text, "local-parakeet");
-        timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
-
-        if (text !== null && text !== undefined) {
-          return { success: true, text: text || result.text, source: "local-parakeet", timings };
-        } else {
-          throw new Error("No text transcribed");
-        }
-      } else if (result.success === false && result.message === "No audio detected") {
-        throw new Error("No audio detected");
-      } else {
-        throw new Error(result.message || result.error || "Parakeet transcription failed");
-      }
     } catch (error) {
-      if (error.message === "No audio detected") {
-        throw error;
+      // The IPC handler rethrows engine failures (a crashed host, a timeout).
+      return this.recoverFromParakeetFailure(audioBlob, describeParakeetFailure(error), metadata);
+    }
+
+    const noSpeech =
+      (result?.success && (result.noSpeech || !String(result.text || "").trim())) ||
+      (result?.success === false && result.message === "No audio detected");
+    if (noSpeech) {
+      // Whisper's two silence outcomes: a silent long-session piece is an empty
+      // success, and a silent dictation is dropped with the "No Audio Detected" toast.
+      if (metadata?.source === "long-session") {
+        return { success: true, text: "", source: "local-parakeet", timings, computeMode: "cpu" };
       }
+      this.onNoAudioDetected?.();
+      throw new Error("No audio detected");
+    }
 
-      const allowOpenAIFallback =
-        this.getTranscriptionSetting("allowOpenAIFallback", "false") === "true";
-      const isLocalMode = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
+    if (!result?.success) {
+      return this.recoverFromParakeetFailure(audioBlob, describeParakeetFailure(result), metadata);
+    }
 
-      if (allowOpenAIFallback && isLocalMode) {
-        try {
-          const fallbackResult = await this.processWithOpenAIAPI(audioBlob, metadata);
-          return { ...fallbackResult, source: "openai-fallback" };
-        } catch (fallbackError) {
-          throw new Error(
-            `Parakeet failed: ${error.message}. OpenAI fallback also failed: ${fallbackError.message}`
-          );
+    // sherpa-onnx-node runs on the CPU execution provider only.
+    if (metadata?.skipPostProcessing) {
+      return {
+        success: true,
+        text: result.text,
+        source: "local-parakeet",
+        timings,
+        computeMode: "cpu",
+      };
+    }
+
+    const reasoningStart = performance.now();
+    const text = await this.processTranscription(result.text, "local-parakeet");
+    timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
+
+    if (text === null || text === undefined) {
+      throw new Error("No text transcribed");
+    }
+    return {
+      success: true,
+      text: text || result.text,
+      source: "local-parakeet",
+      timings,
+      computeMode: "cpu",
+    };
+  }
+
+  // Parakeet decoded nothing usable. A missing model is a setup problem with its
+  // own toast; anything else gets the same audio again on local Whisper, and the
+  // cloud only when the user allowed it and no local Whisper could run.
+  async recoverFromParakeetFailure(audioBlob, failure, metadata = {}) {
+    if (failure.cancelled || this.isTranscriptionRequestCancelled(metadata)) {
+      throw Object.assign(new Error("Transcription cancelled"), { name: "AbortError" });
+    }
+
+    if (failure.code === "model_not_found") {
+      throw createToastError(`Parakeet failed: ${failure.message}`, {
+        title: "Parakeet isn't downloaded yet",
+        description: "Download it on the Dictation page, or choose a Whisper model there.",
+        action: TRANSCRIPTION_TOAST_ACTIONS.OPEN_SPEECH_MODEL_SETTINGS,
+      });
+    }
+
+    const whisperModel = await this.findFallbackWhisperModel();
+    if (whisperModel) {
+      logger.warn(
+        "Parakeet failed; retrying the same audio with local Whisper",
+        {
+          error: failure.message,
+          code: failure.code || null,
+          whisperModel,
+          longSessionChunk: metadata?.source === "long-session" ? metadata.chunkIndex : null,
+        },
+        "transcription"
+      );
+      try {
+        const retry = await this.processWithLocalWhisper(audioBlob, whisperModel, metadata);
+        // processWithLocalWhisper already handed it to the cloud when that was allowed.
+        if (String(retry?.source || "").startsWith("openai")) {
+          return retry;
         }
-      } else {
-        throw new Error(`Parakeet failed: ${error.message}`);
+        return { ...retry, activeModel: whisperModel, localProvider: "whisper" };
+      } catch (whisperError) {
+        if (whisperError?.name === "AbortError" || whisperError?.message === "No audio detected") {
+          throw whisperError;
+        }
+        throw new Error(
+          `Parakeet failed: ${failure.message}. Local Whisper also failed: ${whisperError.message}`
+        );
       }
     }
+
+    const noLocalFallbackToast = {
+      title: "Parakeet couldn't transcribe this",
+      description:
+        "Parakeet failed on this recording, and no Whisper model is installed to try instead.",
+      action: TRANSCRIPTION_TOAST_ACTIONS.SWITCH_TO_WHISPER,
+    };
+
+    const allowOpenAIFallback =
+      this.getTranscriptionSetting("allowOpenAIFallback", "false") === "true";
+    const isLocalMode = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
+    if (allowOpenAIFallback && isLocalMode) {
+      logger.warn(
+        "Parakeet failed and no Whisper model is installed; using the OpenAI fallback",
+        { error: failure.message, code: failure.code || null },
+        "transcription"
+      );
+      try {
+        const fallbackResult = await this.processWithOpenAIAPI(audioBlob, metadata);
+        return { ...fallbackResult, source: "openai-fallback" };
+      } catch (fallbackError) {
+        if (fallbackError?.name === "AbortError") {
+          throw fallbackError;
+        }
+        throw createToastError(
+          `Parakeet failed: ${failure.message}. OpenAI fallback also failed: ${fallbackError.message}`,
+          noLocalFallbackToast
+        );
+      }
+    }
+
+    logger.warn(
+      "Parakeet failed and no Whisper model is installed to retry with",
+      { error: failure.message, code: failure.code || null },
+      "transcription"
+    );
+    throw createToastError(`Parakeet failed: ${failure.message}`, noLocalFallbackToast);
+  }
+
+  // The user's own Whisper model when it is on disk, otherwise the smallest one
+  // that is. Null when none is, or when the list cannot be read.
+  async findFallbackWhisperModel() {
+    let listing;
+    try {
+      listing = await window.electronAPI?.listWhisperModels?.();
+    } catch (error) {
+      logger.warn(
+        "Could not list Whisper models for the Parakeet fallback",
+        { error: error?.message },
+        "transcription"
+      );
+      return null;
+    }
+
+    // small-en-tdrz is the speaker-turn model for files; the dictation picker hides it too.
+    const downloaded = (Array.isArray(listing?.models) ? listing.models : []).filter(
+      (entry) => entry?.downloaded && entry.model && entry.model !== "small-en-tdrz"
+    );
+    if (downloaded.length === 0) {
+      return null;
+    }
+
+    const preferred = this.getTranscriptionSetting("whisperModel", "");
+    if (preferred && downloaded.some((entry) => entry.model === preferred)) {
+      return preferred;
+    }
+
+    const sizeOf = (entry) =>
+      Number.isFinite(entry.size_bytes) ? entry.size_bytes : Number.POSITIVE_INFINITY;
+    return [...downloaded].sort((left, right) => sizeOf(left) - sizeOf(right))[0].model;
+  }
+
+  isTranscriptionRequestCancelled(metadata = {}) {
+    if (metadata?.source === "long-session") {
+      return this.longSession?.cancelled === true;
+    }
+    if (metadata?.processingGeneration) {
+      return !this.isCurrentProcessingGeneration(metadata.processingGeneration);
+    }
+    return false;
   }
 
   async getAPIKey() {

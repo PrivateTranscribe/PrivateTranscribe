@@ -12,6 +12,53 @@ import { areExperimentalFeaturesEnabled, isAgentModeActive } from "../utils/expe
 import { deliverDictation } from "../utils/dictationDelivery";
 import { formatHotkeyLabel, readStoredHotkey } from "../utils/hotkeys";
 
+const openSpeechModelSettings = () => {
+  window.electronAPI?.openControlPanel?.({ page: "dictation" });
+};
+
+// useLocalStorage serializes this key with String(); the event tells this
+// window's settings hooks, and other windows hear the browser's storage event.
+const switchDictationToWhisper = () => {
+  try {
+    localStorage.setItem("localTranscriptionProvider", "whisper");
+    window.dispatchEvent(
+      new CustomEvent("privatetranscribe-local-storage-change", {
+        detail: { key: "localTranscriptionProvider", value: "whisper" },
+      })
+    );
+  } catch {
+    // The settings page still opens, where the engine can be switched by hand.
+  }
+  openSpeechModelSettings();
+};
+
+/**
+ * Label and handler for each button an AudioManager error can ask for, keyed
+ * by audioManager's TRANSCRIPTION_TOAST_ACTIONS values. They are written out
+ * so hook tests that mock audioManager can still load this module.
+ */
+export const TRANSCRIPTION_TOAST_BUTTONS = {
+  "switch-to-whisper": {
+    label: "Switch to Whisper",
+    onClick: switchDictationToWhisper,
+  },
+  "open-speech-model-settings": {
+    label: "Open Dictation settings",
+    onClick: openSpeechModelSettings,
+  },
+};
+
+const createToastButton = (label, onClick) =>
+  React.createElement(
+    "button",
+    {
+      className:
+        "rounded-[6px] border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15",
+      onClick,
+    },
+    label
+  );
+
 /**
  * Whether a voice-mute attempt failed in a way the user needs to hear about.
  *
@@ -239,7 +286,17 @@ export const useAudioRecording = (toast, options = {}) => {
       }
     };
 
+    const handleNoAudioDetected = () => {
+      if (disposed) return;
+      toastRef.current?.({
+        title: "No Audio Detected",
+        description: "The recording contained no detectable audio. Please try again.",
+        variant: "default",
+      });
+    };
+
     manager.setCallbacks({
+      onNoAudioDetected: handleNoAudioDetected,
       onStateChange: ({ isRecording, isProcessing, longSession }) => {
         if (disposed) {
           return;
@@ -272,6 +329,7 @@ export const useAudioRecording = (toast, options = {}) => {
         // A missing model or engine binary is a setup problem the overlay
         // cannot fix. Put the way out on the toast itself instead of naming
         // Settings and leaving the user to go find the right page.
+        const requestedButton = TRANSCRIPTION_TOAST_BUTTONS[error.action];
         const isSetupError = /not downloaded|binary not found/i.test(
           `${error.title ?? ""} ${error.description ?? ""}`
         );
@@ -279,23 +337,20 @@ export const useAudioRecording = (toast, options = {}) => {
           title: error.title,
           description: error.description,
           variant: "destructive",
-          ...(isSetupError && {
-            duration: 12000,
-            action: React.createElement(
-              "button",
-              {
-                className:
-                  "rounded-[6px] border border-primary/30 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/15",
-                onClick: () => {
+          ...(requestedButton
+            ? {
+                duration: 12000,
+                action: createToastButton(requestedButton.label, requestedButton.onClick),
+              }
+            : isSetupError && {
+                duration: 12000,
+                action: createToastButton("Open Settings", () => {
                   window.electronAPI?.openControlPanel?.({
                     page: "settings",
                     settingsTab: "transcription",
                   });
-                },
-              },
-              "Open Settings"
-            ),
-          }),
+                }),
+              }),
         });
 
         // Error notification (system-level)
@@ -890,14 +945,6 @@ export const useAudioRecording = (toast, options = {}) => {
       handleHybridKeyUp();
       onToggleRef.current?.();
     });
-
-    const handleNoAudioDetected = () => {
-      toastRef.current?.({
-        title: "No Audio Detected",
-        description: "The recording contained no detectable audio. Please try again.",
-        variant: "default",
-      });
-    };
 
     const disposeNoAudio = window.electronAPI.onNoAudioDetected?.(handleNoAudioDetected);
 
