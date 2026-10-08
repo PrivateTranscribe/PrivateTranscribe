@@ -3,6 +3,7 @@ const fsPromises = require("fs").promises;
 const path = require("path");
 const { spawn } = require("child_process");
 const debugLogger = require("./debugLogger");
+const { getTarCommand } = require("./systemTar");
 const { downloadFile, createDownloadSignal } = require("./downloadUtils");
 const ParakeetClient = require("./parakeetClient");
 const { isModelDirComplete } = ParakeetClient;
@@ -246,7 +247,7 @@ class ParakeetManager {
 
   _runTarExtract(archivePath, extractDir) {
     return new Promise((resolve, reject) => {
-      const tarProcess = spawn("tar", ["-xjf", archivePath, "-C", extractDir], {
+      const tarProcess = spawn(getTarCommand(), ["-xjf", archivePath, "-C", extractDir], {
         stdio: ["ignore", "pipe", "pipe"],
       });
 
