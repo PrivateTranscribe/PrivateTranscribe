@@ -87,7 +87,6 @@ Fixture options a spec can override with `test.use({ ... })`: `completeOnboardin
 npm run download:whisper-cpp      # Current platform
 npm run download:whisper-cpp:all  # All platforms
 npm run download:llama-server     # Current platform
-npm run download:sherpa-onnx      # Current platform
 ```
 Note: `prebuild`/`prepack`/`predist` scripts automatically run these downloads before `npm run build`/`pack`/`dist`.
 
@@ -114,7 +113,7 @@ MediaRecorder API → Blob → ArrayBuffer → IPC → temp file → whisper.cpp
 | IPC handlers (all channels) | `src/helpers/ipcHandlers.js`, `preload.js` |
 | Audio recording | `src/hooks/useAudioRecording.js`, `src/helpers/audioManager.js` |
 | Transcription (local whisper.cpp) | `src/helpers/whisper.js`, `src/helpers/whisperServer.js` |
-| Transcription (local Parakeet/sherpa-onnx) | `src/helpers/parakeet.js`, `src/helpers/parakeetServer.js`, `src/helpers/parakeetWsServer.js` |
+| Transcription (local Parakeet/sherpa-onnx-node) | `src/helpers/parakeet.js` (model files), `src/helpers/parakeetClient.js` + `parakeetHost.js` (utility process, no network port), `src/helpers/parakeetAudio.js` (trim, normalise, ≤60 s pieces: one decode past 400 s crashes) |
 | AI reasoning (multi-provider) | `src/services/ReasoningService.ts` |
 | Local AI reasoning (llama.cpp) | `src/services/localReasoningBridge.js` |
 | llama.cpp server management | `src/helpers/llamaServer.js` |
@@ -197,7 +196,7 @@ Default design direction: calm operator UI, visible system state, product-specif
 - **Vite** for renderer bundling (`src/vite.config.mjs`): port 5174, React plugin, Tailwind CSS v4 plugin, relative base path for `file://` protocol
 - **electron-builder** for packaging (`electron-builder.json`): App ID `com.PrivateTranscribe.app`, product name `PrivateTranscribe` 
 - ASAR unpacking required for `ffmpeg-static` and `better-sqlite3`
-- Extra resources: binaries in `resources/bin/` (whisper-cpp, whisper-server, llama-server, sherpa-onnx, key listeners)
+- Extra resources: binaries in `resources/bin/` (whisper-cpp, whisper-server, llama-server, key listeners)
 - Whisper models stored at `~/.cache/PrivateTranscribe/whisper-models/`, Parakeet models at `~/.cache/PrivateTranscribe/parakeet-models/` (migration from old ~/.cache/Privoca/ handled automatically on first run via modelDirUtils.js)
 - Linux targets: AppImage, deb, rpm, tar.gz, flatpak
 - Windows targets: NSIS installer, portable
@@ -272,7 +271,7 @@ All model definitions centralized in `src/models/modelRegistryData.json` as sing
 | Engine | Binary Pattern | Model Storage |
 |--------|---------------|---------------|
 | **whisper.cpp** | `resources/bin/whisper-cpp-{platform}-{arch}` | `~/.cache/PrivateTranscribe/whisper-models/` |
-| **NVIDIA Parakeet** (sherpa-onnx) | `resources/bin/sherpa-onnx-{platform}-{arch}` | `~/.cache/PrivateTranscribe/parakeet-models/` |
+| **NVIDIA Parakeet** (sherpa-onnx-node, CPU) | npm package `sherpa-onnx-node`, run in a utility process | `~/.cache/PrivateTranscribe/parakeet-models/` |
 
 Whisper models (GGML): tiny (75MB), base (142MB, recommended), small (466MB), medium (1.5GB), large (3GB), turbo (1.6GB)
 Parakeet models: `parakeet-tdt-0.6b-v3` — multilingual 25 languages, ~680MB, INT8 quantized
@@ -396,7 +395,6 @@ Application-specific UI: `ActivationModeSelector`, `ApiKeyInput`, `HotkeyInput`,
 | `download-whisper-cpp.js` | Downloads whisper.cpp binaries from GitHub releases |
 | `download-llama-server.js` | Downloads llama.cpp server for local LLM inference |
 | `download-windows-key-listener.js` | Downloads prebuilt Windows key listener binary |
-| `download-sherpa-onnx.js` | Downloads sherpa-onnx binaries for Parakeet support |
 | `build-globe-listener.js` | Compiles macOS Globe key listener from Swift source |
 | `build-windows-key-listener.js` | Compiles Windows key listener (for local development) |
 | `run-electron.js` | Development script to launch Electron with proper environment |
