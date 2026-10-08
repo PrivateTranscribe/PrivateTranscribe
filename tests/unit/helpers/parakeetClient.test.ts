@@ -97,6 +97,38 @@ describe("ParakeetClient.transcribe", () => {
     expect(hosts[0].messages[0].args.numThreads).toBeLessThanOrEqual(4);
   });
 
+  it("drops filler words for the languages the user speaks", async () => {
+    const chunks = [new Float32Array([0.1]), new Float32Array([0.2])];
+    const texts = new Map([
+      [chunks[0], "Um, it uh crashes"],
+      [chunks[1], "when I submit."],
+    ]);
+    const { client } = makeClient((message) =>
+      message.op === "load"
+        ? loadReply(message)
+        : { ok: true, result: { text: texts.get(message.args.samples) } }
+    );
+    vi.spyOn(client, "_prepareAudio").mockResolvedValue(prepared(chunks));
+
+    const result = await client.transcribe(Buffer.from("audio"), {
+      model: MODEL,
+      languages: ["en"],
+    });
+
+    expect(result).toMatchObject({ success: true, text: "It crashes when I submit." });
+  });
+
+  it("reports a recording of only a filler as no speech", async () => {
+    const { client } = makeClient((message) =>
+      message.op === "load" ? loadReply(message) : { ok: true, result: { text: "Uh." } }
+    );
+    vi.spyOn(client, "_prepareAudio").mockResolvedValue(prepared([new Float32Array([0.1])]));
+
+    const result = await client.transcribe(Buffer.from("audio"), { model: MODEL });
+
+    expect(result).toMatchObject({ success: true, text: "", noSpeech: true });
+  });
+
   it("returns noSpeech without decoding when preparation found nothing to decode", async () => {
     const { client, hosts } = makeClient((message) =>
       message.op === "load" ? loadReply(message) : { ok: true, result: { text: "invented" } }

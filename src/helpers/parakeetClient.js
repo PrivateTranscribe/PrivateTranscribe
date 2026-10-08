@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const debugLogger = require("./debugLogger");
 const { getPhysicalCoreCount } = require("./cpuThreads");
+const { removeFillerWords } = require("./fillerWords");
 
 const DEFAULT_MODEL = "parakeet-tdt-0.6b-v3";
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -175,7 +176,8 @@ class ParakeetClient {
 
   /**
    * @param {Buffer} audioBuffer the recording, as the transcribe IPC receives it
-   * @param {{ model?: string, signal?: AbortSignal }} [options]
+   * @param {{ model?: string, signal?: AbortSignal, languages?: string[] }} [options]
+   *   languages: what the user speaks, for the filler filter
    */
   async transcribe(audioBuffer, options = {}) {
     const modelName = options.model || DEFAULT_MODEL;
@@ -210,7 +212,7 @@ class ParakeetClient {
         if (text && text.trim()) texts.push(text.trim());
       }
       const decodeMs = Date.now() - startedAt;
-      const text = texts.join(" ").trim();
+      const text = removeFillerWords(texts.join(" ").trim(), { languages: options.languages });
 
       debugLogger.logSTTPipeline("Parakeet decode complete", {
         chunks: prepared.chunks.length,

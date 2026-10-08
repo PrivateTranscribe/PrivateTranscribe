@@ -95,6 +95,7 @@ describe("AudioManager Parakeet dictation", () => {
 
     expect(api.transcribeLocalParakeet).toHaveBeenCalledWith(expect.any(ArrayBuffer), {
       model: PARAKEET,
+      allowedLanguages: expect.any(Array),
     });
     expect(outcome.result).toMatchObject({
       success: true,

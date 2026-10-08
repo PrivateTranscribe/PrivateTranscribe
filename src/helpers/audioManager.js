@@ -2611,6 +2611,10 @@ class AudioManager {
       const options = { model };
       if (resolvedLanguage) {
         options.language = resolvedLanguage;
+      } else {
+        // Parakeet detects the language itself; the spoken set only tells the
+        // filler filter whether "um" is a real word for this user.
+        options.allowedLanguages = readSpokenLanguages();
       }
       if (metadata?.originalFileName) {
         options.inputFileName = metadata.originalFileName;

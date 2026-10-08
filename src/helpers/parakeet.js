@@ -114,6 +114,7 @@ class ParakeetManager {
     const result = await this.engine.transcribe(audioBuffer, {
       model,
       signal: options.signal,
+      languages: options.language ? [options.language] : options.allowedLanguages,
     });
 
     debugLogger.logSTTPipeline("transcribeLocalParakeet - completed", {
