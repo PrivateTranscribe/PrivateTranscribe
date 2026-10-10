@@ -80,4 +80,4 @@ Report a vulnerability privately through the repository's **Security** tab, as [
 
 ## Finding your way around
 
-The tables in [CLAUDE.md](../CLAUDE.md) map each part of the app to its files. Start with "Key Module Locations" and "Control Panel Page Architecture".
+The tables in [AGENTS.md](../AGENTS.md) map each part of the app to its files. Start with "Key Module Locations" and "Control Panel Page Architecture".
