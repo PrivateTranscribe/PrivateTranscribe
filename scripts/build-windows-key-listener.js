@@ -87,8 +87,10 @@ async function tryDownload() {
  * @returns {string} - Quoted path safe for shell use
  */
 function quotePath(p) {
-  // Use double quotes and escape any existing quotes
-  return `"${p.replace(/"/g, '\\"')}"`;
+  // Windows paths cannot contain a double quote, and cmd.exe has no escape
+  // for one inside quotes, so refuse rather than build a broken command.
+  if (p.includes('"')) throw new Error(`Path contains a double quote: ${p}`);
+  return `"${p}"`;
 }
 
 // Try to compile locally

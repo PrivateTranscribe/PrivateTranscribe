@@ -123,6 +123,7 @@ function authorName(author) {
     raw
       .replace(/<[^>]*>/g, "")
       .replace(/\([^)]*\)/g, "")
+      .replace(/[<>]/g, "")
       .trim() || null
   );
 }

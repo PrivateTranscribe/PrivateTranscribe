@@ -7,7 +7,7 @@
 const sharp = require("sharp");
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 const ASSETS_DIR = path.join(__dirname, "..", "src", "assets");
 const SVG_SOURCE = path.join(ASSETS_DIR, "icon.svg");
@@ -62,8 +62,7 @@ async function generateIcons() {
     // Try to use imagemagick if available
     try {
       const magickPath = process.platform === "win32" ? "magick" : "convert";
-      const icoCommand = `${magickPath} ${pngFiles.join(" ")} "${ICO_OUTPUT}"`;
-      execSync(icoCommand, { stdio: "ignore" });
+      execFileSync(magickPath, [...pngFiles, ICO_OUTPUT], { stdio: "ignore" });
       console.log(`  ✓ Created ${ICO_OUTPUT}`);
     } catch {
       // ImageMagick not available, use Node.js approach
