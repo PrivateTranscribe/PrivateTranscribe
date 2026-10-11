@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.22.0 - 2026-10-11
+
+### Added
+
+- Parakeet is back as a local dictation engine. It now runs inside the app and opens no network port.
+- Setup picks Parakeet on a PC without an NVIDIA card, or with one under 6 GB of video memory, when the PC has at least 4 cores, AVX2 and 8 GB of memory and every language you speak is one Parakeet supports. A 10-second speed test runs after the download, and if Parakeet is too slow, setup deletes it and goes back to Whisper.
+- The Dictation page lets you choose Parakeet or Whisper, and says why when your PC cannot run Parakeet. If you use Whisper on a PC that suits Parakeet, a one-time card offers the switch.
+- When a Parakeet dictation fails, the same recording is transcribed with an installed Whisper model instead. Cloud transcription is tried only if you allowed it and no local Whisper model could run.
+
+### Changed
+
+- Parakeet dictation leaves out hesitation sounds such as "uh". Sounds that are real words in a language you speak, such as Danish "er", stay.
+- Parakeet's language list names the 25 languages the model supports, Danish included.
+- If you used Parakeet before 0.21.0, the app moves you to Whisper once. You can pick Parakeet again on the Dictation page.
+- When the app cannot read your hardware, setup picks Whisper Base instead of Turbo, which is slow without a graphics card.
+
+### Fixed
+
+- Parakeet and speaker detection models install correctly on PCs with Git for Windows on the PATH.
+- A model download that gets a 404 no longer leaves an empty temporary file behind.
+
+### Security
+
+- Read Aloud ships with sharp 0.35.5, which fixes the libvips and libheif flaws in the version it used before.
+
 ## 0.21.1 - 2026-10-06
 
 ### Fixed
