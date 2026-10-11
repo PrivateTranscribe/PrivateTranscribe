@@ -119,11 +119,11 @@ function declaredLicense(packageJson, lockEntry) {
 function authorName(author) {
   const raw = typeof author === "string" ? author : author?.name;
   if (!raw) return null;
+  // npm writes "Name <email> (url)", so the name is everything before the first "<".
   return (
     raw
-      .replace(/<[^>]*>/g, "")
+      .split("<")[0]
       .replace(/\([^)]*\)/g, "")
-      .replace(/[<>]/g, "")
       .trim() || null
   );
 }
