@@ -75,7 +75,7 @@ interface LocalModelCardProps {
 function PerfMeter({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center gap-1" title={`${label}: ${value}/5`}>
-      <span className="w-9 text-right text-[8px] font-medium uppercase tracking-wide text-muted-foreground/50">
+      <span className="w-12 whitespace-nowrap text-right text-[8px] font-medium uppercase tracking-wide text-muted-foreground/50">
         {label}
       </span>
       <div className="flex gap-0.5">
@@ -1186,7 +1186,7 @@ export default function TranscriptionModelPicker({
 
               <p className="px-2.5 pb-2 text-[10px] leading-snug text-muted-foreground/60">
                 CPU runs on any computer. GPU (CUDA) is several times faster but needs an NVIDIA
-                graphics card — pick it only if you have one.
+                graphics card. Pick it only if you have one.
               </p>
 
               {engineStatus && (
