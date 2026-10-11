@@ -3559,9 +3559,14 @@ class AudioManager {
       }
 
       const endpoint = this.getTranscriptionEndpoint();
+      let endpointHost = "";
+      try {
+        endpointHost = new URL(endpoint).hostname;
+      } catch {
+        // Not a parseable URL, so not one of the known hosts.
+      }
       const isCustomEndpoint =
-        provider === "custom" ||
-        (!endpoint.includes("api.openai.com") && !endpoint.includes("api.groq.com"));
+        provider === "custom" || !["api.openai.com", "api.groq.com"].includes(endpointHost);
 
       logger.debug(
         "Making transcription API request",

@@ -13,8 +13,7 @@ import type { SettingsSearchEntry } from "../../config/settingsSearchIndex";
  */
 function revealSettingsRow(label: string) {
   requestAnimationFrame(() => {
-    const escaped = label.replace(/"/g, '\\"');
-    const row = document.querySelector<HTMLElement>(`[data-settings-label="${escaped}"]`);
+    const row = document.querySelector<HTMLElement>(`[data-settings-label="${CSS.escape(label)}"]`);
     if (!row) return;
 
     // Search must reveal settings inside collapsed optional sections too.

@@ -187,10 +187,11 @@ class DebugLogger {
           ? console.warn
           : console.log;
 
+    // "%s" keeps a % in the message from being read as a format directive.
     if (meta !== undefined) {
-      consoleFn(`${levelTag}${scopeTag}${sourceTag} ${message}`, meta);
+      consoleFn("%s", `${levelTag}${scopeTag}${sourceTag} ${message}`, meta);
     } else {
-      consoleFn(`${levelTag}${scopeTag}${sourceTag} ${message}`);
+      consoleFn("%s", `${levelTag}${scopeTag}${sourceTag} ${message}`);
     }
 
     if (this.logStream) {
