@@ -451,13 +451,19 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
     );
   }
 
-  args.push(...appArgs, ".");
+  // PT_E2E_EXECUTABLE points at a packaged PrivateTranscribe.exe, so a spec
+  // can check what the installer ships (asar, unpacked native modules,
+  // bundled DLLs) instead of this checkout.
+  const packagedExe = process.env.PT_E2E_EXECUTABLE;
+  args.push(...appArgs);
+  if (!packagedExe) args.push(".");
 
   const app = await electron.launch({
     cwd: REPO_ROOT,
     env,
     args,
     timeout: 60_000,
+    ...(packagedExe ? { executablePath: packagedExe } : {}),
   });
 
   await silenceWindows(app, muteAudio);
