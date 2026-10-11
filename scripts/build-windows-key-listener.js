@@ -190,7 +190,6 @@ async function main() {
   const steps = hasLocalSource ? [tryCompile, tryDownload] : [tryDownload, tryCompile];
 
   for (const step of steps) {
-    // eslint-disable-next-line no-await-in-loop
     const ok = await step();
     if (ok) {
       return;
