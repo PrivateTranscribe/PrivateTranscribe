@@ -15,6 +15,11 @@ function prepare(workerData) {
     if (hash !== MODEL_SHA256) throw new Error("Speech detection model failed integrity check");
     const pcm = Buffer.from(workerData.pcm);
     const regions = detectSpeechRegions(pcm, workerData.modelPath);
+    // File transcription plans its own pieces, so it wants where speech is
+    // rather than audio with the pauses already rewritten.
+    if (workerData.regionsOnly) {
+      return { ok: true, speechRegions: regions.map(({ start, end }) => [start, end]) };
+    }
     const result = prepareSpeechPcm(pcm, regions);
     const output = Uint8Array.from(result.pcm);
     return { ok: true, pcm: output, mode: result.mode, regions: result.regions };

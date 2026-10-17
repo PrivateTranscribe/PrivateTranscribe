@@ -32,15 +32,7 @@ function resolveSpeechModelPath(resourcesPath = process.resourcesPath) {
 // A worker thread shares native memory with the app. A sherpa access violation
 // therefore kills the entire app, bypassing error/exit handlers and try/catch.
 // Run this optional cleanup in a process so even native faults use the fallback.
-function prepareDictationSpeech(
-  pcm,
-  {
-    signal,
-    timeoutMs = 30000,
-    modelPath = resolveSpeechModelPath(),
-    createProcess = createSpeechProcess,
-  } = {}
-) {
+function runSpeechProcess(pcm, { signal, timeoutMs, modelPath, createProcess, request, read }) {
   if (!modelPath || signal?.aborted)
     return Promise.resolve({
       available: false,
@@ -68,16 +60,12 @@ function prepareDictationSpeech(
       worker = createProcess();
       signal?.addEventListener("abort", onAbort, { once: true });
       worker.once("message", (message) => {
-        if (!message?.ok || !(message.pcm instanceof Uint8Array)) {
-          finish({ available: false, reason: message?.error || "invalid-result" });
-          return;
-        }
-        finish({
-          available: true,
-          pcm: Buffer.from(message.pcm),
-          mode: message.mode,
-          regions: message.regions,
-        });
+        finish(
+          (message?.ok && read(message)) || {
+            available: false,
+            reason: message?.error || "invalid-result",
+          }
+        );
       });
       worker.once("error", () => finish({ available: false, reason: "worker-error" }));
       worker.once("exit", () => finish({ available: false, reason: "worker-exited" }));
@@ -92,7 +80,7 @@ function prepareDictationSpeech(
           return;
         }
         try {
-          worker.postMessage({ pcm: input, modelPath });
+          worker.postMessage({ pcm: input, modelPath, ...request });
         } catch {
           finish({ available: false, reason: "worker-unavailable" });
         }
@@ -105,4 +93,59 @@ function prepareDictationSpeech(
   });
 }
 
-module.exports = { prepareDictationSpeech, resolveSpeechModelPath };
+function prepareDictationSpeech(
+  pcm,
+  {
+    signal,
+    timeoutMs = 30000,
+    modelPath = resolveSpeechModelPath(),
+    createProcess = createSpeechProcess,
+  } = {}
+) {
+  return runSpeechProcess(pcm, {
+    signal,
+    timeoutMs,
+    modelPath,
+    createProcess,
+    request: {},
+    read: (message) =>
+      message.pcm instanceof Uint8Array && {
+        available: true,
+        pcm: Buffer.from(message.pcm),
+        mode: message.mode,
+        regions: message.regions,
+      },
+  });
+}
+
+/**
+ * Where the detector hears speech, as [startSample, endSample] pairs at 16 kHz,
+ * without changing the audio. `available: false` means the caller has no
+ * opinion to act on and must keep its old behaviour.
+ */
+function detectSpeechRegionsIsolated(
+  pcm,
+  {
+    signal,
+    // The detector reads a recording at a few hundred times real time, so an
+    // hour-long file needs more than the 30 s a dictation gets.
+    timeoutMs = 30000 + Math.ceil(pcm.length / 32000) * 20,
+    modelPath = resolveSpeechModelPath(),
+    createProcess = createSpeechProcess,
+  } = {}
+) {
+  return runSpeechProcess(pcm, {
+    signal,
+    timeoutMs,
+    modelPath,
+    createProcess,
+    request: { regionsOnly: true },
+    read: (message) =>
+      Array.isArray(message.speechRegions) && {
+        available: true,
+        regions: message.speechRegions.map(([start, end]) => ({ start, end })),
+      },
+  });
+}
+
+module.exports = { prepareDictationSpeech, detectSpeechRegionsIsolated, resolveSpeechModelPath };

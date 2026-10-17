@@ -4,6 +4,7 @@ const {
   createPcm16WavBuffer,
   parseWavPcmInfo,
   pcm16ToFloat32,
+  planSpeechPieces,
   splitWavIntoChunks,
 } = require("../../../src/helpers/wavPcm");
 
@@ -84,6 +85,73 @@ describe("splitWavIntoChunks for Parakeet", () => {
     });
     expect(chunks[0].durationSeconds).toBeGreaterThan(63.9);
     expect(chunks[0].durationSeconds).toBeLessThan(64.6);
+  });
+});
+
+describe("planSpeechPieces", () => {
+  const at = (from: number, to: number) => ({ start: from * SAMPLE_RATE, end: to * SAMPLE_RATE });
+
+  it("packs neighbouring speech into pieces of at most 30 s and skips the gaps", () => {
+    const wav = makeWav(100);
+    const pieces = planSpeechPieces(
+      wav,
+      [at(1, 10), at(11, 20), at(22, 29), at(40, 50), at(80, 85)],
+      { maxSeconds: 30, padSeconds: 0 }
+    );
+
+    expect(pieces.map((p: any) => [p.offsetSeconds, p.durationSeconds])).toEqual([
+      [1, 28],
+      [40, 10],
+      [80, 5],
+    ]);
+    // Each piece is the original audio at its original place.
+    expect(
+      pieces[1].buffer.subarray(44).equals(wav.subarray(44 + 40 * BYTE_RATE, 44 + 50 * BYTE_RATE))
+    ).toBe(true);
+  });
+
+  it("cuts a region with no pause at its quietest point, inside the limit", () => {
+    // Speech from 0 to 70 s with one short dip at 27 s.
+    const wav = makeWav(70, [[27, 27.1]]);
+    const pieces = planSpeechPieces(wav, [at(0, 70)], { maxSeconds: 30, padSeconds: 0 });
+
+    expect(pieces[0].durationSeconds).toBeCloseTo(27, 1);
+    expect(pieces.every((p: any) => p.durationSeconds <= 30)).toBe(true);
+    const total = pieces.reduce((sum: number, p: any) => sum + p.durationSeconds, 0);
+    expect(total).toBeCloseTo(70, 3);
+    expect(
+      Buffer.concat(pieces.map((p: any) => p.buffer.subarray(44))).equals(wav.subarray(44))
+    ).toBe(true);
+  });
+
+  it("pads speech, merges overlaps and grows a blip to 1 s without touching a neighbour", () => {
+    const wav = makeWav(60);
+    const pieces = planSpeechPieces(wav, [at(10, 10.2), at(10.3, 10.4), at(41, 50)], {
+      maxSeconds: 30,
+      padSeconds: 0.25,
+    });
+
+    // The overlapping blips merge to 9.75-10.65 s, too far from 41 s to join it,
+    // and that 0.9 s piece grows to the 1 s Whisper needs.
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0].offsetSeconds).toBeCloseTo(9.75, 3);
+    expect(pieces[0].durationSeconds).toBeCloseTo(1, 3);
+
+    // A blip right before a full neighbour grows backwards into the silence.
+    const tight = planSpeechPieces(wav, [at(10, 10.2), at(10.6, 40.5)], {
+      maxSeconds: 30,
+      padSeconds: 0,
+    });
+    expect(tight).toHaveLength(2);
+    expect(tight[0].offsetSeconds + tight[0].durationSeconds).toBeCloseTo(10.6, 3);
+    expect(tight[0].durationSeconds).toBeCloseTo(1, 3);
+    expect(tight[1].offsetSeconds).toBeCloseTo(10.6, 3);
+  });
+
+  it("returns null when there is nothing to plan, so the caller keeps every sample", () => {
+    expect(planSpeechPieces(makeWav(10), [], {})).toBeNull();
+    expect(planSpeechPieces(Buffer.from("nope"), [at(0, 1)], {})).toBeNull();
+    expect(planSpeechPieces(makeWav(10), [{ start: 5, end: 5 }], {})).toBeNull();
   });
 });
 

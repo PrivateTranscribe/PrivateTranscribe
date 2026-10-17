@@ -8,21 +8,18 @@ import { evidenceDir } from "./fixtures/evidence";
 /**
  * What a running transcription tells the user — audit F6.
  *
- * Files below the 20-minute chunking threshold are decoded as ONE /inference
- * request, and whisper-server answers a request only when it has finished it.
- * The page nonetheless rendered a progress bar whenever percentage > 0, so on
- * every ordinary file the bar appeared for a single frame at 100% at the very
- * end, and the run itself showed nothing but a spinner.
- *
- * The fix is not a smoother fake. There is no percentage to report on a
- * single-pass run, so the page reports what is known instead: how long the run
- * has taken, and how much audio it covers — and it says why there is no
- * percentage. The bar is kept for chunked runs, where one finished chunk is one
- * measured step.
+ * whisper-server answers a request only when it has finished it, so a
+ * percentage is real exactly when the audio went out in pieces: one finished
+ * piece is one measured step. Local Whisper sends a file as speech pieces of
+ * up to 30 s, so an ordinary file now reports a percentage and a piece count.
+ * The page must still say how long the run has taken and how long the file is,
+ * and must not show the single-pass note ("no percentage to show") for a run
+ * that has one. The single-pass branch remains for runs that go out whole;
+ * unit tests cover when that happens.
  *
  * Real audio, real CPU decode, own port, own model. The input is built in the
- * OS temp directory by repeating the committed fixture: ~9.6 minutes, which is
- * comfortably inside the single-request path and long enough to observe.
+ * OS temp directory by repeating the committed fixture: ~19 minutes, long
+ * enough to watch pieces complete before cancelling.
  */
 test.use({ appEnv: { WHISPER_FORCE_CPU: "true" } });
 
@@ -55,7 +52,9 @@ function findDataChunk(wav: Buffer): { offset: number; size: number } {
 function buildLongWav(times: number): string {
   const source = fs.readFileSync(INTERVIEW_WAV);
   const { offset, size } = findDataChunk(source);
-  const pcm = Buffer.concat(Array.from({ length: times }, () => source.subarray(offset, offset + size)));
+  const pcm = Buffer.concat(
+    Array.from({ length: times }, () => source.subarray(offset, offset + size))
+  );
 
   const header = Buffer.from(source.subarray(0, offset));
   header.writeUInt32LE(offset - 8 + pcm.length, 4);
@@ -85,7 +84,7 @@ async function prepareForLocalTranscription(page: Page): Promise<void> {
 }
 
 test.describe("Transcribe page progress", () => {
-  test("a single-pass run reports elapsed time and audio length, not a percentage", async ({
+  test("a file in speech pieces reports measured progress, elapsed time and file length", async ({
     controlPanel,
   }) => {
     expect(
@@ -93,7 +92,7 @@ test.describe("Transcribe page progress", () => {
       `ggml-base.bin is not installed at ${BASE_MODEL} — download it before running this spec`
     ).toBe(true);
 
-    const longWav = buildLongWav(6); // 6 × 96.2s ≈ 9m 37s, one /inference request
+    const longWav = buildLongWav(12); // 12 × 96.2s ≈ 19m 14s
     fs.mkdirSync(GOAL_EVIDENCE_DIR, { recursive: true });
 
     try {
@@ -105,15 +104,14 @@ test.describe("Transcribe page progress", () => {
         timeout: 60_000,
       });
 
-      // The two real numbers. The audio length is the engine's own measurement
-      // of the converted WAV, not the page guessing from the file size.
-      await expect(controlPanel.getByText(/\d+s elapsed/)).toBeVisible({ timeout: 60_000 });
-      await expect(controlPanel.getByText(/9m \d\ds of audio/)).toBeVisible({ timeout: 60_000 });
-      await expect(controlPanel.getByText(/no percentage to show/i)).toBeVisible();
-
-      // And nothing that claims a position in a run nobody is measuring.
-      await expect(controlPanel.getByText(/chunk \d+ of \d+/)).toHaveCount(0);
-      await expect(controlPanel.locator("p").filter({ hasText: /^\d+%/ })).toHaveCount(0);
+      // A finished piece is the measured step behind the percentage.
+      await expect(controlPanel.getByText(/\d+% · chunk [1-9]\d* of \d+/)).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(controlPanel.getByText(/\d+s elapsed/)).toBeVisible();
+      // The file's own length, not the speech inside it.
+      await expect(controlPanel.getByText(/19m \d\ds of audio/)).toBeVisible();
+      await expect(controlPanel.getByText(/no percentage to show/i)).toHaveCount(0);
 
       await controlPanel.screenshot({
         path: path.join(GOAL_EVIDENCE_DIR, "transcribe-progress.png"),

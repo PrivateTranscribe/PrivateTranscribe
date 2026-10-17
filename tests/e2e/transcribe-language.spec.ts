@@ -60,8 +60,8 @@ type WhisperDiagnostics = {
 };
 
 async function readWhisperDiagnostics(page: Page): Promise<WhisperDiagnostics> {
-  return page.evaluate(
-    () => (window as unknown as { electronAPI: any }).electronAPI.getAudioDiagnostics()
+  return page.evaluate(() =>
+    (window as unknown as { electronAPI: any }).electronAPI.getAudioDiagnostics()
   );
 }
 
@@ -189,9 +189,7 @@ test.describe("Transcribe page language selection", () => {
 
       await selectLanguage(controlPanel, sample.label);
       await expect
-        .poll(() =>
-          controlPanel.evaluate(() => localStorage.getItem("fileTranscriptionLanguage"))
-        )
+        .poll(() => controlPanel.evaluate(() => localStorage.getItem("fileTranscriptionLanguage")))
         .toBe(sample.stored);
 
       const requests = await transcribeControlFile(controlPanel);
@@ -202,10 +200,22 @@ test.describe("Transcribe page language selection", () => {
       );
 
       expect(requests.length).toBeGreaterThan(0);
-      for (const request of requests) {
-        expect(request.language).toBe(sample.onTheWire);
-        expect(request.detectLanguage).toBe(sample.onTheWire === null);
+      for (const [position, request] of requests.entries()) {
         expect(request.fileMode).toBe(true);
+        if (sample.onTheWire !== null) {
+          expect(request.language).toBe(sample.onTheWire);
+          expect(request.detectLanguage).toBe(false);
+        } else if (position === 0) {
+          // The file goes out in speech pieces. The first one detects...
+          expect(request.language).toBe(null);
+          expect(request.detectLanguage).toBe(true);
+        } else {
+          // ...and the rest carry the language it found, so the pieces of
+          // one file cannot come back in different languages.
+          expect(request.language).toBe(requests[1].language);
+          expect(request.language).not.toBe(null);
+          expect(request.detectLanguage).toBe(false);
+        }
       }
 
       // The spawn record is real argv from a real process, not a rebuild of it.

@@ -221,6 +221,103 @@ function splitWavIntoChunks(
     : [{ buffer: wavBuffer, durationSeconds: info.durationSeconds }];
 }
 
+/**
+ * Packs detected speech into pieces of at most `maxSeconds`, the way WhisperX
+ * does (arXiv 2303.00747): neighbouring speech regions join one piece while the
+ * piece still fits, and the silence between pieces is never sent. 30 s is the
+ * window Whisper was trained on; WhisperX measured lower error and fewer
+ * repeated phrases this way than with Whisper's own sliding window. Shorter
+ * pieces buy nothing, because Whisper pads every request to 30 s anyway.
+ *
+ * A single region longer than the limit is cut at its quietest frame between
+ * `maxSeconds - 2 * searchSeconds` and `maxSeconds`.
+ *
+ * `regions` are { start, end } sample indices at the WAV's own rate. Returns
+ * chunks shaped like splitWavIntoChunks, with `offsetSeconds` on the original
+ * timeline so timestamps stay true, or null when there is no speech to plan
+ * around — the caller then keeps all the audio rather than trusting a
+ * detector that heard nothing.
+ */
+function planSpeechPieces(
+  wavBuffer,
+  regions,
+  { maxSeconds = 30, padSeconds = 0.25, searchSeconds = CHUNK_SEAM_SEARCH_SECONDS } = {}
+) {
+  const info = parseWavPcmInfo(wavBuffer);
+  if (!info || info.bitsPerSample !== 16 || !Array.isArray(regions) || regions.length === 0) {
+    return null;
+  }
+
+  const frameBytes = info.blockAlign;
+  const totalFrames = Math.floor(info.dataSize / frameBytes);
+  const framesPerSecond = info.sampleRate;
+  const pad = Math.round(padSeconds * framesPerSecond);
+  const maxFrames = Math.floor(maxSeconds * framesPerSecond);
+  // Whisper can return no text for an isolated sub-second request.
+  const minFrames = Math.min(totalFrames, framesPerSecond);
+
+  // Pad, clamp and merge overlaps, in order.
+  const spans = [];
+  for (const { start, end } of [...regions].sort((a, b) => a.start - b.start)) {
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const span = [Math.max(0, start - pad), Math.min(totalFrames, end + pad)];
+    if (span[1] <= span[0]) continue;
+    const previous = spans.at(-1);
+    if (previous && span[0] <= previous[1]) previous[1] = Math.max(previous[1], span[1]);
+    else spans.push(span);
+  }
+  if (spans.length === 0) return null;
+
+  // A region the speaker never paused inside is cut at its quietest frame.
+  const dataEnd = info.dataOffset + totalFrames * frameBytes;
+  const toOffset = (frame) => info.dataOffset + frame * frameBytes;
+  const toFrame = (offset) => Math.floor((offset - info.dataOffset) / frameBytes);
+  const fitted = [];
+  for (const [spanStart, spanEnd] of spans) {
+    let start = spanStart;
+    while (spanEnd - start > maxFrames) {
+      const target = start + maxFrames - Math.round(searchSeconds * framesPerSecond);
+      const cut = toFrame(
+        findQuietestCutOffset(
+          wavBuffer,
+          info,
+          toOffset(target),
+          Math.min(dataEnd, toOffset(start + maxFrames)),
+          searchSeconds
+        )
+      );
+      const end = cut > start && cut <= start + maxFrames ? cut : start + maxFrames;
+      fitted.push([start, end]);
+      start = end;
+    }
+    fitted.push([start, spanEnd]);
+  }
+
+  // Join neighbours while the piece, gaps included, still fits.
+  const pieces = [];
+  for (const span of fitted) {
+    const piece = pieces.at(-1);
+    if (piece && span[1] - piece[0] <= maxFrames) piece[1] = span[1];
+    else pieces.push([...span]);
+  }
+
+  return pieces.map(([start, end], index) => {
+    // Grow a blip into the silence around it, never into a neighbour's words.
+    if (end - start < minFrames) {
+      const floor = index > 0 ? pieces[index - 1][1] : 0;
+      const ceiling = index + 1 < pieces.length ? pieces[index + 1][0] : totalFrames;
+      end = Math.min(ceiling, start + minFrames);
+      start = Math.max(floor, end - minFrames);
+    }
+    const pcmData = wavBuffer.subarray(toOffset(start), toOffset(end));
+    return {
+      buffer: createPcm16WavBuffer(pcmData, info.sampleRate, info.channels, info.bitsPerSample),
+      durationSeconds: (end - start) / framesPerSecond,
+      offsetSeconds: start / framesPerSecond,
+    };
+  });
+}
+
 function pcm16ToFloat32(pcm) {
   const samples = new Float32Array(Math.floor(pcm.length / 2));
   for (let i = 0; i < samples.length; i++) samples[i] = pcm.readInt16LE(i * 2) / 32768;
@@ -236,5 +333,6 @@ module.exports = {
   findQuietestCutOffset,
   createPcm16WavBuffer,
   splitWavIntoChunks,
+  planSpeechPieces,
   pcm16ToFloat32,
 };

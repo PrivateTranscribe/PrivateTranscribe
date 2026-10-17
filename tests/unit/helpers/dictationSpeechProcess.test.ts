@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { prepareDictationSpeech } = require("../../../src/helpers/dictationSpeechRunner");
+const {
+  prepareDictationSpeech,
+  detectSpeechRegionsIsolated,
+} = require("../../../src/helpers/dictationSpeechRunner");
 
 afterEach(() => vi.useRealTimers());
 
@@ -86,5 +89,45 @@ describe("speech detector process isolation", () => {
     child.emit("message", { ok: true, pcm: "invalid" });
     expect(await result).toEqual({ available: false, reason: "invalid-result" });
     expect(pcm).toEqual(Buffer.from([1, 0, 2, 0]));
+  });
+
+  it("asks for regions only and returns them without touching the audio", async () => {
+    const child = Object.assign(new EventEmitter(), { kill: vi.fn(), postMessage: vi.fn() });
+    const pcm = Buffer.from([1, 0, 2, 0]);
+    const result = detectSpeechRegionsIsolated(pcm, {
+      modelPath: "model.onnx",
+      createProcess: () => child,
+    });
+    child.emit("spawn");
+    expect(child.postMessage).toHaveBeenCalledWith({
+      pcm: Uint8Array.from(pcm),
+      modelPath: "model.onnx",
+      regionsOnly: true,
+    });
+    child.emit("message", {
+      ok: true,
+      speechRegions: [
+        [0, 1600],
+        [3200, 4800],
+      ],
+    });
+    expect(await result).toEqual({
+      available: true,
+      regions: [
+        { start: 0, end: 1600 },
+        { start: 3200, end: 4800 },
+      ],
+    });
+  });
+
+  it("treats a regions reply without regions as unavailable", async () => {
+    const child = Object.assign(new EventEmitter(), { kill: vi.fn(), postMessage: vi.fn() });
+    const result = detectSpeechRegionsIsolated(Buffer.from([1, 0]), {
+      modelPath: "model.onnx",
+      createProcess: () => child,
+    });
+    child.emit("spawn");
+    child.emit("message", { ok: true, pcm: new Uint8Array(2) });
+    expect(await result).toEqual({ available: false, reason: "invalid-result" });
   });
 });

@@ -14,6 +14,7 @@ const {
   parseWavPcmInfo,
   createPcm16WavBuffer,
   splitWavIntoChunks,
+  planSpeechPieces,
 } = require("./wavPcm");
 const {
   resolveLockableLanguage,
@@ -79,6 +80,9 @@ const WINDOWS_STATUS_DLL_NOT_FOUND_SIGNED = -1073741515;
 const WHISPER_LONG_AUDIO_THRESHOLD_SECONDS = 20 * 60;
 const WHISPER_DICTATION_THRESHOLD_SECONDS = 90;
 const WHISPER_CHUNK_SECONDS = 60;
+// Whisper's training window. File transcription packs detected speech into
+// pieces of at most this length; see planSpeechPieces.
+const WHISPER_SPEECH_PIECE_SECONDS = 30;
 const WHISPER_REQUEST_MIN_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_REQUEST_MS_PER_AUDIO_SECOND = 3000;
 const WHISPER_REQUEST_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -1314,6 +1318,7 @@ class WhisperServerManager {
         vad = false,
         longSessionChunk = false,
         trimTrailingSilence = false,
+        speechPieces = true,
         onProgress,
         signal,
       } = options;
@@ -1353,16 +1358,29 @@ class WhisperServerManager {
         return { text: "" };
       }
 
+      // A file is cut where the speaker pauses, into pieces Whisper's own
+      // window holds. Stereo diarization needs both channels intact, and
+      // tinydiarize marks a turn only inside one request, so a turn landing on
+      // a cut - and pauses are where turns happen - would vanish. A detector
+      // that is missing or heard nothing also leaves the old split below.
+      const filePieces =
+        fileMode && speechPieces && !diarize && !speakerDetection
+          ? await this._planFileSpeechPieces(finalBuffer, signal)
+          : null;
+      throwIfCancelled(signal);
+
       // Dictations need bounded requests well before the long-file threshold.
       // A decoder that loses its place must not take the remaining minutes
       // with it. Reuse the PCM splitter so all audio, including the tail, is
       // submitted once, with seams placed near pauses where possible.
-      const chunks = this._splitWavIntoTranscriptionChunks(finalBuffer, {
-        thresholdSeconds: fileMode
-          ? WHISPER_LONG_AUDIO_THRESHOLD_SECONDS
-          : WHISPER_DICTATION_THRESHOLD_SECONDS,
-      });
-      if (chunks.length > 1) {
+      const chunks =
+        filePieces ||
+        this._splitWavIntoTranscriptionChunks(finalBuffer, {
+          thresholdSeconds: fileMode
+            ? WHISPER_LONG_AUDIO_THRESHOLD_SECONDS
+            : WHISPER_DICTATION_THRESHOLD_SECONDS,
+        });
+      if (chunks.length > 1 && !filePieces) {
         debugLogger.info("Long audio detected; transcribing in chunks", {
           chunks: chunks.length,
           totalDurationSeconds: chunks.reduce((sum, chunk) => sum + chunk.durationSeconds, 0),
@@ -1376,7 +1394,11 @@ class WhisperServerManager {
       // percentage to give and the page must not invent one. Sent so the page
       // can say what the wait is for ("18m 42s of audio") instead of animating
       // a bar that is not measuring anything.
-      const audioSeconds = chunks.reduce((sum, chunk) => sum + (chunk.durationSeconds || 0), 0);
+      // Speech pieces leave the pauses out, but the page names the file's own
+      // length, which is the number the user recognises.
+      const audioSeconds = filePieces
+        ? parseWavPcmInfo(finalBuffer)?.durationSeconds || 0
+        : chunks.reduce((sum, chunk) => sum + (chunk.durationSeconds || 0), 0);
 
       if (typeof onProgress === "function") {
         onProgress({
@@ -1828,6 +1850,57 @@ class WhisperServerManager {
 
       form.pipe(req);
     });
+  }
+
+  /**
+   * Speech pieces for a file, or null to keep the clock-based split. Only the
+   * detector's opinion is optional here: any failure falls back.
+   */
+  async _planFileSpeechPieces(wavBuffer, signal) {
+    const info = parseWavPcmInfo(wavBuffer);
+    if (
+      info?.audioFormat !== 1 ||
+      info.channels !== 1 ||
+      info.sampleRate !== 16000 ||
+      info.bitsPerSample !== 16
+    ) {
+      return null;
+    }
+    try {
+      const { detectSpeechRegionsIsolated } = require("./dictationSpeechRunner");
+      const detected = await detectSpeechRegionsIsolated(
+        wavBuffer.subarray(info.dataOffset, info.dataOffset + info.dataSize),
+        { signal }
+      );
+      if (!detected.available) {
+        if (detected.reason !== "cancelled") {
+          debugLogger.warn("Speech detection unavailable for file; splitting by time", {
+            reason: detected.reason,
+          });
+        }
+        return null;
+      }
+      const pieces = planSpeechPieces(wavBuffer, detected.regions, {
+        maxSeconds: WHISPER_SPEECH_PIECE_SECONDS,
+      });
+      if (!pieces) {
+        debugLogger.info("Speech detector heard nothing in file; sending all audio");
+        return null;
+      }
+      const speechSeconds = pieces.reduce((sum, piece) => sum + piece.durationSeconds, 0);
+      debugLogger.info("Transcribing file as speech pieces", {
+        pieces: pieces.length,
+        speechSeconds: Math.round(speechSeconds),
+        fileSeconds: Math.round(info.durationSeconds),
+        maxPieceSeconds: WHISPER_SPEECH_PIECE_SECONDS,
+      });
+      return pieces;
+    } catch (error) {
+      debugLogger.warn("Speech piece planning failed; splitting by time", {
+        error: error.message,
+      });
+      return null;
+    }
   }
 
   _splitWavIntoTranscriptionChunks(

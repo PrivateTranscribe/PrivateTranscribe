@@ -289,11 +289,13 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
    *
    * whisper-server answers a request when the whole request is done and says
    * nothing while it works, so the percentage means something exactly when the
-   * audio was split into chunks — one completed chunk is one real step. Below
-   * the 20-minute chunking threshold the run is a single request, and the bar
-   * this page used to render sat at 0 until it flashed 100 at the very end.
-   * Rather than animate a number nobody measured, that case now shows what is
-   * actually known: how long the run has taken, and how much audio it covers.
+   * audio was split into chunks — one completed chunk is one real step. Local
+   * Whisper sends a file as speech pieces of up to 30 s, so most files have
+   * one. A run that still goes out as a single request (short speech, stereo
+   * diarization, tinydiarize, no speech detector) has no percentage, and the bar this page
+   * used to render sat at 0 until it flashed 100 at the very end. Rather than
+   * animate a number nobody measured, that case shows what is actually known:
+   * how long the run has taken, and how much audio it covers.
    */
   const chunkProgress = useMemo(() => {
     if (!transcriptionProgress || transcriptionProgress.stage !== "transcribing") return null;
