@@ -96,7 +96,12 @@ jobs:
           path: ~/.cache/PrivateTranscribe/benchmarks
           key: fleurs-${{ hashFiles('benchmarks/accuracy-config.json') }}
 
+      # The release lookup goes through api.github.com, which allows an
+      # anonymous caller 60 requests an hour per IP. A shared runner IP spends
+      # that before this job starts, and the 2026-10-12 run died on a 403 here.
       - name: Download whisper.cpp
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run download:whisper-cpp
 
       - name: Download benchmark models
