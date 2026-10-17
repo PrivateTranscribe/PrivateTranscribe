@@ -6,8 +6,9 @@
  * same client, thread policy and 1.5 s bar as the in-app speed test, so CI can
  * judge a laptop-sized runner before Parakeet becomes the default without a GPU.
  *
- * Usage: node scripts/benchmark-parakeet-speed.js [--runs 5] [--prepare-only]
+ * Usage: node scripts/benchmark-parakeet-speed.js [--runs 5] [--threads n] [--prepare-only]
  *   --runs <n>      speed tests per round; the median decides (default 5)
+ *   --threads <n>   decode with n threads instead of the app's policy, to compare counts
  *   --prepare-only  download and verify the model when missing, then exit
  *
  * A first round whose median is over the bar earns one more round, and the
@@ -34,6 +35,7 @@ function getArg(flag) {
 
 const RUNS = Math.max(1, Number.parseInt(getArg("--runs") || "5", 10) || 5);
 const PREPARE_ONLY = argv.includes("--prepare-only");
+const FIXED_THREADS = Number.parseInt(getArg("--threads") || "", 10) || null;
 
 function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -82,7 +84,7 @@ async function describeMachine() {
     cpuModel: (cpus[0]?.model || "unknown").trim(),
     logicalCores: cpus.length,
     physicalCores,
-    threads: resolveParakeetThreads(physicalCores),
+    threads: FIXED_THREADS ?? resolveParakeetThreads(physicalCores),
     memoryGb: Math.round((os.totalmem() / 1024 ** 3) * 10) / 10,
     platform: `${process.platform}-${process.arch}`,
     node: process.version,
@@ -126,10 +128,13 @@ async function main() {
   console.log(`CPU: ${machine.cpuModel}`);
   console.log(
     `Cores: ${machine.physicalCores} physical, ${machine.logicalCores} logical; ` +
-      `threads: ${machine.threads}; memory: ${machine.memoryGb} GB; ${machine.platform}, node ${machine.node}`
+      `threads: ${machine.threads}${FIXED_THREADS ? " (--threads)" : ""}; memory: ${machine.memoryGb} GB; ${machine.platform}, node ${machine.node}`
   );
 
-  const client = new ParakeetClient({ getModelDir: (name) => manager.getModelPath(name) });
+  const client = new ParakeetClient({
+    getModelDir: (name) => manager.getModelPath(name),
+    numThreads: FIXED_THREADS,
+  });
   try {
     const decodes = [];
     let audioSec = 0;

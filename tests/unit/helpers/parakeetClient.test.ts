@@ -97,6 +97,23 @@ describe("ParakeetClient.transcribe", () => {
     expect(hosts[0].messages[0].args.numThreads).toBeLessThanOrEqual(4);
   });
 
+  it("loads with a fixed thread count when one is given, else the auto policy", async () => {
+    const counts: number[] = [];
+    for (const numThreads of [3, 0, undefined]) {
+      const client: any = new ParakeetClient({ getModelDir: () => modelDir, numThreads });
+      const host = new FakeHost((message) =>
+        message.op === "load" ? loadReply(message) : { ok: true, result: { text: "hi" } }
+      );
+      vi.spyOn(client, "_spawnHost").mockReturnValue(host);
+      await client.start(MODEL);
+      counts.push(host.messages[0].args.numThreads);
+    }
+
+    expect(counts[0]).toBe(3);
+    expect(counts[1]).toBe(ParakeetClient.resolveParakeetThreads());
+    expect(counts[2]).toBe(ParakeetClient.resolveParakeetThreads());
+  });
+
   it("drops filler words for the languages the user speaks", async () => {
     const chunks = [new Float32Array([0.1]), new Float32Array([0.2])];
     const texts = new Map([

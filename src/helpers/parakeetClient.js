@@ -89,12 +89,16 @@ class ParakeetClient {
   /**
    * @param {object} [options]
    * @param {(modelName: string) => string} [options.getModelDir] where a model's files live
+   * @param {number} [options.numThreads] fixed thread count instead of the auto policy,
+   *   for benchmarks that compare thread counts
    */
-  constructor({ getModelDir } = {}) {
+  constructor({ getModelDir, numThreads } = {}) {
     this.getModelDir =
       getModelDir ||
       ((modelName) =>
         path.join(require("./modelDirUtils").getModelsDirForService("parakeet"), modelName));
+    const fixedThreads = Math.floor(Number(numThreads));
+    this.fixedThreads = Number.isFinite(fixedThreads) && fixedThreads >= 1 ? fixedThreads : null;
     this.child = null;
     this.inflight = null;
     this.queue = [];
@@ -300,7 +304,7 @@ class ParakeetClient {
       );
     }
 
-    const numThreads = resolveParakeetThreads();
+    const numThreads = this.fixedThreads ?? resolveParakeetThreads();
     const loading = { modelName, promise: null };
     loading.promise = this._call("load", { modelDir, numThreads }).then(
       (result) => {
