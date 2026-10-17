@@ -84,7 +84,7 @@ async function describeMachine() {
     cpuModel: (cpus[0]?.model || "unknown").trim(),
     logicalCores: cpus.length,
     physicalCores,
-    threads: FIXED_THREADS ?? resolveParakeetThreads(physicalCores),
+    threads: FIXED_THREADS ?? resolveParakeetThreads(physicalCores, cpus.length),
     memoryGb: Math.round((os.totalmem() / 1024 ** 3) * 10) / 10,
     platform: `${process.platform}-${process.arch}`,
     node: process.version,

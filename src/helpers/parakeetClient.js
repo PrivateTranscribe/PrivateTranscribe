@@ -18,7 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 const debugLogger = require("./debugLogger");
-const { getPhysicalCoreCount } = require("./cpuThreads");
+const { getPhysicalCoreCount, logicalCoreCount } = require("./cpuThreads");
 const { removeFillerWords } = require("./fillerWords");
 
 const DEFAULT_MODEL = "parakeet-tdt-0.6b-v3";
@@ -38,10 +38,28 @@ function typedError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
-function resolveParakeetThreads(physicalCores = getPhysicalCoreCount()) {
+/**
+ * One thread per physical core, at most MAX_THREADS, and never every logical CPU.
+ *
+ * The decode waits for its slowest thread, so when the threads fill every logical
+ * CPU, any other busy process stalls one of them and the whole decode with it.
+ * Measured on 2026-10-17 with one busy background process: 4 threads on 4 logical
+ * CPUs ran 1.6-1.9x slower, while 3 threads matched 4 on a quiet machine. Machines
+ * with SMT keep their siblings free and are unaffected. Two logical CPUs keep both,
+ * since one thread there has not been measured.
+ */
+function resolveParakeetThreads(
+  physicalCores = getPhysicalCoreCount(),
+  logicalCores = logicalCoreCount()
+) {
   const cores = Math.floor(Number(physicalCores));
   if (!Number.isFinite(cores) || cores < 1) return 1;
-  return Math.min(cores, MAX_THREADS);
+  let threads = Math.min(cores, MAX_THREADS);
+  const logical = Math.floor(Number(logicalCores));
+  if (Number.isFinite(logical) && logical >= 1) {
+    threads = Math.min(threads, logical > 2 ? logical - 1 : logical);
+  }
+  return Math.max(1, threads);
 }
 
 function isModelDirComplete(modelDir) {

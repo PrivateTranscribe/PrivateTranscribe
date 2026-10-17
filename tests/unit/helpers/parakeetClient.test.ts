@@ -72,6 +72,39 @@ function prepared(chunks: Float32Array[], speechFound = chunks.length > 0) {
   return { chunks, sampleRate: 16000, speechFound, durationSec: chunks.length * 2 };
 }
 
+describe("resolveParakeetThreads", () => {
+  const { resolveParakeetThreads } = ParakeetClient;
+
+  it.each([
+    // [physical, logical, threads]
+    [4, 8, 4], // the common laptop: SMT siblings stay free
+    [2, 4, 2],
+    [4, 4, 3], // no SMT: 4 threads stalled 1.6-1.9x behind one busy process
+    [3, 3, 2],
+    [2, 2, 2], // one thread is unmeasured, so a dual core keeps both
+    [1, 1, 1],
+    [6, 6, 4],
+    [16, 32, 4],
+  ])("gives %i physical / %i logical cores %i threads", (physical, logical, threads) => {
+    expect(resolveParakeetThreads(physical, logical)).toBe(threads);
+  });
+
+  it("never exceeds the logical count when the core probe overshoots", () => {
+    expect(resolveParakeetThreads(4, 1)).toBe(1);
+    expect(resolveParakeetThreads(4, 2)).toBe(2);
+  });
+
+  it("falls back to the physical count when the logical count is unusable", () => {
+    expect(resolveParakeetThreads(4, 0)).toBe(4);
+    expect(resolveParakeetThreads(4, Number.NaN)).toBe(4);
+  });
+
+  it("returns one thread for an unusable physical count", () => {
+    expect(resolveParakeetThreads(0, 8)).toBe(1);
+    expect(resolveParakeetThreads(Number.NaN, 8)).toBe(1);
+  });
+});
+
 describe("ParakeetClient.transcribe", () => {
   it("decodes every chunk in order and joins the texts with one space", async () => {
     const chunks = [new Float32Array([0.1]), new Float32Array([0.2]), new Float32Array([0.3])];
