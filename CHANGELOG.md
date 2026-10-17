@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.23.0 - 2026-10-17
+
+### Changed
+
+- Local Whisper now cuts a file at pauses in speech into pieces of up to 30 seconds and sends only the speech. Files no longer pick up invented sentences in quiet stretches or drop spoken ones, and timestamps and speaker labels keep their place in the file. In our tests on 10 minutes of Danish speech, wrong words fell from about 40% to about 15%.
+- The Transcribe page shows a progress bar for most files, because each finished piece is a real step.
+- Dictations longer than a minute are transcribed while you talk instead of after five minutes, so stopping leaves only the last part to wait for. With Whisper Turbo on a PC without a graphics card, the wait after a two-minute dictation fell from 17-36 seconds to 5-9 in our tests.
+- A dictation is only split where you pause for at least 0.6 seconds, so a cut no longer lands on a breath in the middle of a sentence.
+
 ## 0.22.0 - 2026-10-11
 
 ### Added
