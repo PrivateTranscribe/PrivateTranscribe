@@ -8,6 +8,8 @@ name: Parakeet CPU speed
 #
 # The bar is the in-app speed test's: 10 s of speech must decode in 1.5 s or
 # less, judged on the median of five runs so one noisy run cannot decide it.
+# Shared runners can slow a whole round, so a round over the bar gets five more
+# runs and the median of all ten decides; a real slowdown fails both rounds.
 # The clip ends mid-word, so this job judges speed only, never accuracy.
 #
 # Runs when the engine, its thread policy, or its dependencies change, and on
