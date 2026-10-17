@@ -35,11 +35,11 @@ const TRANSCRIPT_PATH = path.join(ROOT_DIR, "tmp", "long-dictation-headless-outp
 const WORK_DIR = path.join(OUTPUT_DIR, "headless-chunks");
 
 // Mirrors src/helpers/audioManager.js. A recording is promoted to a long
-// session at five minutes, and the segment recorder then rotates at the first
-// pause after 60s, capped at 90s. Wall-clock slicing at the cap is the
-// deterministic approximation: the fixture's inter-clip gaps are 250ms, below
-// the 300ms pause hold, so a live run lands on the cap here too.
-const PROMOTION_SECONDS = 5 * 60;
+// session at 60 s. Every segment, the first included, then ends at the first
+// pause of 600 ms after 60 s, capped at 90 s. Wall-clock slicing at the cap is
+// the deterministic approximation: the fixture's inter-clip gaps are 250ms,
+// below the pause hold, so a live run lands on the cap here too.
+const PROMOTION_SECONDS = 60;
 const SEGMENT_CAP_SECONDS = 90;
 
 // Preference order when --model is not supplied; the first one already on disk wins.
@@ -71,8 +71,7 @@ function sliceFixture(durationSeconds) {
   if (durationSeconds <= PROMOTION_SECONDS) {
     boundaries.push([0, durationSeconds]);
   } else {
-    boundaries.push([0, PROMOTION_SECONDS]);
-    for (let start = PROMOTION_SECONDS; start < durationSeconds; start += SEGMENT_CAP_SECONDS) {
+    for (let start = 0; start < durationSeconds; start += SEGMENT_CAP_SECONDS) {
       boundaries.push([start, Math.min(start + SEGMENT_CAP_SECONDS, durationSeconds)]);
     }
   }
@@ -139,7 +138,7 @@ async function main() {
 
   const chunks = sliceFixture(manifest.durationSeconds);
   console.log(
-    `Chunks:  ${chunks.length} (promotion at ${PROMOTION_SECONDS}s, then ${SEGMENT_CAP_SECONDS}s)\n`
+    `Chunks:  ${chunks.length} (promotion at ${PROMOTION_SECONDS}s, segments of ${SEGMENT_CAP_SECONDS}s)\n`
   );
 
   const texts = [];

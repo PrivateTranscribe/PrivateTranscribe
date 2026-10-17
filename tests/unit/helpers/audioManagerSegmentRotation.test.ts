@@ -83,18 +83,30 @@ const installAudioContext = () => {
   (window as any).AudioContext = MockAudioContext;
 };
 
-/**
- * Runs a recording past the long-session promotion threshold and returns the
- * rotating segment recorder (the one that carries the rotation timer).
- */
-const startRotatingSegment = async (manager: AudioManager) => {
+/** Records past the promotion threshold; returns the promotion recorder, still running. */
+const promote = async (manager: AudioManager) => {
   await manager.startRecording();
   const mainRecorder = MockMediaRecorder.instances[0];
 
   await vi.advanceTimersByTimeAsync(60_000);
   mainRecorder.ondataavailable?.({ data: new Blob(["first"], { type: "audio/webm" }) });
+  return MockMediaRecorder.instances[1];
+};
 
-  const promotionRecorder = MockMediaRecorder.instances[1];
+/**
+ * Runs a recording past the long-session promotion threshold, lets the first
+ * cut happen at a pause, and returns the rotating segment recorder (the one
+ * that carries the rotation timer).
+ */
+const startRotatingSegment = async (manager: AudioManager) => {
+  const speaking = micLevel;
+  const promotionRecorder = await promote(manager);
+
+  micLevel = 0.001;
+  await vi.advanceTimersByTimeAsync(700);
+  expect(promotionRecorder.stop).toHaveBeenCalled();
+  micLevel = speaking;
+
   promotionRecorder.ondataavailable?.({ data: new Blob(["promoted"], { type: "audio/webm" }) });
   await promotionRecorder.onstop?.();
   await vi.advanceTimersByTimeAsync(0);
@@ -166,9 +178,60 @@ describe("AudioManager long-session segment rotation", () => {
     await vi.advanceTimersByTimeAsync(65_000);
     expect(segment.stop).not.toHaveBeenCalled();
 
+    // A breath inside a sentence is not a cut.
     micLevel = 0.001;
     await vi.advanceTimersByTimeAsync(400);
+    micLevel = 0.2;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(segment.stop).not.toHaveBeenCalled();
+
+    micLevel = 0.001;
+    await vi.advanceTimersByTimeAsync(700);
     expect(segment.stop).toHaveBeenCalled();
+  });
+
+  it("waits for a pause before the first cut at promotion", async () => {
+    installAudioContext();
+    micLevel = 0.2;
+    const manager = makeManager();
+    const promotionRecorder = await promote(manager);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(promotionRecorder.stop).not.toHaveBeenCalled();
+
+    micLevel = 0.001;
+    await vi.advanceTimersByTimeAsync(700);
+    expect(promotionRecorder.stop).toHaveBeenCalled();
+  });
+
+  it("cuts the first segment at 90 s when the speaker never pauses", async () => {
+    installAudioContext();
+    micLevel = 0.2;
+    const manager = makeManager();
+    const promotionRecorder = await promote(manager);
+
+    await vi.advanceTimersByTimeAsync(28_000);
+    expect(promotionRecorder.stop).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(promotionRecorder.stop).toHaveBeenCalled();
+  });
+
+  it("keeps a recording shorter than the threshold out of the long session", async () => {
+    installAudioContext();
+    micLevel = 0.2;
+    const manager = makeManager();
+    await manager.startRecording();
+    const mainRecorder = MockMediaRecorder.instances[0];
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    mainRecorder.ondataavailable?.({ data: new Blob(["first"], { type: "audio/webm" }) });
+    await vi.advanceTimersByTimeAsync(25_000);
+
+    expect(manager.longSession.active).toBe(false);
+    // The shipped threshold, not the one makeManager pins.
+    expect(new AudioManager().longSessionPromotionMs).toBe(60_000);
+    expect(MockMediaRecorder.instances[1].stop).not.toHaveBeenCalled();
   });
 
   it("cuts mid-speech once the hard cap is reached", async () => {

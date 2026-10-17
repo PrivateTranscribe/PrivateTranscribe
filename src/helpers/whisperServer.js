@@ -1707,6 +1707,8 @@ class WhisperServerManager {
       translate: !!translate,
       responseFormat,
       fileMode: !!fileMode,
+      longSessionChunk: !!longSessionChunk,
+      durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : null,
       chunkIndex,
       chunkCount,
       port: this.port,

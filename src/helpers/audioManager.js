@@ -34,7 +34,12 @@ const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
 const RECORDER_FINAL_DATA_GRACE_MS = 250;
 const MIN_DICTATION_DURATION_MS = 500;
-const LONG_SESSION_PROMOTION_MS = 5 * 60 * 1000;
+// Past this, a dictation is transcribed in segments while the speaker is still
+// talking, so stopping leaves only the last segment to wait for. At 60 s the
+// wait after stop on CPU large-v3-turbo fell from 17-36 s to 5-9 s for
+// 1.5-3 minute dictations, and word errors fell slightly once cuts waited for
+// the pause below (scripts/benchmark-live-dictation.js).
+const LONG_SESSION_PROMOTION_MS = 60 * 1000;
 const LONG_SESSION_CHUNK_TARGET_MS = RECORDER_TIMESLICE_MS;
 const LONG_SESSION_SEGMENT_MS = 60 * 1000;
 // Segments are transcribed independently, so a boundary that lands mid-sentence
@@ -44,7 +49,10 @@ const LONG_SESSION_SEGMENT_MS = 60 * 1000;
 // never pauses before the hard cap.
 const LONG_SESSION_SEGMENT_MAX_MS = 90 * 1000;
 const LONG_SESSION_SEGMENT_PAUSE_POLL_MS = 100;
-const LONG_SESSION_SEGMENT_PAUSE_HOLD_MS = 300;
+// A breath between two words of one sentence runs about 0.3-0.5 s. Cutting
+// there split "kaldet et fjerskaft | men har" in testing and Whisper invented
+// an ending. Sentence pauses run longer, and 0.6 s cut only there.
+const LONG_SESSION_SEGMENT_PAUSE_HOLD_MS = 600;
 const LONG_SESSION_SEGMENT_PAUSE_RMS = 0.015;
 // How often the microphone level is sampled across a whole dictation, so the
 // recording can be judged for speech before it is handed to any engine.
@@ -794,7 +802,9 @@ class AudioManager {
     if (initialSegment) {
       // The continuous recorder produces a self-contained WebM. Reassembling the
       // primary recorder's timeslice blobs can lose timestamp clusters in FFmpeg.
-      void this.stopLongSessionSegmentCapture({ restart: true });
+      // It keeps recording until the speaker pauses, like every later segment,
+      // so the first cut does not land mid-word at the threshold.
+      this.rotateLongSessionSegmentAtNextPause(initialSegment);
     } else if (chunks.length > 0) {
       this.enqueueLongSessionChunk(
         new Blob(chunks, { type: this.recordingMimeType || "audio/webm" }),

@@ -116,7 +116,18 @@ function setLevel(pcm, dbfs) {
   return pcm;
 }
 
-function buildFixture(language, minutes, noiseDb, levelDb) {
+// FLEURS reads most sentences two or three times, by different speakers, and
+// lists the readings next to each other. `unique` keeps the first reading of
+// each, since a dictation never repeats a sentence word for word and a decoder
+// that carries context rightly treats a verbatim repeat as already written.
+function buildFixture(
+  language,
+  minutes,
+  noiseDb,
+  levelDb,
+  pauses = PAUSES_SECONDS,
+  { unique = false } = {}
+) {
   const locale = FLEURS_LOCALES[language];
   if (!locale) throw new Error(`No FLEURS split for ${language}`);
   const { tsvPath, audioDir } = ensureDataset(locale);
@@ -126,12 +137,13 @@ function buildFixture(language, minutes, noiseDb, levelDb) {
   const parts = [];
   const references = [];
   let bytes = 0;
+  const seen = new Set();
   for (let i = 0; i < samples.length && bytes < targetBytes; i += 1) {
+    if (unique && seen.has(samples[i].reference)) continue;
+    seen.add(samples[i].reference);
     const decoded = decodePcm(samples[i].wavPath);
     const pcm = Number.isFinite(levelDb) ? setLevel(decoded, levelDb) : decoded;
-    const pause = Buffer.alloc(
-      Math.round(PAUSES_SECONDS[i % PAUSES_SECONDS.length] * SAMPLE_RATE) * 2
-    );
+    const pause = Buffer.alloc(Math.round(pauses[i % pauses.length] * SAMPLE_RATE) * 2);
     parts.push(pcm, pause);
     references.push(samples[i].reference);
     bytes += pcm.length + pause.length;
@@ -251,7 +263,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { buildFixture, score, repeatedFiveGrams };
