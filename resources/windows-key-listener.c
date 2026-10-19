@@ -99,7 +99,10 @@ static BOOL g_simKeyDown[256];
 #define MODIFIER_ONLY_START_DELAY_MS 250
 
 // AltGr reaches the hook as a fake left Ctrl with this scan code, then right Alt.
-// It is not Control: on a Nordic or German layout it types @ $ { [ ] } | and €.
+// A modifier-only hotkey ignores it: on a Nordic or German layout AltGr types
+// @ $ { [ ] } | and €, which must not fire Control+Alt. An ordinary hotkey keeps
+// counting it as Ctrl, so one recorded with AltGr, such as CommandOrControl+Alt+D,
+// still fires on it.
 #define ALTGR_FAKE_CTRL_SCAN 0x21D
 
 // Modifier-only hotkey state. Pending: every modifier is down and the start delay
@@ -188,8 +191,10 @@ static BOOL IsModifierHeld(TrackedModifier* mod, DWORD now) {
 static BOOL IsCtrlHeld(DWORD now) {
     if (g_ctrl.down) return IsModifierHeld(&g_ctrl, now);
     if (IsKeyDownNow(VK_RCONTROL)) return TRUE;
-    // Left Ctrl with right Alt is AltGr, also when it was down before the hook was.
-    return IsKeyDownNow(VK_LCONTROL) && !g_altGrCtrlDown && !IsKeyDownNow(VK_RMENU);
+    if (!IsKeyDownNow(VK_LCONTROL)) return FALSE;
+    // For a modifier-only hotkey, left Ctrl with right Alt is AltGr, also when it
+    // was down before the hook was.
+    return !g_modifierOnly || (!g_altGrCtrlDown && !IsKeyDownNow(VK_RMENU));
 }
 
 static BOOL AreModifiersPressed(DWORD now) {
@@ -590,7 +595,7 @@ static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) 
  * timeMs is the event timestamp (KBDLLHOOKSTRUCT::time), milliseconds since boot.
  */
 static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWORD scanCode) {
-    if (vkCode == VK_LCONTROL && scanCode == ALTGR_FAKE_CTRL_SCAN) {
+    if (g_modifierOnly && vkCode == VK_LCONTROL && scanCode == ALTGR_FAKE_CTRL_SCAN) {
         g_altGrCtrlDown = isKeyDown;
         return;
     }

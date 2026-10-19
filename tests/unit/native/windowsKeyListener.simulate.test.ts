@@ -730,3 +730,20 @@ describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys and the mo
     expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
 });
+
+// AltGr reaches the hook as a fake left Ctrl (scan code 0x21D) and right Alt. Only
+// modifier-only hotkeys ignore that Ctrl; see "AltGr typing @" above.
+describe.skipIf(!exePath)("windows-key-listener AltGr on ordinary hotkeys", () => {
+  test("CommandOrControl+Alt+D still fires on AltGr+D", async () => {
+    const run = await runListener("CommandOrControl+Alt+D", [
+      "DOWN LCTRL 0 scan=0x21D",
+      "DOWN RALT 0",
+      "DOWN 0x44 50",
+      "UP 0x44 120",
+      "UP LCTRL 150 scan=0x21D",
+      "UP RALT 150",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
