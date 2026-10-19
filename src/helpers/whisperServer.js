@@ -948,12 +948,6 @@ class WhisperServerManager {
     const spawnEnv = { ...process.env };
     const pathSep = process.platform === "win32" ? ";" : ":";
 
-    if (process.platform === "win32") {
-      const safeTmp = getSafeTempDir();
-      spawnEnv.TEMP = safeTmp;
-      spawnEnv.TMP = safeTmp;
-    }
-
     // Add the whisper-server directory to PATH so any companion DLLs are found
     const serverBinaryDir = path.dirname(serverBinary);
     spawnEnv.PATH = serverBinaryDir + pathSep + (process.env.PATH || "");

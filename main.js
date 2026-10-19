@@ -196,6 +196,18 @@ async function initializeManagers() {
     debugLogger.debug("Crash dump check skipped", { error: error.message });
   }
 
+  // Up to 0.23.0, a TEMP path with a space or a letter outside ASCII put temp audio in a
+  // folder every account on the PC can read. Remove the Whisper audio this user left
+  // there, without holding up startup.
+  require("./src/helpers/safeTempDir")
+    .removeLegacySharedTemp()
+    .then((removed) => {
+      if (removed > 0) {
+        debugLogger.info("Removed leftover temp audio from the shared temp folder", { removed });
+      }
+    })
+    .catch(() => {});
+
   const analyticsManager = require("./src/helpers/analyticsManager");
   analyticsManager.initialize(process.env.SUPABASE_ANON_KEY || "");
 
