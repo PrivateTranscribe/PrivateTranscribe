@@ -154,6 +154,8 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
   // and it is also what a detector that found no speaker change reports.
   const [speakerDetectionActive, setSpeakerDetectionActive] = useState(false);
   const [speakerResultMode, setSpeakerResultMode] = useState("");
+  // Why speaker labels failed on a run that still returned its transcript.
+  const [speakerLabelsError, setSpeakerLabelsError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(true);
@@ -548,6 +550,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setSrt("");
     setSpeakerCount(0);
     setSpeakerDetectionActive(false);
+    setSpeakerLabelsError("");
     setErrorMessage("");
     setCopied(false);
     setTranscriptionProgress(null);
@@ -601,6 +604,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     setTranscript("");
     setHistorySaveState("idle");
     setSpeakerDetectionActive(false);
+    setSpeakerLabelsError("");
     setCopied(false);
     setSelectedFileName(file.name);
     setSelectedFileSize(file.size);
@@ -667,6 +671,9 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
       setSpeakerCount(Number(result?.speakerCount) || 0);
       setSpeakerDetectionActive(result?.speakerDetectionActive === true);
       setSpeakerResultMode(result?.speakerDetectionMode || "");
+      const labelsError =
+        typeof result?.speakerLabelsError === "string" ? result.speakerLabelsError : "";
+      setSpeakerLabelsError(labelsError);
       setLanguageNotice(
         buildLanguageMismatchNotice(result?.languageDetection, result?.requestedLanguage)
       );
@@ -689,11 +696,18 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
       setHistorySaveState(saveFailed ? "failed" : "idle");
       activeJobIdRef.current = null;
       if (!saveFailed) {
-        toast({
-          title: "Transcription complete",
-          description: `${file.name} transcribed successfully.`,
-          variant: "success",
-        });
+        toast(
+          labelsError
+            ? {
+                title: "Transcribed without speaker labels",
+                description: `${file.name} is transcribed, but speaker labels failed.`,
+              }
+            : {
+                title: "Transcription complete",
+                description: `${file.name} transcribed successfully.`,
+                variant: "success",
+              }
+        );
       }
     } catch (error) {
       if (!isCurrentJob()) return;
@@ -1165,6 +1179,11 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
                   {speakerSummary}
                 </Badge>
               )}
+              {speakerLabelsError && (
+                <Badge variant="warning" className="text-[10px]">
+                  No speaker labels
+                </Badge>
+              )}
             </div>
           </>
         ) : status === "cancelled" ? (
@@ -1267,6 +1286,27 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
               </Button>
             </div>
           </div>
+
+          {/* Placed above the History strip, which disappears once the save
+              finishes, so this one does not jump. */}
+          {speakerLabelsError && (
+            <div
+              role="status"
+              className="flex gap-2.5 border-b border-border-subtle/60 bg-warning/5 px-5 py-3 text-sm"
+              data-prevent-browse="true"
+            >
+              <AlertCircle size={16} className="mt-0.5 shrink-0 text-warning" />
+              <div>
+                <p className="font-medium text-foreground">Speaker labels failed</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  The transcript below is complete, without speaker labels.
+                </p>
+                <p className="mt-1 max-w-xl break-words text-xs leading-relaxed text-muted-foreground">
+                  {speakerLabelsError}
+                </p>
+              </div>
+            </div>
+          )}
 
           {historySaveState !== "idle" && (
             <div

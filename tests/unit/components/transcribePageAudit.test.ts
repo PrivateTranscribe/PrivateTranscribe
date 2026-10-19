@@ -215,3 +215,27 @@ describe("F8 — speaker labels that find nothing still claim one speaker", () =
     expect(source).toContain("`${speakerCount} speakers`");
   });
 });
+
+describe("T2 — a speaker labels failure keeps the transcript (FIXED)", () => {
+  /**
+   * In 0.23.0 a labelling error after the decode reached this page as a failed
+   * transcription: the error screen replaced the transcript the user had waited
+   * for. The main process now returns the transcript with `speakerLabelsError`,
+   * and the page has to show the text and say why the labels are missing.
+   */
+  it("shows the transcript with the reason the labels are missing", () => {
+    const source = transcribePage();
+
+    expect(source).toContain("setSpeakerLabelsError(labelsError)");
+    expect(source).toContain("Speaker labels failed");
+    expect(source).toContain("{speakerLabelsError}");
+    expect(source).toContain("No speaker labels");
+  });
+
+  it("forgets the reason when the next file starts or the page resets", () => {
+    const source = transcribePage();
+    const clears = source.match(/setSpeakerLabelsError\(""\);/g) ?? [];
+
+    expect(clears.length).toBeGreaterThanOrEqual(2);
+  });
+});
