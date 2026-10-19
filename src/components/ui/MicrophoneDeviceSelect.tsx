@@ -8,6 +8,7 @@ import {
   buildMicrophoneConstraints,
   describeMicrophoneSelection,
   hasExplicitBuiltInLabel,
+  isSelectedMicrophoneMissing,
   type AudioInputDeviceInfo,
   type MicrophonePreference,
 } from "../../utils/audioDeviceUtils";
@@ -188,11 +189,11 @@ export default function MicrophoneDeviceSelect({
     selectedMicDeviceId,
   });
   const hasLabels = devices.some((device) => device.label);
-  const selectedIsGone =
-    !preferBuiltInMic &&
-    !!selectedMicDeviceId &&
-    hasLabels &&
-    !devices.some((device) => device.deviceId === selectedMicDeviceId);
+  // The same check recording uses to fall back, so this warning is what happens.
+  const selectedIsGone = isSelectedMicrophoneMissing(devices, {
+    preferBuiltInMic,
+    selectedMicDeviceId,
+  });
 
   const activeBars = Math.ceil(level * LEVEL_BAR_COUNT);
 

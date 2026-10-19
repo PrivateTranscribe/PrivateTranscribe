@@ -2,7 +2,12 @@ import ReasoningService from "../services/ReasoningService";
 import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
 import logger from "../utils/logger";
 import { resolveMicWarmWindowMs } from "../utils/micWarmWindow";
-import { buildMicrophoneConstraints, describeMicrophoneSelection } from "../utils/audioDeviceUtils";
+import {
+  buildMicrophoneConstraints,
+  describeMicrophoneSelection,
+  isMissingMicrophoneError,
+  systemDefaultMicrophoneConstraints,
+} from "../utils/audioDeviceUtils";
 import { isSecureEndpoint } from "../utils/urlUtils";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { readSpokenLanguages } from "../utils/spokenLanguages";
@@ -400,6 +405,28 @@ class AudioManager {
     this._pooledStream = stream;
     this._pooledStreamConstraintsKey = key;
     return stream;
+  }
+
+  /**
+   * Open the resolved microphone, or the system default when a pinned device
+   * has gone. The device list only refreshes on devicechange, which lands after
+   * the unplug, so a dictation can still ask for the old device by its exact id.
+   * Windows refuses that outright, and the picker promises the default instead.
+   */
+  async _acquireStreamWithFallback(constraints) {
+    try {
+      return await this._acquireStream(constraints);
+    } catch (error) {
+      if (!constraints?.audio?.deviceId?.exact || !isMissingMicrophoneError(error)) {
+        throw error;
+      }
+      logger.warn(
+        "Microphone is not available, recording from the system default",
+        { error: error.name },
+        "audio"
+      );
+      return this._acquireStream(systemDefaultMicrophoneConstraints());
+    }
   }
 
   _scheduleStreamRelease() {
@@ -1751,7 +1778,7 @@ class AudioManager {
       this._preWarmLocalTranscriptionServer();
 
       const constraints = await this.getAudioConstraints();
-      stream = await this._acquireStream(constraints);
+      stream = await this._acquireStreamWithFallback(constraints);
 
       // Log which microphone is actually being used
       const audioTrack = stream.getAudioTracks()[0];
@@ -1942,7 +1969,7 @@ class AudioManager {
         errorTitle = "Microphone Access Denied";
         errorDescription =
           "Please grant microphone permission in your system settings and try again.";
-      } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+      } else if (isMissingMicrophoneError(error) || error.name === "DevicesNotFoundError") {
         errorTitle = "No Microphone Found";
         errorDescription = "No microphone was detected. Please connect a microphone and try again.";
       } else if (error.name === "NotReadableError" || error.name === "TrackStartError") {
