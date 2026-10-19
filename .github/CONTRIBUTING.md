@@ -33,10 +33,10 @@ You need [Git](https://git-scm.com/) and [Node.js 22 LTS](https://nodejs.org/).
 
 ## Push-to-talk (optional)
 
-Push-to-talk needs the native key listener, which you compile yourself.
+Push-to-talk needs the native key listener, which the build compiles from source.
 
-1. Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Desktop development with C++** workload.
-2. Open **x64 Native Tools Command Prompt** from the Start menu, go to your clone and run `npm run compile:winkeys`.
+1. Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Desktop development with C++** workload, or MinGW-w64.
+2. Run `npm run compile:winkeys` from any terminal in your clone, or start `npm run dev`, which runs it. The build finds Visual Studio by itself, so no Native Tools prompt is needed.
 
 ## Before you open a pull request
 
