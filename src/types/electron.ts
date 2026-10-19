@@ -577,6 +577,7 @@ declare global {
       onToggleDictation: (callback: () => void) => (() => void) | void;
       onStartDictation?: (callback: () => void) => (() => void) | void;
       onStopDictation?: (callback: () => void) => (() => void) | void;
+      onCancelDictation?: (callback: () => void) => (() => void) | void;
       onHybridDictationKeyDown?: (callback: () => void) => (() => void) | void;
       onHybridDictationKeyUp?: (callback: () => void) => (() => void) | void;
       onWindowDragReset?: (callback: (data?: { reason?: string }) => void) => (() => void) | void;

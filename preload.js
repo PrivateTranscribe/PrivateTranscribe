@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
+  onCancelDictation: registerListener("cancel-dictation", (callback) => () => callback()),
   onHybridDictationKeyDown: registerListener(
     "hybrid-dictation-key-down",
     (callback) => () => callback()

@@ -735,6 +735,7 @@ async function startApp() {
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
     let currentActivationMode = "tap";
     let winHoldStartActive = false;
+    let winHoldCancelled = false;
 
     const winGestureController = new ActivationGestureController({
       mode: currentActivationMode,
@@ -745,12 +746,17 @@ async function startApp() {
       onHoldStart: () => {
         debugLogger.debug("[Activation] Hold threshold reached");
         winHoldStartActive = true;
+        winHoldCancelled = false;
         Promise.resolve(windowManager.sendStartDictation())
           .then(() => {
             // The key can be released while a hidden overlay is still loading.
             // Re-send stop after startup completes so audio cannot stay ducked.
             if (!winHoldStartActive) {
-              windowManager.sendStopDictation();
+              if (winHoldCancelled) {
+                windowManager.sendCancelDictation();
+              } else {
+                windowManager.sendStopDictation();
+              }
             }
           })
           .catch((error) => {
@@ -765,6 +771,14 @@ async function startApp() {
         debugLogger.debug("[Activation] Hold released");
         winHoldStartActive = false;
         windowManager.sendStopDictation();
+      },
+      // The listener found the hold was part of another shortcut or a mouse
+      // action, so its recording is thrown away and nothing is pasted.
+      onHoldCancel: () => {
+        debugLogger.debug("[Activation] Hold cancelled");
+        winHoldStartActive = false;
+        winHoldCancelled = true;
+        windowManager.sendCancelDictation();
       },
     });
 

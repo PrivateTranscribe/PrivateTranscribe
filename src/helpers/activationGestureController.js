@@ -18,12 +18,15 @@ class ActivationGestureController {
     onTap = () => {},
     onHoldStart = () => {},
     onHoldEnd = () => {},
+    // A hold that discard() throws away. Without one, the hold just ends.
+    onHoldCancel = onHoldEnd,
   } = {}) {
     this.mode = normalizeMode(mode);
     this.holdThresholdMs = holdThresholdMs;
     this.onTap = onTap;
     this.onHoldStart = onHoldStart;
     this.onHoldEnd = onHoldEnd;
+    this.onHoldCancel = onHoldCancel;
     this.isPressed = false;
     this.holdTriggered = false;
     this.pressExpired = false;
@@ -91,17 +94,24 @@ class ActivationGestureController {
   }
 
   /**
-   * Drops a press that turned out to be part of another shortcut, so its key-up
-   * fires no tap. A hold that already started is left to end on key-up as usual.
+   * Drops a press that turned out to be part of another shortcut or a mouse
+   * action, so its key-up fires nothing. A hold that already started goes to
+   * onHoldCancel, which throws its recording away instead of transcribing it.
    */
   discard() {
-    if (!this.isPressed || this.holdTriggered) {
+    if (!this.isPressed) {
       return false;
     }
 
+    const holdStarted = this.holdTriggered;
     this.isPressed = false;
+    this.holdTriggered = false;
     this.pressExpired = false;
     this.clearHoldTimer();
+
+    if (holdStarted) {
+      this.onHoldCancel();
+    }
     return true;
   }
 

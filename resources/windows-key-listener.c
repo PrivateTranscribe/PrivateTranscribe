@@ -17,8 +17,8 @@
  *   KEY_DOWN
  *   KEY_UP
  *   KEY_CANCEL  the press that sent KEY_DOWN turned out to be part of another
- *               shortcut. Drop it if it has not started anything. KEY_UP still
- *               follows when the keys are released.
+ *               shortcut or a mouse action. Drop it, and throw away anything it
+ *               started. KEY_UP still follows when the keys are released.
  *
  * Exit codes:
  *   0  stopped
@@ -37,6 +37,9 @@
  *   TICK <timeMs>                         time passes with no key event
  *   UNSEEN_UP <key>                       the key goes up where the hook cannot
  *                                         see it, as on the secure desktop
+ *   MOUSE <event> <timeMs>                a mouse event: LDOWN, RDOWN, MDOWN,
+ *                                         XDOWN, LUP, RUP, MUP, XUP, WHEEL,
+ *                                         HWHEEL or MOVE
  *   QUIT, or EOF                          stop
  * Simulate mode also keeps the key state GetAsyncKeyState would report, built
  * from the same events, so the live sample is tested without reading it.
@@ -541,20 +544,25 @@ static BOOL ParseCompoundHotkey(const char* hotkey) {
  *
  * Every one of them held for MODIFIER_ONLY_START_DELAY_MS with no other key sends
  * KEY_DOWN, and releasing one sends KEY_UP. Releasing one sooner is a tap, sent as
- * KEY_DOWN and KEY_UP together. Any other key going down while one of them is held
- * makes the press part of another shortcut: nothing is sent, or KEY_CANCEL if
- * KEY_DOWN already was. That includes the Ctrl+Shift+V this app injects to paste
- * into a terminal.
+ * KEY_DOWN and KEY_UP together. Any other key going down, a mouse button press or
+ * a wheel turn while one of them is held makes the press part of another shortcut:
+ * nothing is sent, or KEY_CANCEL if KEY_DOWN already was. That covers the
+ * Ctrl+Shift+V this app injects to paste into a terminal, Ctrl+Shift+click and
+ * Alt+Shift+drag.
  */
+static void HandleModifierOnlyOtherInput(DWORD timeMs) {
+    if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld(timeMs)) {
+        g_chordSpoiled = TRUE;
+        StopChordTimer();
+        EmitCancel();
+    }
+}
+
 static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
     BOOL isRequired = IsRequiredModifierVk(vkCode);
 
     if (isKeyDown && !isRequired) {
-        if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld(timeMs)) {
-            g_chordSpoiled = TRUE;
-            StopChordTimer();
-            EmitCancel();
-        }
+        HandleModifierOnlyOtherInput(timeMs);
         return;
     }
 
@@ -635,6 +643,32 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWOR
             EmitDown();
         }
     }
+}
+
+#ifndef WM_MOUSEHWHEEL
+#define WM_MOUSEHWHEEL 0x020E
+#endif
+
+static BOOL IsMousePressOrWheel(WPARAM msg) {
+    return msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN ||
+           msg == WM_XBUTTONDOWN || msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL;
+}
+
+// The mouse decision for a modifier-only hotkey. The live hook and the --simulate
+// loop both call this. Only the kind of event matters, never where the pointer is.
+static void HandleModifierOnlyMouseEvent(WPARAM msg, DWORD timeMs) {
+    if (!g_modifierOnly || !IsMousePressOrWheel(msg)) return;
+    AdvanceTime(timeMs);
+    HandleModifierOnlyOtherInput(timeMs);
+}
+
+// Installed only for a modifier-only hotkey. It runs for every mouse event on the
+// desktop, so it returns at once for anything but a button press or a wheel turn.
+static LRESULT CALLBACK ModifierOnlyMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && IsMousePressOrWheel(wParam)) {
+        HandleModifierOnlyMouseEvent(wParam, ((MSLLHOOKSTRUCT*)lParam)->time);
+    }
+    return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
 }
 
 static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -732,6 +766,26 @@ static BOOL ParseSimulateKey(const char* name, DWORD* out) {
     return TRUE;
 }
 
+static BOOL ParseSimulateMouse(const char* name, WPARAM* out) {
+    static const struct {
+        const char* name;
+        WPARAM msg;
+    } events[] = {
+        { "LDOWN", WM_LBUTTONDOWN }, { "RDOWN", WM_RBUTTONDOWN }, { "MDOWN", WM_MBUTTONDOWN },
+        { "XDOWN", WM_XBUTTONDOWN }, { "LUP", WM_LBUTTONUP },     { "RUP", WM_RBUTTONUP },
+        { "MUP", WM_MBUTTONUP },     { "XUP", WM_XBUTTONUP },     { "WHEEL", WM_MOUSEWHEEL },
+        { "HWHEEL", WM_MOUSEHWHEEL }, { "MOVE", WM_MOUSEMOVE },
+    };
+    size_t i;
+    for (i = 0; i < sizeof(events) / sizeof(events[0]); i++) {
+        if (_stricmp(name, events[i].name) == 0) {
+            *out = events[i].msg;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static int RunSimulateLoop(void) {
     char line[512];
     char original[512];
@@ -784,6 +838,19 @@ static int RunSimulateLoop(void) {
                 continue;
             }
             g_simKeyDown[vkCode] = FALSE;
+            continue;
+        }
+
+        if (verb != NULL && _stricmp(verb, "MOUSE") == 0) {
+            WPARAM msg = 0;
+            timeToken = strtok(NULL, " \t");
+            if (keyToken == NULL || timeToken == NULL || strtok(NULL, " \t") != NULL ||
+                !ParseSimulateMouse(keyToken, &msg) || !ParseNumber(timeToken, 10, &timeMs)) {
+                fprintf(stderr, "ERR %s\n", original);
+                fflush(stderr);
+                continue;
+            }
+            HandleModifierOnlyMouseEvent(msg, (DWORD)timeMs);
             continue;
         }
 
@@ -906,6 +973,18 @@ int main(int argc, char* argv[]) {
         if (!g_keyboardHook) {
             fprintf(stderr, "Error: Failed to install keyboard hook (error %lu)\n", GetLastError());
             return 1;
+        }
+
+        // A click or wheel turn with the modifiers held is Ctrl+Shift+click,
+        // Alt+Shift+drag and the like, never the hotkey.
+        if (g_modifierOnly) {
+            g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, ModifierOnlyMouseProc, NULL, 0);
+            if (!g_mouseHook) {
+                fprintf(stderr, "Error: Failed to install mouse hook (error %lu)\n", GetLastError());
+                UnhookWindowsHookEx(g_keyboardHook);
+                g_keyboardHook = NULL;
+                return 1;
+            }
         }
     }
 

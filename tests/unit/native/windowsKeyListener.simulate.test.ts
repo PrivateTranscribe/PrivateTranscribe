@@ -657,3 +657,76 @@ describe.skipIf(!exePath)("windows-key-listener after the secure desktop", () =>
     expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
 });
+
+// Ctrl+Shift+click opens a link in a new tab or extends a selection, Alt+Shift+drag
+// selects a column, and the modifiers are usually held while the mouse travels.
+describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys and the mouse", () => {
+  test.each(["LDOWN", "RDOWN", "MDOWN", "XDOWN", "WHEEL", "HWHEEL"])(
+    "%s before the start delay starts nothing",
+    async (event) => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 30",
+        `MOUSE ${event} 200`,
+        "UP LSHIFT 600",
+        "UP LCTRL 620",
+      ]);
+
+      expect(run.events).toEqual([]);
+    }
+  );
+
+  test("a click after the start delay cancels the press", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN LSHIFT 30",
+      "TICK 330",
+      "MOUSE LDOWN 330",
+      "MOUSE LUP 380",
+      "UP LSHIFT 400",
+      "UP LCTRL 410",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_CANCEL", "KEY_UP"]);
+  });
+
+  test("Alt+Shift+drag past the hold threshold cancels the press", async () => {
+    const run = await runListener("Alt+Shift", [
+      "DOWN LALT 0",
+      "DOWN LSHIFT 30",
+      "TICK 800",
+      "MOUSE LDOWN 900",
+      "MOUSE MOVE 950",
+      "MOUSE LUP 1500",
+      "UP LSHIFT 1600",
+      "UP LALT 1610",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_CANCEL", "KEY_UP"]);
+  });
+
+  test("moving the mouse or a click with nothing held changes nothing", async () => {
+    const run = await runListener("Control+Shift", [
+      "MOUSE LDOWN 0",
+      "MOUSE LUP 50",
+      "DOWN LCTRL 100",
+      "DOWN LSHIFT 130",
+      "MOUSE MOVE 200",
+      "TICK 400",
+      "UP LSHIFT 900",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("an ordinary hotkey ignores the mouse", async () => {
+    const run = await runListener("CommandOrControl+Space", [
+      "DOWN LCTRL 0",
+      "DOWN SPACE 30",
+      "MOUSE LDOWN 100",
+      "UP SPACE 300",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});

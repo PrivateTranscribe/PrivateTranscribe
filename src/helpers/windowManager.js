@@ -1019,6 +1019,20 @@ class WindowManager {
   }
 
   /**
+   * Ends a recording without transcribing it, for a hold that turned out to be
+   * part of another shortcut. Goes where sendStopDictation goes.
+   */
+  sendCancelDictation() {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send("cancel-dictation");
+    }
+  }
+
+  /**
    * Agent Mode's own start/stop pair. Deliberately not a flag on
    * sendStartDictation: that one is called from several places that must keep
    * meaning plain dictation.

@@ -936,6 +936,26 @@ export const useAudioRecording = (toast, options = {}) => {
       onToggleRef.current?.();
     });
 
+    // A held hotkey turned out to be part of another shortcut or a mouse action,
+    // such as Ctrl+Shift+click. The recording is a false start: discard it, so
+    // nothing is transcribed or pasted.
+    const handleCancel = () => {
+      const currentState = manager.getState();
+      if (currentState.isRecording || currentState.isStartingRecording) {
+        manager.cancelRecording();
+      }
+      setAgentSession(false);
+      restoreAudio();
+      resumeMedia();
+      unmuteVoiceCall();
+      window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
+    };
+
+    const disposeCancel = window.electronAPI.onCancelDictation?.(() => {
+      handleCancel();
+      onToggleRef.current?.();
+    });
+
     const disposeHybridKeyDown = window.electronAPI.onHybridDictationKeyDown?.(() => {
       handleHybridKeyDown();
       onToggleRef.current?.();
@@ -1018,6 +1038,7 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
+      disposeCancel?.();
       disposeHybridKeyDown?.();
       disposeHybridKeyUp?.();
       disposeNoAudio?.();
