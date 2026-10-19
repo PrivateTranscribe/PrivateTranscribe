@@ -32,13 +32,33 @@ const busy = (target: string) =>
     code: "EBUSY",
   });
 
-/** Make fs.rmSync fail for these paths, the way Windows does for an open file. */
+/** Make every delete call fail for these paths, the way Windows does for an open file. */
 function lockPaths(...locked: string[]) {
   const realRmSync = fs.rmSync.bind(fs);
-  return vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+  const realUnlinkSync = fs.unlinkSync.bind(fs);
+  const realRmdirSync = fs.rmdirSync.bind(fs);
+  vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
     if (locked.includes(String(target))) throw busy(String(target));
     return realRmSync(target, options);
   });
+  vi.spyOn(fs, "unlinkSync").mockImplementation((target) => {
+    if (locked.includes(String(target))) throw busy(String(target));
+    return realUnlinkSync(target);
+  });
+  vi.spyOn(fs, "rmdirSync").mockImplementation((target, options) => {
+    if (locked.includes(String(target))) throw busy(String(target));
+    return realRmdirSync(target, options);
+  });
+}
+
+/** lstat, not exists: a link whose target is gone is still on disk. */
+function onDisk(target: string) {
+  try {
+    fs.lstatSync(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 describe("app data reset", () => {
@@ -170,6 +190,103 @@ describe("app data reset", () => {
     expect(fs.existsSync(outside)).toBe(true);
   });
 
+  it("never hands a link to a recursive delete", async () => {
+    // fs.rmSync with `recursive` follows a junction on the Node that Electron
+    // ships (24) and empties the folder it points to. On Node 22, which runs
+    // these tests, it removes only the link, so the calls are what is checked.
+    const outside = write(root, "outside/models/keep.bin");
+    const target = path.join(root, "outside");
+    const links = [
+      path.join(userData, "linked"),
+      path.join(home, ".cache", "PrivateTranscribe", "parakeet-models"),
+      // A whole cache folder moved to another drive with a junction.
+      path.join(home, ".cache", "Privoca"),
+    ];
+    for (const link of links) fs.symlinkSync(target, link, "junction");
+    const rmSync = vi.spyOn(fs, "rmSync");
+    const rmdirSync = vi.spyOn(fs, "rmdirSync");
+
+    await requestAppReset({ userDataPath: userData, homeDir: home });
+    const outcome = finishPendingReset(userData);
+
+    const linkPaths = new Set(links);
+    expect(rmSync.mock.calls.filter(([entry]) => linkPaths.has(String(entry)))).toEqual([]);
+    expect(rmdirSync.mock.calls.filter(([, options]) => options?.recursive)).toEqual([]);
+    expect(links.filter(onDisk)).toEqual([]);
+    expect(fs.existsSync(outside)).toBe(true);
+    expect(outcome).toEqual({ survivors: [] });
+  });
+
+  it("does not go into a folder that leads somewhere else, even when lstat calls it a folder", async () => {
+    const outside = write(root, "outside/keep.txt");
+    const link = path.join(userData, "linked");
+    fs.symlinkSync(path.dirname(outside), link, "junction");
+    // A link lstat misreports as a plain folder, the way a mount point can be.
+    const realLstat = fs.lstatSync.bind(fs);
+    vi.spyOn(fs, "lstatSync").mockImplementation(((target: fs.PathLike, options?: never) => {
+      const stats = realLstat(target, options) as fs.Stats;
+      if (String(target) !== link) return stats;
+      return Object.assign(Object.create(stats), {
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+      });
+    }) as typeof fs.lstatSync);
+    await requestAppReset({ userDataPath: userData, homeDir: home });
+
+    finishPendingReset(userData);
+
+    expect(fs.existsSync(outside)).toBe(true);
+  });
+
+  it("removes a junction whose target is gone", async () => {
+    const target = path.join(root, "moved-away");
+    fs.mkdirSync(target);
+    const link = path.join(userData, "dangling");
+    fs.symlinkSync(target, link, "junction");
+    fs.rmdirSync(target);
+    await requestAppReset({ userDataPath: userData, homeDir: home });
+
+    const outcome = finishPendingReset(userData);
+
+    expect(onDisk(link)).toBe(false);
+    expect(outcome).toEqual({ survivors: [] });
+  });
+
+  it("lists what is still on disk even when a delete reported success", async () => {
+    const stubborn = path.join(userData, "transcriptions.db");
+    const realUnlinkSync = fs.unlinkSync.bind(fs);
+    vi.spyOn(fs, "unlinkSync").mockImplementation((target) => {
+      if (String(target) === stubborn) return;
+      realUnlinkSync(target);
+    });
+    await requestAppReset({ userDataPath: userData, homeDir: home });
+
+    const outcome = finishPendingReset(userData);
+
+    expect(outcome).toEqual({ survivors: [stubborn] });
+  });
+
+  it("leaves the volume repair files for the next start to restore from", async () => {
+    write(userData, "audio-ducking-state.json", '{"volume":0.8}');
+    write(userData, "readaloud-ducking-state.txt", "1234|0.5");
+    await requestAppReset({ userDataPath: userData, homeDir: home });
+
+    const outcome = finishPendingReset(userData);
+
+    expect(outcome).toEqual({ survivors: [] });
+    expect(fs.readdirSync(userData).sort()).toEqual([
+      "audio-ducking-state.json",
+      "readaloud-ducking-state.txt",
+    ]);
+  });
+
+  it("does not list a model path from the marker once it is gone", () => {
+    const gone = path.join(root, "home", ".cache", "PrivateTranscribe", "gone.bin");
+    fs.writeFileSync(path.join(userData, RESET_MARKER), JSON.stringify({ cacheSurvivors: [gone] }));
+
+    expect(finishPendingReset(userData)).toEqual({ survivors: [] });
+  });
+
   it("does nothing on a start with no reset pending", () => {
     expect(finishPendingReset(userData)).toBeNull();
     expect(fs.existsSync(path.join(userData, "keys.enc"))).toBe(true);
@@ -243,6 +360,18 @@ describe("app data reset wiring", () => {
 
     expect(source).toContain("appResetOutcome?.survivors.length > 0");
     expect(source).toContain("describeResetLeftovers(appResetOutcome.survivors)");
+  });
+
+  it("keeps the volume repair files under the names the duckers write", () => {
+    const reset = read("src", "helpers", "appReset.js");
+    const stateFileName = (file: string) =>
+      read("src", "helpers", file).match(/const STATE_FILE_NAME = "([^"]+)";/)?.[1];
+
+    for (const file of ["audioDuckingManager.js", "readAloudDucking.js"]) {
+      const name = stateFileName(file);
+      expect(name, file).toBeTruthy();
+      expect(reset).toContain(`"${name}"`);
+    }
   });
 
   it("does not tell the user the data is gone before the restart removes it", () => {
