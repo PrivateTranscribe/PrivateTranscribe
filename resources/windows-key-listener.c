@@ -252,6 +252,16 @@ static BOOL IsAnyRequiredModifierHeld(DWORD now) {
     return FALSE;
 }
 
+// A modifier the hotkey does not name, held as well, makes a different chord:
+// Alt then Ctrl+Shift is Ctrl+Alt+Shift, not Control+Shift.
+static BOOL IsAnyOtherModifierHeld(DWORD now) {
+    if (!g_requireCtrl && IsCtrlHeld(now)) return TRUE;
+    if (!g_requireAlt && IsModifierHeld(&g_alt, now)) return TRUE;
+    if (!g_requireShift && IsModifierHeld(&g_shift, now)) return TRUE;
+    if (!g_requireWin && IsModifierHeld(&g_win, now)) return TRUE;
+    return FALSE;
+}
+
 static void EmitDown(void) {
     if (!g_isDown) {
         g_isDown = TRUE;
@@ -547,13 +557,13 @@ static BOOL ParseCompoundHotkey(const char* hotkey) {
  * A modifier-only hotkey, such as Control+Shift. Its modifiers can be pressed in
  * any order and with either side's key.
  *
- * Every one of them held for MODIFIER_ONLY_START_DELAY_MS with no other key sends
- * KEY_DOWN, and releasing one sends KEY_UP. Releasing one sooner is a tap, sent as
- * KEY_DOWN and KEY_UP together. Any other key going down, a mouse button press or
- * a wheel turn while one of them is held makes the press part of another shortcut:
- * nothing is sent, or KEY_CANCEL if KEY_DOWN already was. That covers the
- * Ctrl+Shift+V this app injects to paste into a terminal, Ctrl+Shift+click and
- * Alt+Shift+drag.
+ * Every one of them, and no other modifier, held for MODIFIER_ONLY_START_DELAY_MS
+ * with no other key sends KEY_DOWN, and releasing one sends KEY_UP. Releasing one
+ * sooner is a tap, sent as KEY_DOWN and KEY_UP together. Any other key going
+ * down, a mouse button press or a wheel turn while one of them is held makes the
+ * press part of another shortcut: nothing is sent, or KEY_CANCEL if KEY_DOWN
+ * already was. That covers the Ctrl+Shift+V this app injects to paste into a
+ * terminal, Ctrl+Shift+click and Alt+Shift+drag.
  */
 static void HandleModifierOnlyOtherInput(DWORD timeMs) {
     if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld(timeMs)) {
@@ -573,7 +583,8 @@ static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) 
 
     if (isKeyDown) {
         // Auto-repeat of a held modifier arrives as more key-downs and changes nothing.
-        if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed(timeMs)) {
+        if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed(timeMs) &&
+            !IsAnyOtherModifierHeld(timeMs)) {
             StartChordTimer(timeMs);
         }
         return;

@@ -747,3 +747,38 @@ describe.skipIf(!exePath)("windows-key-listener AltGr on ordinary hotkeys", () =
     expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
 });
+
+describe.skipIf(!exePath)(
+  "windows-key-listener modifier-only hotkeys need exactly their modifiers",
+  () => {
+    test.each(["LALT", "RWIN"])(
+      "%s pressed first keeps Control+Shift from firing",
+      async (extra) => {
+        const run = await runListener("Control+Shift", [
+          `DOWN ${extra} 0`,
+          "DOWN LCTRL 100",
+          "DOWN LSHIFT 130",
+          "TICK 600",
+          "UP LSHIFT 700",
+          "UP LCTRL 710",
+          `UP ${extra} 720`,
+        ]);
+
+        expect(run.events).toEqual([]);
+      }
+    );
+
+    test("an extra modifier released before the chord does not count", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LALT 0",
+        "UP LALT 50",
+        "DOWN LCTRL 100",
+        "DOWN LSHIFT 130",
+        "TICK 400",
+        "UP LSHIFT 700",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    });
+  }
+);
