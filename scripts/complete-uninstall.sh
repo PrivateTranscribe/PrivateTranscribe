@@ -93,7 +93,6 @@ if [[ "$wipe_models" =~ ^[Yy]$ ]]; then
   remove_target "$HOME/.cache/Privoca/whisper-models"
   remove_target "$HOME/.cache/Privoca/parakeet-models"
   remove_target "$HOME/.cache/Privoca/models"
-  remove_target "$HOME/.cache/whisper"
   remove_target "$HOME/Library/Application Support/whisper"
   remove_target "$HOME/Library/Application Support/Privoca/models"
   remove_target "$HOME/Library/Application Support/DictateVoice/models"
