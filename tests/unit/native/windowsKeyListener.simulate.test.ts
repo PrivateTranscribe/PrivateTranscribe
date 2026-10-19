@@ -130,7 +130,7 @@ function runListener(hotkey: string, lines: string[] = []): Promise<ListenerRun>
         events: stdout
           .split(/\r?\n/)
           .map((line) => line.trim())
-          .filter((line) => line === "KEY_DOWN" || line === "KEY_UP"),
+          .filter((line) => line === "KEY_DOWN" || line === "KEY_UP" || line === "KEY_CANCEL"),
         stderr,
       });
     };
@@ -434,4 +434,149 @@ describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys", () => {
 
     expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
+
+  test.each([
+    [289, []],
+    [290, ["KEY_DOWN"]],
+  ])("starts once the modifiers are held alone for 250 ms (at %i ms)", async (time, events) => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN LSHIFT 40",
+      `TICK ${time}`,
+    ]);
+
+    expect(run.events).toEqual(events);
+  });
+
+  test("a quick press and release with nothing else is a tap", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN LSHIFT 30",
+      "UP LSHIFT 90",
+      "UP LCTRL 100",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
 });
+
+// T, Right arrow, V and 2 as virtual-key codes.
+const KEY_T = "0x54";
+const KEY_RIGHT = "0x27";
+const KEY_V = "0x56";
+const KEY_2 = "0x32";
+
+describe.skipIf(!exePath)(
+  "windows-key-listener modifier-only hotkeys inside other shortcuts",
+  () => {
+    test("a quick Ctrl+Shift+T starts nothing", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 30",
+        `DOWN ${KEY_T} 80`,
+        `UP ${KEY_T} 130`,
+        "UP LSHIFT 140",
+        "UP LCTRL 150",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("holding Ctrl+Shift+Right to select text starts nothing", async () => {
+      const repeats = Array.from({ length: 10 }, (_, i) => `DOWN ${KEY_RIGHT} ${600 + i * 33}`);
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 40",
+        `DOWN ${KEY_RIGHT} 150`,
+        ...repeats,
+        `UP ${KEY_RIGHT} 1500`,
+        "UP LSHIFT 1600",
+        "UP LCTRL 1650",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("a key just after the start delay cancels the press", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 40",
+        "TICK 300",
+        `DOWN ${KEY_RIGHT} 340`,
+        `UP ${KEY_RIGHT} 400`,
+        "UP LSHIFT 450",
+        "UP LCTRL 460",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_CANCEL", "KEY_UP"]);
+    });
+
+    test("the paste chord this app injects into terminals starts nothing", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 5000",
+        "DOWN LSHIFT 5000",
+        `DOWN ${KEY_V} 5000`,
+        `UP ${KEY_V} 5000`,
+        "UP LSHIFT 5000",
+        "UP LCTRL 5000",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("works again once the shortcut's modifiers are released", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 30",
+        `DOWN ${KEY_T} 80`,
+        `UP ${KEY_T} 130`,
+        "UP LSHIFT 140",
+        "UP LCTRL 150",
+        "DOWN LCTRL 1000",
+        "DOWN LSHIFT 1020",
+        "TICK 1300",
+        "UP LCTRL 2000",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    });
+
+    // AltGr reaches the hook as a fake left Ctrl (scan code 0x21D) and right Alt.
+    test("AltGr typing @ on a Nordic layout does not fire Control+Alt", async () => {
+      const run = await runListener("Control+Alt", [
+        "DOWN LCTRL 0 scan=0x21D",
+        "DOWN RALT 0",
+        `DOWN ${KEY_2} 60`,
+        `UP ${KEY_2} 110`,
+        "UP LCTRL 150 scan=0x21D",
+        "UP RALT 150",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("AltGr held on its own does not fire Control+Alt", async () => {
+      const run = await runListener("Control+Alt", [
+        "DOWN LCTRL 0 scan=0x21D",
+        "DOWN RALT 0",
+        "TICK 1000",
+        "UP LCTRL 1100 scan=0x21D",
+        "UP RALT 1100",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("a real Ctrl with AltGr still is Control+Alt", async () => {
+      const run = await runListener("Control+Alt", [
+        "DOWN LCTRL 0",
+        "DOWN LCTRL 40 scan=0x21D",
+        "DOWN RALT 40",
+        "TICK 400",
+        "UP RALT 900",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    });
+  }
+);

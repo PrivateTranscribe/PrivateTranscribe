@@ -90,6 +90,21 @@ class ActivationGestureController {
     return true;
   }
 
+  /**
+   * Drops a press that turned out to be part of another shortcut, so its key-up
+   * fires no tap. A hold that already started is left to end on key-up as usual.
+   */
+  discard() {
+    if (!this.isPressed || this.holdTriggered) {
+      return false;
+    }
+
+    this.isPressed = false;
+    this.pressExpired = false;
+    this.clearHoldTimer();
+    return true;
+  }
+
   cancel() {
     const shouldEndHold = this.holdTriggered;
     this.isPressed = false;

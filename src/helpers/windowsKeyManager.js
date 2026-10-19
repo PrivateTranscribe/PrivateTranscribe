@@ -114,6 +114,9 @@ class WindowsKeyManager extends EventEmitter {
           } else if (line === "KEY_UP") {
             debugLogger.debug("[WindowsKeyManager] KEY_UP detected", { key });
             this.emit("key-up", key);
+          } else if (line === "KEY_CANCEL") {
+            debugLogger.debug("[WindowsKeyManager] KEY_CANCEL detected", { key });
+            this.emit("key-cancel", key);
           } else {
             // Log unknown output at debug level (could be native binary's stderr info)
             debugLogger.debug("[WindowsKeyManager] Unknown output", { line });

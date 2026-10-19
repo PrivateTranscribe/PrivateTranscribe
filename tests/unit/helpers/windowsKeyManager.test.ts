@@ -40,6 +40,22 @@ describe("WindowsKeyManager", () => {
     expect(manager.isListening()).toBe(false);
   });
 
+  it("passes on the listener's KEY_CANCEL between its down and up", async () => {
+    const { manager, hotkey } = managerRunning(
+      'process.stdout.write("READY\\nKEY_DOWN\\nKEY_CANCEL\\nKEY_UP\\n"); setTimeout(() => {}, 200);'
+    );
+    const events: string[] = [];
+    for (const name of ["key-down", "key-cancel", "key-up"]) {
+      manager.on(name, () => events.push(name));
+    }
+    const stopped = new Promise((resolve) => manager.once("stopped", resolve));
+
+    manager.start(hotkey);
+    await stopped;
+
+    expect(events).toEqual(["key-down", "key-cancel", "key-up"]);
+  });
+
   it("keeps the exit code for other failures", async () => {
     const { manager, hotkey } = managerRunning("process.exit(1);");
     const errored = new Promise<Error>((resolve) => manager.once("error", resolve));

@@ -94,6 +94,37 @@ describe("ActivationGestureController", () => {
     expect(callbacks.onHoldEnd).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["tap", "push", "tapHold"] as const)(
+    "a discarded press starts nothing in %s mode",
+    (mode) => {
+      const { controller, callbacks } = createController(mode);
+
+      controller.keyDown();
+      vi.advanceTimersByTime(100);
+      expect(controller.discard()).toBe(true);
+      vi.advanceTimersByTime(500);
+      controller.keyUp();
+
+      expect(callbacks.onTap).not.toHaveBeenCalled();
+      expect(callbacks.onHoldStart).not.toHaveBeenCalled();
+      expect(callbacks.onHoldEnd).not.toHaveBeenCalled();
+    }
+  );
+
+  it("leaves a hold that already started to end on key-up", () => {
+    const { controller, callbacks } = createController("push");
+
+    controller.keyDown();
+    vi.advanceTimersByTime(150);
+    expect(controller.discard()).toBe(false);
+    expect(callbacks.onHoldEnd).not.toHaveBeenCalled();
+
+    controller.keyUp();
+
+    expect(callbacks.onHoldStart).toHaveBeenCalledTimes(1);
+    expect(callbacks.onHoldEnd).toHaveBeenCalledTimes(1);
+  });
+
   it("ends an active hold when the gesture is cancelled", () => {
     const { controller, callbacks } = createController("push");
 

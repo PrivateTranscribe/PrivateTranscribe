@@ -7,7 +7,7 @@
  *   `
  *   F8
  *   CommandOrControl+F11
- *   Control+Shift             (modifiers only: fires while all are held)
+ *   Control+Shift             (modifiers only: see HandleModifierOnlyEvent)
  *   Mouse4
  *   Mouse5
  *   Ctrl+Mouse4
@@ -16,6 +16,9 @@
  *   READY
  *   KEY_DOWN
  *   KEY_UP
+ *   KEY_CANCEL  the press that sent KEY_DOWN turned out to be part of another
+ *               shortcut. Drop it if it has not started anything. KEY_UP still
+ *               follows when the keys are released.
  *
  * Exit codes:
  *   0  stopped
@@ -26,9 +29,15 @@
  * Test seam:
  *   windows-key-listener.exe --simulate "CommandOrControl+Space"
  * installs no hooks and never reads the real keyboard. It prints READY and then
- * replays scripted events from stdin (`DOWN <key> <timeMs>` / `UP <key> <timeMs>`,
- * `QUIT` or EOF to stop) through the exact same decision function the live hook
- * uses, so tests exercise the compiled logic without touching the user's machine.
+ * replays scripted events from stdin through the exact same decision functions
+ * the live hook and timer use, so tests exercise the compiled logic without
+ * touching the user's machine:
+ *   DOWN <key> <timeMs> [scan=0x<code>]   a key event the hook sees
+ *   UP <key> <timeMs> [scan=0x<code>]
+ *   TICK <timeMs>                         time passes with no key event
+ *   QUIT, or EOF                          stop
+ * Simulate mode also keeps the key state GetAsyncKeyState would report, built
+ * from the same events, so the live sample is tested without reading it.
  *
  * Compile with (MSVC):
  *   cl /O2 windows-key-listener.c /Fe:windows-key-listener.exe user32.lib
@@ -65,7 +74,41 @@ static BOOL g_modifierOnly = FALSE;
 // Simulate mode: driven from stdin, no hooks installed, real keyboard never read.
 static BOOL g_simulateMode = FALSE;
 
+// What GetAsyncKeyState would report in simulate mode, kept from the scripted events.
+static BOOL g_simKeyDown[256];
+
 #define EXIT_BAD_HOTKEY 2
+
+/*
+ * How long every modifier of a modifier-only hotkey must be held, with no other
+ * key, before it sends KEY_DOWN.
+ *
+ * Control+Shift is also the start of Ctrl+Shift+T, Ctrl+Shift+Arrow and the
+ * paste chord this app injects. Firing the moment the modifiers are down started
+ * a recording, or toggled one, on every such shortcut. People reach the third key
+ * of a shortcut well within this window. Releasing the modifiers sooner, with
+ * nothing else pressed, is still a tap. The app adds its own 150 ms hold
+ * threshold on top, and a key arriving in that time sends KEY_CANCEL, so a hold
+ * starts recording 400 ms after the modifiers are down.
+ */
+#define MODIFIER_ONLY_START_DELAY_MS 250
+
+// AltGr reaches the hook as a fake left Ctrl with this scan code, then right Alt.
+// It is not Control: on a Nordic or German layout it types @ $ { [ ] } | and €.
+#define ALTGR_FAKE_CTRL_SCAN 0x21D
+
+// Modifier-only hotkey state. Pending: every modifier is down and the start delay
+// is running. Spoiled: another key went down with them, so this press belongs to
+// another shortcut and stays silent until its modifiers are released.
+static BOOL g_chordPending = FALSE;
+static DWORD g_chordStartTime = 0;
+static BOOL g_chordSpoiled = FALSE;
+static BOOL g_cancelSent = FALSE;
+static UINT_PTR g_chordTimer = 0;
+
+// AltGr's fake left Ctrl is down. The system counts it as held, so the live
+// sample of left Ctrl means nothing while it is.
+static BOOL g_altGrCtrlDown = FALSE;
 
 /*
  * How long after the trigger key goes down a required modifier may still arrive
@@ -96,20 +139,31 @@ static BOOL g_altPhysDown = FALSE;
 static BOOL g_shiftPhysDown = FALSE;
 static BOOL g_winPhysDown = FALSE;
 
+// The system's key state now, as GetAsyncKeyState gives it. Simulate mode answers
+// from the scripted events instead and never reads the real keyboard.
+static BOOL IsKeyDownNow(int vk) {
+    if (g_simulateMode) return vk > 0 && vk < 256 && g_simKeyDown[vk];
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
 // Tracked state OR a live sample. The live sample covers modifiers already held
-// before the hook was installed; in simulate mode it must never be consulted.
-static BOOL IsModifierHeld(BOOL tracked, int vkPrimary, int vkSecondary) {
+// before the hook was installed.
+static BOOL IsModifierHeld(BOOL tracked, int vkLeft, int vkRight) {
     if (tracked) return TRUE;
-    if (g_simulateMode) return FALSE;
-    if (GetAsyncKeyState(vkPrimary) & 0x8000) return TRUE;
-    if (vkSecondary && (GetAsyncKeyState(vkSecondary) & 0x8000)) return TRUE;
-    return FALSE;
+    return IsKeyDownNow(vkLeft) || IsKeyDownNow(vkRight);
+}
+
+static BOOL IsCtrlHeld(void) {
+    if (g_ctrlPhysDown) return TRUE;
+    if (IsKeyDownNow(VK_RCONTROL)) return TRUE;
+    // Left Ctrl with right Alt is AltGr, also when it was down before the hook was.
+    return IsKeyDownNow(VK_LCONTROL) && !g_altGrCtrlDown && !IsKeyDownNow(VK_RMENU);
 }
 
 static BOOL AreModifiersPressed(void) {
-    if (g_requireCtrl && !IsModifierHeld(g_ctrlPhysDown, VK_CONTROL, 0)) return FALSE;
-    if (g_requireAlt && !IsModifierHeld(g_altPhysDown, VK_MENU, 0)) return FALSE;
-    if (g_requireShift && !IsModifierHeld(g_shiftPhysDown, VK_SHIFT, 0)) return FALSE;
+    if (g_requireCtrl && !IsCtrlHeld()) return FALSE;
+    if (g_requireAlt && !IsModifierHeld(g_altPhysDown, VK_LMENU, VK_RMENU)) return FALSE;
+    if (g_requireShift && !IsModifierHeld(g_shiftPhysDown, VK_LSHIFT, VK_RSHIFT)) return FALSE;
     if (g_requireWin && !IsModifierHeld(g_winPhysDown, VK_LWIN, VK_RWIN)) return FALSE;
     return TRUE;
 }
@@ -148,9 +202,18 @@ static BOOL IsRequiredModifierVk(DWORD vk) {
     return FALSE;
 }
 
+static BOOL IsAnyRequiredModifierHeld(void) {
+    if (g_requireCtrl && IsCtrlHeld()) return TRUE;
+    if (g_requireAlt && IsModifierHeld(g_altPhysDown, VK_LMENU, VK_RMENU)) return TRUE;
+    if (g_requireShift && IsModifierHeld(g_shiftPhysDown, VK_LSHIFT, VK_RSHIFT)) return TRUE;
+    if (g_requireWin && IsModifierHeld(g_winPhysDown, VK_LWIN, VK_RWIN)) return TRUE;
+    return FALSE;
+}
+
 static void EmitDown(void) {
     if (!g_isDown) {
         g_isDown = TRUE;
+        g_cancelSent = FALSE;
         printf("KEY_DOWN\n");
         fflush(stdout);
     }
@@ -161,6 +224,54 @@ static void EmitUp(void) {
         g_isDown = FALSE;
         printf("KEY_UP\n");
         fflush(stdout);
+    }
+}
+
+static void EmitCancel(void) {
+    if (g_isDown && !g_cancelSent) {
+        g_cancelSent = TRUE;
+        printf("KEY_CANCEL\n");
+        fflush(stdout);
+    }
+}
+
+static void StopChordTimer(void) {
+    g_chordPending = FALSE;
+    if (g_chordTimer) {
+        KillTimer(NULL, g_chordTimer);
+        g_chordTimer = 0;
+    }
+}
+
+static void FirePendingChord(void) {
+    if (!g_chordPending) return;
+    StopChordTimer();
+    EmitDown();
+}
+
+// The live start delay. The timer runs on the hook thread's message loop, so it
+// never races the hook.
+static VOID CALLBACK ChordTimerProc(HWND hwnd, UINT msg, UINT_PTR id, DWORD time) {
+    (void)hwnd;
+    (void)msg;
+    (void)id;
+    (void)time;
+    FirePendingChord();
+}
+
+static void StartChordTimer(DWORD timeMs) {
+    g_chordPending = TRUE;
+    g_chordStartTime = timeMs;
+    if (!g_simulateMode) {
+        g_chordTimer = SetTimer(NULL, 0, MODIFIER_ONLY_START_DELAY_MS, ChordTimerProc);
+    }
+}
+
+// Fires a pending chord whose delay has run out by timeMs. Simulate mode keeps
+// time only through this; live, the timer usually gets there first.
+static void AdvanceTime(DWORD timeMs) {
+    if (g_chordPending && (DWORD)(timeMs - g_chordStartTime) >= MODIFIER_ONLY_START_DELAY_MS) {
+        FirePendingChord();
     }
 }
 
@@ -391,28 +502,74 @@ static BOOL ParseCompoundHotkey(const char* hotkey) {
 }
 
 /*
+ * A modifier-only hotkey, such as Control+Shift. Its modifiers can be pressed in
+ * any order and with either side's key.
+ *
+ * Every one of them held for MODIFIER_ONLY_START_DELAY_MS with no other key sends
+ * KEY_DOWN, and releasing one sends KEY_UP. Releasing one sooner is a tap, sent as
+ * KEY_DOWN and KEY_UP together. Any other key going down while one of them is held
+ * makes the press part of another shortcut: nothing is sent, or KEY_CANCEL if
+ * KEY_DOWN already was. That includes the Ctrl+Shift+V this app injects to paste
+ * into a terminal.
+ */
+static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
+    BOOL isRequired = IsRequiredModifierVk(vkCode);
+
+    if (isKeyDown && !isRequired) {
+        if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld()) {
+            g_chordSpoiled = TRUE;
+            StopChordTimer();
+            EmitCancel();
+        }
+        return;
+    }
+
+    if (isKeyDown) {
+        // Auto-repeat of a held modifier arrives as more key-downs and changes nothing.
+        if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed()) {
+            StartChordTimer(timeMs);
+        }
+        return;
+    }
+
+    if (isRequired) {
+        if (g_chordPending) {
+            StopChordTimer();
+            EmitDown();
+        }
+        EmitUp();
+    }
+}
+
+/*
  * The whole keyboard decision, in one place. The live hook and the --simulate
  * loop both call this, so a test drives the exact compiled logic.
  *
  * timeMs is the event timestamp (KBDLLHOOKSTRUCT::time), milliseconds since boot.
  */
-static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
+static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWORD scanCode) {
+    if (vkCode == VK_LCONTROL && scanCode == ALTGR_FAKE_CTRL_SCAN) {
+        g_altGrCtrlDown = isKeyDown;
+        return;
+    }
+
+    AdvanceTime(timeMs);
+
+    // A shortcut's modifiers are all released, so the next press starts clean.
+    if (g_chordSpoiled && !IsAnyRequiredModifierHeld()) {
+        g_chordSpoiled = FALSE;
+    }
+
     TrackModifierState(vkCode, isKeyDown);
+
+    if (g_modifierOnly) {
+        HandleModifierOnlyEvent(vkCode, isKeyDown, timeMs);
+        return;
+    }
 
     // If a required modifier was released while we're held down, emit up.
     if (g_isDown && !isKeyDown && IsRequiredModifierVk(vkCode)) {
         EmitUp();
-    }
-
-    // A modifier-only hotkey fires once every modifier in it is held, pressed in
-    // any order and with either side's key, and ends when one is released (above).
-    // It used to pick one modifier as the trigger and wait for its generic VK
-    // (VK_CONTROL), which a low-level hook never reports, so it never fired.
-    if (g_modifierOnly) {
-        if (isKeyDown && IsRequiredModifierVk(vkCode) && AreModifiersPressed()) {
-            EmitDown();
-        }
-        return;
     }
 
     // The trigger key is handled first and exclusively: a raw VK trigger such as
@@ -453,7 +610,7 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
         BOOL isKeyUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
 
         if (isKeyDown || isKeyUp) {
-            HandleKeyboardEvent(kbd->vkCode, isKeyDown, kbd->time);
+            HandleKeyboardEvent(kbd->vkCode, isKeyDown, kbd->time, kbd->scanCode);
         }
     }
 
@@ -552,9 +709,12 @@ static int RunSimulateLoop(void) {
         char* verb;
         char* keyToken;
         char* timeToken;
+        char* option;
         BOOL isKeyDown;
         DWORD vkCode = 0;
         long timeMs = 0;
+        long scanCode = 0;
+        BOOL badOption = FALSE;
         size_t len = strlen(line);
 
         while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' ||
@@ -570,9 +730,26 @@ static int RunSimulateLoop(void) {
 
         verb = strtok(line, " \t");
         keyToken = strtok(NULL, " \t");
-        timeToken = strtok(NULL, " \t");
 
-        if (verb == NULL || keyToken == NULL || timeToken == NULL) {
+        if (verb != NULL && _stricmp(verb, "TICK") == 0) {
+            if (keyToken == NULL || strtok(NULL, " \t") != NULL ||
+                !ParseNumber(keyToken, 10, &timeMs)) {
+                fprintf(stderr, "ERR %s\n", original);
+                fflush(stderr);
+                continue;
+            }
+            AdvanceTime((DWORD)timeMs);
+            continue;
+        }
+
+        timeToken = strtok(NULL, " \t");
+        while ((option = strtok(NULL, " \t")) != NULL) {
+            if (_strnicmp(option, "scan=0x", 7) != 0 || !ParseNumber(option + 7, 16, &scanCode)) {
+                badOption = TRUE;
+            }
+        }
+
+        if (verb == NULL || keyToken == NULL || timeToken == NULL || badOption) {
             fprintf(stderr, "ERR %s\n", original);
             fflush(stderr);
             continue;
@@ -594,7 +771,9 @@ static int RunSimulateLoop(void) {
             continue;
         }
 
-        HandleKeyboardEvent(vkCode, isKeyDown, (DWORD)timeMs);
+        HandleKeyboardEvent(vkCode, isKeyDown, (DWORD)timeMs, (DWORD)scanCode);
+        // After the event, as the system updates its key state only once the hook returns.
+        if (vkCode < 256) g_simKeyDown[vkCode] = isKeyDown;
     }
 
     return 0;

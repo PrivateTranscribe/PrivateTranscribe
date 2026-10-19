@@ -789,6 +789,11 @@ async function startApp() {
       winGestureController.keyUp();
     });
 
+    windowsKeyManager.on("key-cancel", () => {
+      debugLogger.debug("[Activation] Key press cancelled by another key");
+      winGestureController.discard();
+    });
+
     windowsKeyManager.on("stopped", () => {
       hotkeyManager.setWindowsNativeListenerActive(false);
       winGestureController.cancel();
