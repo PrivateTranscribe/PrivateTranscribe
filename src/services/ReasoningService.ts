@@ -291,6 +291,11 @@ class ReasoningService {
     }
   }
 
+  private getSelectedProvider(): string {
+    if (typeof window === "undefined" || !window.localStorage) return "";
+    return window.localStorage.getItem("reasoningProvider") || "";
+  }
+
   private getConfiguredOpenAIBase(): string {
     if (typeof window === "undefined" || !window.localStorage) {
       return API_ENDPOINTS.OPENAI_BASE;
@@ -674,7 +679,7 @@ class ReasoningService {
     if (!trimmedModel) {
       throw new Error("No reasoning model selected");
     }
-    const provider = getModelProvider(trimmedModel);
+    const provider = getModelProvider(trimmedModel, this.getSelectedProvider());
     if (config.writingStyle === "coding") {
       config = { ...config, promptTemplate: config.promptTemplate ?? getCodingPrompt() };
     }
@@ -717,6 +722,7 @@ class ReasoningService {
           break;
         }
         case "openai":
+        case "custom":
           result = await this.processWithOpenAI(text, trimmedModel, agentName, config);
           break;
         case "anthropic":
