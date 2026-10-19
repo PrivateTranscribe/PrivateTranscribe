@@ -241,7 +241,9 @@ async function main() {
   } else {
     console.log("Downloading binaries for all platforms:");
     for (const platformArch of Object.keys(BINARIES)) {
-      await downloadBinary(platformArch, BINARIES[platformArch], release, args.isForce);
+      if (!(await downloadBinary(platformArch, BINARIES[platformArch], release, args.isForce))) {
+        process.exitCode = 1;
+      }
     }
   }
 
@@ -260,4 +262,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

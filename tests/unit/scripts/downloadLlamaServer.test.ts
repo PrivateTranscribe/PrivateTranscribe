@@ -17,7 +17,12 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
-function loadScript(archiveBytes: string) {
+const RELEASE = {
+  tag: "b10566",
+  assets: [{ name: "llama-b10566-bin-win-cpu-x64.zip", url: "https://example.invalid/archive" }],
+};
+
+function loadScript(archiveBytes: string, args: Record<string, unknown> = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-llama-download-"));
   tempDirs.push(dir);
   const bin = path.join(dir, "resources", "bin");
@@ -33,19 +38,23 @@ function loadScript(archiveBytes: string) {
     findBinaryInDir: (destination: string, name: string) => path.join(destination, name),
     setExecutable: () => {},
     verifySha256,
+    fetchReleaseByTag: async () => RELEASE,
+    parseArgs: () => ({ platformArch: "win32-x64", ...args }),
+    cleanupFiles: () => {},
   };
+  const fakeProcess: { env: Record<string, string>; exitCode?: number } = { env: {} };
 
   const exported: { exports?: any } = {};
   const source = fs.readFileSync(path.resolve("scripts", "download-llama-server.js"), "utf8");
   vm.runInNewContext(
     source.replace(
-      "main().catch(console.error);",
-      "module.exports = { downloadBinary, BINARIES };"
+      /^main\(\)\.catch[\s\S]*$/m,
+      "module.exports = { downloadBinary, BINARIES, main };"
     ),
     {
       module: exported,
       __dirname: path.join(dir, "scripts"),
-      process: { env: {} },
+      process: fakeProcess,
       console: { log() {}, error() {} },
       require: (name: string) => {
         if (name === "fs") return fs;
@@ -56,7 +65,7 @@ function loadScript(archiveBytes: string) {
     }
   );
 
-  return { script: exported.exports, bin, extracted };
+  return { script: exported.exports, bin, extracted, process: fakeProcess };
 }
 
 describe("download-llama-server.js", () => {
@@ -70,16 +79,20 @@ describe("download-llama-server.js", () => {
 
   it("refuses an archive whose hash differs, before extracting it", async () => {
     const { script, bin, extracted } = loadScript("tampered archive");
-    const release = {
-      assets: [
-        { name: "llama-b10566-bin-win-cpu-x64.zip", url: "https://example.invalid/archive" },
-      ],
-    };
 
     expect(
-      await script.downloadBinary("win32-x64", script.BINARIES["win32-x64"], release, true)
+      await script.downloadBinary("win32-x64", script.BINARIES["win32-x64"], RELEASE, true)
     ).toBe(false);
     expect(extracted).toEqual([]);
     expect(fs.readdirSync(bin)).toEqual([]);
+  });
+
+  it("fails --all when any archive is refused", async () => {
+    const run = loadScript("tampered archive", { isAll: true, isForce: true });
+
+    await run.script.main();
+
+    expect(run.extracted).toEqual([]);
+    expect(run.process.exitCode).toBe(1);
   });
 });
