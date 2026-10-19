@@ -167,6 +167,7 @@ class AgentModeHotkey {
       },
       "key-down": () => this.gesture.keyDown(),
       "key-up": () => this.gesture.keyUp(),
+      "key-cancel": () => this.gesture.discard(),
       stopped: () => {
         this.registered = false;
         this.gesture.cancel();

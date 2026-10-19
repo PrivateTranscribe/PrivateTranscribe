@@ -1,56 +1,101 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
+import { CODE_TO_KEY } from "../../../src/components/ui/HotkeyInput";
 
 /**
- * Drives the compiled windows-key-listener.exe through its `--simulate` seam.
+ * Drives windows-key-listener.exe through its `--simulate` seam.
  *
  * Simulate mode installs no hooks and never samples the real keyboard: it replays
  * scripted events from stdin through the exact same decision function the live
  * low-level hook calls. That makes the compound-hotkey timing behavior testable
  * without automating Kristian's actual keyboard.
+ *
+ * The suite compiles the listener from the current source with the compiler
+ * search `npm run compile:winkeys` uses, so it never tests a stale binary. A
+ * build is reused while the source and that search are unchanged.
  */
 
+const { compileKeyListener } = require("../../../scripts/lib/compile-key-listener");
+
 const projectRoot = path.resolve(__dirname, "..", "..", "..");
-const exePath = path.join(projectRoot, "resources", "bin", "windows-key-listener.exe");
 const sourcePath = path.join(projectRoot, "resources", "windows-key-listener.c");
+const compilerPath = path.join(projectRoot, "scripts", "lib", "compile-key-listener.js");
 
-const COMPILE_HINT =
-  "Rebuild it with: cmd /c '\"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cl /O2 /nologo resources\\windows-key-listener.c /Fe:resources\\bin\\windows-key-listener.exe user32.lib'";
-
-function binaryStatus(): { usable: boolean; reason: string } {
+function buildListener(): { exePath: string; reason: string } {
   if (process.platform !== "win32") {
-    return { usable: false, reason: "not running on Windows" };
+    return { exePath: "", reason: "not running on Windows" };
   }
-  if (!fs.existsSync(exePath)) {
-    return { usable: false, reason: `${exePath} does not exist` };
+
+  const hash = crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(sourcePath))
+    .update(fs.readFileSync(compilerPath))
+    .digest("hex")
+    .slice(0, 16);
+  const exePath = path.join(os.tmpdir(), `pt-key-listener-${hash}.exe`);
+  if (fs.existsSync(exePath)) {
+    return { exePath, reason: "" };
   }
-  if (fs.existsSync(sourcePath)) {
-    const exeStat = fs.statSync(exePath);
-    const sourceStat = fs.statSync(sourcePath);
-    if (exeStat.mtimeMs < sourceStat.mtimeMs) {
-      return { usable: false, reason: `${exePath} is older than windows-key-listener.c` };
+
+  // Build beside the final name and rename, so a parallel run never starts a
+  // half-written binary.
+  const staging = path.join(os.tmpdir(), `pt-key-listener-${hash}-${process.pid}.exe`);
+  const { compiler, failures } = compileKeyListener({
+    source: sourcePath,
+    output: staging,
+    quiet: true,
+  });
+  if (!compiler) {
+    // A missing compiler skips the suite; a source that does not compile fails it.
+    if (failures.length > 0) {
+      throw new Error(
+        `windows-key-listener.c did not compile:\n${failures
+          .map(
+            (failure: { compiler: string; output: string }) =>
+              `${failure.compiler}:\n${failure.output}`
+          )
+          .join("\n\n")}`
+      );
     }
+    return {
+      exePath: "",
+      reason: "no C compiler found. Install Visual Studio Build Tools with the C++ workload",
+    };
   }
-  return { usable: true, reason: "" };
+  try {
+    fs.renameSync(staging, exePath);
+  } catch {
+    // Another run got there first; its binary comes from the same source.
+    if (!fs.existsSync(exePath)) return { exePath: staging, reason: "" };
+    fs.rmSync(staging, { force: true });
+  }
+  return { exePath, reason: "" };
 }
 
-const status = binaryStatus();
-if (!status.usable) {
-  // Staleness must never fail the suite - it only means nobody compiled the fix yet.
-  console.warn(
-    `[windowsKeyListener.simulate] Skipping: ${status.reason}. ${
-      process.platform === "win32" ? COMPILE_HINT : ""
-    }`
-  );
+const { exePath, reason } = buildListener();
+if (!exePath) {
+  console.warn(`[windowsKeyListener.simulate] Skipping: ${reason}.`);
+}
+
+interface ListenerRun {
+  /** The process exit code. */
+  code: number | null;
+  /** Whether it printed READY, which it does only for a hotkey it can watch. */
+  ready: boolean;
+  /** The KEY_DOWN / KEY_UP lines, in order. */
+  events: string[];
+  stderr: string;
 }
 
 /**
- * Spawns the listener in simulate mode, feeds it the scripted lines, and returns
- * the emitted KEY_DOWN / KEY_UP sequence in order.
+ * Spawns the listener in simulate mode and, once it is READY, feeds it the
+ * scripted lines. A listener that refuses the hotkey exits without READY.
  */
-function runScript(hotkey: string, lines: string[]): Promise<string[]> {
+function runListener(hotkey: string, lines: string[] = []): Promise<ListenerRun> {
   return new Promise((resolve, reject) => {
     const child = spawn(exePath, ["--simulate", hotkey], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -58,6 +103,7 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
     });
 
     let stdout = "";
+    let stderr = "";
     let settled = false;
     let sawReady = false;
 
@@ -70,7 +116,7 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
       );
     }, 5000);
 
-    const finish = (err?: Error) => {
+    const finish = (code: number | null, err?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -78,14 +124,21 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
         reject(err);
         return;
       }
-      resolve(
-        stdout
+      resolve({
+        code,
+        ready: sawReady,
+        events: stdout
           .split(/\r?\n/)
           .map((line) => line.trim())
-          .filter((line) => line === "KEY_DOWN" || line === "KEY_UP")
-      );
+          .filter((line) => line === "KEY_DOWN" || line === "KEY_UP" || line === "KEY_CANCEL"),
+        stderr,
+      });
     };
 
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
@@ -97,12 +150,72 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
       }
     });
 
-    child.on("error", (err) => finish(err));
-    child.on("close", () => finish());
+    child.on("error", (err) => finish(null, err));
+    child.on("close", (code) => finish(code));
   });
 }
 
-describe.skipIf(!status.usable)("windows-key-listener --simulate", () => {
+/** The emitted KEY_DOWN / KEY_UP sequence for a scripted run. */
+async function runScript(hotkey: string, lines: string[]): Promise<string[]> {
+  return (await runListener(hotkey, lines)).events;
+}
+
+/** A virtual-key code as the simulate script takes it. */
+const hex = (vk: number) => `0x${vk.toString(16).toUpperCase()}`;
+
+/**
+ * The virtual-key code Windows reports for each key name the hotkey picker can
+ * save. Letters and digits are their own character codes.
+ */
+const PICKER_KEY_VK: Record<string, number> = {
+  "`": 0xc0,
+  "-": 0xbd,
+  "=": 0xbb,
+  "[": 0xdb,
+  "]": 0xdd,
+  "\\": 0xdc,
+  ";": 0xba,
+  "'": 0xde,
+  ",": 0xbc,
+  ".": 0xbe,
+  "/": 0xbf,
+  Space: 0x20,
+  Tab: 0x09,
+  Enter: 0x0d,
+  ...Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`F${i + 1}`, 0x70 + i])),
+  Up: 0x26,
+  Down: 0x28,
+  Left: 0x25,
+  Right: 0x27,
+  Insert: 0x2d,
+  Home: 0x24,
+  End: 0x23,
+  PageUp: 0x21,
+  PageDown: 0x22,
+  Pause: 0x13,
+  Scrolllock: 0x91,
+  PrintScreen: 0x2c,
+  Numlock: 0x90,
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`num${i}`, 0x60 + i])),
+  numadd: 0x6b,
+  numsub: 0x6d,
+  nummult: 0x6a,
+  numdiv: 0x6f,
+  numdec: 0x6e,
+  MediaPlayPause: 0xb3,
+  MediaStop: 0xb2,
+  MediaNextTrack: 0xb0,
+  MediaPreviousTrack: 0xb1,
+};
+
+function expectedVk(name: string): number | undefined {
+  if (/^[A-Z0-9]$/.test(name)) return name.charCodeAt(0);
+  return PICKER_KEY_VK[name];
+}
+
+const pickerKeyNames = [...new Set(Object.values(CODE_TO_KEY))];
+
+describe.skipIf(!exePath)("windows-key-listener --simulate", () => {
   test("ordered press still works: modifier first, then trigger", async () => {
     const events = await runScript("CommandOrControl+Space", [
       "DOWN LCTRL 0",
@@ -192,5 +305,529 @@ describe.skipIf(!status.usable)("windows-key-listener --simulate", () => {
     const events = await runScript("CommandOrControl+Space", ["DOWN SPACE 0", "DOWN RCTRL 40"]);
 
     expect(events).toEqual(["KEY_DOWN"]);
+  });
+});
+
+describe.skipIf(!exePath)("windows-key-listener key names", () => {
+  test("knows the virtual-key code of every key the picker can save", () => {
+    const unmapped = pickerKeyNames.filter((name) => expectedVk(name) === undefined);
+    expect(unmapped).toEqual([]);
+  });
+
+  // An unrelated key first (0x07 is unassigned), so a listener that fires on
+  // anything cannot pass.
+  test.concurrent.each(pickerKeyNames)("fires on %s", async (name) => {
+    const vk = hex(expectedVk(name) ?? 0);
+    const run = await runListener(name, [
+      "DOWN 0x07 0",
+      "UP 0x07 10",
+      `DOWN ${vk} 20`,
+      `UP ${vk} 100`,
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test.concurrent.each(pickerKeyNames)("fires on CommandOrControl+%s", async (name) => {
+    const vk = hex(expectedVk(name) ?? 0);
+    const run = await runListener(`CommandOrControl+${name}`, [
+      "DOWN LCTRL 0",
+      `DOWN ${vk} 20`,
+      `UP ${vk} 100`,
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test.concurrent.each([
+    "Bogus",
+    "CommandOrControl+Bogus",
+    "Mouse3",
+    "Ctrl+",
+    "A+B",
+    "0x0",
+    "0x1FF",
+  ])("refuses %s: exits 2 without watching anything", async (hotkey) => {
+    const run = await runListener(hotkey);
+
+    expect(run.code).toBe(2);
+    expect(run.ready).toBe(false);
+    expect(run.stderr).toMatch(/^Error: /);
+  });
+
+  test("still takes a raw virtual-key code, as Agent Mode sends", async () => {
+    const run = await runListener("0xA3", ["DOWN LCTRL 0", "DOWN RCTRL 50", "UP RCTRL 300"]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
+
+/** The simulate tokens for the left and right key of each picker modifier. */
+const MODIFIER_KEYS: Record<string, { left: string; right: string }> = {
+  Control: { left: "LCTRL", right: "RCTRL" },
+  Super: { left: "LWIN", right: "RWIN" },
+  Alt: { left: "LALT", right: "RALT" },
+  Shift: { left: "LSHIFT", right: "RSHIFT" },
+};
+
+/** Every modifier-only hotkey the picker can save: two or more, in its order. */
+const modifierOnlyHotkeys = Array.from({ length: 16 }, (_, mask) =>
+  Object.keys(MODIFIER_KEYS).filter((_, bit) => mask & (1 << bit))
+)
+  .filter((parts) => parts.length >= 2)
+  .map((parts) => parts.join("+"));
+
+describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys", () => {
+  test("covers all eleven combinations the picker can save", () => {
+    expect(modifierOnlyHotkeys).toHaveLength(11);
+  });
+
+  test.concurrent.each(modifierOnlyHotkeys)(
+    "%s fires on the left keys, pressed slowly in order",
+    async (hotkey) => {
+      const keys = hotkey.split("+").map((part) => MODIFIER_KEYS[part].left);
+      const run = await runListener(hotkey, [
+        ...keys.map((key, i) => `DOWN ${key} ${i * 400}`),
+        `UP ${keys[0]} 2000`,
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    }
+  );
+
+  test.concurrent.each(modifierOnlyHotkeys)(
+    "%s fires on the right keys, pressed in reverse",
+    async (hotkey) => {
+      const keys = hotkey
+        .split("+")
+        .map((part) => MODIFIER_KEYS[part].right)
+        .reverse();
+      const run = await runListener(hotkey, [
+        ...keys.map((key, i) => `DOWN ${key} ${i * 30}`),
+        `UP ${keys[keys.length - 1]} 600`,
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    }
+  );
+
+  test.concurrent.each(modifierOnlyHotkeys)(
+    "%s does not fire until every modifier is held",
+    async (hotkey) => {
+      const keys = hotkey.split("+").map((part) => MODIFIER_KEYS[part].left);
+      const run = await runListener(hotkey, [
+        ...keys.slice(0, -1).map((key, i) => `DOWN ${key} ${i * 30}`),
+        "DOWN SPACE 200",
+        "UP SPACE 300",
+      ]);
+
+      expect(run.events).toEqual([]);
+    }
+  );
+
+  test("mixing sides works: left Ctrl with right Shift", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN RSHIFT 250",
+      "UP RSHIFT 900",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test.each([
+    [289, []],
+    [290, ["KEY_DOWN"]],
+  ])("starts once the modifiers are held alone for 250 ms (at %i ms)", async (time, events) => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN LSHIFT 40",
+      `TICK ${time}`,
+    ]);
+
+    expect(run.events).toEqual(events);
+  });
+
+  test("a quick press and release with nothing else is a tap", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN LSHIFT 30",
+      "UP LSHIFT 90",
+      "UP LCTRL 100",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
+
+// T, Right arrow, V and 2 as virtual-key codes.
+const KEY_T = "0x54";
+const KEY_RIGHT = "0x27";
+const KEY_V = "0x56";
+const KEY_2 = "0x32";
+
+describe.skipIf(!exePath)(
+  "windows-key-listener modifier-only hotkeys inside other shortcuts",
+  () => {
+    test("a quick Ctrl+Shift+T starts nothing", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 30",
+        `DOWN ${KEY_T} 80`,
+        `UP ${KEY_T} 130`,
+        "UP LSHIFT 140",
+        "UP LCTRL 150",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("holding Ctrl+Shift+Right to select text starts nothing", async () => {
+      const repeats = Array.from({ length: 10 }, (_, i) => `DOWN ${KEY_RIGHT} ${600 + i * 33}`);
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 40",
+        `DOWN ${KEY_RIGHT} 150`,
+        ...repeats,
+        `UP ${KEY_RIGHT} 1500`,
+        "UP LSHIFT 1600",
+        "UP LCTRL 1650",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("a key just after the start delay cancels the press", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 40",
+        "TICK 300",
+        `DOWN ${KEY_RIGHT} 340`,
+        `UP ${KEY_RIGHT} 400`,
+        "UP LSHIFT 450",
+        "UP LCTRL 460",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_CANCEL", "KEY_UP"]);
+    });
+
+    test("the paste chord this app injects into terminals starts nothing", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 5000",
+        "DOWN LSHIFT 5000",
+        `DOWN ${KEY_V} 5000`,
+        `UP ${KEY_V} 5000`,
+        "UP LSHIFT 5000",
+        "UP LCTRL 5000",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("works again once the shortcut's modifiers are released", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 30",
+        `DOWN ${KEY_T} 80`,
+        `UP ${KEY_T} 130`,
+        "UP LSHIFT 140",
+        "UP LCTRL 150",
+        "DOWN LCTRL 1000",
+        "DOWN LSHIFT 1020",
+        "TICK 1300",
+        "UP LCTRL 2000",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    });
+
+    // AltGr reaches the hook as a fake left Ctrl (scan code 0x21D) and right Alt.
+    test("AltGr typing @ on a Nordic layout does not fire Control+Alt", async () => {
+      const run = await runListener("Control+Alt", [
+        "DOWN LCTRL 0 scan=0x21D",
+        "DOWN RALT 0",
+        `DOWN ${KEY_2} 60`,
+        `UP ${KEY_2} 110`,
+        "UP LCTRL 150 scan=0x21D",
+        "UP RALT 150",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("AltGr held on its own does not fire Control+Alt", async () => {
+      const run = await runListener("Control+Alt", [
+        "DOWN LCTRL 0 scan=0x21D",
+        "DOWN RALT 0",
+        "TICK 1000",
+        "UP LCTRL 1100 scan=0x21D",
+        "UP RALT 1100",
+      ]);
+
+      expect(run.events).toEqual([]);
+    });
+
+    test("a real Ctrl with AltGr still is Control+Alt", async () => {
+      const run = await runListener("Control+Alt", [
+        "DOWN LCTRL 0",
+        "DOWN LCTRL 40 scan=0x21D",
+        "DOWN RALT 40",
+        "TICK 400",
+        "UP RALT 900",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    });
+  }
+);
+
+// Ctrl+Alt+Del, a UAC prompt and Win+L switch to the secure desktop, where key-ups
+// never reach the hook. UNSEEN_UP releases a key without the hook seeing it.
+describe.skipIf(!exePath)("windows-key-listener after the secure desktop", () => {
+  test("a Shift released on a UAC prompt does not turn Ctrl+C into Control+Shift", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LSHIFT 0",
+      "UNSEEN_UP LSHIFT",
+      "DOWN LCTRL 5000",
+      "DOWN 0x43 5050",
+      "UP 0x43 5100",
+      "UP LCTRL 5150",
+    ]);
+
+    expect(run.events).toEqual([]);
+  });
+
+  test("after a UAC prompt, Ctrl alone does not fire and Control+Shift works again", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LSHIFT 0",
+      "UNSEEN_UP LSHIFT",
+      "DOWN LCTRL 5000",
+      "TICK 6000",
+      "UP LCTRL 6100",
+      "DOWN LCTRL 7000",
+      "DOWN LSHIFT 7030",
+      "TICK 7400",
+      "UP LSHIFT 7500",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("after Win+L, Ctrl alone does not fire and Control+Super works again", async () => {
+    const run = await runListener("Control+Super", [
+      "DOWN LWIN 0",
+      "DOWN 0x4C 30",
+      "UNSEEN_UP 0x4C",
+      "UNSEEN_UP LWIN",
+      "DOWN LCTRL 9000",
+      "TICK 9500",
+      "UP LCTRL 9600",
+      "DOWN LCTRL 10000",
+      "DOWN LWIN 10020",
+      "TICK 10400",
+      "UP LWIN 10500",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("after Ctrl+Alt+Del, a bare Space does not fire Ctrl+Space", async () => {
+    const run = await runListener("CommandOrControl+Space", [
+      "DOWN LCTRL 0",
+      "DOWN LALT 20",
+      "DOWN 0x2E 40",
+      "UNSEEN_UP 0x2E",
+      "UNSEEN_UP LALT",
+      "UNSEEN_UP LCTRL",
+      "DOWN SPACE 8000",
+      "UP SPACE 8100",
+    ]);
+
+    expect(run.events).toEqual([]);
+  });
+
+  test("a modifier pressed a moment ago still counts", async () => {
+    const run = await runListener("CommandOrControl+Space", [
+      "DOWN LCTRL 0",
+      "UNSEEN_UP LCTRL",
+      "DOWN SPACE 100",
+      "UP SPACE 200",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
+
+// Ctrl+Shift+click opens a link in a new tab or extends a selection, Alt+Shift+drag
+// selects a column, and the modifiers are usually held while the mouse travels.
+describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys and the mouse", () => {
+  test.each(["LDOWN", "RDOWN", "MDOWN", "XDOWN", "WHEEL", "HWHEEL"])(
+    "%s before the start delay starts nothing",
+    async (event) => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LCTRL 0",
+        "DOWN LSHIFT 30",
+        `MOUSE ${event} 200`,
+        "UP LSHIFT 600",
+        "UP LCTRL 620",
+      ]);
+
+      expect(run.events).toEqual([]);
+    }
+  );
+
+  test("a click after the start delay cancels the press", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN LSHIFT 30",
+      "TICK 330",
+      "MOUSE LDOWN 330",
+      "MOUSE LUP 380",
+      "UP LSHIFT 400",
+      "UP LCTRL 410",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_CANCEL", "KEY_UP"]);
+  });
+
+  test("Alt+Shift+drag past the hold threshold cancels the press", async () => {
+    const run = await runListener("Alt+Shift", [
+      "DOWN LALT 0",
+      "DOWN LSHIFT 30",
+      "TICK 800",
+      "MOUSE LDOWN 900",
+      "MOUSE MOVE 950",
+      "MOUSE LUP 1500",
+      "UP LSHIFT 1600",
+      "UP LALT 1610",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_CANCEL", "KEY_UP"]);
+  });
+
+  test("moving the mouse or a click with nothing held changes nothing", async () => {
+    const run = await runListener("Control+Shift", [
+      "MOUSE LDOWN 0",
+      "MOUSE LUP 50",
+      "DOWN LCTRL 100",
+      "DOWN LSHIFT 130",
+      "MOUSE MOVE 200",
+      "TICK 400",
+      "UP LSHIFT 900",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("an ordinary hotkey ignores the mouse", async () => {
+    const run = await runListener("CommandOrControl+Space", [
+      "DOWN LCTRL 0",
+      "DOWN SPACE 30",
+      "MOUSE LDOWN 100",
+      "UP SPACE 300",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
+
+// AltGr reaches the hook as a fake left Ctrl (scan code 0x21D) and right Alt. Only
+// modifier-only hotkeys ignore that Ctrl; see "AltGr typing @" above.
+describe.skipIf(!exePath)("windows-key-listener AltGr on ordinary hotkeys", () => {
+  test("CommandOrControl+Alt+D still fires on AltGr+D", async () => {
+    const run = await runListener("CommandOrControl+Alt+D", [
+      "DOWN LCTRL 0 scan=0x21D",
+      "DOWN RALT 0",
+      "DOWN 0x44 50",
+      "UP 0x44 120",
+      "UP LCTRL 150 scan=0x21D",
+      "UP RALT 150",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
+
+describe.skipIf(!exePath)(
+  "windows-key-listener modifier-only hotkeys need exactly their modifiers",
+  () => {
+    test.each(["LALT", "RWIN"])(
+      "%s pressed first keeps Control+Shift from firing",
+      async (extra) => {
+        const run = await runListener("Control+Shift", [
+          `DOWN ${extra} 0`,
+          "DOWN LCTRL 100",
+          "DOWN LSHIFT 130",
+          "TICK 600",
+          "UP LSHIFT 700",
+          "UP LCTRL 710",
+          `UP ${extra} 720`,
+        ]);
+
+        expect(run.events).toEqual([]);
+      }
+    );
+
+    test("an extra modifier released before the chord does not count", async () => {
+      const run = await runListener("Control+Shift", [
+        "DOWN LALT 0",
+        "UP LALT 50",
+        "DOWN LCTRL 100",
+        "DOWN LSHIFT 130",
+        "TICK 400",
+        "UP LSHIFT 700",
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    });
+  }
+);
+
+describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys during a drag", () => {
+  test.each(["L", "R", "M", "X"])(
+    "Ctrl+Shift added while the %s button is held starts nothing",
+    async (button) => {
+      const run = await runListener("Control+Shift", [
+        `MOUSE ${button}DOWN 0`,
+        "DOWN LCTRL 100",
+        "DOWN LSHIFT 120",
+        "TICK 500",
+        `MOUSE ${button}UP 700`,
+        "UP LSHIFT 800",
+        "UP LCTRL 810",
+      ]);
+
+      expect(run.events).toEqual([]);
+    }
+  );
+
+  test("works again once the drag and the modifiers are released", async () => {
+    const run = await runListener("Control+Shift", [
+      "MOUSE LDOWN 0",
+      "DOWN LCTRL 100",
+      "DOWN LSHIFT 120",
+      "MOUSE LUP 300",
+      "UP LSHIFT 400",
+      "UP LCTRL 410",
+      "DOWN LCTRL 1000",
+      "DOWN LSHIFT 1020",
+      "TICK 1300",
+      "UP LSHIFT 1400",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("a button released where the hook cannot see it does not block the hotkey", async () => {
+    const run = await runListener("Control+Shift", [
+      "MOUSE LDOWN 0",
+      "UNSEEN_UP 1",
+      "DOWN LCTRL 5000",
+      "DOWN LSHIFT 5020",
+      "TICK 5300",
+      "UP LSHIFT 5400",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
 });

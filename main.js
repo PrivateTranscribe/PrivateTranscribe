@@ -126,6 +126,7 @@ const UpdateManager = require("./src/updater");
 const GlobeKeyManager = require("./src/helpers/globeKeyManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
 const ActivationGestureController = require("./src/helpers/activationGestureController");
+const { createWindowsHoldDictation } = require("./src/helpers/windowsHoldDictation");
 const {
   normalizeActivationMode,
   shouldUseWindowsNativeListener,
@@ -755,38 +756,9 @@ async function startApp() {
 
     debugLogger.debug("[Push-to-Talk] Windows Push-to-Talk setup starting");
     let currentActivationMode = "tap";
-    let winHoldStartActive = false;
-
     const winGestureController = new ActivationGestureController({
       mode: currentActivationMode,
-      onTap: () => {
-        debugLogger.debug("[Activation] Tap completed");
-        windowManager.sendToggleDictation();
-      },
-      onHoldStart: () => {
-        debugLogger.debug("[Activation] Hold threshold reached");
-        winHoldStartActive = true;
-        Promise.resolve(windowManager.sendStartDictation())
-          .then(() => {
-            // The key can be released while a hidden overlay is still loading.
-            // Re-send stop after startup completes so audio cannot stay ducked.
-            if (!winHoldStartActive) {
-              windowManager.sendStopDictation();
-            }
-          })
-          .catch((error) => {
-            winHoldStartActive = false;
-            windowManager.sendStopDictation();
-            debugLogger.warn("[Activation] Failed to start hold dictation", {
-              error: error?.message || String(error),
-            });
-          });
-      },
-      onHoldEnd: () => {
-        debugLogger.debug("[Activation] Hold released");
-        winHoldStartActive = false;
-        windowManager.sendStopDictation();
-      },
+      ...createWindowsHoldDictation({ windowManager, logger: debugLogger }),
     });
 
     // Helper to check if hotkey is valid for Windows key listener
@@ -820,6 +792,11 @@ async function startApp() {
     windowsKeyManager.on("key-up", () => {
       debugLogger.debug("[Activation] Key UP received");
       winGestureController.keyUp();
+    });
+
+    windowsKeyManager.on("key-cancel", () => {
+      debugLogger.debug("[Activation] Key press cancelled by another key");
+      winGestureController.discard();
     });
 
     windowsKeyManager.on("stopped", () => {

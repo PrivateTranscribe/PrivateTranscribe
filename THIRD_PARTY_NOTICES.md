@@ -96,7 +96,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### whisper.cpp
 
-whisper-server-win32-x64.exe comes from whisper-server-win32-x64-cpu.zip in OpenWhispr/whisper.cpp release 0.0.10. The download script takes the latest release, so a later build may carry a newer one. OpenWhispr/whisper.cpp is a fork of https://github.com/ggml-org/whisper.cpp. A whisper.dll in bin is a leftover from an older download: nothing imports it and the current release does not contain it.
+whisper-server-win32-x64.exe comes from whisper-server-win32-x64-cpu.zip in OpenWhispr/whisper.cpp release 0.0.10. The download script is pinned to that release and checks the archive against a recorded SHA-256. OpenWhispr/whisper.cpp is a fork of https://github.com/ggml-org/whisper.cpp. A whisper.dll in bin is a leftover from an older download: nothing imports it and release 0.0.10 does not contain it.
 
 - Version: 0.0.10 (OpenWhispr/whisper.cpp release, commit 6ac1454)
 - Licence: `MIT`

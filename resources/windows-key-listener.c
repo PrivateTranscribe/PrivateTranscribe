@@ -7,6 +7,7 @@
  *   `
  *   F8
  *   CommandOrControl+F11
+ *   Control+Shift             (modifiers only: see HandleModifierOnlyEvent)
  *   Mouse4
  *   Mouse5
  *   Ctrl+Mouse4
@@ -15,13 +16,34 @@
  *   READY
  *   KEY_DOWN
  *   KEY_UP
+ *   KEY_CANCEL  the press that sent KEY_DOWN turned out to be part of another
+ *               shortcut or a mouse action. Drop it, and throw away anything it
+ *               started. KEY_UP still follows when the keys are released.
+ *
+ * Exit codes:
+ *   0  stopped
+ *   1  a hook could not be installed
+ *   2  the hotkey names a key this listener does not know. It exits rather than
+ *      watching nothing, so the app keeps its global shortcut as the fallback.
  *
  * Test seam:
  *   windows-key-listener.exe --simulate "CommandOrControl+Space"
  * installs no hooks and never reads the real keyboard. It prints READY and then
- * replays scripted events from stdin (`DOWN <key> <timeMs>` / `UP <key> <timeMs>`,
- * `QUIT` or EOF to stop) through the exact same decision function the live hook
- * uses, so tests exercise the compiled logic without touching the user's machine.
+ * replays scripted events from stdin through the exact same decision functions
+ * the live hook and timer use, so tests exercise the compiled logic without
+ * touching the user's machine:
+ *   DOWN <key> <timeMs> [scan=0x<code>]   a key event the hook sees
+ *   UP <key> <timeMs> [scan=0x<code>]
+ *   TICK <timeMs>                         time passes with no key event
+ *   UNSEEN_UP <key>                       the key goes up where the hook cannot
+ *                                         see it, as on the secure desktop
+ *   MOUSE <event> <timeMs>                a mouse event: LDOWN, RDOWN, MDOWN,
+ *                                         XDOWN, LUP, RUP, MUP, XUP, WHEEL,
+ *                                         HWHEEL or MOVE (X is the first side
+ *                                         button)
+ *   QUIT, or EOF                          stop
+ * Simulate mode also keeps the key state GetAsyncKeyState would report, built
+ * from the same events, so the live sample is tested without reading it.
  *
  * Compile with (MSVC):
  *   cl /O2 windows-key-listener.c /Fe:windows-key-listener.exe user32.lib
@@ -52,8 +74,50 @@ static BOOL g_requireAlt = FALSE;
 static BOOL g_requireShift = FALSE;
 static BOOL g_requireWin = FALSE;
 
+// A hotkey of modifiers only, such as Control+Shift, has no trigger key.
+static BOOL g_modifierOnly = FALSE;
+
 // Simulate mode: driven from stdin, no hooks installed, real keyboard never read.
 static BOOL g_simulateMode = FALSE;
+
+// What GetAsyncKeyState would report in simulate mode, kept from the scripted events.
+static BOOL g_simKeyDown[256];
+
+#define EXIT_BAD_HOTKEY 2
+
+/*
+ * How long every modifier of a modifier-only hotkey must be held, with no other
+ * key, before it sends KEY_DOWN.
+ *
+ * Control+Shift is also the start of Ctrl+Shift+T, Ctrl+Shift+Arrow and the
+ * paste chord this app injects. Firing the moment the modifiers are down started
+ * a recording, or toggled one, on every such shortcut. People reach the third key
+ * of a shortcut well within this window. Releasing the modifiers sooner, with
+ * nothing else pressed, is still a tap. The app adds its own 150 ms hold
+ * threshold on top, and a key arriving in that time sends KEY_CANCEL, so a hold
+ * starts recording 400 ms after the modifiers are down.
+ */
+#define MODIFIER_ONLY_START_DELAY_MS 250
+
+// AltGr reaches the hook as a fake left Ctrl with this scan code, then right Alt.
+// A modifier-only hotkey ignores it: on a Nordic or German layout AltGr types
+// @ $ { [ ] } | and €, which must not fire Control+Alt. An ordinary hotkey keeps
+// counting it as Ctrl, so one recorded with AltGr, such as CommandOrControl+Alt+D,
+// still fires on it.
+#define ALTGR_FAKE_CTRL_SCAN 0x21D
+
+// Modifier-only hotkey state. Pending: every modifier is down and the start delay
+// is running. Spoiled: another key went down with them, so this press belongs to
+// another shortcut and stays silent until its modifiers are released.
+static BOOL g_chordPending = FALSE;
+static DWORD g_chordStartTime = 0;
+static BOOL g_chordSpoiled = FALSE;
+static BOOL g_cancelSent = FALSE;
+static UINT_PTR g_chordTimer = 0;
+
+// AltGr's fake left Ctrl is down. The system counts it as held, so the live
+// sample of left Ctrl means nothing while it is.
+static BOOL g_altGrCtrlDown = FALSE;
 
 /*
  * How long after the trigger key goes down a required modifier may still arrive
@@ -75,30 +139,70 @@ static BOOL g_simulateMode = FALSE;
 static BOOL g_triggerPhysDown = FALSE;
 static DWORD g_triggerDownTime = 0;
 
-// One flag per modifier family. Low-level hooks deliver the side-specific VKs
+// One entry per modifier family. Low-level hooks deliver the side-specific VKs
 // (VK_LCONTROL / VK_RCONTROL, ...), so any variant going down sets the family and
 // any variant going up clears it - matching the existing modifier-release logic,
 // which already treats a release of either side as ending the press.
-static BOOL g_ctrlPhysDown = FALSE;
-static BOOL g_altPhysDown = FALSE;
-static BOOL g_shiftPhysDown = FALSE;
-static BOOL g_winPhysDown = FALSE;
+typedef struct {
+    BOOL down;
+    DWORD eventTime; // of the family's last key event
+    int vkLeft;
+    int vkRight;
+} TrackedModifier;
 
-// Tracked state OR a live sample. The live sample covers modifiers already held
-// before the hook was installed; in simulate mode it must never be consulted.
-static BOOL IsModifierHeld(BOOL tracked, int vkPrimary, int vkSecondary) {
-    if (tracked) return TRUE;
-    if (g_simulateMode) return FALSE;
-    if (GetAsyncKeyState(vkPrimary) & 0x8000) return TRUE;
-    if (vkSecondary && (GetAsyncKeyState(vkSecondary) & 0x8000)) return TRUE;
-    return FALSE;
+static TrackedModifier g_ctrl = { FALSE, 0, VK_LCONTROL, VK_RCONTROL };
+static TrackedModifier g_alt = { FALSE, 0, VK_LMENU, VK_RMENU };
+static TrackedModifier g_shift = { FALSE, 0, VK_LSHIFT, VK_RSHIFT };
+static TrackedModifier g_win = { FALSE, 0, VK_LWIN, VK_RWIN };
+
+/*
+ * How long after a modifier's own last event its tracked state is trusted over
+ * the system's. The hook runs before the system records the event it is handed,
+ * so a modifier pressed a moment ago may not show there yet.
+ */
+#define MODIFIER_RECHECK_MS 100
+
+// The system's key state now, as GetAsyncKeyState gives it. Simulate mode answers
+// from the scripted events instead and never reads the real keyboard.
+static BOOL IsKeyDownNow(int vk) {
+    if (g_simulateMode) return vk > 0 && vk < 256 && g_simKeyDown[vk];
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 
-static BOOL AreModifiersPressed(void) {
-    if (g_requireCtrl && !IsModifierHeld(g_ctrlPhysDown, VK_CONTROL, 0)) return FALSE;
-    if (g_requireAlt && !IsModifierHeld(g_altPhysDown, VK_MENU, 0)) return FALSE;
-    if (g_requireShift && !IsModifierHeld(g_shiftPhysDown, VK_SHIFT, 0)) return FALSE;
-    if (g_requireWin && !IsModifierHeld(g_winPhysDown, VK_LWIN, VK_RWIN)) return FALSE;
+/*
+ * Tracked state, checked against the system's, OR a live sample.
+ *
+ * A key released on the secure desktop (Ctrl+Alt+Del, a UAC prompt, Win+L) never
+ * reaches this hook, so tracked state alone kept that modifier held for good:
+ * every Ctrl+C then fired Control+Shift, or a bare Space fired Ctrl+Space. When
+ * the system says neither side is down, the tracked state is stale and dropped.
+ *
+ * The live sample covers modifiers already held before the hook was installed.
+ */
+static BOOL IsModifierHeld(TrackedModifier* mod, DWORD now) {
+    if (mod->down) {
+        if (IsKeyDownNow(mod->vkLeft) || IsKeyDownNow(mod->vkRight)) return TRUE;
+        if ((DWORD)(now - mod->eventTime) <= MODIFIER_RECHECK_MS) return TRUE;
+        mod->down = FALSE;
+        return FALSE;
+    }
+    return IsKeyDownNow(mod->vkLeft) || IsKeyDownNow(mod->vkRight);
+}
+
+static BOOL IsCtrlHeld(DWORD now) {
+    if (g_ctrl.down) return IsModifierHeld(&g_ctrl, now);
+    if (IsKeyDownNow(VK_RCONTROL)) return TRUE;
+    if (!IsKeyDownNow(VK_LCONTROL)) return FALSE;
+    // For a modifier-only hotkey, left Ctrl with right Alt is AltGr, also when it
+    // was down before the hook was.
+    return !g_modifierOnly || (!g_altGrCtrlDown && !IsKeyDownNow(VK_RMENU));
+}
+
+static BOOL AreModifiersPressed(DWORD now) {
+    if (g_requireCtrl && !IsCtrlHeld(now)) return FALSE;
+    if (g_requireAlt && !IsModifierHeld(&g_alt, now)) return FALSE;
+    if (g_requireShift && !IsModifierHeld(&g_shift, now)) return FALSE;
+    if (g_requireWin && !IsModifierHeld(&g_win, now)) return FALSE;
     return TRUE;
 }
 
@@ -121,11 +225,16 @@ static BOOL IsWinVk(DWORD vk) {
 // Update the tracked physical modifier state from every keyboard event, whether or
 // not the modifier is part of the configured hotkey. Cheap, and it keeps the
 // picture complete when the hotkey changes shape.
-static void TrackModifierState(DWORD vk, BOOL isKeyDown) {
-    if (IsCtrlVk(vk)) g_ctrlPhysDown = isKeyDown;
-    else if (IsAltVk(vk)) g_altPhysDown = isKeyDown;
-    else if (IsShiftVk(vk)) g_shiftPhysDown = isKeyDown;
-    else if (IsWinVk(vk)) g_winPhysDown = isKeyDown;
+static void TrackModifierState(DWORD vk, BOOL isKeyDown, DWORD timeMs) {
+    TrackedModifier* mod = NULL;
+    if (IsCtrlVk(vk)) mod = &g_ctrl;
+    else if (IsAltVk(vk)) mod = &g_alt;
+    else if (IsShiftVk(vk)) mod = &g_shift;
+    else if (IsWinVk(vk)) mod = &g_win;
+    if (mod) {
+        mod->down = isKeyDown;
+        mod->eventTime = timeMs;
+    }
 }
 
 static BOOL IsRequiredModifierVk(DWORD vk) {
@@ -136,9 +245,35 @@ static BOOL IsRequiredModifierVk(DWORD vk) {
     return FALSE;
 }
 
+static BOOL IsAnyRequiredModifierHeld(DWORD now) {
+    if (g_requireCtrl && IsCtrlHeld(now)) return TRUE;
+    if (g_requireAlt && IsModifierHeld(&g_alt, now)) return TRUE;
+    if (g_requireShift && IsModifierHeld(&g_shift, now)) return TRUE;
+    if (g_requireWin && IsModifierHeld(&g_win, now)) return TRUE;
+    return FALSE;
+}
+
+// A modifier the hotkey does not name, held as well, makes a different chord:
+// Alt then Ctrl+Shift is Ctrl+Alt+Shift, not Control+Shift.
+static BOOL IsAnyOtherModifierHeld(DWORD now) {
+    if (!g_requireCtrl && IsCtrlHeld(now)) return TRUE;
+    if (!g_requireAlt && IsModifierHeld(&g_alt, now)) return TRUE;
+    if (!g_requireShift && IsModifierHeld(&g_shift, now)) return TRUE;
+    if (!g_requireWin && IsModifierHeld(&g_win, now)) return TRUE;
+    return FALSE;
+}
+
+// Asks the system rather than the mouse hook, so a button released where the
+// hook cannot see it, as on the secure desktop, never stays held.
+static BOOL IsAnyMouseButtonHeld(void) {
+    return IsKeyDownNow(VK_LBUTTON) || IsKeyDownNow(VK_RBUTTON) || IsKeyDownNow(VK_MBUTTON) ||
+           IsKeyDownNow(VK_XBUTTON1) || IsKeyDownNow(VK_XBUTTON2);
+}
+
 static void EmitDown(void) {
     if (!g_isDown) {
         g_isDown = TRUE;
+        g_cancelSent = FALSE;
         printf("KEY_DOWN\n");
         fflush(stdout);
     }
@@ -152,138 +287,330 @@ static void EmitUp(void) {
     }
 }
 
-// Returns VK code; may also set g_isMouseButton for Mouse4/Mouse5.
-static DWORD ParseKeyCode(const char* keyName) {
-    // Mouse buttons (side buttons)
-    if (_stricmp(keyName, "Mouse4") == 0 || _stricmp(keyName, "XButton1") == 0) {
-        g_isMouseButton = TRUE;
-        g_targetXButton = XBUTTON1;
-        return 0;
+static void EmitCancel(void) {
+    if (g_isDown && !g_cancelSent) {
+        g_cancelSent = TRUE;
+        printf("KEY_CANCEL\n");
+        fflush(stdout);
     }
-    if (_stricmp(keyName, "Mouse5") == 0 || _stricmp(keyName, "XButton2") == 0) {
-        g_isMouseButton = TRUE;
-        g_targetXButton = XBUTTON2;
-        return 0;
-    }
-
-    // Function keys (F1-F12)
-    if (_stricmp(keyName, "F1") == 0) return VK_F1;
-    if (_stricmp(keyName, "F2") == 0) return VK_F2;
-    if (_stricmp(keyName, "F3") == 0) return VK_F3;
-    if (_stricmp(keyName, "F4") == 0) return VK_F4;
-    if (_stricmp(keyName, "F5") == 0) return VK_F5;
-    if (_stricmp(keyName, "F6") == 0) return VK_F6;
-    if (_stricmp(keyName, "F7") == 0) return VK_F7;
-    if (_stricmp(keyName, "F8") == 0) return VK_F8;
-    if (_stricmp(keyName, "F9") == 0) return VK_F9;
-    if (_stricmp(keyName, "F10") == 0) return VK_F10;
-    if (_stricmp(keyName, "F11") == 0) return VK_F11;
-    if (_stricmp(keyName, "F12") == 0) return VK_F12;
-
-    // Extended function keys (F13-F24)
-    if (_stricmp(keyName, "F13") == 0) return VK_F13;
-    if (_stricmp(keyName, "F14") == 0) return VK_F14;
-    if (_stricmp(keyName, "F15") == 0) return VK_F15;
-    if (_stricmp(keyName, "F16") == 0) return VK_F16;
-    if (_stricmp(keyName, "F17") == 0) return VK_F17;
-    if (_stricmp(keyName, "F18") == 0) return VK_F18;
-    if (_stricmp(keyName, "F19") == 0) return VK_F19;
-    if (_stricmp(keyName, "F20") == 0) return VK_F20;
-    if (_stricmp(keyName, "F21") == 0) return VK_F21;
-    if (_stricmp(keyName, "F22") == 0) return VK_F22;
-    if (_stricmp(keyName, "F23") == 0) return VK_F23;
-    if (_stricmp(keyName, "F24") == 0) return VK_F24;
-
-    // Special keys
-    if (_stricmp(keyName, "Pause") == 0) return VK_PAUSE;
-    if (_stricmp(keyName, "ScrollLock") == 0) return VK_SCROLL;
-    if (_stricmp(keyName, "Insert") == 0) return VK_INSERT;
-    if (_stricmp(keyName, "Home") == 0) return VK_HOME;
-    if (_stricmp(keyName, "End") == 0) return VK_END;
-    if (_stricmp(keyName, "PageUp") == 0) return VK_PRIOR;
-    if (_stricmp(keyName, "PageDown") == 0) return VK_NEXT;
-    if (_stricmp(keyName, "Space") == 0) return VK_SPACE;
-    if (_stricmp(keyName, "Escape") == 0 || _stricmp(keyName, "Esc") == 0) return VK_ESCAPE;
-    if (_stricmp(keyName, "Tab") == 0) return VK_TAB;
-    if (_stricmp(keyName, "CapsLock") == 0) return VK_CAPITAL;
-    if (_stricmp(keyName, "NumLock") == 0) return VK_NUMLOCK;
-
-    // Backtick/tilde - default hotkey
-    if (strcmp(keyName, "`") == 0 || _stricmp(keyName, "Backquote") == 0) return VK_OEM_3;
-
-    // Punctuation
-    if (strcmp(keyName, "-") == 0 || _stricmp(keyName, "Minus") == 0) return VK_OEM_MINUS;
-    if (strcmp(keyName, "=") == 0 || _stricmp(keyName, "Equal") == 0) return VK_OEM_PLUS;
-    if (strcmp(keyName, "[") == 0) return VK_OEM_4;
-    if (strcmp(keyName, "]") == 0) return VK_OEM_6;
-    if (strcmp(keyName, "\\") == 0) return VK_OEM_5;
-    if (strcmp(keyName, ";") == 0) return VK_OEM_1;
-    if (strcmp(keyName, "'") == 0) return VK_OEM_7;
-    if (strcmp(keyName, ",") == 0) return VK_OEM_COMMA;
-    if (strcmp(keyName, ".") == 0) return VK_OEM_PERIOD;
-    if (strcmp(keyName, "/") == 0) return VK_OEM_2;
-
-    // Single letter/number
-    if (strlen(keyName) == 1) {
-        char c = keyName[0];
-        if (c >= 'a' && c <= 'z') return (DWORD)(c - 'a' + 'A');
-        if (c >= 'A' && c <= 'Z') return (DWORD)c;
-        if (c >= '0' && c <= '9') return (DWORD)c;
-    }
-
-    // Hex or decimal VK code
-    if (keyName[0] == '0' && (keyName[1] == 'x' || keyName[1] == 'X')) {
-        return (DWORD)strtol(keyName, NULL, 16);
-    }
-
-    return (DWORD)atoi(keyName);
 }
 
-static DWORD ParseCompoundHotkey(const char* hotkey) {
-    char buffer[256];
-    strncpy(buffer, hotkey, sizeof(buffer) - 1);
-    buffer[sizeof(buffer) - 1] = '\0';
+static void StopChordTimer(void) {
+    g_chordPending = FALSE;
+    if (g_chordTimer) {
+        KillTimer(NULL, g_chordTimer);
+        g_chordTimer = 0;
+    }
+}
 
-    // Reset
+static void FirePendingChord(void) {
+    if (!g_chordPending) return;
+    StopChordTimer();
+    EmitDown();
+}
+
+// The live start delay. The timer runs on the hook thread's message loop, so it
+// never races the hook.
+static VOID CALLBACK ChordTimerProc(HWND hwnd, UINT msg, UINT_PTR id, DWORD time) {
+    (void)hwnd;
+    (void)msg;
+    (void)id;
+    (void)time;
+    FirePendingChord();
+}
+
+static void StartChordTimer(DWORD timeMs) {
+    g_chordPending = TRUE;
+    g_chordStartTime = timeMs;
+    if (!g_simulateMode) {
+        g_chordTimer = SetTimer(NULL, 0, MODIFIER_ONLY_START_DELAY_MS, ChordTimerProc);
+    }
+}
+
+// Fires a pending chord whose delay has run out by timeMs. Simulate mode keeps
+// time only through this; live, the timer usually gets there first.
+static void AdvanceTime(DWORD timeMs) {
+    if (g_chordPending && (DWORD)(timeMs - g_chordStartTime) >= MODIFIER_ONLY_START_DELAY_MS) {
+        FirePendingChord();
+    }
+}
+
+static BOOL ParseNumber(const char* text, int base, long* out) {
+    char* end = NULL;
+    long value;
+    if (*text == '\0') return FALSE;
+    value = strtol(text, &end, base);
+    if (end == text || *end != '\0') return FALSE;
+    *out = value;
+    return TRUE;
+}
+
+typedef struct {
+    const char* name;
+    DWORD vk;
+} KeyName;
+
+/*
+ * Every key name the hotkey picker (src/components/ui/HotkeyInput.tsx) can save,
+ * plus the Electron accelerator names and aliases older settings may hold.
+ * Letters and digits are their own VK codes and need no entry.
+ *
+ * A name missing here is an error, never a guess. The listener used to fall back
+ * to atoi(), which turned Up, Enter, PrintScreen, num0 and the media keys into
+ * VK 0, and then watched nothing or only the modifiers in front of the key.
+ */
+static const KeyName g_keyNames[] = {
+    { "F1", VK_F1 },   { "F2", VK_F2 },   { "F3", VK_F3 },   { "F4", VK_F4 },
+    { "F5", VK_F5 },   { "F6", VK_F6 },   { "F7", VK_F7 },   { "F8", VK_F8 },
+    { "F9", VK_F9 },   { "F10", VK_F10 }, { "F11", VK_F11 }, { "F12", VK_F12 },
+    { "F13", VK_F13 }, { "F14", VK_F14 }, { "F15", VK_F15 }, { "F16", VK_F16 },
+    { "F17", VK_F17 }, { "F18", VK_F18 }, { "F19", VK_F19 }, { "F20", VK_F20 },
+    { "F21", VK_F21 }, { "F22", VK_F22 }, { "F23", VK_F23 }, { "F24", VK_F24 },
+
+    { "Space", VK_SPACE },
+    { "Tab", VK_TAB },
+    { "Enter", VK_RETURN }, // numpad Enter arrives as VK_RETURN too
+    { "Return", VK_RETURN },
+    { "Escape", VK_ESCAPE },
+    { "Esc", VK_ESCAPE },
+    { "Backspace", VK_BACK },
+    { "Delete", VK_DELETE },
+    { "Insert", VK_INSERT },
+    { "Home", VK_HOME },
+    { "End", VK_END },
+    { "PageUp", VK_PRIOR },
+    { "PageDown", VK_NEXT },
+    { "Up", VK_UP },
+    { "Down", VK_DOWN },
+    { "Left", VK_LEFT },
+    { "Right", VK_RIGHT },
+
+    { "Pause", VK_PAUSE },
+    { "PrintScreen", VK_SNAPSHOT },
+    { "ScrollLock", VK_SCROLL },
+    { "NumLock", VK_NUMLOCK },
+    { "CapsLock", VK_CAPITAL },
+
+    // Numpad, by Electron's accelerator names. With Num Lock off Windows reports
+    // the digit keys as the navigation keys printed on them, so num1 arrives as End.
+    { "num0", VK_NUMPAD0 }, { "num1", VK_NUMPAD1 }, { "num2", VK_NUMPAD2 },
+    { "num3", VK_NUMPAD3 }, { "num4", VK_NUMPAD4 }, { "num5", VK_NUMPAD5 },
+    { "num6", VK_NUMPAD6 }, { "num7", VK_NUMPAD7 }, { "num8", VK_NUMPAD8 },
+    { "num9", VK_NUMPAD9 },
+    { "numadd", VK_ADD },
+    { "numsub", VK_SUBTRACT },
+    { "nummult", VK_MULTIPLY },
+    { "numdiv", VK_DIVIDE },
+    { "numdec", VK_DECIMAL },
+
+    { "MediaPlayPause", VK_MEDIA_PLAY_PAUSE },
+    { "MediaStop", VK_MEDIA_STOP },
+    { "MediaNextTrack", VK_MEDIA_NEXT_TRACK },
+    { "MediaPreviousTrack", VK_MEDIA_PREV_TRACK },
+    { "VolumeUp", VK_VOLUME_UP },
+    { "VolumeDown", VK_VOLUME_DOWN },
+    { "VolumeMute", VK_VOLUME_MUTE },
+
+    // Punctuation, by its US-layout character. Backquote, the key left of 1, is
+    // what the app sends for both ` and the Nordic ½.
+    { "`", VK_OEM_3 },
+    { "Backquote", VK_OEM_3 },
+    { "-", VK_OEM_MINUS },
+    { "Minus", VK_OEM_MINUS },
+    { "=", VK_OEM_PLUS },
+    { "Equal", VK_OEM_PLUS },
+    { "Plus", VK_OEM_PLUS },
+    { "[", VK_OEM_4 },
+    { "]", VK_OEM_6 },
+    { "\\", VK_OEM_5 },
+    { ";", VK_OEM_1 },
+    { "'", VK_OEM_7 },
+    { ",", VK_OEM_COMMA },
+    { ".", VK_OEM_PERIOD },
+    { "/", VK_OEM_2 },
+};
+
+// Resolves one keyboard key name. FALSE means it is not a key this listener knows.
+static BOOL ParseKeyName(const char* name, DWORD* vkOut) {
+    size_t i;
+    long value = 0;
+    BOOL isNumber;
+
+    for (i = 0; i < sizeof(g_keyNames) / sizeof(g_keyNames[0]); i++) {
+        if (_stricmp(name, g_keyNames[i].name) == 0) {
+            *vkOut = g_keyNames[i].vk;
+            return TRUE;
+        }
+    }
+
+    if (strlen(name) == 1) {
+        char c = name[0];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            *vkOut = (DWORD)c;
+            return TRUE;
+        }
+        return FALSE;
+    }
+
+    // A raw VK code in hex (0xA3) or decimal. Agent Mode names the side-specific
+    // modifiers this way.
+    if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
+        isNumber = ParseNumber(name + 2, 16, &value);
+    } else {
+        isNumber = ParseNumber(name, 10, &value);
+    }
+    if (isNumber && value > 0 && value < 0xFF) {
+        *vkOut = (DWORD)value;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+// Mouse4 and Mouse5 are the side buttons, the only mouse buttons this listener watches.
+static BOOL ParseMouseButton(const char* name, DWORD* xbuttonOut) {
+    if (_stricmp(name, "Mouse4") == 0 || _stricmp(name, "XButton1") == 0) {
+        *xbuttonOut = XBUTTON1;
+        return TRUE;
+    }
+    if (_stricmp(name, "Mouse5") == 0 || _stricmp(name, "XButton2") == 0) {
+        *xbuttonOut = XBUTTON2;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+ * Reads the hotkey into the globals above. Returns FALSE, after saying why on
+ * stderr, when any part of it is not a key or modifier this listener knows.
+ */
+static BOOL ParseCompoundHotkey(const char* hotkey) {
+    char buffer[256];
+    char* part;
+    BOOL hasKey = FALSE;
+
     g_requireCtrl = FALSE;
     g_requireAlt = FALSE;
     g_requireShift = FALSE;
     g_requireWin = FALSE;
     g_isMouseButton = FALSE;
     g_targetXButton = 0;
+    g_targetVk = 0;
+    g_modifierOnly = FALSE;
 
-    DWORD mainKeyVk = 0;
-    char* token = strtok(buffer, "+");
+    if (strlen(hotkey) >= sizeof(buffer)) {
+        fprintf(stderr, "Error: hotkey is too long\n");
+        return FALSE;
+    }
+    strcpy(buffer, hotkey);
 
-    while (token != NULL) {
-        while (*token == ' ') token++;
-        char* end = token + strlen(token) - 1;
-        while (end > token && *end == ' ') *end-- = '\0';
+    // Split by hand: strtok skips empty parts, which would read "Ctrl+" as Ctrl.
+    part = buffer;
+    for (;;) {
+        char* plus = strchr(part, '+');
+        char* name;
+        char* end;
 
-        if (_stricmp(token, "CommandOrControl") == 0 ||
-            _stricmp(token, "Control") == 0 ||
-            _stricmp(token, "Ctrl") == 0 ||
-            _stricmp(token, "CmdOrCtrl") == 0) {
-            g_requireCtrl = TRUE;
-        } else if (_stricmp(token, "Alt") == 0 || _stricmp(token, "Option") == 0) {
-            g_requireAlt = TRUE;
-        } else if (_stricmp(token, "Shift") == 0) {
-            g_requireShift = TRUE;
-        } else if (_stricmp(token, "Super") == 0 ||
-                   _stricmp(token, "Meta") == 0 ||
-                   _stricmp(token, "Win") == 0 ||
-                   _stricmp(token, "Command") == 0 ||
-                   _stricmp(token, "Cmd") == 0) {
-            // Windows key (VK_LWIN/VK_RWIN)
-            g_requireWin = TRUE;
-        } else {
-            mainKeyVk = ParseKeyCode(token);
+        if (plus) *plus = '\0';
+        name = part;
+        while (*name == ' ') name++;
+        end = name + strlen(name);
+        while (end > name && end[-1] == ' ') *--end = '\0';
+
+        if (*name == '\0') {
+            fprintf(stderr, "Error: empty key in hotkey '%s'\n", hotkey);
+            return FALSE;
         }
 
-        token = strtok(NULL, "+");
+        if (_stricmp(name, "CommandOrControl") == 0 ||
+            _stricmp(name, "Control") == 0 ||
+            _stricmp(name, "Ctrl") == 0 ||
+            _stricmp(name, "CmdOrCtrl") == 0) {
+            g_requireCtrl = TRUE;
+        } else if (_stricmp(name, "Alt") == 0 || _stricmp(name, "Option") == 0) {
+            g_requireAlt = TRUE;
+        } else if (_stricmp(name, "Shift") == 0) {
+            g_requireShift = TRUE;
+        } else if (_stricmp(name, "Super") == 0 ||
+                   _stricmp(name, "Meta") == 0 ||
+                   _stricmp(name, "Win") == 0 ||
+                   _stricmp(name, "Command") == 0 ||
+                   _stricmp(name, "Cmd") == 0) {
+            // Windows key (VK_LWIN/VK_RWIN)
+            g_requireWin = TRUE;
+        } else if (hasKey) {
+            fprintf(stderr, "Error: hotkey '%s' names more than one key\n", hotkey);
+            return FALSE;
+        } else if (ParseMouseButton(name, &g_targetXButton)) {
+            g_isMouseButton = TRUE;
+            hasKey = TRUE;
+        } else if (ParseKeyName(name, &g_targetVk)) {
+            hasKey = TRUE;
+        } else {
+            fprintf(stderr, "Error: unknown key '%s' in hotkey '%s'\n", name, hotkey);
+            return FALSE;
+        }
+
+        if (!plus) break;
+        part = plus + 1;
     }
 
-    return mainKeyVk;
+    // Every part was a modifier, and an empty hotkey failed above, so at least one is required.
+    g_modifierOnly = !hasKey;
+    return TRUE;
+}
+
+/*
+ * A modifier-only hotkey, such as Control+Shift. Its modifiers can be pressed in
+ * any order and with either side's key.
+ *
+ * Every one of them, and no other modifier, held for MODIFIER_ONLY_START_DELAY_MS
+ * with no other key sends KEY_DOWN, and releasing one sends KEY_UP. Releasing one
+ * sooner is a tap, sent as KEY_DOWN and KEY_UP together. Any other key going
+ * down, a mouse button press or a wheel turn while one of them is held makes the
+ * press part of another shortcut: nothing is sent, or KEY_CANCEL if KEY_DOWN
+ * already was. That covers the Ctrl+Shift+V this app injects to paste into a
+ * terminal, Ctrl+Shift+click and Alt+Shift+drag.
+ */
+static void HandleModifierOnlyOtherInput(DWORD timeMs) {
+    if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld(timeMs)) {
+        g_chordSpoiled = TRUE;
+        StopChordTimer();
+        EmitCancel();
+    }
+}
+
+static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
+    BOOL isRequired = IsRequiredModifierVk(vkCode);
+
+    if (isKeyDown && !isRequired) {
+        HandleModifierOnlyOtherInput(timeMs);
+        return;
+    }
+
+    if (isKeyDown) {
+        // Auto-repeat of a held modifier arrives as more key-downs and changes nothing.
+        if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed(timeMs) &&
+            !IsAnyOtherModifierHeld(timeMs)) {
+            // A mouse button already held is a drag that gained the modifiers,
+            // such as Ctrl+Shift added to a file drag to make a shortcut.
+            if (IsAnyMouseButtonHeld()) {
+                g_chordSpoiled = TRUE;
+            } else {
+                StartChordTimer(timeMs);
+            }
+        }
+        return;
+    }
+
+    if (isRequired) {
+        if (g_chordPending) {
+            StopChordTimer();
+            EmitDown();
+        }
+        EmitUp();
+    }
 }
 
 /*
@@ -292,17 +619,34 @@ static DWORD ParseCompoundHotkey(const char* hotkey) {
  *
  * timeMs is the event timestamp (KBDLLHOOKSTRUCT::time), milliseconds since boot.
  */
-static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
-    TrackModifierState(vkCode, isKeyDown);
+static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWORD scanCode) {
+    if (g_modifierOnly && vkCode == VK_LCONTROL && scanCode == ALTGR_FAKE_CTRL_SCAN) {
+        g_altGrCtrlDown = isKeyDown;
+        return;
+    }
+
+    AdvanceTime(timeMs);
+
+    // A shortcut's modifiers are all released, so the next press starts clean.
+    if (g_chordSpoiled && !IsAnyRequiredModifierHeld(timeMs)) {
+        g_chordSpoiled = FALSE;
+    }
+
+    TrackModifierState(vkCode, isKeyDown, timeMs);
+
+    if (g_modifierOnly) {
+        HandleModifierOnlyEvent(vkCode, isKeyDown, timeMs);
+        return;
+    }
 
     // If a required modifier was released while we're held down, emit up.
     if (g_isDown && !isKeyDown && IsRequiredModifierVk(vkCode)) {
         EmitUp();
     }
 
-    // The trigger key is handled first and exclusively: for a modifier-only combo
-    // (e.g. Control+Super) the trigger VK is itself a modifier, and it must never
-    // also be treated as "a required modifier arriving late".
+    // The trigger key is handled first and exclusively: a raw VK trigger such as
+    // 0xA3 (right Ctrl) is itself a modifier, and it must never also be treated
+    // as "a required modifier arriving late".
     if (vkCode == g_targetVk) {
         if (isKeyDown) {
             // Low-level hooks deliver auto-repeat as plain repeated WM_KEYDOWN with
@@ -312,7 +656,7 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
                 g_triggerPhysDown = TRUE;
                 g_triggerDownTime = timeMs;
             }
-            if (AreModifiersPressed()) {
+            if (AreModifiersPressed(timeMs)) {
                 EmitDown();
             }
         } else {
@@ -325,10 +669,36 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
     // Re-arm: the trigger key already went down but the modifier had not registered
     // yet. Unsigned subtraction so the ~49.7 day wrap of the tick count is handled.
     if (isKeyDown && !g_isDown && g_triggerPhysDown && IsRequiredModifierVk(vkCode)) {
-        if ((DWORD)(timeMs - g_triggerDownTime) <= MODIFIER_GRACE_MS && AreModifiersPressed()) {
+        if ((DWORD)(timeMs - g_triggerDownTime) <= MODIFIER_GRACE_MS && AreModifiersPressed(timeMs)) {
             EmitDown();
         }
     }
+}
+
+#ifndef WM_MOUSEHWHEEL
+#define WM_MOUSEHWHEEL 0x020E
+#endif
+
+static BOOL IsMousePressOrWheel(WPARAM msg) {
+    return msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN ||
+           msg == WM_XBUTTONDOWN || msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL;
+}
+
+// The mouse decision for a modifier-only hotkey. The live hook and the --simulate
+// loop both call this. Only the kind of event matters, never where the pointer is.
+static void HandleModifierOnlyMouseEvent(WPARAM msg, DWORD timeMs) {
+    if (!g_modifierOnly || !IsMousePressOrWheel(msg)) return;
+    AdvanceTime(timeMs);
+    HandleModifierOnlyOtherInput(timeMs);
+}
+
+// Installed only for a modifier-only hotkey. It runs for every mouse event on the
+// desktop, so it returns at once for anything but a button press or a wheel turn.
+static LRESULT CALLBACK ModifierOnlyMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && IsMousePressOrWheel(wParam)) {
+        HandleModifierOnlyMouseEvent(wParam, ((MSLLHOOKSTRUCT*)lParam)->time);
+    }
+    return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
 }
 
 static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -338,7 +708,7 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
         BOOL isKeyUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
 
         if (isKeyDown || isKeyUp) {
-            HandleKeyboardEvent(kbd->vkCode, isKeyDown, kbd->time);
+            HandleKeyboardEvent(kbd->vkCode, isKeyDown, kbd->time, kbd->scanCode);
         }
     }
 
@@ -387,7 +757,7 @@ static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lPara
         }
 
         if (isButtonDown) {
-            if (AreModifiersPressed()) {
+            if (AreModifiersPressed(ms->time)) {
                 EmitDown();
             }
         } else if (isButtonUp) {
@@ -399,16 +769,6 @@ static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lPara
 }
 
 // --- Simulate mode --------------------------------------------------------
-
-static BOOL ParseNumber(const char* text, int base, long* out) {
-    char* end = NULL;
-    long value;
-    if (*text == '\0') return FALSE;
-    value = strtol(text, &end, base);
-    if (end == text || *end != '\0') return FALSE;
-    *out = value;
-    return TRUE;
-}
 
 // Accepts the side-specific modifier names the tests script with, plus a raw VK
 // code in hex (0xA2) or decimal.
@@ -436,6 +796,26 @@ static BOOL ParseSimulateKey(const char* name, DWORD* out) {
     return TRUE;
 }
 
+static BOOL ParseSimulateMouse(const char* name, WPARAM* out) {
+    static const struct {
+        const char* name;
+        WPARAM msg;
+    } events[] = {
+        { "LDOWN", WM_LBUTTONDOWN }, { "RDOWN", WM_RBUTTONDOWN }, { "MDOWN", WM_MBUTTONDOWN },
+        { "XDOWN", WM_XBUTTONDOWN }, { "LUP", WM_LBUTTONUP },     { "RUP", WM_RBUTTONUP },
+        { "MUP", WM_MBUTTONUP },     { "XUP", WM_XBUTTONUP },     { "WHEEL", WM_MOUSEWHEEL },
+        { "HWHEEL", WM_MOUSEHWHEEL }, { "MOVE", WM_MOUSEMOVE },
+    };
+    size_t i;
+    for (i = 0; i < sizeof(events) / sizeof(events[0]); i++) {
+        if (_stricmp(name, events[i].name) == 0) {
+            *out = events[i].msg;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static int RunSimulateLoop(void) {
     char line[512];
     char original[512];
@@ -447,9 +827,12 @@ static int RunSimulateLoop(void) {
         char* verb;
         char* keyToken;
         char* timeToken;
+        char* option;
         BOOL isKeyDown;
         DWORD vkCode = 0;
         long timeMs = 0;
+        long scanCode = 0;
+        BOOL badOption = FALSE;
         size_t len = strlen(line);
 
         while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' ||
@@ -465,9 +848,55 @@ static int RunSimulateLoop(void) {
 
         verb = strtok(line, " \t");
         keyToken = strtok(NULL, " \t");
-        timeToken = strtok(NULL, " \t");
 
-        if (verb == NULL || keyToken == NULL || timeToken == NULL) {
+        if (verb != NULL && _stricmp(verb, "TICK") == 0) {
+            if (keyToken == NULL || strtok(NULL, " \t") != NULL ||
+                !ParseNumber(keyToken, 10, &timeMs)) {
+                fprintf(stderr, "ERR %s\n", original);
+                fflush(stderr);
+                continue;
+            }
+            AdvanceTime((DWORD)timeMs);
+            continue;
+        }
+
+        if (verb != NULL && _stricmp(verb, "UNSEEN_UP") == 0) {
+            if (keyToken == NULL || strtok(NULL, " \t") != NULL ||
+                !ParseSimulateKey(keyToken, &vkCode) || vkCode >= 256) {
+                fprintf(stderr, "ERR %s\n", original);
+                fflush(stderr);
+                continue;
+            }
+            g_simKeyDown[vkCode] = FALSE;
+            continue;
+        }
+
+        if (verb != NULL && _stricmp(verb, "MOUSE") == 0) {
+            WPARAM msg = 0;
+            timeToken = strtok(NULL, " \t");
+            if (keyToken == NULL || timeToken == NULL || strtok(NULL, " \t") != NULL ||
+                !ParseSimulateMouse(keyToken, &msg) || !ParseNumber(timeToken, 10, &timeMs)) {
+                fprintf(stderr, "ERR %s\n", original);
+                fflush(stderr);
+                continue;
+            }
+            HandleModifierOnlyMouseEvent(msg, (DWORD)timeMs);
+            // After the event, as for keys: the button state GetAsyncKeyState reports.
+            if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) g_simKeyDown[VK_LBUTTON] = msg == WM_LBUTTONDOWN;
+            if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) g_simKeyDown[VK_RBUTTON] = msg == WM_RBUTTONDOWN;
+            if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) g_simKeyDown[VK_MBUTTON] = msg == WM_MBUTTONDOWN;
+            if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) g_simKeyDown[VK_XBUTTON1] = msg == WM_XBUTTONDOWN;
+            continue;
+        }
+
+        timeToken = strtok(NULL, " \t");
+        while ((option = strtok(NULL, " \t")) != NULL) {
+            if (_strnicmp(option, "scan=0x", 7) != 0 || !ParseNumber(option + 7, 16, &scanCode)) {
+                badOption = TRUE;
+            }
+        }
+
+        if (verb == NULL || keyToken == NULL || timeToken == NULL || badOption) {
             fprintf(stderr, "ERR %s\n", original);
             fflush(stderr);
             continue;
@@ -489,7 +918,9 @@ static int RunSimulateLoop(void) {
             continue;
         }
 
-        HandleKeyboardEvent(vkCode, isKeyDown, (DWORD)timeMs);
+        HandleKeyboardEvent(vkCode, isKeyDown, (DWORD)timeMs, (DWORD)scanCode);
+        // After the event, as the system updates its key state only once the hook returns.
+        if (vkCode < 256) g_simKeyDown[vkCode] = isKeyDown;
     }
 
     return 0;
@@ -528,37 +959,20 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "  %s Mouse4                   (side button back)\n", argv[0]);
         fprintf(stderr, "  %s Mouse5                   (side button forward)\n", argv[0]);
         fprintf(stderr, "  %s CommandOrControl+F11     (with modifier)\n", argv[0]);
+        fprintf(stderr, "  %s Control+Shift            (modifiers only)\n", argv[0]);
         fprintf(stderr, "  %s Ctrl+Mouse4              (modifier + mouse)\n", argv[0]);
         fprintf(stderr, "  %s --simulate Ctrl+Space    (stdin-driven test mode)\n", argv[0]);
         return 1;
     }
 
     hotkey = argv[hotkeyArg];
-    g_targetVk = ParseCompoundHotkey(hotkey);
-
-    if (!g_isMouseButton && g_targetVk == 0) {
-        // Modifier-only combo (e.g. Control+Super): use the Win key as trigger
-        // if Win is required, otherwise Ctrl, Alt, Shift in that order.
-        if (g_requireWin) {
-            g_targetVk = VK_LWIN;
-            g_requireWin = FALSE; // Win key IS the trigger, not a modifier check
-        } else if (g_requireCtrl) {
-            g_targetVk = VK_CONTROL;
-            g_requireCtrl = FALSE;
-        } else if (g_requireAlt) {
-            g_targetVk = VK_MENU;
-            g_requireAlt = FALSE;
-        } else if (g_requireShift) {
-            g_targetVk = VK_SHIFT;
-            g_requireShift = FALSE;
-        } else {
-            fprintf(stderr, "Error: Invalid hotkey '%s'\n", hotkey);
-            return 1;
-        }
+    if (!ParseCompoundHotkey(hotkey)) {
+        return EXIT_BAD_HOTKEY;
     }
 
-    fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
-            hotkey, g_isMouseButton, g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin);
+    fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, modifierOnly=%d, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
+            hotkey, g_isMouseButton, g_targetVk, g_modifierOnly, g_requireCtrl, g_requireAlt,
+            g_requireShift, g_requireWin);
 
     // Simulate mode installs no hooks and never samples the real keyboard.
     if (g_simulateMode) {
@@ -594,6 +1008,18 @@ int main(int argc, char* argv[]) {
         if (!g_keyboardHook) {
             fprintf(stderr, "Error: Failed to install keyboard hook (error %lu)\n", GetLastError());
             return 1;
+        }
+
+        // A click or wheel turn with the modifiers held is Ctrl+Shift+click,
+        // Alt+Shift+drag and the like, never the hotkey.
+        if (g_modifierOnly) {
+            g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, ModifierOnlyMouseProc, NULL, 0);
+            if (!g_mouseHook) {
+                fprintf(stderr, "Error: Failed to install mouse hook (error %lu)\n", GetLastError());
+                UnhookWindowsHookEx(g_keyboardHook);
+                g_keyboardHook = NULL;
+                return 1;
+            }
         }
     }
 

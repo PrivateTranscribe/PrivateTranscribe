@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
@@ -73,57 +74,13 @@ function fetchJson(url, redirectCount = 0) {
 }
 
 /**
- * Fetch the latest release from a GitHub repository.
- * @param {string} repo - Repository in "owner/repo" format
- * @param {object} options - Options
- * @param {string} [options.tagPrefix] - Only match releases with this tag prefix (e.g., "windows-key-listener-v")
- * @param {boolean} [options.includePrerelease=false] - Include prerelease versions
- * @returns {Promise<{tag: string, assets: Array<{name: string, url: string}>, url: string} | null>}
- */
-async function fetchLatestRelease(repo, options = {}) {
-  const { tagPrefix, includePrerelease = false } = options;
-
-  try {
-    // If no tag prefix, use the simple /latest endpoint
-    if (!tagPrefix) {
-      const url = `https://api.github.com/repos/${repo}/releases/latest`;
-      const release = await fetchJson(url);
-      return formatRelease(release);
-    }
-
-    // Otherwise, fetch all releases and filter by prefix
-    const url = `https://api.github.com/repos/${repo}/releases?per_page=50`;
-    const releases = await fetchJson(url);
-
-    if (!Array.isArray(releases)) {
-      return null;
-    }
-
-    // Find the latest release matching the prefix
-    for (const release of releases) {
-      if (release.draft) continue;
-      if (!includePrerelease && release.prerelease) continue;
-      if (release.tag_name && release.tag_name.startsWith(tagPrefix)) {
-        return formatRelease(release);
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error(`  Failed to fetch latest release for ${repo}: ${error.message}`);
-    return null;
-  }
-}
-
-/**
  * Fetch one release by its exact tag.
  *
- * Separate from fetchLatestRelease because "latest" and "the release we want"
- * are not the same thing for every project. llama.cpp marks a stub release as
- * latest and publishes every actual build as a prerelease, so both the /latest
- * endpoint and a prefix scan over /releases come back without the binaries.
- * Asking for the tag by name is exact, one request, and immune to how upstream
- * chooses to flag its releases.
+ * There is no "latest" lookup on purpose. Every binary a build downloads is
+ * pinned to a tag and checked against a SHA-256 before use, and "latest" is
+ * not even reliable: llama.cpp marks a stub release as latest and publishes
+ * every actual build as a prerelease. Asking for the tag by name is exact, one
+ * request, and immune to how upstream chooses to flag its releases.
  *
  * @param {string} repo - owner/name
  * @param {string} tag - exact tag, e.g. "b10566"
@@ -255,6 +212,24 @@ function downloadFile(url, dest, retryCount = 0) {
   });
 }
 
+/**
+ * Throws unless the file's SHA-256 is `expected`. Use it before extracting or
+ * running anything downloaded: a pinned tag alone does not pin the bytes, since
+ * a release's assets can be replaced under the same tag.
+ * @param {string} filePath
+ * @param {string} expected - lowercase hex SHA-256
+ */
+function verifySha256(filePath, expected) {
+  const name = path.basename(filePath);
+  if (!/^[0-9a-f]{64}$/.test(expected || "")) {
+    throw new Error(`No SHA-256 is pinned for ${name}`);
+  }
+  const actual = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+  if (actual !== expected) {
+    throw new Error(`SHA-256 mismatch for ${name}: expected ${expected}, got ${actual}`);
+  }
+}
+
 function extractZip(zipPath, destDir) {
   if (process.platform === "win32") {
     execSync(`tar -xf "${zipPath}" -C "${destDir}"`, { stdio: "inherit" });
@@ -347,10 +322,10 @@ module.exports = {
   downloadFile,
   extractArchive,
   extractZip,
-  fetchLatestRelease,
   fetchReleaseByTag,
   findBinaryInDir,
   parseArgs,
   setExecutable,
   cleanupFiles,
+  verifySha256,
 };

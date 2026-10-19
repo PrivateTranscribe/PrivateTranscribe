@@ -976,7 +976,11 @@ class WindowManager {
     dictationWindow.webContents.send("toggle-dictation");
   }
 
-  async sendStartDictation() {
+  /**
+   * @param {number} [holdToken] identifies the held hotkey that asks, so only
+   *   that hold's sendCancelDictation can discard the recording it began.
+   */
+  async sendStartDictation(holdToken) {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
@@ -989,14 +993,14 @@ class WindowManager {
         await this.createMainWindow();
       }
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send("start-dictation");
+        this.mainWindow.webContents.send("start-dictation", holdToken);
       }
       return;
     }
 
     const dictationWindow = await this.showDictationPanel();
     if (dictationWindow && !dictationWindow.isDestroyed()) {
-      dictationWindow.webContents.send("start-dictation");
+      dictationWindow.webContents.send("start-dictation", holdToken);
     }
   }
 
@@ -1015,6 +1019,22 @@ class WindowManager {
 
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("stop-dictation");
+    }
+  }
+
+  /**
+   * Ends a recording without transcribing it, for a hold that turned out to be
+   * part of another shortcut. The renderer discards the recording only when
+   * the start-dictation carrying the same holdToken began it. Goes where
+   * sendStopDictation goes.
+   */
+  sendCancelDictation(holdToken) {
+    if (this.hotkeyManager.isInListeningMode()) {
+      return;
+    }
+
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send("cancel-dictation", holdToken);
     }
   }
 

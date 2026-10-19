@@ -94,6 +94,52 @@ describe("ActivationGestureController", () => {
     expect(callbacks.onHoldEnd).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["tap", "push", "tapHold"] as const)(
+    "a discarded press starts nothing in %s mode",
+    (mode) => {
+      const { controller, callbacks } = createController(mode);
+
+      controller.keyDown();
+      vi.advanceTimersByTime(100);
+      expect(controller.discard()).toBe(true);
+      vi.advanceTimersByTime(500);
+      controller.keyUp();
+
+      expect(callbacks.onTap).not.toHaveBeenCalled();
+      expect(callbacks.onHoldStart).not.toHaveBeenCalled();
+      expect(callbacks.onHoldEnd).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["push", "tapHold"] as const)(
+    "throws away a hold that already started in %s mode",
+    (mode) => {
+      const onHoldCancel = vi.fn();
+      const callbacks = { onTap: vi.fn(), onHoldStart: vi.fn(), onHoldEnd: vi.fn() };
+      const controller = new ActivationGestureController({ mode, ...callbacks, onHoldCancel });
+
+      controller.keyDown();
+      vi.advanceTimersByTime(150);
+      expect(controller.discard()).toBe(true);
+      expect(controller.keyUp()).toBe(false);
+
+      expect(callbacks.onHoldStart).toHaveBeenCalledTimes(1);
+      expect(onHoldCancel).toHaveBeenCalledTimes(1);
+      expect(callbacks.onHoldEnd).not.toHaveBeenCalled();
+      expect(callbacks.onTap).not.toHaveBeenCalled();
+    }
+  );
+
+  it("ends a discarded hold when no cancel handler is given", () => {
+    const { controller, callbacks } = createController("push");
+
+    controller.keyDown();
+    vi.advanceTimersByTime(150);
+    controller.discard();
+
+    expect(callbacks.onHoldEnd).toHaveBeenCalledTimes(1);
+  });
+
   it("ends an active hold when the gesture is cancelled", () => {
     const { controller, callbacks } = createController("push");
 

@@ -11,6 +11,9 @@ const EventEmitter = require("events");
 const fs = require("fs");
 const debugLogger = require("./debugLogger");
 
+// windows-key-listener.exe exits with 2 for a hotkey naming a key it does not know.
+const LISTENER_EXIT_BAD_HOTKEY = 2;
+
 const isDiagFlagEnabled = (name) => {
   const raw = String(process.env[name] || "")
     .trim()
@@ -111,6 +114,9 @@ class WindowsKeyManager extends EventEmitter {
           } else if (line === "KEY_UP") {
             debugLogger.debug("[WindowsKeyManager] KEY_UP detected", { key });
             this.emit("key-up", key);
+          } else if (line === "KEY_CANCEL") {
+            debugLogger.debug("[WindowsKeyManager] KEY_CANCEL detected", { key });
+            this.emit("key-cancel", key);
           } else {
             // Log unknown output at debug level (could be native binary's stderr info)
             debugLogger.debug("[WindowsKeyManager] Unknown output", { line });
@@ -122,8 +128,13 @@ class WindowsKeyManager extends EventEmitter {
     listenerProcess.stderr.on("data", (data) => {
       const message = data.toString().trim();
       if (message.length > 0) {
-        // Native binary logs to stderr for info messages, don't treat as error
-        debugLogger.debug("[WindowsKeyManager] Native stderr", { message });
+        // Native binary logs to stderr for info messages, don't treat as error.
+        // A refused hotkey is the exception: it says why just before exiting.
+        if (message.includes("Error:")) {
+          debugLogger.warn("[WindowsKeyManager] Native stderr", { message });
+        } else {
+          debugLogger.debug("[WindowsKeyManager] Native stderr", { message });
+        }
       }
     });
 
@@ -146,9 +157,12 @@ class WindowsKeyManager extends EventEmitter {
 
       const isExpectedStop = signal === "SIGTERM" || signal === "SIGINT";
       if (!isExpectedStop && code !== 0 && isCurrentProcess) {
-        const error = new Error(
-          `Windows key listener exited with code ${code ?? "null"} signal ${signal ?? "null"}`
-        );
+        const error =
+          code === LISTENER_EXIT_BAD_HOTKEY
+            ? new Error(`Windows key listener cannot watch the hotkey "${key}"`)
+            : new Error(
+                `Windows key listener exited with code ${code ?? "null"} signal ${signal ?? "null"}`
+              );
         this.reportError(error);
       }
       if (isCurrentProcess) {

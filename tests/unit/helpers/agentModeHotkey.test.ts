@@ -116,6 +116,21 @@ describe("AgentModeHotkey", () => {
     expect(onHoldEnd).not.toHaveBeenCalled();
   });
 
+  it("starts no hold when the listener cancels the press", () => {
+    const { hotkey, keyManager, onHoldStart, onHoldEnd } = createHarness();
+    hotkey.apply({ enabled: true });
+    keyManager.emit("ready");
+
+    keyManager.emit("key-down");
+    vi.advanceTimersByTime(50);
+    keyManager.emit("key-cancel");
+    vi.advanceTimersByTime(500);
+    keyManager.emit("key-up");
+
+    expect(onHoldStart).not.toHaveBeenCalled();
+    expect(onHoldEnd).not.toHaveBeenCalled();
+  });
+
   it("is idempotent for the same enabled hotkey", () => {
     const { hotkey, keyManager } = createHarness();
 
