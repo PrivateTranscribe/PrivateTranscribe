@@ -310,4 +310,68 @@ describe("DiarizationManager", () => {
     controller.abort();
     expect(child.kill).not.toHaveBeenCalled();
   });
+
+  // The Transcribe page shows these messages when speaker labels fail.
+  describe("a worker that stops without a result", () => {
+    async function runWorker(output: { stdout?: string; stderr?: string; code: number | null }) {
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: vi.fn(),
+      });
+      const spawn = vi.fn(() => child);
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      const manager = new DiarizationManager({ modelsDir: makeTempModelsDir(), spawn, logger });
+      const pending = manager.diarizeWavFileInWorker("test.wav", {});
+      await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+      if (output.stdout) child.stdout.write(output.stdout);
+      if (output.stderr) child.stderr.write(output.stderr);
+      child.emit("close", output.code, null);
+      const error = await pending.then(
+        () => null,
+        (rejection) => rejection
+      );
+      return { error, logger };
+    }
+
+    it("names the error line of a worker that died while loading", async () => {
+      const stderr = [
+        "node:internal/modules/cjs/loader:1228",
+        "  throw err;",
+        "  ^",
+        "",
+        "Error: Cannot find module 'electron'",
+        "Require stack:",
+        "- C:\\Program Files\\PrivateTranscribe\\resources\\app.asar\\src\\helpers\\debugLogger.js",
+      ].join("\n");
+
+      const { error, logger } = await runWorker({ stderr, code: 1 });
+
+      expect(error.message).toBe(
+        "The speaker engine exited with code 1 before it returned a result: Error: Cannot find module 'electron'"
+      );
+      // The whole output still reaches the debug log.
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Diarization worker stopped without a result",
+        expect.objectContaining({ code: 1, stderr: expect.stringContaining("Require stack") })
+      );
+    });
+
+    it("reports a native crash by its Windows exception code", async () => {
+      const { error } = await runWorker({ code: 0xc0000005 });
+
+      expect(error.message).toBe("The speaker engine crashed (exit code 0xC0000005).");
+    });
+
+    it("passes on the error the worker reported itself", async () => {
+      const stdout = JSON.stringify({
+        success: false,
+        error: "Diarization expects 16000 Hz audio, got 8000 Hz.",
+      });
+
+      const { error } = await runWorker({ stdout, code: 1 });
+
+      expect(error.message).toBe("Diarization expects 16000 Hz audio, got 8000 Hz.");
+    });
+  });
 });

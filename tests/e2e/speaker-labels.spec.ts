@@ -136,6 +136,65 @@ test("multilingual speaker settings and short replies", async ({
   }
 });
 
+test("keeps the transcript and says why when speaker labels fail", async ({
+  electronApp,
+  controlPanel,
+}, info) => {
+  const { formatTranscript } = require(`${root}/src/helpers/transcriptFormatter`);
+  const reason =
+    "The speaker engine exited with code 1 before it returned a result: Error: Cannot find module 'electron'";
+  // What the main process returns when labelling fails after the decode: the
+  // transcript as it reads with labels off, and the reason.
+  const result = {
+    success: true,
+    ...formatTranscript(
+      {
+        segments: [
+          { start: 0, end: 2, text: " Kan vi starte?" },
+          { start: 2, end: 5, text: " Ja, lad os starte med budgettet." },
+        ],
+      },
+      "timestamped",
+      { includeSpeakers: false }
+    ),
+    speakerDetectionActive: false,
+    speakerDetectionMode: "off",
+    speakerLabelsError: reason,
+  };
+  await electronApp.evaluate(({ ipcMain }, result) => {
+    ipcMain.removeHandler("check-diarization-model-status");
+    ipcMain.handle("check-diarization-model-status", () => ({ ready: true }));
+    ipcMain.removeHandler("transcribe-file-v2");
+    ipcMain.handle("transcribe-file-v2", () => result);
+  }, result);
+  await controlPanel.evaluate(() => {
+    localStorage.setItem("useLocalWhisper", "true");
+    localStorage.setItem("whisperModel", "base");
+    localStorage.setItem("fileTranscriptionLanguage", "da");
+    localStorage.setItem("fileTranscriptionSpeakerDetection", "true");
+  });
+  await controlPanel.reload({ waitUntil: "domcontentloaded" });
+  await controlPanel.getByRole("button", { name: "Transcribe File", exact: true }).click();
+  await controlPanel.locator('input[type="file"]').setInputFiles({
+    name: "budget-meeting.wav",
+    mimeType: "audio/wav",
+    buffer: Buffer.from("test fixture"),
+  });
+
+  await expect(controlPanel.getByRole("heading", { name: "Done" })).toBeVisible();
+  await expect(controlPanel.getByText("Speaker labels failed", { exact: true })).toBeVisible();
+  await expect(controlPanel.getByText(reason, { exact: true })).toBeVisible();
+  await expect(controlPanel.getByText("No speaker labels", { exact: true })).toBeVisible();
+  expect(await controlPanel.locator("textarea[readonly]").inputValue()).toBe(
+    "[00:00:00] Kan vi starte?\n[00:00:02] Ja, lad os starte med budgettet."
+  );
+  const dir = evidenceDir || info.outputDir;
+  fs.mkdirSync(dir, { recursive: true });
+  await controlPanel.screenshot({ path: path.join(dir, `${phase}-labels-failed-done.png`) });
+  await controlPanel.locator("textarea[readonly]").scrollIntoViewIfNeeded();
+  await controlPanel.screenshot({ path: path.join(dir, `${phase}-labels-failed.png`) });
+});
+
 for (const sample of [
   { name: "interview", count: 3 },
   { name: "control", count: 1 },

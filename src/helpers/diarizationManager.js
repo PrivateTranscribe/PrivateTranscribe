@@ -31,6 +31,29 @@ const EMBEDDING_MODEL_URL =
 const SEGMENTATION_ARCHIVE_SHA256 =
   "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488";
 const EMBEDDING_MODEL_SHA256 = "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b";
+// Windows reports a process killed by an exception as its NTSTATUS code, such
+// as 0xC0000005 for an access violation.
+const FIRST_NTSTATUS_ERROR = 0xc0000000;
+
+/**
+ * Why a worker that never printed its result stopped, in one line.
+ *
+ * The worker reports its own failures as JSON. A run that ends without that
+ * got no further than loading its modules, or the native engine crashed. The
+ * Transcribe page shows this message, so a stack trace is cut down to the line
+ * that names the problem.
+ */
+function describeWorkerExit(code, signal, stderr) {
+  if (Number.isInteger(code) && code >= FIRST_NTSTATUS_ERROR) {
+    return `The speaker engine crashed (exit code 0x${code.toString(16).toUpperCase()}).`;
+  }
+  const errorLine = String(stderr || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^[A-Za-z]*Error\b/.test(line));
+  const stopped = signal ? `was stopped by ${signal}` : `exited with code ${code}`;
+  return `The speaker engine ${stopped} before it returned a result${errorLine ? `: ${errorLine}` : "."}`;
+}
 
 // Adds what needs the app to the engine: the default models folder, model
 // downloads, and running the engine in a separate process.
@@ -190,7 +213,7 @@ class DiarizationManager extends DiarizationEngine {
           detach();
           reject(cancelled ? createCancelledError() : error);
         });
-        child.on("close", (code) => {
+        child.on("close", (code, exitSignal) => {
           detach();
           if (cancelled || signal?.aborted) {
             reject(createCancelledError());
@@ -203,26 +226,27 @@ class DiarizationManager extends DiarizationEngine {
             .filter((line) => !line.includes("crashpad") && !line.includes("not connected"))
             .join("\n")
             .trim();
-          let parsed;
+          let parsed = null;
           try {
-            parsed = JSON.parse(stdout.trim() || "{}");
-          } catch (parseError) {
-            reject(
-              new Error(
-                `Diarization worker returned invalid JSON (code ${code}): ${filteredStderr || stdout}`
-              )
-            );
+            parsed = JSON.parse(stdout.trim());
+          } catch {
+            // No result line: described from the exit below.
+          }
+          if (code === 0 && parsed?.success) {
+            resolve(parsed.result);
             return;
           }
-          if (code === 0 && parsed.success) {
-            resolve(parsed.result);
-          } else {
-            reject(
-              new Error(
-                parsed.error || filteredStderr || `Diarization worker exited with code ${code}`
-              )
-            );
+          if (parsed?.error) {
+            reject(new Error(parsed.error));
+            return;
           }
+          this.logger.warn("Diarization worker stopped without a result", {
+            code,
+            signal: exitSignal,
+            stderr: filteredStderr.slice(-4000),
+            stdout: stdout.slice(-1000),
+          });
+          reject(new Error(describeWorkerExit(code, exitSignal, filteredStderr)));
         });
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
@@ -245,6 +269,7 @@ module.exports = {
   SEGMENTATION_ARCHIVE_SHA256,
   SEGMENTATION_ARCHIVE_URL,
   copyFloat32Samples,
+  describeWorkerExit,
   normalizeDiarizationResult,
   normalizeSpeakerId,
 };
