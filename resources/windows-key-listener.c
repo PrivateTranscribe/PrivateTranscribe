@@ -35,6 +35,8 @@
  *   DOWN <key> <timeMs> [scan=0x<code>]   a key event the hook sees
  *   UP <key> <timeMs> [scan=0x<code>]
  *   TICK <timeMs>                         time passes with no key event
+ *   UNSEEN_UP <key>                       the key goes up where the hook cannot
+ *                                         see it, as on the secure desktop
  *   QUIT, or EOF                          stop
  * Simulate mode also keeps the key state GetAsyncKeyState would report, built
  * from the same events, so the live sample is tested without reading it.
@@ -130,14 +132,28 @@ static BOOL g_altGrCtrlDown = FALSE;
 static BOOL g_triggerPhysDown = FALSE;
 static DWORD g_triggerDownTime = 0;
 
-// One flag per modifier family. Low-level hooks deliver the side-specific VKs
+// One entry per modifier family. Low-level hooks deliver the side-specific VKs
 // (VK_LCONTROL / VK_RCONTROL, ...), so any variant going down sets the family and
 // any variant going up clears it - matching the existing modifier-release logic,
 // which already treats a release of either side as ending the press.
-static BOOL g_ctrlPhysDown = FALSE;
-static BOOL g_altPhysDown = FALSE;
-static BOOL g_shiftPhysDown = FALSE;
-static BOOL g_winPhysDown = FALSE;
+typedef struct {
+    BOOL down;
+    DWORD eventTime; // of the family's last key event
+    int vkLeft;
+    int vkRight;
+} TrackedModifier;
+
+static TrackedModifier g_ctrl = { FALSE, 0, VK_LCONTROL, VK_RCONTROL };
+static TrackedModifier g_alt = { FALSE, 0, VK_LMENU, VK_RMENU };
+static TrackedModifier g_shift = { FALSE, 0, VK_LSHIFT, VK_RSHIFT };
+static TrackedModifier g_win = { FALSE, 0, VK_LWIN, VK_RWIN };
+
+/*
+ * How long after a modifier's own last event its tracked state is trusted over
+ * the system's. The hook runs before the system records the event it is handed,
+ * so a modifier pressed a moment ago may not show there yet.
+ */
+#define MODIFIER_RECHECK_MS 100
 
 // The system's key state now, as GetAsyncKeyState gives it. Simulate mode answers
 // from the scripted events instead and never reads the real keyboard.
@@ -146,25 +162,38 @@ static BOOL IsKeyDownNow(int vk) {
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 
-// Tracked state OR a live sample. The live sample covers modifiers already held
-// before the hook was installed.
-static BOOL IsModifierHeld(BOOL tracked, int vkLeft, int vkRight) {
-    if (tracked) return TRUE;
-    return IsKeyDownNow(vkLeft) || IsKeyDownNow(vkRight);
+/*
+ * Tracked state, checked against the system's, OR a live sample.
+ *
+ * A key released on the secure desktop (Ctrl+Alt+Del, a UAC prompt, Win+L) never
+ * reaches this hook, so tracked state alone kept that modifier held for good:
+ * every Ctrl+C then fired Control+Shift, or a bare Space fired Ctrl+Space. When
+ * the system says neither side is down, the tracked state is stale and dropped.
+ *
+ * The live sample covers modifiers already held before the hook was installed.
+ */
+static BOOL IsModifierHeld(TrackedModifier* mod, DWORD now) {
+    if (mod->down) {
+        if (IsKeyDownNow(mod->vkLeft) || IsKeyDownNow(mod->vkRight)) return TRUE;
+        if ((DWORD)(now - mod->eventTime) <= MODIFIER_RECHECK_MS) return TRUE;
+        mod->down = FALSE;
+        return FALSE;
+    }
+    return IsKeyDownNow(mod->vkLeft) || IsKeyDownNow(mod->vkRight);
 }
 
-static BOOL IsCtrlHeld(void) {
-    if (g_ctrlPhysDown) return TRUE;
+static BOOL IsCtrlHeld(DWORD now) {
+    if (g_ctrl.down) return IsModifierHeld(&g_ctrl, now);
     if (IsKeyDownNow(VK_RCONTROL)) return TRUE;
     // Left Ctrl with right Alt is AltGr, also when it was down before the hook was.
     return IsKeyDownNow(VK_LCONTROL) && !g_altGrCtrlDown && !IsKeyDownNow(VK_RMENU);
 }
 
-static BOOL AreModifiersPressed(void) {
-    if (g_requireCtrl && !IsCtrlHeld()) return FALSE;
-    if (g_requireAlt && !IsModifierHeld(g_altPhysDown, VK_LMENU, VK_RMENU)) return FALSE;
-    if (g_requireShift && !IsModifierHeld(g_shiftPhysDown, VK_LSHIFT, VK_RSHIFT)) return FALSE;
-    if (g_requireWin && !IsModifierHeld(g_winPhysDown, VK_LWIN, VK_RWIN)) return FALSE;
+static BOOL AreModifiersPressed(DWORD now) {
+    if (g_requireCtrl && !IsCtrlHeld(now)) return FALSE;
+    if (g_requireAlt && !IsModifierHeld(&g_alt, now)) return FALSE;
+    if (g_requireShift && !IsModifierHeld(&g_shift, now)) return FALSE;
+    if (g_requireWin && !IsModifierHeld(&g_win, now)) return FALSE;
     return TRUE;
 }
 
@@ -187,11 +216,16 @@ static BOOL IsWinVk(DWORD vk) {
 // Update the tracked physical modifier state from every keyboard event, whether or
 // not the modifier is part of the configured hotkey. Cheap, and it keeps the
 // picture complete when the hotkey changes shape.
-static void TrackModifierState(DWORD vk, BOOL isKeyDown) {
-    if (IsCtrlVk(vk)) g_ctrlPhysDown = isKeyDown;
-    else if (IsAltVk(vk)) g_altPhysDown = isKeyDown;
-    else if (IsShiftVk(vk)) g_shiftPhysDown = isKeyDown;
-    else if (IsWinVk(vk)) g_winPhysDown = isKeyDown;
+static void TrackModifierState(DWORD vk, BOOL isKeyDown, DWORD timeMs) {
+    TrackedModifier* mod = NULL;
+    if (IsCtrlVk(vk)) mod = &g_ctrl;
+    else if (IsAltVk(vk)) mod = &g_alt;
+    else if (IsShiftVk(vk)) mod = &g_shift;
+    else if (IsWinVk(vk)) mod = &g_win;
+    if (mod) {
+        mod->down = isKeyDown;
+        mod->eventTime = timeMs;
+    }
 }
 
 static BOOL IsRequiredModifierVk(DWORD vk) {
@@ -202,11 +236,11 @@ static BOOL IsRequiredModifierVk(DWORD vk) {
     return FALSE;
 }
 
-static BOOL IsAnyRequiredModifierHeld(void) {
-    if (g_requireCtrl && IsCtrlHeld()) return TRUE;
-    if (g_requireAlt && IsModifierHeld(g_altPhysDown, VK_LMENU, VK_RMENU)) return TRUE;
-    if (g_requireShift && IsModifierHeld(g_shiftPhysDown, VK_LSHIFT, VK_RSHIFT)) return TRUE;
-    if (g_requireWin && IsModifierHeld(g_winPhysDown, VK_LWIN, VK_RWIN)) return TRUE;
+static BOOL IsAnyRequiredModifierHeld(DWORD now) {
+    if (g_requireCtrl && IsCtrlHeld(now)) return TRUE;
+    if (g_requireAlt && IsModifierHeld(&g_alt, now)) return TRUE;
+    if (g_requireShift && IsModifierHeld(&g_shift, now)) return TRUE;
+    if (g_requireWin && IsModifierHeld(&g_win, now)) return TRUE;
     return FALSE;
 }
 
@@ -516,7 +550,7 @@ static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) 
     BOOL isRequired = IsRequiredModifierVk(vkCode);
 
     if (isKeyDown && !isRequired) {
-        if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld()) {
+        if (g_chordPending || g_isDown || IsAnyRequiredModifierHeld(timeMs)) {
             g_chordSpoiled = TRUE;
             StopChordTimer();
             EmitCancel();
@@ -526,7 +560,7 @@ static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) 
 
     if (isKeyDown) {
         // Auto-repeat of a held modifier arrives as more key-downs and changes nothing.
-        if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed()) {
+        if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed(timeMs)) {
             StartChordTimer(timeMs);
         }
         return;
@@ -556,11 +590,11 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWOR
     AdvanceTime(timeMs);
 
     // A shortcut's modifiers are all released, so the next press starts clean.
-    if (g_chordSpoiled && !IsAnyRequiredModifierHeld()) {
+    if (g_chordSpoiled && !IsAnyRequiredModifierHeld(timeMs)) {
         g_chordSpoiled = FALSE;
     }
 
-    TrackModifierState(vkCode, isKeyDown);
+    TrackModifierState(vkCode, isKeyDown, timeMs);
 
     if (g_modifierOnly) {
         HandleModifierOnlyEvent(vkCode, isKeyDown, timeMs);
@@ -584,7 +618,7 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWOR
                 g_triggerPhysDown = TRUE;
                 g_triggerDownTime = timeMs;
             }
-            if (AreModifiersPressed()) {
+            if (AreModifiersPressed(timeMs)) {
                 EmitDown();
             }
         } else {
@@ -597,7 +631,7 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs, DWOR
     // Re-arm: the trigger key already went down but the modifier had not registered
     // yet. Unsigned subtraction so the ~49.7 day wrap of the tick count is handled.
     if (isKeyDown && !g_isDown && g_triggerPhysDown && IsRequiredModifierVk(vkCode)) {
-        if ((DWORD)(timeMs - g_triggerDownTime) <= MODIFIER_GRACE_MS && AreModifiersPressed()) {
+        if ((DWORD)(timeMs - g_triggerDownTime) <= MODIFIER_GRACE_MS && AreModifiersPressed(timeMs)) {
             EmitDown();
         }
     }
@@ -659,7 +693,7 @@ static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lPara
         }
 
         if (isButtonDown) {
-            if (AreModifiersPressed()) {
+            if (AreModifiersPressed(ms->time)) {
                 EmitDown();
             }
         } else if (isButtonUp) {
@@ -739,6 +773,17 @@ static int RunSimulateLoop(void) {
                 continue;
             }
             AdvanceTime((DWORD)timeMs);
+            continue;
+        }
+
+        if (verb != NULL && _stricmp(verb, "UNSEEN_UP") == 0) {
+            if (keyToken == NULL || strtok(NULL, " \t") != NULL ||
+                !ParseSimulateKey(keyToken, &vkCode) || vkCode >= 256) {
+                fprintf(stderr, "ERR %s\n", original);
+                fflush(stderr);
+                continue;
+            }
+            g_simKeyDown[vkCode] = FALSE;
             continue;
         }
 

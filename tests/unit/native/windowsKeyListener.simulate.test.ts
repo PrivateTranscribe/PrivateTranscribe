@@ -580,3 +580,80 @@ describe.skipIf(!exePath)(
     });
   }
 );
+
+// Ctrl+Alt+Del, a UAC prompt and Win+L switch to the secure desktop, where key-ups
+// never reach the hook. UNSEEN_UP releases a key without the hook seeing it.
+describe.skipIf(!exePath)("windows-key-listener after the secure desktop", () => {
+  test("a Shift released on a UAC prompt does not turn Ctrl+C into Control+Shift", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LSHIFT 0",
+      "UNSEEN_UP LSHIFT",
+      "DOWN LCTRL 5000",
+      "DOWN 0x43 5050",
+      "UP 0x43 5100",
+      "UP LCTRL 5150",
+    ]);
+
+    expect(run.events).toEqual([]);
+  });
+
+  test("after a UAC prompt, Ctrl alone does not fire and Control+Shift works again", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LSHIFT 0",
+      "UNSEEN_UP LSHIFT",
+      "DOWN LCTRL 5000",
+      "TICK 6000",
+      "UP LCTRL 6100",
+      "DOWN LCTRL 7000",
+      "DOWN LSHIFT 7030",
+      "TICK 7400",
+      "UP LSHIFT 7500",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("after Win+L, Ctrl alone does not fire and Control+Super works again", async () => {
+    const run = await runListener("Control+Super", [
+      "DOWN LWIN 0",
+      "DOWN 0x4C 30",
+      "UNSEEN_UP 0x4C",
+      "UNSEEN_UP LWIN",
+      "DOWN LCTRL 9000",
+      "TICK 9500",
+      "UP LCTRL 9600",
+      "DOWN LCTRL 10000",
+      "DOWN LWIN 10020",
+      "TICK 10400",
+      "UP LWIN 10500",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("after Ctrl+Alt+Del, a bare Space does not fire Ctrl+Space", async () => {
+    const run = await runListener("CommandOrControl+Space", [
+      "DOWN LCTRL 0",
+      "DOWN LALT 20",
+      "DOWN 0x2E 40",
+      "UNSEEN_UP 0x2E",
+      "UNSEEN_UP LALT",
+      "UNSEEN_UP LCTRL",
+      "DOWN SPACE 8000",
+      "UP SPACE 8100",
+    ]);
+
+    expect(run.events).toEqual([]);
+  });
+
+  test("a modifier pressed a moment ago still counts", async () => {
+    const run = await runListener("CommandOrControl+Space", [
+      "DOWN LCTRL 0",
+      "UNSEEN_UP LCTRL",
+      "DOWN SPACE 100",
+      "UP SPACE 200",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
