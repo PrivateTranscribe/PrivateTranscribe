@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
 const { killProcess } = require("../utils/process");
 const { getSafeTempDir } = require("./safeTempDir");
+const { planAnsiArgvPaths } = require("./ansiArgvPaths");
 const { convertToWav } = require("./ffmpegUtils");
 const {
   getTrailingSilenceFilters,
@@ -969,7 +970,14 @@ class WhisperServerManager {
       debugLogger.warn("FFmpeg not found - whisper-server will only accept 16kHz mono WAV");
     }
 
-    const args = this.buildServerArgs(modelPath, options);
+    // whisper-server reads its command line in the ANSI code page, which cannot
+    // carry a user folder such as C:\Users\Søren: the server aborts on it. A
+    // model path outside ASCII therefore starts the server in the model's
+    // folder with the bare file name. See ansiArgvPaths.js.
+    const modelArgv = planAnsiArgvPaths([modelPath]);
+    const serverCwd = modelArgv.cwd || serverBinaryDir;
+
+    const args = this.buildServerArgs(modelArgv.paths[0], options);
     const shownArgs = args.map((arg) => maskRequestPath(arg, requestPathPrefix));
 
     debugLogger.debug("Starting whisper-server", {
@@ -977,7 +985,7 @@ class WhisperServerManager {
       modelPath,
       serverBinary,
       args: shownArgs,
-      cwd: serverBinaryDir,
+      cwd: serverCwd,
     });
 
     let stderrBuffer = "";
@@ -993,7 +1001,7 @@ class WhisperServerManager {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
         env: spawnEnv,
-        cwd: serverBinaryDir,
+        cwd: serverCwd,
       });
     } catch (error) {
       debugLogger.error("whisper-server spawn failed", {
@@ -1011,6 +1019,8 @@ class WhisperServerManager {
     this.lastSpawn = {
       binary: serverBinary,
       args: shownArgs,
+      // A bare --model file name is relative to this folder.
+      cwd: serverCwd,
       pid: this.process?.pid ?? null,
       forceCpu: this.forceCpu,
       startedAt: Date.now(),
