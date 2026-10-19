@@ -1,49 +1,83 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 /**
- * Drives the compiled windows-key-listener.exe through its `--simulate` seam.
+ * Drives windows-key-listener.exe through its `--simulate` seam.
  *
  * Simulate mode installs no hooks and never samples the real keyboard: it replays
  * scripted events from stdin through the exact same decision function the live
  * low-level hook calls. That makes the compound-hotkey timing behavior testable
  * without automating Kristian's actual keyboard.
+ *
+ * The suite compiles the listener from the current source with the compiler
+ * search `npm run compile:winkeys` uses, so it never tests a stale binary. A
+ * build is reused while the source and that search are unchanged.
  */
 
+const { compileKeyListener } = require("../../../scripts/lib/compile-key-listener");
+
 const projectRoot = path.resolve(__dirname, "..", "..", "..");
-const exePath = path.join(projectRoot, "resources", "bin", "windows-key-listener.exe");
 const sourcePath = path.join(projectRoot, "resources", "windows-key-listener.c");
+const compilerPath = path.join(projectRoot, "scripts", "lib", "compile-key-listener.js");
 
-const COMPILE_HINT =
-  "Rebuild it with: cmd /c '\"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cl /O2 /nologo resources\\windows-key-listener.c /Fe:resources\\bin\\windows-key-listener.exe user32.lib'";
-
-function binaryStatus(): { usable: boolean; reason: string } {
+function buildListener(): { exePath: string; reason: string } {
   if (process.platform !== "win32") {
-    return { usable: false, reason: "not running on Windows" };
+    return { exePath: "", reason: "not running on Windows" };
   }
-  if (!fs.existsSync(exePath)) {
-    return { usable: false, reason: `${exePath} does not exist` };
+
+  const hash = crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(sourcePath))
+    .update(fs.readFileSync(compilerPath))
+    .digest("hex")
+    .slice(0, 16);
+  const exePath = path.join(os.tmpdir(), `pt-key-listener-${hash}.exe`);
+  if (fs.existsSync(exePath)) {
+    return { exePath, reason: "" };
   }
-  if (fs.existsSync(sourcePath)) {
-    const exeStat = fs.statSync(exePath);
-    const sourceStat = fs.statSync(sourcePath);
-    if (exeStat.mtimeMs < sourceStat.mtimeMs) {
-      return { usable: false, reason: `${exePath} is older than windows-key-listener.c` };
+
+  // Build beside the final name and rename, so a parallel run never starts a
+  // half-written binary.
+  const staging = path.join(os.tmpdir(), `pt-key-listener-${hash}-${process.pid}.exe`);
+  const { compiler, failures } = compileKeyListener({
+    source: sourcePath,
+    output: staging,
+    quiet: true,
+  });
+  if (!compiler) {
+    // A missing compiler skips the suite; a source that does not compile fails it.
+    if (failures.length > 0) {
+      throw new Error(
+        `windows-key-listener.c did not compile:\n${failures
+          .map(
+            (failure: { compiler: string; output: string }) =>
+              `${failure.compiler}:\n${failure.output}`
+          )
+          .join("\n\n")}`
+      );
     }
+    return {
+      exePath: "",
+      reason: "no C compiler found. Install Visual Studio Build Tools with the C++ workload",
+    };
   }
-  return { usable: true, reason: "" };
+  try {
+    fs.renameSync(staging, exePath);
+  } catch {
+    // Another run got there first; its binary comes from the same source.
+    if (!fs.existsSync(exePath)) return { exePath: staging, reason: "" };
+    fs.rmSync(staging, { force: true });
+  }
+  return { exePath, reason: "" };
 }
 
-const status = binaryStatus();
-if (!status.usable) {
-  // Staleness must never fail the suite - it only means nobody compiled the fix yet.
-  console.warn(
-    `[windowsKeyListener.simulate] Skipping: ${status.reason}. ${
-      process.platform === "win32" ? COMPILE_HINT : ""
-    }`
-  );
+const { exePath, reason } = buildListener();
+if (!exePath) {
+  console.warn(`[windowsKeyListener.simulate] Skipping: ${reason}.`);
 }
 
 /**
@@ -102,7 +136,7 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
   });
 }
 
-describe.skipIf(!status.usable)("windows-key-listener --simulate", () => {
+describe.skipIf(!exePath)("windows-key-listener --simulate", () => {
   test("ordered press still works: modifier first, then trigger", async () => {
     const events = await runScript("CommandOrControl+Space", [
       "DOWN LCTRL 0",
