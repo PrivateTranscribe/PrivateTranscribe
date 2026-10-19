@@ -1,4 +1,8 @@
 const { execFileSync } = require("child_process");
+const crypto = require("crypto");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
 // Electron's `getLoginItemSettings` is not trustworthy on Windows:
 // `executableWillLaunchAtLogin` reports true for an installed app that has no Run entry at
@@ -18,16 +22,84 @@ const APPROVED_KEY = [
   "Run",
 ].join("\\");
 
-/** Parse `reg query` stdout into { name, type, data } rows. */
-function parseRegQuery(output) {
-  const rows = [];
-  for (const rawLine of String(output || "").split("\n")) {
-    const line = rawLine.replace(/\r$/, "");
-    // reg.exe separates the three columns with runs of four spaces.
-    const match = line.match(/^ {4}(.+?) {4}(REG_[A-Z_]+) {4}(.*)$/);
-    if (match) {
-      rows.push({ name: match[1], type: match[2], data: match[3] });
+// The `hex(n):` value types in a .reg file that we read back; others are skipped.
+const HEX_VALUE_TYPES = {
+  "": "REG_BINARY",
+  1: "REG_SZ",
+  2: "REG_EXPAND_SZ",
+  7: "REG_MULTI_SZ",
+};
+
+/** A "quoted" .reg string starting at `start`, unescaped, and the index after it. */
+function readQuoted(text, start) {
+  let value = "";
+  for (let i = start + 1; i < text.length; i += 1) {
+    if (text[i] === "\\" && i + 1 < text.length) {
+      i += 1;
+      value += text[i];
+    } else if (text[i] === '"') {
+      return { value, end: i + 1 };
+    } else {
+      value += text[i];
     }
+  }
+  return null;
+}
+
+function parseValueLine(line) {
+  let name = "";
+  let data;
+  if (line.startsWith("@=")) {
+    data = line.slice(2);
+  } else if (line.startsWith('"')) {
+    const quoted = readQuoted(line, 0);
+    if (!quoted || line[quoted.end] !== "=") return null;
+    name = quoted.value;
+    data = line.slice(quoted.end + 1);
+  } else {
+    return null;
+  }
+
+  if (data.startsWith('"')) {
+    const quoted = readQuoted(data, 0);
+    return quoted ? { name, type: "REG_SZ", data: quoted.value } : null;
+  }
+
+  const hex = data.match(/^hex(?:\(([0-9a-f]+)\))?:([0-9a-f,]*)$/i);
+  const type = hex && HEX_VALUE_TYPES[hex[1] || ""];
+  if (!type) return null;
+  const bytes = Buffer.from(hex[2].replace(/,/g, ""), "hex");
+  // Binary keeps the bare hex string `reg query` used to print; text is UTF-16.
+  return type === "REG_BINARY"
+    ? { name, type, data: bytes.toString("hex").toUpperCase() }
+    : { name, type, data: bytes.toString("utf16le").replace(/\0+$/, "") };
+}
+
+/**
+ * Parse `reg export` output into { name, type, data } rows for the exported key.
+ * Its subkeys follow in later [sections] and are left out.
+ */
+function parseRegExport(text) {
+  const lines = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/);
+  const rows = [];
+  let sections = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    let line = lines[i];
+    if (line.startsWith("[")) {
+      sections += 1;
+      if (sections > 1) break;
+      continue;
+    }
+    if (sections === 0) continue;
+    // Long hex values wrap: a line ending in ",\" continues on the next one.
+    while (line.endsWith(",\\") && i + 1 < lines.length) {
+      i += 1;
+      line = line.slice(0, -1) + lines[i].trim();
+    }
+    const row = parseValueLine(line);
+    if (row) rows.push(row);
   }
   return rows;
 }
@@ -71,13 +143,27 @@ function isApprovedBinary(hex) {
   return Number.isNaN(firstByte) ? true : (firstByte & 1) === 0;
 }
 
+/**
+ * The key's values as `reg export` writes them: UTF-16 text in the Registry Editor format.
+ *
+ * Not `reg query`, which writes the OEM code page (850 on Danish Windows). Read as UTF-8,
+ * a Run entry under C:\Users\Søren came back with a replacement character for the "ø" and
+ * never matched our executable, so the app re-registered and re-approved itself at every
+ * launch and the toggle read off. Letters outside that code page, such as Ω or 李, cannot be
+ * recovered from it at all.
+ */
 function defaultRegReader(key) {
-  return execFileSync("reg", ["query", key], {
-    encoding: "utf8",
-    timeout: 5000,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  const file = path.join(os.tmpdir(), `privatetranscribe-reg-${crypto.randomUUID()}.reg`);
+  try {
+    execFileSync("reg", ["export", key, file, "/y"], {
+      timeout: 5000,
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    return fs.readFileSync(file).toString("utf16le");
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
 }
 
 /**
@@ -92,7 +178,7 @@ function readAutoStartRegistryState({ execPath, readKey = defaultRegReader } = {
 
   let runRows;
   try {
-    runRows = parseRegQuery(readKey(RUN_KEY));
+    runRows = parseRegExport(readKey(RUN_KEY));
   } catch {
     // A missing Run key throws in reg.exe the same way a real failure does. Treating it as
     // "unreadable" is the safe reading: callers fall back rather than guess.
@@ -106,7 +192,9 @@ function readAutoStartRegistryState({ execPath, readKey = defaultRegReader } = {
 
   let approved = true;
   try {
-    const approvedRow = parseRegQuery(readKey(APPROVED_KEY)).find((row) => row.name === entry.name);
+    const approvedRow = parseRegExport(readKey(APPROVED_KEY)).find(
+      (row) => row.name === entry.name
+    );
     if (approvedRow) {
       approved = isApprovedBinary(approvedRow.data);
     }
@@ -125,7 +213,8 @@ function registryAutoStartEnabled(state) {
 module.exports = {
   RUN_KEY,
   APPROVED_KEY,
-  parseRegQuery,
+  parseRegExport,
+  defaultRegReader,
   extractExecutable,
   isApprovedBinary,
   readAutoStartRegistryState,

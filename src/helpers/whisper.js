@@ -11,13 +11,29 @@ const { assignSpeakersToSegments } = require("./diarizationMerge");
 const { normalizeTranscriptText } = require("../utils/textNormalization");
 const { normalizeWhisperLanguage } = require("./whisperLanguage");
 // Attached to the server manager's module export; see whisperServer.js.
-const { createCancelledError } = WhisperServerManager;
+const { createCancelledError, isCancelledError } = WhisperServerManager;
 
 const modelRegistryData = require("../models/modelRegistryData.json");
 
 const CACHE_TTL_MS = 30000;
 const MIN_VALID_MODEL_BYTES = 1_000_000;
 const MIN_EXPECTED_MODEL_RATIO = 0.9;
+const MAX_SPEAKER_LABELS_ERROR_CHARS = 240;
+
+/**
+ * The reason the Transcribe page gives when speaker labels failed. One line:
+ * some errors carry a tool's whole output after the first.
+ */
+function describeSpeakerLabelsFailure(error) {
+  const firstLine = String(error?.message || error || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return "The speaker engine failed without saying why.";
+  return firstLine.length > MAX_SPEAKER_LABELS_ERROR_CHARS
+    ? `${firstLine.slice(0, MAX_SPEAKER_LABELS_ERROR_CHARS - 3)}...`
+    : firstLine;
+}
 
 function getWhisperModelConfig(modelName) {
   const modelInfo = modelRegistryData.whisperModels[modelName];
@@ -651,24 +667,44 @@ class WhisperManager {
       if (typeof onProgress === "function") {
         onProgress({ stage: "diarizing", percentage: 0 });
       }
-      const inputBuffer = await this.audioBlobToBuffer(audioBlob);
-      const wavBuffer = await this.serverManager.convertToDiarizationWav(
-        inputBuffer,
-        options.inputFileName,
-        {
-          noiseReduction: options.noiseReduction === true,
-        }
-      );
-      const diarization = await this.diarizationManager.diarizeWavBufferInWorker(wavBuffer, {
-        expectedSpeakers: options.expectedSpeakers,
-        threshold: options.diarizationThreshold,
-        signal: options.signal,
-      });
-      if (options.signal?.aborted) throw createCancelledError();
+      let diarization;
+      let segments;
+      try {
+        const inputBuffer = await this.audioBlobToBuffer(audioBlob);
+        const wavBuffer = await this.serverManager.convertToDiarizationWav(
+          inputBuffer,
+          options.inputFileName,
+          {
+            noiseReduction: options.noiseReduction === true,
+          }
+        );
+        diarization = await this.diarizationManager.diarizeWavBufferInWorker(wavBuffer, {
+          expectedSpeakers: options.expectedSpeakers,
+          threshold: options.diarizationThreshold,
+          signal: options.signal,
+        });
+        if (options.signal?.aborted) throw createCancelledError();
+        segments = assignSpeakersToSegments(result.segments, diarization.segments);
+      } catch (error) {
+        if (isCancelledError(error)) throw error;
+        if (options.signal?.aborted) throw createCancelledError();
+        // The transcript is already finished, and on a long file the user
+        // waited minutes for it. A labelling failure costs only the labels: the
+        // text goes back without them, with the reason for the page to show.
+        debugLogger.warn("Speaker labels failed, returning the transcript without them", {
+          error: error?.message || String(error),
+        });
+        return {
+          ...result,
+          model,
+          speakerDetectionActive: false,
+          speakerDetectionMode: "off",
+          speakerLabelsError: describeSpeakerLabelsFailure(error),
+        };
+      }
       if (typeof onProgress === "function") {
         onProgress({ stage: "diarizing", percentage: 100 });
       }
-      const segments = assignSpeakersToSegments(result.segments, diarization.segments);
       return {
         ...result,
         raw: { ...(result.raw || {}), segments },

@@ -290,7 +290,13 @@ export function getReasoningModelLabel(modelId: string): string {
   return model?.fullLabel || modelId;
 }
 
-export function getModelProvider(modelId: string): string {
+/**
+ * The provider a cleanup request goes to. A custom endpoint takes whatever
+ * names its server lists, such as "openai/gpt-oss-20b" or "qwen3:8b", so once
+ * it is the saved provider the name is not read at all.
+ */
+export function getModelProvider(modelId: string, selectedProvider?: string | null): string {
+  if (selectedProvider === "custom") return "custom";
   if (modelId === "claude-code") return "claude-code";
   const model = getAllReasoningModels().find((m) => m.value === modelId);
 
