@@ -635,6 +635,18 @@ class AudioManager {
   }
 
   getTranscriptionSetting(key, fallback = "") {
+    // Every window of the app shares localStorage and every settings control
+    // writes it, so it always holds the live value. The broadcast snapshot only
+    // moves when a control broadcasts, and the language, translate and custom
+    // URL controls do not. Read first, the snapshot kept their old values until
+    // a restart, so it is only the fallback for a key localStorage lacks.
+    if (typeof localStorage !== "undefined") {
+      const storedValue = localStorage.getItem(key);
+      if (storedValue !== null) {
+        return storedValue;
+      }
+    }
+
     if (
       this.transcriptionSettingsSnapshot &&
       Object.prototype.hasOwnProperty.call(this.transcriptionSettingsSnapshot, key)
@@ -642,13 +654,6 @@ class AudioManager {
       const snapshotValue = this.transcriptionSettingsSnapshot[key];
       if (snapshotValue !== undefined && snapshotValue !== null) {
         return snapshotValue;
-      }
-    }
-
-    if (typeof localStorage !== "undefined") {
-      const storedValue = localStorage.getItem(key);
-      if (storedValue !== null) {
-        return storedValue;
       }
     }
 
