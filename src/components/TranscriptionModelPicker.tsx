@@ -672,6 +672,7 @@ export default function TranscriptionModelPicker({
   if (savedBase !== cloudTranscriptionBaseUrl) {
     setSavedBase(cloudTranscriptionBaseUrl);
     setCustomBaseDraft(cloudTranscriptionBaseUrl);
+    setCustomBaseError(null);
   }
 
   const handleBaseUrlBlur = useCallback(() => {

@@ -37,4 +37,11 @@ describe("custom transcription address field", () => {
     expect(save).toBeGreaterThan(check);
     expect(blur).toContain("setCustomBaseError(");
   });
+
+  it("drops an old refusal when the saved address changes elsewhere", () => {
+    const sync =
+      source().split("if (savedBase !== cloudTranscriptionBaseUrl) {")[1]?.split("}")[0] ?? "";
+    expect(sync).toContain("setCustomBaseDraft(cloudTranscriptionBaseUrl)");
+    expect(sync).toContain("setCustomBaseError(null)");
+  });
 });
