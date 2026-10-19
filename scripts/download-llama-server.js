@@ -9,6 +9,7 @@ const {
   parseArgs,
   setExecutable,
   cleanupFiles,
+  verifySha256,
 } = require("./lib/download-utils");
 
 const LLAMA_CPP_REPO = "ggml-org/llama.cpp";
@@ -24,38 +25,50 @@ const LLAMA_CPP_REPO = "ggml-org/llama.cpp";
  * build is reproducible, and a new upstream binary lands in a signed installer
  * by decision rather than by timing.
  *
+ * The tag alone does not pin the bytes: a release's assets can be replaced
+ * under the same tag, and the release job signs llama-server and its DLLs. So
+ * each archive is checked against its SHA-256 in BINARIES before it is
+ * extracted, and a mismatch fails the build.
+ *
  * To bump: pick a tag from https://github.com/ggml-org/llama.cpp/releases,
- * confirm it carries the bin assets for every platform in BINARIES below, and
- * change this line. b10566 is what upstream's own nightly pointer named at the
- * time of pinning.
+ * confirm it carries the bin assets for every platform in BINARIES below,
+ * download each, hash it (`certutil -hashfile <archive> SHA256`), compare with
+ * the asset's digest on GitHub, and change this line and all four hashes
+ * together. b10566 is what upstream's own nightly pointer named at the time of
+ * pinning.
  */
 const PINNED_VERSION = "b10566";
 
-// Overridable so a different build can be tried without editing the pin.
+// Overridable so a different build can be tried without editing the pin. Its
+// archives must still match the hashes below, so a real switch updates those too.
 const VERSION = process.env.LLAMA_CPP_VERSION || PINNED_VERSION;
 
 // Asset name patterns to match in the release (version-independent)
 const BINARIES = {
   "darwin-arm64": {
     assetPattern: /^llama-.*-bin-macos-arm64\.tar\.gz$/,
+    sha256: "533f546dab2ce2f8e29ce3070f26acc55acc59528e177f2cd0d52b7f69b44f50",
     binaryPath: "build/bin/llama-server",
     outputName: "llama-server-darwin-arm64",
     libPattern: "*.dylib",
   },
   "darwin-x64": {
     assetPattern: /^llama-.*-bin-macos-x64\.tar\.gz$/,
+    sha256: "968669b2ec00acf9804e325b51180014d09939894202d44206b4a190d9ef0369",
     binaryPath: "build/bin/llama-server",
     outputName: "llama-server-darwin-x64",
     libPattern: "*.dylib",
   },
   "win32-x64": {
     assetPattern: /^llama-.*-bin-win-cpu-x64\.zip$/,
+    sha256: "594f822c829ea097e1f0528a2b5b9f9953dd00254b48c44438104ddfb87a1ab9",
     binaryPath: "build/bin/llama-server.exe",
     outputName: "llama-server-win32-x64.exe",
     libPattern: "*.dll",
   },
   "linux-x64": {
     assetPattern: /^llama-.*-bin-ubuntu-x64\.tar\.gz$/,
+    sha256: "0c34561d623299c113e46f9fdd97bff5b219b25554243a21a243aebc81253ea1",
     binaryPath: "build/bin/llama-server",
     outputName: "llama-server-linux-x64",
     libPattern: "*.so*",
@@ -134,6 +147,7 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
 
   try {
     await downloadFile(asset.url, zipPath);
+    verifySha256(zipPath, config.sha256);
 
     const extractDir = path.join(BIN_DIR, `temp-llama-${platformArch}`);
     fs.mkdirSync(extractDir, { recursive: true });
