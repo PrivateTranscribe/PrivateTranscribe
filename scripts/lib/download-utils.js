@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
@@ -255,6 +256,24 @@ function downloadFile(url, dest, retryCount = 0) {
   });
 }
 
+/**
+ * Throws unless the file's SHA-256 is `expected`. Use it before extracting or
+ * running anything downloaded: a pinned tag alone does not pin the bytes, since
+ * a release's assets can be replaced under the same tag.
+ * @param {string} filePath
+ * @param {string} expected - lowercase hex SHA-256
+ */
+function verifySha256(filePath, expected) {
+  const name = path.basename(filePath);
+  if (!/^[0-9a-f]{64}$/.test(expected || "")) {
+    throw new Error(`No SHA-256 is pinned for ${name}`);
+  }
+  const actual = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+  if (actual !== expected) {
+    throw new Error(`SHA-256 mismatch for ${name}: expected ${expected}, got ${actual}`);
+  }
+}
+
 function extractZip(zipPath, destDir) {
   if (process.platform === "win32") {
     execSync(`tar -xf "${zipPath}" -C "${destDir}"`, { stdio: "inherit" });
@@ -353,4 +372,5 @@ module.exports = {
   parseArgs,
   setExecutable,
   cleanupFiles,
+  verifySha256,
 };

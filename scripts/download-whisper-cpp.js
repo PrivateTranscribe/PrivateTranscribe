@@ -4,35 +4,54 @@ const path = require("path");
 const {
   downloadFile,
   extractZip,
-  fetchLatestRelease,
   parseArgs,
   setExecutable,
   cleanupFiles,
+  verifySha256,
 } = require("./lib/download-utils");
 
 const WHISPER_CPP_REPO = "OpenWhispr/whisper.cpp";
 
-// Version can be pinned via environment variable for reproducible builds
-const VERSION_OVERRIDE = process.env.WHISPER_CPP_VERSION || null;
+/**
+ * The whisper.cpp release this product ships, and the SHA-256 of each archive
+ * below.
+ *
+ * Pinned and checked, not tracked. OpenWhispr/whisper.cpp is a third-party
+ * fork, and the release job runs and signs whatever this script fetches. It
+ * used to take that fork's latest release with no check of the bytes, so a new
+ * upload reached a signed installer by timing rather than by decision. Now an
+ * archive whose hash differs from the one recorded here is deleted before it
+ * is extracted, and the script exits with an error, which fails the build.
+ *
+ * 0.0.10 is the release PrivateTranscribe 0.23.0 shipped. To bump: pick a tag
+ * from https://github.com/OpenWhispr/whisper.cpp/releases, download each
+ * archive below, hash it (`certutil -hashfile <zip> SHA256`), compare with the
+ * asset's digest on GitHub, and change the tag and all four hashes together.
+ */
+const PINNED_VERSION = "0.0.10";
 
 const BINARIES = {
   "darwin-arm64": {
     zipName: "whisper-server-darwin-arm64.zip",
+    sha256: "6a5f794e42549d61e7b46e1c1f296f05ec6569bfcb81b7e39c14860021f477de",
     binaryName: "whisper-server-darwin-arm64",
     outputName: "whisper-server-darwin-arm64",
   },
   "darwin-x64": {
     zipName: "whisper-server-darwin-x64.zip",
+    sha256: "000395055f5cf058562e4fb8a882b679657beb02d6cbd890cb336fa789365e14",
     binaryName: "whisper-server-darwin-x64",
     outputName: "whisper-server-darwin-x64",
   },
   "win32-x64": {
     zipName: "whisper-server-win32-x64-cpu.zip",
+    sha256: "360c35ae259c75d8846de97fd0db499448ed019c04fb96dc3807ededd8b41f3f",
     binaryName: "whisper-server-win32-x64-cpu.exe",
     outputName: "whisper-server-win32-x64.exe",
   },
   "linux-x64": {
     zipName: "whisper-server-linux-x64-cpu.zip",
+    sha256: "d10561f59eabb6e3273d721bc31e17092aa30ec543d9f3931e8ae04c58be6dd4",
     binaryName: "whisper-server-linux-x64-cpu",
     outputName: "whisper-server-linux-x64",
   },
@@ -40,26 +59,13 @@ const BINARIES = {
 
 const BIN_DIR = path.join(__dirname, "..", "resources", "bin");
 
-// Cache the release info to avoid multiple API calls
-let cachedRelease = null;
-
-async function getRelease() {
-  if (cachedRelease) return cachedRelease;
-
-  if (VERSION_OVERRIDE) {
-    cachedRelease = await fetchLatestRelease(WHISPER_CPP_REPO, { tagPrefix: VERSION_OVERRIDE });
-  } else {
-    cachedRelease = await fetchLatestRelease(WHISPER_CPP_REPO);
-  }
-  return cachedRelease;
+// The release page's own download address. A pinned tag needs no API lookup,
+// which also spares the anonymous api.github.com rate limit.
+function getDownloadUrl(zipName) {
+  return `https://github.com/${WHISPER_CPP_REPO}/releases/download/${PINNED_VERSION}/${zipName}`;
 }
 
-function getDownloadUrl(release, zipName) {
-  const asset = release?.assets?.find((a) => a.name === zipName);
-  return asset?.url || null;
-}
-
-async function downloadBinary(platformArch, config, release, isForce = false) {
+async function downloadBinary(platformArch, config, isForce = false) {
   if (!config) {
     console.log(`  [server] ${platformArch}: Not supported`);
     return false;
@@ -72,17 +78,14 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
     return true;
   }
 
-  const url = getDownloadUrl(release, config.zipName);
-  if (!url) {
-    console.error(`  [server] ${platformArch}: Asset ${config.zipName} not found in release`);
-    return false;
-  }
+  const url = getDownloadUrl(config.zipName);
   console.log(`  [server] ${platformArch}: Downloading from ${url}`);
 
   const zipPath = path.join(BIN_DIR, config.zipName);
 
   try {
     await downloadFile(url, zipPath);
+    verifySha256(zipPath, config.sha256);
 
     const extractDir = path.join(BIN_DIR, `temp-whisper-${platformArch}`);
     fs.mkdirSync(extractDir, { recursive: true });
@@ -119,36 +122,20 @@ async function downloadBinary(platformArch, config, release, isForce = false) {
 
 async function main() {
   // `npm run dev` runs this on every start, so a present engine must not need the network.
-  const early = parseArgs();
-  const currentConfig = early.isCurrent ? BINARIES[early.platformArch] : null;
+  const args = parseArgs();
+  const currentConfig = args.isCurrent ? BINARIES[args.platformArch] : null;
   if (
     currentConfig &&
-    !early.isForce &&
+    !args.isForce &&
     fs.existsSync(path.join(BIN_DIR, currentConfig.outputName))
   ) {
-    console.log(`[whisper-server] ${early.platformArch}: Already present, skipping the download`);
+    console.log(`[whisper-server] ${args.platformArch}: Already present, skipping the download`);
     return;
   }
 
-  if (VERSION_OVERRIDE) {
-    console.log(`\n[whisper-server] Using pinned version: ${VERSION_OVERRIDE}`);
-  } else {
-    console.log("\n[whisper-server] Fetching latest release...");
-  }
-  const release = await getRelease();
-
-  if (!release) {
-    console.error(`[whisper-server] Could not fetch release from ${WHISPER_CPP_REPO}`);
-    console.log(`\nMake sure release exists: https://github.com/${WHISPER_CPP_REPO}/releases`);
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(`\nDownloading whisper-server binaries (${release.tag})...\n`);
+  console.log(`\nDownloading whisper-server binaries (${PINNED_VERSION})...\n`);
 
   fs.mkdirSync(BIN_DIR, { recursive: true });
-
-  const args = parseArgs();
 
   if (args.isCurrent) {
     if (!BINARIES[args.platformArch]) {
@@ -158,12 +145,7 @@ async function main() {
     }
 
     console.log(`Downloading for target platform (${args.platformArch}):`);
-    const ok = await downloadBinary(
-      args.platformArch,
-      BINARIES[args.platformArch],
-      release,
-      args.isForce
-    );
+    const ok = await downloadBinary(args.platformArch, BINARIES[args.platformArch], args.isForce);
     if (!ok) {
       console.error(`Failed to download binaries for ${args.platformArch}`);
       process.exitCode = 1;
@@ -176,7 +158,9 @@ async function main() {
   } else {
     console.log("Downloading binaries for all platforms:");
     for (const platformArch of Object.keys(BINARIES)) {
-      await downloadBinary(platformArch, BINARIES[platformArch], release, args.isForce);
+      if (!(await downloadBinary(platformArch, BINARIES[platformArch], args.isForce))) {
+        process.exitCode = 1;
+      }
     }
   }
 
@@ -195,4 +179,11 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`[whisper-server] ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { BINARIES, PINNED_VERSION, downloadBinary, getDownloadUrl, main };

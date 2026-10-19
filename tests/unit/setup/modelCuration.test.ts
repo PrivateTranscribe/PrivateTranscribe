@@ -171,11 +171,14 @@ describe("Model curation invariants", () => {
       expect(JSON.stringify(pkg.scripts)).not.toContain("sherpa-onnx");
     });
 
-    it("download-whisper-cpp.js respects WHISPER_CPP_VERSION env override", () => {
+    it("download-whisper-cpp.js takes its pinned release, not latest or an override", () => {
+      // Every archive is checked against a hash recorded for the pinned tag, so
+      // another release could only fail that check. tests/unit/scripts covers it.
       const scriptPath = path.join(process.cwd(), "scripts", "download-whisper-cpp.js");
       const contents = fs.readFileSync(scriptPath, "utf8");
 
-      expect(contents).toMatch(/process\.env\.WHISPER_CPP_VERSION/);
+      expect(contents).not.toMatch(/fetchLatestRelease/);
+      expect(contents).not.toMatch(/process\.env\.WHISPER_CPP_VERSION/);
     });
   });
 });
