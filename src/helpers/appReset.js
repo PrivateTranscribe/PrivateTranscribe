@@ -40,11 +40,13 @@ const MAX_REPORTED_PATHS = 50;
 const MAX_LISTED_PATHS = 12;
 
 /**
- * Model caches a reset clears. Privoca and dictatevoice are this app's earlier
- * names; `whisper` is the legacy Whisper cache the reset has always cleared.
+ * Model caches a reset clears: only folders this app created. Privoca and
+ * dictatevoice are its earlier names. `~/.cache/whisper` is not on the list.
+ * It is Python Whisper's own model folder, which no build of this app wrote
+ * to, so a reset there would delete another program's models.
  */
 function modelCacheDirs(homeDir) {
-  return ["PrivateTranscribe", "Privoca", "dictatevoice", "whisper"].map((name) =>
+  return ["PrivateTranscribe", "Privoca", "dictatevoice"].map((name) =>
     path.join(homeDir, ".cache", name)
   );
 }

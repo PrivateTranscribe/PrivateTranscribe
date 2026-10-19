@@ -101,6 +101,16 @@ describe("app data reset", () => {
     expect(fs.existsSync(path.join(home, ".cache", "PrivateTranscribe"))).toBe(false);
   });
 
+  it("leaves Python Whisper's model folder alone", async () => {
+    // ~/.cache/whisper belongs to Python Whisper; this app never stored models there.
+    const pythonModel = write(home, ".cache/whisper/large-v3.pt");
+
+    await requestAppReset({ userDataPath: userData, homeDir: home });
+    finishPendingReset(userData);
+
+    expect(fs.existsSync(pythonModel)).toBe(true);
+  });
+
   it("carries on past a file it cannot delete and names exactly that file", async () => {
     await requestAppReset({ userDataPath: userData, homeDir: home });
     const lockedLog = path.join(userData, "logs", "debug-2026-10-19T10-00-00.log");
