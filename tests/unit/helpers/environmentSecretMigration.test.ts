@@ -38,7 +38,7 @@ function makeRuntime() {
 
 async function loadManager() {
   const mod = await import("../../../src/helpers/environment.js");
-  return (mod.default ?? mod) as new (runtime: unknown) => unknown;
+  return (mod.default ?? mod) as new (runtime: unknown) => { getOpenAIKey: () => string };
 }
 
 const SECRET_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY"];
@@ -73,10 +73,11 @@ describe("EnvironmentManager clear-text secret migration", () => {
     );
 
     const EnvironmentManager = await loadManager();
-    new EnvironmentManager(makeRuntime());
+    const manager = new EnvironmentManager(makeRuntime());
 
-    // Key still usable in this process.
-    expect(process.env.OPENAI_API_KEY).toBe("sk-legacy-secret");
+    // Key still usable in this process, and not handed to child processes.
+    expect(manager.getOpenAIKey()).toBe("sk-legacy-secret");
+    expect(process.env.OPENAI_API_KEY).toBeUndefined();
 
     // No longer sitting in clear text.
     const plain = fs.readFileSync(envPath(), "utf8");
@@ -96,11 +97,11 @@ describe("EnvironmentManager clear-text secret migration", () => {
     encryptShouldThrow = true;
 
     const EnvironmentManager = await loadManager();
-    new EnvironmentManager(makeRuntime());
+    const manager = new EnvironmentManager(makeRuntime());
 
     // Migration must not scrub what it could not encrypt.
     expect(fs.readFileSync(envPath(), "utf8")).toContain("sk-legacy-secret");
-    expect(process.env.OPENAI_API_KEY).toBe("sk-legacy-secret");
+    expect(manager.getOpenAIKey()).toBe("sk-legacy-secret");
   });
 
   it("leaves the plain file alone when it holds no secrets", async () => {
