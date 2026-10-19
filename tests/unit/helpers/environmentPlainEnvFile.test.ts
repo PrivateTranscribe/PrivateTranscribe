@@ -199,7 +199,7 @@ describe("EnvironmentManager plain .env rewrite", () => {
     expect(fs.readFileSync(storePath(), "utf8")).toContain("sk-legacy-secret");
   });
 
-  it("writes a secret once, from process.env, when encryption is unavailable", async () => {
+  it("writes a saved secret once when encryption is unavailable", async () => {
     encryptionAvailable = false;
     writeEnvFile("PT_LOG_LEVEL=debug\nOPENAI_API_KEY=sk-legacy-secret\n");
     const manager = await createManager();

@@ -5,6 +5,11 @@ const fs = require("fs");
  * API keys that contain secrets and must be stored encrypted.
  * Everything else (provider selection, model names, hotkeys) is non-sensitive
  * and continues to live in a plain .env file.
+ *
+ * A saved key lives in the manager's memory, never in process.env: every child
+ * process inherits process.env, and Converse runs the user's own Claude Code,
+ * whose commands would read it there. process.env keeps the user's own values
+ * as the app was started with them, which the getters fall back to.
  */
 const SECRET_ENV_KEYS = new Set([
   "OPENAI_API_KEY",
@@ -41,6 +46,8 @@ class EnvironmentManager {
     this._encryptedStorePath = path.join(app.getPath("userData"), "keys.enc");
     this._plainEnvPath = path.join(app.getPath("userData"), ".env");
     this._encryptionAvailable = safeStorage.isEncryptionAvailable();
+    /** The keys saved in the app, by SECRET_ENV_KEYS name. */
+    this._secrets = new Map();
     this.loadEnvironmentVariables();
   }
 
@@ -98,9 +105,9 @@ class EnvironmentManager {
   }
 
   /**
-   * Attempt to load the encrypted key store and populate process.env.
+   * Attempt to load the encrypted key store into the saved keys.
    * Silently ignores a missing file (first run) or a corrupt file (returns
-   * early so existing process.env values from the .env fallback stand).
+   * early so the keys from the .env fallback stand).
    */
   _loadEncryptedStore() {
     try {
@@ -111,7 +118,7 @@ class EnvironmentManager {
       if (parsed && typeof parsed === "object") {
         for (const [key, value] of Object.entries(parsed)) {
           if (SECRET_ENV_KEYS.has(key) && typeof value === "string") {
-            process.env[key] = value;
+            this._secrets.set(key, value);
           }
         }
       }
@@ -121,14 +128,15 @@ class EnvironmentManager {
   }
 
   /**
-   * Write all current secret values to the encrypted store.
+   * Write the saved keys to the encrypted store. A key the user set in their
+   * own environment is not one of them, so it is never copied in.
    * Called after every key save to keep the store in sync.
    */
   _persistEncryptedStore() {
     if (!this._encryptionAvailable) return false;
     const secrets = {};
-    for (const key of SECRET_ENV_KEYS) {
-      if (process.env[key]) secrets[key] = process.env[key];
+    for (const [key, value] of this._secrets) {
+      if (value) secrets[key] = value;
     }
     try {
       const cipherBuf = this._safeStorage.encryptString(JSON.stringify(secrets));
@@ -145,8 +153,21 @@ class EnvironmentManager {
   /**
    * Load the plain .env file.  Tries the userData path first; on first run the
    * file won't exist there, so falls back to legacy development/resource paths.
+   * dotenv never replaces a variable that is already set, so a key the user set
+   * themselves wins over the file, as before. A key the file adds becomes a
+   * saved key and leaves process.env again.
    */
   _loadPlainEnvFile() {
+    const ownKeys = [...SECRET_ENV_KEYS].filter((key) => process.env[key] !== undefined);
+    this._readPlainEnvCandidates();
+    for (const key of SECRET_ENV_KEYS) {
+      if (ownKeys.includes(key) || process.env[key] === undefined) continue;
+      this._secrets.set(key, process.env[key]);
+      delete process.env[key];
+    }
+  }
+
+  _readPlainEnvCandidates() {
     const candidates = [
       this._plainEnvPath,
       // Development
@@ -196,7 +217,8 @@ class EnvironmentManager {
     // so that API keys survive restarts even without OS-keychain support.
     if (!this._encryptionAvailable) {
       for (const key of SECRET_ENV_KEYS) {
-        if (process.env[key]) lines.push(`${key}=${sanitizeEnvValue(process.env[key])}`);
+        const value = this._secrets.get(key);
+        if (value) lines.push(`${key}=${sanitizeEnvValue(value)}`);
       }
     }
 
@@ -245,16 +267,20 @@ class EnvironmentManager {
   // Internal helpers
   // ──────────────────────────────────────────────────────────────────────────
 
+  /** A saved key, else the user's own variable of that name. */
   _getKey(envVarName) {
+    if (this._secrets.has(envVarName)) return this._secrets.get(envVarName) || "";
     return process.env[envVarName] || "";
   }
 
   _saveKey(envVarName, key) {
-    process.env[envVarName] = key;
     if (SECRET_ENV_KEYS.has(envVarName)) {
+      this._secrets.set(envVarName, key);
       this._persistEncryptedStore();
       // Also update the plain file so non-encryption fallback stays current.
       if (!this._encryptionAvailable) this._persistPlainEnvFile();
+    } else {
+      process.env[envVarName] = key;
     }
     return { success: true };
   }
