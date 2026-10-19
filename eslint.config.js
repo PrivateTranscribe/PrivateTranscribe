@@ -22,8 +22,10 @@ module.exports = [
       "src/**", // src has its own config
     ],
   },
-  // Main process files (CommonJS)
+  // Main process files (CommonJS). src/eslint.config.js applies this block, by
+  // name, to the CommonJS files in src.
   {
+    name: "main-process",
     files: ["**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,

@@ -136,6 +136,6 @@ Releases run from `main` through `release.yml`. Its build job waits in the prote
 
 ## Code style
 
-- Prettier and ESLint configs are the source of truth; `npm run format` applies both. The root `eslint.config.js` covers the CommonJS main process, `src/eslint.config.js` the React and TypeScript renderer.
+- Prettier and ESLint configs are the source of truth; `npm run format` applies both. The root `eslint.config.js` lints everything outside `src/`. `src/eslint.config.js` lints all of `src/`: the React and TypeScript renderer, plus every CommonJS file there (a `.cjs`, or a `.js` with no top-level `import` or `export`) under the root's `main-process` rules.
 - New React components are TypeScript (`.tsx`). Main-process helpers are plain CommonJS JavaScript.
 - `@` resolves to `src/` in Vite builds.

@@ -23,9 +23,9 @@ function isCodeLine(line) {
     /^(?:const|let|var)\s+[\w$]+\s*=/.test(text) ||
     /^(?:async\s+)?function\s+[\w$]+\s*\(/.test(text) ||
     /^(?:import\s+.+\s+from\s+["']|(?:def|class)\s+\w+.*[:{]\s*$)/.test(text) ||
-    /^["'][^"']+["']\s*:\s*(?:["'\d{\[]|true\b|false\b|null\b)/.test(text) ||
+    /^["'][^"']+["']\s*:\s*(?:["'\d{[]|true\b|false\b|null\b)/.test(text) ||
     /^[\w$.]+\([^\n]*\);?\s*$/.test(text) ||
-    /^[\s{}\[\]();,`~]+$/.test(text)
+    /^[\s{}[\]();,`~]+$/.test(text)
   );
 }
 

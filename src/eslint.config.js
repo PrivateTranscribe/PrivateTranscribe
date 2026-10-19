@@ -1,8 +1,31 @@
+import fs from "node:fs";
+import path from "node:path";
 import js from "@eslint/js";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
+import rootConfig from "../eslint.config.js";
+
+// src keeps main-process CommonJS beside the renderer's ES modules, mostly in
+// helpers/ and utils/. Tell them apart by syntax, as Node does for a .js file
+// with no package type: a top-level import or export makes an ES module, and
+// any other .js file is CommonJS, like every .cjs file.
+const ES_MODULE_SYNTAX = /^(?:import|export)[\s{*]/m;
+const commonJsFiles = fs
+  .readdirSync(import.meta.dirname, { recursive: true })
+  .map((file) => file.split(path.sep).join("/"))
+  .filter((file) => !file.startsWith("dist/"))
+  .filter(
+    (file) =>
+      file.endsWith(".cjs") ||
+      (file.endsWith(".js") &&
+        !ES_MODULE_SYNTAX.test(fs.readFileSync(path.join(import.meta.dirname, file), "utf8")))
+  );
+
+// The CommonJS files get the same rules as main.js.
+const mainProcess = rootConfig.find((config) => config.name === "main-process");
+if (!mainProcess) throw new Error('The root eslint.config.js has no "main-process" config');
 
 // v7 adds compiler diagnostics to recommended. Keep the v5 Hooks enforcement
 // while exposing the new diagnostics as warnings for incremental adoption.
@@ -58,10 +81,11 @@ const designSystemRules = {
 };
 
 export default [
-  { ignores: ["dist", "helpers/**", "utils/**"] },
+  { ignores: ["dist"] },
   // JS and JSX files (renderer - ES modules)
   {
     files: ["**/*.{js,jsx}"],
+    ignores: commonJsFiles,
     languageOptions: {
       ecmaVersion: 2022,
       globals: {
@@ -94,6 +118,8 @@ export default [
       ...designSystemRules,
     },
   },
+  // Main process files (CommonJS)
+  { ...mainProcess, files: commonJsFiles },
   // TypeScript files
   {
     files: ["**/*.{ts,tsx}"],

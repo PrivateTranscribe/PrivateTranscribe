@@ -299,7 +299,7 @@ function redactUrlCredentials(text) {
 
   // Redact `scheme://user:pass@host` style credentials. Common in database URLs,
   // cloud service DSNs, and dev configs.
-  const urlCredsRegex = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s\/:@]+):([^\s@\/]+)@/gi;
+  const urlCredsRegex = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s/:@]+):([^\s@/]+)@/gi;
 
   return text.replace(urlCredsRegex, "$1$2:[REDACTED]@");
 }

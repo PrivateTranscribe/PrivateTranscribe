@@ -423,7 +423,7 @@ try {
   if ($isPwd -eq $true) { exit 0 }
 } catch {}
 
-$txt = \"\"
+$txt = ""
 
 # Prefer ValuePattern for typical text inputs.
 try {
@@ -433,7 +433,7 @@ try {
 
 # Fallback: element Name for many controls.
 if (-not $txt) {
-  try { $txt = $el.Current.Name } catch { $txt = \"\" }
+  try { $txt = $el.Current.Name } catch { $txt = "" }
 }
 ${textPatternBlock}
 $txt;`;
@@ -479,9 +479,9 @@ using System;
 using System.Text;
 using System.Runtime.InteropServices;
 public class Win32 {
-  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();
-  [DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-  [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
 "@;
 $h = [Win32]::GetForegroundWindow();
