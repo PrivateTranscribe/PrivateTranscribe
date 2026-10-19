@@ -29,7 +29,6 @@ if errorlevel 2 goto done_models
 if exist "%USERPROFILE%\.cache\PrivateTranscribe" rd /s /q "%USERPROFILE%\.cache\PrivateTranscribe"
 if exist "%USERPROFILE%\.cache\Privoca" rd /s /q "%USERPROFILE%\.cache\Privoca"
 if exist "%USERPROFILE%\.cache\dictatevoice" rd /s /q "%USERPROFILE%\.cache\dictatevoice"
-if exist "%USERPROFILE%\.cache\whisper" rd /s /q "%USERPROFILE%\.cache\whisper"
 :done_models
 
 set PROJECT_ENV=%~dp0..\.env

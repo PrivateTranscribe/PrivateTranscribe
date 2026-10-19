@@ -7,7 +7,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 
 const execFileAsync = promisify(execFile);
-const AppUtils = require("../utils");
+const { requestAppReset } = require("./appReset");
 const debugLogger = require("./debugLogger");
 const { isOfficialBuild } = require("./officialBuild");
 const { getSystemPrompt } = require("./prompts");
@@ -428,6 +428,17 @@ class IPCHandlers {
     } catch {
       return [];
     }
+  }
+
+  /** Stop every engine that holds model weights open, so a reset can delete them. */
+  async releaseModelFiles() {
+    this.kokoroManager?.unloadEngine?.();
+    const modelManager = require("./modelManagerBridge").default;
+    await Promise.allSettled([
+      this.whisperManager?.stopServer?.(),
+      this.parakeetManager?.stopServer?.(),
+      modelManager.stopServer(),
+    ]);
   }
 
   _syncStartupEnv(setVars, clearVars = []) {
@@ -1792,15 +1803,25 @@ class IPCHandlers {
     });
 
     // Utility handlers
-    ipcMain.handle("cleanup-app", async (event) => {
-      try {
-        AppUtils.cleanup(this.windowManager.mainWindow);
-        require("electron").app.relaunch();
-        require("electron").app.exit(0);
-        return { success: true, message: "Cleanup completed successfully" };
-      } catch (error) {
-        throw error;
-      }
+    // Reset app data. The data folder cannot be emptied while this process has
+    // its files open, so this only clears the model caches and leaves a marker;
+    // the next start empties the folder before it opens anything there.
+    ipcMain.handle("cleanup-app", async () => {
+      const { cacheSurvivors } = await requestAppReset({
+        userDataPath: app.getPath("userData"),
+        homeDir: app.getPath("home"),
+        releaseModelFiles: () => this.releaseModelFiles(),
+      });
+      debugLogger.info("App data reset requested; restarting to finish it", {
+        modelCacheLeftovers: cacheSurvivors.length,
+      });
+      // Quit the normal way, so before-quit stops everything else that holds a
+      // file, and start again. setImmediate lets this reply reach the renderer.
+      setImmediate(() => {
+        app.relaunch();
+        app.quit();
+      });
+      return { success: true, message: "Restarting to finish the reset" };
     });
 
     ipcMain.handle("update-hotkey", async (event, hotkey) => {

@@ -3519,19 +3519,18 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                           showConfirmDialog({
                             title: "Reset All App Data",
                             description:
-                              "This will permanently delete ALL PrivateTranscribe data including:\n\n- Database and transcriptions\n- Local storage settings\n- Downloaded models\n- Environment files\n\nYou will need to manually remove app permissions in System Settings.\n\nThis action cannot be undone.",
+                              "Deletes your transcription history, settings, saved API keys, logs and downloaded models. PrivateTranscribe restarts to finish and lists anything it could not delete. This cannot be undone.",
                             onConfirm: () => {
                               window.electronAPI
                                 ?.cleanupApp()
                                 .then(() => {
+                                  // The data goes as the app starts again, when
+                                  // nothing has its files open.
                                   showAlertDialog({
-                                    title: "Reset Complete",
+                                    title: "Restarting",
                                     description:
-                                      "All app data has been removed. The app will restart.",
+                                      "PrivateTranscribe deletes your data as it starts again. If anything cannot be deleted, it lists exactly what.",
                                   });
-                                  setTimeout(() => {
-                                    // App handles relaunch automatically
-                                  }, 1000);
                                 })
                                 .catch((error) => {
                                   showAlertDialog({
