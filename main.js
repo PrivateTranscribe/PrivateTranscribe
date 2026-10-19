@@ -36,22 +36,39 @@ if (app.getName() !== APP_NAME) {
   app.setName(APP_NAME);
 }
 
-// Start crash capture before anything else can crash — including window
-// creation and manager startup, which is where a bad launch dies. Dumps stay on
-// the machine; nothing is uploaded. See src/helpers/crashCapture.js for why this
-// exists at all.
-try {
-  require("./src/helpers/crashCapture").startCrashCapture();
-} catch (error) {
-  // A missing crash handler must never be the reason the app fails to start.
-  // debugLogger is not safe to touch this early, so this goes to the console.
-  console.warn("Crash capture unavailable:", error?.message || error);
-}
-
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.exit(0);
+}
+
+// A reset asked for in the last session finishes here, before Crashpad,
+// Chromium, the database or the logger has opened a file in the data folder.
+// Only the instance holding the lock does it, so a second launch can never
+// empty the folder under a running app. See src/helpers/appReset.js.
+let appResetOutcome = null;
+if (gotSingleInstanceLock) {
+  try {
+    appResetOutcome = require("./src/helpers/appReset").finishPendingReset(app.getPath("userData"));
+  } catch (error) {
+    console.warn("Pending app reset could not run:", error?.message || error);
+  }
+}
+
+// Start crash capture before anything else can crash — including window
+// creation and manager startup, which is where a bad launch dies. Dumps stay on
+// the machine; nothing is uploaded. See src/helpers/crashCapture.js for why this
+// exists at all. It waits for the lock and the reset above, so a reset can
+// delete old dumps before Crashpad opens its folder, and a second instance,
+// which exits straight away, never starts it.
+if (gotSingleInstanceLock) {
+  try {
+    require("./src/helpers/crashCapture").startCrashCapture();
+  } catch (error) {
+    // A missing crash handler must never be the reason the app fails to start.
+    // debugLogger is not safe to touch this early, so this goes to the console.
+    console.warn("Crash capture unavailable:", error?.message || error);
+  }
 }
 
 const isLiveWindow = (window) => window && !window.isDestroyed();
@@ -174,6 +191,10 @@ async function initializeManagers() {
   debugLogger = require("./src/helpers/debugLogger");
   // Ensure file logging is initialized now that app is ready
   debugLogger.ensureFileLogging();
+
+  if (appResetOutcome) {
+    debugLogger.info("App data reset finished", { leftOver: appResetOutcome.survivors });
+  }
 
   // Say plainly when the previous session died, and where the evidence is. A
   // crash the user only experiences as "it closed itself" is otherwise invisible
@@ -973,6 +994,19 @@ if (gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    // A reset that left anything behind says exactly what, instead of
+    // starting fresh as if it had all gone.
+    if (appResetOutcome?.survivors.length > 0) {
+      const { describeResetLeftovers } = require("./src/helpers/appReset");
+      void dialog.showMessageBox({
+        type: "warning",
+        title: "PrivateTranscribe",
+        message: "The reset could not remove everything",
+        detail: describeResetLeftovers(appResetOutcome.survivors),
+        buttons: ["OK"],
+      });
+    }
+
     startApp().catch((error) => {
       logMainError("Failed to start app:", error);
       if (isShuttingDown) {

@@ -76,7 +76,6 @@ if [[ "$wipe_models" =~ ^[Yy]$ ]]; then
   remove_target "$HOME/.cache/PrivateTranscribe"
   remove_target "$HOME/.cache/Privoca"
   remove_target "$HOME/.cache/dictatevoice"
-  remove_target "$HOME/.cache/whisper"
 fi
 
 read -r -p "Remove local project .env file at $PROJECT_ROOT/.env if present? [y/N]: " wipe_env

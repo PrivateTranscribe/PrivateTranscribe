@@ -71,23 +71,51 @@ export interface MicrophonePreference {
 }
 
 /**
+ * True when the user picked a microphone and the device list shows it is not
+ * plugged in. A list without labels proves nothing: before mic permission is
+ * granted it hides every device, so the pick is given the benefit of the doubt.
+ */
+export function isSelectedMicrophoneMissing(
+  devices: AudioInputDeviceInfo[],
+  { preferBuiltInMic, selectedMicDeviceId }: MicrophonePreference
+): boolean {
+  return (
+    !preferBuiltInMic &&
+    !!selectedMicDeviceId &&
+    devices.some((device) => device.label) &&
+    !devices.some((device) => device.deviceId === selectedMicDeviceId)
+  );
+}
+
+/**
  * The device the next dictation will actually open, or null for "whatever the
  * OS calls default".
  *
  * Recording, the picker, the dashboard readout, and the mic test all resolve
  * through here. When they each did their own version, a test could pass on one
  * microphone while dictation recorded silence from another.
+ *
+ * A picked microphone that is unplugged resolves to the system default, which
+ * is what the picker promises. Asking for it by its exact id made Windows fail
+ * the recording instead.
  */
 export function resolveMicrophoneDeviceId(
   devices: AudioInputDeviceInfo[],
-  { preferBuiltInMic, selectedMicDeviceId }: MicrophonePreference
+  preference: MicrophonePreference
 ): string | null {
-  if (preferBuiltInMic) {
+  if (preference.preferBuiltInMic) {
     const builtIn = devices.find((device) => isBuiltInMicrophone(device.label || ""));
     return builtIn ? builtIn.deviceId : null;
   }
 
-  return selectedMicDeviceId || null;
+  if (isSelectedMicrophoneMissing(devices, preference)) return null;
+
+  return preference.selectedMicDeviceId || null;
+}
+
+/** getUserMedia constraints for whatever the OS calls the default microphone. */
+export function systemDefaultMicrophoneConstraints(): MediaStreamConstraints {
+  return { audio: { autoGainControl: true } };
 }
 
 /** getUserMedia constraints for the resolved device. */
@@ -99,7 +127,17 @@ export function buildMicrophoneConstraints(
 
   return deviceId
     ? { audio: { deviceId: { exact: deviceId }, autoGainControl: true } }
-    : { audio: { autoGainControl: true } };
+    : systemDefaultMicrophoneConstraints();
+}
+
+/**
+ * The errors getUserMedia gives for a device that is not there. An exact
+ * deviceId that no longer exists comes back as OverconstrainedError, with an
+ * empty message.
+ */
+export function isMissingMicrophoneError(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name || "";
+  return name === "OverconstrainedError" || name === "NotFoundError";
 }
 
 /**
