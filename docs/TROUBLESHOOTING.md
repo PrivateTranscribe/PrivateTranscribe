@@ -70,14 +70,14 @@ other app or include downloaded voice models.
 
 **Causes:**
 - Microphone permission revoked mid-session
-- Stale Whisper cache with corrupted clips
+- A damaged Whisper model download
 - Hotkey triggering without audio input
 - Wrong audio input device selected
 
 **Fix:**
 1. Check microphone permissions (see above)
 2. Open sound settings and verify the correct input device is selected
-3. Clear caches: `rm -rf ~/.cache/whisper`
+3. Delete the Whisper models, then download the model again in Settings: `rm -rf ~/.cache/PrivateTranscribe/whisper-models`
 4. Try a different hotkey
 5. Re-run onboarding
 
