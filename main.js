@@ -757,6 +757,9 @@ async function startApp() {
     let currentActivationMode = "tap";
     let winHoldStartActive = false;
     let winHoldCancelled = false;
+    // Numbers each hold, so a cancel can only discard the recording its own
+    // start began, never a hands-free dictation that was already running.
+    let winHoldToken = 0;
 
     const winGestureController = new ActivationGestureController({
       mode: currentActivationMode,
@@ -768,13 +771,15 @@ async function startApp() {
         debugLogger.debug("[Activation] Hold threshold reached");
         winHoldStartActive = true;
         winHoldCancelled = false;
-        Promise.resolve(windowManager.sendStartDictation())
+        winHoldToken += 1;
+        const holdToken = winHoldToken;
+        Promise.resolve(windowManager.sendStartDictation(holdToken))
           .then(() => {
             // The key can be released while a hidden overlay is still loading.
             // Re-send stop after startup completes so audio cannot stay ducked.
             if (!winHoldStartActive) {
               if (winHoldCancelled) {
-                windowManager.sendCancelDictation();
+                windowManager.sendCancelDictation(holdToken);
               } else {
                 windowManager.sendStopDictation();
               }
@@ -799,7 +804,7 @@ async function startApp() {
         debugLogger.debug("[Activation] Hold cancelled");
         winHoldStartActive = false;
         winHoldCancelled = true;
-        windowManager.sendCancelDictation();
+        windowManager.sendCancelDictation(winHoldToken);
       },
     });
 

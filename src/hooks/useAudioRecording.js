@@ -863,15 +863,20 @@ export const useAudioRecording = (toast, options = {}) => {
       }
     };
 
+    // The token of the held hotkey whose start-dictation began the current
+    // recording, or null when anything else began it. Only that hold may
+    // cancel the recording.
+    let holdRecordingToken = null;
+
     // Set up listener for push-to-talk start
-    const handleStart = () => {
+    const handleStart = (holdToken) => {
       const currentState = manager.getState();
       if (
         !currentState.isRecording &&
         !currentState.isProcessing &&
         !currentState.isStartingRecording
       ) {
-        void beginRecordingFlow({ playSound: true });
+        void beginRecordingFlow({ playSound: true, holdToken });
       }
     };
 
@@ -926,8 +931,8 @@ export const useAudioRecording = (toast, options = {}) => {
       onToggleRef.current?.();
     });
 
-    const disposeStart = window.electronAPI.onStartDictation?.(() => {
-      handleStart();
+    const disposeStart = window.electronAPI.onStartDictation?.((holdToken) => {
+      handleStart(holdToken);
       onToggleRef.current?.();
     });
 
@@ -937,13 +942,20 @@ export const useAudioRecording = (toast, options = {}) => {
     });
 
     // A held hotkey turned out to be part of another shortcut or a mouse action,
-    // such as Ctrl+Shift+click. The recording is a false start: discard it, so
-    // nothing is transcribed or pasted.
-    const handleCancel = () => {
-      const currentState = manager.getState();
-      if (currentState.isRecording || currentState.isStartingRecording) {
-        manager.cancelRecording();
+    // such as Ctrl+Shift+click. The recording it started is a false start:
+    // discard it, so nothing is transcribed or pasted. A recording the hold did
+    // not start, such as a hands-free dictation already running, keeps going,
+    // and one already being transcribed is left alone.
+    const handleCancel = (holdToken) => {
+      if (holdToken == null || holdToken !== holdRecordingToken) {
+        return;
       }
+      holdRecordingToken = null;
+      const currentState = manager.getState();
+      if (!currentState.isRecording && !currentState.isStartingRecording) {
+        return;
+      }
+      manager.cancelRecording();
       setAgentSession(false);
       restoreAudio();
       resumeMedia();
@@ -951,8 +963,8 @@ export const useAudioRecording = (toast, options = {}) => {
       window.electronAPI?.notifyDictationCompleted?.().catch(() => {});
     };
 
-    const disposeCancel = window.electronAPI.onCancelDictation?.(() => {
-      handleCancel();
+    const disposeCancel = window.electronAPI.onCancelDictation?.((holdToken) => {
+      handleCancel(holdToken);
       onToggleRef.current?.();
     });
 
@@ -968,7 +980,7 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeNoAudio = window.electronAPI.onNoAudioDetected?.(handleNoAudioDetected);
 
-    const beginRecordingFlow = async ({ playSound = false } = {}) => {
+    const beginRecordingFlow = async ({ playSound = false, holdToken = null } = {}) => {
       const currentState = manager.getState();
       if (
         currentState.isRecording ||
@@ -977,6 +989,8 @@ export const useAudioRecording = (toast, options = {}) => {
       ) {
         return false;
       }
+
+      holdRecordingToken = holdToken ?? null;
 
       // Read at session start so settings changes apply to the next recording.
       setAgentSession(isAgentModeActive());
@@ -1008,6 +1022,7 @@ export const useAudioRecording = (toast, options = {}) => {
     };
 
     const endRecordingFlow = ({ playSound = false } = {}) => {
+      holdRecordingToken = null;
       const currentState = manager.getState();
       if (!currentState.isRecording && !currentState.isStartingRecording) {
         restoreAudio();

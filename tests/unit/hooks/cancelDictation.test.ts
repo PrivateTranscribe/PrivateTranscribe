@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * A held hotkey that turns out to be part of another shortcut or a mouse action
@@ -44,8 +44,10 @@ vi.mock("../../../src/utils/analytics", () => ({
 }));
 import { useAudioRecording } from "../../../src/hooks/useAudioRecording";
 
+const ActivationGestureController = require("../../../src/helpers/activationGestureController");
+
 function mount() {
-  const events: Record<string, () => void> = {};
+  const events: Record<string, (token?: number) => void> = {};
   const bridge: Record<string, any> = Object.fromEntries(
     ["onToggleDictation", "onStartDictation", "onStopDictation", "onCancelDictation"].map(
       (name) => [
@@ -64,31 +66,107 @@ function mount() {
   return { manager: hook.audioManagerRef.current, events, bridge };
 }
 
+/**
+ * The real gesture controller wired to the hook the way main.js wires it, with
+ * the IPC hop replaced by direct calls.
+ */
+function controllerFor(events: Record<string, (token?: number) => void>) {
+  let holdToken = 0;
+  return new ActivationGestureController({
+    mode: "tapHold",
+    onTap: () => events.onToggleDictation(),
+    onHoldStart: () => {
+      holdToken += 1;
+      events.onStartDictation(holdToken);
+    },
+    onHoldEnd: () => events.onStopDictation(),
+    onHoldCancel: () => events.onCancelDictation(holdToken),
+  });
+}
+
 beforeEach(() => {
   harness.effects = [];
+  vi.useFakeTimers();
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("cancel-dictation", () => {
-  it("discards a recording the hotkey started instead of transcribing it", async () => {
+  it("discards a recording the cancelled hold started", async () => {
     const { manager, events, bridge } = mount();
-    events.onStartDictation();
+    const controller = controllerFor(events);
+
+    controller.keyDown();
+    vi.advanceTimersByTime(150);
     await Promise.resolve();
     expect(manager.startRecording).toHaveBeenCalledOnce();
 
-    events.onCancelDictation();
+    controller.discard();
+    controller.keyUp();
 
     expect(manager.cancelRecording).toHaveBeenCalledOnce();
     expect(manager.stopRecording).not.toHaveBeenCalled();
     expect(bridge.notifyDictationCompleted).toHaveBeenCalledOnce();
   });
 
-  it("does nothing to the recorder when nothing is recording", () => {
+  it("keeps a hands-free dictation that was already running", async () => {
     const { manager, events } = mount();
+    const controller = controllerFor(events);
 
-    events.onCancelDictation();
+    // Tap to start hands-free, then hold the hotkey inside another shortcut.
+    controller.keyDown();
+    controller.keyUp();
+    await Promise.resolve();
+    expect(manager.startRecording).toHaveBeenCalledOnce();
+
+    controller.keyDown();
+    vi.advanceTimersByTime(400);
+    controller.discard();
+    controller.keyUp();
 
     expect(manager.cancelRecording).not.toHaveBeenCalled();
     expect(manager.stopRecording).not.toHaveBeenCalled();
+    expect(manager.getState().isRecording).toBe(true);
+  });
+
+  it("leaves a dictation being transcribed alone, window included", async () => {
+    const { manager, events, bridge } = mount();
+    events.onToggleDictation();
+    await Promise.resolve();
+    events.onToggleDictation();
+    manager.state.isProcessing = true;
+
+    events.onStartDictation(7);
+    events.onCancelDictation(7);
+
+    expect(manager.cancelRecording).not.toHaveBeenCalled();
+    expect(bridge.notifyDictationCompleted).not.toHaveBeenCalled();
+  });
+
+  it("ignores a cancel for a hold that has already ended", async () => {
+    const { manager, events, bridge } = mount();
+    events.onStartDictation(1);
+    await Promise.resolve();
+    events.onStopDictation();
+    events.onToggleDictation();
+    await Promise.resolve();
+
+    events.onCancelDictation(1);
+
+    expect(manager.cancelRecording).not.toHaveBeenCalled();
+    expect(bridge.notifyDictationCompleted).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when nothing is recording", () => {
+    const { manager, events, bridge } = mount();
+
+    events.onCancelDictation(1);
+
+    expect(manager.cancelRecording).not.toHaveBeenCalled();
+    expect(manager.stopRecording).not.toHaveBeenCalled();
+    expect(bridge.notifyDictationCompleted).not.toHaveBeenCalled();
   });
 });
