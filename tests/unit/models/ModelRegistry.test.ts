@@ -326,6 +326,19 @@ describe("current reasoning model registry", () => {
     expect(getRegisteredModelProvider("gpt-6-unknown")).toBe("openai");
   });
 
+  it("gives a saved custom endpoint every model name, whatever it looks like", () => {
+    for (const name of [
+      "openai/gpt-oss-20b",
+      "claude-sonnet-4-5",
+      "gemini-3.8-flash",
+      "qwen3:8b",
+    ]) {
+      expect(getRegisteredModelProvider(name, "custom")).toBe("custom");
+    }
+    expect(getRegisteredModelProvider("openai/gpt-oss-20b", "groq")).toBe("groq");
+    expect(getRegisteredModelProvider("claude-sonnet-4-5")).toBe("anthropic");
+  });
+
   it("retains retired cloud IDs for routing while exposing their replacements", () => {
     expect(getRegisteredCloudModel("qwen/qwen3-32b")).toMatchObject({
       deprecated: true,

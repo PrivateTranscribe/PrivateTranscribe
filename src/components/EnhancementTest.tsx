@@ -120,7 +120,7 @@ export function EnhancementTest({
               ? "Download or choose a model above first."
               : model === "claude-code"
                 ? "Sends this text through your Claude Code login. Uses your Claude plan limits."
-                : isLocal || getModelProvider(model) === "local"
+                : isLocal || getModelProvider(model, provider) === "local"
                   ? "Runs locally on your PC."
                   : "Sends this text to your selected cloud provider."}
         </p>

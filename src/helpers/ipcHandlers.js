@@ -1081,13 +1081,7 @@ class IPCHandlers {
           result.speakerDetectionMode ||
           options.speakerDetectionMode ||
           (options.speakerDetection === true ? "tiny-diarize-en" : "off");
-        const formatted = formatTranscript(
-          result.raw || { text: result.text, segments: result.segments },
-          options.outputFormat || "plain",
-          {
-            includeSpeakers: options.speakerDetection === true || speakerDetectionMode !== "off",
-          }
-        );
+        const formatted = formatFileTranscript(result, options, speakerDetectionMode);
 
         return {
           success: true,
@@ -1097,10 +1091,11 @@ class IPCHandlers {
           speakerCount: formatted.speakerCount,
           speakers: formatted.speakers,
           segments: formatted.segments,
-          format: options.outputFormat || "plain",
+          format: formatted.format,
           model: result.model,
           speakerDetectionActive: result.speakerDetectionActive,
           speakerDetectionMode,
+          speakerLabelsError: result.speakerLabelsError || null,
           diarizationEngine: result.diarizationEngine,
           diarization: result.diarization,
           // What the engine itself heard, and what it was told to hear. The
@@ -2507,10 +2502,7 @@ class IPCHandlers {
 
         const modelPath = require("path").join(modelManager.modelsDir, modelInfo.model.fileName);
 
-        await modelManager.serverManager.start(modelPath, {
-          contextSize: modelInfo.model.contextLength || 4096,
-          threads: 4,
-        });
+        await modelManager.serverManager.start(modelPath, { threads: 4 });
         modelManager.currentServerModelId = modelId;
 
         return { success: true, port: modelManager.serverManager.port };
@@ -3263,6 +3255,24 @@ function readAloudNoticeReason(source) {
   return source === "unsupported" ? "unsupported" : "empty-selection";
 }
 
+/**
+ * A file transcription's text in the format the page asked for.
+ *
+ * Speaker labels that failed leave the transcript as it reads with labels off:
+ * timestamped lines with no speaker names. Kept in the speakers format, every
+ * segment would carry the same placeholder speaker and merge into one paragraph.
+ */
+function formatFileTranscript(result, options, speakerDetectionMode) {
+  const labelsFailed = Boolean(result.speakerLabelsError);
+  const requestedFormat = options.outputFormat || "plain";
+  const format = labelsFailed && requestedFormat === "speakers" ? "timestamped" : requestedFormat;
+  return formatTranscript(result.raw || { text: result.text, segments: result.segments }, format, {
+    includeSpeakers:
+      !labelsFailed && (options.speakerDetection === true || speakerDetectionMode !== "off"),
+  });
+}
+
 module.exports = IPCHandlers;
+module.exports.formatFileTranscript = formatFileTranscript;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
 module.exports.readAloudNoticeReason = readAloudNoticeReason;

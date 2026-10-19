@@ -398,6 +398,24 @@ function resolveClaudeArgPrefix() {
   }
 }
 
+/**
+ * The one credential --print mode uses without asking. In a terminal Claude
+ * Code asks once before it bills ANTHROPIC_API_KEY instead of the user's
+ * login; in --print it always uses it. Cloud provider and gateway variables
+ * (CLAUDE_CODE_USE_*, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL) act the same
+ * in both modes, so they stay: they are the user's own Claude Code setup.
+ */
+const CLAUDE_BILLING_ENV_KEYS = new Set(["ANTHROPIC_API_KEY"]);
+
+/** A copy of `baseEnv` without the billing variables, in any case, as Windows reads them. */
+function withoutClaudeBillingEnv(baseEnv) {
+  const env = { ...(baseEnv || {}) };
+  for (const key of Object.keys(env)) {
+    if (CLAUDE_BILLING_ENV_KEYS.has(key.toUpperCase())) delete env[key];
+  }
+  return env;
+}
+
 function log(...args) {
   console.log("[converse-agent]", ...args);
 }
@@ -613,6 +631,7 @@ class ConverseAgent {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       cwd: this.cwd,
+      env: withoutClaudeBillingEnv(process.env),
     });
 
     this.proc.stdout.setEncoding("utf8");
@@ -928,6 +947,7 @@ module.exports = {
   VOICE_SYSTEM_PROMPT,
   resolveClaudeBin,
   resolveClaudeArgPrefix,
+  withoutClaudeBillingEnv,
   probeClaudeBin,
   hasPathComponents,
   findOnPath,

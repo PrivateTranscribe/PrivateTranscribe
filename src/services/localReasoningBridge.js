@@ -2,17 +2,13 @@ const modelManager = require("../helpers/modelManagerBridge").default;
 const debugLogger = require("../helpers/debugLogger");
 const { getSystemPrompt } = require("../helpers/prompts");
 
-const LOCAL_REASONING_MIN_CONTEXT_TOKENS = 8192;
-const LOCAL_REASONING_MAX_CONTEXT_TOKENS = 32768;
 const LOCAL_REASONING_MIN_OUTPUT_TOKENS = 512;
+// llamaServer.js sizes its one context window for this cap; raise them together.
 const LOCAL_REASONING_MAX_OUTPUT_TOKENS = 4096;
-const LOCAL_REASONING_CONTEXT_HEADROOM_TOKENS = 512;
 const CONSERVATIVE_CHARS_PER_TOKEN = 3;
 
 const estimateTokens = (textLength) =>
   Math.max(0, Math.ceil(Number(textLength || 0) / CONSERVATIVE_CHARS_PER_TOKEN));
-
-const roundUpToTokenBlock = (tokens, blockSize = 1024) => Math.ceil(tokens / blockSize) * blockSize;
 
 class LocalReasoningService {
   constructor() {
@@ -60,15 +56,7 @@ class LocalReasoningService {
           ? "\n\nReturn a JSON object with edited_transcript containing only the edited words."
           : "");
       const maxTokens = config.maxTokens || this.calculateMaxTokens(text.length);
-      const contextSize =
-        config.contextSize ||
-        this.calculateContextSize(text.length, systemPrompt.length, maxTokens);
-      const inferenceConfig = this.buildInferenceConfig(
-        config,
-        systemPrompt,
-        maxTokens,
-        contextSize
-      );
+      const inferenceConfig = this.buildInferenceConfig(config, systemPrompt, maxTokens);
 
       debugLogger.logReasoning("LOCAL_BRIDGE_INFERENCE", {
         modelId,
@@ -131,14 +119,13 @@ class LocalReasoningService {
     );
   }
 
-  buildInferenceConfig(config, systemPrompt, maxTokens, contextSize) {
+  buildInferenceConfig(config, systemPrompt, maxTokens) {
     return {
       maxTokens,
       temperature: config.temperature ?? 0.3,
       topK: config.topK || 40,
       topP: config.topP || 0.9,
       repeatPenalty: config.repeatPenalty || 1.1,
-      contextSize,
       threads: config.threads || 4,
       systemPrompt,
       disableThinking: true,
@@ -170,18 +157,6 @@ class LocalReasoningService {
     // modest buffer for punctuation/formatting instead of treating characters
     // as tokens, which made multi-minute dictations hit the old 2K cap.
     return Math.max(minTokens, Math.min(estimateTokens(textLength) + 512, maxTokens));
-  }
-
-  calculateContextSize(textLength, systemPromptLength, maxOutputTokens) {
-    const requiredTokens =
-      estimateTokens(textLength + systemPromptLength) +
-      maxOutputTokens +
-      LOCAL_REASONING_CONTEXT_HEADROOM_TOKENS;
-
-    return Math.max(
-      LOCAL_REASONING_MIN_CONTEXT_TOKENS,
-      Math.min(roundUpToTokenBlock(requiredTokens), LOCAL_REASONING_MAX_CONTEXT_TOKENS)
-    );
   }
 }
 

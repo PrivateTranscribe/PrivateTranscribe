@@ -8,7 +8,7 @@ import {
   isMissingMicrophoneError,
   systemDefaultMicrophoneConstraints,
 } from "../utils/audioDeviceUtils";
-import { isSecureEndpoint } from "../utils/urlUtils";
+import { isValidApiUrl } from "./urlValidation";
 import { resolveTranscriptionLanguage } from "../utils/languageCompat";
 import { readSpokenLanguages } from "../utils/spokenLanguages";
 import { repairSplitDictionaryTerms } from "../utils/transcriptionTextRepair";
@@ -3991,6 +3991,27 @@ class AudioManager {
       return this.cachedTranscriptionEndpoint;
     }
 
+    // A custom address that can't be used stops transcription with the reason.
+    // Falling back to OpenAI would send the audio to a provider the user did
+    // not choose.
+    if (isCustomEndpoint) {
+      const customBase = normalizeBaseUrl(currentBaseUrl);
+      if (!customBase) {
+        throw new Error(
+          "The custom transcription endpoint has no address. Add one in transcription settings."
+        );
+      }
+      const validation = isValidApiUrl(customBase);
+      if (!validation.valid) {
+        logger.warn(
+          "STT endpoint: custom address refused",
+          { attemptedUrl: customBase, reason: validation.reason },
+          "transcription"
+        );
+        throw new Error(`The custom transcription address can't be used. ${validation.reason}`);
+      }
+    }
+
     try {
       // Use custom URL only when provider is "custom", otherwise use provider-specific defaults
       let base;
@@ -4045,16 +4066,6 @@ class AudioManager {
         return cacheResult(API_ENDPOINTS.TRANSCRIPTION);
       }
 
-      // Only validate HTTPS for custom endpoints (known providers are already HTTPS)
-      if (isCustomEndpoint && !isSecureEndpoint(normalizedBase)) {
-        logger.warn(
-          "STT endpoint: HTTPS required, falling back to default",
-          { attemptedUrl: normalizedBase },
-          "transcription"
-        );
-        return cacheResult(API_ENDPOINTS.TRANSCRIPTION);
-      }
-
       let endpoint;
       if (/\/audio\/(transcriptions|translations)$/i.test(normalizedBase)) {
         endpoint = normalizedBase;
@@ -4075,6 +4086,7 @@ class AudioManager {
         { error: error.message, stack: error.stack },
         "transcription"
       );
+      if (isCustomEndpoint) throw error;
       this.cachedTranscriptionEndpoint = API_ENDPOINTS.TRANSCRIPTION;
       this.cachedEndpointProvider = currentProvider;
       this.cachedEndpointBaseUrl = currentBaseUrl;

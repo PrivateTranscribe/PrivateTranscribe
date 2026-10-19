@@ -5,33 +5,22 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const debugLogger = require("./debugLogger");
-const { getTarCommand } = require("./systemTar");
+const { getTarExtractSpawn } = require("./systemTar");
 const { getModelsDirForService } = require("./modelDirUtils");
 const { downloadFile } = require("./downloadUtils");
 const { createCancelledError } = require("./whisperServer");
 const {
-  centroid,
-  clusterDurations,
-  reassignSmallClusters,
-  representativeSegments,
-  selectSmallClusters,
-} = require("./diarizationClusters");
+  DiarizationEngine,
+  DEFAULT_BUNDLE_ID,
+  DEFAULT_EMBEDDING_RELATIVE_PATH,
+  DEFAULT_MIN_CLUSTER_SECONDS,
+  DEFAULT_MIN_CLUSTER_SHARE,
+  DEFAULT_SEGMENTATION_RELATIVE_PATH,
+  copyFloat32Samples,
+  normalizeDiarizationResult,
+  normalizeSpeakerId,
+} = require("./diarizationEngine");
 
-const DEFAULT_BUNDLE_ID = "sherpa-onnx-multilingual-v1";
-// Automatic counting: clusters shorter than both floors are attached to the most
-// similar remaining voice instead of becoming an extra speaker. Values were
-// chosen on the AMI excerpts and simulated Danish conversations of
-// scripts/speaker-benchmark.
-const DEFAULT_MIN_CLUSTER_SECONDS = 4;
-const DEFAULT_MIN_CLUSTER_SHARE = 0.05;
-// Longest audio embedded per representative segment; bounds the extra work.
-const MAX_EMBED_SECONDS = 6;
-const DEFAULT_SEGMENTATION_RELATIVE_PATH = path.join(
-  "sherpa-onnx-pyannote-segmentation-3-0",
-  "model.int8.onnx"
-);
-const DEFAULT_EMBEDDING_RELATIVE_PATH =
-  "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx";
 const SEGMENTATION_ARCHIVE_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2";
 const EMBEDDING_MODEL_URL =
@@ -42,102 +31,43 @@ const EMBEDDING_MODEL_URL =
 const SEGMENTATION_ARCHIVE_SHA256 =
   "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488";
 const EMBEDDING_MODEL_SHA256 = "1a331345f04805badbb495c775a6ddffcdd1a732567d5ec8b3d5749e3c7a5e4b";
+// Windows reports a process killed by an exception as its NTSTATUS code, such
+// as 0xC0000005 for an access violation.
+const FIRST_NTSTATUS_ERROR = 0xc0000000;
 
-function copyFloat32Samples(samples) {
-  if (samples instanceof Float32Array) {
-    const copy = new Float32Array(samples.length);
-    copy.set(samples);
-    return copy;
+/**
+ * Why a worker that never printed its result stopped, in one line.
+ *
+ * The worker reports its own failures as JSON. A run that ends without that
+ * got no further than loading its modules, or the native engine crashed. The
+ * Transcribe page shows this message, so a stack trace is cut down to the line
+ * that names the problem.
+ */
+function describeWorkerExit(code, signal, stderr) {
+  if (Number.isInteger(code) && code >= FIRST_NTSTATUS_ERROR) {
+    return `The speaker engine crashed (exit code 0x${code.toString(16).toUpperCase()}).`;
   }
-  return Float32Array.from(samples || []);
+  const errorLine = String(stderr || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^[A-Za-z]*Error\b/.test(line));
+  const stopped = signal ? `was stopped by ${signal}` : `exited with code ${code}`;
+  return `The speaker engine ${stopped} before it returned a result${errorLine ? `: ${errorLine}` : "."}`;
 }
 
-function toFiniteNumber(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function normalizeSpeakerId(value) {
-  const numeric = Number(value);
-  if (Number.isInteger(numeric) && numeric >= 0) {
-    return `SPEAKER_${String(numeric).padStart(2, "0")}`;
-  }
-  const raw = String(value ?? "0");
-  const match = raw.match(/(\d+)/);
-  if (match) return `SPEAKER_${String(Number(match[1])).padStart(2, "0")}`;
-  return raw.toUpperCase().replace(/[\s-]+/g, "_");
-}
-
-function normalizeDiarizationResult(segments, meta = {}) {
-  const normalizedSegments = (Array.isArray(segments) ? segments : [])
-    .map((segment, index) => {
-      const start = Math.max(0, toFiniteNumber(segment.start, 0));
-      const end = Math.max(start, toFiniteNumber(segment.end, start));
-      const speaker = normalizeSpeakerId(
-        segment.speaker ?? segment.label ?? segment.speakerLabel ?? 0
-      );
-      return {
-        id: index,
-        speaker,
-        label: String(segment.speaker ?? segment.label ?? segment.speakerLabel ?? 0),
-        start: Number(start.toFixed(3)),
-        end: Number(end.toFixed(3)),
-      };
-    })
-    .filter((segment) => segment.end > segment.start);
-
-  const speakers = Array.from(new Set(normalizedSegments.map((segment) => segment.speaker)));
-  return {
-    success: true,
-    engine: "sherpa-onnx",
-    bundleId: meta.bundleId || DEFAULT_BUNDLE_ID,
-    speakerCount: speakers.length,
-    speakers,
-    segments: normalizedSegments,
-    elapsedMs: meta.elapsedMs ?? null,
-    durationSec: meta.durationSec ?? null,
-    rtf:
-      Number.isFinite(meta.elapsedMs) && Number.isFinite(meta.durationSec) && meta.durationSec > 0
-        ? Number((meta.elapsedMs / 1000 / meta.durationSec).toFixed(3))
-        : null,
-    model: meta.model || null,
-    config: meta.config || null,
-  };
-}
-
-class DiarizationManager {
+// Adds what needs the app to the engine: the default models folder, model
+// downloads, and running the engine in a separate process.
+class DiarizationManager extends DiarizationEngine {
   constructor(options = {}) {
-    this.modelsDir =
-      options.modelsDir ||
-      process.env.PRIVATETRANSCRIBE_DIARIZATION_MODELS_DIR ||
-      getModelsDirForService("diarization");
-    this.bundleId = options.bundleId || DEFAULT_BUNDLE_ID;
-    this.segmentationRelativePath =
-      options.segmentationRelativePath || DEFAULT_SEGMENTATION_RELATIVE_PATH;
-    this.embeddingRelativePath = options.embeddingRelativePath || DEFAULT_EMBEDDING_RELATIVE_PATH;
-    this.loadSherpa = options.loadSherpa || (() => require("sherpa-onnx-node"));
+    super({
+      ...options,
+      modelsDir:
+        options.modelsDir ||
+        process.env.PRIVATETRANSCRIBE_DIARIZATION_MODELS_DIR ||
+        getModelsDirForService("diarization"),
+      logger: options.logger || debugLogger,
+    });
     this.spawn = options.spawn || spawn;
-  }
-
-  getModelPaths() {
-    return {
-      modelsDir: this.modelsDir,
-      segmentationModel: path.join(this.modelsDir, this.segmentationRelativePath),
-      embeddingModel: path.join(this.modelsDir, this.embeddingRelativePath),
-    };
-  }
-
-  getModelStatus() {
-    const paths = this.getModelPaths();
-    const missing = [paths.segmentationModel, paths.embeddingModel].filter(
-      (file) => !fs.existsSync(file)
-    );
-    return {
-      bundleId: this.bundleId,
-      ready: missing.length === 0,
-      missing,
-      ...paths,
-    };
   }
 
   async downloadModels(onProgress) {
@@ -183,7 +113,9 @@ class DiarizationManager {
 
   extractTarBz2(archivePath, destinationDir) {
     return new Promise((resolve, reject) => {
-      const child = spawn(getTarCommand(), ["-xjf", archivePath, "-C", destinationDir], {
+      const tar = getTarExtractSpawn(archivePath, destinationDir);
+      const child = spawn(tar.command, tar.args, {
+        ...(tar.cwd ? { cwd: tar.cwd } : {}),
         windowsHide: true,
       });
       let stderr = "";
@@ -199,34 +131,6 @@ class DiarizationManager {
         }
       });
     });
-  }
-
-  buildConfig(options = {}) {
-    const status = this.getModelStatus();
-    if (!status.ready) {
-      const missingList = status.missing.map((file) => path.basename(file)).join(", ");
-      throw new Error(`Diarization models are not downloaded yet (${missingList}).`);
-    }
-
-    const expectedSpeakers =
-      Number.isInteger(options.expectedSpeakers) && options.expectedSpeakers > 0
-        ? options.expectedSpeakers
-        : -1;
-    const threshold = toFiniteNumber(options.threshold, 0.9);
-    if (threshold <= 0 || threshold > 1) {
-      throw new Error("Speaker detection threshold must be greater than 0 and at most 1.");
-    }
-
-    return {
-      segmentation: { pyannote: { model: status.segmentationModel } },
-      embedding: { model: status.embeddingModel },
-      clustering: {
-        numClusters: expectedSpeakers,
-        threshold,
-      },
-      minDurationOn: toFiniteNumber(options.minDurationOn, 0.2),
-      minDurationOff: toFiniteNumber(options.minDurationOff, 0.5),
-    };
   }
 
   async diarizeWavBuffer(wavBuffer, options = {}) {
@@ -272,10 +176,12 @@ class DiarizationManager {
       `privatetranscribe-diarization-${crypto.randomUUID()}.json`
     );
     const workerPath = path.join(__dirname, "diarizationWorker.js");
+    // Everything the engine would otherwise ask the app for. The worker cannot
+    // load Electron, so it has no other way to find the models.
     const payload = {
       wavPath,
       options: workerOptions,
-      managerOptions: {
+      engineOptions: {
         modelsDir: this.modelsDir,
         bundleId: this.bundleId,
         segmentationRelativePath: this.segmentationRelativePath,
@@ -309,7 +215,7 @@ class DiarizationManager {
           detach();
           reject(cancelled ? createCancelledError() : error);
         });
-        child.on("close", (code) => {
+        child.on("close", (code, exitSignal) => {
           detach();
           if (cancelled || signal?.aborted) {
             reject(createCancelledError());
@@ -322,189 +228,33 @@ class DiarizationManager {
             .filter((line) => !line.includes("crashpad") && !line.includes("not connected"))
             .join("\n")
             .trim();
-          let parsed;
+          let parsed = null;
           try {
-            parsed = JSON.parse(stdout.trim() || "{}");
-          } catch (parseError) {
-            reject(
-              new Error(
-                `Diarization worker returned invalid JSON (code ${code}): ${filteredStderr || stdout}`
-              )
-            );
+            parsed = JSON.parse(stdout.trim());
+          } catch {
+            // No result line: described from the exit below.
+          }
+          if (code === 0 && parsed?.success) {
+            resolve(parsed.result);
             return;
           }
-          if (code === 0 && parsed.success) {
-            resolve(parsed.result);
-          } else {
-            reject(
-              new Error(
-                parsed.error || filteredStderr || `Diarization worker exited with code ${code}`
-              )
-            );
+          if (parsed?.error) {
+            reject(new Error(parsed.error));
+            return;
           }
+          this.logger.warn("Diarization worker stopped without a result", {
+            code,
+            signal: exitSignal,
+            stderr: filteredStderr.slice(-4000),
+            stdout: stdout.slice(-1000),
+          });
+          reject(new Error(describeWorkerExit(code, exitSignal, filteredStderr)));
         });
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
       });
     } finally {
       await fs.promises.rm(payloadPath, { force: true }).catch(() => {});
-    }
-  }
-
-  // Dissolve tiny clusters by voice similarity. Uses the diarizer's own embedding
-  // model on the longest few segments of every cluster, so the extra cost stays
-  // bounded on long meetings. Any failure here keeps the unmerged result.
-  mergeSmallClusters(sherpa, embeddingModel, segments, samples, sampleRate, options = {}) {
-    const floors = {
-      minClusterSeconds: toFiniteNumber(options.minClusterSeconds, DEFAULT_MIN_CLUSTER_SECONDS),
-      minClusterShare: toFiniteNumber(options.minClusterShare, DEFAULT_MIN_CLUSTER_SHARE),
-    };
-    const { small, large, floor } = selectSmallClusters(clusterDurations(segments), floors);
-    const base = { segments, merges: [], floor: Number(floor.toFixed(3)), ...floors };
-    if (!small.size || !large.size) return base;
-    try {
-      const extractor = new sherpa.SpeakerEmbeddingExtractor({
-        model: embeddingModel,
-        numThreads: 2,
-      });
-      const embed = (segment) => {
-        let start = toFiniteNumber(segment.start, 0);
-        let end = toFiniteNumber(segment.end, start);
-        if (end - start > MAX_EMBED_SECONDS) {
-          const middle = (start + end) / 2;
-          start = middle - MAX_EMBED_SECONDS / 2;
-          end = middle + MAX_EMBED_SECONDS / 2;
-        }
-        const from = Math.max(0, Math.floor(start * sampleRate));
-        const to = Math.min(samples.length, Math.ceil(end * sampleRate));
-        if (to - from < sampleRate * 0.1) return null;
-        const stream = extractor.createStream();
-        stream.acceptWaveform({ samples: samples.slice(from, to), sampleRate });
-        return extractor.compute(stream, false);
-      };
-      const centroids = new Map();
-      for (const id of [...small, ...large]) {
-        const entries = representativeSegments(segments, id).map((segment) => ({
-          vector: embed(segment),
-          weight: toFiniteNumber(segment.end, 0) - toFiniteNumber(segment.start, 0),
-        }));
-        centroids.set(id, centroid(entries));
-      }
-      const merged = reassignSmallClusters(segments, small, large, centroids);
-      if (merged.merges.length) {
-        debugLogger.info("Diarization merged small clusters by voice", {
-          floorSeconds: base.floor,
-          merges: merged.merges,
-        });
-      }
-      return { ...base, ...merged };
-    } catch (error) {
-      debugLogger.warn("Diarization small-cluster merge skipped", { error: error.message });
-      return base;
-    }
-  }
-
-  async diarizeWavFile(wavPath, options = {}) {
-    const config = this.buildConfig(options);
-    const status = this.getModelStatus();
-    const startedAt = Date.now();
-    const maxAutoSpeakers =
-      Number.isInteger(options.maxSpeakers) && options.maxSpeakers > 0 ? options.maxSpeakers : 6;
-    let smallClusters = null;
-
-    try {
-      const sherpa = this.loadSherpa();
-      const diarizer = new sherpa.OfflineSpeakerDiarization(config);
-      // Electron >= 21 disallows native external buffers. sherpa-onnx supports
-      // opting out via the second readWave argument; without this, Electron apps
-      // fail with "External buffers are not allowed" while plain Node CLIs work.
-      // See sherpa-onnx FAQ: readWave(filename, false).
-      const wave = sherpa.readWave(wavPath, false);
-      if (diarizer.sampleRate !== wave.sampleRate) {
-        throw new Error(
-          `Diarization expects ${diarizer.sampleRate} Hz audio, got ${wave.sampleRate} Hz.`
-        );
-      }
-
-      // Keep a defensive copy as well. It is cheap compared with diarization and
-      // protects against runtimes/addon versions that still expose external data.
-      const samples = copyFloat32Samples(wave.samples);
-      let rawSegments = diarizer.process(samples);
-
-      // Recluster by voice similarity, never by who happened to speak nearby.
-      // Reuse this instance: constructing a second native diarizer can crash.
-      if (config.clustering.numClusters <= 0 && Array.isArray(rawSegments)) {
-        const uniqueCount = new Set(
-          rawSegments.map((seg) => seg.speaker ?? seg.label ?? seg.speakerLabel)
-        ).size;
-        if (uniqueCount > maxAutoSpeakers) {
-          debugLogger.info("Diarization auto-detect exceeded max speakers, reclustering", {
-            detectedSpeakers: uniqueCount,
-            maxAutoSpeakers,
-          });
-          diarizer.setConfig({
-            clustering: { ...config.clustering, numClusters: maxAutoSpeakers },
-          });
-          rawSegments = diarizer.process(samples);
-        }
-
-        smallClusters = this.mergeSmallClusters(
-          sherpa,
-          status.embeddingModel,
-          rawSegments,
-          samples,
-          wave.sampleRate,
-          options
-        );
-        rawSegments = smallClusters.segments;
-
-        // Renumber speaker IDs sequentially (0, 1, 2, ...) so output labels are
-        // "Speaker 1", "Speaker 2", etc. instead of confusing original cluster IDs.
-        const seenIds = [];
-        for (const seg of rawSegments) {
-          const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
-          if (!seenIds.includes(id)) seenIds.push(id);
-        }
-        if (seenIds.length > 0) {
-          const idMap = new Map(seenIds.map((id, idx) => [id, idx]));
-          rawSegments = rawSegments.map((seg) => {
-            const id = String(seg.speaker ?? seg.label ?? seg.speakerLabel ?? 0);
-            return { ...seg, speaker: idMap.get(id) ?? 0 };
-          });
-        }
-      }
-
-      const elapsedMs = Date.now() - startedAt;
-      const durationSec = wave.samples.length / wave.sampleRate;
-      const result = normalizeDiarizationResult(rawSegments, {
-        bundleId: this.bundleId,
-        elapsedMs,
-        durationSec,
-        model: {
-          segmentation: status.segmentationModel,
-          embedding: status.embeddingModel,
-        },
-        config: {
-          numClusters: config.clustering.numClusters,
-          threshold: config.clustering.threshold,
-          minDurationOn: config.minDurationOn,
-          minDurationOff: config.minDurationOff,
-          minClusterSeconds: smallClusters?.minClusterSeconds ?? null,
-          minClusterShare: smallClusters?.minClusterShare ?? null,
-        },
-      });
-      result.smallClusterMerges = smallClusters?.merges ?? [];
-
-      debugLogger.info("Local diarization completed", {
-        speakerCount: result.speakerCount,
-        segments: result.segments.length,
-        elapsedMs,
-        rtf: result.rtf,
-      });
-      return result;
-    } catch (error) {
-      debugLogger.warn("Local diarization failed", { error: error.message });
-      throw error;
     }
   }
 }
@@ -521,6 +271,7 @@ module.exports = {
   SEGMENTATION_ARCHIVE_SHA256,
   SEGMENTATION_ARCHIVE_URL,
   copyFloat32Samples,
+  describeWorkerExit,
   normalizeDiarizationResult,
   normalizeSpeakerId,
 };
