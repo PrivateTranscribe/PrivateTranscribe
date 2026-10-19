@@ -360,25 +360,16 @@ class ModelManager {
       );
     }
 
-    const requestedContextSize = options.contextSize || modelInfo.model.contextLength || 4096;
-    const needsServerStart =
-      !this.serverManager.ready ||
-      this.currentServerModelId !== modelId ||
-      Number(this.serverManager.contextSize || 0) < requestedContextSize;
-
-    // Start/restart server if needed, if the model changed, or if the live
-    // server's context is too small for this transcription.
-    if (needsServerStart) {
+    // Start/restart server if needed or if the model changed. Every start uses
+    // the same context window, so a running server fits any cleanup.
+    if (!this.serverManager.ready || this.currentServerModelId !== modelId) {
       debugLogger.logReasoning("INFERENCE_STARTING_SERVER", {
         currentModel: this.currentServerModelId,
         requestedModel: modelId,
         serverReady: this.serverManager.ready,
       });
 
-      await this.serverManager.start(modelPath, {
-        contextSize: requestedContextSize,
-        threads: options.threads || 4,
-      });
+      await this.serverManager.start(modelPath, { threads: options.threads || 4 });
       this.currentServerModelId = modelId;
 
       debugLogger.logReasoning("INFERENCE_SERVER_STARTED", {
@@ -456,10 +447,7 @@ class ModelManager {
     if (!this.serverManager.isAvailable()) return false;
 
     try {
-      await this.serverManager.start(modelPath, {
-        contextSize: modelInfo.model.contextLength || 4096,
-        threads: 4,
-      });
+      await this.serverManager.start(modelPath, { threads: 4 });
       this.currentServerModelId = modelId;
       debugLogger.info("llama-server pre-warmed", { modelId });
       return true;

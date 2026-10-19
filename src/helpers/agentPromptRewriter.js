@@ -25,7 +25,12 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { resolveClaudeBin, resolveClaudeArgPrefix, probeClaudeBin } = require("./converseAgent");
+const {
+  resolveClaudeBin,
+  resolveClaudeArgPrefix,
+  probeClaudeBin,
+  withoutClaudeBillingEnv,
+} = require("./converseAgent");
 
 const { systemPrompt: AGENT_REWRITE_SYSTEM_PROMPT } = require("../config/codingPrompt.json");
 
@@ -71,24 +76,14 @@ function buildRewriteArgs(systemPrompt, model) {
 }
 
 function buildRewriteEnv(baseEnv) {
-  const env = {
-    ...(baseEnv || {}),
+  // This connection runs the user's own Claude Code setup. An API key, which
+  // --print bills without asking, must not silently replace their login.
+  return {
+    ...withoutClaudeBillingEnv(baseEnv),
     ENABLE_CLAUDEAI_MCP_SERVERS: "false",
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     MAX_THINKING_TOKENS: "0",
   };
-  // This connection explicitly uses the user's Claude Code login. API keys
-  // and cloud routing inherited from the app must not silently change billing.
-  for (const key of [
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_BASE_URL",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_USE_FOUNDRY",
-  ])
-    delete env[key];
-  return env;
 }
 
 let cachedCwd = null;

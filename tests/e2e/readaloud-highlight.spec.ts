@@ -8,7 +8,7 @@ import { expect, test } from "./fixtures/electron-app";
 import { evidenceDir } from "./fixtures/evidence";
 
 /**
- * Ledger gate `readaloud-follow-highlight`: the sentence being read is shown
+ * Ledger gate `readaloud-follow-highlight`: the word being read is shown
  * where it lives, in the app it was copied from.
  *
  * Desktop-interactive, like readaloud-selection.spec.ts: it opens Notepad on a
@@ -18,8 +18,10 @@ import { evidenceDir } from "./fixtures/evidence";
  *   1. The app's own report: a highlight window is on screen, click-through,
  *      never focusable, and its bounds are where the app says they are.
  *   2. A second opinion from UI Automation, asked directly by this spec with
- *      no app code in the loop: the rectangle of the sentence in Notepad. The
- *      highlight has to sit on that rectangle, within its padding.
+ *      no app code in the loop: the rectangles of each sentence in Notepad.
+ *      Since 3d3b3a0 the highlight marks one word at a time, so it has to sit
+ *      inside the sentence being read, one line high, and move forward
+ *      through it as the words are spoken.
  *
  * Then a skip forward moves it to the next sentence, and a stop takes it away.
  *
@@ -52,6 +54,8 @@ type HighlightStatus = {
   anchored: boolean;
   active: boolean;
   bounds: { x: number; y: number; width: number; height: number } | null;
+  /** The sentence and word the app is marking. */
+  target?: { index: number; sentence: string; start?: number; end?: number } | null;
   sourceWindow?: { hwnd: number; topmost: boolean } | null;
 };
 
@@ -228,9 +232,10 @@ async function probeScreen(
 /**
  * The second opinion: where does Notepad itself say this sentence is? Asked
  * through UI Automation by this spec, in physical pixels, with none of the
- * app's code involved.
+ * app's code involved. One rectangle per line the sentence covers, so a
+ * narrow Notepad that wraps it still measures every word.
  */
-async function sentenceRectFromNotepad(sentence: string): Promise<Rect> {
+async function sentenceLinesFromNotepad(sentence: string): Promise<Rect[]> {
   const encoded = Buffer.from(sentence, "utf8").toString("base64");
   const stdout = await powershell(`
 $ErrorActionPreference = "Stop"
@@ -240,28 +245,36 @@ $text = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${en
 $desktop = [System.Windows.Automation.AutomationElement]::RootElement
 $winCond = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ClassNameProperty, "Notepad")
-$win = $desktop.FindFirst([System.Windows.Automation.TreeScope]::Children, $winCond)
-if (-not $win) { Write-Output "RECT="; exit 0 }
 $docCond = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::IsTextPatternAvailableProperty, $true)
-$rect = $null
-foreach ($el in $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $docCond)) {
-  try {
-    $tp = $el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
-    $hit = $tp.DocumentRange.FindText($text, $false, $true)
-    if ($hit) {
-      $r = $hit.GetBoundingRectangles()
-      if ($r.Count -gt 0) { $rect = $r[0]; break }
-    }
-  } catch {}
+$rects = @()
+# Every Notepad window, not the first: another one may already be open.
+foreach ($win in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $winCond)) {
+  foreach ($el in $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, $docCond)) {
+    try {
+      $tp = $el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+      $hit = $tp.DocumentRange.FindText($text, $false, $true)
+      if ($hit) { $rects = @($hit.GetBoundingRectangles()) }
+    } catch {}
+    if ($rects.Count -gt 0) { break }
+  }
+  if ($rects.Count -gt 0) { break }
 }
-if (-not $rect) { Write-Output "RECT="; exit 0 }
-Write-Output ("RECT=" + [math]::Round($rect.X) + "," + [math]::Round($rect.Y) + "," + [math]::Round($rect.Width) + "," + [math]::Round($rect.Height))
+$lines = foreach ($r in $rects) {
+  "{0},{1},{2},{3}" -f [math]::Round($r.X), [math]::Round($r.Y), [math]::Round($r.Width), [math]::Round($r.Height)
+}
+Write-Output ("RECTS=" + (@($lines) -join ";"))
 `);
-  const raw = readLine(stdout, "RECT");
-  if (!raw) throw new Error(`UI Automation could not locate "${sentence}" in Notepad`);
-  const [x, y, w, h] = raw.split(",").map((n) => Number.parseInt(n, 10));
-  return { x, y, w, h };
+  const lines = (readLine(stdout, "RECTS") || "")
+    .split(";")
+    .filter(Boolean)
+    .map((line) => {
+      const [x, y, w, h] = line.split(",").map((n) => Number.parseInt(n, 10));
+      return { x, y, w, h };
+    })
+    .filter((r) => r.w > 0 && r.h > 0);
+  if (!lines.length) throw new Error(`UI Automation could not locate "${sentence}" in Notepad`);
+  return lines;
 }
 
 async function highlightStatus(overlay: Page): Promise<HighlightStatus> {
@@ -281,36 +294,70 @@ async function waitForActiveHighlight(overlay: Page, label: string): Promise<Hig
   throw new Error(`${label}: no highlight appeared. Last status: ${JSON.stringify(last)}`);
 }
 
-function expectHighlightOn(
-  bounds: { x: number; y: number; width: number; height: number },
-  rect: Rect,
-  scale: number,
-  label: string
-) {
+/**
+ * The boxes the highlight shows while sentence `index` is spoken, in the
+ * order they appear, until it has shown `count` of them or the read moves on
+ * to another sentence. One box per word.
+ */
+async function followWords(overlay: Page, index: number, count: number): Promise<DipBounds[]> {
+  const boxes: DipBounds[] = [];
+  const deadline = Date.now() + 15_000;
+  while (boxes.length < count && Date.now() < deadline) {
+    const status = await highlightStatus(overlay);
+    if (status.target && status.target.index !== index) break;
+    const last = boxes[boxes.length - 1];
+    if (
+      status.active &&
+      status.bounds &&
+      (!last || status.bounds.x !== last.x || status.bounds.y !== last.y)
+    ) {
+      boxes.push(status.bounds);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return boxes;
+}
+
+/**
+ * The highlight marks one word, so its box has to sit inside one line of the
+ * sentence Notepad measured, one line high, within its padding.
+ */
+function expectWordInSentence(bounds: DipBounds, lines: Rect[], scale: number, label: string) {
   // The app converts physical pixels to DIPs before sizing its window; the
   // second opinion is in physical pixels, so it is converted the same way.
-  const dip = { x: rect.x / scale, y: rect.y / scale, w: rect.w / scale, h: rect.h / scale };
-  expect(Math.abs(bounds.x - (dip.x - HIGHLIGHT_PAD)), `${label}: left edge`).toBeLessThanOrEqual(
-    TOLERANCE
-  );
-  expect(Math.abs(bounds.y - (dip.y - HIGHLIGHT_PAD)), `${label}: top edge`).toBeLessThanOrEqual(
-    TOLERANCE
-  );
+  const dips = lines.map((r) => ({
+    x: r.x / scale,
+    y: r.y / scale,
+    w: r.w / scale,
+    h: r.h / scale,
+  }));
+  // The line the box is on: the one whose top is nearest the box's.
+  const offset = (line: { y: number }) => Math.abs(bounds.y - (line.y - HIGHLIGHT_PAD));
+  const line = dips.reduce((best, next) => (offset(next) < offset(best) ? next : best));
+  expect(offset(line), `${label}: top edge`).toBeLessThanOrEqual(TOLERANCE);
   expect(
-    Math.abs(bounds.width - (dip.w + HIGHLIGHT_PAD * 2)),
-    `${label}: width`
+    Math.abs(bounds.height - (line.h + HIGHLIGHT_PAD * 2)),
+    `${label}: one line high`
   ).toBeLessThanOrEqual(TOLERANCE * 2);
-  expect(
-    Math.abs(bounds.height - (dip.h + HIGHLIGHT_PAD * 2)),
-    `${label}: height`
-  ).toBeLessThanOrEqual(TOLERANCE * 2);
+  expect(bounds.x, `${label}: left edge inside the sentence`).toBeGreaterThanOrEqual(
+    line.x - HIGHLIGHT_PAD - TOLERANCE
+  );
+  expect(bounds.x + bounds.width, `${label}: right edge inside the sentence`).toBeLessThanOrEqual(
+    line.x + line.w + HIGHLIGHT_PAD + TOLERANCE
+  );
+}
+
+/** True when `next` comes after `prev` in reading order. */
+function readsAfter(prev: DipBounds, next: DipBounds): boolean {
+  const sameLine = Math.abs(next.y - prev.y) < prev.height / 2;
+  return sameLine ? next.x > prev.x : next.y > prev.y;
 }
 
 test.describe("read aloud in-place highlight", () => {
   test.use({ seedKokoroModel: true });
   test.setTimeout(180_000);
 
-  test("tints the spoken sentence inside Notepad, follows a skip, and leaves on stop", async ({
+  test("marks the spoken word inside Notepad, follows a skip, and leaves on stop", async ({
     electronApp,
     overlayWindow,
   }) => {
@@ -337,7 +384,6 @@ test.describe("read aloud in-place highlight", () => {
     let notepad: { pids: number[] } | null = null;
 
     const status = () => highlightStatus(overlayWindow);
-    const waitForHighlight = (label: string) => waitForActiveHighlight(overlayWindow, label);
 
     try {
       notepad = await openNotepadSelected(file);
@@ -357,11 +403,23 @@ test.describe("read aloud in-place highlight", () => {
       );
 
       // ------------------------------------------------------- sentence 1
-      const first = await waitForHighlight("sentence 1");
-      const firstRect = await sentenceRectFromNotepad(SENTENCES[0]);
-      expectHighlightOn(first.bounds!, firstRect, scale, "sentence 1");
+      // Paused as soon as it plays, so the read waits for the highlight's
+      // worker to start cold instead of running on into sentence 2. A paused
+      // read keeps its word marked.
+      const pause = player.getByRole("button", { name: "Pause reading" });
+      await expect(pause).toBeVisible({ timeout: 30_000 });
+      await pause.click();
+      await expect(player).toContainText("Paused");
+      const held = await waitForActiveHighlight(overlayWindow, "sentence 1");
+      // Measured while the read is held, not between the select and the copy.
+      // With these slow calls there, the copy missed Notepad and the read fell
+      // back to the clipboard (2026-10-19).
+      const firstLines = await sentenceLinesFromNotepad(SENTENCES[0]);
+      const secondLines = await sentenceLinesFromNotepad(SENTENCES[1]);
+      expect(held.target?.index, "the app marks a word of sentence 1").toBe(0);
+      expectWordInSentence(held.bounds!, firstLines, scale, "sentence 1");
 
-      // The window the tint lives in must never take a click or the focus.
+      // The window the mark lives in must never take a click or the focus.
       const windowFacts = await electronApp.evaluate(({ BrowserWindow }, bounds) => {
         const win = BrowserWindow.getAllWindows().find((w) => {
           if (w.isDestroyed()) return false;
@@ -371,12 +429,12 @@ test.describe("read aloud in-place highlight", () => {
         return win
           ? { found: true, focusable: win.isFocusable(), visible: win.isVisible() }
           : { found: false };
-      }, first.bounds!);
+      }, held.bounds!);
       expect(windowFacts.found, "a BrowserWindow sits at the reported bounds").toBe(true);
       expect(windowFacts.focusable, "the highlight window is not focusable").toBe(false);
 
-      // While the sentence is visible where it lives, the overlay does not
-      // repeat it.
+      // While the word is marked where it lives, the overlay does not repeat
+      // the sentence.
       await expect(overlayWindow.getByTestId("readaloud-current-sentence")).toHaveCount(0);
 
       // ------------------------------------------------------- sentence 2
@@ -393,15 +451,39 @@ test.describe("read aloud in-place highlight", () => {
         "data-position",
         "2/3"
       );
-      const secondRect = await sentenceRectFromNotepad(SENTENCES[1]);
+      // Still paused, the mark moves to the first word of sentence 2. Until
+      // the app has found that sentence in Notepad, the old box stays put.
       await expect
-        .poll(async () => (await status()).bounds?.x ?? null, {
-          message: "the highlight moves to the second sentence",
-          timeout: 10_000,
-        })
-        .not.toBe(first.bounds!.x);
-      const second = await status();
-      expectHighlightOn(second.bounds!, secondRect, scale, "sentence 2");
+        .poll(
+          async () => {
+            const now = await status();
+            return (
+              now.active &&
+              now.target?.index === 1 &&
+              (now.bounds?.x !== held.bounds!.x || now.bounds?.y !== held.bounds!.y)
+            );
+          },
+          { message: "the highlight moves to the second sentence", timeout: 10_000 }
+        )
+        .toBe(true);
+      expectWordInSentence((await status()).bounds!, secondLines, scale, "sentence 2");
+
+      // Played on, the mark walks through sentence 2 a word at a time.
+      await player.getByRole("button", { name: "Resume reading" }).click();
+      const words = await followWords(overlayWindow, 1, 3);
+      expect(
+        words.length,
+        `the highlight moves on as sentence 2 is spoken: ${JSON.stringify(words)}`
+      ).toBeGreaterThanOrEqual(3);
+      words.forEach((box, i) =>
+        expectWordInSentence(box, secondLines, scale, `sentence 2, word ${i + 1}`)
+      );
+      for (let i = 1; i < words.length; i++) {
+        expect(
+          readsAfter(words[i - 1], words[i]),
+          `sentence 2: word ${i + 1} ${JSON.stringify(words[i])} comes after ${JSON.stringify(words[i - 1])}`
+        ).toBe(true);
+      }
 
       // ------------------------------------------------------------- stop
       await overlayWindow.getByRole("button", { name: "Stop reading" }).click();

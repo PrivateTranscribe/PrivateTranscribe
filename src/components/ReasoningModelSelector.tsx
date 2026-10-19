@@ -13,7 +13,7 @@ import { API_ENDPOINTS, buildApiUrl, normalizeBaseUrl } from "../config/constant
 import { REASONING_PROVIDERS } from "../models/ModelRegistry";
 import { modelRegistry } from "../models/ModelRegistry";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
-import { isSecureEndpoint } from "../utils/urlUtils";
+import { isValidApiUrl } from "../helpers/urlValidation";
 import { createExternalLinkHandler } from "../utils/externalLinks";
 
 type CloudModelOption = {
@@ -116,6 +116,7 @@ export default function ReasoningModelSelector({
   const [customModelsError, setCustomModelsError] = useState<string | null>(null);
   const [editingConnection, setEditingConnection] = useState(false);
   const [customBaseInput, setCustomBaseInput] = useState(cloudReasoningBaseUrl);
+  const [customBaseError, setCustomBaseError] = useState<string | null>(null);
   const lastLoadedBaseRef = useRef<string | null>(null);
   const pendingBaseRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
@@ -192,9 +193,10 @@ export default function ReasoningModelSelector({
           return;
         }
 
-        if (!isSecureEndpoint(normalizedBase)) {
+        const validation = isValidApiUrl(normalizedBase);
+        if (!validation.valid) {
           if (isMountedRef.current && latestReasoningBaseRef.current === normalizedBase) {
-            setCustomModelsError("HTTPS required (HTTP allowed for local network only).");
+            setCustomModelsError(validation.reason ?? "This address can't be used.");
             setCustomModelsLoading(false);
           }
           return;
@@ -340,6 +342,13 @@ export default function ReasoningModelSelector({
     const trimmedBase = customBaseInput.trim();
     const normalized = trimmedBase ? normalizeBaseUrl(trimmedBase) : trimmedBase;
     setCustomBaseInput(normalized);
+    // Saving refuses an address the app can't reach, so say why here instead.
+    const validation = isValidApiUrl(normalized);
+    if (!validation.valid) {
+      setCustomBaseError(validation.reason ?? "This address can't be used.");
+      return;
+    }
+    setCustomBaseError(null);
     setCloudReasoningBaseUrl(normalized);
     lastLoadedBaseRef.current = null;
     loadRemoteModels(normalized, true);
@@ -358,6 +367,7 @@ export default function ReasoningModelSelector({
   const handleResetCustomBase = useCallback(() => {
     const defaultBase = API_ENDPOINTS.OPENAI_BASE;
     setCustomBaseInput(defaultBase);
+    setCustomBaseError(null);
     setCloudReasoningBaseUrl(defaultBase);
     lastLoadedBaseRef.current = null;
     loadRemoteModels(defaultBase, true);
@@ -753,11 +763,27 @@ export default function ReasoningModelSelector({
                           <h4 className="font-medium text-foreground">Endpoint URL</h4>
                           <Input
                             value={customBaseInput}
-                            onChange={(event) => setCustomBaseInput(event.target.value)}
+                            onChange={(event) => {
+                              setCustomBaseInput(event.target.value);
+                              setCustomBaseError(null);
+                            }}
                             onBlur={handleBaseUrlBlur}
                             placeholder="https://api.openai.com/v1"
                             className="text-sm"
+                            aria-invalid={customBaseError ? true : undefined}
+                            aria-describedby={
+                              customBaseError ? "custom-endpoint-url-error" : undefined
+                            }
                           />
+                          {customBaseError && (
+                            <p
+                              id="custom-endpoint-url-error"
+                              role="alert"
+                              className="text-xs text-destructive"
+                            >
+                              {customBaseError}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground">
                             Examples include{" "}
                             <code className="text-primary">http://localhost:11434/v1</code>{" "}

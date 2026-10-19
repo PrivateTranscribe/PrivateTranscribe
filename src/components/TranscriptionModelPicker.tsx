@@ -662,17 +662,35 @@ export default function TranscriptionModelPicker({
     [onLocalModelSelect]
   );
 
+  // The field edits a draft and saves it on blur. Saving refuses an address the
+  // app can't reach, so a half-typed address saved per keystroke was dropped and
+  // only a paste got through.
+  const [customBaseDraft, setCustomBaseDraft] = useState(cloudTranscriptionBaseUrl);
+  const [customBaseError, setCustomBaseError] = useState<string | null>(null);
+  // A saved address that changes elsewhere, such as a provider tab, replaces the draft.
+  const [savedBase, setSavedBase] = useState(cloudTranscriptionBaseUrl);
+  if (savedBase !== cloudTranscriptionBaseUrl) {
+    setSavedBase(cloudTranscriptionBaseUrl);
+    setCustomBaseDraft(cloudTranscriptionBaseUrl);
+    setCustomBaseError(null);
+  }
+
   const handleBaseUrlBlur = useCallback(() => {
     if (!setCloudTranscriptionBaseUrl || selectedCloudProvider !== "custom") return;
 
-    const trimmed = (cloudTranscriptionBaseUrl || "").trim();
-    if (!trimmed) return;
+    const trimmed = (customBaseDraft || "").trim();
+    const normalized = trimmed ? normalizeBaseUrl(trimmed) : "";
+    const validation = isValidApiUrl(normalized);
+    if (!validation.valid) {
+      setCustomBaseError(validation.reason ?? "This address can't be used.");
+      return;
+    }
+    setCustomBaseError(null);
 
-    const normalized = normalizeBaseUrl(trimmed);
-
-    if (normalized && normalized !== cloudTranscriptionBaseUrl) {
+    if (normalized !== cloudTranscriptionBaseUrl) {
       setCloudTranscriptionBaseUrl(normalized);
     }
+    setCustomBaseDraft(normalized);
 
     // Auto-detect if this matches a known provider
     if (normalized) {
@@ -686,6 +704,7 @@ export default function TranscriptionModelPicker({
       }
     }
   }, [
+    customBaseDraft,
     cloudTranscriptionBaseUrl,
     selectedCloudProvider,
     setCloudTranscriptionBaseUrl,
@@ -693,11 +712,6 @@ export default function TranscriptionModelPicker({
     onCloudModelSelect,
     cloudProviders,
   ]);
-
-  const customBaseUrlValidation = useMemo(
-    () => isValidApiUrl(cloudTranscriptionBaseUrl || ""),
-    [cloudTranscriptionBaseUrl]
-  );
 
   const handleDelete = useCallback(
     (modelId: string) => {
@@ -1060,14 +1074,27 @@ export default function TranscriptionModelPicker({
                 <div className="space-y-1.5">
                   <label className="block text-xs font-medium text-foreground">Endpoint URL</label>
                   <Input
-                    value={cloudTranscriptionBaseUrl}
-                    onChange={(e) => setCloudTranscriptionBaseUrl?.(e.target.value)}
+                    value={customBaseDraft}
+                    onChange={(e) => {
+                      setCustomBaseDraft(e.target.value);
+                      setCustomBaseError(null);
+                    }}
                     onBlur={handleBaseUrlBlur}
                     placeholder="https://your-api.example.com/v1"
                     className="h-8 text-sm"
+                    aria-invalid={customBaseError ? true : undefined}
+                    aria-describedby={
+                      customBaseError ? "custom-transcription-url-error" : undefined
+                    }
                   />
-                  {!customBaseUrlValidation.valid && customBaseUrlValidation.reason && (
-                    <p className="text-xs text-destructive">{customBaseUrlValidation.reason}</p>
+                  {customBaseError && (
+                    <p
+                      id="custom-transcription-url-error"
+                      role="alert"
+                      className="text-xs text-destructive"
+                    >
+                      {customBaseError}
+                    </p>
                   )}
                 </div>
 
