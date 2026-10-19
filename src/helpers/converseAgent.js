@@ -398,6 +398,29 @@ function resolveClaudeArgPrefix() {
   }
 }
 
+/**
+ * Variables that make the CLI bill an API key or a cloud account instead of
+ * the user's Claude Code login. The app loads its own Anthropic key from
+ * keys.enc into process.env, and --print mode would silently bill it.
+ */
+const CLAUDE_BILLING_ENV_KEYS = new Set([
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_FOUNDRY",
+]);
+
+/** A copy of `baseEnv` without the billing variables, in any case, as Windows reads them. */
+function withoutClaudeBillingEnv(baseEnv) {
+  const env = { ...(baseEnv || {}) };
+  for (const key of Object.keys(env)) {
+    if (CLAUDE_BILLING_ENV_KEYS.has(key.toUpperCase())) delete env[key];
+  }
+  return env;
+}
+
 function log(...args) {
   console.log("[converse-agent]", ...args);
 }
@@ -613,6 +636,7 @@ class ConverseAgent {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       cwd: this.cwd,
+      env: withoutClaudeBillingEnv(process.env),
     });
 
     this.proc.stdout.setEncoding("utf8");
@@ -928,6 +952,7 @@ module.exports = {
   VOICE_SYSTEM_PROMPT,
   resolveClaudeBin,
   resolveClaudeArgPrefix,
+  withoutClaudeBillingEnv,
   probeClaudeBin,
   hasPathComponents,
   findOnPath,
