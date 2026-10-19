@@ -1,27 +1,21 @@
 #!/usr/bin/env node
 /**
- * Ensures the Windows key listener binary is available.
+ * Builds the Windows key listener from resources/windows-key-listener.c.
  *
- * Strategy:
- * 1. If binary exists and is up-to-date, do nothing
- * 2. If the local C source is present, compile it first, then fall back to the
- *    prebuilt download. Downloading first would fetch the OLD released binary and
- *    freshen its mtime, silently masking any fix made to the source.
- * 3. With no local source, download the prebuilt binary.
+ * The binary is always compiled from the source in this checkout. There used to
+ * be a fallback that downloaded the latest prebuilt listener from this repo's
+ * releases, with no pinned version and no checksum. That build came from
+ * whatever source was last pushed, not this checkout, and the release job
+ * signs the listener, so it is gone.
  *
- * This allows developers without a C compiler to still build the app.
+ * Without a compiler, a local build keeps the binary it has (or none, and
+ * push-to-talk falls back to tap mode) and says so. In CI it fails instead, so
+ * no installer ships without a listener built from its own source.
  */
 
-const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { compileKeyListener } = require("./lib/compile-key-listener");
-
-const isWindows = process.platform === "win32";
-if (!isWindows) {
-  // Only needed on Windows
-  process.exit(0);
-}
 
 const projectRoot = path.resolve(__dirname, "..");
 const cSource = path.join(projectRoot, "resources", "windows-key-listener.c");
@@ -32,103 +26,53 @@ function log(message) {
   console.log(`[windows-key-listener] ${message}`);
 }
 
-function ensureDir(dirPath) {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-}
-
-// Check if binary exists and is up-to-date
 function isBinaryUpToDate() {
   if (!fs.existsSync(outputBinary)) {
     return false;
   }
-
-  // If source doesn't exist, can't check if rebuild needed - assume binary is good
-  if (!fs.existsSync(cSource)) {
-    return true;
-  }
-
   try {
-    const binaryStat = fs.statSync(outputBinary);
-    const sourceStat = fs.statSync(cSource);
-    return binaryStat.mtimeMs >= sourceStat.mtimeMs;
+    return fs.statSync(outputBinary).mtimeMs >= fs.statSync(cSource).mtimeMs;
   } catch {
     return false;
   }
 }
 
-// Try to download prebuilt binary
-async function tryDownload() {
-  log("Attempting to download prebuilt binary...");
+function main() {
+  // Only needed on Windows
+  if (process.platform !== "win32") return;
 
-  const downloadScript = path.join(__dirname, "download-windows-key-listener.js");
-  if (!fs.existsSync(downloadScript)) {
-    log("Download script not found, skipping download");
-    return false;
-  }
-
-  const result = spawnSync(process.execPath, [downloadScript], {
-    stdio: "inherit",
-    cwd: projectRoot,
-  });
-
-  if (result.status === 0 && fs.existsSync(outputBinary)) {
-    log("Successfully downloaded prebuilt binary");
-    return true;
-  }
-
-  log("Download failed or binary not found after download");
-  return false;
-}
-
-// Try to compile locally
-function tryCompile() {
-  if (!fs.existsSync(cSource)) {
-    log("C source not found, cannot compile locally");
-    return false;
-  }
-
-  log("Attempting local compilation...");
-  const { compiler } = compileKeyListener({ source: cSource, output: outputBinary, log });
-  if (compiler) {
-    log(`Successfully built with ${compiler}`);
-    return true;
-  }
-  return false;
-}
-
-async function main() {
-  ensureDir(outputDir);
-
-  // Check if rebuild is needed
   if (isBinaryUpToDate()) {
     log("Binary is up to date, skipping build");
     return;
   }
 
-  // With a local C source present the binary is stale relative to that source, so
-  // compiling is the only thing that can pick the change up. Downloading first
-  // would replace it with the older released build and mark it fresh.
-  const hasLocalSource = fs.existsSync(cSource);
-  const steps = hasLocalSource ? [tryCompile, tryDownload] : [tryDownload, tryCompile];
-
-  for (const step of steps) {
-    const ok = await step();
-    if (ok) {
-      return;
-    }
+  fs.mkdirSync(outputDir, { recursive: true });
+  log("Compiling from source...");
+  const { compiler } = compileKeyListener({ source: cSource, output: outputBinary, log });
+  if (compiler) {
+    log(`Successfully built with ${compiler}`);
+    return;
   }
 
-  // Neither worked - warn but don't fail
-  console.warn("[windows-key-listener] Could not obtain Windows key listener binary.");
-  console.warn("[windows-key-listener] Push-to-Talk on Windows will use fallback mode.");
+  const isCi = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+  console.warn("[windows-key-listener] Could not compile the Windows key listener.");
   console.warn(
-    "[windows-key-listener] To compile locally, install Visual Studio Build Tools or MinGW-w64."
+    "[windows-key-listener] To compile locally, install Visual Studio Build Tools with the C++ workload, or MinGW-w64."
   );
+  if (isCi) {
+    console.error("[windows-key-listener] Refusing to build without it in CI.");
+    process.exitCode = 1;
+  } else if (fs.existsSync(outputBinary)) {
+    console.warn(
+      "[windows-key-listener] Keeping the existing binary, which was built from older source."
+    );
+  } else {
+    console.warn("[windows-key-listener] Push-to-Talk on Windows will use fallback mode.");
+  }
 }
 
-main().catch((error) => {
-  console.error("[windows-key-listener] Unexpected error:", error);
-  // Don't fail the build
-});
+if (require.main === module) {
+  main();
+}
+
+module.exports = { main };
