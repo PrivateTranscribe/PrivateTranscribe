@@ -16,6 +16,12 @@
  *   KEY_DOWN
  *   KEY_UP
  *
+ * Exit codes:
+ *   0  stopped
+ *   1  a hook could not be installed
+ *   2  the hotkey names a key this listener does not know. It exits rather than
+ *      watching nothing, so the app keeps its global shortcut as the fallback.
+ *
  * Test seam:
  *   windows-key-listener.exe --simulate "CommandOrControl+Space"
  * installs no hooks and never reads the real keyboard. It prints READY and then
@@ -54,6 +60,8 @@ static BOOL g_requireWin = FALSE;
 
 // Simulate mode: driven from stdin, no hooks installed, real keyboard never read.
 static BOOL g_simulateMode = FALSE;
+
+#define EXIT_BAD_HOTKEY 2
 
 /*
  * How long after the trigger key goes down a required modifier may still arrive
@@ -152,138 +160,227 @@ static void EmitUp(void) {
     }
 }
 
-// Returns VK code; may also set g_isMouseButton for Mouse4/Mouse5.
-static DWORD ParseKeyCode(const char* keyName) {
-    // Mouse buttons (side buttons)
-    if (_stricmp(keyName, "Mouse4") == 0 || _stricmp(keyName, "XButton1") == 0) {
-        g_isMouseButton = TRUE;
-        g_targetXButton = XBUTTON1;
-        return 0;
-    }
-    if (_stricmp(keyName, "Mouse5") == 0 || _stricmp(keyName, "XButton2") == 0) {
-        g_isMouseButton = TRUE;
-        g_targetXButton = XBUTTON2;
-        return 0;
-    }
-
-    // Function keys (F1-F12)
-    if (_stricmp(keyName, "F1") == 0) return VK_F1;
-    if (_stricmp(keyName, "F2") == 0) return VK_F2;
-    if (_stricmp(keyName, "F3") == 0) return VK_F3;
-    if (_stricmp(keyName, "F4") == 0) return VK_F4;
-    if (_stricmp(keyName, "F5") == 0) return VK_F5;
-    if (_stricmp(keyName, "F6") == 0) return VK_F6;
-    if (_stricmp(keyName, "F7") == 0) return VK_F7;
-    if (_stricmp(keyName, "F8") == 0) return VK_F8;
-    if (_stricmp(keyName, "F9") == 0) return VK_F9;
-    if (_stricmp(keyName, "F10") == 0) return VK_F10;
-    if (_stricmp(keyName, "F11") == 0) return VK_F11;
-    if (_stricmp(keyName, "F12") == 0) return VK_F12;
-
-    // Extended function keys (F13-F24)
-    if (_stricmp(keyName, "F13") == 0) return VK_F13;
-    if (_stricmp(keyName, "F14") == 0) return VK_F14;
-    if (_stricmp(keyName, "F15") == 0) return VK_F15;
-    if (_stricmp(keyName, "F16") == 0) return VK_F16;
-    if (_stricmp(keyName, "F17") == 0) return VK_F17;
-    if (_stricmp(keyName, "F18") == 0) return VK_F18;
-    if (_stricmp(keyName, "F19") == 0) return VK_F19;
-    if (_stricmp(keyName, "F20") == 0) return VK_F20;
-    if (_stricmp(keyName, "F21") == 0) return VK_F21;
-    if (_stricmp(keyName, "F22") == 0) return VK_F22;
-    if (_stricmp(keyName, "F23") == 0) return VK_F23;
-    if (_stricmp(keyName, "F24") == 0) return VK_F24;
-
-    // Special keys
-    if (_stricmp(keyName, "Pause") == 0) return VK_PAUSE;
-    if (_stricmp(keyName, "ScrollLock") == 0) return VK_SCROLL;
-    if (_stricmp(keyName, "Insert") == 0) return VK_INSERT;
-    if (_stricmp(keyName, "Home") == 0) return VK_HOME;
-    if (_stricmp(keyName, "End") == 0) return VK_END;
-    if (_stricmp(keyName, "PageUp") == 0) return VK_PRIOR;
-    if (_stricmp(keyName, "PageDown") == 0) return VK_NEXT;
-    if (_stricmp(keyName, "Space") == 0) return VK_SPACE;
-    if (_stricmp(keyName, "Escape") == 0 || _stricmp(keyName, "Esc") == 0) return VK_ESCAPE;
-    if (_stricmp(keyName, "Tab") == 0) return VK_TAB;
-    if (_stricmp(keyName, "CapsLock") == 0) return VK_CAPITAL;
-    if (_stricmp(keyName, "NumLock") == 0) return VK_NUMLOCK;
-
-    // Backtick/tilde - default hotkey
-    if (strcmp(keyName, "`") == 0 || _stricmp(keyName, "Backquote") == 0) return VK_OEM_3;
-
-    // Punctuation
-    if (strcmp(keyName, "-") == 0 || _stricmp(keyName, "Minus") == 0) return VK_OEM_MINUS;
-    if (strcmp(keyName, "=") == 0 || _stricmp(keyName, "Equal") == 0) return VK_OEM_PLUS;
-    if (strcmp(keyName, "[") == 0) return VK_OEM_4;
-    if (strcmp(keyName, "]") == 0) return VK_OEM_6;
-    if (strcmp(keyName, "\\") == 0) return VK_OEM_5;
-    if (strcmp(keyName, ";") == 0) return VK_OEM_1;
-    if (strcmp(keyName, "'") == 0) return VK_OEM_7;
-    if (strcmp(keyName, ",") == 0) return VK_OEM_COMMA;
-    if (strcmp(keyName, ".") == 0) return VK_OEM_PERIOD;
-    if (strcmp(keyName, "/") == 0) return VK_OEM_2;
-
-    // Single letter/number
-    if (strlen(keyName) == 1) {
-        char c = keyName[0];
-        if (c >= 'a' && c <= 'z') return (DWORD)(c - 'a' + 'A');
-        if (c >= 'A' && c <= 'Z') return (DWORD)c;
-        if (c >= '0' && c <= '9') return (DWORD)c;
-    }
-
-    // Hex or decimal VK code
-    if (keyName[0] == '0' && (keyName[1] == 'x' || keyName[1] == 'X')) {
-        return (DWORD)strtol(keyName, NULL, 16);
-    }
-
-    return (DWORD)atoi(keyName);
+static BOOL ParseNumber(const char* text, int base, long* out) {
+    char* end = NULL;
+    long value;
+    if (*text == '\0') return FALSE;
+    value = strtol(text, &end, base);
+    if (end == text || *end != '\0') return FALSE;
+    *out = value;
+    return TRUE;
 }
 
-static DWORD ParseCompoundHotkey(const char* hotkey) {
-    char buffer[256];
-    strncpy(buffer, hotkey, sizeof(buffer) - 1);
-    buffer[sizeof(buffer) - 1] = '\0';
+typedef struct {
+    const char* name;
+    DWORD vk;
+} KeyName;
 
-    // Reset
+/*
+ * Every key name the hotkey picker (src/components/ui/HotkeyInput.tsx) can save,
+ * plus the Electron accelerator names and aliases older settings may hold.
+ * Letters and digits are their own VK codes and need no entry.
+ *
+ * A name missing here is an error, never a guess. The listener used to fall back
+ * to atoi(), which turned Up, Enter, PrintScreen, num0 and the media keys into
+ * VK 0, and then watched nothing or only the modifiers in front of the key.
+ */
+static const KeyName g_keyNames[] = {
+    { "F1", VK_F1 },   { "F2", VK_F2 },   { "F3", VK_F3 },   { "F4", VK_F4 },
+    { "F5", VK_F5 },   { "F6", VK_F6 },   { "F7", VK_F7 },   { "F8", VK_F8 },
+    { "F9", VK_F9 },   { "F10", VK_F10 }, { "F11", VK_F11 }, { "F12", VK_F12 },
+    { "F13", VK_F13 }, { "F14", VK_F14 }, { "F15", VK_F15 }, { "F16", VK_F16 },
+    { "F17", VK_F17 }, { "F18", VK_F18 }, { "F19", VK_F19 }, { "F20", VK_F20 },
+    { "F21", VK_F21 }, { "F22", VK_F22 }, { "F23", VK_F23 }, { "F24", VK_F24 },
+
+    { "Space", VK_SPACE },
+    { "Tab", VK_TAB },
+    { "Enter", VK_RETURN }, // numpad Enter arrives as VK_RETURN too
+    { "Return", VK_RETURN },
+    { "Escape", VK_ESCAPE },
+    { "Esc", VK_ESCAPE },
+    { "Backspace", VK_BACK },
+    { "Delete", VK_DELETE },
+    { "Insert", VK_INSERT },
+    { "Home", VK_HOME },
+    { "End", VK_END },
+    { "PageUp", VK_PRIOR },
+    { "PageDown", VK_NEXT },
+    { "Up", VK_UP },
+    { "Down", VK_DOWN },
+    { "Left", VK_LEFT },
+    { "Right", VK_RIGHT },
+
+    { "Pause", VK_PAUSE },
+    { "PrintScreen", VK_SNAPSHOT },
+    { "ScrollLock", VK_SCROLL },
+    { "NumLock", VK_NUMLOCK },
+    { "CapsLock", VK_CAPITAL },
+
+    // Numpad, by Electron's accelerator names. With Num Lock off Windows reports
+    // the digit keys as the navigation keys printed on them, so num1 arrives as End.
+    { "num0", VK_NUMPAD0 }, { "num1", VK_NUMPAD1 }, { "num2", VK_NUMPAD2 },
+    { "num3", VK_NUMPAD3 }, { "num4", VK_NUMPAD4 }, { "num5", VK_NUMPAD5 },
+    { "num6", VK_NUMPAD6 }, { "num7", VK_NUMPAD7 }, { "num8", VK_NUMPAD8 },
+    { "num9", VK_NUMPAD9 },
+    { "numadd", VK_ADD },
+    { "numsub", VK_SUBTRACT },
+    { "nummult", VK_MULTIPLY },
+    { "numdiv", VK_DIVIDE },
+    { "numdec", VK_DECIMAL },
+
+    { "MediaPlayPause", VK_MEDIA_PLAY_PAUSE },
+    { "MediaStop", VK_MEDIA_STOP },
+    { "MediaNextTrack", VK_MEDIA_NEXT_TRACK },
+    { "MediaPreviousTrack", VK_MEDIA_PREV_TRACK },
+    { "VolumeUp", VK_VOLUME_UP },
+    { "VolumeDown", VK_VOLUME_DOWN },
+    { "VolumeMute", VK_VOLUME_MUTE },
+
+    // Punctuation, by its US-layout character. Backquote, the key left of 1, is
+    // what the app sends for both ` and the Nordic ½.
+    { "`", VK_OEM_3 },
+    { "Backquote", VK_OEM_3 },
+    { "-", VK_OEM_MINUS },
+    { "Minus", VK_OEM_MINUS },
+    { "=", VK_OEM_PLUS },
+    { "Equal", VK_OEM_PLUS },
+    { "Plus", VK_OEM_PLUS },
+    { "[", VK_OEM_4 },
+    { "]", VK_OEM_6 },
+    { "\\", VK_OEM_5 },
+    { ";", VK_OEM_1 },
+    { "'", VK_OEM_7 },
+    { ",", VK_OEM_COMMA },
+    { ".", VK_OEM_PERIOD },
+    { "/", VK_OEM_2 },
+};
+
+// Resolves one keyboard key name. FALSE means it is not a key this listener knows.
+static BOOL ParseKeyName(const char* name, DWORD* vkOut) {
+    size_t i;
+    long value = 0;
+    BOOL isNumber;
+
+    for (i = 0; i < sizeof(g_keyNames) / sizeof(g_keyNames[0]); i++) {
+        if (_stricmp(name, g_keyNames[i].name) == 0) {
+            *vkOut = g_keyNames[i].vk;
+            return TRUE;
+        }
+    }
+
+    if (strlen(name) == 1) {
+        char c = name[0];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            *vkOut = (DWORD)c;
+            return TRUE;
+        }
+        return FALSE;
+    }
+
+    // A raw VK code in hex (0xA3) or decimal. Agent Mode names the side-specific
+    // modifiers this way.
+    if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
+        isNumber = ParseNumber(name + 2, 16, &value);
+    } else {
+        isNumber = ParseNumber(name, 10, &value);
+    }
+    if (isNumber && value > 0 && value < 0xFF) {
+        *vkOut = (DWORD)value;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+// Mouse4 and Mouse5 are the side buttons, the only mouse buttons this listener watches.
+static BOOL ParseMouseButton(const char* name, DWORD* xbuttonOut) {
+    if (_stricmp(name, "Mouse4") == 0 || _stricmp(name, "XButton1") == 0) {
+        *xbuttonOut = XBUTTON1;
+        return TRUE;
+    }
+    if (_stricmp(name, "Mouse5") == 0 || _stricmp(name, "XButton2") == 0) {
+        *xbuttonOut = XBUTTON2;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+ * Reads the hotkey into the globals above. Returns FALSE, after saying why on
+ * stderr, when any part of it is not a key or modifier this listener knows.
+ */
+static BOOL ParseCompoundHotkey(const char* hotkey) {
+    char buffer[256];
+    char* part;
+    BOOL hasKey = FALSE;
+
     g_requireCtrl = FALSE;
     g_requireAlt = FALSE;
     g_requireShift = FALSE;
     g_requireWin = FALSE;
     g_isMouseButton = FALSE;
     g_targetXButton = 0;
+    g_targetVk = 0;
 
-    DWORD mainKeyVk = 0;
-    char* token = strtok(buffer, "+");
+    if (strlen(hotkey) >= sizeof(buffer)) {
+        fprintf(stderr, "Error: hotkey is too long\n");
+        return FALSE;
+    }
+    strcpy(buffer, hotkey);
 
-    while (token != NULL) {
-        while (*token == ' ') token++;
-        char* end = token + strlen(token) - 1;
-        while (end > token && *end == ' ') *end-- = '\0';
+    // Split by hand: strtok skips empty parts, which would read "Ctrl+" as Ctrl.
+    part = buffer;
+    for (;;) {
+        char* plus = strchr(part, '+');
+        char* name;
+        char* end;
 
-        if (_stricmp(token, "CommandOrControl") == 0 ||
-            _stricmp(token, "Control") == 0 ||
-            _stricmp(token, "Ctrl") == 0 ||
-            _stricmp(token, "CmdOrCtrl") == 0) {
-            g_requireCtrl = TRUE;
-        } else if (_stricmp(token, "Alt") == 0 || _stricmp(token, "Option") == 0) {
-            g_requireAlt = TRUE;
-        } else if (_stricmp(token, "Shift") == 0) {
-            g_requireShift = TRUE;
-        } else if (_stricmp(token, "Super") == 0 ||
-                   _stricmp(token, "Meta") == 0 ||
-                   _stricmp(token, "Win") == 0 ||
-                   _stricmp(token, "Command") == 0 ||
-                   _stricmp(token, "Cmd") == 0) {
-            // Windows key (VK_LWIN/VK_RWIN)
-            g_requireWin = TRUE;
-        } else {
-            mainKeyVk = ParseKeyCode(token);
+        if (plus) *plus = '\0';
+        name = part;
+        while (*name == ' ') name++;
+        end = name + strlen(name);
+        while (end > name && end[-1] == ' ') *--end = '\0';
+
+        if (*name == '\0') {
+            fprintf(stderr, "Error: empty key in hotkey '%s'\n", hotkey);
+            return FALSE;
         }
 
-        token = strtok(NULL, "+");
+        if (_stricmp(name, "CommandOrControl") == 0 ||
+            _stricmp(name, "Control") == 0 ||
+            _stricmp(name, "Ctrl") == 0 ||
+            _stricmp(name, "CmdOrCtrl") == 0) {
+            g_requireCtrl = TRUE;
+        } else if (_stricmp(name, "Alt") == 0 || _stricmp(name, "Option") == 0) {
+            g_requireAlt = TRUE;
+        } else if (_stricmp(name, "Shift") == 0) {
+            g_requireShift = TRUE;
+        } else if (_stricmp(name, "Super") == 0 ||
+                   _stricmp(name, "Meta") == 0 ||
+                   _stricmp(name, "Win") == 0 ||
+                   _stricmp(name, "Command") == 0 ||
+                   _stricmp(name, "Cmd") == 0) {
+            // Windows key (VK_LWIN/VK_RWIN)
+            g_requireWin = TRUE;
+        } else if (hasKey) {
+            fprintf(stderr, "Error: hotkey '%s' names more than one key\n", hotkey);
+            return FALSE;
+        } else if (ParseMouseButton(name, &g_targetXButton)) {
+            g_isMouseButton = TRUE;
+            hasKey = TRUE;
+        } else if (ParseKeyName(name, &g_targetVk)) {
+            hasKey = TRUE;
+        } else {
+            fprintf(stderr, "Error: unknown key '%s' in hotkey '%s'\n", name, hotkey);
+            return FALSE;
+        }
+
+        if (!plus) break;
+        part = plus + 1;
     }
 
-    return mainKeyVk;
+    return TRUE;
 }
 
 /*
@@ -399,16 +496,6 @@ static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lPara
 }
 
 // --- Simulate mode --------------------------------------------------------
-
-static BOOL ParseNumber(const char* text, int base, long* out) {
-    char* end = NULL;
-    long value;
-    if (*text == '\0') return FALSE;
-    value = strtol(text, &end, base);
-    if (end == text || *end != '\0') return FALSE;
-    *out = value;
-    return TRUE;
-}
 
 // Accepts the side-specific modifier names the tests script with, plus a raw VK
 // code in hex (0xA2) or decimal.
@@ -534,7 +621,9 @@ int main(int argc, char* argv[]) {
     }
 
     hotkey = argv[hotkeyArg];
-    g_targetVk = ParseCompoundHotkey(hotkey);
+    if (!ParseCompoundHotkey(hotkey)) {
+        return EXIT_BAD_HOTKEY;
+    }
 
     if (!g_isMouseButton && g_targetVk == 0) {
         // Modifier-only combo (e.g. Control+Super): use the Win key as trigger

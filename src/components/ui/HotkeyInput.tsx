@@ -2,7 +2,12 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Pencil } from "lucide-react";
 import { formatHotkeyLabel, normalizeHotkeyForComparison } from "../../utils/hotkeys";
 
-const CODE_TO_KEY: Record<string, string> = {
+/**
+ * The key names this field can save, by KeyboardEvent.code. Exported for the
+ * Windows key listener's test, which checks that it knows every one of them.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const CODE_TO_KEY: Record<string, string> = {
   Backquote: "`",
   Digit1: "1",
   Digit2: "2",

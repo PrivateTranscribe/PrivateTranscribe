@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
+import { CODE_TO_KEY } from "../../../src/components/ui/HotkeyInput";
 
 /**
  * Drives windows-key-listener.exe through its `--simulate` seam.
@@ -80,11 +81,21 @@ if (!exePath) {
   console.warn(`[windowsKeyListener.simulate] Skipping: ${reason}.`);
 }
 
+interface ListenerRun {
+  /** The process exit code. */
+  code: number | null;
+  /** Whether it printed READY, which it does only for a hotkey it can watch. */
+  ready: boolean;
+  /** The KEY_DOWN / KEY_UP lines, in order. */
+  events: string[];
+  stderr: string;
+}
+
 /**
- * Spawns the listener in simulate mode, feeds it the scripted lines, and returns
- * the emitted KEY_DOWN / KEY_UP sequence in order.
+ * Spawns the listener in simulate mode and, once it is READY, feeds it the
+ * scripted lines. A listener that refuses the hotkey exits without READY.
  */
-function runScript(hotkey: string, lines: string[]): Promise<string[]> {
+function runListener(hotkey: string, lines: string[] = []): Promise<ListenerRun> {
   return new Promise((resolve, reject) => {
     const child = spawn(exePath, ["--simulate", hotkey], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -92,6 +103,7 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
     });
 
     let stdout = "";
+    let stderr = "";
     let settled = false;
     let sawReady = false;
 
@@ -104,7 +116,7 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
       );
     }, 5000);
 
-    const finish = (err?: Error) => {
+    const finish = (code: number | null, err?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -112,14 +124,21 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
         reject(err);
         return;
       }
-      resolve(
-        stdout
+      resolve({
+        code,
+        ready: sawReady,
+        events: stdout
           .split(/\r?\n/)
           .map((line) => line.trim())
-          .filter((line) => line === "KEY_DOWN" || line === "KEY_UP")
-      );
+          .filter((line) => line === "KEY_DOWN" || line === "KEY_UP"),
+        stderr,
+      });
     };
 
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       stdout += chunk;
@@ -131,10 +150,70 @@ function runScript(hotkey: string, lines: string[]): Promise<string[]> {
       }
     });
 
-    child.on("error", (err) => finish(err));
-    child.on("close", () => finish());
+    child.on("error", (err) => finish(null, err));
+    child.on("close", (code) => finish(code));
   });
 }
+
+/** The emitted KEY_DOWN / KEY_UP sequence for a scripted run. */
+async function runScript(hotkey: string, lines: string[]): Promise<string[]> {
+  return (await runListener(hotkey, lines)).events;
+}
+
+/** A virtual-key code as the simulate script takes it. */
+const hex = (vk: number) => `0x${vk.toString(16).toUpperCase()}`;
+
+/**
+ * The virtual-key code Windows reports for each key name the hotkey picker can
+ * save. Letters and digits are their own character codes.
+ */
+const PICKER_KEY_VK: Record<string, number> = {
+  "`": 0xc0,
+  "-": 0xbd,
+  "=": 0xbb,
+  "[": 0xdb,
+  "]": 0xdd,
+  "\\": 0xdc,
+  ";": 0xba,
+  "'": 0xde,
+  ",": 0xbc,
+  ".": 0xbe,
+  "/": 0xbf,
+  Space: 0x20,
+  Tab: 0x09,
+  Enter: 0x0d,
+  ...Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`F${i + 1}`, 0x70 + i])),
+  Up: 0x26,
+  Down: 0x28,
+  Left: 0x25,
+  Right: 0x27,
+  Insert: 0x2d,
+  Home: 0x24,
+  End: 0x23,
+  PageUp: 0x21,
+  PageDown: 0x22,
+  Pause: 0x13,
+  Scrolllock: 0x91,
+  PrintScreen: 0x2c,
+  Numlock: 0x90,
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`num${i}`, 0x60 + i])),
+  numadd: 0x6b,
+  numsub: 0x6d,
+  nummult: 0x6a,
+  numdiv: 0x6f,
+  numdec: 0x6e,
+  MediaPlayPause: 0xb3,
+  MediaStop: 0xb2,
+  MediaNextTrack: 0xb0,
+  MediaPreviousTrack: 0xb1,
+};
+
+function expectedVk(name: string): number | undefined {
+  if (/^[A-Z0-9]$/.test(name)) return name.charCodeAt(0);
+  return PICKER_KEY_VK[name];
+}
+
+const pickerKeyNames = [...new Set(Object.values(CODE_TO_KEY))];
 
 describe.skipIf(!exePath)("windows-key-listener --simulate", () => {
   test("ordered press still works: modifier first, then trigger", async () => {
@@ -226,5 +305,59 @@ describe.skipIf(!exePath)("windows-key-listener --simulate", () => {
     const events = await runScript("CommandOrControl+Space", ["DOWN SPACE 0", "DOWN RCTRL 40"]);
 
     expect(events).toEqual(["KEY_DOWN"]);
+  });
+});
+
+describe.skipIf(!exePath)("windows-key-listener key names", () => {
+  test("knows the virtual-key code of every key the picker can save", () => {
+    const unmapped = pickerKeyNames.filter((name) => expectedVk(name) === undefined);
+    expect(unmapped).toEqual([]);
+  });
+
+  // An unrelated key first (0x07 is unassigned), so a listener that fires on
+  // anything cannot pass.
+  test.concurrent.each(pickerKeyNames)("fires on %s", async (name) => {
+    const vk = hex(expectedVk(name) ?? 0);
+    const run = await runListener(name, [
+      "DOWN 0x07 0",
+      "UP 0x07 10",
+      `DOWN ${vk} 20`,
+      `UP ${vk} 100`,
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test.concurrent.each(pickerKeyNames)("fires on CommandOrControl+%s", async (name) => {
+    const vk = hex(expectedVk(name) ?? 0);
+    const run = await runListener(`CommandOrControl+${name}`, [
+      "DOWN LCTRL 0",
+      `DOWN ${vk} 20`,
+      `UP ${vk} 100`,
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test.concurrent.each([
+    "Bogus",
+    "CommandOrControl+Bogus",
+    "Mouse3",
+    "Ctrl+",
+    "A+B",
+    "0x0",
+    "0x1FF",
+  ])("refuses %s: exits 2 without watching anything", async (hotkey) => {
+    const run = await runListener(hotkey);
+
+    expect(run.code).toBe(2);
+    expect(run.ready).toBe(false);
+    expect(run.stderr).toMatch(/^Error: /);
+  });
+
+  test("still takes a raw virtual-key code, as Agent Mode sends", async () => {
+    const run = await runListener("0xA3", ["DOWN LCTRL 0", "DOWN RCTRL 50", "UP RCTRL 300"]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
 });
