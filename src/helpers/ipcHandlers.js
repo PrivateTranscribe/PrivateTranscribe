@@ -2486,10 +2486,7 @@ class IPCHandlers {
 
         const modelPath = require("path").join(modelManager.modelsDir, modelInfo.model.fileName);
 
-        await modelManager.serverManager.start(modelPath, {
-          contextSize: modelInfo.model.contextLength || 4096,
-          threads: 4,
-        });
+        await modelManager.serverManager.start(modelPath, { threads: 4 });
         modelManager.currentServerModelId = modelId;
 
         return { success: true, port: modelManager.serverManager.port };

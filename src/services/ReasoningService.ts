@@ -18,7 +18,6 @@ export interface ReasoningConfig {
   writingStyle?: "clean" | "coding";
   maxTokens?: number;
   temperature?: number;
-  contextSize?: number;
   promptTemplate?: string;
   /** Fully resolved renderer prompt used only across the Electron IPC boundary. */
   customSystemPrompt?: string;
