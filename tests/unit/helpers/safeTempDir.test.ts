@@ -69,17 +69,22 @@ describe("removeLegacySharedTemp", () => {
       path.join(dir, "whisper-output-1b4e28ba-2fa1-41d2-883f-0016d3cca427.wav"),
       "audio"
     );
+    // What parakeetServer.js wrote up to 0.21.1.
+    fs.writeFileSync(path.join(dir, "parakeet-input-1760900000000.m4a"), "audio");
+    fs.writeFileSync(path.join(dir, "parakeet-1760900000000.wav"), "audio");
     fs.writeFileSync(path.join(dir, "whisper-notes.txt"), "not a name we used");
+    fs.writeFileSync(path.join(dir, "parakeet-notes.wav"), "not a name we used");
     fs.writeFileSync(path.join(dir, "notes.txt"), "not ours");
     fs.mkdirSync(path.join(dir, "parakeet-audio-AbC123"));
     fs.writeFileSync(path.join(dir, "parakeet-audio-AbC123", "input.wav"), "audio");
 
     const removed = await removeLegacySharedTemp({ platform: "win32", dirs: [dir] });
 
-    expect(removed).toBe(2);
+    expect(removed).toBe(4);
     expect(fs.readdirSync(dir).sort()).toEqual([
       "notes.txt",
       "parakeet-audio-AbC123",
+      "parakeet-notes.wav",
       "whisper-notes.txt",
     ]);
     expect(fs.existsSync(path.join(dir, "parakeet-audio-AbC123", "input.wav"))).toBe(true);

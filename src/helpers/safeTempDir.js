@@ -17,10 +17,17 @@ function getSafeTempDir() {
   return os.tmpdir();
 }
 
-// The exact names whisperServer.js gave its temp audio in the shared folders: a
-// timestamp until April 2026, a UUID since.
-const LEGACY_TEMP_FILE =
-  /^whisper-(?:input|output|trimmed|speech|balanced)-[0-9a-f-]+\.[a-z0-9]{3,4}$/i;
+// The exact names older versions gave their temp audio in the shared folders.
+// whisperServer.js used a timestamp until April 2026 and a UUID since. Up to 0.21.1,
+// parakeetServer.js wrote parakeet-input-<timestamp><ext> and parakeet-<timestamp>.wav.
+const LEGACY_TEMP_FILE = new RegExp(
+  "^(?:" +
+    "whisper-(?:input|output|trimmed|speech|balanced)-[0-9a-f-]+\\.[a-z0-9]{3,4}" +
+    "|parakeet-input-\\d+\\.[a-z0-9]{3,4}" +
+    "|parakeet-\\d+\\.wav" +
+    ")$",
+  "i"
+);
 
 function getLegacySharedTempDirs(env = process.env) {
   return [
@@ -49,7 +56,7 @@ async function resolvesToItself(file) {
 }
 
 /**
- * Delete this user's leftover Whisper audio from the shared folders older versions used,
+ * Delete this user's leftover temp audio from the shared folders older versions used,
  * then the folders once empty. Each transcription deletes its own files, so only a crash
  * or a killed process leaves any. Never throws.
  *

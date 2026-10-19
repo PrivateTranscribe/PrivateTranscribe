@@ -197,7 +197,7 @@ async function initializeManagers() {
   }
 
   // Up to 0.23.0, a TEMP path with a space or a letter outside ASCII put temp audio in a
-  // folder every account on the PC can read. Remove the Whisper audio this user left
+  // folder every account on the PC can read. Remove the audio files this user left
   // there, without holding up startup.
   require("./src/helpers/safeTempDir")
     .removeLegacySharedTemp()
