@@ -11,7 +11,8 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 const { getSafeTempDir, removeLegacySharedTemp } = require("../../../src/helpers/safeTempDir");
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-safe-temp-"));
+// Long names, as the sweep compares each file with its real path.
+const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pt-safe-temp-")));
 
 afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true });
@@ -102,6 +103,20 @@ describe("removeLegacySharedTemp", () => {
 
     expect(await removeLegacySharedTemp({ platform: "win32", dirs: [dir] })).toBe(0);
     expect(fs.readFileSync(victim.file, "utf8")).toBe("the user's own file");
+  });
+
+  it("skips files reached through a linked folder higher up", async () => {
+    // A junction where ProgramData should be, leading into the user's own folder.
+    const own = path.join(root, "linked-above", "Users", "Søren");
+    const file = path.join(own, "PrivateTranscribe", "temp", "whisper-input-1760900000003.webm");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "the user's own file");
+    const programData = path.join(root, "linked-above", "ProgramData");
+    fs.symlinkSync(own, programData, "junction");
+    const dir = path.join(programData, "PrivateTranscribe", "temp");
+
+    expect(await removeLegacySharedTemp({ platform: "win32", dirs: [dir] })).toBe(0);
+    expect(fs.readFileSync(file, "utf8")).toBe("the user's own file");
   });
 
   it("removes the folders once they are empty", async () => {

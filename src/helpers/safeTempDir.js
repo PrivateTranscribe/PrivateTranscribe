@@ -39,15 +39,26 @@ async function isReal(entryPath, kind) {
 }
 
 /**
+ * True when the path still leads straight to `file`. Run right before the unlink: a
+ * folder on the way swapped for a junction since the checks above would send the
+ * unlink into another folder.
+ */
+async function resolvesToItself(file) {
+  const real = await fs.promises.realpath(file).catch(() => null);
+  return real !== null && real.toLowerCase() === path.resolve(file).toLowerCase();
+}
+
+/**
  * Delete this user's leftover Whisper audio from the shared folders older versions used,
  * then the folders once empty. Each transcription deletes its own files, so only a crash
  * or a killed process leaves any. Never throws.
  *
  * Every account can create entries in these folders, links included, so the sweep never
  * follows a link, never descends into a folder, and deletes only regular files named
- * exactly like ours. An unlink fails on another account's file, which stays. Parakeet's
- * leftover folders stay too: their files have generic names (input.wav), and a folder
- * another account owns could be swapped for a junction while it was being emptied.
+ * exactly like ours whose real path is the expected one. An unlink fails on another
+ * account's file, which stays. Parakeet's leftover folders stay too: their files have
+ * generic names (input.wav), and a folder another account owns could be swapped for a
+ * junction while it was being emptied.
  *
  * @returns {Promise<number>} how many files were removed
  */
@@ -64,6 +75,7 @@ async function removeLegacySharedTemp({
     for (const name of names) {
       const file = path.join(dir, name);
       if (!LEGACY_TEMP_FILE.test(name) || !(await isReal(file, "file"))) continue;
+      if (!(await resolvesToItself(file))) continue;
       const deleted = await fs.promises.unlink(file).then(
         () => true,
         () => false
