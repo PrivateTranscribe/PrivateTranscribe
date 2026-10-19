@@ -81,3 +81,54 @@ describe("custom cleanup endpoint", () => {
     expect(window.electronAPI.getCustomReasoningKey).not.toHaveBeenCalled();
   });
 });
+
+describe("custom endpoint address", () => {
+  it("uses the suggested Ollama address without a key", async () => {
+    localStorageMock.setItem("reasoningProvider", "custom");
+    localStorageMock.setItem("cloudReasoningBaseUrl", "http://localhost:11434/v1");
+    vi.mocked(window.electronAPI.getCustomReasoningKey).mockResolvedValue("");
+
+    await expect(
+      ReasoningService.processText("um so clean this up", "qwen3:8b", null, { maxRetries: 0 })
+    ).resolves.toBe("Cleaned on my server.");
+
+    expect(fetchedUrls()[0]).toBe("http://localhost:11434/v1/responses");
+    const [, request] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+    expect(request.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("counts as available with no API keys at all", async () => {
+    localStorageMock.setItem("reasoningProvider", "custom");
+    window.electronAPI = {
+      getOpenAIKey: vi.fn().mockResolvedValue(""),
+      getAnthropicKey: vi.fn().mockResolvedValue(""),
+      getGeminiKey: vi.fn().mockResolvedValue(""),
+      getGroqKey: vi.fn().mockResolvedValue(""),
+      checkLocalReasoningAvailable: vi.fn().mockResolvedValue(false),
+    } as any;
+
+    expect(await ReasoningService.isAvailable()).toBe(true);
+  });
+
+  // Falling back to api.openai.com would send the dictation to a provider the
+  // user never chose. The request fails with the reason instead.
+  it.each([
+    ["", "has no address"],
+    ["http://192.168.1.20:11434/v1", "https://"],
+    ["http://api.example.com/v1", "https://"],
+    ["https://api.groq.com/openai/v1", "Groq"],
+    ["not a url", "full address"],
+  ])("fails on the address %j and sends the text nowhere", async (address, reason) => {
+    localStorageMock.setItem("reasoningProvider", "custom");
+    localStorageMock.setItem("cloudReasoningBaseUrl", address);
+
+    await expect(
+      ReasoningService.processText("um so clean this up", "gpt-5.6-luna", null, {
+        maxRetries: 0,
+      })
+    ).rejects.toThrow(reason);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(window.electronAPI.getOpenAIKey).not.toHaveBeenCalled();
+  });
+});
