@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
  * whisper-server and System32's tar.exe read their command line in the ANSI
@@ -85,10 +85,15 @@ describe("planAnsiArgvPaths", () => {
 });
 
 describe.runIf(process.platform === "win32")("planAnsiArgvPaths on real folders", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-ansi-argv-"));
+  // Made in beforeAll: Vitest runs a skipped describe's body but not its afterAll.
+  let root = "";
+
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-ansi-argv-"));
+  });
 
   afterAll(() => {
-    fs.rmSync(root, { recursive: true, force: true });
+    if (root) fs.rmSync(root, { recursive: true, force: true });
   });
 
   it.each(["Søren", "Ωmega", "李雷"])("resolves to the same file under %s", (name) => {

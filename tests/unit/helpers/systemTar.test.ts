@@ -2,7 +2,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
  * The Parakeet and diarization downloads extract .tar.bz2 archives to C:\ paths.
@@ -102,11 +102,17 @@ describe("getTarExtractSpawn", () => {
 
 // The real tar.exe, through both download paths, on folders outside the ANSI code page.
 describe.runIf(process.platform === "win32")("real tar.exe under non-ASCII user folders", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-tar-"));
-  const source = path.join(root, "source");
+  // Made in beforeAll: Vitest runs a skipped describe's body but not its afterAll.
+  let root = "";
+  let source = "";
+
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-tar-"));
+    source = path.join(root, "source");
+  });
 
   afterAll(() => {
-    fs.rmSync(root, { recursive: true, force: true });
+    if (root) fs.rmSync(root, { recursive: true, force: true });
   });
 
   /** A .tar.bz2 holding model-dir/tokens.txt, built with relative names so any TEMP works. */

@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * whisper-server reads --model through the ANSI code page. For a user named
@@ -103,14 +103,21 @@ const realModel = (() => {
 })();
 
 describe.runIf(realBinary && realModel)("real whisper-server under a Søren folder", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-whisper-soren-"));
-  const folder = path.join(root, "Users", "Søren", ".cache", "PrivateTranscribe", "whisper-models");
-  const model = path.join(folder, path.basename(realModel || "ggml-base.bin"));
+  // Made in beforeAll: Vitest runs a skipped describe's body but not its afterAll.
+  let root = "";
+  let folder = "";
+  let model = "";
   let manager: any = null;
+
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "pt-whisper-soren-"));
+    folder = path.join(root, "Users", "Søren", ".cache", "PrivateTranscribe", "whisper-models");
+    model = path.join(folder, path.basename(realModel || "ggml-base.bin"));
+  });
 
   afterAll(async () => {
     await manager?.stop();
-    fs.rmSync(root, { recursive: true, force: true });
+    if (root) fs.rmSync(root, { recursive: true, force: true });
   });
 
   it("loads the model and answers health checks", async () => {
