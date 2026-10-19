@@ -399,18 +399,13 @@ function resolveClaudeArgPrefix() {
 }
 
 /**
- * Variables that make the CLI bill an API key or a cloud account instead of
- * the user's Claude Code login. The app loads its own Anthropic key from
- * keys.enc into process.env, and --print mode would silently bill it.
+ * The one credential --print mode uses without asking. In a terminal Claude
+ * Code asks once before it bills ANTHROPIC_API_KEY instead of the user's
+ * login; in --print it always uses it. Cloud provider and gateway variables
+ * (CLAUDE_CODE_USE_*, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL) act the same
+ * in both modes, so they stay: they are the user's own Claude Code setup.
  */
-const CLAUDE_BILLING_ENV_KEYS = new Set([
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_AUTH_TOKEN",
-  "ANTHROPIC_BASE_URL",
-  "CLAUDE_CODE_USE_BEDROCK",
-  "CLAUDE_CODE_USE_VERTEX",
-  "CLAUDE_CODE_USE_FOUNDRY",
-]);
+const CLAUDE_BILLING_ENV_KEYS = new Set(["ANTHROPIC_API_KEY"]);
 
 /** A copy of `baseEnv` without the billing variables, in any case, as Windows reads them. */
 function withoutClaudeBillingEnv(baseEnv) {

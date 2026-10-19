@@ -76,8 +76,8 @@ function buildRewriteArgs(systemPrompt, model) {
 }
 
 function buildRewriteEnv(baseEnv) {
-  // This connection explicitly uses the user's Claude Code login. API keys
-  // and cloud routing inherited from the app must not silently change billing.
+  // This connection runs the user's own Claude Code setup. An API key, which
+  // --print bills without asking, must not silently replace their login.
   return {
     ...withoutClaudeBillingEnv(baseEnv),
     ENABLE_CLAUDEAI_MCP_SERVERS: "false",
