@@ -37,7 +37,7 @@ it.each(["whisper", "llama"])(
       // Run the real downloader with local archive I/O, omitting only CLI startup.
       vm.runInNewContext(
         source.replace(
-          "main().catch(console.error);",
+          /^main\(\)\.catch[\s\S]*$/m,
           "module.exports = { downloadBinary, BINARIES };"
         ),
         {
