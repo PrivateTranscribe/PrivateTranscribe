@@ -1,6 +1,6 @@
 # Whisper CUDA Engine Notes
 
-Last updated: 2026-09-29
+Last updated: 2026-10-19
 
 This documents the CUDA engine fixes shipped in PrivateTranscribe `0.8.2` → `0.8.4`, and the important lessons for future agents/devs.
 
@@ -126,6 +126,14 @@ Important rules:
 3. `whisperServer.js` must spawn from the binary directory and prepend that directory to:
    - `PATH` on Windows
    - `LD_LIBRARY_PATH` on Linux
+
+   One exception: a model path outside ASCII (`C:\Users\Søren\...`) spawns from the model's
+   folder with the bare file name, because whisper-server reads `--model` in the ANSI code
+   page and aborts on such a path (`src/helpers/ansiArgvPaths.js`). The binary directory
+   stays on PATH, and Windows searches the executable's own folder before the working
+   directory, so both engines still load their DLLs; checked 2026-10-19 with package
+   `v0.0.10` on an RTX 3090.
+
 4. Do not validate CUDA readiness only by executable size. Modern builds may use a small launcher plus large runtime libraries.
 5. Validate installed package size/companion libraries instead of assuming the `.exe` must be >10 MB.
 6. `getCudaBinaryStatus().installed` means a CUDA engine exists. It must **not** require `upToDate === true`.

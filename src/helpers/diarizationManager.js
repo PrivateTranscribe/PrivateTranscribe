@@ -5,7 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const debugLogger = require("./debugLogger");
-const { getTarCommand } = require("./systemTar");
+const { getTarExtractSpawn } = require("./systemTar");
 const { getModelsDirForService } = require("./modelDirUtils");
 const { downloadFile } = require("./downloadUtils");
 const { createCancelledError } = require("./whisperServer");
@@ -113,7 +113,9 @@ class DiarizationManager extends DiarizationEngine {
 
   extractTarBz2(archivePath, destinationDir) {
     return new Promise((resolve, reject) => {
-      const child = spawn(getTarCommand(), ["-xjf", archivePath, "-C", destinationDir], {
+      const tar = getTarExtractSpawn(archivePath, destinationDir);
+      const child = spawn(tar.command, tar.args, {
+        ...(tar.cwd ? { cwd: tar.cwd } : {}),
         windowsHide: true,
       });
       let stderr = "";
