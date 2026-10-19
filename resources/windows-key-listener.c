@@ -39,7 +39,8 @@
  *                                         see it, as on the secure desktop
  *   MOUSE <event> <timeMs>                a mouse event: LDOWN, RDOWN, MDOWN,
  *                                         XDOWN, LUP, RUP, MUP, XUP, WHEEL,
- *                                         HWHEEL or MOVE
+ *                                         HWHEEL or MOVE (X is the first side
+ *                                         button)
  *   QUIT, or EOF                          stop
  * Simulate mode also keeps the key state GetAsyncKeyState would report, built
  * from the same events, so the live sample is tested without reading it.
@@ -260,6 +261,13 @@ static BOOL IsAnyOtherModifierHeld(DWORD now) {
     if (!g_requireShift && IsModifierHeld(&g_shift, now)) return TRUE;
     if (!g_requireWin && IsModifierHeld(&g_win, now)) return TRUE;
     return FALSE;
+}
+
+// Asks the system rather than the mouse hook, so a button released where the
+// hook cannot see it, as on the secure desktop, never stays held.
+static BOOL IsAnyMouseButtonHeld(void) {
+    return IsKeyDownNow(VK_LBUTTON) || IsKeyDownNow(VK_RBUTTON) || IsKeyDownNow(VK_MBUTTON) ||
+           IsKeyDownNow(VK_XBUTTON1) || IsKeyDownNow(VK_XBUTTON2);
 }
 
 static void EmitDown(void) {
@@ -585,7 +593,13 @@ static void HandleModifierOnlyEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) 
         // Auto-repeat of a held modifier arrives as more key-downs and changes nothing.
         if (!g_chordSpoiled && !g_chordPending && !g_isDown && AreModifiersPressed(timeMs) &&
             !IsAnyOtherModifierHeld(timeMs)) {
-            StartChordTimer(timeMs);
+            // A mouse button already held is a drag that gained the modifiers,
+            // such as Ctrl+Shift added to a file drag to make a shortcut.
+            if (IsAnyMouseButtonHeld()) {
+                g_chordSpoiled = TRUE;
+            } else {
+                StartChordTimer(timeMs);
+            }
         }
         return;
     }
@@ -867,6 +881,11 @@ static int RunSimulateLoop(void) {
                 continue;
             }
             HandleModifierOnlyMouseEvent(msg, (DWORD)timeMs);
+            // After the event, as for keys: the button state GetAsyncKeyState reports.
+            if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) g_simKeyDown[VK_LBUTTON] = msg == WM_LBUTTONDOWN;
+            if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) g_simKeyDown[VK_RBUTTON] = msg == WM_RBUTTONDOWN;
+            if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) g_simKeyDown[VK_MBUTTON] = msg == WM_MBUTTONDOWN;
+            if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) g_simKeyDown[VK_XBUTTON1] = msg == WM_XBUTTONDOWN;
             continue;
         }
 

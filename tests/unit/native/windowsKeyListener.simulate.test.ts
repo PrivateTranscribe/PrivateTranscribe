@@ -782,3 +782,52 @@ describe.skipIf(!exePath)(
     });
   }
 );
+
+describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys during a drag", () => {
+  test.each(["L", "R", "M", "X"])(
+    "Ctrl+Shift added while the %s button is held starts nothing",
+    async (button) => {
+      const run = await runListener("Control+Shift", [
+        `MOUSE ${button}DOWN 0`,
+        "DOWN LCTRL 100",
+        "DOWN LSHIFT 120",
+        "TICK 500",
+        `MOUSE ${button}UP 700`,
+        "UP LSHIFT 800",
+        "UP LCTRL 810",
+      ]);
+
+      expect(run.events).toEqual([]);
+    }
+  );
+
+  test("works again once the drag and the modifiers are released", async () => {
+    const run = await runListener("Control+Shift", [
+      "MOUSE LDOWN 0",
+      "DOWN LCTRL 100",
+      "DOWN LSHIFT 120",
+      "MOUSE LUP 300",
+      "UP LSHIFT 400",
+      "UP LCTRL 410",
+      "DOWN LCTRL 1000",
+      "DOWN LSHIFT 1020",
+      "TICK 1300",
+      "UP LSHIFT 1400",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+
+  test("a button released where the hook cannot see it does not block the hotkey", async () => {
+    const run = await runListener("Control+Shift", [
+      "MOUSE LDOWN 0",
+      "UNSEEN_UP 1",
+      "DOWN LCTRL 5000",
+      "DOWN LSHIFT 5020",
+      "TICK 5300",
+      "UP LSHIFT 5400",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
