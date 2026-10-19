@@ -221,6 +221,15 @@ export type PrivateTranscribeOptions = {
    * changes behaviour.
    */
   fakeAudioCaptureFile: string;
+  /**
+   * Leave every window the app creates after startup exactly as the app made
+   * it: visible, opaque, at the z-order it chose. The overlay and the control
+   * panel are still silenced. The only window created that late is the Read
+   * Aloud highlight, so this is how a spec probes the highlight the way a user
+   * sees it on screen, instead of the invisible, never-on-top stand-in every
+   * other spec gets. Windows a spec creates itself are left alone too.
+   */
+  revealNewWindows: boolean;
 };
 
 /**
@@ -305,6 +314,9 @@ async function retryOnPromiseGc<T>(label: string, run: () => Promise<T>): Promis
  * real audio. Muting only silences the output device — WebAudio's clock keeps
  * running, so playback state and timing assertions are unaffected.
  *
+ * With the `revealNewWindows` option, windows created after startup are left
+ * exactly as the app makes them (see launchApp).
+ *
  * Safe to run twice, which a retry after a lost reply does: a second pass
  * would otherwise bind the stubs as the "real" setters and register a second
  * window listener.
@@ -313,13 +325,18 @@ async function silenceWindows(app: ElectronApplication, muteAudio = false): Prom
   await retryOnPromiseGc("silenceWindows", () =>
     app.evaluate(({ app: electronApp, BrowserWindow }, shouldMute) => {
       // Lives on the main process's global so a second evaluate sees the first.
-      type SilenceState = { windows: WeakSet<Electron.BrowserWindow>; listening: boolean };
+      type SilenceState = {
+        windows: WeakSet<Electron.BrowserWindow>;
+        listening: boolean;
+        revealNew?: boolean;
+      };
       const store = globalThis as unknown as { __ptE2eSilence?: SilenceState };
       const state = (store.__ptE2eSilence ??= { windows: new WeakSet(), listening: false });
 
       const silence = (win: Electron.BrowserWindow) => {
         if (!win || win.isDestroyed() || state.windows.has(win)) return;
         state.windows.add(win);
+        if (state.revealNew) return;
 
         // Keep working references before the public setters are stubbed out.
         const real = {
@@ -412,6 +429,7 @@ type LaunchInputs = {
   muteAudio: boolean;
   fakeAudioCaptureFile: string;
   appArgs: string[];
+  revealNewWindows: boolean;
 };
 
 /**
@@ -429,6 +447,7 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
     muteAudio,
     fakeAudioCaptureFile,
     appArgs,
+    revealNewWindows,
   } = inputs;
 
   const args = [
@@ -489,6 +508,16 @@ async function launchApp(inputs: LaunchInputs): Promise<ElectronApplication> {
   if (!isFlagOn(env.PRIVATETRANSCRIBE_DIAG_DISABLE_OVERLAY_WINDOW)) {
     const overlay = await findWindow(app, (w) => isOverlayUrl(w.url()), "dictation overlay");
     await overlay.waitForLoadState("load");
+  }
+
+  // Only now, with both startup windows already silenced.
+  if (revealNewWindows) {
+    await retryOnPromiseGc("revealNewWindows", () =>
+      app.evaluate(() => {
+        const store = globalThis as unknown as { __ptE2eSilence?: { revealNew?: boolean } };
+        if (store.__ptE2eSilence) store.__ptE2eSilence.revealNew = true;
+      })
+    );
   }
 
   const recordConsole = (page: Page) => {
@@ -603,6 +632,7 @@ export const test = base.extend<
   useThrowawayHome: [false, { option: true }],
   seedCudaEngine: [false, { option: true }],
   fakeAudioCaptureFile: ["", { option: true }],
+  revealNewWindows: [false, { option: true }],
 
   fakeHomeDir: async (
     { seedWhisperModels, seedRealWhisperModels, seedKokoroModel, useThrowawayHome },
@@ -725,6 +755,7 @@ export const test = base.extend<
       completeOnboarding,
       experimentalFeatures,
       fakeAudioCaptureFile,
+      revealNewWindows,
     },
     use,
     testInfo
@@ -756,6 +787,7 @@ export const test = base.extend<
       muteAudio: seedKokoroModel,
       fakeAudioCaptureFile,
       appArgs,
+      revealNewWindows,
     };
 
     let app = await launchApp(inputs);

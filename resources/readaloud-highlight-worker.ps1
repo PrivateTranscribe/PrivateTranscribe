@@ -11,7 +11,9 @@
 #   -> anchor                    remember the focused window's document and its
 #                                current selection (call right after the copy,
 #                                while the selection is still in place)
-#   <- OK chars=N window=<title> anchored
+#   <- OK chars=N hwnd=H topmost=0|1 window=<title>
+#                                H is the native handle of the window the text is
+#                                painted in; the highlight stacks itself on it
 #   <- ERR <message>             no document with a selection under focus
 #   -> find <base64 utf8 text>   locate one sentence inside the anchored
 #                                selection, searching forward from the last hit
@@ -39,6 +41,41 @@ $script:lastSentence = $null
 $script:sentences = @{}
 $script:wordRanges = $null
 $script:windowName = ""
+$script:windowHandle = 0
+$script:windowTopmost = $false
+
+# The window the text is painted in: the nearest ancestor that is a real window,
+# with a native handle and the WindowPattern. Text in a dialog belongs to the
+# dialog, which UI Automation lists under the window that owns it. A UWP app's
+# CoreWindow is skipped: it is a child of its frame, and the frame is the window
+# that moves in the z-order.
+function Get-SourceWindow($element, $fallback) {
+  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+  $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+  $windowPattern = [System.Windows.Automation.AutomationElement]::IsWindowPatternAvailableProperty
+  $node = $element
+  while ($node -and $node -ne $desktop) {
+    try {
+      if ($node.Current.NativeWindowHandle -ne 0 -and
+          $node.Current.ClassName -ne "Windows.UI.Core.CoreWindow" -and
+          [bool]$node.GetCurrentPropertyValue($windowPattern)) {
+        return $node
+      }
+    } catch {}
+    $node = $walker.GetParent($node)
+  }
+  return $fallback
+}
+
+function Set-SourceWindow($window) {
+  $script:windowHandle = 0
+  $script:windowTopmost = $false
+  try { $script:windowHandle = $window.Current.NativeWindowHandle } catch {}
+  try {
+    $pattern = $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+    $script:windowTopmost = [bool]$pattern.Current.IsTopmost
+  } catch {}
+}
 
 function Get-Anchor {
   $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
@@ -77,6 +114,7 @@ function Get-Anchor {
             $script:sentences = @{}
             $script:wordRanges = $null
             $script:windowName = $root.Current.Name
+            Set-SourceWindow (Get-SourceWindow $el $root)
             return $text.Length
           }
         }
@@ -244,7 +282,8 @@ while ($true) {
   try {
     if ($line -eq "anchor") {
       $chars = Get-Anchor
-      Write-Output ("OK chars=" + $chars + " window=" + $script:windowName)
+      $topmost = if ($script:windowTopmost) { 1 } else { 0 }
+      Write-Output ("OK chars=" + $chars + " hwnd=" + $script:windowHandle + " topmost=" + $topmost + " window=" + $script:windowName)
     }
     elseif ($line.StartsWith("find ")) {
       $script:wordRanges = $null
@@ -283,6 +322,8 @@ while ($true) {
       $script:sentences = @{}
       $script:wordRanges = $null
       $script:windowName = ""
+      $script:windowHandle = 0
+      $script:windowTopmost = $false
       Write-Output "OK"
     }
     elseif ($line -eq "ping") {

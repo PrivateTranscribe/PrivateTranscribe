@@ -18,6 +18,10 @@
  *      over those rectangles. It is a separate window rather than part of the
  *      overlay because the overlay is a fixed 400x500 box that follows the
  *      dictation button; the sentence can be anywhere on any monitor.
+ *      It is stacked directly above the source app's window rather than above
+ *      every window, so whatever covers the text covers the tint too, as if
+ *      the source app had painted it. Kristian, 2026-10-19: covering the text
+ *      with Chrome or PrivateTranscribe "didn't block it. It still showed it."
  *   3. The renderer's player owns playback, so it reports each spoken word
  *      up to the main process (`readaloud-sentence`). The control capsule keeps
  *      its size regardless of whether native word geometry is available.
@@ -36,6 +40,12 @@ const WORKER_FILENAME = "readaloud-highlight-worker.ps1";
 const COMMAND_TIMEOUT_MS = 4000;
 /** Delay after a completed geometry request. Requests never overlap. */
 const TRACK_INTERVAL_MS = 50;
+/**
+ * How often the highlight retakes its place above the source window. The
+ * source jumps above it whenever it is activated; this bounds how long the
+ * highlight stays hidden under it.
+ */
+const STACK_INTERVAL_MS = 50;
 /** Breathing room around the sentence's rectangles, in DIPs. */
 const PAD = 3;
 
@@ -82,6 +92,25 @@ function layoutHighlight(rects, toDip) {
     height: Math.round(r.height),
   }));
   return { bounds, boxes };
+}
+
+/**
+ * The window the anchored text is painted in, from the worker's anchor reply
+ * (`OK chars=N hwnd=H topmost=0|1 window=<title>`). Null when the reply names
+ * no window. The handle stays signed: Windows sign-extends 32-bit handles, and
+ * Electron parses the media source id as a signed 64-bit number.
+ *
+ * @param {string} reply
+ * @returns {{ hwnd: number, topmost: boolean } | null}
+ */
+function parseAnchorWindow(reply) {
+  // Anchored to the front of the reply: the window title comes last and can
+  // contain anything, "hwnd=" included.
+  const match = /^OK chars=\d+ hwnd=(-?\d+) topmost=([01])(?: |$)/.exec(String(reply || ""));
+  if (!match) return null;
+  const hwnd = Number(match[1]);
+  if (!Number.isSafeInteger(hwnd) || hwnd === 0) return null;
+  return { hwnd, topmost: match[2] === "1" };
 }
 
 /**
@@ -139,6 +168,9 @@ class ReadAloudHighlight {
     this.workerTargetKey = "";
     this.refreshing = false;
     this.wordGeometry = null;
+    /** `{ hwnd, topmost }` of the window the anchored text lives in. */
+    this.sourceWindow = null;
+    this.stackTimer = null;
   }
 
   resolveWorkerScript() {
@@ -239,6 +271,7 @@ class ReadAloudHighlight {
     this.generation++;
     this.target = null;
     this.wordGeometry = null;
+    this.sourceWindow = null;
     this.anchored = false;
     this.anchorPromise = null;
     this.stopTracking();
@@ -318,6 +351,7 @@ class ReadAloudHighlight {
     this.target = null;
     this.workerTargetKey = "";
     this.wordGeometry = null;
+    this.sourceWindow = null;
     this.stopTracking();
     this.hide();
     this.lastIndex = -1;
@@ -336,6 +370,7 @@ class ReadAloudHighlight {
       if (generation !== this.generation) return false;
       const ok = reply.startsWith("OK");
       this.anchored = ok;
+      this.sourceWindow = ok ? parseAnchorWindow(reply) : null;
       debugLogger.debug("[ReadAloudHighlight] anchor", { reply, ms: Date.now() - started });
       return ok;
     })();
@@ -498,7 +533,8 @@ class ReadAloudHighlight {
       show: false,
       frame: false,
       transparent: true,
-      alwaysOnTop: true,
+      // Not above every window: stackAboveSource() puts it on the source app.
+      alwaysOnTop: false,
       focusable: false,
       skipTaskbar: true,
       hasShadow: false,
@@ -514,13 +550,6 @@ class ReadAloudHighlight {
       },
     });
     win.setIgnoreMouseEvents(true, { forward: true });
-    // Above the source app, whatever it is, and never in front of a real
-    // dialog: "screen-saver" is the level the dictation overlay uses too.
-    try {
-      win.setAlwaysOnTop(true, "screen-saver");
-    } catch {
-      win.setAlwaysOnTop(true);
-    }
     win.setMenuBarVisibility(false);
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(HIGHLIGHT_PAGE)}`);
     win.on("closed", () => {
@@ -556,10 +585,58 @@ class ReadAloudHighlight {
       this.active = true;
       win.showInactive();
       this.onActiveChange?.(true);
+      this.startStacking();
+    }
+  }
+
+  /**
+   * Keep the highlight directly above the window the text lives in, not above
+   * every window. Anything that covers the source app then covers the
+   * highlight with it, a menu or tooltip of the source app's own included.
+   *
+   * Activating the source app lifts it over the highlight, so this runs on a
+   * timer while the highlight is up. Re-stacking an unmoved window changes
+   * nothing on screen.
+   */
+  stackAboveSource() {
+    const win = this.window;
+    if (!this.active || !win || win.isDestroyed()) return;
+    const source = this.sourceWindow;
+    if (source) {
+      try {
+        // A pinned (always-on-top) source needs a pinned highlight to sit on it.
+        if (win.isAlwaysOnTop() !== source.topmost) win.setAlwaysOnTop(source.topmost);
+        win.moveAbove(`window:${source.hwnd}:0`);
+        return;
+      } catch (error) {
+        // Electron refuses a handle that no longer names a window. If the
+        // source app closed, its text went with it and the next measurement
+        // hides the highlight; until then it stays visible, as it used to.
+        debugLogger.debug("[ReadAloudHighlight] cannot stack on the source window", {
+          error: error?.message,
+        });
+        this.sourceWindow = null;
+      }
+    }
+    // No window to stand on: above every window instead.
+    if (!win.isAlwaysOnTop()) win.setAlwaysOnTop(true, "screen-saver");
+  }
+
+  startStacking() {
+    this.stackAboveSource();
+    if (this.stackTimer || !this.active) return;
+    this.stackTimer = setInterval(() => this.stackAboveSource(), STACK_INTERVAL_MS);
+  }
+
+  stopStacking() {
+    if (this.stackTimer) {
+      clearInterval(this.stackTimer);
+      this.stackTimer = null;
     }
   }
 
   hide() {
+    this.stopStacking();
     this.lastLayoutKey = "";
     if (this.window && !this.window.isDestroyed() && this.window.isVisible()) {
       this.window.hide();
@@ -577,6 +654,7 @@ class ReadAloudHighlight {
     this.target = null;
     this.workerTargetKey = "";
     this.wordGeometry = null;
+    this.sourceWindow = null;
     this.stopTracking();
     this.hide();
     this.lastIndex = -1;
@@ -597,10 +675,13 @@ class ReadAloudHighlight {
       active: this.active,
       target: this.target?.payload ?? null,
       bounds: win && this.active ? win.getBounds() : null,
+      sourceWindow: this.sourceWindow,
     };
   }
 }
 
 module.exports = ReadAloudHighlight;
 module.exports.layoutHighlight = layoutHighlight;
+module.exports.parseAnchorWindow = parseAnchorWindow;
 module.exports.PAD = PAD;
+module.exports.STACK_INTERVAL_MS = STACK_INTERVAL_MS;
