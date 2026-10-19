@@ -44,12 +44,16 @@ describe("local coding transcript output", () => {
 });
 
 describe("local reasoning capacity", () => {
-  it("reserves enough context and output for a multi-minute dictation", () => {
-    const maxTokens = LocalReasoningService.calculateMaxTokens(6000);
-    const contextSize = LocalReasoningService.calculateContextSize(6000, 4454, maxTokens);
+  it("reserves enough output for a multi-minute dictation", () => {
+    expect(LocalReasoningService.calculateMaxTokens(6000)).toBe(2512);
+  });
 
-    expect(maxTokens).toBe(2512);
-    expect(contextSize).toBe(8192);
+  it("leaves the context window to the server's one fixed size", async () => {
+    const run = vi.spyOn(modelManager, "runInference").mockResolvedValue("Clean text.");
+    await LocalReasoningService.processText("x".repeat(60_000), "test-model", null, {
+      contextSize: 131072,
+    });
+    expect(run.mock.calls[0][2]).not.toHaveProperty("contextSize");
   });
 
   it("uses the fully resolved renderer prompt without appending suffixes again", () => {
@@ -80,17 +84,15 @@ describe("local reasoning capacity", () => {
     const bounded = LocalReasoningService.buildInferenceConfig(
       { timeoutMs: 30_000 },
       "prompt",
-      512,
-      8192
+      512
     );
     expect(bounded).toMatchObject({
       disableThinking: true,
       timeoutMs: 30_000,
       maxTokens: 512,
-      contextSize: 8192,
     });
 
-    const normal = LocalReasoningService.buildInferenceConfig({}, "prompt", 512, 8192);
+    const normal = LocalReasoningService.buildInferenceConfig({}, "prompt", 512);
     expect(normal.disableThinking).toBe(true);
     expect(normal).not.toHaveProperty("timeoutMs");
   });

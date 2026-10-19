@@ -18,6 +18,13 @@ const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
 const DEFAULT_INFERENCE_TIMEOUT_MS = 300000;
 const MAX_ERROR_DETAIL_CHARS = 500;
+// Every start, warm-up and cleanup alike, uses this one context window. It
+// holds the longest dictation the 4,096-token output cap in
+// localReasoningBridge.js lets finish, the same again as output, and the prompt
+// with Smart Context. The models' trained window of 128K tokens would reserve
+// its whole key-value cache up front, about 18 GiB for Qwen3 8B against 2.25
+// GiB here (computed from the model shapes, not measured).
+const CONTEXT_SIZE = 16384;
 // Endpoints name the model by this alias rather than by its file, whose path
 // sits under the Windows user's profile.
 const MODEL_ALIAS = "privatetranscribe-local";
@@ -136,18 +143,7 @@ class LlamaServerManager {
   async start(modelPath, options = {}) {
     if (this.startupPromise) return this.startupPromise;
 
-    const requestedContextSize = options.contextSize || 4096;
-
-    // Reuse only when the live server can satisfy the requested context. A
-    // server first started with the old 4K default otherwise keeps truncating
-    // later, longer dictations even when callers request a larger window.
-    if (
-      this.ready &&
-      this.modelPath === modelPath &&
-      Number(this.contextSize || 0) >= requestedContextSize
-    ) {
-      return;
-    }
+    if (this.ready && this.modelPath === modelPath) return;
 
     // Stop existing server if running
     if (this.process) {
@@ -169,7 +165,7 @@ class LlamaServerManager {
 
     this.port = await this.findAvailablePort();
     this.modelPath = modelPath;
-    this.contextSize = options.contextSize || 4096;
+    this.contextSize = CONTEXT_SIZE;
     // A fresh key per start keeps every other program, web pages included, out of
     // the server. It travels in the environment, so neither the command line nor
     // the args logged below ever carry it.
@@ -533,3 +529,4 @@ class LlamaServerManager {
 module.exports = LlamaServerManager;
 module.exports.extractCompletionText = extractCompletionText;
 module.exports.buildInferenceRequestBody = buildInferenceRequestBody;
+module.exports.CONTEXT_SIZE = CONTEXT_SIZE;

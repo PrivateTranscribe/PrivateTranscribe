@@ -6,7 +6,7 @@ import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
 import { isShortDictation } from "../utils/shortDictation";
 import { getCodingPrompt } from "../config/codingPrompt";
 import logger from "../utils/logger";
-import { isSecureEndpoint } from "../utils/urlUtils";
+import { isValidApiUrl } from "../helpers/urlValidation";
 import {
   extractFileContent,
   getContext,
@@ -18,7 +18,6 @@ export interface ReasoningConfig {
   writingStyle?: "clean" | "coding";
   maxTokens?: number;
   temperature?: number;
-  contextSize?: number;
   promptTemplate?: string;
   /** Fully resolved renderer prompt used only across the Electron IPC boundary. */
   customSystemPrompt?: string;
@@ -291,85 +290,57 @@ class ReasoningService {
     }
   }
 
-  private getConfiguredOpenAIBase(): string {
-    if (typeof window === "undefined" || !window.localStorage) {
+  private getSelectedProvider(): string {
+    if (typeof window === "undefined" || !window.localStorage) return "";
+    return window.localStorage.getItem("reasoningProvider") || "";
+  }
+
+  /**
+   * The base URL for OpenAI-style requests. With the custom endpoint selected it
+   * is the saved address or an error, never api.openai.com in its place: that
+   * would send the dictation to a provider the user did not choose.
+   */
+  private getConfiguredOpenAIBase(isCustomProvider: boolean): string {
+    if (!isCustomProvider) {
       return API_ENDPOINTS.OPENAI_BASE;
     }
 
-    try {
-      const provider = window.localStorage.getItem("reasoningProvider") || "";
-      const isCustomProvider = provider === "custom";
-
-      if (!isCustomProvider) {
-        logger.logReasoning("CUSTOM_REASONING_ENDPOINT_CHECK", {
-          hasCustomUrl: false,
-          provider,
-          reason: "Provider is not 'custom', using default OpenAI endpoint",
-          defaultEndpoint: API_ENDPOINTS.OPENAI_BASE,
-        });
-        return API_ENDPOINTS.OPENAI_BASE;
-      }
-
-      const stored = window.localStorage.getItem("cloudReasoningBaseUrl") || "";
-      const trimmed = stored.trim();
-
-      if (!trimmed) {
-        logger.logReasoning("CUSTOM_REASONING_ENDPOINT_CHECK", {
-          hasCustomUrl: false,
-          provider,
-          usingDefault: true,
-          defaultEndpoint: API_ENDPOINTS.OPENAI_BASE,
-        });
-        return API_ENDPOINTS.OPENAI_BASE;
-      }
-
-      const normalized = normalizeBaseUrl(trimmed) || API_ENDPOINTS.OPENAI_BASE;
-
-      logger.logReasoning("CUSTOM_REASONING_ENDPOINT_CHECK", {
-        hasCustomUrl: true,
-        provider,
-        rawUrl: trimmed,
-        normalizedUrl: normalized,
-        defaultEndpoint: API_ENDPOINTS.OPENAI_BASE,
-      });
-
-      const knownNonOpenAIUrls = [
-        "api.groq.com",
-        "api.anthropic.com",
-        "generativelanguage.googleapis.com",
-      ];
-
-      const isKnownNonOpenAI = knownNonOpenAIUrls.some((url) => normalized.includes(url));
-      if (isKnownNonOpenAI) {
-        logger.logReasoning("OPENAI_BASE_REJECTED", {
-          reason: "Custom URL is a known non-OpenAI provider, using default OpenAI endpoint",
-          attempted: normalized,
-        });
-        return API_ENDPOINTS.OPENAI_BASE;
-      }
-
-      if (!isSecureEndpoint(normalized)) {
-        logger.logReasoning("OPENAI_BASE_REJECTED", {
-          reason: "HTTPS required (HTTP allowed for local network only)",
-          attempted: normalized,
-        });
-        return API_ENDPOINTS.OPENAI_BASE;
-      }
-
-      logger.logReasoning("CUSTOM_REASONING_ENDPOINT_RESOLVED", {
-        customEndpoint: normalized,
-        isCustom: true,
-        provider,
-      });
-
-      return normalized;
-    } catch (error) {
-      logger.logReasoning("CUSTOM_REASONING_ENDPOINT_ERROR", {
-        error: (error as Error).message,
-        fallbackTo: API_ENDPOINTS.OPENAI_BASE,
-      });
-      return API_ENDPOINTS.OPENAI_BASE;
+    const stored = (window.localStorage.getItem("cloudReasoningBaseUrl") || "").trim();
+    if (!stored) {
+      logger.logReasoning("CUSTOM_REASONING_ENDPOINT_REJECTED", { reason: "no address" });
+      throw new Error("The custom endpoint has no address. Add one in AI enhancement settings.");
     }
+
+    const normalized = normalizeBaseUrl(stored);
+    const knownProvider = [
+      { host: "api.groq.com", name: "Groq" },
+      { host: "api.anthropic.com", name: "Anthropic" },
+      { host: "generativelanguage.googleapis.com", name: "Gemini" },
+    ].find(({ host }) => normalized.includes(host));
+    if (knownProvider) {
+      logger.logReasoning("CUSTOM_REASONING_ENDPOINT_REJECTED", {
+        reason: "known non-OpenAI provider",
+        attempted: normalized,
+      });
+      throw new Error(
+        `The custom endpoint points at ${knownProvider.name}. Choose the ${knownProvider.name} provider instead.`
+      );
+    }
+
+    const validation = isValidApiUrl(normalized);
+    if (!validation.valid) {
+      logger.logReasoning("CUSTOM_REASONING_ENDPOINT_REJECTED", {
+        reason: validation.reason,
+        attempted: normalized,
+      });
+      throw new Error(`The custom endpoint address can't be used. ${validation.reason}`);
+    }
+
+    logger.logReasoning("CUSTOM_REASONING_ENDPOINT_RESOLVED", {
+      customEndpoint: normalized,
+      isCustom: true,
+    });
+    return normalized;
   }
 
   private getOpenAIEndpointCandidates(
@@ -674,7 +645,7 @@ class ReasoningService {
     if (!trimmedModel) {
       throw new Error("No reasoning model selected");
     }
-    const provider = getModelProvider(trimmedModel);
+    const provider = getModelProvider(trimmedModel, this.getSelectedProvider());
     if (config.writingStyle === "coding") {
       config = { ...config, promptTemplate: config.promptTemplate ?? getCodingPrompt() };
     }
@@ -717,7 +688,14 @@ class ReasoningService {
           break;
         }
         case "openai":
-          result = await this.processWithOpenAI(text, trimmedModel, agentName, config);
+        case "custom":
+          result = await this.processWithOpenAI(
+            text,
+            trimmedModel,
+            agentName,
+            config,
+            provider === "custom"
+          );
           break;
         case "anthropic":
           result = await this.processWithAnthropic(text, trimmedModel, agentName, config);
@@ -775,11 +753,11 @@ class ReasoningService {
     text: string,
     model: string,
     agentName: string | null = null,
-    config: ReasoningConfig = {}
+    config: ReasoningConfig = {},
+    // Decided once by processText. Reading the setting again after the awaits
+    // below could pair the OpenAI key with the custom address, or the reverse.
+    isCustomProvider = false
   ): Promise<string> {
-    const reasoningProvider = window.localStorage?.getItem("reasoningProvider") || "";
-    const isCustomProvider = reasoningProvider === "custom";
-
     logger.logReasoning("OPENAI_START", {
       model,
       agentName,
@@ -791,6 +769,7 @@ class ReasoningService {
       throw new Error("Already processing a request");
     }
 
+    const openAiBase = this.getConfiguredOpenAIBase(isCustomProvider);
     const apiKey = await this.getApiKey(isCustomProvider ? "custom" : "openai");
 
     logger.logReasoning("OPENAI_API_KEY", {
@@ -816,7 +795,6 @@ class ReasoningService {
 
       const isOlderModel = model && (model.startsWith("gpt-4") || model.startsWith("gpt-3"));
 
-      const openAiBase = this.getConfiguredOpenAIBase();
       const endpointCandidates = this.getOpenAIEndpointCandidates(openAiBase);
       const isCustomEndpoint = openAiBase !== API_ENDPOINTS.OPENAI_BASE;
 
@@ -871,7 +849,8 @@ class ReasoningService {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${apiKey}`,
+                    // A local server such as Ollama takes no key.
+                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
                   },
                   body: JSON.stringify(requestBody),
                   signal: requestTimeout.signal,
@@ -1381,6 +1360,9 @@ class ReasoningService {
 
   async isAvailable(): Promise<boolean> {
     try {
+      // A custom endpoint needs no key, and an address it can't use fails the
+      // request itself with the reason, rather than skipping cleanup silently.
+      if (this.getSelectedProvider() === "custom") return true;
       if (window.localStorage?.getItem("reasoningModel") === "claude-code") {
         return Boolean((await window.electronAPI?.agentModeRewriteStatus?.())?.available);
       }
