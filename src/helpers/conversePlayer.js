@@ -127,6 +127,9 @@ export class ConversePlayer {
   handleTurnEnd(msg) {
     if (!msg || msg.gen !== this.gen) return;
     this.total = msg.total;
+    // Idle means playFrom stopped at playIndex, waiting for a sentence. Every
+    // sentence arrives before the turn end, so reaching the total means the
+    // last one already finished playing.
     if (!this.busy && this.playIndex >= this.total) this.drain();
     this.report();
   }
@@ -237,9 +240,13 @@ export class ConversePlayer {
     const myGen = this.gen;
     if (this.texts[i] === undefined) {
       // Either the agent has not produced this sentence yet, or the stream is
-      // over and the turn is finished.
+      // over and the turn is finished. Either way it is the next one to play:
+      // handleSentence resumes from playIndex, so leaving it on the sentence
+      // that just ended replayed that sentence after every tool pause.
       this.busy = false;
+      this.playIndex = i;
       if (this.total !== null && i >= this.total) this.drain();
+      else this.report();
       return;
     }
 
