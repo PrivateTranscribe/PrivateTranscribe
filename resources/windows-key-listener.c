@@ -7,6 +7,7 @@
  *   `
  *   F8
  *   CommandOrControl+F11
+ *   Control+Shift             (modifiers only: fires while all are held)
  *   Mouse4
  *   Mouse5
  *   Ctrl+Mouse4
@@ -57,6 +58,9 @@ static BOOL g_requireCtrl = FALSE;
 static BOOL g_requireAlt = FALSE;
 static BOOL g_requireShift = FALSE;
 static BOOL g_requireWin = FALSE;
+
+// A hotkey of modifiers only, such as Control+Shift, has no trigger key.
+static BOOL g_modifierOnly = FALSE;
 
 // Simulate mode: driven from stdin, no hooks installed, real keyboard never read.
 static BOOL g_simulateMode = FALSE;
@@ -322,6 +326,7 @@ static BOOL ParseCompoundHotkey(const char* hotkey) {
     g_isMouseButton = FALSE;
     g_targetXButton = 0;
     g_targetVk = 0;
+    g_modifierOnly = FALSE;
 
     if (strlen(hotkey) >= sizeof(buffer)) {
         fprintf(stderr, "Error: hotkey is too long\n");
@@ -380,6 +385,8 @@ static BOOL ParseCompoundHotkey(const char* hotkey) {
         part = plus + 1;
     }
 
+    // Every part was a modifier, and an empty hotkey failed above, so at least one is required.
+    g_modifierOnly = !hasKey;
     return TRUE;
 }
 
@@ -397,9 +404,20 @@ static void HandleKeyboardEvent(DWORD vkCode, BOOL isKeyDown, DWORD timeMs) {
         EmitUp();
     }
 
-    // The trigger key is handled first and exclusively: for a modifier-only combo
-    // (e.g. Control+Super) the trigger VK is itself a modifier, and it must never
-    // also be treated as "a required modifier arriving late".
+    // A modifier-only hotkey fires once every modifier in it is held, pressed in
+    // any order and with either side's key, and ends when one is released (above).
+    // It used to pick one modifier as the trigger and wait for its generic VK
+    // (VK_CONTROL), which a low-level hook never reports, so it never fired.
+    if (g_modifierOnly) {
+        if (isKeyDown && IsRequiredModifierVk(vkCode) && AreModifiersPressed()) {
+            EmitDown();
+        }
+        return;
+    }
+
+    // The trigger key is handled first and exclusively: a raw VK trigger such as
+    // 0xA3 (right Ctrl) is itself a modifier, and it must never also be treated
+    // as "a required modifier arriving late".
     if (vkCode == g_targetVk) {
         if (isKeyDown) {
             // Low-level hooks deliver auto-repeat as plain repeated WM_KEYDOWN with
@@ -615,6 +633,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "  %s Mouse4                   (side button back)\n", argv[0]);
         fprintf(stderr, "  %s Mouse5                   (side button forward)\n", argv[0]);
         fprintf(stderr, "  %s CommandOrControl+F11     (with modifier)\n", argv[0]);
+        fprintf(stderr, "  %s Control+Shift            (modifiers only)\n", argv[0]);
         fprintf(stderr, "  %s Ctrl+Mouse4              (modifier + mouse)\n", argv[0]);
         fprintf(stderr, "  %s --simulate Ctrl+Space    (stdin-driven test mode)\n", argv[0]);
         return 1;
@@ -625,29 +644,9 @@ int main(int argc, char* argv[]) {
         return EXIT_BAD_HOTKEY;
     }
 
-    if (!g_isMouseButton && g_targetVk == 0) {
-        // Modifier-only combo (e.g. Control+Super): use the Win key as trigger
-        // if Win is required, otherwise Ctrl, Alt, Shift in that order.
-        if (g_requireWin) {
-            g_targetVk = VK_LWIN;
-            g_requireWin = FALSE; // Win key IS the trigger, not a modifier check
-        } else if (g_requireCtrl) {
-            g_targetVk = VK_CONTROL;
-            g_requireCtrl = FALSE;
-        } else if (g_requireAlt) {
-            g_targetVk = VK_MENU;
-            g_requireAlt = FALSE;
-        } else if (g_requireShift) {
-            g_targetVk = VK_SHIFT;
-            g_requireShift = FALSE;
-        } else {
-            fprintf(stderr, "Error: Invalid hotkey '%s'\n", hotkey);
-            return 1;
-        }
-    }
-
-    fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
-            hotkey, g_isMouseButton, g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin);
+    fprintf(stderr, "Listening for: %s (mouse=%d, VK=0x%02X, modifierOnly=%d, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
+            hotkey, g_isMouseButton, g_targetVk, g_modifierOnly, g_requireCtrl, g_requireAlt,
+            g_requireShift, g_requireWin);
 
     // Simulate mode installs no hooks and never samples the real keyboard.
     if (g_simulateMode) {

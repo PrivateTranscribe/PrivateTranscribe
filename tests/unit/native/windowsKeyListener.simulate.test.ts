@@ -361,3 +361,77 @@ describe.skipIf(!exePath)("windows-key-listener key names", () => {
     expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
   });
 });
+
+/** The simulate tokens for the left and right key of each picker modifier. */
+const MODIFIER_KEYS: Record<string, { left: string; right: string }> = {
+  Control: { left: "LCTRL", right: "RCTRL" },
+  Super: { left: "LWIN", right: "RWIN" },
+  Alt: { left: "LALT", right: "RALT" },
+  Shift: { left: "LSHIFT", right: "RSHIFT" },
+};
+
+/** Every modifier-only hotkey the picker can save: two or more, in its order. */
+const modifierOnlyHotkeys = Array.from({ length: 16 }, (_, mask) =>
+  Object.keys(MODIFIER_KEYS).filter((_, bit) => mask & (1 << bit))
+)
+  .filter((parts) => parts.length >= 2)
+  .map((parts) => parts.join("+"));
+
+describe.skipIf(!exePath)("windows-key-listener modifier-only hotkeys", () => {
+  test("covers all eleven combinations the picker can save", () => {
+    expect(modifierOnlyHotkeys).toHaveLength(11);
+  });
+
+  test.concurrent.each(modifierOnlyHotkeys)(
+    "%s fires on the left keys, pressed slowly in order",
+    async (hotkey) => {
+      const keys = hotkey.split("+").map((part) => MODIFIER_KEYS[part].left);
+      const run = await runListener(hotkey, [
+        ...keys.map((key, i) => `DOWN ${key} ${i * 400}`),
+        `UP ${keys[0]} 2000`,
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    }
+  );
+
+  test.concurrent.each(modifierOnlyHotkeys)(
+    "%s fires on the right keys, pressed in reverse",
+    async (hotkey) => {
+      const keys = hotkey
+        .split("+")
+        .map((part) => MODIFIER_KEYS[part].right)
+        .reverse();
+      const run = await runListener(hotkey, [
+        ...keys.map((key, i) => `DOWN ${key} ${i * 30}`),
+        `UP ${keys[keys.length - 1]} 600`,
+      ]);
+
+      expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+    }
+  );
+
+  test.concurrent.each(modifierOnlyHotkeys)(
+    "%s does not fire until every modifier is held",
+    async (hotkey) => {
+      const keys = hotkey.split("+").map((part) => MODIFIER_KEYS[part].left);
+      const run = await runListener(hotkey, [
+        ...keys.slice(0, -1).map((key, i) => `DOWN ${key} ${i * 30}`),
+        "DOWN SPACE 200",
+        "UP SPACE 300",
+      ]);
+
+      expect(run.events).toEqual([]);
+    }
+  );
+
+  test("mixing sides works: left Ctrl with right Shift", async () => {
+    const run = await runListener("Control+Shift", [
+      "DOWN LCTRL 0",
+      "DOWN RSHIFT 250",
+      "UP RSHIFT 900",
+    ]);
+
+    expect(run.events).toEqual(["KEY_DOWN", "KEY_UP"]);
+  });
+});
