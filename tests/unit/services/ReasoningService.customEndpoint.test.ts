@@ -132,3 +132,41 @@ describe("custom endpoint address", () => {
     expect(window.electronAPI.getOpenAIKey).not.toHaveBeenCalled();
   });
 });
+
+describe("provider switched while a cleanup is running", () => {
+  beforeEach(() => ReasoningService.clearApiKeyCache());
+
+  it("keeps a custom cleanup on the custom address and key", async () => {
+    localStorageMock.setItem("reasoningProvider", "custom");
+    localStorageMock.setItem("cloudReasoningBaseUrl", CUSTOM_BASE);
+    vi.mocked(window.electronAPI.getCustomReasoningKey).mockImplementation(async () => {
+      localStorageMock.setItem("reasoningProvider", "openai");
+      return "custom-key";
+    });
+
+    await ReasoningService.processText("um so clean this up", "gpt-5.6-luna", null, {
+      maxRetries: 0,
+    });
+
+    for (const url of fetchedUrls()) expect(url.startsWith(`${CUSTOM_BASE}/`)).toBe(true);
+    const [, request] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+    expect((request.headers as Record<string, string>).Authorization).toBe("Bearer custom-key");
+  });
+
+  it("keeps an OpenAI cleanup on OpenAI, so its key never reaches the custom host", async () => {
+    localStorageMock.setItem("reasoningProvider", "openai");
+    localStorageMock.setItem("cloudReasoningBaseUrl", CUSTOM_BASE);
+    vi.mocked(window.electronAPI.getOpenAIKey).mockImplementation(async () => {
+      localStorageMock.setItem("reasoningProvider", "custom");
+      return "sk-openai";
+    });
+
+    await ReasoningService.processText("um so clean this up", "gpt-5.6-luna", null, {
+      maxRetries: 0,
+    });
+
+    for (const url of fetchedUrls()) expect(url.startsWith("https://api.openai.com/")).toBe(true);
+    const [, request] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+    expect((request.headers as Record<string, string>).Authorization).toBe("Bearer sk-openai");
+  });
+});

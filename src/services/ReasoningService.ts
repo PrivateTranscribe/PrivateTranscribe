@@ -300,9 +300,8 @@ class ReasoningService {
    * is the saved address or an error, never api.openai.com in its place: that
    * would send the dictation to a provider the user did not choose.
    */
-  private getConfiguredOpenAIBase(): string {
-    const provider = this.getSelectedProvider();
-    if (provider !== "custom") {
+  private getConfiguredOpenAIBase(isCustomProvider: boolean): string {
+    if (!isCustomProvider) {
       return API_ENDPOINTS.OPENAI_BASE;
     }
 
@@ -340,7 +339,6 @@ class ReasoningService {
     logger.logReasoning("CUSTOM_REASONING_ENDPOINT_RESOLVED", {
       customEndpoint: normalized,
       isCustom: true,
-      provider,
     });
     return normalized;
   }
@@ -691,7 +689,13 @@ class ReasoningService {
         }
         case "openai":
         case "custom":
-          result = await this.processWithOpenAI(text, trimmedModel, agentName, config);
+          result = await this.processWithOpenAI(
+            text,
+            trimmedModel,
+            agentName,
+            config,
+            provider === "custom"
+          );
           break;
         case "anthropic":
           result = await this.processWithAnthropic(text, trimmedModel, agentName, config);
@@ -749,11 +753,11 @@ class ReasoningService {
     text: string,
     model: string,
     agentName: string | null = null,
-    config: ReasoningConfig = {}
+    config: ReasoningConfig = {},
+    // Decided once by processText. Reading the setting again after the awaits
+    // below could pair the OpenAI key with the custom address, or the reverse.
+    isCustomProvider = false
   ): Promise<string> {
-    const reasoningProvider = window.localStorage?.getItem("reasoningProvider") || "";
-    const isCustomProvider = reasoningProvider === "custom";
-
     logger.logReasoning("OPENAI_START", {
       model,
       agentName,
@@ -765,6 +769,7 @@ class ReasoningService {
       throw new Error("Already processing a request");
     }
 
+    const openAiBase = this.getConfiguredOpenAIBase(isCustomProvider);
     const apiKey = await this.getApiKey(isCustomProvider ? "custom" : "openai");
 
     logger.logReasoning("OPENAI_API_KEY", {
@@ -790,7 +795,6 @@ class ReasoningService {
 
       const isOlderModel = model && (model.startsWith("gpt-4") || model.startsWith("gpt-3"));
 
-      const openAiBase = this.getConfiguredOpenAIBase();
       const endpointCandidates = this.getOpenAIEndpointCandidates(openAiBase);
       const isCustomEndpoint = openAiBase !== API_ENDPOINTS.OPENAI_BASE;
 
