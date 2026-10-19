@@ -112,26 +112,18 @@ describe("agent prompt rewriter", () => {
       .map((line) => JSON.parse(line));
 
   describe("buildRewriteArgs / buildRewriteEnv", () => {
-    it("does not let inherited API billing or cloud routing replace the Claude login", () => {
-      const env = buildRewriteEnv({
-        PATH: "keep",
-        ANTHROPIC_API_KEY: "test-only",
+    it("drops an API key but keeps the user's own Claude Code setup", () => {
+      const setup = {
         ANTHROPIC_AUTH_TOKEN: "test-only",
         ANTHROPIC_BASE_URL: "https://example.invalid",
         CLAUDE_CODE_USE_BEDROCK: "1",
         CLAUDE_CODE_USE_VERTEX: "1",
         CLAUDE_CODE_USE_FOUNDRY: "1",
-      });
+      };
+      const env = buildRewriteEnv({ PATH: "keep", ANTHROPIC_API_KEY: "test-only", ...setup });
       expect(env.PATH).toBe("keep");
-      for (const key of [
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_BASE_URL",
-        "CLAUDE_CODE_USE_BEDROCK",
-        "CLAUDE_CODE_USE_VERTEX",
-        "CLAUDE_CODE_USE_FOUNDRY",
-      ])
-        expect(env).not.toHaveProperty(key);
+      expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
+      expect(env).toMatchObject(setup);
     });
     it("returns exactly the slim print-mode flag list", () => {
       expect(buildRewriteArgs(AGENT_REWRITE_SYSTEM_PROMPT, AGENT_REWRITE_MODEL)).toEqual([
