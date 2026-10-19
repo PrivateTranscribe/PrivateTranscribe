@@ -26,6 +26,27 @@ import { DEFAULT_KOKORO_VOICE_ID } from "../models/kokoroVoices";
 /** Sentences to synthesize ahead of the one playing, so seams stay gapless. */
 const LOOKAHEAD = 2;
 
+/** The slice of audio one level reading averages over, in seconds. */
+const LEVEL_WINDOW_S = 0.025;
+
+/**
+ * Root mean square of an AudioBuffer's first channel over `windowSeconds`
+ * centred on `seconds`; 0 outside the audio.
+ *
+ * @param {{ sampleRate: number, getChannelData: (channel: number) => Float32Array }} buffer
+ */
+export function rmsAround(buffer, seconds, windowSeconds = LEVEL_WINDOW_S) {
+  const data = buffer.getChannelData(0);
+  const centre = Math.round(seconds * buffer.sampleRate);
+  const half = Math.max(1, Math.round((windowSeconds * buffer.sampleRate) / 2));
+  const from = Math.max(0, centre - half);
+  const to = Math.min(data.length, centre + half);
+  if (!(to > from)) return 0;
+  let sum = 0;
+  for (let i = from; i < to; i++) sum += data[i] * data[i];
+  return Math.sqrt(sum / (to - from));
+}
+
 export class ReadAloudPlayer {
   constructor({
     api = null,
@@ -90,15 +111,39 @@ export class ReadAloudPlayer {
 
   // ------------------------------------------------------------------ state
 
-  getState() {
+  /**
+   * Seconds into the current sentence that the listener hears right now. The
+   * output clock, when the device reports one, puts it where the audio is
+   * heard rather than where it was scheduled.
+   */
+  audiblePosition() {
     const ctx = this.playing ? this.getContext() : null;
     const outputTime = this.playing ? ctx?.getOutputTimestamp?.().contextTime : null;
-    const elapsed =
-      outputTime > 0
-        ? outputTime - this.startedAt + this.offset
-        : this.playing
-          ? this.elapsed()
-          : this.offset;
+    return outputTime > 0
+      ? outputTime - this.startedAt + this.offset
+      : this.playing
+        ? this.elapsed()
+        : this.offset;
+  }
+
+  /**
+   * How loud the audio being heard right now is, as RMS; 0 while nothing
+   * plays. Read from the decoded buffer at the audible position rather than
+   * through an AnalyserNode, so metering never touches the playback graph.
+   */
+  getOutputLevel() {
+    if (!this.playing) return 0;
+    // Sentence 0 plays its head chunk alone until the tail lands; from then
+    // on the cache holds both on one timeline.
+    const entry =
+      this.cache.get(this.index) ??
+      (this.index === 0 && this.firstChunks ? this.chunkCache.get("head") : undefined);
+    if (!entry?.buffer) return 0;
+    return rmsAround(entry.buffer, this.audiblePosition());
+  }
+
+  getState() {
+    const elapsed = this.audiblePosition();
     const currentWord =
       this.status === "playing" || this.status === "paused"
         ? (this.playbackWords.find(

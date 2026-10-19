@@ -21,6 +21,7 @@ import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useHotkey } from "./hooks/useHotkey";
 import { useMicLevel } from "./hooks/useMicLevel";
+import { useReadAloudLevel } from "./hooks/useReadAloudLevel";
 import { VOICE_BAR_HEIGHTS, voiceBarScale } from "./utils/voiceBars";
 import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { ConversePlayer } from "./helpers/conversePlayer";
@@ -339,16 +340,20 @@ const SoundWaveIcon = ({ size = 16, color = "var(--color-primary)" }) => {
 };
 
 /**
- * VoiceBars - voice-reactive bar visualiser rendered inside the recording button.
+ * VoiceBars - voice-reactive bar visualiser rendered inside the button.
  *
- * Five bars, heights matching logo proportions, driven by micLevel (0-1). They
- * hold the logo shape exactly while nothing is being said, so any movement means
- * the microphone heard something. Colors are dark (primary-foreground) since the
- * button background is mint.
+ * Five bars, heights matching logo proportions, driven by a voice level (0-1).
+ * They hold the logo shape exactly while nothing is being said, so any movement
+ * means a voice is there. Dictating, the voice is yours: dark bars on the mint
+ * disc. Read Aloud speaking, it is the app's: mint bars on the dark disc.
  */
-const VoiceBars = ({ micLevel }) => {
+const VoiceBars = ({ level, color = "var(--color-background)", testId }) => {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 2.5, pointerEvents: "none" }}>
+    <div
+      data-testid={testId}
+      aria-hidden
+      style={{ display: "flex", alignItems: "center", gap: 2.5, pointerEvents: "none" }}
+    >
       {VOICE_BAR_HEIGHTS.map((laidOutHeight, i) => (
         <div
           key={i}
@@ -358,8 +363,8 @@ const VoiceBars = ({ micLevel }) => {
             // why the level must not reach the screen through layout.
             height: laidOutHeight,
             borderRadius: 2,
-            backgroundColor: "var(--color-background)",
-            transform: `scaleY(${voiceBarScale(i, micLevel)})`,
+            backgroundColor: color,
+            transform: `scaleY(${voiceBarScale(i, level)})`,
             transformOrigin: "center",
             willChange: "transform",
             // Fast transition keeps it responsive; easing keeps it elegant
@@ -369,6 +374,17 @@ const VoiceBars = ({ micLevel }) => {
       ))}
     </div>
   );
+};
+
+/**
+ * The button's bars while a read is on screen: mint on the dark disc and driven
+ * by the voice being read, never by the microphone. The disc stays dark because
+ * mint means the microphone is live. Its own component so the per-frame level
+ * re-renders these five bars rather than the whole overlay.
+ */
+const ReadAloudVoiceBars = ({ readLevel, speaking }) => {
+  const level = useReadAloudLevel(readLevel, speaking);
+  return <VoiceBars level={level} color="var(--color-primary)" testId="overlay-readaloud-bars" />;
 };
 
 /**
@@ -813,6 +829,13 @@ export default function App() {
   }, []);
 
   const readAloudPlaying = readAloudState?.playing === true;
+  // While a read is on screen the button shows its voice, like it shows yours
+  // while dictating. An error has nothing to voice, so it keeps the logo.
+  const readAloudBarsShown = Boolean(readAloudState) && readAloudState.status !== "error";
+  const readReadAloudLevel = useCallback(
+    () => readAloudRef.current?.player.getOutputLevel() ?? 0,
+    []
+  );
 
   // A clipboard fallback is still worth reading, but it is not what the user
   // highlighted, so the pill names it rather than passing it off as the
@@ -1638,15 +1661,18 @@ export default function App() {
                       micState === "hover" ? `${OVERLAY_HOVER_OPEN_DELAY_MS}ms` : "0ms",
                   }}
                 >
-                  {micState === "idle" ? (
-                    <VoiceWaveIndicator isListening={false} />
-                  ) : micState === "hover" ? (
-                    <VoiceWaveIndicator isListening={false} />
-                  ) : micState === "recording" ? (
-                    <VoiceBars micLevel={micLevel} />
+                  {micState === "recording" ? (
+                    <VoiceBars level={micLevel} />
                   ) : micState === "processing" ? (
                     <VoiceWaveIndicator isListening={true} />
-                  ) : null}
+                  ) : readAloudBarsShown ? (
+                    <ReadAloudVoiceBars
+                      readLevel={readReadAloudLevel}
+                      speaking={readAloudPlaying}
+                    />
+                  ) : (
+                    <VoiceWaveIndicator isListening={false} />
+                  )}
                 </div>
 
                 {micState === "recording" && (

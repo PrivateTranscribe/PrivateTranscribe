@@ -6,6 +6,7 @@ import {
   waitForAudioContextRunning,
 } from "../utils/sharedAudioContext";
 import { createMeterStallWatchdog } from "../utils/meterStallWatchdog";
+import { nextVoiceLevel } from "../utils/voiceBars";
 
 /**
  * useMicLevel - real-time microphone amplitude tracking for voice-reactive UI.
@@ -93,11 +94,6 @@ export function useMicLevel(audioManagerRef, isRecording) {
 
         buildAnalyserGraph(ctx);
 
-        const ATTACK = 0.35; // fast rise so peaks feel responsive
-        const DECAY = 0.1; // slow fall so it feels elegant not jittery
-        // Speech RMS typically 0.01–0.25; 0.25 normalizes loud speech to ~1.0
-        const SCALE = 0.25;
-
         // Stall self-heal watchdog. When the shared context stops rendering
         // (suspended by the OS, or a zombie whose clock froze after display
         // sleep/wake) the context + analyser are rebuilt; this never touches
@@ -139,11 +135,8 @@ export function useMicLevel(audioManagerRef, isRecording) {
             return;
           }
 
-          const normalized = Math.min(1, rms / SCALE);
-
           // Asymmetric exponential smoothing: attack fast, decay slow
-          const alpha = normalized > smoothedRef.current ? ATTACK : DECAY;
-          smoothedRef.current = smoothedRef.current * (1 - alpha) + normalized * alpha;
+          smoothedRef.current = nextVoiceLevel(smoothedRef.current, rms);
 
           setMicLevel(smoothedRef.current);
           rafRef.current = requestAnimationFrame(tick);

@@ -43,3 +43,18 @@ export function voiceBarHeight(index, micLevel) {
 export function voiceBarScale(index, micLevel) {
   return voiceBarHeight(index, micLevel) / VOICE_BAR_HEIGHTS[index];
 }
+
+// How a voice moves the bars: the microphone's while dictating, Read Aloud's
+// while it speaks, so the two voices look alike on the button. Speech RMS runs
+// about 0.01-0.25, so 0.25 is a full bar. The level rises fast so the bars
+// catch each syllable, and falls slowly so they do not flicker between them.
+const VOICE_LEVEL_FULL_RMS = 0.25;
+const VOICE_LEVEL_ATTACK = 0.35;
+const VOICE_LEVEL_DECAY = 0.1;
+
+/** One animation frame of the level: `rms` folded into `previous`, in 0-1. */
+export function nextVoiceLevel(previous, rms) {
+  const normalized = Math.min(1, Math.max(0, rms) / VOICE_LEVEL_FULL_RMS);
+  const alpha = normalized > previous ? VOICE_LEVEL_ATTACK : VOICE_LEVEL_DECAY;
+  return previous * (1 - alpha) + normalized * alpha;
+}
