@@ -234,6 +234,9 @@ class VoiceMuter {
       child,
       key,
       markerId,
+      maxHoldMs,
+      startedAt: Date.now(),
+      safetyTimer: null,
       releaseRequested: false,
       done: false,
       code: null,
@@ -284,14 +287,28 @@ class VoiceMuter {
     this.heldKey = key;
     this._session = session;
     session.exited.then((code) => {
-      // The helper can end on its own, after its max-hold timeout or by
-      // crashing. Forget it so a later release() does not write to a dead
-      // pipe, and send the key-up if it went without one.
       if (this.process !== child) return;
-      this.process = null;
-      this.heldKey = null;
-      this._session = null;
-      void this._afterExit(session, code);
+      if (isCleanExit(code)) {
+        // It let go on its own after its max-hold timeout. Forget it so a
+        // later release() does not write to a dead pipe.
+        this.process = null;
+        this.heldKey = null;
+        this._session = null;
+        void this._afterExit(session, code);
+        return;
+      }
+      // It crashed with the key still down, so the call is still muted. When
+      // in doubt, stay muted: the key-up waits for this dictation's own
+      // release(), or for the max hold the helper would have kept.
+      debugLogger.warn("voiceMuter: helper ended mid-hold, key-up waits for the release", {
+        key,
+        code,
+      });
+      const remainingMs = Math.max(0, session.maxHoldMs - (Date.now() - session.startedAt));
+      session.safetyTimer = setTimeout(() => {
+        if (this._session === session) void this.release();
+      }, remainingMs);
+      session.safetyTimer.unref?.();
     });
 
     debugLogger.debug("voiceMuter: holding mute key", { key });
@@ -325,6 +342,7 @@ class VoiceMuter {
     const key = this.heldKey;
     this.heldKey = null;
     this._session = null;
+    clearTimeout(session.safetyTimer);
 
     const finishing = this._finishHelper(session);
     this._releasing = finishing;

@@ -200,7 +200,7 @@ describe("a helper that ends without its key-up", () => {
     expect(keyUps).toEqual([]);
   });
 
-  it("sends the key-up when the helper crashes mid-hold", async () => {
+  it("stays muted when the helper crashes mid-hold, until the dictation ends", async () => {
     const { muter, helpers, keyUps } = makeMuter();
     const holding = muter.hold("F13");
     helpers[0].printHeld();
@@ -210,8 +210,26 @@ describe("a helper that ends without its key-up", () => {
     await tick();
     await tick();
 
-    expect(muter.isMuted()).toBe(false);
+    // The crash skipped the key-up, so the call is still muted. Keep it so.
+    expect(muter.isMuted()).toBe(true);
+    expect(keyUps).toEqual([]);
+
+    await expect(muter.release()).resolves.toBe(true);
     expect(keyUps).toEqual(["F13"]);
+    expect(muter.isMuted()).toBe(false);
+  });
+
+  it("still lets go at the max hold when the dictation never ends", async () => {
+    const { muter, helpers, keyUps } = makeMuter();
+    const holding = muter.hold("F13", 100);
+    helpers[0].printHeld();
+    await holding;
+
+    helpers[0].crash();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(keyUps).toEqual(["F13"]);
+    expect(muter.isMuted()).toBe(false);
   });
 });
 
