@@ -14,6 +14,22 @@ const SEARCH_DEPTH = 3;
 const SKIPPED_FOLDERS = new Set(["appdata", "node_modules"]);
 
 /**
+ * Folders read before a search gives up and reads no file. A real Windows home
+ * took 222 folders and 14 ms, so this bounds the time the main process is
+ * blocked at a few times that, however full the home is.
+ */
+const MAX_FOLDERS_READ = 1000;
+
+/**
+ * A dictation looks the same file up twice, for its identifiers and for its
+ * excerpt, so a result is reused for this long.
+ */
+const RESULT_CACHE_MS = 5000;
+const RESULT_CACHE_ENTRIES = 32;
+/** One result cache per fs module, so a test's fake file system has its own. */
+const resultCaches = new WeakMap();
+
+/**
  * True when `folder` is a single folder name a window title could show.
  *
  * @param {unknown} folder
@@ -37,12 +53,14 @@ function isPlainFolderName(folder) {
  * the wrong file's contents in the AI prompt.
  *
  * Hidden folders (starting with "."), AppData and node_modules are skipped to
- * keep the scan short.
+ * keep the scan short. A search that would read more than MAX_FOLDERS_READ
+ * folders reads no file, since a second match could be in the part it skipped.
+ * A result is reused for RESULT_CACHE_MS.
  *
  * @param {string} filename  File name from the title, e.g. "App.jsx".
  * @param {string} folder    Project folder from the title, e.g. "privoca".
  * @param {string} homeDir   Where the search starts.
- * @param {{ fsMod?: typeof fs, maxDepth?: number }} [options]
+ * @param {{ fsMod?: typeof fs, maxDepth?: number, now?: () => number }} [options]
  * @returns {{ path: string|null, reason?: string }}
  */
 function findEditorFile(filename, folder, homeDir, options = {}) {
@@ -52,10 +70,35 @@ function findEditorFile(filename, folder, homeDir, options = {}) {
 
   const fsMod = options.fsMod || fs;
   const maxDepth = Number.isInteger(options.maxDepth) ? options.maxDepth : SEARCH_DEPTH;
-  const wantedFolder = folder.trim().toLowerCase();
+  const now = typeof options.now === "function" ? options.now() : Date.now();
+  let cache = resultCaches.get(fsMod);
+  if (!cache) {
+    cache = new Map();
+    resultCaches.set(fsMod, cache);
+  }
+  const key = [homeDir, folder.trim().toLowerCase(), filename, maxDepth].join("\0");
+  const cached = cache.get(key);
+  if (cached && now - cached.at < RESULT_CACHE_MS) return { ...cached.result };
+
+  const result = searchHome(filename, folder.trim().toLowerCase(), homeDir, fsMod, maxDepth);
+  cache.delete(key);
+  cache.set(key, { at: now, result });
+  if (cache.size > RESULT_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+  return { ...result };
+}
+
+function searchHome(filename, wantedFolder, homeDir, fsMod, maxDepth) {
   const matches = [];
+  let foldersRead = 0;
+  let gaveUp = false;
 
   const walk = (dir, depth, insideFolder) => {
+    if (gaveUp) return;
+    if (foldersRead >= MAX_FOLDERS_READ) {
+      gaveUp = true;
+      return;
+    }
+    foldersRead += 1;
     let entries;
     try {
       entries = fsMod.readdirSync(dir, { withFileTypes: true });
@@ -63,7 +106,7 @@ function findEditorFile(filename, folder, homeDir, options = {}) {
       return; // Permission denied or other fs error - skip silently
     }
     for (const entry of entries) {
-      if (matches.length > 1) return;
+      if (gaveUp || matches.length > 1) return;
       if (entry.name.startsWith(".")) continue;
       if (entry.isFile()) {
         if (insideFolder && entry.name === filename) matches.push(path.join(dir, entry.name));
@@ -80,11 +123,12 @@ function findEditorFile(filename, folder, homeDir, options = {}) {
 
   walk(homeDir, 0, false);
 
-  if (matches.length === 1) return { path: matches[0] };
   if (matches.length > 1) {
     return { path: null, reason: "more than one file with that name in that project folder" };
   }
+  if (gaveUp) return { path: null, reason: "too many folders to search" };
+  if (matches.length === 1) return { path: matches[0] };
   return { path: null, reason: "file not found in home dir" };
 }
 
-module.exports = { findEditorFile, isPlainFolderName, SEARCH_DEPTH };
+module.exports = { findEditorFile, isPlainFolderName, SEARCH_DEPTH, MAX_FOLDERS_READ };
