@@ -10,6 +10,15 @@ const DEFAULT_MAX_CHARS = 4000;
 // block (about 3.3 KB at most) that crosses the cut is caught whole.
 const REDACTION_MARGIN_CHARS = 16 * 1024;
 
+function commonPrefix(left, right) {
+  const length = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < length && left.charCodeAt(index) === right.charCodeAt(index)) {
+    index += 1;
+  }
+  return left.slice(0, index);
+}
+
 /**
  * The excerpt of an open file that goes into the AI prompt. Keys, tokens and
  * the other values the window context hides are redacted here the same way.
@@ -20,12 +29,30 @@ function sanitizeFileContent(content, maxChars = DEFAULT_MAX_CHARS) {
   const normalized = String(content || "").replace(/\r\n?/g, "\n");
   const scanned = normalized.slice(0, maxChars + REDACTION_MARGIN_CHARS);
   const redacted = sanitizeContextText(scanned, { maxChars: scanned.length });
-  if (redacted.length <= maxChars && scanned.length === normalized.length) {
-    return { excerpt: redacted, truncated: false, originalLength: normalized.length };
+  if (scanned.length === normalized.length) {
+    if (redacted.length <= maxChars) {
+      return { excerpt: redacted, truncated: false, originalLength: normalized.length };
+    }
+    return {
+      excerpt: `${redacted.slice(0, maxChars)}\n\n[...truncated for prompt size]`,
+      truncated: true,
+      originalLength: normalized.length,
+    };
   }
 
+  // The file goes on past the scan, so a value crossing the end of the scan is
+  // seen only in part and can pass unredacted, and redaction shortens text
+  // enough to pull that end into the first maxChars. So the excerpt holds only
+  // text from the file's first maxChars characters: those are redacted on
+  // their own too, and only what both passes agree on is kept. A value cut off
+  // at maxChars differs between them, since the full pass sees it whole, so it
+  // is dropped rather than sent in part.
+  const settled = commonPrefix(
+    redacted,
+    sanitizeContextText(scanned.slice(0, maxChars), { maxChars: scanned.length })
+  );
   return {
-    excerpt: `${redacted.slice(0, maxChars)}\n\n[...truncated for prompt size]`,
+    excerpt: `${settled.slice(0, maxChars)}\n\n[...truncated for prompt size]`,
     truncated: true,
     originalLength: normalized.length,
   };

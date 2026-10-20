@@ -93,6 +93,54 @@ describe("secrets in the file excerpt", () => {
     expect(excerpt).toContain("[REDACTED_PRIVATE_KEY]");
   });
 
+  describe("a value crossing the end of the scanned part", () => {
+    // 4,000 characters of excerpt and 16 KB past it are scanned.
+    const SCAN_END = 4000 + 16 * 1024;
+    const begin = ["-----BEGIN", "RSA", "PRIVATE", "KEY-----"].join(" ");
+    const end = ["-----END", "RSA", "PRIVATE", "KEY-----"].join(" ");
+    const keyLines = Array.from(
+      { length: 50 },
+      (_, i) => `MIIJKAIBAAKCAgEA${String(i).padStart(2, "0")}${"x".repeat(46)}`
+    ).join("\n");
+    const privateKey = `${begin}\n${keyLines}\n${end}\n`;
+
+    it("keeps a private key out when a long cookie line shortens the text before it", () => {
+      const cookieLine = `cookie: ${"c".repeat(17500)}\n`;
+      const filler = `${"y".repeat(SCAN_END - cookieLine.length - 1001)}\n`;
+      const content = `${cookieLine}${filler}${privateKey}tail\n`;
+      expect(content.indexOf(begin)).toBeLessThan(SCAN_END);
+      expect(content.indexOf(end)).toBeGreaterThan(SCAN_END);
+
+      const excerpt = excerptOf(content, 4000);
+
+      expect(excerpt).not.toContain("MIIJKAIBAAKCAgEA");
+      expect(excerpt).not.toContain(begin);
+    });
+
+    it("keeps the next key out of a file of private keys", () => {
+      const excerpt = excerptOf(privateKey.repeat(8), 4000);
+
+      expect(excerpt).not.toContain("MIIJKAIBAAKCAgEA");
+      expect(excerpt).toContain("[REDACTED_PRIVATE_KEY]");
+    });
+
+    it("keeps a long token cut off by the end of the scan out of the excerpt", () => {
+      // Fourteen long hashes shrink to markers and pull the token into the
+      // excerpt. Its 6 KB second part runs past the end of the scan.
+      const hashes = `${"a".repeat(1000)}\n`.repeat(14);
+      const tokenStart = 14500;
+      const token = ["eyJ" + "h".repeat(30), "eyJ" + "p".repeat(6000), "s".repeat(43)].join(".");
+      const content = `${hashes}${"y".repeat(tokenStart - hashes.length - 1)}\n${token}\n`;
+      expect(content.indexOf(token)).toBe(tokenStart);
+      expect(tokenStart + token.length).toBeGreaterThan(SCAN_END);
+
+      const excerpt = excerptOf(content, 4000);
+
+      expect(excerpt).not.toContain("eyJhhhhh");
+      expect(excerpt).toContain("[REDACTED]\n");
+    });
+  });
+
   it("redacts only what can reach the excerpt, so a 500 KB file stays quick", () => {
     // Text that slows a regex-based redactor most, at the largest size read.
     const content = `const openai = "${openAiKey}";\n${"a.".repeat(240 * 1024)}`;
