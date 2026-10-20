@@ -49,14 +49,39 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// A provider that never answers and ignores the abort as well, so only the
+// outer deadline can end the wait.
+function deafFetch() {
+  return vi.fn((_url: string, _init: RequestInit) => new Promise(() => {}));
+}
+
 describe("a stalled provider during dictation", () => {
-  it("gives up on its own deadline, then cleans the next dictation", async () => {
+  it("stops its own request at the timeout", async () => {
     vi.useFakeTimers();
     global.fetch = stalledFetch() as any;
 
     const stalled = ReasoningService.processText(DICTATION, "gpt-5.6-luna");
-    const outcome = expect(stalled).rejects.toThrow(/timed out/);
-    await vi.advanceTimersByTimeAsync(20_000 + DICTATION.length * 20 + 1_000);
+    const outcome = expect(stalled).rejects.toThrow(
+      `OpenAI request timed out after ${20_000 + DICTATION.length * 20} ms`
+    );
+    await vi.advanceTimersByTimeAsync(20_000 + DICTATION.length * 20);
+    await outcome;
+  });
+
+  it("gives up at the outer deadline when the request ignores its abort", async () => {
+    vi.useFakeTimers();
+    global.fetch = deafFetch() as any;
+
+    const stalled = ReasoningService.processText(DICTATION, "gpt-5.6-luna");
+    let settled = false;
+    stalled.catch(() => (settled = true));
+    const outcome = expect(stalled).rejects.toThrow(
+      `AI cleanup timed out after ${20_000 + DICTATION.length * 20 + 1_000} ms`
+    );
+    // The request's own timeout has fired by now, and the fetch ignored it.
+    await vi.advanceTimersByTimeAsync(20_000 + DICTATION.length * 20 + 500);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(500);
     await outcome;
 
     vi.useRealTimers();
