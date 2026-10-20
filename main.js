@@ -422,9 +422,15 @@ async function startApp() {
   // copy at login with the Electron atom icon and whatever version is on disk. Dev shares
   // userData with the install, so the marker file has to stay unwritten too — otherwise
   // the first dev run consumes the install's one shot at the default.
+  // PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_RUN_AUTO_START skips it, so an e2e run against a
+  // packaged build with a throwaway profile never reads or writes the user's Run key.
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
-    if (app.isPackaged && !fs.existsSync(flagPath)) {
+    if (
+      app.isPackaged &&
+      !isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_RUN_AUTO_START") &&
+      !fs.existsSync(flagPath)
+    ) {
       const autoStartLaunchOptions = buildAutoStartLaunchOptions({
         platform: process.platform,
         isPackaged: app.isPackaged,

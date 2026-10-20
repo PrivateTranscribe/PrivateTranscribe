@@ -46,6 +46,10 @@ const DEFAULT_DIAG_FLAGS: Record<string, string> = {
   // run must never spend that subscription; the one spec that needs a rewrite
   // points the spawn at tests/e2e/fixtures/claude-print-stub.cjs instead.
   PRIVATETRANSCRIBE_DIAG_DISABLE_AGENT_REWRITE: "1",
+  // A packaged build (PT_E2E_EXECUTABLE) sees a fresh profile as a first run and
+  // registers itself to start at login, replacing the installed app's entry in
+  // the user's HKCU Run key.
+  PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_RUN_AUTO_START: "1",
 };
 
 export type ConsoleEntry = { type: string; text: string };

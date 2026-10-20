@@ -59,7 +59,25 @@ describe("auto-start respects the Windows Task Manager state", () => {
   it("skips the first-run default outside packaged builds", () => {
     const source = read("main.js");
 
-    expect(source).toContain("if (app.isPackaged && !fs.existsSync(flagPath)) {");
+    expect(source).toMatch(/if \(\s*app\.isPackaged &&[^{]*!fs\.existsSync\(flagPath\)\s*\) \{/);
     expect(source).not.toContain("if (!fs.existsSync(flagPath)) {");
+  });
+
+  // PT_E2E_EXECUTABLE runs the specs against a packaged build with a throwaway profile,
+  // which is a first run every time. Without the switch each release check rewrote the
+  // developer's own Run entry to point at the test build.
+  it("lets an e2e run skip the first-run default", () => {
+    const main = read("main.js");
+    const fixture = read("tests", "e2e", "fixtures", "electron-app.ts");
+    const flag = "PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_RUN_AUTO_START";
+
+    expect(main.replace(/\s+/g, " ")).toContain(
+      `if ( app.isPackaged && !isDiagFlagEnabled("${flag}") && !fs.existsSync(flagPath) ) {`
+    );
+    const defaults = fixture.slice(
+      fixture.indexOf("const DEFAULT_DIAG_FLAGS"),
+      fixture.indexOf("};", fixture.indexOf("const DEFAULT_DIAG_FLAGS"))
+    );
+    expect(defaults).toContain(`${flag}: "1"`);
   });
 });
