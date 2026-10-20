@@ -60,12 +60,16 @@ const SOURCE_FILE_EXTENSION =
   /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|kts|cs|swift|c|cc|cpp|h|hpp|php|vue|svelte|dart|scala)$/i;
 
 /**
- * Words that, right after "Secret" or "Credential" in a source file's
- * camelCase name, make it code about secrets rather than a file of them.
- * Words such as Key, Config, Settings or Values are left out on purpose.
+ * What may follow "Secret" or "Credential" in a source file's camelCase name
+ * for it to be code about secrets rather than a file of them: one word naming
+ * code, then only a Test or Spec suffix and the extension, as in
+ * secretManager.ts or SecretsPanel.test.tsx. Words such as Key, Config,
+ * Settings, Values or Prod are left out on purpose, and nothing else may
+ * follow the code word, so secretManagerKeys.ts and SecretManager.Prod.cs
+ * stay blocked.
  */
 const CODE_ROLE_AFTER_SECRET_WORD =
-  /^s?(?:Manager|Provider|Panel|Service|Dialog|View|Form|Page|Screen|Modal|Button|Input|Field|List|Card|Section|Handler|Helper|Validator|Scanner|Detector|Redactor|Client|Reader|Loader|Picker|Editor)(?![a-z])/;
+  /^s?(?:Manager|Provider|Panel|Service|Dialog|View|Form|Page|Screen|Modal|Button|Input|Field|List|Card|Section|Handler|Helper|Validator|Scanner|Detector|Redactor|Client|Reader|Loader|Picker|Editor)(?:Test|Spec|\.test|\.spec)?\.[A-Za-z]+$/;
 
 /**
  * Returns true when "credential" or "secret" in the name names the file's
