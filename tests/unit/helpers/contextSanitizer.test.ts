@@ -403,6 +403,37 @@ describe("sanitizeContextText (real implementation)", () => {
       ],
       ["a BYPASS name", "BYPASS=hunter2", "BYPASS=[REDACTED]"],
       ["a name ending in BYPASS", "MAINTENANCE_BYPASS=hunter2", "MAINTENANCE_BYPASS=[REDACTED]"],
+      ["a YAML value on the next line", "password:\n  hunter2", "password:\n  [REDACTED]"],
+      [
+        "a YAML value under a blank line, over two lines",
+        "db:\n  api_key:\n\n    hunter2\n    two\n  host: x",
+        "db:\n  api_key:\n\n    [REDACTED]\n  host: x",
+      ],
+      [
+        "a YAML list item's value on the next line",
+        "- token:\r\n    hunter2\r\nnext: 1",
+        "- token:\r\n    [REDACTED]\r\nnext: 1",
+      ],
+      [
+        "a Java properties entry",
+        '<entry key="db.password">hunter2</entry>',
+        '<entry key="db.password">[REDACTED]</entry>',
+      ],
+      [
+        "a setting holding its value as text",
+        '<setting name="Password">hunter2</setting>',
+        '<setting name="Password">[REDACTED]</setting>',
+      ],
+      [
+        "a secret element's value attribute",
+        '<Password value="hunter2"/>',
+        "<Password value=[REDACTED]/>",
+      ],
+      [
+        "an API key element's value attribute",
+        `<ApiKey id="1" value='${value}'>`,
+        '<ApiKey id="1" value=[REDACTED]>',
+      ],
     ])("redacts the value of %s", (_name, input, expected) => {
       expect(sanitizeContextText(input)).toBe(expected);
     });
@@ -446,6 +477,10 @@ describe("sanitizeContextText (real implementation)", () => {
       "const read = (token: string) => token.trim();",
       "COMPASS: north",
       "OVERPASS=1",
+      "if password:\n    check(password)",
+      "password:\nnext: 1",
+      '<entry key="password.policy">strict</entry>',
+      '<entry key="password"/>\nnext',
     ])("leaves code that only names a secret alone: %s", (input) => {
       expect(sanitizeContextText(input)).toBe(input);
     });
@@ -482,6 +517,13 @@ describe("sanitizeContextText (real implementation)", () => {
       ["one long tag name", `<${megabyteOf("a")}`],
       ["one long closed tag name", `<${megabyteOf("a")}>`],
       ["one long child tag name", `<password><${megabyteOf("a")}`],
+      ["repeated YAML names", megabyteOf("password:\n")],
+      ["a YAML name over blank lines", `password:${megabyteOf("\n ")}`],
+      ["a YAML name over spaces", `password:\n${megabyteOf(" ")}`],
+      ["repeated keyed elements", megabyteOf('<entry key="password">')],
+      ["one keyed element with many attributes", `<entry ${megabyteOf('key="token" ')}`],
+      ["repeated secret elements with attributes", megabyteOf("<password a ")],
+      ["one secret element with many spaces", `<password${megabyteOf(" ")}`],
       ["repeated token prefixes", megabyteOf("glpat-")],
       ["repeated webhook prefixes", megabyteOf("https://hooks.slack.com/services/")],
       ["one long run of letters", megabyteOf("a")],
@@ -504,6 +546,19 @@ describe("sanitizeContextText (real implementation)", () => {
 
     it("redacts a PGP private key block", () => {
       const input = `${line("BEGIN", "PGP", "PRIVATE", "KEY", "BLOCK")}\n${body}\n${line("END", "PGP", "PRIVATE", "KEY", "BLOCK")}\nnext`;
+      expect(sanitizeContextText(input)).toBe("[REDACTED_PRIVATE_KEY]\nnext");
+    });
+
+    it("redacts a block whose label is in lower case", () => {
+      const input = `${line("begin", "rsa", "private", "key")}\n${body}\n${line("end", "rsa", "private", "key")}\nnext`;
+      expect(sanitizeContextText(input)).toBe("[REDACTED_PRIVATE_KEY]\nnext");
+      expect(sanitizeContextText(`${line("begin", "rsa", "private", "key")}\n${body}`)).toBe(
+        "[REDACTED_PRIVATE_KEY]"
+      );
+    });
+
+    it("redacts the rest of the END line, where a name inside the block left a value", () => {
+      const input = `${line("BEGIN", "RSA", "PRIVATE", "KEY")}\ntoken: ${line("END", "RSA", "PRIVATE", "KEY")} hunter2\nnext`;
       expect(sanitizeContextText(input)).toBe("[REDACTED_PRIVATE_KEY]\nnext");
     });
 
@@ -551,6 +606,8 @@ describe("sanitizeContextText (real implementation)", () => {
       ["repeated BEGIN lines with no dashes", megabyteOf("-----BEGIN RSA PRIVATE KEY ")],
       ["a BEGIN line followed by spaces", `-----BEGIN PRIVATE KEY${megabyteOf(" ")}x`],
       ["repeated BEGIN lines with two dashes", megabyteOf("-----BEGIN PRIVATE KEY --")],
+      ["repeated lower-case BEGIN labels", megabyteOf("-----begin rsa key ")],
+      ["a lower-case BEGIN label of letters", `-----begin ${megabyteOf("a")}`],
     ])("scans 1 MB of %s with no closing dashes in well under a second", (_shape, input) => {
       const started = performance.now();
       sanitizeContextText(input, { maxChars: input.length });
