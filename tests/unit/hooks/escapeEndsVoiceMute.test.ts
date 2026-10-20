@@ -122,8 +122,10 @@ describe("Escape during a recording", () => {
 
     await hook.startRecording();
     hook.cancelRecording();
-    hook.stopRecording();
+    // Released by the cancel itself, not left for the next stop to pick up.
+    expect(bridge.voiceMuteStop).toHaveBeenCalledOnce();
 
+    hook.stopRecording();
     expect(bridge.voiceMuteStop).toHaveBeenCalledOnce();
   });
 });
