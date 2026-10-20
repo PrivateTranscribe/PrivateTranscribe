@@ -10,6 +10,21 @@
  * main/renderer.
  */
 
+// A name that ends in a secret word, whatever comes before it: DB_PASS,
+// JWT_SECRET, AWS_SECRET_ACCESS_KEY, x-api-key, spring.datasource.password,
+// Ocp-Apim-Subscription-Key, and the password labels of Danish, Norwegian,
+// Swedish, German and French screens.
+const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D|WORT|ORD)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
+// ":", "=" or ":=" after a name. "==", "=>" and "::" are code, not
+// assignments.
+const ASSIGNMENT = String.raw`(?::=|[:=](?![=>:]))`;
+// A quoted value, where a backslash escapes the next character. When the
+// closing quote is missing, as in a read cut off at a length, it ends at the
+// end of the line. Written as a run of plain characters between escapes, so
+// a long value does not grow the regex engine's backtracking stack one entry
+// per character: alternating per character overflowed it at 10 MB.
+const QUOTED_VALUE = String.raw`"[^"\\\n]*(?:\\.[^"\\\n]*)*"?|'[^'\\\n]*(?:\\.[^'\\\n]*)*'?`;
+
 const DEFAULT_REDACTION_PATTERNS = [
   // PEM and PGP private key blocks. A block with no END line, as in a read
   // cut off at a length, is redacted to the end of the text. Once a label's
@@ -26,21 +41,91 @@ const DEFAULT_REDACTION_PATTERNS = [
   // A value given to any name that ends in a secret word, whatever comes
   // before it and with or without quotes: password: "hunter two", DB_PASS=,
   // JWT_SECRET=, AWS_SECRET_ACCESS_KEY=, x-api-key:, "client_secret": "x",
-  // spring.datasource.password=, AccountKey=. The name, and a scheme word
-  // such as "Bearer", are kept, so the text still reads. An unquoted value
-  // runs to the end of the line, since a password can hold spaces and a name
-  // left empty can be followed by another, as in "API_KEY: SECRET: x". A
-  // quoted value ends at its closing quote or, when that is missing, as in a
-  // read cut off at a length, at the end of the line, so it never takes the
-  // next line's name with it. A quoted value followed by an assignment was a
-  // name, as in "API_KEY: 'SECRET': x", so the rest of its line goes too. The
-  // lookbehind lets a match start only where a name starts, so a long run is
-  // scanned once. "==", "=>" and "::" are code, not assignments, and are
-  // left alone.
+  // spring.datasource.password=, AccountKey=, config["password"] = "x". The
+  // name, and a scheme word such as "Bearer", are kept, so the text still
+  // reads. An unquoted value runs to the end of the line, since a password
+  // can hold spaces and a name left empty can be followed by another, as in
+  // "API_KEY: SECRET: x". A YAML block ("password: |") takes the indented
+  // lines under it. A quoted value ends at its closing quote or, when that
+  // is missing, at the end of the line, so it never takes the next line's
+  // name with it. A quoted value followed by an assignment was a name, as in
+  // "API_KEY: 'SECRET': x", so the rest of its line goes too. The lookbehind
+  // lets a match start only where a name starts, so a long run is scanned
+  // once.
   {
     name: "secretAssignment",
-    regex:
-      /((?<![A-Z0-9_.-])["']?[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER)[_-]?KEY)["']?[ \t]*(?::=|[:=](?![=>:]))[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)((?:"[^"\n]*"?|'[^'\n]*'?)(?:[ \t]*(?::=|[:=](?![=>:]))[^\n\r]*)?|[^\s'"][^\n\r]*)/gi,
+    regex: new RegExp(
+      String.raw`((?<![A-Z0-9_.-])["']?${SECRET_NAME}["']?\]?[ \t]*${ASSIGNMENT}[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)((?:${QUOTED_VALUE})(?:[ \t]*${ASSIGNMENT}[^\n\r]*)?|[|>][-+0-9]*[ \t]*(?:(?:\r?\n)+[ \t]+[^\r\n]*)+|[^\s'"][^\n\r]*)`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  // XML elements and attributes: <password>x</password>, and the .NET and
+  // Spring <add key="ApiKey" value="x"/>, <property name="password"
+  // value="x"/>. An element's value ends at the next tag or the end of its
+  // line. A self-closing element holds no value and is left alone.
+  {
+    name: "secretElement",
+    regex: new RegExp(
+      String.raw`(<(?:[A-Z0-9_.-]+:)?${SECRET_NAME}(?:\s[^<>]*)?(?<!\/)>\s*)([^<\s][^<\n\r]*)`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "secretAttribute",
+    regex: new RegExp(
+      String.raw`(\b(?:key|name)[ \t]*=[ \t]*(["'])${SECRET_NAME}\2\s+value[ \t]*=[ \t]*)("[^"\n]*"?|'[^'\n]*'?)`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  // Command-line flags followed by their value: --password x, -storepass x.
+  // "--password=x" is an assignment and is redacted above.
+  {
+    name: "secretFlag",
+    regex: new RegExp(
+      String.raw`((?<![\w.-])-${SECRET_NAME}[ \t]+)(${QUOTED_VALUE}|[^\s'"]+)`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  // mysql, mariadb, 7-Zip and RAR take the password glued to -p, as in
+  // "mysql -uroot -phunter2". Only on a line that runs one of them, since
+  // -p means something else to most commands (-pthread, -print).
+  {
+    name: "gluedPasswordFlag",
+    regex: /(\b(?:mysql\w*|mariadb[\w-]*|7z[az]?|unrar|rar)\b)([^\n]*)/gi,
+    replacement: (match, tool, rest) =>
+      tool + rest.replace(/((?<![\w-])-p)(?:"[^"]*"?|'[^']*'?|[^\s'"]+)/g, "$1[REDACTED]"),
+  },
+  // Secrets passed to a call: setPassword("x"), withApiKey('x'), a quoted
+  // secret name and its value in define('DB_PASSWORD', 'x') or
+  // headers.set("X-Api-Key", "x"), and the second argument of a login call,
+  // login("admin", "x"). Only a quoted value is redacted, so code passing a
+  // variable reads as before.
+  {
+    name: "secretCallArgument",
+    regex: new RegExp(
+      String.raw`((?<![A-Z0-9_.-])${SECRET_NAME}[ \t]*\([ \t]*)(${QUOTED_VALUE}|\x60[^\x60\n]*\x60?)`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "secretNameArgument",
+    regex: new RegExp(
+      String.raw`(\([ \t]*(["'])${SECRET_NAME}\2[ \t]*,[ \t]*)(${QUOTED_VALUE})`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "loginCallPassword",
+    regex: new RegExp(
+      String.raw`(\b[\w$]*(?:log_?in|sign_?in|authenticate)[ \t]*\([ \t]*(?:"[^"\\\n]*(?:\\.[^"\\\n]*)*"|'[^'\\\n]*(?:\\.[^'\\\n]*)*'|[\w.$]+)[ \t]*,[ \t]*)(${QUOTED_VALUE})`,
+      "gi"
+    ),
     replacement: "$1[REDACTED]",
   },
   // Phone numbers are personally identifying; only redact when clearly labeled
