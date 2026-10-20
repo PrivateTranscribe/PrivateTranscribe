@@ -15,8 +15,9 @@
 //   - the process is shut down gracefully and the runtime runs ProcessExit
 //
 // A hard kill (TerminateProcess) runs none of that, so `--release-only` sends
-// the key-up half on its own. PrivateTranscribe calls it at startup to clear
-// any key a previous crash left logically held.
+// the key-up half on its own, for each key Windows still reports as down.
+// PrivateTranscribe calls it after a kill and at startup to clear any key a
+// crash left logically held.
 //
 // That layering is the whole point of this being a separate long-lived process
 // rather than two fire-and-forget calls. SendInput writes to the global input
@@ -126,7 +127,7 @@ internal static class WindowsHoldKey
     };
 
     /// One element of a combination: either a keyboard key or a mouse button.
-    private sealed class HeldInput
+    internal sealed class HeldInput
     {
         public bool IsMouse;
         public Keys Key;        // keyboard only
@@ -338,7 +339,7 @@ internal static class WindowsHoldKey
 
     /// Parses "Ctrl+Shift+M" into the key sequence to press, modifiers first so
     /// they are already down when the main key arrives.
-    private static List<HeldInput> ParseCombination(string combination)
+    internal static List<HeldInput> ParseCombination(string combination)
     {
         var result = new List<HeldInput>();
         if (string.IsNullOrEmpty(combination))
@@ -499,6 +500,43 @@ internal static class WindowsHoldKey
         watcher.Start();
     }
 
+    // The virtual-key codes Windows tracks the mouse buttons' state under.
+    private const int VkMiddleButton = 0x04;
+    private const int VkXButton1 = 0x05;
+    private const int VkXButton2 = 0x06;
+
+    /// The virtual-key code GetAsyncKeyState reports this input's state under.
+    internal static int StateKeyOf(HeldInput held)
+    {
+        if (!held.IsMouse)
+        {
+            return (int)held.Key;
+        }
+        if (held.UpFlag == MouseEventMiddleUp)
+        {
+            return VkMiddleButton;
+        }
+        return held.MouseData == XButton2 ? VkXButton2 : VkXButton1;
+    }
+
+    /// What a --release-only run sends a key-up for: only the inputs Windows
+    /// reports as down. A key a killed helper left stuck reads as down, so it
+    /// is still released. A key that is already up gets nothing: an unmatched
+    /// XBUTTONUP can make the focused window go Back, and a lone Alt or Win
+    /// key-up can open a menu.
+    internal static List<HeldInput> KeysStillDown(List<HeldInput> keys, Func<int, bool> isDown)
+    {
+        var result = new List<HeldInput>();
+        for (int i = 0; i < keys.Count; i++)
+        {
+            if (isDown(StateKeyOf(keys[i])))
+            {
+                result.Add(keys[i]);
+            }
+        }
+        return result;
+    }
+
     /// Releases in reverse order so modifiers come up last, which is what a
     /// real keyboard does and what applications expect.
     private static void ReleaseAll()
@@ -609,13 +647,14 @@ internal static class WindowsHoldKey
         }
 
         // Recovery mode: send only the key-up half. PrivateTranscribe runs this
-        // at startup for the configured combination, because a helper killed
-        // outright (TerminateProcess, task manager, power loss mid-dictation)
-        // never gets to run its own release, and a modifier left logically down
-        // would corrupt every keystroke the user typed afterwards. Sending a
-        // key-up for a key that is already up is harmless.
+        // after a kill and at startup for the combination it was holding,
+        // because a helper killed outright (TerminateProcess, task manager,
+        // power loss mid-dictation) never gets to run its own release, and a
+        // modifier left logically down would corrupt every keystroke the user
+        // typed afterwards. Only keys Windows reports as down get a key-up.
         if (HasFlag(args, "--release-only"))
         {
+            heldKeys = KeysStillDown(keys, vk => (GetAsyncKeyState(vk) & 0x8000) != 0);
             ReleaseAll();
             return 0;
         }
