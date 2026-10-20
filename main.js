@@ -11,6 +11,7 @@ const {
 } = require("./src/helpers/autoStartLoginItemSettings");
 const {
   readAutoStartRegistryState,
+  findOtherRunValueOwner,
   registryAutoStartEnabled,
 } = require("./src/helpers/windowsAutoStartRegistry");
 const { ensureStartMenuShortcut } = require("./src/helpers/startMenuShortcut");
@@ -421,9 +422,15 @@ async function startApp() {
   // copy at login with the Electron atom icon and whatever version is on disk. Dev shares
   // userData with the install, so the marker file has to stay unwritten too — otherwise
   // the first dev run consumes the install's one shot at the default.
+  // PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_RUN_AUTO_START skips it, so an e2e run against a
+  // packaged build with a throwaway profile never reads or writes the user's Run key.
   try {
     const flagPath = path.join(app.getPath("userData"), ".autostart-initialized");
-    if (app.isPackaged && !fs.existsSync(flagPath)) {
+    if (
+      app.isPackaged &&
+      !isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_FIRST_RUN_AUTO_START") &&
+      !fs.existsSync(flagPath)
+    ) {
       const autoStartLaunchOptions = buildAutoStartLaunchOptions({
         platform: process.platform,
         isPackaged: app.isPackaged,
@@ -458,8 +465,20 @@ async function startApp() {
       // been set up before, even if our marker file was lost (reinstall, data reset).
       const existingApproval = readAutoStartState().approval;
 
+      // Another copy of the app that still owns our Run value keeps it: a test build or a
+      // second install must not take login away from the copy the user actually starts.
+      // The machine already starts PrivateTranscribe at login, so the default counts as done.
+      const otherRunValueOwner =
+        process.platform === "win32" && existingApproval === null
+          ? findOtherRunValueOwner({ execPath: process.execPath, valueName: APP_ID })
+          : null;
+
       let defaultApplied = true;
-      if (existingApproval === null) {
+      if (otherRunValueOwner) {
+        debugLogger.debug("Skipping first-run auto-start default: another copy owns login", {
+          owner: otherRunValueOwner,
+        });
+      } else if (existingApproval === null) {
         app.setLoginItemSettings(
           buildAutoStartSetOptions({
             enabled: true,

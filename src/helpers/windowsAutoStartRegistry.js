@@ -205,6 +205,49 @@ function readAutoStartRegistryState({ execPath, readKey = defaultRegReader } = {
   return { registered: true, approved, name: entry.name };
 }
 
+/**
+ * The other copy of the app that holds our Run value, when registering this build would
+ * take login away from it.
+ *
+ * Electron writes the Run value by name, and every copy of the app shares that name, so
+ * registering one build silently replaces another. On 2026-10-19 a packaged test build
+ * started with a throwaway --user-data-dir ran the first-run default and took login from
+ * the installed app this way. A value is left alone while the executable it names is still
+ * on disk, or while the user has it disabled in Task Manager; one left behind by a deleted
+ * copy is free to take.
+ *
+ * Returns that executable's path, or null when this build may register: no value under the
+ * name, the value is already ours, or the registry cannot be read.
+ */
+function findOtherRunValueOwner({
+  execPath,
+  valueName,
+  readKey = defaultRegReader,
+  exists = fs.existsSync,
+} = {}) {
+  const target = normalizePath(execPath);
+  if (!target || !valueName) return null;
+
+  let entry;
+  try {
+    entry = parseRegExport(readKey(RUN_KEY)).find((row) => row.name === valueName);
+  } catch {
+    return null;
+  }
+
+  const owner = entry ? extractExecutable(entry.data) : "";
+  if (!owner || normalizePath(owner) === target) return null;
+  if (exists(owner)) return owner;
+
+  try {
+    const approvedRow = parseRegExport(readKey(APPROVED_KEY)).find((row) => row.name === valueName);
+    if (approvedRow && !isApprovedBinary(approvedRow.data)) return owner;
+  } catch {
+    // No StartupApproved key means nothing has been disabled.
+  }
+  return null;
+}
+
 /** True only when Windows will really launch it: registered AND not disabled by the user. */
 function registryAutoStartEnabled(state) {
   return Boolean(state && state.registered && state.approved);
@@ -218,5 +261,6 @@ module.exports = {
   extractExecutable,
   isApprovedBinary,
   readAutoStartRegistryState,
+  findOtherRunValueOwner,
   registryAutoStartEnabled,
 };
