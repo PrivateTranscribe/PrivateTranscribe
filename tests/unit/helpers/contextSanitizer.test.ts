@@ -301,7 +301,7 @@ describe("sanitizeContextText (real implementation)", () => {
         `X-Auth-Token: Bearer ${value}`,
         "X-Auth-Token: Bearer [REDACTED]",
       ],
-      ["a value holding ';'", "password=hun;ter,2 next", "password=[REDACTED] next"],
+      ["a value holding ';' and spaces", "password=hun;ter,2 next", "password=[REDACTED]"],
       [
         "each of two quoted values on their own lines",
         'token: "abc\ntoken: "def',
@@ -312,6 +312,11 @@ describe("sanitizeContextText (real implementation)", () => {
         'password: "hunter two\nnext',
         "password: [REDACTED]\nnext",
       ],
+      ["a value with a space", "password: hunter two", "password: [REDACTED]"],
+      ["a name after an empty one", "API_KEY: SECRET: hunter2xyz", "API_KEY: [REDACTED]"],
+      ["a quoted name after an empty one", "API_KEY: 'SECRET': hunter2xyz", "API_KEY: [REDACTED]"],
+      ["a quoted value that holds a name", 'password: "pass: a b c"', "password: [REDACTED]"],
+      ["a value that ends in a name", "password: abcpwd= xyz", "password: [REDACTED]"],
     ])("redacts the value of %s", (_name, input, expected) => {
       expect(sanitizeContextText(input)).toBe(expected);
     });
@@ -355,6 +360,8 @@ describe("sanitizeContextText (real implementation)", () => {
       ["a run of secret words", megabyteOf("SECRET_TOKEN")],
       ["repeated quoted names", megabyteOf('"token":"')],
       ["repeated assignments", megabyteOf("secret=")],
+      ["repeated names with no value", megabyteOf("TOKEN: ")],
+      ["repeated quoted names with no value", megabyteOf("'API_KEY': ")],
       ["repeated token prefixes", megabyteOf("glpat-")],
       ["repeated webhook prefixes", megabyteOf("https://hooks.slack.com/services/")],
       ["one long run of letters", megabyteOf("a")],
@@ -425,7 +432,7 @@ describe("sanitizeContextText (real implementation)", () => {
 
     it("redacts the query of a URL with a very long path", () => {
       const url = `https://ex.com/${"seg/".repeat(1000)}`;
-      expect(sanitizeContextText(`${url}?token=abc123 next`, { maxChars: 10000 })).toBe(
+      expect(sanitizeContextText(`${url}?id=abc123 next`, { maxChars: 10000 })).toBe(
         `${url}?[REDACTED_QUERY] next`
       );
       expect(sanitizeContextText(`${url}#access_token=abc123`, { maxChars: 10000 })).toBe(

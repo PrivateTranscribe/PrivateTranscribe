@@ -28,16 +28,19 @@ const DEFAULT_REDACTION_PATTERNS = [
   // JWT_SECRET=, AWS_SECRET_ACCESS_KEY=, x-api-key:, "client_secret": "x",
   // spring.datasource.password=, AccountKey=. The name, and a scheme word
   // such as "Bearer", are kept, so the text still reads. An unquoted value
-  // runs to the next space or quote. A quoted one ends at its closing quote
-  // or, when that is missing, as in a read cut off at a length, at the end
-  // of the line, so it never takes the next line's name with it. The
+  // runs to the end of the line, since a password can hold spaces and a name
+  // left empty can be followed by another, as in "API_KEY: SECRET: x". A
+  // quoted value ends at its closing quote or, when that is missing, as in a
+  // read cut off at a length, at the end of the line, so it never takes the
+  // next line's name with it. A quoted value followed by an assignment was a
+  // name, as in "API_KEY: 'SECRET': x", so the rest of its line goes too. The
   // lookbehind lets a match start only where a name starts, so a long run is
   // scanned once. "==", "=>" and "::" are code, not assignments, and are
   // left alone.
   {
     name: "secretAssignment",
     regex:
-      /((?<![A-Z0-9_.-])["']?[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER)[_-]?KEY)["']?[ \t]*(?::=|[:=](?![=>:]))[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)("[^"\n]*"?|'[^'\n]*'?|[^\s'"]+)/gi,
+      /((?<![A-Z0-9_.-])["']?[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER)[_-]?KEY)["']?[ \t]*(?::=|[:=](?![=>:]))[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)((?:"[^"\n]*"?|'[^'\n]*'?)(?:[ \t]*(?::=|[:=](?![=>:]))[^\n\r]*)?|[^\s'"][^\n\r]*)/gi,
     replacement: "$1[REDACTED]",
   },
   // Phone numbers are personally identifying; only redact when clearly labeled
