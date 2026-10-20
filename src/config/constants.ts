@@ -88,15 +88,45 @@ export const MODEL_CONSTRAINTS = {
 } as const;
 
 // Token Limits
+// Output limits for AI cleanup. The floor leaves room for a reasoning model's
+// thinking on short text; the limit then grows with the transcript, so a long
+// dictation is not cut off. A reply that still hits it is not pasted.
 export const TOKEN_LIMITS = {
-  MIN_TOKENS: 100,
-  MAX_TOKENS: 2048,
-  MIN_TOKENS_ANTHROPIC: 100,
-  MAX_TOKENS_ANTHROPIC: 4096,
-  MIN_TOKENS_GEMINI: 100,
-  MAX_TOKENS_GEMINI: 8192,
+  // Groq: counted in tokens, since Groq may reserve the whole limit against a
+  // free-tier tokens-per-minute budget. Cleaned text runs about a quarter token
+  // per character; half a token plus the headroom covers other languages and
+  // thinking, and stays at the old 4,096 up to about 4,000 characters.
+  MIN_TOKENS: 4096,
+  // The lowest completion limit among the Groq models offered (qwen3.8-27b).
+  MAX_TOKENS: 16384,
+  OUTPUT_TOKENS_PER_CHARACTER: 0.5,
+  OUTPUT_TOKEN_HEADROOM: 2048,
+  MIN_TOKENS_GEMINI: 2000,
+  MAX_TOKENS_GEMINI: 32768,
   TOKEN_MULTIPLIER: 2, // text.length * multiplier
   REASONING_CONTEXT_SIZE: 4096,
+} as const;
+
+// AI cleanup of a dictation. A provider that never answers must not hold the
+// paste: past the deadline the raw transcript is pasted instead.
+export const DICTATION_CLEANUP_TIMEOUT = {
+  BASE_MS: 20_000,
+  PER_CHARACTER_MS: 20,
+  MAX_MS: 120_000,
+  // A custom endpoint is often a model on the user's own PC, which may load
+  // first and write a few tokens a second on a CPU.
+  CUSTOM_BASE_MS: 60_000,
+  CUSTOM_PER_CHARACTER_MS: 100,
+  CUSTOM_MAX_MS: 300_000,
+  // A long session sends its whole transcript at once: 30 minutes is about
+  // 27,000 characters, several minutes of output even on a fast model.
+  LONG_SESSION_MAX_MS: 600_000,
+  // llama-server's own inference limit, as before cleanup had a deadline.
+  LOCAL_MS: 300_000,
+  // llama-server starts after each idle stop before it can answer, and its
+  // start may take this long. The renderer waits that much longer for a local
+  // model than the inference limit it passes on.
+  LOCAL_STARTUP_MS: 60_000,
 } as const;
 
 // Cache Configuration

@@ -43,10 +43,11 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
 export function createApiRetryStrategy() {
   return {
     shouldRetry: (error: any) => {
-      // Retry on network errors or 5xx status codes
-      if (!error.response) return true; // Network error
+      // Retry on network errors or 5xx status codes. A client error, such as a
+      // wrong key or a bad request, fails the same way on every attempt.
+      const status = error?.response?.status ?? error?.status;
+      if (typeof status !== "number") return true; // Network error
 
-      const status = error.response?.status || error.status;
       return status >= 500 && status < 600;
     },
   };

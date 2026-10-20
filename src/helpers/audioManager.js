@@ -3081,7 +3081,9 @@ class AudioManager {
     }
 
     const storedValue = localStorage.getItem("useReasoningModel");
-    const cacheKey = `${storedValue}:${localStorage.getItem("reasoningModel")}`;
+    // The provider is part of the key: choosing the custom endpoint with the
+    // same model name must not reuse an answer cached before it was set up.
+    const cacheKey = `${storedValue}:${localStorage.getItem("reasoningProvider")}:${localStorage.getItem("reasoningModel")}`;
     const now = Date.now();
     const cacheValid =
       this.reasoningAvailabilityCache &&
@@ -3266,6 +3268,7 @@ class AudioManager {
             writingStyle:
               localStorage.getItem("enhancementWritingStyle") === "coding" ? "coding" : "clean",
             smartContext: this._cachedSmartContext ?? null,
+            longSession: source === "long-session",
           }
         );
 

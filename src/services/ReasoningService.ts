@@ -1,7 +1,13 @@
 import { getModelProvider, getCloudModel } from "../models/ModelRegistry";
 import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
-import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
+import {
+  API_ENDPOINTS,
+  DICTATION_CLEANUP_TIMEOUT,
+  TOKEN_LIMITS,
+  buildApiUrl,
+  normalizeBaseUrl,
+} from "../config/constants";
 import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
 import { isShortDictation } from "../utils/shortDictation";
 import { getCodingPrompt } from "../config/codingPrompt";
@@ -26,7 +32,12 @@ export interface ReasoningConfig {
   dictationMode?: string;
   preferredLanguage?: string | null;
   smartContext?: Record<string, unknown> | null;
+  /** The whole transcript of a long session, which gets a longer deadline. */
+  longSession?: boolean;
 }
+
+// Lets a provider's own timeout fire first, with its clearer message.
+const DEADLINE_GRACE_MS = 1000;
 
 function normalizePositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
@@ -40,17 +51,25 @@ function normalizeRetryCount(value: unknown): number | undefined {
     : undefined;
 }
 
-function createRequestTimeout(timeoutMs: unknown, providerName: string) {
+// `abandon` aborts the request when processText has already given up on it,
+// so a late reply is not paid for and then thrown away.
+function createRequestTimeout(timeoutMs: unknown, providerName: string, abandon?: AbortSignal) {
   const durationMs = normalizePositiveInteger(timeoutMs);
   if (!durationMs) {
-    return { signal: undefined, clear: () => {}, timeoutError: () => null };
+    return { signal: abandon, clear: () => {}, timeoutError: () => null };
   }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), durationMs);
+  const onAbandon = () => controller.abort();
+  abandon?.addEventListener("abort", onAbandon);
+  if (abandon?.aborted) controller.abort();
   return {
     signal: controller.signal,
-    clear: () => clearTimeout(timer),
+    clear: () => {
+      clearTimeout(timer);
+      abandon?.removeEventListener("abort", onAbandon);
+    },
     timeoutError: () =>
       controller.signal.aborted
         ? new Error(`${providerName} request timed out after ${durationMs} ms`)
@@ -71,6 +90,18 @@ function getApiRetryOptions(config: ReasoningConfig, signal?: AbortSignal) {
 function truncateErrorMessage(value: unknown, maxLength = 500): string {
   const message = typeof value === "string" ? value : String(value ?? "");
   return message.length > maxLength ? `${message.slice(0, maxLength)}...` : message;
+}
+
+// Carries the HTTP status, so the retry strategy can tell a wrong key from a
+// network fault.
+function createApiError(message: unknown, status: number): Error & { status: number } {
+  return Object.assign(new Error(truncateErrorMessage(message)), { status });
+}
+
+// A reply that stopped at its length limit holds only part of the dictation.
+// Throwing makes dictation paste the raw transcript instead.
+function createTruncatedError(providerName: string): Error {
+  return new Error(`${providerName}'s reply was cut off at its length limit`);
 }
 
 function getTextLength(value: unknown): number | undefined {
@@ -157,7 +188,9 @@ function summarizeApiErrorForLog(errorData: any): Record<string, unknown> {
 }
 
 class ReasoningService {
-  private isProcessing = false;
+  // The one cleanup running now, or null. Each call clears only its own, so a
+  // request abandoned at the deadline can't free a newer one's place.
+  private activeRequest: object | null = null;
   private apiKeyCache: SecureCache<string>;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
   private static readonly OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
@@ -496,7 +529,8 @@ class ReasoningService {
     text: string,
     agentName: string | null,
     config: ReasoningConfig,
-    providerName: string
+    providerName: string,
+    abandon?: AbortSignal
   ): Promise<string> {
     const systemPrompt = this.getSystemPrompt(
       agentName,
@@ -518,12 +552,11 @@ class ReasoningService {
       max_tokens:
         config.maxTokens ||
         Math.max(
-          4096,
-          this.calculateMaxTokens(
-            text.length,
-            TOKEN_LIMITS.MIN_TOKENS,
-            TOKEN_LIMITS.MAX_TOKENS,
-            TOKEN_LIMITS.TOKEN_MULTIPLIER
+          TOKEN_LIMITS.MIN_TOKENS,
+          Math.min(
+            Math.ceil(text.length * TOKEN_LIMITS.OUTPUT_TOKENS_PER_CHARACTER) +
+              TOKEN_LIMITS.OUTPUT_TOKEN_HEADROOM,
+            TOKEN_LIMITS.MAX_TOKENS
           )
         ),
     };
@@ -545,7 +578,7 @@ class ReasoningService {
       request: summarizeRequestBodyForLog(requestBody),
     });
 
-    const requestTimeout = createRequestTimeout(config.timeoutMs, providerName);
+    const requestTimeout = createRequestTimeout(config.timeoutMs, providerName, abandon);
     let response: any;
     try {
       response = await withRetry(
@@ -583,7 +616,7 @@ class ReasoningService {
               errorData.message ||
               errorData.error ||
               `${providerName} API error: ${res.status}`;
-            throw new Error(truncateErrorMessage(errorMessage));
+            throw createApiError(errorMessage, res.status);
           }
 
           const jsonResponse = await res.json();
@@ -613,6 +646,13 @@ class ReasoningService {
     }
 
     const choice = response.choices[0];
+    if (choice.finish_reason === "length") {
+      logger.logReasoning(`${providerName.toUpperCase()}_TRUNCATED`, {
+        model,
+        maxTokens: requestBody.max_tokens,
+      });
+      throw createTruncatedError(providerName);
+    }
     const responseText = choice.message?.content?.trim() || "";
 
     if (!responseText) {
@@ -649,6 +689,12 @@ class ReasoningService {
     if (config.writingStyle === "coding") {
       config = { ...config, promptTemplate: config.promptTemplate ?? getCodingPrompt() };
     }
+    // No request runs without a deadline. Dictation passes none, and a provider
+    // that never answered used to hold the paste for good.
+    const timeoutMs =
+      normalizePositiveInteger(config.timeoutMs) ??
+      this.getDictationTimeoutMs(text, provider, config.longSession === true);
+    config = { ...config, timeoutMs };
 
     logger.logReasoning("PROVIDER_SELECTION", {
       model: trimmedModel,
@@ -659,6 +705,7 @@ class ReasoningService {
       timestamp: new Date().toISOString(),
     });
 
+    let request: object | null = null;
     try {
       let result: string;
       const startTime = Date.now();
@@ -666,52 +713,27 @@ class ReasoningService {
       logger.logReasoning("ROUTING_TO_PROVIDER", {
         provider,
         model,
+        timeoutMs,
       });
 
-      switch (provider) {
-        case "claude-code": {
-          const bridge = window.electronAPI?.enhanceWithClaudeCode;
-          if (!bridge) throw new Error("Claude Code enhancement is unavailable. Restart the app.");
-          const reply = await bridge(
-            await this.buildUserPrompt(text, config),
-            this.getSystemPrompt(
-              agentName,
-              config.dictationMode,
-              config.preferredLanguage,
-              config.promptTemplate
-            )
-          );
-          if (!reply.ok || !reply.text?.trim()) {
-            throw new Error(reply.message || "Claude Code did not return enhanced text.");
-          }
-          result = reply.text.trim();
-          break;
+      // Claude Code runs in its own process and never took this place.
+      if (provider !== "claude-code") {
+        if (this.activeRequest) {
+          throw new Error("Already processing a request");
         }
-        case "openai":
-        case "custom":
-          result = await this.processWithOpenAI(
-            text,
-            trimmedModel,
-            agentName,
-            config,
-            provider === "custom"
-          );
-          break;
-        case "anthropic":
-          result = await this.processWithAnthropic(text, trimmedModel, agentName, config);
-          break;
-        case "local":
-          result = await this.processWithLocal(text, trimmedModel, agentName, config);
-          break;
-        case "gemini":
-          result = await this.processWithGemini(text, trimmedModel, agentName, config);
-          break;
-        case "groq":
-          result = await this.processWithGroq(text, model, agentName, config);
-          break;
-        default:
-          throw new Error(`Unsupported reasoning provider: ${provider}`);
+        request = {};
+        this.activeRequest = request;
       }
+
+      // A local model's timeout covers inference only; llama-server may have
+      // to start first.
+      const startupMs = provider === "local" ? DICTATION_CLEANUP_TIMEOUT.LOCAL_STARTUP_MS : 0;
+      const abandon = new AbortController();
+      result = await this.withDeadline(
+        this.runProvider(provider, text, trimmedModel, model, agentName, config, abandon.signal),
+        timeoutMs + startupMs + DEADLINE_GRACE_MS,
+        () => abandon.abort()
+      );
 
       // A coding prompt is dictated prose for another agent, not generated code.
       // Throw so the dictation pipeline preserves the original words on failure.
@@ -746,7 +768,114 @@ class ReasoningService {
         stack: (error as Error).stack,
       });
       throw error;
+    } finally {
+      if (request && this.activeRequest === request) {
+        this.activeRequest = null;
+      }
     }
+  }
+
+  /**
+   * How long AI cleanup may take when the caller sets no limit, as in
+   * dictation. Grows with the transcript, and slower for a custom endpoint,
+   * which is often a model on the user's own PC. A local model keeps
+   * llama-server's own inference limit.
+   */
+  private getDictationTimeoutMs(text: string, provider: string, longSession: boolean): number {
+    const limits = DICTATION_CLEANUP_TIMEOUT;
+    if (provider === "local") return limits.LOCAL_MS;
+    if (provider === "custom") {
+      return Math.min(
+        limits.CUSTOM_BASE_MS + text.length * limits.CUSTOM_PER_CHARACTER_MS,
+        longSession ? limits.LONG_SESSION_MAX_MS : limits.CUSTOM_MAX_MS
+      );
+    }
+    return Math.min(
+      limits.BASE_MS + text.length * limits.PER_CHARACTER_MS,
+      longSession ? limits.LONG_SESSION_MAX_MS : limits.MAX_MS
+    );
+  }
+
+  /**
+   * Each provider stops its own request at config.timeoutMs. This outer
+   * deadline catches a call that never settles anyway, such as an IPC reply
+   * that never comes, so the next dictation is not held up behind it.
+   */
+  private async withDeadline<T>(
+    work: Promise<T>,
+    durationMs: number,
+    onExpire: () => void
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        onExpire();
+        reject(new Error(`AI cleanup timed out after ${durationMs} ms`));
+      }, durationMs);
+    });
+    try {
+      return await Promise.race([work, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async runProvider(
+    provider: string,
+    text: string,
+    trimmedModel: string,
+    model: string,
+    agentName: string | null,
+    config: ReasoningConfig,
+    abandon: AbortSignal
+  ): Promise<string> {
+    let result: string;
+    switch (provider) {
+      case "claude-code": {
+        const bridge = window.electronAPI?.enhanceWithClaudeCode;
+        if (!bridge) throw new Error("Claude Code enhancement is unavailable. Restart the app.");
+        const reply = await bridge(
+          await this.buildUserPrompt(text, config),
+          this.getSystemPrompt(
+            agentName,
+            config.dictationMode,
+            config.preferredLanguage,
+            config.promptTemplate
+          )
+        );
+        if (!reply.ok || !reply.text?.trim()) {
+          throw new Error(reply.message || "Claude Code did not return enhanced text.");
+        }
+        result = reply.text.trim();
+        break;
+      }
+      case "openai":
+      case "custom":
+        result = await this.processWithOpenAI(
+          text,
+          trimmedModel,
+          agentName,
+          config,
+          provider === "custom",
+          abandon
+        );
+        break;
+      case "anthropic":
+        result = await this.processWithAnthropic(text, trimmedModel, agentName, config);
+        break;
+      case "local":
+        result = await this.processWithLocal(text, trimmedModel, agentName, config);
+        break;
+      case "gemini":
+        result = await this.processWithGemini(text, trimmedModel, agentName, config, abandon);
+        break;
+      case "groq":
+        result = await this.processWithGroq(text, model, agentName, config, abandon);
+        break;
+      default:
+        throw new Error(`Unsupported reasoning provider: ${provider}`);
+    }
+    return result;
   }
 
   private async processWithOpenAI(
@@ -756,7 +885,8 @@ class ReasoningService {
     config: ReasoningConfig = {},
     // Decided once by processText. Reading the setting again after the awaits
     // below could pair the OpenAI key with the custom address, or the reverse.
-    isCustomProvider = false
+    isCustomProvider = false,
+    abandon?: AbortSignal
   ): Promise<string> {
     logger.logReasoning("OPENAI_START", {
       model,
@@ -765,10 +895,6 @@ class ReasoningService {
       hasApiKey: false, // Will update after fetching
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
     const openAiBase = this.getConfiguredOpenAIBase(isCustomProvider);
     const apiKey = await this.getApiKey(isCustomProvider ? "custom" : "openai");
 
@@ -776,8 +902,6 @@ class ReasoningService {
       hasApiKey: !!apiKey,
       keyLength: apiKey?.length || 0,
     });
-
-    this.isProcessing = true;
 
     try {
       const systemPrompt = this.getSystemPrompt(
@@ -815,7 +939,7 @@ class ReasoningService {
         });
       }
 
-      const requestTimeout = createRequestTimeout(config.timeoutMs, "OpenAI");
+      const requestTimeout = createRequestTimeout(config.timeoutMs, "OpenAI", abandon);
       let response: any;
       try {
         response = await withRetry(
@@ -877,7 +1001,7 @@ class ReasoningService {
                     continue;
                   }
 
-                  throw new Error(errorMessage);
+                  throw createApiError(errorMessage, res.status);
                 }
 
                 this.rememberOpenAiPreference(openAiBase, type);
@@ -918,6 +1042,18 @@ class ReasoningService {
         choicesLength: isChatCompletions ? response.choices.length : 0,
         usage: response.usage,
       });
+
+      const isTruncated =
+        response?.status === "incomplete" ||
+        (isChatCompletions && response.choices.some((c: any) => c?.finish_reason === "length"));
+      if (isTruncated) {
+        logger.logReasoning("OPENAI_TRUNCATED", {
+          model,
+          status: response?.status,
+          reason: response?.incomplete_details?.reason,
+        });
+        throw createTruncatedError(isCustomProvider ? "The custom endpoint" : "OpenAI");
+      }
 
       let responseText = "";
 
@@ -992,8 +1128,6 @@ class ReasoningService {
         errorType: (error as Error).name,
       });
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -1009,54 +1143,43 @@ class ReasoningService {
       environment: typeof window !== "undefined" ? "browser" : "node",
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
-    this.isProcessing = true;
-
     if (typeof window !== "undefined" && window.electronAPI) {
       const startTime = Date.now();
 
-      try {
-        const customSystemPrompt = this.getSystemPrompt(
-          agentName,
-          config.dictationMode,
-          config.preferredLanguage,
-          config.promptTemplate
-        );
-        logger.logReasoning("ANTHROPIC_IPC_CALL", {
+      const customSystemPrompt = this.getSystemPrompt(
+        agentName,
+        config.dictationMode,
+        config.preferredLanguage,
+        config.promptTemplate
+      );
+      logger.logReasoning("ANTHROPIC_IPC_CALL", {
+        model,
+        textLength: text.length,
+      });
+
+      const result = await window.electronAPI.processAnthropicReasoning(text, model, agentName, {
+        ...config,
+        customSystemPrompt,
+      });
+
+      const processingTime = Date.now() - startTime;
+
+      if (result.success) {
+        logger.logReasoning("ANTHROPIC_SUCCESS", {
           model,
-          textLength: text.length,
+          processingTimeMs: processingTime,
+          resultLength: result.text.length,
         });
-
-        const result = await window.electronAPI.processAnthropicReasoning(text, model, agentName, {
-          ...config,
-          customSystemPrompt,
+        return result.text;
+      } else {
+        logger.logReasoning("ANTHROPIC_ERROR", {
+          model,
+          processingTimeMs: processingTime,
+          error: result.error,
         });
-
-        const processingTime = Date.now() - startTime;
-
-        if (result.success) {
-          logger.logReasoning("ANTHROPIC_SUCCESS", {
-            model,
-            processingTimeMs: processingTime,
-            resultLength: result.text.length,
-          });
-          return result.text;
-        } else {
-          logger.logReasoning("ANTHROPIC_ERROR", {
-            model,
-            processingTimeMs: processingTime,
-            error: result.error,
-          });
-          throw new Error(result.error);
-        }
-      } finally {
-        this.isProcessing = false;
+        throw new Error(result.error);
       }
     } else {
-      this.isProcessing = false;
       logger.logReasoning("ANTHROPIC_UNAVAILABLE", {
         reason: "Not in Electron environment",
       });
@@ -1076,54 +1199,43 @@ class ReasoningService {
       environment: typeof window !== "undefined" ? "browser" : "node",
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
-    this.isProcessing = true;
-
     if (typeof window !== "undefined" && window.electronAPI) {
       const startTime = Date.now();
 
-      try {
-        const customSystemPrompt = this.getSystemPrompt(
-          agentName,
-          config.dictationMode,
-          config.preferredLanguage,
-          config.promptTemplate
-        );
-        logger.logReasoning("LOCAL_IPC_CALL", {
+      const customSystemPrompt = this.getSystemPrompt(
+        agentName,
+        config.dictationMode,
+        config.preferredLanguage,
+        config.promptTemplate
+      );
+      logger.logReasoning("LOCAL_IPC_CALL", {
+        model,
+        textLength: text.length,
+      });
+
+      const result = await window.electronAPI.processLocalReasoning(text, model, agentName, {
+        ...config,
+        customSystemPrompt,
+      });
+
+      const processingTime = Date.now() - startTime;
+
+      if (result.success) {
+        logger.logReasoning("LOCAL_SUCCESS", {
           model,
-          textLength: text.length,
+          processingTimeMs: processingTime,
+          resultLength: result.text.length,
         });
-
-        const result = await window.electronAPI.processLocalReasoning(text, model, agentName, {
-          ...config,
-          customSystemPrompt,
+        return result.text;
+      } else {
+        logger.logReasoning("LOCAL_ERROR", {
+          model,
+          processingTimeMs: processingTime,
+          error: result.error,
         });
-
-        const processingTime = Date.now() - startTime;
-
-        if (result.success) {
-          logger.logReasoning("LOCAL_SUCCESS", {
-            model,
-            processingTimeMs: processingTime,
-            resultLength: result.text.length,
-          });
-          return result.text;
-        } else {
-          logger.logReasoning("LOCAL_ERROR", {
-            model,
-            processingTimeMs: processingTime,
-            error: result.error,
-          });
-          throw new Error(result.error);
-        }
-      } finally {
-        this.isProcessing = false;
+        throw new Error(result.error);
       }
     } else {
-      this.isProcessing = false;
       logger.logReasoning("LOCAL_UNAVAILABLE", {
         reason: "Not in Electron environment",
       });
@@ -1135,7 +1247,8 @@ class ReasoningService {
     text: string,
     model: string,
     agentName: string | null = null,
-    config: ReasoningConfig = {}
+    config: ReasoningConfig = {},
+    abandon?: AbortSignal
   ): Promise<string> {
     logger.logReasoning("GEMINI_START", {
       model,
@@ -1143,18 +1256,12 @@ class ReasoningService {
       hasApiKey: false,
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
     const apiKey = await this.getApiKey("gemini");
 
     logger.logReasoning("GEMINI_API_KEY", {
       hasApiKey: !!apiKey,
       keyLength: apiKey?.length || 0,
     });
-
-    this.isProcessing = true;
 
     try {
       const systemPrompt = this.getSystemPrompt(
@@ -1179,14 +1286,11 @@ class ReasoningService {
           temperature: config.temperature || 0.3,
           maxOutputTokens:
             config.maxTokens ||
-            Math.max(
-              2000,
-              this.calculateMaxTokens(
-                text.length,
-                TOKEN_LIMITS.MIN_TOKENS_GEMINI,
-                TOKEN_LIMITS.MAX_TOKENS_GEMINI,
-                TOKEN_LIMITS.TOKEN_MULTIPLIER
-              )
+            this.calculateMaxTokens(
+              text.length,
+              TOKEN_LIMITS.MIN_TOKENS_GEMINI,
+              TOKEN_LIMITS.MAX_TOKENS_GEMINI,
+              TOKEN_LIMITS.TOKEN_MULTIPLIER
             ),
         },
       };
@@ -1199,7 +1303,7 @@ class ReasoningService {
       }
 
       let response: any;
-      const requestTimeout = createRequestTimeout(config.timeoutMs, "Gemini");
+      const requestTimeout = createRequestTimeout(config.timeoutMs, "Gemini", abandon);
       try {
         response = await withRetry(
           async () => {
@@ -1247,7 +1351,7 @@ class ReasoningService {
                 errorData.message ||
                 errorData.error ||
                 `Gemini API error: ${res.status}`;
-              throw new Error(truncateErrorMessage(errorMessage));
+              throw createApiError(errorMessage, res.status);
             }
 
             const jsonResponse = await res.json();
@@ -1281,6 +1385,14 @@ class ReasoningService {
       }
 
       const candidate = response.candidates[0];
+      if (candidate.finishReason === "MAX_TOKENS") {
+        logger.logReasoning("GEMINI_TRUNCATED", {
+          model,
+          maxOutputTokens: requestBody.generationConfig.maxOutputTokens,
+          hasText: !!candidate.content?.parts?.[0]?.text,
+        });
+        throw createTruncatedError("Gemini");
+      }
       if (!candidate.content?.parts?.[0]?.text) {
         logger.logReasoning("GEMINI_EMPTY_RESPONSE", {
           model,
@@ -1290,11 +1402,6 @@ class ReasoningService {
           response: summarizeResponseForLog({ candidates: [candidate] }),
         });
 
-        if (candidate.finishReason === "MAX_TOKENS") {
-          throw new Error(
-            "Gemini reached token limit before generating response. Try a shorter input or increase max tokens."
-          );
-        }
         throw new Error("Gemini returned empty response");
       }
 
@@ -1315,8 +1422,6 @@ class ReasoningService {
         errorType: (error as Error).name,
       });
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -1324,17 +1429,12 @@ class ReasoningService {
     text: string,
     model: string,
     agentName: string | null = null,
-    config: ReasoningConfig = {}
+    config: ReasoningConfig = {},
+    abandon?: AbortSignal
   ): Promise<string> {
     logger.logReasoning("GROQ_START", { model, agentName });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
     const apiKey = await this.getApiKey("groq");
-    this.isProcessing = true;
-
     try {
       const endpoint = buildApiUrl(API_ENDPOINTS.GROQ_BASE, "/chat/completions");
       return await this.callChatCompletionsApi(
@@ -1344,7 +1444,8 @@ class ReasoningService {
         text,
         agentName,
         config,
-        "Groq"
+        "Groq",
+        abandon
       );
     } catch (error) {
       logger.logReasoning("GROQ_ERROR", {
@@ -1353,8 +1454,6 @@ class ReasoningService {
         errorType: (error as Error).name,
       });
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
