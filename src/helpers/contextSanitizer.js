@@ -29,10 +29,10 @@ const QUOTED_VALUE = String.raw`"[^"\\\n]*(?:\\.[^"\\\n]*)*"?|'[^'\\\n]*(?:\\.[^
 // The text of an XML element: a CDATA section up to its "]]>" or the end of
 // the text, or plain text up to the next tag or the end of the line.
 const XML_TEXT = String.raw`<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|[^<\s][^<\n\r]*`;
-// A name="..." attribute that holds a secret name, as in
-// <property name="password">.
+// A name="..." or key="..." attribute that holds a secret name, as in
+// <property name="password"> and <entry key="db.password">.
 const SECRET_NAME_ATTRIBUTE = new RegExp(
-  String.raw`(?<![\w:.-])name[ \t]*=[ \t]*(["'])${SECRET_NAME}\1`,
+  String.raw`(?<![\w:.-])(?:name|key)[ \t]*=[ \t]*(["'])${SECRET_NAME}\1`,
   "i"
 );
 // A type annotation in place of a value: "token: string;", "apiKey: string |
@@ -51,11 +51,23 @@ const DEFAULT_REDACTION_PATTERNS = [
   // "PRIVATE KEY" is found the match never goes back for an earlier one, so
   // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once. First in
   // the list, so a field rule redacting PRIVATE_KEY=-----BEGIN cannot take
-  // the BEGIN line and leave the key body.
+  // the BEGIN line and leave the key body. The rest of the END line goes
+  // too: a secret name inside the block is gone, so a value after it on that
+  // line would no longer be found by its name.
   {
     name: "privateKeyBlock",
     regex:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?[^\r\n]*|$)/g,
+    replacement: "[REDACTED_PRIVATE_KEY]",
+  },
+  // The same in any case, as in "-----begin rsa private key-----", for the
+  // blocks left after the rule above. It runs second so an upper-case block
+  // always ends at an upper-case END line, never at a lower-case one inside
+  // it.
+  {
+    name: "privateKeyBlockAnyCase",
+    regex:
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?[^\r\n]*|$)/gi,
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
   // A value given to any name that ends in a secret word, whatever comes
@@ -81,6 +93,18 @@ const DEFAULT_REDACTION_PATTERNS = [
     ),
     replacement: "$1[REDACTED]",
   },
+  // A YAML value on the lines under its name ("password:\n  hunter2"): every
+  // line indented deeper than the name, blank lines between them included.
+  // Only a name that starts its line counts, so a Python block such as
+  // "if password:" keeps its body.
+  {
+    name: "secretNextLineValue",
+    regex: new RegExp(
+      String.raw`^(([ \t]*)(?:-[ \t]+)*["']?${SECRET_NAME}["']?[ \t]*:[ \t]*(?:\r?\n[ \t]*)*?\r?\n\2[ \t]+)([^\s][^\r\n]*(?:(?:\r?\n)+\2[ \t]+[^\r\n]*)*)`,
+      "gim"
+    ),
+    replacement: "$1[REDACTED]",
+  },
   // XML elements and attributes: <password>x</password>, the same with the
   // value in a CDATA section or one child element (<password><value>x),
   // and the .NET and Spring <add key="ApiKey" value="x"/>,
@@ -92,6 +116,16 @@ const DEFAULT_REDACTION_PATTERNS = [
     name: "secretElement",
     regex: new RegExp(
       String.raw`(<(?:[A-Z0-9_.-]+:)?${SECRET_NAME}(?:\s[^<>]*)?(?<!\/)>\s*(?:<(?![\/!])(?:[A-Z0-9_.-]+:)?[A-Z0-9_.-]+(?:\s[^<>]*)?(?<!\/)>\s*)?)(${XML_TEXT})`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
+  },
+  // A value attribute on an element named for a secret, self-closing or not:
+  // <Password value="x"/>, <ApiKey value="x">.
+  {
+    name: "secretElementValueAttribute",
+    regex: new RegExp(
+      String.raw`(<(?:[A-Z0-9_.-]+:)?${SECRET_NAME}\s(?:[^<>]*?\s)?value[ \t]*=[ \t]*)("[^"\n]*"?|'[^'\n]*'?)`,
       "gi"
     ),
     replacement: "$1[REDACTED]",
@@ -108,6 +142,19 @@ const DEFAULT_REDACTION_PATTERNS = [
     ),
     replacement: (match, head, attributes) =>
       SECRET_NAME_ATTRIBUTE.test(attributes) ? `${head}[REDACTED]` : match,
+  },
+  // The same with the value as the element's own text: the Java properties
+  // <entry key="db.password">x</entry>, and <setting name="Password">x. A
+  // self-closing element holds no value and is left alone. The attributes
+  // are checked in a lookahead, which finds the first secret name and is
+  // never retried, so a long tag is scanned once per "<".
+  {
+    name: "secretNamedElement",
+    regex: new RegExp(
+      String.raw`(<[\w:.-]+(?=\s[^<>]*?(?<![\w:.-])(?:name|key)[ \t]*=[ \t]*(["'])${SECRET_NAME}\2)\s[^<>]*(?<!\/)>\s*)(${XML_TEXT})`,
+      "gi"
+    ),
+    replacement: "$1[REDACTED]",
   },
   {
     name: "secretAttribute",
