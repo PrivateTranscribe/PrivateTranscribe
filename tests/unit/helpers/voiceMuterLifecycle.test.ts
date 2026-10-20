@@ -24,6 +24,9 @@ class FakeHelper extends EventEmitter {
   killed = false;
   exitCode: number | null = null;
   ignoreRelease = false;
+  /** How long letting go takes, like a helper slow to exit. */
+  exitDelayMs = 0;
+  private exiting = false;
   stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
   private lines: string[] = [];
   private stdinClosed = false;
@@ -63,7 +66,7 @@ class FakeHelper extends EventEmitter {
   }
 
   private drain() {
-    if (!this.pressed || this.ignoreRelease || this.exitCode !== null) return;
+    if (!this.pressed || this.ignoreRelease || this.exitCode !== null || this.exiting) return;
     if (this.lines.includes("release") || this.stdinClosed) {
       this.pressed = false;
       this.exit(0);
@@ -76,6 +79,14 @@ class FakeHelper extends EventEmitter {
   }
 
   private exit(code: number | null) {
+    if (this.exitDelayMs > 0) {
+      this.exiting = true;
+      setTimeout(() => {
+        this.exitCode = code;
+        this.emit("close", code);
+      }, this.exitDelayMs);
+      return;
+    }
     this.exitCode = code;
     setImmediate(() => this.emit("close", code));
   }
@@ -256,5 +267,54 @@ describe("the held-key marker", () => {
     const { muter, keyUps } = makeMuter(userData);
     await expect(muter.recoverStuckKey()).resolves.toBe(false);
     expect(keyUps).toEqual([]);
+  });
+});
+
+async function waitForHelpers(helpers: FakeHelper[], count: number) {
+  for (let i = 0; i < 50 && helpers.length < count; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  expect(helpers).toHaveLength(count);
+}
+
+describe("a new dictation right after Escape", () => {
+  it("gets its own press instead of riding on a hold that is letting go", async () => {
+    const { muter, helpers } = makeMuter();
+    // Start, then Escape while the first helper is still starting.
+    const first = muter.hold("F13");
+    await tick();
+    const releasing = muter.release();
+    // Start again before the first helper printed "held".
+    const second = muter.hold("F13");
+    helpers[0].printHeld();
+    await expect(first).resolves.toBe(true);
+    await releasing;
+
+    await waitForHelpers(helpers, 2);
+    helpers[1].printHeld();
+    await expect(second).resolves.toBe(true);
+    expect(muter.isMuted()).toBe(true);
+    expect(helpers[0].pressed).toBe(false);
+    expect(helpers[1].pressed).toBe(true);
+    await muter.release();
+  });
+
+  it("does not press again until the last helper has let go", async () => {
+    const { muter, helpers } = makeMuter();
+    const first = muter.hold("F13");
+    helpers[0].printHeld();
+    await first;
+
+    helpers[0].exitDelayMs = 30;
+    const releasing = muter.release();
+    const second = muter.hold("F13");
+    await waitForHelpers(helpers, 2);
+    // The first helper had exited before the second one was started.
+    expect(helpers[0].exitCode).toBe(0);
+    helpers[1].printHeld();
+    await releasing;
+    await expect(second).resolves.toBe(true);
+    expect(muter.isMuted()).toBe(true);
+    await muter.release();
   });
 });

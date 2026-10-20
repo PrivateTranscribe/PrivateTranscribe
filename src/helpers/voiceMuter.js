@@ -151,6 +151,8 @@ class VoiceMuter {
     // A hold whose helper is running but has not printed "held" yet.
     this.pending = null;
     this._session = null;
+    // The previous helper's release, while it is still letting go.
+    this._releasing = null;
     this._spawn = spawnHelper;
     this._resolveExecutable = resolveExecutable;
     this._heldTimeoutMs = heldTimeoutMs;
@@ -188,8 +190,20 @@ class VoiceMuter {
       return true;
     }
     if (this.pending) {
-      // Same rule while the first helper is still starting.
-      return this.pending.result;
+      // Same rule while the first helper is still starting, unless that hold
+      // is already being let go of. Sharing it then would report a mute for a
+      // key that is on its way up, so this dictation waits for its own press.
+      if (!this.pending.releaseRequested) {
+        return this.pending.result;
+      }
+      await this.pending.result;
+      return this.hold(key, maxHoldMs);
+    }
+    if (this._releasing) {
+      // The last helper is still letting go. A press started now could land
+      // before its key-up and be cancelled by it.
+      await this._releasing;
+      return this.hold(key, maxHoldMs);
     }
 
     const executable = this._resolveExecutable();
@@ -312,7 +326,15 @@ class VoiceMuter {
     this.heldKey = null;
     this._session = null;
 
-    await this._finishHelper(session);
+    const finishing = this._finishHelper(session);
+    this._releasing = finishing;
+    try {
+      await finishing;
+    } finally {
+      if (this._releasing === finishing) {
+        this._releasing = null;
+      }
+    }
 
     debugLogger.debug("voiceMuter: released mute key", { key });
     return true;
