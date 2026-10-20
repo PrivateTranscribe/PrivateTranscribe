@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import path from "path";
 
 const {
@@ -45,6 +45,53 @@ describe("extractFileContext", () => {
     expect(result.blocked).toBe(true);
     expect(result.reason).toBe("outside home dir");
   });
+});
+
+describe("credentials files", () => {
+  const { extractFromFilePath } = require("../../../src/helpers/fileIdentifierExtractor");
+  const rootDir = path.parse(process.cwd()).root;
+  const homeDir = path.join(rootDir, "Users", "alice");
+
+  it.each([
+    ".env",
+    ".env.local",
+    "prod.env",
+    "server.pem",
+    "tls.key",
+    "id_rsa",
+    "id_ed25519",
+    "credentials.json",
+    "client_secret.json",
+    "secrets.yaml",
+    "prod.tfvars",
+    "cert.pfx",
+    ".npmrc",
+  ])("reads nothing from %s", (name) => {
+    const fsMod = {
+      statSync: () => ({ size: 10 }),
+      readFileSync: vi.fn(() => "KEY=value"),
+    };
+    const filePath = path.join(homeDir, "privoca", name);
+
+    expect(extractFileContext(filePath, homeDir, fsMod)).toEqual({
+      blocked: true,
+      reason: "credentials file",
+    });
+    expect(extractFromFilePath(filePath, homeDir, fsMod)).toMatchObject({
+      blocked: true,
+      reason: "credentials file",
+    });
+    expect(fsMod.readFileSync).not.toHaveBeenCalled();
+  });
+
+  it.each(["environment.ts", "envelope.js", "keyboard.ts", "App.jsx", "tokens.css"])(
+    "still reads %s",
+    (name) => {
+      const fsMod = { statSync: () => ({ size: 10 }), readFileSync: () => "const a = 1;" };
+      const result = extractFileContext(path.join(homeDir, "privoca", name), homeDir, fsMod);
+      expect(result).toMatchObject({ blocked: false, excerpt: "const a = 1;" });
+    }
+  );
 });
 
 describe("secrets in the file excerpt", () => {

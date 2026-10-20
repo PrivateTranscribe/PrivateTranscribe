@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { isSafeFilePath, isFileTooLarge } = require("./fileIdentifierExtractor");
+const { isSafeFilePath, isFileTooLarge, isCredentialFile } = require("./fileIdentifierExtractor");
 const { sanitizeContextText } = require("./contextSanitizer");
 
 const DEFAULT_MAX_CHARS = 4000;
@@ -64,6 +64,9 @@ function extractFileContext(filePath, homeDir, fsMod, options = {}) {
 
   if (!isSafeFilePath(filePath, homeDir)) {
     return { blocked: true, reason: "outside home dir" };
+  }
+  if (isCredentialFile(filePath)) {
+    return { blocked: true, reason: "credentials file" };
   }
 
   try {

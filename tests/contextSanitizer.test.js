@@ -39,8 +39,8 @@ describe("sanitizeContextText", () => {
   });
 
   it("truncates to maxChars", () => {
-    // Use a non-hex character so we don't trigger longHexToken redaction.
-    const input = "x".repeat(200);
+    // Short words, so no token redaction pattern replaces the payload.
+    const input = "xx ".repeat(70);
     const out = sanitizeContextText(input, { maxChars: 50 });
     expect(out.length).toBe(50);
   });

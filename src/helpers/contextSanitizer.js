@@ -11,35 +11,33 @@
  */
 
 const DEFAULT_REDACTION_PATTERNS = [
-  // password: hunter2 / password=hunter2 / password: "hunter two"
+  // PEM and PGP private key blocks. A block with no END line, as in a read
+  // cut off at a length, is redacted to the end of the text. Once a label's
+  // "PRIVATE KEY" is found the match never goes back for an earlier one, so
+  // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once. First in
+  // the list, so a field rule redacting PRIVATE_KEY=-----BEGIN cannot take
+  // the BEGIN line and leave the key body.
   {
-    name: "password",
-    // capture only the value so we can preserve the field name for usefulness
-    // Support quoted values (including spaces) to avoid leaking real passwords
-    // in config snippets, JSON-like logs, or terminal output.
-    regex: /(password\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
+    name: "privateKeyBlock",
+    regex:
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
+    replacement: "[REDACTED_PRIVATE_KEY]",
   },
-  // passwd/pwd are common shorthands
+  // A value given to any name that ends in a secret word, whatever comes
+  // before it and with or without quotes: password: "hunter two", DB_PASS=,
+  // JWT_SECRET=, AWS_SECRET_ACCESS_KEY=, x-api-key:, "client_secret": "x",
+  // spring.datasource.password=, AccountKey=. The name, and a scheme word
+  // such as "Bearer", are kept, so the text still reads. An unquoted value
+  // runs to the next space or quote. A quoted one ends at its closing quote
+  // or, when that is missing, as in a read cut off at a length, at the end
+  // of the line, so it never takes the next line's name with it. The
+  // lookbehind lets a match start only where a name starts, so a long run is
+  // scanned once. "==", "=>" and "::" are code, not assignments, and are
+  // left alone.
   {
-    name: "passwd",
-    regex: /(pass(?:wd)?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  {
-    name: "pwd",
-    regex: /(\bpwd\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  // Generic secret/token fields (keep narrow: require key + :=)
-  {
-    name: "secretField",
-    regex: /(\bsecret\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  {
-    name: "tokenField",
-    regex: /(\btoken\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'"\n\r]+)/gi,
+    name: "secretAssignment",
+    regex:
+      /((?<![A-Z0-9_.-])["']?[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER)[_-]?KEY)["']?[ \t]*(?::=|[:=](?![=>:]))[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)("[^"\n]*"?|'[^'\n]*'?|[^\s'"]+)/gi,
     replacement: "$1[REDACTED]",
   },
   // Phone numbers are personally identifying; only redact when clearly labeled
@@ -76,56 +74,33 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(\b(?:oauth|authorization)\s*code\s*[:=]\s*)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
-  // apiKey: ... / api_key=...
-  {
-    name: "apiKey",
-    regex: /(api[_-]?key\s*[:=]\s*)([^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  // x-api-key / X_API_KEY (common header-style key name)
-  {
-    name: "xApiKey",
-    regex: /(\bx[_-]?api[_-]?key\s*[:=]\s*)([^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  // Common OAuth-ish / auth token fields (keep narrow to avoid redacting innocent text)
-  {
-    name: "oauthTokenFields",
-    regex: /((?:access|refresh|id)[_-]?token\s*[:=]\s*)([^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  {
-    name: "clientSecret",
-    regex: /(client[_-]?secret\s*[:=]\s*)([^\s'"\n\r]+)/gi,
-    replacement: "$1[REDACTED]",
-  },
-  // Bearer tokens in logs/headers.
+  // Bearer tokens in logs/headers, and in JSON ("Authorization": "Bearer x").
   {
     name: "bearerToken",
-    regex: /(authorization\s*[:=]\s*bearer\s+)([^\s'"\n\r]+)/gi,
+    regex: /(authorization["']?\s*[:=]\s*["']?bearer\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
   // Basic auth tokens in logs/headers.
   {
     name: "basicAuthToken",
-    regex: /(authorization\s*[:=]\s*basic\s+)([^\s'"\n\r]+)/gi,
+    regex: /(authorization["']?\s*[:=]\s*["']?basic\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
   // Token auth scheme (commonly used by GitHub and various APIs).
   {
     name: "tokenAuthToken",
-    regex: /(authorization\s*[:=]\s*token\s+)([^\s'"\n\r]+)/gi,
+    regex: /(authorization["']?\s*[:=]\s*["']?token\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
   // Proxy auth headers can also carry bearer/basic credentials.
   {
     name: "proxyBearerToken",
-    regex: /(proxy-authorization\s*[:=]\s*bearer\s+)([^\s'"\n\r]+)/gi,
+    regex: /(proxy-authorization["']?\s*[:=]\s*["']?bearer\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
   {
     name: "proxyBasicAuthToken",
-    regex: /(proxy-authorization\s*[:=]\s*basic\s+)([^\s'"\n\r]+)/gi,
+    regex: /(proxy-authorization["']?\s*[:=]\s*["']?basic\s+)([^\s'"\n\r]+)/gi,
     replacement: "$1[REDACTED]",
   },
   // Cookie headers can contain session identifiers and auth state.
@@ -161,10 +136,10 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(?<![A-Za-z0-9])gsk_[A-Za-z0-9_-]{20,}/g,
     replacement: "[REDACTED_GROQ_KEY]",
   },
-  // Stripe keys / secrets
+  // Stripe keys / secrets (sk_ secret keys, rk_ restricted keys)
   {
     name: "stripeSecretKey",
-    regex: /\bsk_(?:live|test)_[0-9A-Za-z]{10,}\b/g,
+    regex: /\b[rs]k_(?:live|test)_[0-9A-Za-z]{10,}\b/g,
     replacement: "[REDACTED_STRIPE_KEY]",
   },
   {
@@ -205,10 +180,11 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b/g,
     replacement: "[REDACTED_AWS_KEY]",
   },
-  // GitHub personal access tokens (classic + fine-grained)
+  // GitHub tokens: personal (ghp_), OAuth (gho_), user (ghu_), server (ghs_),
+  // refresh (ghr_) and fine-grained (github_pat_)
   {
     name: "githubTokenClassic",
-    regex: /\bghp_[A-Za-z0-9]{20,}\b/g,
+    regex: /\bgh[opsur]_[A-Za-z0-9]{20,}\b/g,
     replacement: "[REDACTED_GITHUB_TOKEN]",
   },
   {
@@ -216,21 +192,40 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
     replacement: "[REDACTED_GITHUB_TOKEN]",
   },
+  // GitLab personal access tokens
+  {
+    name: "gitlabToken",
+    regex: /(?<![A-Za-z0-9])glpat-[A-Za-z0-9_-]{20,}/g,
+    replacement: "[REDACTED_GITLAB_TOKEN]",
+  },
+  // npm and Hugging Face access tokens
+  {
+    name: "npmToken",
+    regex: /\bnpm_[A-Za-z0-9]{36,}\b/g,
+    replacement: "[REDACTED_NPM_TOKEN]",
+  },
+  {
+    name: "huggingFaceToken",
+    regex: /\bhf_[A-Za-z0-9]{30,}\b/g,
+    replacement: "[REDACTED_HF_TOKEN]",
+  },
   // Slack tokens (bot/user/app tokens commonly start with xox*)
   {
     name: "slackToken",
     regex: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/g,
     replacement: "[REDACTED_SLACK_TOKEN]",
   },
-  // PEM and PGP private key blocks. A block with no END line, as in a read
-  // cut off at a length, is redacted to the end of the text. Once a label's
-  // "PRIVATE KEY" is found the match never goes back for an earlier one, so
-  // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once.
+  // Slack and Discord webhook URLs: the path is what lets anyone post.
   {
-    name: "privateKeyBlock",
+    name: "slackWebhook",
+    regex: /(https:\/\/hooks\.slack\.com\/(?:services|workflows|triggers)\/)[A-Za-z0-9_/-]+/gi,
+    replacement: "$1[REDACTED]",
+  },
+  {
+    name: "discordWebhook",
     regex:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
-    replacement: "[REDACTED_PRIVATE_KEY]",
+      /(https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/)[0-9]+\/[A-Za-z0-9_-]+/gi,
+    replacement: "$1[REDACTED]",
   },
   // Emails (can appear in window titles, docs, tickets, etc.)
   // The lookbehind lets a match start only where a run of address characters
@@ -264,6 +259,13 @@ const DEFAULT_REDACTION_PATTERNS = [
   {
     name: "longHexToken",
     regex: /\b[a-f0-9]{32,}\b/gi,
+    replacement: "[REDACTED]",
+  },
+  // Long runs of letters and digits, such as 84-character Azure keys. Text
+  // rarely holds one this long that is not a key or a token.
+  {
+    name: "longAlphanumericToken",
+    regex: /(?<![A-Za-z0-9])[A-Za-z0-9]{80,}/g,
     replacement: "[REDACTED]",
   },
 ];

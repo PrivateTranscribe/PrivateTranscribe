@@ -261,6 +261,110 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("secret names and token shapes", () => {
+    // Assembled at runtime so no line in this file reads as a key.
+    const value = "Zq9Xw2".repeat(6);
+    const azureKey = "Ab3x9Q".repeat(14);
+
+    it.each([
+      ["JWT_SECRET", `JWT_SECRET=${value}`, "JWT_SECRET=[REDACTED]"],
+      ["NPM_TOKEN", `NPM_TOKEN=${value}`, "NPM_TOKEN=[REDACTED]"],
+      ["HF_TOKEN", `export HF_TOKEN=${value}`, "export HF_TOKEN=[REDACTED]"],
+      [
+        "AWS_SECRET_ACCESS_KEY",
+        `AWS_SECRET_ACCESS_KEY=${value}`,
+        "AWS_SECRET_ACCESS_KEY=[REDACTED]",
+      ],
+      ["SECRET_KEY", `SECRET_KEY = '${value}'`, "SECRET_KEY = [REDACTED]"],
+      ["PRIVATE_KEY", `PRIVATE_KEY=${value}`, "PRIVATE_KEY=[REDACTED]"],
+      [
+        "a dotted name",
+        `spring.datasource.password=${value}`,
+        "spring.datasource.password=[REDACTED]",
+      ],
+      ["a Go assignment", `token := "${value}"`, "token := [REDACTED]"],
+      ["a JSON password", '{"password": "hunter two"}', '{"password": [REDACTED]}'],
+      ["a JSON token", `{"token":"${value}"}`, '{"token":[REDACTED]}'],
+      ["a JSON client secret", `{"client_secret": "${value}"}`, '{"client_secret": [REDACTED]}'],
+      [
+        "an Azure storage account key",
+        `AccountName=acct;AccountKey=${value}+/==;EndpointSuffix=core.windows.net`,
+        "AccountName=acct;AccountKey=[REDACTED]",
+      ],
+      [
+        "a JSON Authorization header",
+        `"Authorization": "Basic ${value}"`,
+        '"Authorization": "Basic [REDACTED]"',
+      ],
+      [
+        "a token after its scheme",
+        `X-Auth-Token: Bearer ${value}`,
+        "X-Auth-Token: Bearer [REDACTED]",
+      ],
+      ["a value holding ';'", "password=hun;ter,2 next", "password=[REDACTED] next"],
+      [
+        "each of two quoted values on their own lines",
+        'token: "abc\ntoken: "def',
+        "token: [REDACTED]\ntoken: [REDACTED]",
+      ],
+      [
+        "a quote cut off before it closes",
+        'password: "hunter two\nnext',
+        "password: [REDACTED]\nnext",
+      ],
+    ])("redacts the value of %s", (_name, input, expected) => {
+      expect(sanitizeContextText(input)).toBe(expected);
+    });
+
+    it.each([
+      ["a GitHub OAuth token", ["gho", value].join("_"), "[REDACTED_GITHUB_TOKEN]"],
+      ["a GitHub server token", ["ghs", value].join("_"), "[REDACTED_GITHUB_TOKEN]"],
+      ["a GitLab token", ["glpat", value].join("-"), "[REDACTED_GITLAB_TOKEN]"],
+      ["a Stripe restricted key", ["rk", "live", value].join("_"), "[REDACTED_STRIPE_KEY]"],
+      ["an npm token", ["npm", value].join("_"), "[REDACTED_NPM_TOKEN]"],
+      ["a Hugging Face token", ["hf", value].join("_"), "[REDACTED_HF_TOKEN]"],
+      ["an 84-character Azure key", azureKey, "[REDACTED]"],
+      [
+        "a Slack webhook",
+        ["https://hooks.slack.com", "services", "T0A1", "B0A1", value].join("/"),
+        "https://hooks.slack.com/services/[REDACTED]",
+      ],
+      [
+        "a Discord webhook",
+        ["https://discord.com/api", "webhooks", "1234567890", value].join("/"),
+        "https://discord.com/api/webhooks/[REDACTED]",
+      ],
+    ])("redacts %s", (_name, token, expected) => {
+      expect(sanitizeContextText(`key ${token} copied`)).toBe(`key ${expected} copied`);
+    });
+
+    it.each([
+      "if (token == null) return;",
+      "const trimmed = tokens.map((token) => token.trim());",
+      "let parsed = Token::new(source);",
+      "max_tokens: 4096",
+      "PASSWORD_MIN_LENGTH=8",
+    ])("leaves code that only names a secret alone: %s", (input) => {
+      expect(sanitizeContextText(input)).toBe(input);
+    });
+
+    const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
+
+    it.each([
+      ["one long name", megabyteOf("a_")],
+      ["a run of secret words", megabyteOf("SECRET_TOKEN")],
+      ["repeated quoted names", megabyteOf('"token":"')],
+      ["repeated assignments", megabyteOf("secret=")],
+      ["repeated token prefixes", megabyteOf("glpat-")],
+      ["repeated webhook prefixes", megabyteOf("https://hooks.slack.com/services/")],
+      ["one long run of letters", megabyteOf("a")],
+    ])("redacts 1 MB of %s in well under a second", (_shape, input) => {
+      const started = performance.now();
+      sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+  });
+
   describe("private key blocks", () => {
     // Assembled at runtime so no line in this file reads as a key.
     const line = (...words: string[]) => `-----${words.join(" ")}-----`;
@@ -355,7 +459,7 @@ describe("sanitizeContextText (real implementation)", () => {
 
   describe("truncation", () => {
     it("truncates text exceeding maxChars", () => {
-      const input = "z".repeat(5000);
+      const input = "zz ".repeat(2000);
       const output = sanitizeContextText(input, { maxChars: 100 });
       expect(output.length).toBe(100);
     });
