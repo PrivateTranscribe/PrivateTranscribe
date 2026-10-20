@@ -39,4 +39,17 @@ describe("dictation when AI cleanup fails", () => {
     );
     expect(ReasoningService.processText).toHaveBeenCalledTimes(1);
   });
+
+  it("marks a long session's transcript, so cleanup gets a longer deadline", async () => {
+    const manager: any = new AudioManager();
+    manager._checkBetaFeatureAccess = () => true;
+    vi.mocked(ReasoningService.processText).mockReset().mockResolvedValue("Cleaned.");
+
+    await manager.processTranscription("A long session.", "long-session");
+    await manager.processTranscription("A dictation.", "test");
+
+    const calls = vi.mocked(ReasoningService.processText).mock.calls;
+    expect(calls[0][3]).toMatchObject({ longSession: true });
+    expect(calls[1][3]).toMatchObject({ longSession: false });
+  });
 });

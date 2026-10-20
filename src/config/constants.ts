@@ -118,6 +118,9 @@ export const DICTATION_CLEANUP_TIMEOUT = {
   CUSTOM_BASE_MS: 60_000,
   CUSTOM_PER_CHARACTER_MS: 100,
   CUSTOM_MAX_MS: 300_000,
+  // A long session sends its whole transcript at once: 30 minutes is about
+  // 27,000 characters, several minutes of output even on a fast model.
+  LONG_SESSION_MAX_MS: 600_000,
   // llama-server's own inference limit, as before cleanup had a deadline.
   LOCAL_MS: 300_000,
   // llama-server starts after each idle stop before it can answer, and its

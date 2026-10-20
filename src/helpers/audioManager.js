@@ -3268,6 +3268,7 @@ class AudioManager {
             writingStyle:
               localStorage.getItem("enhancementWritingStyle") === "coding" ? "coding" : "clean",
             smartContext: this._cachedSmartContext ?? null,
+            longSession: source === "long-session",
           }
         );
 

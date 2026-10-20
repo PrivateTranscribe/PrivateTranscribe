@@ -133,6 +133,22 @@ describe("a stalled provider during dictation", () => {
     await expect(stalled).rejects.toThrow(/timed out/);
   });
 
+  it("gives a long session's whole transcript up to 10 minutes", async () => {
+    vi.mocked(window.electronAPI.processAnthropicReasoning).mockResolvedValue({
+      success: true,
+      text: "Cleaned.",
+    });
+    const session = "and then we went over the next item on the list ".repeat(560);
+
+    await ReasoningService.processText(session, "claude-sonnet-4-5");
+    await ReasoningService.processText(session, "claude-sonnet-4-5", null, { longSession: true });
+
+    const calls = vi.mocked(window.electronAPI.processAnthropicReasoning).mock.calls;
+    expect(calls[0][3].timeoutMs).toBe(120_000);
+    expect(calls[1][3].timeoutMs).toBe(20_000 + session.length * 20);
+    expect(calls[1][3].timeoutMs).toBeGreaterThan(500_000);
+  });
+
   it("keeps a timeout the caller chose", async () => {
     vi.mocked(window.electronAPI.processLocalReasoning).mockResolvedValue({
       success: true,

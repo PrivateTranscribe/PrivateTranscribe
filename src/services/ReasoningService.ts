@@ -32,6 +32,8 @@ export interface ReasoningConfig {
   dictationMode?: string;
   preferredLanguage?: string | null;
   smartContext?: Record<string, unknown> | null;
+  /** The whole transcript of a long session, which gets a longer deadline. */
+  longSession?: boolean;
 }
 
 // Lets a provider's own timeout fire first, with its clearer message.
@@ -679,7 +681,8 @@ class ReasoningService {
     // No request runs without a deadline. Dictation passes none, and a provider
     // that never answered used to hold the paste for good.
     const timeoutMs =
-      normalizePositiveInteger(config.timeoutMs) ?? this.getDictationTimeoutMs(text, provider);
+      normalizePositiveInteger(config.timeoutMs) ??
+      this.getDictationTimeoutMs(text, provider, config.longSession === true);
     config = { ...config, timeoutMs };
 
     logger.logReasoning("PROVIDER_SELECTION", {
@@ -751,16 +754,19 @@ class ReasoningService {
    * which is often a model on the user's own PC. A local model keeps
    * llama-server's own inference limit.
    */
-  private getDictationTimeoutMs(text: string, provider: string): number {
+  private getDictationTimeoutMs(text: string, provider: string, longSession: boolean): number {
     const limits = DICTATION_CLEANUP_TIMEOUT;
     if (provider === "local") return limits.LOCAL_MS;
     if (provider === "custom") {
       return Math.min(
         limits.CUSTOM_BASE_MS + text.length * limits.CUSTOM_PER_CHARACTER_MS,
-        limits.CUSTOM_MAX_MS
+        longSession ? limits.LONG_SESSION_MAX_MS : limits.CUSTOM_MAX_MS
       );
     }
-    return Math.min(limits.BASE_MS + text.length * limits.PER_CHARACTER_MS, limits.MAX_MS);
+    return Math.min(
+      limits.BASE_MS + text.length * limits.PER_CHARACTER_MS,
+      longSession ? limits.LONG_SESSION_MAX_MS : limits.MAX_MS
+    );
   }
 
   /**
