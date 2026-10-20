@@ -98,11 +98,13 @@ const DEFAULT_REDACTION_PATTERNS = [
     replacement: "$1[REDACTED]",
   },
   // The secret name is checked in the tag's attributes after the match, so
-  // a match starts only at "<" and each tag is scanned once.
+  // a match starts only at "<" and each tag is scanned once. Attributes
+  // start with whitespace, so the tag name and attributes never share
+  // characters.
   {
     name: "secretNamedValueElement",
     regex: new RegExp(
-      String.raw`(<[\w:.-]+([^<>]*)>\s*<value(?:\s[^<>]*)?>\s*)(${XML_TEXT})`,
+      String.raw`(<[\w:.-]+(\s[^<>]*)>\s*<value(?:\s[^<>]*)?>\s*)(${XML_TEXT})`,
       "gi"
     ),
     replacement: (match, head, attributes) =>
