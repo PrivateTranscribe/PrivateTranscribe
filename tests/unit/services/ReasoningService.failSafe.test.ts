@@ -33,7 +33,7 @@ beforeEach(() => {
   localStorageMock.clear();
   window.localStorage = localStorageMock;
   (ReasoningService as any).openAiEndpointPreference.clear();
-  (ReasoningService as any).isProcessing = false;
+  (ReasoningService as any).activeRequest = null;
   ReasoningService.clearApiKeyCache();
   window.electronAPI = {
     getOpenAIKey: vi.fn().mockResolvedValue("sk-openai"),
@@ -288,5 +288,58 @@ describe("a cleanup cut off at its length limit", () => {
     await expect(ReasoningService.processText(LONG_DICTATION, "my-model")).rejects.toThrow(
       "cut off at its length limit"
     );
+  });
+});
+
+describe("a request abandoned at the deadline", () => {
+  const DEADLINE = 20_000 + DICTATION.length * 20 + 1_000;
+
+  it("can't free the place of the cleanup that came after it", async () => {
+    vi.useFakeTimers();
+    const replies: Array<(value: unknown) => void> = [];
+    vi.mocked(window.electronAPI.processAnthropicReasoning).mockImplementation(
+      () => new Promise((resolve) => replies.push(resolve))
+    );
+
+    const first = ReasoningService.processText(DICTATION, "claude-sonnet-4-5");
+    const firstOutcome = expect(first).rejects.toThrow("AI cleanup timed out");
+    await vi.advanceTimersByTimeAsync(DEADLINE);
+    await firstOutcome;
+
+    const second = ReasoningService.processText(DICTATION, "claude-sonnet-4-5");
+    await vi.advanceTimersByTimeAsync(0);
+    // The abandoned first request answers late, while the second still runs.
+    replies[0]({ success: true, text: "Late." });
+    await vi.advanceTimersByTimeAsync(0);
+
+    await expect(ReasoningService.processText(DICTATION, "claude-sonnet-4-5")).rejects.toThrow(
+      "Already processing"
+    );
+
+    replies[1]({ success: true, text: "Second." });
+    await expect(second).resolves.toBe("Second.");
+  });
+
+  it("never sends the paid request once the deadline has passed", async () => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn() as any;
+    let giveKey: (key: string) => void = () => {};
+    vi.mocked(window.electronAPI.getOpenAIKey).mockReturnValue(
+      new Promise((resolve) => (giveKey = resolve))
+    );
+
+    const cleanup = ReasoningService.processText(DICTATION, "gpt-5.6-luna");
+    const outcome = expect(cleanup).rejects.toThrow("AI cleanup timed out");
+    await vi.advanceTimersByTimeAsync(DEADLINE);
+    await outcome;
+
+    giveKey("sk-openai");
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A fetch with an aborted signal rejects without sending anything.
+    expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThan(0);
+    for (const [, init] of vi.mocked(global.fetch).mock.calls) {
+      expect((init as RequestInit).signal?.aborted).toBe(true);
+    }
   });
 });

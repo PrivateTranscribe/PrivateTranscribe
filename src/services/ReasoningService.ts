@@ -51,17 +51,25 @@ function normalizeRetryCount(value: unknown): number | undefined {
     : undefined;
 }
 
-function createRequestTimeout(timeoutMs: unknown, providerName: string) {
+// `abandon` aborts the request when processText has already given up on it,
+// so a late reply is not paid for and then thrown away.
+function createRequestTimeout(timeoutMs: unknown, providerName: string, abandon?: AbortSignal) {
   const durationMs = normalizePositiveInteger(timeoutMs);
   if (!durationMs) {
-    return { signal: undefined, clear: () => {}, timeoutError: () => null };
+    return { signal: abandon, clear: () => {}, timeoutError: () => null };
   }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), durationMs);
+  const onAbandon = () => controller.abort();
+  abandon?.addEventListener("abort", onAbandon);
+  if (abandon?.aborted) controller.abort();
   return {
     signal: controller.signal,
-    clear: () => clearTimeout(timer),
+    clear: () => {
+      clearTimeout(timer);
+      abandon?.removeEventListener("abort", onAbandon);
+    },
     timeoutError: () =>
       controller.signal.aborted
         ? new Error(`${providerName} request timed out after ${durationMs} ms`)
@@ -180,7 +188,9 @@ function summarizeApiErrorForLog(errorData: any): Record<string, unknown> {
 }
 
 class ReasoningService {
-  private isProcessing = false;
+  // The one cleanup running now, or null. Each call clears only its own, so a
+  // request abandoned at the deadline can't free a newer one's place.
+  private activeRequest: object | null = null;
   private apiKeyCache: SecureCache<string>;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
   private static readonly OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
@@ -519,7 +529,8 @@ class ReasoningService {
     text: string,
     agentName: string | null,
     config: ReasoningConfig,
-    providerName: string
+    providerName: string,
+    abandon?: AbortSignal
   ): Promise<string> {
     const systemPrompt = this.getSystemPrompt(
       agentName,
@@ -567,7 +578,7 @@ class ReasoningService {
       request: summarizeRequestBodyForLog(requestBody),
     });
 
-    const requestTimeout = createRequestTimeout(config.timeoutMs, providerName);
+    const requestTimeout = createRequestTimeout(config.timeoutMs, providerName, abandon);
     let response: any;
     try {
       response = await withRetry(
@@ -694,6 +705,7 @@ class ReasoningService {
       timestamp: new Date().toISOString(),
     });
 
+    let request: object | null = null;
     try {
       let result: string;
       const startTime = Date.now();
@@ -704,12 +716,23 @@ class ReasoningService {
         timeoutMs,
       });
 
+      // Claude Code runs in its own process and never took this place.
+      if (provider !== "claude-code") {
+        if (this.activeRequest) {
+          throw new Error("Already processing a request");
+        }
+        request = {};
+        this.activeRequest = request;
+      }
+
       // A local model's timeout covers inference only; llama-server may have
       // to start first.
       const startupMs = provider === "local" ? DICTATION_CLEANUP_TIMEOUT.LOCAL_STARTUP_MS : 0;
+      const abandon = new AbortController();
       result = await this.withDeadline(
-        this.runProvider(provider, text, trimmedModel, model, agentName, config),
-        timeoutMs + startupMs + DEADLINE_GRACE_MS
+        this.runProvider(provider, text, trimmedModel, model, agentName, config, abandon.signal),
+        timeoutMs + startupMs + DEADLINE_GRACE_MS,
+        () => abandon.abort()
       );
 
       // A coding prompt is dictated prose for another agent, not generated code.
@@ -745,6 +768,10 @@ class ReasoningService {
         stack: (error as Error).stack,
       });
       throw error;
+    } finally {
+      if (request && this.activeRequest === request) {
+        this.activeRequest = null;
+      }
     }
   }
 
@@ -772,13 +799,17 @@ class ReasoningService {
   /**
    * Each provider stops its own request at config.timeoutMs. This outer
    * deadline catches a call that never settles anyway, such as an IPC reply
-   * that never comes, and frees the service for the next dictation.
+   * that never comes, so the next dictation is not held up behind it.
    */
-  private async withDeadline<T>(work: Promise<T>, durationMs: number): Promise<T> {
+  private async withDeadline<T>(
+    work: Promise<T>,
+    durationMs: number,
+    onExpire: () => void
+  ): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        this.isProcessing = false;
+        onExpire();
         reject(new Error(`AI cleanup timed out after ${durationMs} ms`));
       }, durationMs);
     });
@@ -795,7 +826,8 @@ class ReasoningService {
     trimmedModel: string,
     model: string,
     agentName: string | null,
-    config: ReasoningConfig
+    config: ReasoningConfig,
+    abandon: AbortSignal
   ): Promise<string> {
     let result: string;
     switch (provider) {
@@ -824,7 +856,8 @@ class ReasoningService {
           trimmedModel,
           agentName,
           config,
-          provider === "custom"
+          provider === "custom",
+          abandon
         );
         break;
       case "anthropic":
@@ -834,10 +867,10 @@ class ReasoningService {
         result = await this.processWithLocal(text, trimmedModel, agentName, config);
         break;
       case "gemini":
-        result = await this.processWithGemini(text, trimmedModel, agentName, config);
+        result = await this.processWithGemini(text, trimmedModel, agentName, config, abandon);
         break;
       case "groq":
-        result = await this.processWithGroq(text, model, agentName, config);
+        result = await this.processWithGroq(text, model, agentName, config, abandon);
         break;
       default:
         throw new Error(`Unsupported reasoning provider: ${provider}`);
@@ -852,7 +885,8 @@ class ReasoningService {
     config: ReasoningConfig = {},
     // Decided once by processText. Reading the setting again after the awaits
     // below could pair the OpenAI key with the custom address, or the reverse.
-    isCustomProvider = false
+    isCustomProvider = false,
+    abandon?: AbortSignal
   ): Promise<string> {
     logger.logReasoning("OPENAI_START", {
       model,
@@ -861,10 +895,6 @@ class ReasoningService {
       hasApiKey: false, // Will update after fetching
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
     const openAiBase = this.getConfiguredOpenAIBase(isCustomProvider);
     const apiKey = await this.getApiKey(isCustomProvider ? "custom" : "openai");
 
@@ -872,8 +902,6 @@ class ReasoningService {
       hasApiKey: !!apiKey,
       keyLength: apiKey?.length || 0,
     });
-
-    this.isProcessing = true;
 
     try {
       const systemPrompt = this.getSystemPrompt(
@@ -911,7 +939,7 @@ class ReasoningService {
         });
       }
 
-      const requestTimeout = createRequestTimeout(config.timeoutMs, "OpenAI");
+      const requestTimeout = createRequestTimeout(config.timeoutMs, "OpenAI", abandon);
       let response: any;
       try {
         response = await withRetry(
@@ -1100,8 +1128,6 @@ class ReasoningService {
         errorType: (error as Error).name,
       });
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -1117,54 +1143,43 @@ class ReasoningService {
       environment: typeof window !== "undefined" ? "browser" : "node",
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
-    this.isProcessing = true;
-
     if (typeof window !== "undefined" && window.electronAPI) {
       const startTime = Date.now();
 
-      try {
-        const customSystemPrompt = this.getSystemPrompt(
-          agentName,
-          config.dictationMode,
-          config.preferredLanguage,
-          config.promptTemplate
-        );
-        logger.logReasoning("ANTHROPIC_IPC_CALL", {
+      const customSystemPrompt = this.getSystemPrompt(
+        agentName,
+        config.dictationMode,
+        config.preferredLanguage,
+        config.promptTemplate
+      );
+      logger.logReasoning("ANTHROPIC_IPC_CALL", {
+        model,
+        textLength: text.length,
+      });
+
+      const result = await window.electronAPI.processAnthropicReasoning(text, model, agentName, {
+        ...config,
+        customSystemPrompt,
+      });
+
+      const processingTime = Date.now() - startTime;
+
+      if (result.success) {
+        logger.logReasoning("ANTHROPIC_SUCCESS", {
           model,
-          textLength: text.length,
+          processingTimeMs: processingTime,
+          resultLength: result.text.length,
         });
-
-        const result = await window.electronAPI.processAnthropicReasoning(text, model, agentName, {
-          ...config,
-          customSystemPrompt,
+        return result.text;
+      } else {
+        logger.logReasoning("ANTHROPIC_ERROR", {
+          model,
+          processingTimeMs: processingTime,
+          error: result.error,
         });
-
-        const processingTime = Date.now() - startTime;
-
-        if (result.success) {
-          logger.logReasoning("ANTHROPIC_SUCCESS", {
-            model,
-            processingTimeMs: processingTime,
-            resultLength: result.text.length,
-          });
-          return result.text;
-        } else {
-          logger.logReasoning("ANTHROPIC_ERROR", {
-            model,
-            processingTimeMs: processingTime,
-            error: result.error,
-          });
-          throw new Error(result.error);
-        }
-      } finally {
-        this.isProcessing = false;
+        throw new Error(result.error);
       }
     } else {
-      this.isProcessing = false;
       logger.logReasoning("ANTHROPIC_UNAVAILABLE", {
         reason: "Not in Electron environment",
       });
@@ -1184,54 +1199,43 @@ class ReasoningService {
       environment: typeof window !== "undefined" ? "browser" : "node",
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
-    this.isProcessing = true;
-
     if (typeof window !== "undefined" && window.electronAPI) {
       const startTime = Date.now();
 
-      try {
-        const customSystemPrompt = this.getSystemPrompt(
-          agentName,
-          config.dictationMode,
-          config.preferredLanguage,
-          config.promptTemplate
-        );
-        logger.logReasoning("LOCAL_IPC_CALL", {
+      const customSystemPrompt = this.getSystemPrompt(
+        agentName,
+        config.dictationMode,
+        config.preferredLanguage,
+        config.promptTemplate
+      );
+      logger.logReasoning("LOCAL_IPC_CALL", {
+        model,
+        textLength: text.length,
+      });
+
+      const result = await window.electronAPI.processLocalReasoning(text, model, agentName, {
+        ...config,
+        customSystemPrompt,
+      });
+
+      const processingTime = Date.now() - startTime;
+
+      if (result.success) {
+        logger.logReasoning("LOCAL_SUCCESS", {
           model,
-          textLength: text.length,
+          processingTimeMs: processingTime,
+          resultLength: result.text.length,
         });
-
-        const result = await window.electronAPI.processLocalReasoning(text, model, agentName, {
-          ...config,
-          customSystemPrompt,
+        return result.text;
+      } else {
+        logger.logReasoning("LOCAL_ERROR", {
+          model,
+          processingTimeMs: processingTime,
+          error: result.error,
         });
-
-        const processingTime = Date.now() - startTime;
-
-        if (result.success) {
-          logger.logReasoning("LOCAL_SUCCESS", {
-            model,
-            processingTimeMs: processingTime,
-            resultLength: result.text.length,
-          });
-          return result.text;
-        } else {
-          logger.logReasoning("LOCAL_ERROR", {
-            model,
-            processingTimeMs: processingTime,
-            error: result.error,
-          });
-          throw new Error(result.error);
-        }
-      } finally {
-        this.isProcessing = false;
+        throw new Error(result.error);
       }
     } else {
-      this.isProcessing = false;
       logger.logReasoning("LOCAL_UNAVAILABLE", {
         reason: "Not in Electron environment",
       });
@@ -1243,7 +1247,8 @@ class ReasoningService {
     text: string,
     model: string,
     agentName: string | null = null,
-    config: ReasoningConfig = {}
+    config: ReasoningConfig = {},
+    abandon?: AbortSignal
   ): Promise<string> {
     logger.logReasoning("GEMINI_START", {
       model,
@@ -1251,18 +1256,12 @@ class ReasoningService {
       hasApiKey: false,
     });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
     const apiKey = await this.getApiKey("gemini");
 
     logger.logReasoning("GEMINI_API_KEY", {
       hasApiKey: !!apiKey,
       keyLength: apiKey?.length || 0,
     });
-
-    this.isProcessing = true;
 
     try {
       const systemPrompt = this.getSystemPrompt(
@@ -1304,7 +1303,7 @@ class ReasoningService {
       }
 
       let response: any;
-      const requestTimeout = createRequestTimeout(config.timeoutMs, "Gemini");
+      const requestTimeout = createRequestTimeout(config.timeoutMs, "Gemini", abandon);
       try {
         response = await withRetry(
           async () => {
@@ -1423,8 +1422,6 @@ class ReasoningService {
         errorType: (error as Error).name,
       });
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -1432,17 +1429,12 @@ class ReasoningService {
     text: string,
     model: string,
     agentName: string | null = null,
-    config: ReasoningConfig = {}
+    config: ReasoningConfig = {},
+    abandon?: AbortSignal
   ): Promise<string> {
     logger.logReasoning("GROQ_START", { model, agentName });
 
-    if (this.isProcessing) {
-      throw new Error("Already processing a request");
-    }
-
     const apiKey = await this.getApiKey("groq");
-    this.isProcessing = true;
-
     try {
       const endpoint = buildApiUrl(API_ENDPOINTS.GROQ_BASE, "/chat/completions");
       return await this.callChatCompletionsApi(
@@ -1452,7 +1444,8 @@ class ReasoningService {
         text,
         agentName,
         config,
-        "Groq"
+        "Groq",
+        abandon
       );
     } catch (error) {
       logger.logReasoning("GROQ_ERROR", {
@@ -1461,8 +1454,6 @@ class ReasoningService {
         errorType: (error as Error).name,
       });
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
