@@ -1095,6 +1095,10 @@ if (gotSingleInstanceLock) {
       whisperManager ? whisperManager.stopServer() : Promise.resolve(),
       parakeetManager ? parakeetManager.stopServer() : Promise.resolve(),
       modelManager.stopServer(),
+      // Let go of a call's mute key before exiting. The helper would also let
+      // go when its stdin closes, but only a release seen here deletes the
+      // held-key marker, so the next start does not send a key-up for nothing.
+      voiceMuter.release(),
     ];
     Promise.allSettled(stopAll).then(() => {
       if (!isInstalling) {
