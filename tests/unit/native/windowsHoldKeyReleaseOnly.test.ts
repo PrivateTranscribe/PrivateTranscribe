@@ -32,8 +32,14 @@ using System.Collections.Generic;
 internal static class ReleaseOnlyProbe
 {
     // probe <combination> <down virtual-key codes, comma-separated hex>
+    // probe --desktop [<input desktop name>]
     public static int Main(string[] args)
     {
+        if (args[0] == "--desktop")
+        {
+            Console.Out.WriteLine(WindowsHoldKey.CanReadKeyState(args.Length > 1 ? args[1] : null));
+            return 0;
+        }
         var keys = WindowsHoldKey.ParseCombination(args[0]);
         var down = new HashSet<int>();
         if (args.Length > 1 && args[1].Length > 0)
@@ -93,7 +99,27 @@ function keyUpsFor(combination: string, down: number[]) {
   return result.stdout.trim().split(/\r?\n/).filter(Boolean);
 }
 
+function canReadKeyStateOn(desktop?: string) {
+  const result = spawnSync(
+    probeExe,
+    desktop === undefined ? ["--desktop"] : ["--desktop", desktop],
+    {
+      encoding: "utf8",
+    }
+  );
+  expect(result.status).toBe(0);
+  return result.stdout.trim();
+}
+
 describe.runIf(Boolean(compiler))("--release-only", () => {
+  it("reads key state only on the normal desktop", () => {
+    // On a locked PC or a UAC prompt every key reads as up, so a stuck key
+    // would look released. The helper then exits 4 and the marker is kept.
+    expect(canReadKeyStateOn("Default")).toBe("True");
+    expect(canReadKeyStateOn("Winlogon")).toBe("False");
+    expect(canReadKeyStateOn()).toBe("False");
+  });
+
   it("sends nothing for a combination that is already up", () => {
     expect(keyUpsFor("CommandOrControl+Shift+M", [])).toEqual([]);
     expect(keyUpsFor("Alt", [])).toEqual([]);

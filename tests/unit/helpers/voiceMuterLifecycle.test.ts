@@ -92,15 +92,18 @@ class FakeHelper extends EventEmitter {
   }
 }
 
-/** --release-only: sends the key-up for --key and exits 0. */
+/** --release-only: sends the key-up for --key and exits with `code`, 0 by default. */
 class FakeReleaseOnly extends EventEmitter {
-  constructor(public key: string) {
+  constructor(
+    public key: string,
+    code: number
+  ) {
     super();
-    setImmediate(() => this.emit("close", 0));
+    setImmediate(() => this.emit("close", code));
   }
 }
 
-function makeMuter(userDataPath?: string) {
+function makeMuter(userDataPath?: string, { releaseOnlyCode = 0 } = {}) {
   const helpers: FakeHelper[] = [];
   const keyUps: string[] = [];
   const muter = new VoiceMuter({
@@ -108,7 +111,7 @@ function makeMuter(userDataPath?: string) {
       if (args.includes("--release-only")) {
         const key = args.find((arg) => arg.startsWith("--key="))!.slice(6);
         keyUps.push(key);
-        return new FakeReleaseOnly(key);
+        return new FakeReleaseOnly(key, releaseOnlyCode);
       }
       const helper = new FakeHelper(args);
       helpers.push(helper);
@@ -441,5 +444,27 @@ describe("a stop for a dictation still waiting to press", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(helpers).toHaveLength(1);
     expect(muter.isMuted()).toBe(false);
+  });
+});
+
+describe("startup recovery on a locked PC", () => {
+  it("keeps the marker when key state cannot be read, and clears it next time", async () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), "pt-voice-mute-"));
+    const marker = path.join(userData, HELD_MARKER_FILE_NAME);
+    try {
+      fs.writeFileSync(marker, JSON.stringify({ key: "Ctrl+Shift+M" }));
+
+      // --release-only exits 4 when the input desktop is not the normal one.
+      const locked = makeMuter(userData, { releaseOnlyCode: 4 });
+      await expect(locked.muter.recoverStuckKey()).resolves.toBe(false);
+      expect(locked.keyUps).toEqual(["Ctrl+Shift+M"]);
+      expect(fs.existsSync(marker)).toBe(true);
+
+      const nextStart = makeMuter(userData);
+      await expect(nextStart.muter.recoverStuckKey()).resolves.toBe(true);
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally {
+      fs.rmSync(userData, { recursive: true, force: true });
+    }
   });
 });

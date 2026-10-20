@@ -17,7 +17,9 @@
 // A hard kill (TerminateProcess) runs none of that, so `--release-only` sends
 // the key-up half on its own, for each key Windows still reports as down.
 // PrivateTranscribe calls it after a kill and at startup to clear any key a
-// crash left logically held.
+// crash left logically held. It exits 4 without sending anything when the
+// input desktop is not the normal one (a locked PC, a UAC prompt), where key
+// state cannot be read, so the caller can try again later.
 //
 // That layering is the whole point of this being a separate long-lived process
 // rather than two fire-and-forget calls. SendInput writes to the global input
@@ -37,6 +39,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -114,6 +117,23 @@ internal static class WindowsHoldKey
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseDesktop(IntPtr hDesktop);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool GetUserObjectInformation(
+        IntPtr hObj, int nIndex, StringBuilder pvInfo, int nLength, out int lpnLengthNeeded);
+
+    private const int UoiName = 2;
+    private const uint DesktopReadObjects = 0x0001;
+
+    /// Exit code of a --release-only run that sent nothing because key state
+    /// could not be read. PrivateTranscribe keeps its held-key marker for it.
+    private const int ExitInputDesktopUnreadable = 4;
 
     private const uint MapVkToScanCode = 0;
 
@@ -537,6 +557,39 @@ internal static class WindowsHoldKey
         return result;
     }
 
+    /// The name of the desktop that receives input, or null when this process
+    /// may not open it, as on the Winlogon desktop of a locked PC.
+    private static string InputDesktopName()
+    {
+        IntPtr desktop = OpenInputDesktop(0, false, DesktopReadObjects);
+        if (desktop == IntPtr.Zero)
+        {
+            return null;
+        }
+        try
+        {
+            var name = new StringBuilder(256);
+            int needed;
+            if (!GetUserObjectInformation(desktop, UoiName, name, name.Capacity * 2, out needed))
+            {
+                return null;
+            }
+            return name.ToString();
+        }
+        finally
+        {
+            CloseDesktop(desktop);
+        }
+    }
+
+    /// Whether GetAsyncKeyState can be trusted. On any desktop but "Default"
+    /// it reads every key as up, so a stuck key would look released and get
+    /// no key-up.
+    internal static bool CanReadKeyState(string inputDesktopName)
+    {
+        return string.Equals(inputDesktopName, "Default", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// Releases in reverse order so modifiers come up last, which is what a
     /// real keyboard does and what applications expect.
     private static void ReleaseAll()
@@ -654,6 +707,11 @@ internal static class WindowsHoldKey
         // typed afterwards. Only keys Windows reports as down get a key-up.
         if (HasFlag(args, "--release-only"))
         {
+            if (!CanReadKeyState(InputDesktopName()))
+            {
+                Console.Error.WriteLine("windows-hold-key: input desktop is not Default, key state unreadable");
+                return ExitInputDesktopUnreadable;
+            }
             heldKeys = KeysStillDown(keys, vk => (GetAsyncKeyState(vk) & 0x8000) != 0);
             ReleaseAll();
             return 0;

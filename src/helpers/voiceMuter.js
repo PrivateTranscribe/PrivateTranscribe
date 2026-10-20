@@ -45,6 +45,11 @@ const HELD_MARKER_FILE_NAME = "voice-mute-held.json";
 // other end, a kill included, skipped the key-up.
 const CLEAN_HELPER_EXIT_CODES = new Set([0, 2, 3]);
 
+// --release-only sent nothing because the input desktop was not the normal one
+// (a locked PC, a UAC prompt), where key state cannot be read. The marker is
+// kept so the next start tries again.
+const RELEASE_ONLY_DESKTOP_UNREADABLE = 4;
+
 function getHoldKeyExecutablePaths({
   resourcesPath = process.resourcesPath,
   cwd = process.cwd(),
@@ -480,12 +485,17 @@ class VoiceMuter {
    * once the helper reports it sent the key-up.
    */
   clearStuckKey(key) {
+    return this._sendKeyUp(key).then((code) => code === 0);
+  }
+
+  /** Runs --release-only for `key`. Resolves its exit code, or null if it never ran. */
+  _sendKeyUp(key) {
     if (!this.isSupported || !key) {
-      return Promise.resolve(false);
+      return Promise.resolve(null);
     }
     const executable = this._resolveExecutable();
     if (!executable) {
-      return Promise.resolve(false);
+      return Promise.resolve(null);
     }
     return new Promise((resolve) => {
       let child;
@@ -496,20 +506,25 @@ class VoiceMuter {
         });
       } catch (error) {
         debugLogger.warn("voiceMuter: failed to clear stuck key", { error: error.message });
-        resolve(false);
+        resolve(null);
         return;
       }
       let settled = false;
-      const finish = (cleared) => {
+      const finish = (code) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (cleared) debugLogger.debug("voiceMuter: cleared any stuck mute key", { key });
-        resolve(cleared);
+        if (code === 0) debugLogger.debug("voiceMuter: cleared any stuck mute key", { key });
+        if (code === RELEASE_ONLY_DESKTOP_UNREADABLE) {
+          debugLogger.debug("voiceMuter: key state unreadable on this desktop, key-up deferred", {
+            key,
+          });
+        }
+        resolve(code);
       };
-      const timer = setTimeout(() => finish(false), this._releaseTimeoutMs);
-      child.on("error", () => finish(false));
-      child.on("close", (code) => finish(code === 0));
+      const timer = setTimeout(() => finish(null), this._releaseTimeoutMs);
+      child.on("error", () => finish(null));
+      child.on("close", (code) => finish(code));
     });
   }
 
@@ -519,7 +534,8 @@ class VoiceMuter {
    * crash, power lost mid-dictation. A modifier stuck down would corrupt
    * everything the user types, so the key-up goes out once and the marker is
    * deleted either way. A key the helper cannot release now will not release
-   * on the next start either.
+   * on the next start either. The one exception is a locked PC or a UAC
+   * prompt, where key state cannot be read: the marker stays for next time.
    */
   async recoverStuckKey() {
     if (!this._markerPath) return false;
@@ -540,7 +556,11 @@ class VoiceMuter {
     const key = typeof marker?.key === "string" ? marker.key : null;
     // Same rule as after a kill: never release a key a dictation holds now.
     const ownedNow = key && this._newerHoldOwns({ key });
-    const cleared = key && !ownedNow ? await this.clearStuckKey(key) : false;
+    const code = key && !ownedNow ? await this._sendKeyUp(key) : null;
+    if (code === RELEASE_ONLY_DESKTOP_UNREADABLE) {
+      return false;
+    }
+    const cleared = code === 0;
     // A dictation that started meanwhile has written its own marker.
     if (this._markerId === null) {
       try {
