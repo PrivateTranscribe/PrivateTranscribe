@@ -60,11 +60,63 @@ function resolveHoldKeyExecutable(options = {}) {
   return found || null;
 }
 
+/**
+ * Resolves true once the helper prints "held", false if it exits or stays
+ * quiet past `timeoutMs`.
+ */
+function waitForHeld(child, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => finish(false), timeoutMs);
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      if (String(chunk).includes("held")) {
+        finish(true);
+      }
+    });
+    child.on("error", () => finish(false));
+    child.on("close", () => finish(false));
+  });
+}
+
+/** Asks the helper to let go. It reads the line once the key is down. */
+function writeRelease(child) {
+  try {
+    child.stdin.write("release\n");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 class VoiceMuter {
-  constructor() {
+  /**
+   * `spawn` and `resolveExecutable` are injectable because vitest cannot mock
+   * a require inside src/helpers, and a unit test must never press a real key.
+   */
+  constructor({
+    spawn: spawnHelper = spawn,
+    resolveExecutable = resolveHoldKeyExecutable,
+    heldTimeoutMs = HELD_TIMEOUT_MS,
+    releaseTimeoutMs = RELEASE_TIMEOUT_MS,
+  } = {}) {
     this.isSupported = process.platform === "win32";
     this.process = null;
     this.heldKey = null;
+    // A hold whose helper is running but has not printed "held" yet.
+    this.pending = null;
+    this._spawn = spawnHelper;
+    this._resolveExecutable = resolveExecutable;
+    this._heldTimeoutMs = heldTimeoutMs;
+    this._releaseTimeoutMs = releaseTimeoutMs;
   }
 
   isMuted() {
@@ -86,8 +138,12 @@ class VoiceMuter {
       // not balance and the key could be left down.
       return true;
     }
+    if (this.pending) {
+      // Same rule while the first helper is still starting.
+      return this.pending.result;
+    }
 
-    const executable = resolveHoldKeyExecutable();
+    const executable = this._resolveExecutable();
     if (!executable) {
       debugLogger.debug("voiceMuter: helper not found, auto-mute unavailable");
       return false;
@@ -95,7 +151,7 @@ class VoiceMuter {
 
     let child;
     try {
-      child = spawn(executable, [`--key=${key}`, `--max-ms=${maxHoldMs}`], {
+      child = this._spawn(executable, [`--key=${key}`, `--max-ms=${maxHoldMs}`], {
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -103,33 +159,22 @@ class VoiceMuter {
       debugLogger.warn("voiceMuter: failed to spawn helper", { error: error.message });
       return false;
     }
+    // A write to a helper that already exited fails asynchronously on the
+    // stream. Unhandled, that error would take down the main process.
+    child.stdin.on("error", () => {});
 
-    const held = await new Promise((resolve) => {
-      let settled = false;
-      const finish = (value) => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      };
+    const pending = { child, key, releaseRequested: false, result: null };
+    this.pending = pending;
+    pending.result = this._confirmHold(pending);
+    return pending.result;
+  }
 
-      const timer = setTimeout(() => finish(false), HELD_TIMEOUT_MS);
-
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
-        if (String(chunk).includes("held")) {
-          clearTimeout(timer);
-          finish(true);
-        }
-      });
-      child.on("error", () => {
-        clearTimeout(timer);
-        finish(false);
-      });
-      child.on("close", () => {
-        clearTimeout(timer);
-        finish(false);
-      });
-    });
+  async _confirmHold(pending) {
+    const { child, key } = pending;
+    const held = await waitForHeld(child, this._heldTimeoutMs);
+    if (this.pending === pending) {
+      this.pending = null;
+    }
 
     if (!held) {
       try {
@@ -139,6 +184,16 @@ class VoiceMuter {
       }
       debugLogger.warn("voiceMuter: helper did not confirm the key was held", { key });
       return false;
+    }
+
+    if (pending.releaseRequested) {
+      // The dictation ended before the helper was up, as on a quick tap. The
+      // release line is already waiting on its stdin, so it lets go as soon as
+      // it reads it. Wait for that, then report the mute as done: the key did
+      // go down, and false would warn that the call heard the dictation.
+      await this._finishHelper(child);
+      debugLogger.debug("voiceMuter: released mute key straight after the hold", { key });
+      return true;
     }
 
     this.process = child;
@@ -159,8 +214,20 @@ class VoiceMuter {
   /**
    * Releases a key we are holding. Does nothing if we never held one, which is
    * what keeps us from unmuting somebody who muted themselves.
+   *
+   * A release that arrives while the helper is still starting is not dropped.
+   * Dropping it left a quick tap holding the mute key for the helper's full
+   * 10-minute limit.
    */
   async release() {
+    const pending = this.pending;
+    if (!this.process && pending) {
+      pending.releaseRequested = true;
+      writeRelease(pending.child);
+      await pending.result;
+      return true;
+    }
+
     const child = this.process;
     if (!child) {
       return false;
@@ -170,11 +237,20 @@ class VoiceMuter {
     const key = this.heldKey;
     this.heldKey = null;
 
-    await new Promise((resolve) => {
+    await this._finishHelper(child);
+
+    debugLogger.debug("voiceMuter: released mute key", { key });
+    return true;
+  }
+
+  /** Sends "release" and waits for the helper to exit. */
+  _finishHelper(child) {
+    return new Promise((resolve) => {
       let settled = false;
       const finish = () => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         resolve();
       };
 
@@ -187,17 +263,15 @@ class VoiceMuter {
           // Already gone.
         }
         finish();
-      }, RELEASE_TIMEOUT_MS);
+      }, this._releaseTimeoutMs);
 
-      child.on("close", () => {
-        clearTimeout(timer);
+      if (child.exitCode !== null && child.exitCode !== undefined) {
         finish();
-      });
+        return;
+      }
+      child.on("close", finish);
 
-      try {
-        child.stdin.write("release\n");
-      } catch {
-        clearTimeout(timer);
+      if (!writeRelease(child)) {
         try {
           child.kill();
         } catch {
@@ -206,9 +280,6 @@ class VoiceMuter {
         finish();
       }
     });
-
-    debugLogger.debug("voiceMuter: released mute key", { key });
-    return true;
   }
 
   /**
