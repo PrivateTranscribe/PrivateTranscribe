@@ -172,9 +172,26 @@ describe("a cleanup cut off at its length limit", () => {
     await ReasoningService.processText(DICTATION, "openai/gpt-oss-20b");
     expect(sentBody().max_tokens).toBe(4096);
 
+    // About 4,000 characters still asks for no more than the old 4,096.
+    vi.mocked(global.fetch).mockClear();
+    await ReasoningService.processText("x".repeat(4000), "openai/gpt-oss-20b");
+    expect(sentBody().max_tokens).toBe(4096);
+
     vi.mocked(global.fetch).mockClear();
     await ReasoningService.processText(LONG_DICTATION, "openai/gpt-oss-20b");
-    expect(sentBody().max_tokens).toBe(LONG_DICTATION.length * 2);
+    expect(sentBody().max_tokens).toBe(Math.ceil(LONG_DICTATION.length / 2) + 2048);
+  });
+
+  it("never asks Groq for more than its smallest model allows", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        okJson({ choices: [{ message: { content: "Done." }, finish_reason: "stop" }] })
+      ) as any;
+
+    await ReasoningService.processText("word ".repeat(12_000), "qwen/qwen3.8-27b");
+
+    expect(sentBody().max_tokens).toBe(16384);
   });
 
   it.each([

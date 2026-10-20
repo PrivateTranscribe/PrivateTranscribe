@@ -538,11 +538,13 @@ class ReasoningService {
       temperature: config.temperature ?? 0.3,
       max_tokens:
         config.maxTokens ||
-        this.calculateMaxTokens(
-          text.length,
+        Math.max(
           TOKEN_LIMITS.MIN_TOKENS,
-          TOKEN_LIMITS.MAX_TOKENS,
-          TOKEN_LIMITS.TOKEN_MULTIPLIER
+          Math.min(
+            Math.ceil(text.length * TOKEN_LIMITS.OUTPUT_TOKENS_PER_CHARACTER) +
+              TOKEN_LIMITS.OUTPUT_TOKEN_HEADROOM,
+            TOKEN_LIMITS.MAX_TOKENS
+          )
         ),
     };
 

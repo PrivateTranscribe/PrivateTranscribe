@@ -92,8 +92,15 @@ export const MODEL_CONSTRAINTS = {
 // thinking on short text; the limit then grows with the transcript, so a long
 // dictation is not cut off. A reply that still hits it is not pasted.
 export const TOKEN_LIMITS = {
+  // Groq: counted in tokens, since Groq may reserve the whole limit against a
+  // free-tier tokens-per-minute budget. Cleaned text runs about a quarter token
+  // per character; half a token plus the headroom covers other languages and
+  // thinking, and stays at the old 4,096 up to about 4,000 characters.
   MIN_TOKENS: 4096,
-  MAX_TOKENS: 32768,
+  // The lowest completion limit among the Groq models offered (qwen3.8-27b).
+  MAX_TOKENS: 16384,
+  OUTPUT_TOKENS_PER_CHARACTER: 0.5,
+  OUTPUT_TOKEN_HEADROOM: 2048,
   MIN_TOKENS_GEMINI: 2000,
   MAX_TOKENS_GEMINI: 32768,
   TOKEN_MULTIPLIER: 2, // text.length * multiplier
