@@ -66,6 +66,21 @@ describe("credentials files", () => {
     "prod.tfvars",
     "cert.pfx",
     ".npmrc",
+    "secrets.ts",
+    "aws-credentials.ts",
+    "local_secrets.py",
+    "secretManager.json",
+    "secretKey.ts",
+    "secretConfig.ts",
+    "credentialsLocal.ts",
+    "secretClientKey.ts",
+    "SecretManagerConfig.ts",
+    "secretManagerKeys.ts",
+    "secretServiceAccount.ts",
+    "secretFieldValues.ts",
+    "secretClientProd.ts",
+    "secretsListProd.py",
+    "SecretManager.Production.cs",
   ])("reads nothing from %s", (name) => {
     const fsMod = {
       statSync: () => ({ size: 10 }),
@@ -84,14 +99,22 @@ describe("credentials files", () => {
     expect(fsMod.readFileSync).not.toHaveBeenCalled();
   });
 
-  it.each(["environment.ts", "envelope.js", "keyboard.ts", "App.jsx", "tokens.css"])(
-    "still reads %s",
-    (name) => {
-      const fsMod = { statSync: () => ({ size: 10 }), readFileSync: () => "const a = 1;" };
-      const result = extractFileContext(path.join(homeDir, "privoca", name), homeDir, fsMod);
-      expect(result).toMatchObject({ blocked: false, excerpt: "const a = 1;" });
-    }
-  );
+  it.each([
+    "environment.ts",
+    "envelope.js",
+    "keyboard.ts",
+    "App.jsx",
+    "tokens.css",
+    "secretManager.ts",
+    "SecretsPanel.tsx",
+    "CredentialProvider.cs",
+    "secretManager.test.ts",
+    "useSecretManager.ts",
+  ])("still reads %s", (name) => {
+    const fsMod = { statSync: () => ({ size: 10 }), readFileSync: () => "const a = 1;" };
+    const result = extractFileContext(path.join(homeDir, "privoca", name), homeDir, fsMod);
+    expect(result).toMatchObject({ blocked: false, excerpt: "const a = 1;" });
+  });
 });
 
 describe("secrets in the file excerpt", () => {

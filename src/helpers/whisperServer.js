@@ -1668,7 +1668,9 @@ class WhisperServerManager {
     if (translate) form.append("translate", "true");
     if (initialPrompt) {
       form.append("prompt", initialPrompt);
-      debugLogger.info("Using custom dictionary prompt", { prompt: initialPrompt });
+      // The prompt can hold identifiers from the open file, so only its
+      // length goes into the log.
+      debugLogger.info("Using custom dictionary prompt", { promptLength: initialPrompt.length });
     }
 
     // Only verbose_json reliably carries the detected language across

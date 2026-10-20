@@ -257,4 +257,33 @@ describe("whisper-server request path", () => {
     const manager: any = new WhisperServerManager();
     expect(() => manager.buildServerArgs(MODEL_PATH)).toThrow(/request path/);
   });
+
+  it("logs the length of a prompt, never its text", async () => {
+    const manager: any = new WhisperServerManager();
+    const port = await fakeWhisper((req, res) => {
+      const prefix = manager.requestPathPrefix;
+      if (req.url === `${prefix}/health`) return json(res, 200, { status: "ok" });
+      if (req.url === `${prefix}/inference`) return json(res, 200, { text: "hej" });
+      notFound(req, res);
+    });
+    stubLaunch(manager, { port, healthy: "ask-the-server" });
+    const info = vi.spyOn(debugLogger, "info");
+    const prompt = "Identifiers: openFileIdentifier anotherName";
+
+    try {
+      await manager._startWithBinary(BINARY, MODEL_PATH);
+      await manager._postInference(Buffer.from("wav"), {
+        durationSeconds: 1,
+        initialPrompt: prompt,
+      });
+      await stop(manager);
+
+      expect(info).toHaveBeenCalledWith("Using custom dictionary prompt", {
+        promptLength: prompt.length,
+      });
+      expect(JSON.stringify(info.mock.calls)).not.toContain("openFileIdentifier");
+    } finally {
+      info.mockRestore();
+    }
+  });
 });

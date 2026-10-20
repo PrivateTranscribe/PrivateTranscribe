@@ -301,7 +301,7 @@ describe("sanitizeContextText (real implementation)", () => {
         `X-Auth-Token: Bearer ${value}`,
         "X-Auth-Token: Bearer [REDACTED]",
       ],
-      ["a value holding ';'", "password=hun;ter,2 next", "password=[REDACTED] next"],
+      ["a value holding ';' and spaces", "password=hun;ter,2 next", "password=[REDACTED]"],
       [
         "each of two quoted values on their own lines",
         'token: "abc\ntoken: "def',
@@ -312,6 +312,97 @@ describe("sanitizeContextText (real implementation)", () => {
         'password: "hunter two\nnext',
         "password: [REDACTED]\nnext",
       ],
+      ["a value with a space", "password: hunter two", "password: [REDACTED]"],
+      [
+        "a JSON value with an escaped quote",
+        '{"password": "hun\\"ter2"}',
+        '{"password": [REDACTED]}',
+      ],
+      ["a YAML block", "password: |\n  hunter2\n\n  two\nnext: 1", "password: [REDACTED]\nnext: 1"],
+      ["a subscript", 'os.environ["API_KEY"] = "abc123"', 'os.environ["API_KEY"] = [REDACTED]'],
+      ["a Danish label", "Adgangskode: hunter2", "Adgangskode: [REDACTED]"],
+      ["another Danish label", "Kodeord: hunter2", "Kodeord: [REDACTED]"],
+      ["a German label", "Passwort: hunter2", "Passwort: [REDACTED]"],
+      ["another German label", "Kennwort=hunter2", "Kennwort=[REDACTED]"],
+      ["a French label", "Mot de passe : hunter2", "Mot de passe : [REDACTED]"],
+      ["a Swedish label", "Lösenord: hunter2", "Lösenord: [REDACTED]"],
+      ["a Norwegian label", "Passord=hunter2", "Passord=[REDACTED]"],
+      [
+        "an Azure subscription key header",
+        `Ocp-Apim-Subscription-Key: ${value}`,
+        "Ocp-Apim-Subscription-Key: [REDACTED]",
+      ],
+      ["an XML element", "<password>hunter2</password>", "<password>[REDACTED]</password>"],
+      [
+        "an XML element on its own lines",
+        '<db:Password id="1">\n  hunter2\n</db:Password>',
+        '<db:Password id="1">\n  [REDACTED]\n</db:Password>',
+      ],
+      [
+        "an appSettings entry",
+        `<add key="ApiKey" value="${value}"/>`,
+        '<add key="ApiKey" value=[REDACTED]/>',
+      ],
+      [
+        "a Spring property",
+        '<property name="password" value="hunter2"/>',
+        '<property name="password" value=[REDACTED]/>',
+      ],
+      [
+        "a --password flag",
+        "mysql --password hunter2 -u root",
+        "mysql --password [REDACTED] -u root",
+      ],
+      [
+        "a -storepass flag",
+        "keytool -storepass changeit -list",
+        "keytool -storepass [REDACTED] -list",
+      ],
+      ["mysql's -p flag", "mysql -uroot -phunter2 app", "mysql -uroot -p[REDACTED] app"],
+      ["7-Zip's -p flag", "7z a -pSecret1 out.7z", "7z a -p[REDACTED] out.7z"],
+      ["a setter call", 'user.setPassword("hunter2");', "user.setPassword([REDACTED]);"],
+      ["a login call", 'client.login("admin", "hunter2")', 'client.login("admin", [REDACTED])'],
+      ["a PHP define", "define('DB_PASSWORD', 'hunter2');", "define('DB_PASSWORD', [REDACTED]);"],
+      [
+        "a header set by name",
+        `headers.set("X-Api-Key", "${value}")`,
+        'headers.set("X-Api-Key", [REDACTED])',
+      ],
+      ["a name after an empty one", "API_KEY: SECRET: hunter2xyz", "API_KEY: [REDACTED]"],
+      ["a quoted name after an empty one", "API_KEY: 'SECRET': hunter2xyz", "API_KEY: [REDACTED]"],
+      ["a quoted value that holds a name", 'password: "pass: a b c"', "password: [REDACTED]"],
+      ["a value that ends in a name", "password: abcpwd= xyz", "password: [REDACTED]"],
+      ["a typed name with a default", 'password: str = "hunter2"', "password: [REDACTED]"],
+      ["a value that starts with a type word", "password: null,abc", "password: [REDACTED]"],
+      ["a camelCase name ending in Pass", "dbPass: hunter2", "dbPass: [REDACTED]"],
+      ["a password name after a word ending in pass", "COMPASSWORD=x", "COMPASSWORD=[REDACTED]"],
+      [
+        "an XML element holding CDATA",
+        "<password><![CDATA[hunter2]]></password>",
+        "<password>[REDACTED]</password>",
+      ],
+      [
+        "an XML element holding a child element",
+        "<password><value>hunter2</value></password>",
+        "<password><value>[REDACTED]</value></password>",
+      ],
+      [
+        "a Spring property with a value element",
+        '<property name="password">\n  <value>hunter2</value>\n</property>',
+        '<property name="password">\n  <value>[REDACTED]</value>\n</property>',
+      ],
+      [
+        "a .NET setting",
+        '<setting name="Password" serializeAs="String"><value>hunter2</value></setting>',
+        '<setting name="Password" serializeAs="String"><value>[REDACTED]</value></setting>',
+      ],
+      [
+        "a protection bypass header",
+        `x-vercel-protection-bypass: ${value}`,
+        "x-vercel-protection-bypass: [REDACTED]",
+      ],
+      ["a BYPASS name", "BYPASS=hunter2", "BYPASS=[REDACTED]"],
+      ["a name ending in BYPASS", "MAINTENANCE_BYPASS=hunter2", "MAINTENANCE_BYPASS=[REDACTED]"],
     ])("redacts the value of %s", (_name, input, expected) => {
       expect(sanitizeContextText(input)).toBe(expected);
     });
@@ -344,6 +435,17 @@ describe("sanitizeContextText (real implementation)", () => {
       "let parsed = Token::new(source);",
       "max_tokens: 4096",
       "PASSWORD_MIN_LENGTH=8",
+      "gcc -pthread -o app main.c",
+      "mysql -u root -p app",
+      "user.setPassword(newPassword);",
+      '<PasswordBox x:Name="pw"/>',
+      "  password: string;",
+      "  apiKey?: string | null;",
+      "function sign(token: string, secret: Buffer): string {",
+      "def login(password: str, user: str) -> bool:",
+      "const read = (token: string) => token.trim();",
+      "COMPASS: north",
+      "OVERPASS=1",
     ])("leaves code that only names a secret alone: %s", (input) => {
       expect(sanitizeContextText(input)).toBe(input);
     });
@@ -355,6 +457,31 @@ describe("sanitizeContextText (real implementation)", () => {
       ["a run of secret words", megabyteOf("SECRET_TOKEN")],
       ["repeated quoted names", megabyteOf('"token":"')],
       ["repeated assignments", megabyteOf("secret=")],
+      ["repeated names with no value", megabyteOf("TOKEN: ")],
+      ["repeated quoted names with no value", megabyteOf("'API_KEY': ")],
+      ["repeated subscripts", megabyteOf('x["token"]')],
+      ["repeated YAML blocks", megabyteOf("token: |\n")],
+      ["repeated escaped quotes", `token: "${megabyteOf('\\"')}`],
+      ["repeated escaped backslashes", `token: "${megabyteOf("\\\\")}`],
+      ["repeated XML elements", megabyteOf("<password a=1 ")],
+      ["repeated XML names", megabyteOf("<x:token")],
+      ["repeated attributes", megabyteOf('key="token" ')],
+      ["repeated flags", megabyteOf("--token ")],
+      ["a run of dashes and dots", megabyteOf("-.")],
+      ["repeated -p flags after mysql", `mysql ${megabyteOf("-p")}`],
+      ["repeated mysql words", megabyteOf("mysql ")],
+      ["repeated setter calls", megabyteOf("setToken(")],
+      ["repeated name arguments", megabyteOf("('token',")],
+      ["repeated login calls", megabyteOf("login(a,")],
+      ["repeated login names", megabyteOf("login")],
+      ["a run of dollar signs and letters", megabyteOf("$a")],
+      ["repeated name attributes with no tag", megabyteOf('name="token" ')],
+      ["one tag with many name attributes", `<a ${megabyteOf('name="token" ')}/>`],
+      ["repeated tags with no value element", megabyteOf('<a name="token">')],
+      ["repeated CDATA starts", megabyteOf("<password><![CDATA[")],
+      ["one long tag name", `<${megabyteOf("a")}`],
+      ["one long closed tag name", `<${megabyteOf("a")}>`],
+      ["one long child tag name", `<password><${megabyteOf("a")}`],
       ["repeated token prefixes", megabyteOf("glpat-")],
       ["repeated webhook prefixes", megabyteOf("https://hooks.slack.com/services/")],
       ["one long run of letters", megabyteOf("a")],
@@ -386,11 +513,28 @@ describe("sanitizeContextText (real implementation)", () => {
       expect(sanitizeContextText(input)).toBe("ssh key [REDACTED_PRIVATE_KEY]");
     });
 
+    it.each([
+      ["no closing dashes", ["-----BEGIN", "RSA", "PRIVATE", "KEY"].join(" ")],
+      ["four closing dashes", `${["-----BEGIN", "RSA", "PRIVATE", "KEY"].join(" ")}----`],
+      ["a space before the dashes", `${["-----BEGIN", "RSA", "PRIVATE", "KEY"].join(" ")} -----`],
+    ])("redacts a key body after a BEGIN line with %s", (_shape, begin) => {
+      expect(sanitizeContextText(`key ${begin}\n${body}`)).toBe("key [REDACTED_PRIVATE_KEY]");
+      expect(sanitizeContextText(`PRIVATE_KEY=${begin}\n${body}`)).not.toContain("MIIEvQ");
+    });
+
+    it("redacts from a BEGIN label in code to the end of the text, since a key may follow", () => {
+      const input = `if (text.startsWith("-----BEGIN RSA PRIVATE KEY")) parse(text);\n${body}`;
+      expect(sanitizeContextText(input)).toBe('if (text.startsWith("[REDACTED_PRIVATE_KEY]');
+    });
+
     const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
 
     it.each([
       ["repeated BEGIN lines", megabyteOf(`${line("BEGIN", "PRIVATE", "KEY")}\n`)],
-      ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
+      [
+        "a BEGIN label repeating PRIVATE KEY",
+        `-----BEGIN ${megabyteOf("PRIVATE KEY ")}PRIVATE KEY-----`,
+      ],
       [
         "an END label repeating PRIVATE KEY",
         `${line("BEGIN", "PRIVATE", "KEY")}\n-----END ${megabyteOf("PRIVATE KEY ")}`,
@@ -400,6 +544,17 @@ describe("sanitizeContextText (real implementation)", () => {
       const output = sanitizeContextText(input, { maxChars: input.length });
       expect(performance.now() - started).toBeLessThan(1000);
       expect(output).not.toContain("BEGIN");
+    });
+
+    it.each([
+      ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
+      ["repeated BEGIN lines with no dashes", megabyteOf("-----BEGIN RSA PRIVATE KEY ")],
+      ["a BEGIN line followed by spaces", `-----BEGIN PRIVATE KEY${megabyteOf(" ")}x`],
+      ["repeated BEGIN lines with two dashes", megabyteOf("-----BEGIN PRIVATE KEY --")],
+    ])("scans 1 MB of %s with no closing dashes in well under a second", (_shape, input) => {
+      const started = performance.now();
+      sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
     });
   });
 
@@ -425,7 +580,7 @@ describe("sanitizeContextText (real implementation)", () => {
 
     it("redacts the query of a URL with a very long path", () => {
       const url = `https://ex.com/${"seg/".repeat(1000)}`;
-      expect(sanitizeContextText(`${url}?token=abc123 next`, { maxChars: 10000 })).toBe(
+      expect(sanitizeContextText(`${url}?id=abc123 next`, { maxChars: 10000 })).toBe(
         `${url}?[REDACTED_QUERY] next`
       );
       expect(sanitizeContextText(`${url}#access_token=abc123`, { maxChars: 10000 })).toBe(
@@ -487,6 +642,22 @@ describe("sanitizeContextText (real implementation)", () => {
       const input = "This is a normal message about coding.";
       const output = sanitizeContextText(input);
       expect(output).toBe(input);
+    });
+
+    it("returns nothing when a pattern fails", () => {
+      const failing = {
+        regex: /secret/g,
+        replacement: () => {
+          throw new RangeError("Maximum call stack size exceeded");
+        },
+      };
+      const options = { redactionPatterns: [failing] } as { maxChars?: number };
+      expect(sanitizeContextText("my secret is here", options)).toBe("");
+    });
+
+    it("returns nothing for 10 MB of letters, where a pattern runs out of stack", () => {
+      const input = "a".repeat(10 * 1024 * 1024);
+      expect(sanitizeContextText(input, { maxChars: input.length })).toBe("");
     });
   });
 });

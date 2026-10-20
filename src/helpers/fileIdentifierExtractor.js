@@ -52,21 +52,55 @@ const CREDENTIAL_FILE_PATTERNS = [
   /(?:^|\.)env(?:\.|$)/i, // .env, .env.local, prod.env
   /\.(?:pem|key|ppk|pfx|p12|jks|keystore|tfvars)(?:\.json)?$/i,
   /^id_/i, // id_rsa, id_ed25519
-  /credential|secret/i,
   /^[._](?:npmrc|netrc|pgpass|htpasswd|pypirc)$/i,
 ];
+
+/** Source code, where a name such as secretManager.ts names code about secrets. */
+const SOURCE_FILE_EXTENSION =
+  /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|kts|cs|swift|c|cc|cpp|h|hpp|php|vue|svelte|dart|scala)$/i;
+
+/**
+ * What may follow "Secret" or "Credential" in a source file's camelCase name
+ * for it to be code about secrets rather than a file of them: one word naming
+ * code, then only a Test or Spec suffix and the extension, as in
+ * secretManager.ts or SecretsPanel.test.tsx. Words such as Key, Config,
+ * Settings, Values or Prod are left out on purpose, and nothing else may
+ * follow the code word, so secretManagerKeys.ts and SecretManager.Prod.cs
+ * stay blocked.
+ */
+const CODE_ROLE_AFTER_SECRET_WORD =
+  /^s?(?:Manager|Provider|Panel|Service|Dialog|View|Form|Page|Screen|Modal|Button|Input|Field|List|Card|Section|Handler|Helper|Validator|Scanner|Detector|Redactor|Client|Reader|Loader|Picker|Editor)(?:Test|Spec|\.test|\.spec)?\.[A-Za-z]+$/;
+
+/**
+ * Returns true when "credential" or "secret" in the name names the file's
+ * contents. In a source file where the word is followed by a word naming
+ * code, as in secretManager.ts or CredentialsPanel.tsx, it names code about
+ * secrets instead. Every other use counts: secrets.ts, secretKey.ts,
+ * aws-credentials.ts, client_secret.json, secretManager.json.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+function namesSecrets(name) {
+  const source = SOURCE_FILE_EXTENSION.test(name);
+  for (const match of name.matchAll(/credential|secret/gi)) {
+    const rest = name.slice(match.index + match[0].length);
+    if (!source || !CODE_ROLE_AFTER_SECRET_WORD.test(rest)) return true;
+  }
+  return false;
+}
 
 /**
  * Returns true when the file's name says it holds credentials: .env files,
  * key and certificate stores, SSH keys, Terraform variables, and any name
- * with "credential" or "secret" in it.
+ * with "credential" or "secret" in it other than source code about secrets.
  *
  * @param {string} filePath
  * @returns {boolean}
  */
 function isCredentialFile(filePath) {
   const name = path.basename(String(filePath || ""));
-  return CREDENTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name));
+  return CREDENTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name)) || namesSecrets(name);
 }
 
 /**
