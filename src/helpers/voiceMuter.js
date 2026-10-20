@@ -271,9 +271,14 @@ class VoiceMuter {
   async _holdAfter(busy, key, maxHoldMs) {
     const ticket = { cancelled: false };
     this._waitingHold = ticket;
-    await busy;
-    if (this._waitingHold === ticket) {
-      this._waitingHold = null;
+    try {
+      await busy;
+    } finally {
+      // Cleared even if the wait throws. A stale ticket would let the next
+      // release() cancel it, return true and leave a real hold down.
+      if (this._waitingHold === ticket) {
+        this._waitingHold = null;
+      }
     }
     if (ticket.cancelled) {
       // Counted as a mute that already ended, as for a quick tap, so no

@@ -468,3 +468,20 @@ describe("startup recovery on a locked PC", () => {
     }
   });
 });
+
+describe("a wait that throws", () => {
+  it("does not leave a ticket behind for the next release to cancel", async () => {
+    const { muter, helpers } = makeMuter();
+    // Nothing rejects today. This guards the wait if something ever does.
+    await expect(muter._holdAfter(Promise.reject(new Error("boom")), "F13")).rejects.toThrow(
+      "boom"
+    );
+
+    const holding = muter.hold("F13");
+    helpers[0].printHeld();
+    await expect(holding).resolves.toBe(true);
+    await expect(muter.release()).resolves.toBe(true);
+    expect(helpers[0].pressed).toBe(false);
+    expect(muter.isMuted()).toBe(false);
+  });
+});
