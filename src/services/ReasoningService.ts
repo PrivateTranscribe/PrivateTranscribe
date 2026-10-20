@@ -1,7 +1,13 @@
 import { getModelProvider, getCloudModel } from "../models/ModelRegistry";
 import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
-import { API_ENDPOINTS, TOKEN_LIMITS, buildApiUrl, normalizeBaseUrl } from "../config/constants";
+import {
+  API_ENDPOINTS,
+  DICTATION_CLEANUP_TIMEOUT,
+  TOKEN_LIMITS,
+  buildApiUrl,
+  normalizeBaseUrl,
+} from "../config/constants";
 import { getSystemPrompt as buildSystemPrompt } from "../config/prompts";
 import { isShortDictation } from "../utils/shortDictation";
 import { getCodingPrompt } from "../config/codingPrompt";
@@ -27,6 +33,9 @@ export interface ReasoningConfig {
   preferredLanguage?: string | null;
   smartContext?: Record<string, unknown> | null;
 }
+
+// Lets a provider's own timeout fire first, with its clearer message.
+const DEADLINE_GRACE_MS = 1000;
 
 function normalizePositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
@@ -649,6 +658,11 @@ class ReasoningService {
     if (config.writingStyle === "coding") {
       config = { ...config, promptTemplate: config.promptTemplate ?? getCodingPrompt() };
     }
+    // No request runs without a deadline. Dictation passes none, and a provider
+    // that never answered used to hold the paste for good.
+    const timeoutMs =
+      normalizePositiveInteger(config.timeoutMs) ?? this.getDictationTimeoutMs(text, provider);
+    config = { ...config, timeoutMs };
 
     logger.logReasoning("PROVIDER_SELECTION", {
       model: trimmedModel,
@@ -666,52 +680,13 @@ class ReasoningService {
       logger.logReasoning("ROUTING_TO_PROVIDER", {
         provider,
         model,
+        timeoutMs,
       });
 
-      switch (provider) {
-        case "claude-code": {
-          const bridge = window.electronAPI?.enhanceWithClaudeCode;
-          if (!bridge) throw new Error("Claude Code enhancement is unavailable. Restart the app.");
-          const reply = await bridge(
-            await this.buildUserPrompt(text, config),
-            this.getSystemPrompt(
-              agentName,
-              config.dictationMode,
-              config.preferredLanguage,
-              config.promptTemplate
-            )
-          );
-          if (!reply.ok || !reply.text?.trim()) {
-            throw new Error(reply.message || "Claude Code did not return enhanced text.");
-          }
-          result = reply.text.trim();
-          break;
-        }
-        case "openai":
-        case "custom":
-          result = await this.processWithOpenAI(
-            text,
-            trimmedModel,
-            agentName,
-            config,
-            provider === "custom"
-          );
-          break;
-        case "anthropic":
-          result = await this.processWithAnthropic(text, trimmedModel, agentName, config);
-          break;
-        case "local":
-          result = await this.processWithLocal(text, trimmedModel, agentName, config);
-          break;
-        case "gemini":
-          result = await this.processWithGemini(text, trimmedModel, agentName, config);
-          break;
-        case "groq":
-          result = await this.processWithGroq(text, model, agentName, config);
-          break;
-        default:
-          throw new Error(`Unsupported reasoning provider: ${provider}`);
-      }
+      result = await this.withDeadline(
+        this.runProvider(provider, text, trimmedModel, model, agentName, config),
+        timeoutMs + DEADLINE_GRACE_MS
+      );
 
       // A coding prompt is dictated prose for another agent, not generated code.
       // Throw so the dictation pipeline preserves the original words on failure.
@@ -747,6 +722,98 @@ class ReasoningService {
       });
       throw error;
     }
+  }
+
+  /**
+   * How long AI cleanup may take when the caller sets no limit, as in
+   * dictation. Grows with the transcript; a local model or a self-hosted
+   * endpoint gets longer, since it may have to load first.
+   */
+  private getDictationTimeoutMs(text: string, provider: string): number {
+    const selfHosted = provider === "local" || provider === "custom";
+    const base = selfHosted
+      ? DICTATION_CLEANUP_TIMEOUT.SELF_HOSTED_BASE_MS
+      : DICTATION_CLEANUP_TIMEOUT.BASE_MS;
+    const max = selfHosted
+      ? DICTATION_CLEANUP_TIMEOUT.SELF_HOSTED_MAX_MS
+      : DICTATION_CLEANUP_TIMEOUT.MAX_MS;
+    return Math.min(base + text.length * DICTATION_CLEANUP_TIMEOUT.PER_CHARACTER_MS, max);
+  }
+
+  /**
+   * Each provider stops its own request at config.timeoutMs. This outer
+   * deadline catches a call that never settles anyway, such as an IPC reply
+   * that never comes, and frees the service for the next dictation.
+   */
+  private async withDeadline<T>(work: Promise<T>, durationMs: number): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        this.isProcessing = false;
+        reject(new Error(`AI cleanup timed out after ${durationMs} ms`));
+      }, durationMs);
+    });
+    try {
+      return await Promise.race([work, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async runProvider(
+    provider: string,
+    text: string,
+    trimmedModel: string,
+    model: string,
+    agentName: string | null,
+    config: ReasoningConfig
+  ): Promise<string> {
+    let result: string;
+    switch (provider) {
+      case "claude-code": {
+        const bridge = window.electronAPI?.enhanceWithClaudeCode;
+        if (!bridge) throw new Error("Claude Code enhancement is unavailable. Restart the app.");
+        const reply = await bridge(
+          await this.buildUserPrompt(text, config),
+          this.getSystemPrompt(
+            agentName,
+            config.dictationMode,
+            config.preferredLanguage,
+            config.promptTemplate
+          )
+        );
+        if (!reply.ok || !reply.text?.trim()) {
+          throw new Error(reply.message || "Claude Code did not return enhanced text.");
+        }
+        result = reply.text.trim();
+        break;
+      }
+      case "openai":
+      case "custom":
+        result = await this.processWithOpenAI(
+          text,
+          trimmedModel,
+          agentName,
+          config,
+          provider === "custom"
+        );
+        break;
+      case "anthropic":
+        result = await this.processWithAnthropic(text, trimmedModel, agentName, config);
+        break;
+      case "local":
+        result = await this.processWithLocal(text, trimmedModel, agentName, config);
+        break;
+      case "gemini":
+        result = await this.processWithGemini(text, trimmedModel, agentName, config);
+        break;
+      case "groq":
+        result = await this.processWithGroq(text, model, agentName, config);
+        break;
+      default:
+        throw new Error(`Unsupported reasoning provider: ${provider}`);
+    }
+    return result;
   }
 
   private async processWithOpenAI(

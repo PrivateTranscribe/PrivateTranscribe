@@ -99,6 +99,17 @@ export const TOKEN_LIMITS = {
   REASONING_CONTEXT_SIZE: 4096,
 } as const;
 
+// AI cleanup of a dictation. A provider that never answers must not hold the
+// paste: past the deadline the raw transcript is pasted instead. A local model
+// or a self-hosted endpoint may need to load first, so it gets longer.
+export const DICTATION_CLEANUP_TIMEOUT = {
+  BASE_MS: 20_000,
+  SELF_HOSTED_BASE_MS: 60_000,
+  PER_CHARACTER_MS: 20,
+  MAX_MS: 120_000,
+  SELF_HOSTED_MAX_MS: 300_000,
+} as const;
+
 // Cache Configuration
 export const CACHE_CONFIG = {
   API_KEY_TTL: 3600000, // 1 hour in milliseconds
