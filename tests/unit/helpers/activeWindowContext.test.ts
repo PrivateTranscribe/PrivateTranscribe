@@ -208,6 +208,48 @@ describe("Windows foreground window capture", () => {
   });
 
   test.runIf(process.platform === "win32")(
+    "keeps ø, æ and å in a window title",
+    () => {
+      // A window that is created but never shown, so nothing on screen changes.
+      const testWindow = [
+        "Add-Type -AssemblyName System.Windows.Forms",
+        "$testForm = New-Object System.Windows.Forms.Form",
+        '$testForm.Text = "Søren\'s notes æ å - Notepad"',
+      ].join("\n");
+      const script = `${testWindow}\n${__test.buildWindowsForegroundScript({
+        windowHandle: "$testForm.Handle",
+      })}`;
+      const res = spawnSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+        { encoding: "utf8", timeout: 15000 }
+      );
+
+      expect(res.status).toBe(0);
+      expect(__test.parseWindowsForegroundOutput(res.stdout).windowTitle).toBe(
+        "Søren's notes æ å - Notepad"
+      );
+    },
+    20000
+  );
+
+  test("switches both Windows queries to UTF-8 output before they print", () => {
+    const runCommand = foregroundRunner("Søren's notes - Notepad\r\nnotepad\r\n");
+
+    expect(__test.getWindowsContext(runCommand)).toMatchObject({
+      windowTitle: "Søren's notes - Notepad",
+    });
+    // The foreground query, then the focused element's text.
+    expect(runCommand).toHaveBeenCalledTimes(2);
+    for (const [, args] of runCommand.mock.calls) {
+      const script: string = args[args.length - 1];
+      expect(script.split("\n")[0]).toContain(
+        "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false"
+      );
+    }
+  });
+
+  test.runIf(process.platform === "win32")(
     "names the process that owns the window, not PowerShell itself",
     () => {
       // Handle 0 belongs to no window, so the owner id stays 0: the System Idle Process.

@@ -388,6 +388,12 @@ function shouldCaptureWindowsUiaTextPattern() {
   return !(raw === "1" || raw === "true" || raw === "yes");
 }
 
+// PowerShell writes to a pipe in the console code page, and the capture reads
+// UTF-8, so ø, æ and å arrived as U+FFFD. Each script switches its output to
+// UTF-8 without a byte order mark first.
+const POWERSHELL_UTF8_OUTPUT =
+  "try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}";
+
 function getWindowsUiaText(runCommand = run) {
   if (!shouldCaptureWindowsUia()) return {};
 
@@ -411,7 +417,8 @@ if (-not $txt) {
 # TextPattern fallback disabled via env var (PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN).
 `;
 
-  const ps = `# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
+  const ps = `${POWERSHELL_UTF8_OUTPUT}
+# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
 try { Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue } catch {}
 try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
 if ($null -eq $el) { exit 0 }
@@ -484,7 +491,8 @@ $txt;`;
  * @returns {string}
  */
 function buildWindowsForegroundScript({ windowHandle = "[Win32]::GetForegroundWindow()" } = {}) {
-  return `Add-Type @"
+  return `${POWERSHELL_UTF8_OUTPUT}
+Add-Type @"
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
