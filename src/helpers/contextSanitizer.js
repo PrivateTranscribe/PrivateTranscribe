@@ -13,8 +13,9 @@
 // A name that ends in a secret word, whatever comes before it: DB_PASS,
 // JWT_SECRET, AWS_SECRET_ACCESS_KEY, x-api-key, spring.datasource.password,
 // Ocp-Apim-Subscription-Key, and the password labels of Danish, Norwegian,
-// Swedish, German and French screens.
-const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D|WORT|ORD)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
+// Swedish, German and French screens. Words that only end in "pass", such as
+// BYPASS and COMPASS, are not secret names.
+const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|(?<!BY|COM|SUR|TRES|OVER|UNDER)PASS(?:W(?:OR)?D|WORT|ORD)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
 // ":", "=" or ":=" after a name. "==", "=>" and "::" are code, not
 // assignments.
 const ASSIGNMENT = String.raw`(?::=|[:=](?![=>:]))`;
@@ -24,18 +25,29 @@ const ASSIGNMENT = String.raw`(?::=|[:=](?![=>:]))`;
 // a long value does not grow the regex engine's backtracking stack one entry
 // per character: alternating per character overflowed it at 10 MB.
 const QUOTED_VALUE = String.raw`"[^"\\\n]*(?:\\.[^"\\\n]*)*"?|'[^'\\\n]*(?:\\.[^'\\\n]*)*'?`;
+// A type annotation in place of a value: "token: string;", "apiKey: string |
+// null", "f(token: string, secret: Buffer)", "password: str" at the end of a
+// line. It counts only when what follows the type is what code puts there:
+// the end of the line, the next parameter's name, or a closing bracket. With
+// a default after it, as in "password: str = 'x'", it is not one, and the
+// line is redacted.
+const TYPE_WORD = String.raw`(?:string|number|boolean|bigint|any|unknown|object|never|void|null|undefined|str|int|bytes|bool|Buffer|Uint8Array|SecretStr|SecretString)(?:\[\])?`;
+const LINE_END = String.raw`[ \t]*(?:\r?\n|$)`;
+const TYPE_ANNOTATION = String.raw`${TYPE_WORD}(?:[ \t]*[|&][ \t]*${TYPE_WORD})*[ \t]*(?:[;,]?${LINE_END}|[;,][ \t]*[A-Z_$][\w$]*\??[ \t]*:|\)[ \t]*(?:[:{;,)=]|->|${LINE_END})|\}[ \t]*(?:[;,)}=]|${LINE_END}))`;
 
 const DEFAULT_REDACTION_PATTERNS = [
   // PEM and PGP private key blocks. A block with no END line, as in a read
-  // cut off at a length, is redacted to the end of the text. Once a label's
-  // "PRIVATE KEY" is found the match never goes back for an earlier one, so
-  // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once. First in
-  // the list, so a field rule redacting PRIVATE_KEY=-----BEGIN cannot take
-  // the BEGIN line and leave the key body.
+  // cut off at a length, is redacted to the end of the text. The BEGIN line
+  // must end in "PRIVATE KEY-----", or "PRIVATE KEY BLOCK-----" for PGP, as
+  // every real one does, so source code that only mentions
+  // "-----BEGIN RSA PRIVATE KEY" keeps the code after it. That check has a
+  // fixed length, so text repeating "BEGIN" lines or "PRIVATE KEY" is still
+  // scanned in linear time. First in the list, so a field rule redacting
+  // PRIVATE_KEY=-----BEGIN cannot take the BEGIN line and leave the key body.
   {
     name: "privateKeyBlock",
     regex:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
   // A value given to any name that ends in a secret word, whatever comes
@@ -49,13 +61,14 @@ const DEFAULT_REDACTION_PATTERNS = [
   // lines under it. A quoted value ends at its closing quote or, when that
   // is missing, at the end of the line, so it never takes the next line's
   // name with it. A quoted value followed by an assignment was a name, as in
-  // "API_KEY: 'SECRET': x", so the rest of its line goes too. The lookbehind
-  // lets a match start only where a name starts, so a long run is scanned
-  // once.
+  // "API_KEY: 'SECRET': x", so the rest of its line goes too. A type
+  // annotation in place of the value, as in "token: string;", is left alone.
+  // The lookbehind lets a match start only where a name starts, so a long
+  // run is scanned once.
   {
     name: "secretAssignment",
     regex: new RegExp(
-      String.raw`((?<![A-Z0-9_.-])["']?${SECRET_NAME}["']?\]?[ \t]*${ASSIGNMENT}[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)((?:${QUOTED_VALUE})(?:[ \t]*${ASSIGNMENT}[^\n\r]*)?|[|>][-+0-9]*[ \t]*(?:(?:\r?\n)+[ \t]+[^\r\n]*)+|[^\s'"][^\n\r]*)`,
+      String.raw`((?<![A-Z0-9_.-])["']?${SECRET_NAME}["']?\]?[ \t]*${ASSIGNMENT}[ \t]*(?:(?:bearer|basic|token|digest)[ \t]+)?)(?!${TYPE_ANNOTATION})((?:${QUOTED_VALUE})(?:[ \t]*${ASSIGNMENT}[^\n\r]*)?|[|>][-+0-9]*[ \t]*(?:(?:\r?\n)+[ \t]+[^\r\n]*)+|[^\s'"][^\n\r]*)`,
       "gi"
     ),
     replacement: "$1[REDACTED]",

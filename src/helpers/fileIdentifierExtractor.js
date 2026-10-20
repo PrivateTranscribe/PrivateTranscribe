@@ -52,21 +52,43 @@ const CREDENTIAL_FILE_PATTERNS = [
   /(?:^|\.)env(?:\.|$)/i, // .env, .env.local, prod.env
   /\.(?:pem|key|ppk|pfx|p12|jks|keystore|tfvars)(?:\.json)?$/i,
   /^id_/i, // id_rsa, id_ed25519
-  /credential|secret/i,
   /^[._](?:npmrc|netrc|pgpass|htpasswd|pypirc)$/i,
 ];
+
+/** Source code, where a name such as secretManager.ts names code about secrets. */
+const SOURCE_FILE_EXTENSION =
+  /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|kts|cs|swift|c|cc|cpp|h|hpp|php|vue|svelte|dart|scala)$/i;
+
+/**
+ * Returns true when "credential" or "secret" in the name names the file's
+ * contents. In source code named in camelCase, where the word is followed
+ * by a capitalised word, as in secretManager.ts or CredentialsPanel.tsx, it
+ * names code about secrets instead. Every other use counts: secrets.ts,
+ * aws-credentials.ts, client_secret.json, secretManager.json.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+function namesSecrets(name) {
+  const source = SOURCE_FILE_EXTENSION.test(name);
+  for (const match of name.matchAll(/credential|secret/gi)) {
+    const rest = name.slice(match.index + match[0].length);
+    if (!source || !/^s?[A-Z][a-z]/.test(rest)) return true;
+  }
+  return false;
+}
 
 /**
  * Returns true when the file's name says it holds credentials: .env files,
  * key and certificate stores, SSH keys, Terraform variables, and any name
- * with "credential" or "secret" in it.
+ * with "credential" or "secret" in it other than source code about secrets.
  *
  * @param {string} filePath
  * @returns {boolean}
  */
 function isCredentialFile(filePath) {
   const name = path.basename(String(filePath || ""));
-  return CREDENTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name));
+  return CREDENTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name)) || namesSecrets(name);
 }
 
 /**

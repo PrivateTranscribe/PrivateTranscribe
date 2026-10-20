@@ -372,6 +372,9 @@ describe("sanitizeContextText (real implementation)", () => {
       ["a quoted name after an empty one", "API_KEY: 'SECRET': hunter2xyz", "API_KEY: [REDACTED]"],
       ["a quoted value that holds a name", 'password: "pass: a b c"', "password: [REDACTED]"],
       ["a value that ends in a name", "password: abcpwd= xyz", "password: [REDACTED]"],
+      ["a typed name with a default", 'password: str = "hunter2"', "password: [REDACTED]"],
+      ["a value that starts with a type word", "password: null,abc", "password: [REDACTED]"],
+      ["a camelCase name ending in Pass", "dbPass: hunter2", "dbPass: [REDACTED]"],
     ])("redacts the value of %s", (_name, input, expected) => {
       expect(sanitizeContextText(input)).toBe(expected);
     });
@@ -408,6 +411,13 @@ describe("sanitizeContextText (real implementation)", () => {
       "mysql -u root -p app",
       "user.setPassword(newPassword);",
       '<PasswordBox x:Name="pw"/>',
+      "  password: string;",
+      "  apiKey?: string | null;",
+      "function sign(token: string, secret: Buffer): string {",
+      "def login(password: str, user: str) -> bool:",
+      "const read = (token: string) => token.trim();",
+      "BYPASS=1",
+      "COMPASS: north",
     ])("leaves code that only names a secret alone: %s", (input) => {
       expect(sanitizeContextText(input)).toBe(input);
     });
@@ -467,11 +477,19 @@ describe("sanitizeContextText (real implementation)", () => {
       expect(sanitizeContextText(input)).toBe("ssh key [REDACTED_PRIVATE_KEY]");
     });
 
+    it("keeps code that only mentions a BEGIN line", () => {
+      const input = 'if (text.startsWith("-----BEGIN RSA PRIVATE KEY")) parse(text);\nreturn 42;';
+      expect(sanitizeContextText(input)).toBe(input);
+    });
+
     const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
 
     it.each([
       ["repeated BEGIN lines", megabyteOf(`${line("BEGIN", "PRIVATE", "KEY")}\n`)],
-      ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
+      [
+        "a BEGIN label repeating PRIVATE KEY",
+        `-----BEGIN ${megabyteOf("PRIVATE KEY ")}PRIVATE KEY-----`,
+      ],
       [
         "an END label repeating PRIVATE KEY",
         `${line("BEGIN", "PRIVATE", "KEY")}\n-----END ${megabyteOf("PRIVATE KEY ")}`,
@@ -481,6 +499,15 @@ describe("sanitizeContextText (real implementation)", () => {
       const output = sanitizeContextText(input, { maxChars: input.length });
       expect(performance.now() - started).toBeLessThan(1000);
       expect(output).not.toContain("BEGIN");
+    });
+
+    it.each([
+      ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
+      ["repeated BEGIN lines with no dashes", megabyteOf("-----BEGIN RSA PRIVATE KEY ")],
+    ])("scans 1 MB of %s with no closing dashes in well under a second", (_shape, input) => {
+      const started = performance.now();
+      sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
     });
   });
 
