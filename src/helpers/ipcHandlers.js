@@ -11,6 +11,7 @@ const { requestAppReset } = require("./appReset");
 const debugLogger = require("./debugLogger");
 const { isOfficialBuild } = require("./officialBuild");
 const { getSystemPrompt } = require("./prompts");
+const { getAnthropicMaxTokens, readAnthropicText } = require("./anthropicReasoning");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
@@ -2421,7 +2422,7 @@ class IPCHandlers {
             model: modelId,
             messages: [{ role: "user", content: userPrompt }],
             system: systemPrompt,
-            max_tokens: config?.maxTokens || Math.max(100, Math.min(text.length * 2, 4096)),
+            max_tokens: getAnthropicMaxTokens(text, config),
             temperature: config?.temperature || 0.3,
           };
 
@@ -2457,7 +2458,7 @@ class IPCHandlers {
             }
 
             const data = await response.json();
-            return { success: true, text: data.content[0].text.trim() };
+            return { success: true, text: readAnthropicText(data) };
           } catch (error) {
             if (requestTimeout.didExpire()) {
               throw new Error(`Anthropic request timed out after ${requestTimeout.durationMs} ms`);

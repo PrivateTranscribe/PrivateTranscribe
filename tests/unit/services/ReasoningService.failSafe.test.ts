@@ -153,3 +153,74 @@ describe("a wrong API key", () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("a cleanup cut off at its length limit", () => {
+  const LONG_DICTATION = "and then we talked about the plan for next week ".repeat(200);
+
+  function sentBody(): any {
+    const [, request] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+    return JSON.parse(String(request.body));
+  }
+
+  it("sizes the Groq limit to the transcript", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        okJson({ choices: [{ message: { content: "Done." }, finish_reason: "stop" }] })
+      ) as any;
+
+    await ReasoningService.processText(DICTATION, "openai/gpt-oss-20b");
+    expect(sentBody().max_tokens).toBe(4096);
+
+    vi.mocked(global.fetch).mockClear();
+    await ReasoningService.processText(LONG_DICTATION, "openai/gpt-oss-20b");
+    expect(sentBody().max_tokens).toBe(LONG_DICTATION.length * 2);
+  });
+
+  it.each([
+    [
+      "Groq",
+      "openai/gpt-oss-20b",
+      { choices: [{ message: { content: "and then we" }, finish_reason: "length" }] },
+    ],
+    [
+      "OpenAI Responses",
+      "gpt-5.6-luna",
+      {
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        output: [{ type: "message", content: [{ type: "output_text", text: "and then we" }] }],
+      },
+    ],
+    [
+      "Gemini",
+      "gemini-3.8-flash",
+      {
+        candidates: [{ content: { parts: [{ text: "and then we" }] }, finishReason: "MAX_TOKENS" }],
+      },
+    ],
+  ])("refuses %s's partial text", async (_name, model, payload) => {
+    global.fetch = vi.fn().mockResolvedValue(okJson(payload)) as any;
+
+    await expect(ReasoningService.processText(LONG_DICTATION, model)).rejects.toThrow(
+      "cut off at its length limit"
+    );
+  });
+
+  it("refuses partial text from an OpenAI-compatible chat endpoint", async () => {
+    localStorageMock.setItem("reasoningProvider", "custom");
+    localStorageMock.setItem(
+      "cloudReasoningBaseUrl",
+      "https://llm.example.test/v1/chat/completions"
+    );
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        okJson({ choices: [{ message: { content: "and then we" }, finish_reason: "length" }] })
+      ) as any;
+
+    await expect(ReasoningService.processText(LONG_DICTATION, "my-model")).rejects.toThrow(
+      "cut off at its length limit"
+    );
+  });
+});

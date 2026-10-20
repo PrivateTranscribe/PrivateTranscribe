@@ -88,13 +88,14 @@ export const MODEL_CONSTRAINTS = {
 } as const;
 
 // Token Limits
+// Output limits for AI cleanup. The floor leaves room for a reasoning model's
+// thinking on short text; the limit then grows with the transcript, so a long
+// dictation is not cut off. A reply that still hits it is not pasted.
 export const TOKEN_LIMITS = {
-  MIN_TOKENS: 100,
-  MAX_TOKENS: 2048,
-  MIN_TOKENS_ANTHROPIC: 100,
-  MAX_TOKENS_ANTHROPIC: 4096,
-  MIN_TOKENS_GEMINI: 100,
-  MAX_TOKENS_GEMINI: 8192,
+  MIN_TOKENS: 4096,
+  MAX_TOKENS: 32768,
+  MIN_TOKENS_GEMINI: 2000,
+  MAX_TOKENS_GEMINI: 32768,
   TOKEN_MULTIPLIER: 2, // text.length * multiplier
   REASONING_CONTEXT_SIZE: 4096,
 } as const;

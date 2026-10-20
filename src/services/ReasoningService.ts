@@ -88,6 +88,12 @@ function createApiError(message: unknown, status: number): Error & { status: num
   return Object.assign(new Error(truncateErrorMessage(message)), { status });
 }
 
+// A reply that stopped at its length limit holds only part of the dictation.
+// Throwing makes dictation paste the raw transcript instead.
+function createTruncatedError(providerName: string): Error {
+  return new Error(`${providerName}'s reply was cut off at its length limit`);
+}
+
 function getTextLength(value: unknown): number | undefined {
   return typeof value === "string" ? value.length : undefined;
 }
@@ -532,14 +538,11 @@ class ReasoningService {
       temperature: config.temperature ?? 0.3,
       max_tokens:
         config.maxTokens ||
-        Math.max(
-          4096,
-          this.calculateMaxTokens(
-            text.length,
-            TOKEN_LIMITS.MIN_TOKENS,
-            TOKEN_LIMITS.MAX_TOKENS,
-            TOKEN_LIMITS.TOKEN_MULTIPLIER
-          )
+        this.calculateMaxTokens(
+          text.length,
+          TOKEN_LIMITS.MIN_TOKENS,
+          TOKEN_LIMITS.MAX_TOKENS,
+          TOKEN_LIMITS.TOKEN_MULTIPLIER
         ),
     };
 
@@ -628,6 +631,13 @@ class ReasoningService {
     }
 
     const choice = response.choices[0];
+    if (choice.finish_reason === "length") {
+      logger.logReasoning(`${providerName.toUpperCase()}_TRUNCATED`, {
+        model,
+        maxTokens: requestBody.max_tokens,
+      });
+      throw createTruncatedError(providerName);
+    }
     const responseText = choice.message?.content?.trim() || "";
 
     if (!responseText) {
@@ -992,6 +1002,18 @@ class ReasoningService {
         usage: response.usage,
       });
 
+      const isTruncated =
+        response?.status === "incomplete" ||
+        (isChatCompletions && response.choices.some((c: any) => c?.finish_reason === "length"));
+      if (isTruncated) {
+        logger.logReasoning("OPENAI_TRUNCATED", {
+          model,
+          status: response?.status,
+          reason: response?.incomplete_details?.reason,
+        });
+        throw createTruncatedError(isCustomProvider ? "The custom endpoint" : "OpenAI");
+      }
+
       let responseText = "";
 
       if (isResponsesApi) {
@@ -1252,14 +1274,11 @@ class ReasoningService {
           temperature: config.temperature || 0.3,
           maxOutputTokens:
             config.maxTokens ||
-            Math.max(
-              2000,
-              this.calculateMaxTokens(
-                text.length,
-                TOKEN_LIMITS.MIN_TOKENS_GEMINI,
-                TOKEN_LIMITS.MAX_TOKENS_GEMINI,
-                TOKEN_LIMITS.TOKEN_MULTIPLIER
-              )
+            this.calculateMaxTokens(
+              text.length,
+              TOKEN_LIMITS.MIN_TOKENS_GEMINI,
+              TOKEN_LIMITS.MAX_TOKENS_GEMINI,
+              TOKEN_LIMITS.TOKEN_MULTIPLIER
             ),
         },
       };
@@ -1354,6 +1373,14 @@ class ReasoningService {
       }
 
       const candidate = response.candidates[0];
+      if (candidate.finishReason === "MAX_TOKENS") {
+        logger.logReasoning("GEMINI_TRUNCATED", {
+          model,
+          maxOutputTokens: requestBody.generationConfig.maxOutputTokens,
+          hasText: !!candidate.content?.parts?.[0]?.text,
+        });
+        throw createTruncatedError("Gemini");
+      }
       if (!candidate.content?.parts?.[0]?.text) {
         logger.logReasoning("GEMINI_EMPTY_RESPONSE", {
           model,
@@ -1363,11 +1390,6 @@ class ReasoningService {
           response: summarizeResponseForLog({ candidates: [candidate] }),
         });
 
-        if (candidate.finishReason === "MAX_TOKENS") {
-          throw new Error(
-            "Gemini reached token limit before generating response. Try a shorter input or increase max tokens."
-          );
-        }
         throw new Error("Gemini returned empty response");
       }
 
