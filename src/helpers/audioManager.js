@@ -22,6 +22,7 @@ import {
   getContext,
   isSmartContextEnabled,
   isFileIdentifiersEnabled,
+  isLlmContextEnhancementEnabled,
   buildWhisperContextHint,
   buildFileIdentifierHint,
 } from "./contextPipeline";
@@ -524,7 +525,7 @@ class AudioManager {
       return null;
     }
 
-    const capture = { done: false, context: null, promise: null };
+    const capture = { done: false, context: null, promise: null, lateRead: null };
     capture.promise = Promise.resolve()
       .then(() =>
         getContext({
@@ -546,28 +547,28 @@ class AudioManager {
 
   /**
    * The context in a recording's capture, or null. A capture still running
-   * gets SMART_CONTEXT_LATE_WAIT_MS before the recording goes on without it.
+   * gets SMART_CONTEXT_LATE_WAIT_MS once per recording before the recording
+   * goes on without it, so Whisper's hints and AI cleanup never wait twice.
    */
   async readSmartContext(capture) {
     if (!capture) return null;
     if (capture.done) return capture.context;
 
-    let timer = null;
-    const late = new Promise((resolve) => {
-      timer = setTimeout(() => {
-        logger.debug(
-          "Smart Context still capturing; continuing without it",
-          { waitedMs: SMART_CONTEXT_LATE_WAIT_MS },
-          "transcription"
-        );
-        resolve(null);
-      }, SMART_CONTEXT_LATE_WAIT_MS);
-    });
-    try {
-      return await Promise.race([capture.promise, late]);
-    } finally {
-      clearTimeout(timer);
+    if (!capture.lateRead) {
+      let timer = null;
+      const late = new Promise((resolve) => {
+        timer = setTimeout(() => {
+          logger.debug(
+            "Smart Context still capturing; continuing without it",
+            { waitedMs: SMART_CONTEXT_LATE_WAIT_MS },
+            "transcription"
+          );
+          resolve(null);
+        }, SMART_CONTEXT_LATE_WAIT_MS);
+      });
+      capture.lateRead = Promise.race([capture.promise, late]).finally(() => clearTimeout(timer));
     }
+    return capture.lateRead;
   }
 
   setCallbacks({ onStateChange, onError, onTranscriptionComplete, onNoAudioDetected }) {
@@ -3338,7 +3339,11 @@ class AudioManager {
 
     if (useReasoning) {
       try {
-        const smartContext = await this.readSmartContext(metadata?.smartContextCapture);
+        // Only LLM Context Enhancement puts the window in the prompt, so only
+        // then is cleanup held for a read still running.
+        const capture = metadata?.smartContextCapture;
+        const smartContext =
+          capture && isLlmContextEnhancementEnabled() ? await this.readSmartContext(capture) : null;
 
         // A cancelled recording's text is thrown away by its caller. It must
         // not reach the AI model on the way, with or without context.

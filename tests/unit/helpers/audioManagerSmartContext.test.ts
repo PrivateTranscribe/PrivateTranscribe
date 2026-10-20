@@ -12,6 +12,7 @@ vi.mock("../../../src/helpers/contextPipeline", () => ({
   getContext: vi.fn(),
   isSmartContextEnabled: vi.fn(),
   isFileIdentifiersEnabled: vi.fn(),
+  isLlmContextEnhancementEnabled: vi.fn(),
   buildWhisperContextHint: vi.fn(),
   buildFileIdentifierHint: vi.fn(),
 }));
@@ -26,6 +27,7 @@ import {
   getContext,
   isSmartContextEnabled,
   isFileIdentifiersEnabled,
+  isLlmContextEnhancementEnabled,
   buildWhisperContextHint,
   buildFileIdentifierHint,
 } from "../../../src/helpers/contextPipeline";
@@ -33,6 +35,7 @@ import {
 const mockedGetContext = vi.mocked(getContext);
 const mockedIsSmartContextEnabled = vi.mocked(isSmartContextEnabled);
 const mockedIsFileIdentifiersEnabled = vi.mocked(isFileIdentifiersEnabled);
+const mockedIsLlmContextEnhancementEnabled = vi.mocked(isLlmContextEnhancementEnabled);
 const mockedBuildWhisperContextHint = vi.mocked(buildWhisperContextHint);
 const mockedBuildFileIdentifierHint = vi.mocked(buildFileIdentifierHint);
 const mockedResolveTranscriptionLanguage = vi.mocked(resolveTranscriptionLanguage);
@@ -359,6 +362,7 @@ describe("AudioManager Smart Context capture timing", () => {
     mockedGetContext.mockReset();
     mockedIsSmartContextEnabled.mockReturnValue(true);
     mockedIsFileIdentifiersEnabled.mockReturnValue(false);
+    mockedIsLlmContextEnhancementEnabled.mockReturnValue(true);
     mockedBuildWhisperContextHint.mockReturnValue("");
     mockedBuildFileIdentifierHint.mockReturnValue("");
   });
@@ -442,6 +446,38 @@ describe("AudioManager Smart Context capture timing", () => {
 
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: null });
+  });
+
+  it("waits once when Whisper's hints already waited for the read", async () => {
+    useEngine("whisper");
+    mockedGetContext.mockReturnValue(new Promise(() => {}) as any);
+    const { manager, cleanup } = makeManager();
+    const transcribe = (window as any).electronAPI.transcribeLocalWhisper;
+
+    const { processing } = await dictate(manager);
+    await vi.advanceTimersByTimeAsync(299);
+    expect(transcribe).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Whisper has its text; cleanup must not hold the paste for another 300 ms.
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: null });
+    await processing;
+  });
+
+  it("does not hold cleanup for the read when LLM Context Enhancement is off", async () => {
+    useEngine("parakeet");
+    mockedIsLlmContextEnhancementEnabled.mockReturnValue(false);
+    mockedGetContext.mockReturnValue(new Promise(() => {}) as any);
+    const { manager, cleanup } = makeManager();
+
+    const { processing } = await dictate(manager);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: null });
+    await processing;
   });
 
   it("keeps a cancelled dictation out of AI cleanup while the next one runs", async () => {
