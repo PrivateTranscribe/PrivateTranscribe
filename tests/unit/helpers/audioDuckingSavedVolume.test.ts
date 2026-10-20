@@ -128,3 +128,28 @@ describe("ducking from 0%", () => {
     expect(lines.join("\n")).toContain("[Math]::Abs($vol -");
   });
 });
+
+describe("a Windows duck whose volume read failed", () => {
+  it("moves nothing, so the volume is not set to 0", () => {
+    for (const mode of ["duck", "mute"]) {
+      const lines: string[] = buildWindowsDuckScriptLines({
+        mode,
+        duckLevel: 0.5,
+        statePath: "C:\Users\me\AppData\state.json",
+      });
+      const guard = lines.indexOf("if (($vol -ne $null) -and ($mute -ne $null)) {");
+      const write = lines.findIndex((line) => line.includes("WriteAllText"));
+      const move = lines.findIndex((line) => /\[Audio\]::Set(Volume|Mute)/.test(line));
+      expect(guard).toBeGreaterThan(-1);
+      expect(write).toBeGreaterThan(guard);
+      expect(move).toBeGreaterThan(guard);
+      expect(lines[lines.length - 1]).toBe("}");
+    }
+  });
+
+  it("leaves the mute alone on restore instead of unmuting", () => {
+    const saved = parseWindowsSavedState("");
+    expect(saved).toEqual({ volume: null, muted: null });
+    expect(buildWindowsRestoreScriptLines(saved)).toEqual([]);
+  });
+});

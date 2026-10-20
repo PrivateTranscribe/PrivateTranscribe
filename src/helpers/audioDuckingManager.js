@@ -271,6 +271,11 @@ function buildWindowsDuckScriptLines({ mode, duckLevel, statePath, previous = nu
       : `$target = [Math]::Min($base, [Math]::Max(0.01, $base * ${f4(duckLevel)}))`
   );
 
+  // A failed read leaves $vol or $mute $null, which PowerShell treats as 0 in
+  // the arithmetic below. Moving anything then would set the volume to 0 with
+  // nothing readable to restore it from, so the duck does nothing.
+  lines.push("if (($vol -ne $null) -and ($mute -ne $null)) {");
+
   if (statePath) {
     lines.push(
       `$state = '{"version":1,"mode":"${mode === "mute" ? "mute" : "duck"}","volume":' + ` +
@@ -285,6 +290,7 @@ function buildWindowsDuckScriptLines({ mode, duckLevel, statePath, previous = nu
   }
 
   lines.push(mode === "mute" ? "[Audio]::SetMute($true)" : "[Audio]::SetVolume($target)");
+  lines.push("}");
   return lines;
 }
 
@@ -293,9 +299,9 @@ function buildWindowsDuckScriptLines({ mode, duckLevel, statePath, previous = nu
  * anything. That is the level restore() goes back to.
  *
  * A volume of 0 is a real level. Falling back on any falsy value restored a
- * user whose master volume sits at 0% to 100% after every dictation. Text
- * that is not a number gives null, and restore() then leaves the volume alone
- * rather than guess at a level.
+ * user whose master volume sits at 0% to 100% after every dictation. A part
+ * that cannot be read gives null, and restore() then leaves that part alone
+ * rather than guess: a guessed "not muted" unmuted a user who had muted.
  */
 function parseWindowsSavedState(stdout) {
   // stdout = "0.8000|False" (pipe separator, invariant decimal)
@@ -304,10 +310,16 @@ function parseWindowsSavedState(stdout) {
     .trim();
   const pipeIdx = firstLine.indexOf("|");
   const volume = pipeIdx >= 0 ? parseFloat(firstLine.slice(0, pipeIdx)) : NaN;
-  const muteStr = pipeIdx >= 0 ? firstLine.slice(pipeIdx + 1) : "False";
+  const muteStr =
+    pipeIdx >= 0
+      ? firstLine
+          .slice(pipeIdx + 1)
+          .trim()
+          .toLowerCase()
+      : "";
   return {
     volume: Number.isFinite(volume) ? volume : null,
-    muted: muteStr.trim().toLowerCase() === "true",
+    muted: muteStr === "true" ? true : muteStr === "false" ? false : null,
   };
 }
 
@@ -317,9 +329,9 @@ function isKnownVolume(volume) {
 }
 
 /**
- * The restore script. A volume that could not be read when the duck saved it
- * is skipped, so the mute is still put back but the slider is not moved to a
- * guess. The old fallback guessed 100%.
+ * The restore script. A volume or mute state that could not be read when the
+ * duck saved it is skipped, rather than set to a guess. The old fallback
+ * guessed 100% and not muted.
  */
 function buildWindowsRestoreScriptLines(savedState) {
   const lines = [];
@@ -330,7 +342,9 @@ function buildWindowsRestoreScriptLines(savedState) {
       `[Audio]::SetVolume([float]::Parse('${volStr}', [System.Globalization.CultureInfo]::InvariantCulture))`
     );
   }
-  lines.push(savedState.muted ? "[Audio]::SetMute($true)" : "[Audio]::SetMute($false)");
+  if (typeof savedState.muted === "boolean") {
+    lines.push(savedState.muted ? "[Audio]::SetMute($true)" : "[Audio]::SetMute($false)");
+  }
   return lines;
 }
 
@@ -660,7 +674,9 @@ class AudioDuckingManager {
     if (isKnownVolume(saved.volume)) {
       await api.setVolume(saved.volume);
     }
-    await api.setMuted(false);
+    if (saved.muted === false) {
+      await api.setMuted(false);
+    }
   }
 
   /**
