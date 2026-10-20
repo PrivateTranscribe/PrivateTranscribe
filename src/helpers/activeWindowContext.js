@@ -95,7 +95,8 @@ function isSensitiveAppContext({
     /\bdashlane\b/i,
     /\bnordpass\b/i,
     /\bkeepass(xc|2)?\b/i,
-    /\bkeeper\b/i,
+    /\bkeeper(passwordmanager)?\b/i, // Keeper's process is KeeperPasswordManager
+    /\bpassword\s*manager\b/i, // Google Password Manager, Keeper Password Manager
     /\broboform\b/i,
     /\benpass\b/i,
     /\bpassbolt\b/i,
@@ -134,6 +135,10 @@ function isSensitiveAppContext({
   const titlePatterns = appPatterns.filter((p) => p.toString() !== /\bpasswords\b/i.toString());
   if (titlePatterns.some((p) => p.test(title))) return true;
   if (extraPatterns.some((p) => p.test(title))) return true;
+
+  // A page or window named just "Passwords", as Firefox's about:logins and
+  // the macOS app are. A title only mentioning passwords stays allowed.
+  if (/^\s*passwords\s*(?:$|[-—–|:])/.test(title)) return true;
 
   // Avoid overly broad terms like "login" that would cause false positives.
   if (title.includes("enter password") || title.includes("master password")) return true;

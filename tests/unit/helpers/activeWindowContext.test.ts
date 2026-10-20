@@ -38,6 +38,20 @@ describe("activeWindowContext privacy guardrails", () => {
     ).toBe(false);
   });
 
+  test.each([
+    ["firefox", "Passwords — Mozilla Firefox"],
+    ["msedge", "Passwords - Microsoft Edge"],
+    ["chrome", "Google Password Manager - Google Chrome"],
+  ])("blocks a browser's password page (%s: %s)", (processName, windowTitle) => {
+    expect(isSensitiveAppContext({ processName, windowTitle })).toBe(true);
+  });
+
+  test("blocks Keeper by its process name", () => {
+    expect(
+      isSensitiveAppContext({ processName: "KeeperPasswordManager", windowTitle: "My Vault" })
+    ).toBe(true);
+  });
+
   test("can explicitly disable all context capture via env var", () => {
     const prev = process.env.PRIVOCA_DISABLE_CONTEXT_CAPTURE;
     try {
