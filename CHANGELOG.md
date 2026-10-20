@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.24.1 - 2026-10-20
+
+### Fixed
+
+- AI cleanup can no longer hold up a dictation. If the AI provider does not answer in time, your words are pasted as you said them. Before, a provider that never answered kept the dictation waiting, and every later cleanup that session was skipped.
+- A wrong or expired API key fails at once. Before, it was tried three more times, which added about 7 seconds to every dictation.
+- A long dictation is no longer cut short by AI cleanup. If the AI's reply stops at its length limit, your dictation is pasted without cleanup instead of the shortened text.
+- AI cleanup works with Claude Sonnet 5 and Claude Opus 5.
+- Choosing a custom AI endpoint whose model has the same name as another provider's no longer skips cleanup.
+- A Windows volume of 0% stays at 0% after a dictation. Before, it came back at 100%.
+- Pressing Escape during a recording puts back the volume, paused media and your voice call's mute key.
+- A quick tap of the dictation hotkey no longer keeps your voice call muted for up to 10 minutes.
+- If the app closes or crashes while it holds your call's mute key, it lets go of the key the next time it starts.
+- Smart Context now works with Parakeet and cloud transcription. It reads the window when the dictation starts, so the text comes from the window you dictated into. Before, only local Whisper got the window text in time.
+- Smart Context names the real app in front, so editors are recognised for active file context and password managers are recognised by their program name.
+- Window titles with ø, æ and å reach AI cleanup as written.
+
+### Security
+
+- Smart Context removes more secrets before any text goes to AI cleanup, including whole provider API keys, private keys, passwords in config files, XML and command lines, and password labels in Danish, Norwegian, Swedish, German and French. If removing them fails, none of that text is sent.
+- Smart Context reads only the file your editor's title names, and never a file whose name says it holds secrets or credentials. The part of the file it reads goes through the same redaction as the window text.
+- Smart Context reads nothing from more password managers, such as Keeper and a browser's saved passwords page.
+- The local Whisper log no longer records the words from your dictionary or the file names Smart Context found, only how long that list is.
+
 ## 0.24.0 - 2026-10-20
 
 ### Added
