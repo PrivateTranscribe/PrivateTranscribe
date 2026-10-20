@@ -430,24 +430,31 @@ function sanitizeContextText(text, options = {}) {
 
   let output = typeof text === "string" ? text : "";
 
-  // Redact embedded URL credentials early so later patterns (like email
-  // redaction) don't partially mask/alter the URL.
-  output = redactUrlCredentials(output);
+  // A pattern can run out of regex engine stack on text of many megabytes,
+  // such as a huge focused field. Nothing is returned then, rather than text
+  // that was redacted only in part.
+  try {
+    // Redact embedded URL credentials early so later patterns (like email
+    // redaction) don't partially mask/alter the URL.
+    output = redactUrlCredentials(output);
 
-  for (const pattern of patterns) {
-    const replacementType = typeof pattern?.replacement;
-    if (
-      !(pattern?.regex instanceof RegExp) ||
-      (replacementType !== "string" && replacementType !== "function")
-    ) {
-      continue;
+    for (const pattern of patterns) {
+      const replacementType = typeof pattern?.replacement;
+      if (
+        !(pattern?.regex instanceof RegExp) ||
+        (replacementType !== "string" && replacementType !== "function")
+      ) {
+        continue;
+      }
+      output = output.replace(pattern.regex, pattern.replacement);
     }
-    output = output.replace(pattern.regex, pattern.replacement);
-  }
 
-  // PAN-like numbers can show up in focused fields or titles. Luhn-check to
-  // reduce false positives before redacting.
-  output = redactLikelyCardNumbers(output);
+    // PAN-like numbers can show up in focused fields or titles. Luhn-check to
+    // reduce false positives before redacting.
+    output = redactLikelyCardNumbers(output);
+  } catch {
+    return "";
+  }
 
   output = truncateUtf8Safe(output, maxChars);
   return output;

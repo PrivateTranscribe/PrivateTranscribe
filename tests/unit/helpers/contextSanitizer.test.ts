@@ -569,5 +569,21 @@ describe("sanitizeContextText (real implementation)", () => {
       const output = sanitizeContextText(input);
       expect(output).toBe(input);
     });
+
+    it("returns nothing when a pattern fails", () => {
+      const failing = {
+        regex: /secret/g,
+        replacement: () => {
+          throw new RangeError("Maximum call stack size exceeded");
+        },
+      };
+      const options = { redactionPatterns: [failing] } as { maxChars?: number };
+      expect(sanitizeContextText("my secret is here", options)).toBe("");
+    });
+
+    it("returns nothing for 10 MB of letters, where a pattern runs out of stack", () => {
+      const input = "a".repeat(10 * 1024 * 1024);
+      expect(sanitizeContextText(input, { maxChars: input.length })).toBe("");
+    });
   });
 });
