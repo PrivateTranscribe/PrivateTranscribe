@@ -88,7 +88,7 @@ describe("a stalled provider during dictation", () => {
     await expect(next).resolves.toBe("Cleaned.");
   });
 
-  it("gives a local model longer, since it may have to load first", async () => {
+  it("keeps llama-server's own 5-minute inference limit for a local model", async () => {
     vi.mocked(window.electronAPI.processLocalReasoning).mockResolvedValue({
       success: true,
       text: "Local.",
@@ -97,7 +97,40 @@ describe("a stalled provider during dictation", () => {
     await ReasoningService.processText(DICTATION, "qwen3-4b-q4_k_m");
 
     const forwarded = vi.mocked(window.electronAPI.processLocalReasoning).mock.calls[0][3];
-    expect(forwarded.timeoutMs).toBe(60_000 + DICTATION.length * 20);
+    expect(forwarded.timeoutMs).toBe(300_000);
+  });
+
+  it("waits for llama-server to start on top of a caller's 30 s", async () => {
+    vi.useFakeTimers();
+    let answer: (value: unknown) => void = () => {};
+    vi.mocked(window.electronAPI.processLocalReasoning).mockReturnValue(
+      new Promise((resolve) => (answer = resolve))
+    );
+
+    const cleanup = ReasoningService.processText(DICTATION, "qwen3-4b-q4_k_m", null, {
+      timeoutMs: 30_000,
+    });
+    // A cold start plus inference, still inside 30 s + the 60 s start allowance.
+    await vi.advanceTimersByTimeAsync(85_000);
+    answer({ success: true, text: "Local." });
+
+    await expect(cleanup).resolves.toBe("Local.");
+  });
+
+  it("gives a custom endpoint time for a model on the user's PC", async () => {
+    vi.useFakeTimers();
+    localStorageMock.setItem("reasoningProvider", "custom");
+    localStorageMock.setItem("cloudReasoningBaseUrl", "http://localhost:11434/v1");
+    global.fetch = stalledFetch() as any;
+
+    const stalled = ReasoningService.processText(DICTATION, "qwen3:8b");
+    let settled = false;
+    stalled.catch(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(60_000 + DICTATION.length * 100 - 1_000);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(stalled).rejects.toThrow(/timed out/);
   });
 
   it("keeps a timeout the caller chose", async () => {

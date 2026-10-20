@@ -701,9 +701,12 @@ class ReasoningService {
         timeoutMs,
       });
 
+      // A local model's timeout covers inference only; llama-server may have
+      // to start first.
+      const startupMs = provider === "local" ? DICTATION_CLEANUP_TIMEOUT.LOCAL_STARTUP_MS : 0;
       result = await this.withDeadline(
         this.runProvider(provider, text, trimmedModel, model, agentName, config),
-        timeoutMs + DEADLINE_GRACE_MS
+        timeoutMs + startupMs + DEADLINE_GRACE_MS
       );
 
       // A coding prompt is dictated prose for another agent, not generated code.
@@ -744,18 +747,20 @@ class ReasoningService {
 
   /**
    * How long AI cleanup may take when the caller sets no limit, as in
-   * dictation. Grows with the transcript; a local model or a self-hosted
-   * endpoint gets longer, since it may have to load first.
+   * dictation. Grows with the transcript, and slower for a custom endpoint,
+   * which is often a model on the user's own PC. A local model keeps
+   * llama-server's own inference limit.
    */
   private getDictationTimeoutMs(text: string, provider: string): number {
-    const selfHosted = provider === "local" || provider === "custom";
-    const base = selfHosted
-      ? DICTATION_CLEANUP_TIMEOUT.SELF_HOSTED_BASE_MS
-      : DICTATION_CLEANUP_TIMEOUT.BASE_MS;
-    const max = selfHosted
-      ? DICTATION_CLEANUP_TIMEOUT.SELF_HOSTED_MAX_MS
-      : DICTATION_CLEANUP_TIMEOUT.MAX_MS;
-    return Math.min(base + text.length * DICTATION_CLEANUP_TIMEOUT.PER_CHARACTER_MS, max);
+    const limits = DICTATION_CLEANUP_TIMEOUT;
+    if (provider === "local") return limits.LOCAL_MS;
+    if (provider === "custom") {
+      return Math.min(
+        limits.CUSTOM_BASE_MS + text.length * limits.CUSTOM_PER_CHARACTER_MS,
+        limits.CUSTOM_MAX_MS
+      );
+    }
+    return Math.min(limits.BASE_MS + text.length * limits.PER_CHARACTER_MS, limits.MAX_MS);
   }
 
   /**

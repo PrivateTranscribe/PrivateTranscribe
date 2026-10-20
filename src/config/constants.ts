@@ -108,14 +108,22 @@ export const TOKEN_LIMITS = {
 } as const;
 
 // AI cleanup of a dictation. A provider that never answers must not hold the
-// paste: past the deadline the raw transcript is pasted instead. A local model
-// or a self-hosted endpoint may need to load first, so it gets longer.
+// paste: past the deadline the raw transcript is pasted instead.
 export const DICTATION_CLEANUP_TIMEOUT = {
   BASE_MS: 20_000,
-  SELF_HOSTED_BASE_MS: 60_000,
   PER_CHARACTER_MS: 20,
   MAX_MS: 120_000,
-  SELF_HOSTED_MAX_MS: 300_000,
+  // A custom endpoint is often a model on the user's own PC, which may load
+  // first and write a few tokens a second on a CPU.
+  CUSTOM_BASE_MS: 60_000,
+  CUSTOM_PER_CHARACTER_MS: 100,
+  CUSTOM_MAX_MS: 300_000,
+  // llama-server's own inference limit, as before cleanup had a deadline.
+  LOCAL_MS: 300_000,
+  // llama-server starts after each idle stop before it can answer, and its
+  // start may take this long. The renderer waits that much longer for a local
+  // model than the inference limit it passes on.
+  LOCAL_STARTUP_MS: 60_000,
 } as const;
 
 // Cache Configuration
