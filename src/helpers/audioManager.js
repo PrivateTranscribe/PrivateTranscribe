@@ -514,13 +514,14 @@ class AudioManager {
   /**
    * Start reading the window the user is about to dictate into. Runs as the
    * recording starts, so the read overlaps the speech instead of the paste.
-   * Each recording replaces the last one's capture, so context never carries
-   * over from an earlier window.
+   * The capture is returned, and the recording carries it to its own
+   * transcription and cleanup, so context never reaches another recording
+   * even when one is cancelled and the next starts before it finishes.
    */
   startSmartContextCapture() {
     if (!isSmartContextEnabled()) {
       this._smartContextCapture = null;
-      return;
+      return null;
     }
 
     const capture = { done: false, context: null, promise: null };
@@ -537,16 +538,17 @@ class AudioManager {
         capture.context = context ?? null;
         return capture.context;
       });
+    // Kept only so a recording that turns into a long session can hand the
+    // capture to its segments; everything else gets it from the recording.
     this._smartContextCapture = capture;
+    return capture;
   }
 
   /**
-   * The context captured for the current recording, or null. A capture still
-   * running gets SMART_CONTEXT_LATE_WAIT_MS before the recording goes on
-   * without it.
+   * The context in a recording's capture, or null. A capture still running
+   * gets SMART_CONTEXT_LATE_WAIT_MS before the recording goes on without it.
    */
-  async readSmartContext() {
-    const capture = this._smartContextCapture;
+  async readSmartContext(capture) {
     if (!capture) return null;
     if (capture.done) return capture.context;
 
@@ -873,6 +875,8 @@ class AudioManager {
     state.active = true;
     state.sessionId = this.activeRecordingSessionId;
     state.promotedAt = Date.now();
+    // Still this recording's capture: no other recording starts while it runs.
+    state.smartContextCapture = this._smartContextCapture;
     this.longSession = state;
 
     const initialSegment = this.longSessionSegment;
@@ -1363,6 +1367,7 @@ class AudioManager {
             chunkIndex: item.index,
             trimTrailingSilence: item.trimTrailingSilence,
             lockedLanguage: state.detectedLanguage,
+            smartContextCapture: state.smartContextCapture,
           });
 
           // Segments are transcribed one at a time, so the language learned
@@ -1488,6 +1493,7 @@ class AudioManager {
           skipOptimization: true,
           chunkIndex: item.index,
           trimTrailingSilence: item.trimTrailingSilence,
+          smartContextCapture: state.smartContextCapture,
         });
 
         this.recordLongSessionChunkTelemetry(state, item, result);
@@ -1554,7 +1560,7 @@ class AudioManager {
     return `${text} ${missing.join(" ")}`.trim();
   }
 
-  async finalizeLongSessionResult(durationSeconds) {
+  async finalizeLongSessionResult(durationSeconds, cleanupMetadata = {}) {
     await this.waitForLongSessionQueue();
     await this.retryFailedLongSessionChunks();
 
@@ -1598,7 +1604,7 @@ class AudioManager {
     }
 
     const reasoningStart = performance.now();
-    const reasonedText = await this.processTranscription(rawText, "long-session");
+    const reasonedText = await this.processTranscription(rawText, "long-session", cleanupMetadata);
     const text = this.preserveMissingSectionMarkers(reasonedText || rawText, state.errors.length);
     const source = (await this.isReasoningAvailable()) ? "long-session-reasoned" : "long-session";
     const telemetry = this.summarizeLongSessionTelemetry(state);
@@ -1840,7 +1846,7 @@ class AudioManager {
       this.pendingCancelAfterStart = false;
       this.discardCurrentRecording = false;
 
-      this.startSmartContextCapture();
+      const smartContextCapture = this.startSmartContextCapture();
       this._preWarmLocalTranscriptionServer();
 
       const constraints = await this.getAudioConstraints();
@@ -1963,7 +1969,7 @@ class AudioManager {
             "audio"
           );
 
-          await this.processLongSessionAudio({ durationSeconds });
+          await this.processLongSessionAudio({ durationSeconds, smartContextCapture });
           return;
         }
 
@@ -1979,7 +1985,7 @@ class AudioManager {
           "audio"
         );
 
-        await this.processAudio(audioBlob, { durationSeconds, speechLevel });
+        await this.processAudio(audioBlob, { durationSeconds, speechLevel, smartContextCapture });
       };
 
       // Flush long dictations into periodic chunks. Without a timeslice, Electron
@@ -2357,13 +2363,16 @@ class AudioManager {
     }
   }
 
-  async processLongSessionAudio({ durationSeconds } = {}) {
+  async processLongSessionAudio({ durationSeconds, smartContextCapture = null } = {}) {
     const pipelineStart = performance.now();
     const processingGeneration = ++this.processingGeneration;
 
     try {
       await this.stopLongSessionSegmentCapture();
-      const result = await this.finalizeLongSessionResult(durationSeconds);
+      const result = await this.finalizeLongSessionResult(durationSeconds, {
+        processingGeneration,
+        smartContextCapture,
+      });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
         return;
@@ -2507,7 +2516,7 @@ class AudioManager {
           });
 
       // Captured since the recording started; see startSmartContextCapture.
-      const smartContextPromise = this.readSmartContext();
+      const smartContextPromise = this.readSmartContext(metadata?.smartContextCapture);
 
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
@@ -2660,7 +2669,7 @@ class AudioManager {
         }
 
         const reasoningStart = performance.now();
-        const text = await this.processTranscription(result.text, "local");
+        const text = await this.processTranscription(result.text, "local", metadata);
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
 
         if (text !== null && text !== undefined) {
@@ -2798,7 +2807,7 @@ class AudioManager {
     }
 
     const reasoningStart = performance.now();
-    const text = await this.processTranscription(result.text, "local-parakeet");
+    const text = await this.processTranscription(result.text, "local-parakeet", metadata);
     timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
 
     if (text === null || text === undefined) {
@@ -2927,6 +2936,17 @@ class AudioManager {
     const sizeOf = (entry) =>
       Number.isFinite(entry.size_bytes) ? entry.size_bytes : Number.POSITIVE_INFINITY;
     return [...downloaded].sort((left, right) => sizeOf(left) - sizeOf(right))[0].model;
+  }
+
+  /**
+   * True when the dictation this metadata belongs to was cancelled, or a
+   * newer one replaced it. Only a dictation's own processing number counts:
+   * an uploaded file carries the Transcribe page's job id, which that page
+   * cancels itself.
+   */
+  isDictationCancelled(metadata = {}) {
+    const generation = metadata?.processingGeneration;
+    return Number.isInteger(generation) && !this.isCurrentProcessingGeneration(generation);
   }
 
   isTranscriptionRequestCancelled(metadata = {}) {
@@ -3238,7 +3258,14 @@ class AudioManager {
     }
   }
 
-  async processTranscription(text, source) {
+  /**
+   * @param {string} text
+   * @param {string} source
+   * @param {{ processingGeneration?: number | string, smartContextCapture?: object | null }} [metadata]
+   *   The recording's own metadata: its processing number, so a cancelled
+   *   recording never reaches the AI model, and its Smart Context capture.
+   */
+  async processTranscription(text, source, metadata = {}) {
     const rawInputText = typeof text === "string" ? text.trim() : "";
     const withDictionary = this.applyDictionaryReplacements(rawInputText);
     const normalizedText = normalizePunctuationSpacing(withDictionary);
@@ -3311,6 +3338,15 @@ class AudioManager {
 
     if (useReasoning) {
       try {
+        const smartContext = await this.readSmartContext(metadata?.smartContextCapture);
+
+        // A cancelled recording's text is thrown away by its caller. It must
+        // not reach the AI model on the way, with or without context.
+        if (this.isDictationCancelled(metadata)) {
+          logger.logReasoning("REASONING_SKIPPED", { reason: "Recording was cancelled" });
+          return normalizedText;
+        }
+
         logger.logReasoning("SENDING_TO_REASONING", {
           preparedTextLength: normalizedText.length,
           model: reasoningModel,
@@ -3328,7 +3364,7 @@ class AudioManager {
             preferredLanguage,
             writingStyle:
               localStorage.getItem("enhancementWritingStyle") === "coding" ? "coding" : "clean",
-            smartContext: await this.readSmartContext(),
+            smartContext,
             longSession: source === "long-session",
           }
         );
@@ -3811,7 +3847,7 @@ class AudioManager {
         }
 
         const reasoningStart = performance.now();
-        const text = await this.processTranscription(result.text, "openai");
+        const text = await this.processTranscription(result.text, "openai", metadata);
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
 
         const source = (await this.isReasoningAvailable()) ? "openai-reasoned" : "openai";
@@ -3908,7 +3944,7 @@ class AudioManager {
               };
             }
 
-            const text = await this.processTranscription(result.text, "local-fallback");
+            const text = await this.processTranscription(result.text, "local-fallback", metadata);
             if (text) {
               return {
                 success: true,
