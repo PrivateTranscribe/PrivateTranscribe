@@ -60,10 +60,18 @@ const SOURCE_FILE_EXTENSION =
   /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|kts|cs|swift|c|cc|cpp|h|hpp|php|vue|svelte|dart|scala)$/i;
 
 /**
+ * Words that, right after "Secret" or "Credential" in a source file's
+ * camelCase name, make it code about secrets rather than a file of them.
+ * Words such as Key, Config, Settings or Values are left out on purpose.
+ */
+const CODE_ROLE_AFTER_SECRET_WORD =
+  /^s?(?:Manager|Provider|Panel|Service|Dialog|View|Form|Page|Screen|Modal|Button|Input|Field|List|Card|Section|Handler|Helper|Validator|Scanner|Detector|Redactor|Client|Reader|Loader|Picker|Editor)(?![a-z])/;
+
+/**
  * Returns true when "credential" or "secret" in the name names the file's
- * contents. In source code named in camelCase, where the word is followed
- * by a capitalised word, as in secretManager.ts or CredentialsPanel.tsx, it
- * names code about secrets instead. Every other use counts: secrets.ts,
+ * contents. In a source file where the word is followed by a word naming
+ * code, as in secretManager.ts or CredentialsPanel.tsx, it names code about
+ * secrets instead. Every other use counts: secrets.ts, secretKey.ts,
  * aws-credentials.ts, client_secret.json, secretManager.json.
  *
  * @param {string} name
@@ -73,7 +81,7 @@ function namesSecrets(name) {
   const source = SOURCE_FILE_EXTENSION.test(name);
   for (const match of name.matchAll(/credential|secret/gi)) {
     const rest = name.slice(match.index + match[0].length);
-    if (!source || !/^s?[A-Z][a-z]/.test(rest)) return true;
+    if (!source || !CODE_ROLE_AFTER_SECRET_WORD.test(rest)) return true;
   }
   return false;
 }

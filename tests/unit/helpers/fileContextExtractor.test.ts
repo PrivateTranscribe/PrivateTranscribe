@@ -70,6 +70,9 @@ describe("credentials files", () => {
     "aws-credentials.ts",
     "local_secrets.py",
     "secretManager.json",
+    "secretKey.ts",
+    "secretConfig.ts",
+    "credentialsLocal.ts",
   ])("reads nothing from %s", (name) => {
     const fsMod = {
       statSync: () => ({ size: 10 }),

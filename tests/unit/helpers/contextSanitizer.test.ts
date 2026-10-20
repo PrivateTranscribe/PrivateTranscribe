@@ -375,6 +375,27 @@ describe("sanitizeContextText (real implementation)", () => {
       ["a typed name with a default", 'password: str = "hunter2"', "password: [REDACTED]"],
       ["a value that starts with a type word", "password: null,abc", "password: [REDACTED]"],
       ["a camelCase name ending in Pass", "dbPass: hunter2", "dbPass: [REDACTED]"],
+      ["a password name after a word ending in pass", "COMPASSWORD=x", "COMPASSWORD=[REDACTED]"],
+      [
+        "an XML element holding CDATA",
+        "<password><![CDATA[hunter2]]></password>",
+        "<password>[REDACTED]</password>",
+      ],
+      [
+        "an XML element holding a child element",
+        "<password><value>hunter2</value></password>",
+        "<password><value>[REDACTED]</value></password>",
+      ],
+      [
+        "a Spring property with a value element",
+        '<property name="password">\n  <value>hunter2</value>\n</property>',
+        '<property name="password">\n  <value>[REDACTED]</value>\n</property>',
+      ],
+      [
+        "a .NET setting",
+        '<setting name="Password" serializeAs="String"><value>hunter2</value></setting>',
+        '<setting name="Password" serializeAs="String"><value>[REDACTED]</value></setting>',
+      ],
     ])("redacts the value of %s", (_name, input, expected) => {
       expect(sanitizeContextText(input)).toBe(expected);
     });
@@ -446,6 +467,11 @@ describe("sanitizeContextText (real implementation)", () => {
       ["repeated name arguments", megabyteOf("('token',")],
       ["repeated login calls", megabyteOf("login(a,")],
       ["repeated login names", megabyteOf("login")],
+      ["a run of dollar signs and letters", megabyteOf("$a")],
+      ["repeated name attributes with no tag", megabyteOf('name="token" ')],
+      ["one tag with many name attributes", `<a ${megabyteOf('name="token" ')}/>`],
+      ["repeated tags with no value element", megabyteOf('<a name="token">')],
+      ["repeated CDATA starts", megabyteOf("<password><![CDATA[")],
       ["repeated token prefixes", megabyteOf("glpat-")],
       ["repeated webhook prefixes", megabyteOf("https://hooks.slack.com/services/")],
       ["one long run of letters", megabyteOf("a")],

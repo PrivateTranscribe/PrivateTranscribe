@@ -15,7 +15,7 @@
 // Ocp-Apim-Subscription-Key, and the password labels of Danish, Norwegian,
 // Swedish, German and French screens. Words that only end in "pass", such as
 // BYPASS and COMPASS, are not secret names.
-const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|(?<!BY|COM|SUR|TRES|OVER|UNDER)PASS(?:W(?:OR)?D|WORT|ORD)?|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
+const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D|WORT|ORD)|(?<!BY|COM|SUR|TRES|OVER|UNDER)PASS|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
 // ":", "=" or ":=" after a name. "==", "=>" and "::" are code, not
 // assignments.
 const ASSIGNMENT = String.raw`(?::=|[:=](?![=>:]))`;
@@ -25,6 +25,15 @@ const ASSIGNMENT = String.raw`(?::=|[:=](?![=>:]))`;
 // a long value does not grow the regex engine's backtracking stack one entry
 // per character: alternating per character overflowed it at 10 MB.
 const QUOTED_VALUE = String.raw`"[^"\\\n]*(?:\\.[^"\\\n]*)*"?|'[^'\\\n]*(?:\\.[^'\\\n]*)*'?`;
+// The text of an XML element: a CDATA section up to its "]]>" or the end of
+// the text, or plain text up to the next tag or the end of the line.
+const XML_TEXT = String.raw`<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|[^<\s][^<\n\r]*`;
+// A name="..." attribute that holds a secret name, as in
+// <property name="password">.
+const SECRET_NAME_ATTRIBUTE = new RegExp(
+  String.raw`(?<![\w:.-])name[ \t]*=[ \t]*(["'])${SECRET_NAME}\1`,
+  "i"
+);
 // A type annotation in place of a value: "token: string;", "apiKey: string |
 // null", "f(token: string, secret: Buffer)", "password: str" at the end of a
 // line. It counts only when what follows the type is what code puts there:
@@ -73,17 +82,31 @@ const DEFAULT_REDACTION_PATTERNS = [
     ),
     replacement: "$1[REDACTED]",
   },
-  // XML elements and attributes: <password>x</password>, and the .NET and
-  // Spring <add key="ApiKey" value="x"/>, <property name="password"
-  // value="x"/>. An element's value ends at the next tag or the end of its
-  // line. A self-closing element holds no value and is left alone.
+  // XML elements and attributes: <password>x</password>, the same with the
+  // value in a CDATA section or one child element (<password><value>x),
+  // and the .NET and Spring <add key="ApiKey" value="x"/>,
+  // <property name="password" value="x"/> and
+  // <setting name="Password"><value>x</value>. An element's text ends at the
+  // next tag or the end of its line, a CDATA section at its "]]>". A
+  // self-closing element holds no value and is left alone.
   {
     name: "secretElement",
     regex: new RegExp(
-      String.raw`(<(?:[A-Z0-9_.-]+:)?${SECRET_NAME}(?:\s[^<>]*)?(?<!\/)>\s*)([^<\s][^<\n\r]*)`,
+      String.raw`(<(?:[A-Z0-9_.-]+:)?${SECRET_NAME}(?:\s[^<>]*)?(?<!\/)>\s*(?:<(?![\/!])(?:[A-Z0-9_.-]+:)?[A-Z0-9_.-]+(?:\s[^<>]*)?(?<!\/)>\s*)?)(${XML_TEXT})`,
       "gi"
     ),
     replacement: "$1[REDACTED]",
+  },
+  // The secret name is checked in the tag's attributes after the match, so
+  // a match starts only at "<" and each tag is scanned once.
+  {
+    name: "secretNamedValueElement",
+    regex: new RegExp(
+      String.raw`(<[\w:.-]+([^<>]*)>\s*<value(?:\s[^<>]*)?>\s*)(${XML_TEXT})`,
+      "gi"
+    ),
+    replacement: (match, head, attributes) =>
+      SECRET_NAME_ATTRIBUTE.test(attributes) ? `${head}[REDACTED]` : match,
   },
   {
     name: "secretAttribute",
@@ -136,7 +159,7 @@ const DEFAULT_REDACTION_PATTERNS = [
   {
     name: "loginCallPassword",
     regex: new RegExp(
-      String.raw`(\b[\w$]*(?:log_?in|sign_?in|authenticate)[ \t]*\([ \t]*(?:"[^"\\\n]*(?:\\.[^"\\\n]*)*"|'[^'\\\n]*(?:\\.[^'\\\n]*)*'|[\w.$]+)[ \t]*,[ \t]*)(${QUOTED_VALUE})`,
+      String.raw`((?<![\w$])[\w$]*(?:log_?in|sign_?in|authenticate)[ \t]*\([ \t]*(?:"[^"\\\n]*(?:\\.[^"\\\n]*)*"|'[^'\\\n]*(?:\\.[^'\\\n]*)*'|[\w.$]+)[ \t]*,[ \t]*)(${QUOTED_VALUE})`,
       "gi"
     ),
     replacement: "$1[REDACTED]",
