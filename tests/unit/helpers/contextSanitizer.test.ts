@@ -261,6 +261,51 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("time on long text", () => {
+    // Before the patterns were bounded, 64 KB of "a.a.a." took about 2.5 s and
+    // grew with the square of the length. Each now finishes in tens of ms.
+    it.each([
+      ["a run of short words joined by dots", "a.".repeat(64 * 1024)],
+      ["a run of short words joined by hyphens", "a-".repeat(64 * 1024)],
+      ["many URLs run together", "http://a".repeat(16 * 1024)],
+      ["many schemes run together", "s://a:b".repeat(18 * 1024)],
+    ])("redacts %s in well under a second", (_shape, input) => {
+      const started = performance.now();
+      sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+
+    it("still redacts ordinary addresses and URLs", () => {
+      expect(
+        sanitizeContextText("Mail first.last+tag@mail.example.co.uk about https://ex.com/a?b=1")
+      ).toBe("Mail [REDACTED_EMAIL] about https://ex.com/a?[REDACTED_QUERY]");
+    });
+
+    it("redacts the query of a URL with a very long path", () => {
+      const url = `https://ex.com/${"seg/".repeat(1000)}`;
+      expect(sanitizeContextText(`${url}?token=abc123 next`, { maxChars: 10000 })).toBe(
+        `${url}?[REDACTED_QUERY] next`
+      );
+      expect(sanitizeContextText(`${url}#access_token=abc123`, { maxChars: 10000 })).toBe(
+        `${url}#[REDACTED_FRAGMENT]`
+      );
+    });
+
+    it("redacts all of an address with a long local part", () => {
+      const local = Array.from({ length: 12 }, (_, i) => `part${i}`).join(".");
+      expect(sanitizeContextText(`To ${local}@example.com today`)).toBe(
+        "To [REDACTED_EMAIL] today"
+      );
+    });
+
+    it("redacts credentials behind a long scheme", () => {
+      const scheme = `db${"+driver".repeat(6)}`;
+      expect(sanitizeContextText(`${scheme}://admin:hunter2@db.local/app`)).toBe(
+        `${scheme}://admin:[REDACTED]@db.local/app`
+      );
+    });
+  });
+
   describe("truncation", () => {
     it("truncates text exceeding maxChars", () => {
       const input = "z".repeat(5000);

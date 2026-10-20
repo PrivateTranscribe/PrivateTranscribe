@@ -229,22 +229,26 @@ const DEFAULT_REDACTION_PATTERNS = [
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
   // Emails (can appear in window titles, docs, tickets, etc.)
+  // The lookbehind lets a match start only where a run of address characters
+  // starts. With \b it could start at every "." of a run like "a.a.a.", and
+  // each start rescanned the rest of the run.
   {
     name: "email",
-    regex: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+    regex: /(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
     replacement: "[REDACTED_EMAIL]",
   },
-  // URLs with query strings (query params often contain tokens/ids/search terms)
+  // URLs with query strings (query params often contain tokens/ids/search
+  // terms) or fragments (OAuth implicit flow tokens sometimes appear after #).
+  // Every URL is matched, with or without a "?" or "#", so the scan moves past
+  // it. Requiring the "?" made a URL without one fail and get rescanned from
+  // each later "http" in it.
   {
-    name: "urlQuery",
-    regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)\?([^\s'"\n\r]+)/gi,
-    replacement: "$1?[REDACTED_QUERY]",
-  },
-  // URLs with fragments (OAuth implicit flow tokens sometimes appear after #)
-  {
-    name: "urlFragment",
-    regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)#([^\s'"\n\r]+)/gi,
-    replacement: "$1#[REDACTED_FRAGMENT]",
+    name: "urlQueryOrFragment",
+    regex: /(https?:\/\/[\w\-._~%!$&'()*+,;=:@/]+)(?:([?#])([^\s'"\n\r]*))?/gi,
+    replacement: (match, url, mark, tail) => {
+      if (!mark || !tail) return match;
+      return `${url}${mark}${mark === "?" ? "[REDACTED_QUERY]" : "[REDACTED_FRAGMENT]"}`;
+    },
   },
   // Long base64-ish strings wrapped in quotes (often API keys / tokens in JSON)
   {
@@ -308,8 +312,9 @@ function redactUrlCredentials(text) {
   if (typeof text !== "string" || !text) return "";
 
   // Redact `scheme://user:pass@host` style credentials. Common in database URLs,
-  // cloud service DSNs, and dev configs.
-  const urlCredsRegex = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s\/:@]+):([^\s@\/]+)@/gi;
+  // cloud service DSNs, and dev configs. The scheme starts only where a run of
+  // scheme characters starts, for the same reason as the email pattern.
+  const urlCredsRegex = /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)([^\s\/:@]+):([^\s@\/]+)@/gi;
 
   return text.replace(urlCredsRegex, "$1$2:[REDACTED]@");
 }
@@ -318,7 +323,7 @@ function redactUrlCredentials(text) {
  * @param {string} text
  * @param {{
  *   maxChars?: number,
- *   redactionPatterns?: Array<{name?: string, regex: RegExp, replacement: string}>
+ *   redactionPatterns?: Array<{name?: string, regex: RegExp, replacement: string | Function}>
  * }} [options]
  */
 function sanitizeContextText(text, options = {}) {
@@ -334,7 +339,11 @@ function sanitizeContextText(text, options = {}) {
   output = redactUrlCredentials(output);
 
   for (const pattern of patterns) {
-    if (!pattern || !(pattern.regex instanceof RegExp) || typeof pattern.replacement !== "string") {
+    const replacementType = typeof pattern?.replacement;
+    if (
+      !(pattern?.regex instanceof RegExp) ||
+      (replacementType !== "string" && replacementType !== "function")
+    ) {
       continue;
     }
     output = output.replace(pattern.regex, pattern.replacement);
