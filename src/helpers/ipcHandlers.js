@@ -11,7 +11,7 @@ const { requestAppReset } = require("./appReset");
 const debugLogger = require("./debugLogger");
 const { isOfficialBuild } = require("./officialBuild");
 const { getSystemPrompt } = require("./prompts");
-const { getAnthropicMaxTokens, readAnthropicText } = require("./anthropicReasoning");
+const { buildAnthropicRequestBody, readAnthropicText } = require("./anthropicReasoning");
 const GnomeShortcutManager = require("./gnomeShortcut");
 const HardwareDetector = require("./hardwareDetector");
 const ReadAloudHotkey = require("./readAloudHotkey");
@@ -2418,13 +2418,12 @@ class IPCHandlers {
             throw new Error("No model specified for Anthropic API call");
           }
 
-          const requestBody = {
-            model: modelId,
-            messages: [{ role: "user", content: userPrompt }],
-            system: systemPrompt,
-            max_tokens: getAnthropicMaxTokens(text, config),
-            temperature: config?.temperature || 0.3,
-          };
+          const requestBody = buildAnthropicRequestBody({
+            text: userPrompt,
+            modelId,
+            systemPrompt,
+            config,
+          });
 
           const requestTimeout = createIpcRequestTimeout(config?.timeoutMs);
           let response;
