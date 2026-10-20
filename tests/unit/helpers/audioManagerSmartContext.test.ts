@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { localStorageMock } from "../../setup";
 
 vi.mock("../../../src/services/ReasoningService", () => ({
@@ -94,11 +94,12 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     const manager = new AudioManager();
     vi.spyOn(manager, "processTranscription").mockResolvedValue("hello world");
 
+    manager.startSmartContextCapture();
     const result = await manager.processWithLocalWhisper(makeBlob(), "base");
 
     expect(result.success).toBe(true);
     expect(mockedGetContext).toHaveBeenCalledWith({
-      timeoutMs: 300,
+      timeoutMs: 3500,
       includeFileIdentifiers: true,
     });
 
@@ -133,6 +134,7 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     const manager = new AudioManager();
     vi.spyOn(manager, "processTranscription").mockResolvedValue("hej verden");
 
+    manager.startSmartContextCapture();
     await manager.processWithLocalWhisper(makeBlob(), "large");
 
     const [, options] = (window as any).electronAPI.transcribeLocalWhisper.mock.calls[0];
@@ -238,12 +240,13 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
       arrayBuffer: vi.fn(() => audioBuffer.promise),
     };
 
+    manager.startSmartContextCapture();
     const pendingResult = manager.processWithLocalWhisper(audioBlob, "base");
     await Promise.resolve();
 
     expect(getCorrectionMemory).toHaveBeenCalledWith(200);
     expect(mockedGetContext).toHaveBeenCalledWith({
-      timeoutMs: 300,
+      timeoutMs: 3500,
       includeFileIdentifiers: true,
     });
     expect(audioBlob.arrayBuffer).toHaveBeenCalledTimes(1);
@@ -266,5 +269,160 @@ describe("AudioManager Smart Context whisper prompt assembly", () => {
     });
     expect((window as any).electronAPI.transcribeLocalWhisper).toHaveBeenCalledTimes(1);
     expect(manager._cachedCorrectionHints).toEqual(["PrivateTranscribe"]);
+  });
+});
+
+const EDITOR_CONTEXT = {
+  available: true,
+  source: "ipc",
+  platform: "win32",
+  processName: "Code",
+  windowTitle: "App.jsx - privoca - Visual Studio Code",
+};
+
+class MockMediaRecorder {
+  state = "inactive";
+  mimeType = "audio/webm";
+  ondataavailable: ((event: { data: Blob }) => void) | null = null;
+  onstop: (() => void | Promise<void>) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
+  start = vi.fn(() => {
+    this.state = "recording";
+  });
+  stop = vi.fn(() => {
+    this.state = "inactive";
+  });
+  requestData = vi.fn();
+}
+
+/**
+ * The window read takes about 0.85 s, longer than any wait the paste can
+ * afford. It starts with the recording, so every engine's cleanup gets it.
+ */
+describe("AudioManager Smart Context capture timing", () => {
+  const makeStream = () => ({
+    active: true,
+    getAudioTracks: () => [
+      {
+        label: "Microphone",
+        getSettings: () => ({ deviceId: "default", sampleRate: 48000, channelCount: 1 }),
+        stop: vi.fn(),
+        readyState: "live",
+      },
+    ],
+    getTracks: () => [{ stop: vi.fn(), readyState: "live" }],
+  });
+
+  beforeEach(() => {
+    (globalThis as any).localStorage = localStorageMock;
+    (globalThis as any).MediaRecorder = MockMediaRecorder;
+    localStorageMock.clear();
+    localStorageMock.setItem("reasoningModel", "gpt-5-mini");
+    Object.defineProperty(globalThis, "navigator", {
+      value: {
+        mediaDevices: {
+          enumerateDevices: vi.fn().mockResolvedValue([]),
+          getUserMedia: vi.fn().mockResolvedValue(makeStream()),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        },
+      },
+      writable: true,
+      configurable: true,
+    });
+    (globalThis.window as any).electronAPI = {};
+    mockedGetContext.mockReset();
+    mockedIsSmartContextEnabled.mockReturnValue(true);
+    mockedIsFileIdentifiersEnabled.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A manager whose AI cleanup is stubbed, so a test can read the config it got. */
+  function makeManager() {
+    const manager: any = new AudioManager();
+    manager.onError = vi.fn();
+    vi.spyOn(manager, "isReasoningAvailable").mockResolvedValue(true);
+    const cleanup = vi.spyOn(manager, "processWithReasoningModel").mockResolvedValue("Hello.");
+    return { manager, cleanup };
+  }
+
+  it("starts reading the window when the recording starts", async () => {
+    mockedGetContext.mockResolvedValue(EDITOR_CONTEXT as any);
+    const { manager } = makeManager();
+
+    await expect(manager.startRecording()).resolves.toBe(true);
+    await Promise.resolve();
+
+    expect(mockedGetContext).toHaveBeenCalledTimes(1);
+    expect(mockedGetContext).toHaveBeenCalledWith({
+      timeoutMs: 3500,
+      includeFileIdentifiers: false,
+    });
+  });
+
+  it.each(["local-parakeet", "openai"])(
+    "gives %s cleanup the window read at the start, though it took 850 ms",
+    async (source) => {
+      vi.useFakeTimers();
+      mockedGetContext.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(EDITOR_CONTEXT as any), 850))
+      );
+      const { manager, cleanup } = makeManager();
+
+      await manager.startRecording();
+      await vi.advanceTimersByTimeAsync(2000); // the user speaks
+      await expect(manager.processTranscription("hello", source)).resolves.toBe("Hello.");
+
+      expect(cleanup).toHaveBeenCalledTimes(1);
+      expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: EDITOR_CONTEXT });
+    }
+  );
+
+  it("waits at most 300 ms for a read that has not finished", async () => {
+    vi.useFakeTimers();
+    mockedGetContext.mockReturnValue(new Promise(() => {}) as any);
+    const { manager, cleanup } = makeManager();
+
+    await manager.startRecording();
+    const cleaned = manager.processTranscription("hello", "local-parakeet");
+    await vi.advanceTimersByTimeAsync(299);
+    expect(cleanup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(cleaned).resolves.toBe("Hello.");
+
+    expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: null });
+  });
+
+  it("never hands one recording's window to the next", async () => {
+    mockedGetContext.mockResolvedValue(EDITOR_CONTEXT as any);
+    const { manager, cleanup } = makeManager();
+
+    await manager.startRecording();
+    await manager.processTranscription("first", "local-parakeet");
+    // Let the recorder go, as the end of a dictation does.
+    manager.releaseMediaRecorder();
+    manager.isRecording = false;
+    manager.isProcessing = false;
+
+    mockedIsSmartContextEnabled.mockReturnValue(false);
+    await expect(manager.startRecording()).resolves.toBe(true);
+    await manager.processTranscription("second", "local-parakeet");
+
+    expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: EDITOR_CONTEXT });
+    expect(cleanup.mock.calls[1][3]).toMatchObject({ smartContext: null });
+  });
+
+  it("reads no window when Smart Context is off", async () => {
+    mockedIsSmartContextEnabled.mockReturnValue(false);
+    const { manager, cleanup } = makeManager();
+
+    await manager.startRecording();
+    await manager.processTranscription("hello", "local-parakeet");
+
+    expect(mockedGetContext).not.toHaveBeenCalled();
+    expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: null });
   });
 });

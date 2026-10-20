@@ -39,6 +39,14 @@ const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
 const RECORDER_FINAL_DATA_GRACE_MS = 250;
 const MIN_DICTATION_DURATION_MS = 500;
+// Smart Context reads the window being dictated into with two PowerShell
+// queries, about 0.85 s warm and more cold. It starts with the recording so it
+// is done before the transcript needs it. The worker running it gives up at
+// 3 s, so this only has to outlast that.
+const SMART_CONTEXT_CAPTURE_TIMEOUT_MS = 3500;
+// How long a finished recording waits for a capture still running, as after a
+// very short dictation. The paste is never held longer than this for context.
+const SMART_CONTEXT_LATE_WAIT_MS = 300;
 // Past this, a dictation is transcribed in segments while the speaker is still
 // talking, so stopping leaves only the last segment to wait for. At 60 s the
 // wait after stop on CPU large-v3-turbo fell from 17-36 s to 5-9 s for
@@ -315,7 +323,7 @@ class AudioManager {
     this.processingGeneration = 0;
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
-    this._cachedSmartContext = null;
+    this._smartContextCapture = null;
     this._checkBetaFeatureAccess = null;
     this._deviceChangeHandler = null;
 
@@ -500,6 +508,63 @@ class AudioManager {
       }
     } catch {
       // ignore
+    }
+  }
+
+  /**
+   * Start reading the window the user is about to dictate into. Runs as the
+   * recording starts, so the read overlaps the speech instead of the paste.
+   * Each recording replaces the last one's capture, so context never carries
+   * over from an earlier window.
+   */
+  startSmartContextCapture() {
+    if (!isSmartContextEnabled()) {
+      this._smartContextCapture = null;
+      return;
+    }
+
+    const capture = { done: false, context: null, promise: null };
+    capture.promise = Promise.resolve()
+      .then(() =>
+        getContext({
+          timeoutMs: SMART_CONTEXT_CAPTURE_TIMEOUT_MS,
+          includeFileIdentifiers: isFileIdentifiersEnabled(),
+        })
+      )
+      .catch(() => null)
+      .then((context) => {
+        capture.done = true;
+        capture.context = context ?? null;
+        return capture.context;
+      });
+    this._smartContextCapture = capture;
+  }
+
+  /**
+   * The context captured for the current recording, or null. A capture still
+   * running gets SMART_CONTEXT_LATE_WAIT_MS before the recording goes on
+   * without it.
+   */
+  async readSmartContext() {
+    const capture = this._smartContextCapture;
+    if (!capture) return null;
+    if (capture.done) return capture.context;
+
+    let timer = null;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        logger.debug(
+          "Smart Context still capturing; continuing without it",
+          { waitedMs: SMART_CONTEXT_LATE_WAIT_MS },
+          "transcription"
+        );
+        resolve(null);
+      }, SMART_CONTEXT_LATE_WAIT_MS);
+    });
+    try {
+      return await Promise.race([capture.promise, late]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -1775,6 +1840,7 @@ class AudioManager {
       this.pendingCancelAfterStart = false;
       this.discardCurrentRecording = false;
 
+      this.startSmartContextCapture();
       this._preWarmLocalTranscriptionServer();
 
       const constraints = await this.getAudioConstraints();
@@ -2440,12 +2506,8 @@ class AudioManager {
             this._cachedCorrectionHints = [];
           });
 
-      const smartContextPromise = isSmartContextEnabled()
-        ? getContext({
-            timeoutMs: 300,
-            includeFileIdentifiers: isFileIdentifiersEnabled(),
-          })
-        : Promise.resolve(null);
+      // Captured since the recording started; see startSmartContextCapture.
+      const smartContextPromise = this.readSmartContext();
 
       // Send original audio to main process - FFmpeg in main process handles conversion
       // (renderer-side AudioContext conversion was unreliable with WebM/Opus format)
@@ -2460,7 +2522,6 @@ class AudioManager {
       if (!correctionMemoryEnabled) {
         this._cachedCorrectionHints = [];
       }
-      this._cachedSmartContext = smartContext;
 
       const arrayBuffer = toIpcSafeArrayBuffer(rawArrayBuffer);
       const rawLanguage = this.getTranscriptionSetting("preferredLanguage", "");
@@ -2530,8 +2591,8 @@ class AudioManager {
       // Skip when translating — English-biased hints confuse whisper's translation mode.
       if (!options.translate) {
         const dictionaryPrompt = this.getCustomDictionaryPrompt();
-        const contextHint = buildWhisperContextHint(this._cachedSmartContext);
-        const fileIdHint = buildFileIdentifierHint(this._cachedSmartContext?.fileIdentifiers);
+        const contextHint = buildWhisperContextHint(smartContext);
+        const fileIdHint = buildFileIdentifierHint(smartContext?.fileIdentifiers);
         const promptParts = [dictionaryPrompt, contextHint, fileIdHint].filter(Boolean);
         if (promptParts.length > 0) {
           options.initialPrompt = promptParts.join(". ");
@@ -3267,7 +3328,7 @@ class AudioManager {
             preferredLanguage,
             writingStyle:
               localStorage.getItem("enhancementWritingStyle") === "coding" ? "coding" : "clean",
-            smartContext: this._cachedSmartContext ?? null,
+            smartContext: await this.readSmartContext(),
             longSession: source === "long-session",
           }
         );
