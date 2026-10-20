@@ -11,6 +11,7 @@ const {
 } = require("./src/helpers/autoStartLoginItemSettings");
 const {
   readAutoStartRegistryState,
+  findOtherRunValueOwner,
   registryAutoStartEnabled,
 } = require("./src/helpers/windowsAutoStartRegistry");
 const { ensureStartMenuShortcut } = require("./src/helpers/startMenuShortcut");
@@ -458,8 +459,20 @@ async function startApp() {
       // been set up before, even if our marker file was lost (reinstall, data reset).
       const existingApproval = readAutoStartState().approval;
 
+      // Another copy of the app that still owns our Run value keeps it: a test build or a
+      // second install must not take login away from the copy the user actually starts.
+      // The machine already starts PrivateTranscribe at login, so the default counts as done.
+      const otherRunValueOwner =
+        process.platform === "win32" && existingApproval === null
+          ? findOtherRunValueOwner({ execPath: process.execPath, valueName: APP_ID })
+          : null;
+
       let defaultApplied = true;
-      if (existingApproval === null) {
+      if (otherRunValueOwner) {
+        debugLogger.debug("Skipping first-run auto-start default: another copy owns login", {
+          owner: otherRunValueOwner,
+        });
+      } else if (existingApproval === null) {
         app.setLoginItemSettings(
           buildAutoStartSetOptions({
             enabled: true,

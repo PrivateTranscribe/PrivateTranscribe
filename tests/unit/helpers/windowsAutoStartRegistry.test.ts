@@ -10,6 +10,7 @@ const {
   extractExecutable,
   isApprovedBinary,
   readAutoStartRegistryState,
+  findOtherRunValueOwner,
   registryAutoStartEnabled,
 } = require("../../../src/helpers/windowsAutoStartRegistry");
 
@@ -243,6 +244,72 @@ describe("readAutoStartRegistryState", () => {
 
   it("returns null without an execPath rather than guessing", () => {
     expect(readAutoStartRegistryState({ execPath: "" })).toBeNull();
+  });
+});
+
+describe("findOtherRunValueOwner", () => {
+  const NAME = "com.privatetranscribe.app";
+  const TEST_BUILD = "C:\tmp\pt-pack-speakers\win-unpacked\PrivateTranscribe.exe";
+  const reader =
+    (run: string[], approved: string[] | Error = []) =>
+    (key: string): string => {
+      if (key === RUN_KEY) return exportOf(RUN_KEY, run);
+      if (key === APPROVED_KEY) {
+        if (approved instanceof Error) throw approved;
+        return exportOf(APPROVED_KEY, approved);
+      }
+      return "";
+    };
+  const owner = (
+    readKey: (key: string) => string,
+    exists: (file: string) => boolean = () => true
+  ) => findOtherRunValueOwner({ execPath: TEST_BUILD, valueName: NAME, readKey, exists });
+
+  // The 2026-10-19 case: a packaged test build with a fresh profile found the installed
+  // app in the Run value and wrote its own path over it.
+  it("names the installed app when a test build would replace its Run value", () => {
+    const readKey = reader([runEntry(NAME, `"${EXE}" --launch-at-login --startup-mode=tray`)]);
+
+    expect(owner(readKey, (file) => file === EXE)).toBe(EXE);
+  });
+
+  it("keeps a copy the user disabled in Task Manager, even once its folder is gone", () => {
+    const readKey = reader(
+      [runEntry(NAME, `"${EXE}" --launch-at-login`)],
+      [`"${NAME}"=hex:03,00,00,00,00,00,00,00,00,00,00,00`]
+    );
+
+    expect(owner(readKey, () => false)).toBe(EXE);
+  });
+
+  it("frees a value whose copy was deleted and never disabled", () => {
+    const enabled = reader(
+      [runEntry(NAME, `"${EXE}" --launch-at-login`)],
+      [`"${NAME}"=hex:02,00,00,00,00,00,00,00,00,00,00,00`]
+    );
+    const neverTouched = reader([runEntry(NAME, `"${EXE}"`)], new Error("missing"));
+
+    expect(owner(enabled, () => false)).toBeNull();
+    expect(owner(neverTouched, () => false)).toBeNull();
+  });
+
+  it("frees the value when it already points at this build, whatever the casing", () => {
+    const readKey = reader([runEntry(NAME, `"${TEST_BUILD.toUpperCase()}" --launch-at-login`)]);
+
+    expect(owner(readKey)).toBeNull();
+  });
+
+  it("ignores other apps' values and an empty Run key", () => {
+    expect(owner(reader([runEntry("EADM", `"${EXE}" -silent`)]))).toBeNull();
+    expect(owner(reader([]))).toBeNull();
+  });
+
+  it("returns null when the registry cannot be read, leaving the usual fallback", () => {
+    const readKey = () => {
+      throw new Error("ERROR: The system was unable to find the specified registry key");
+    };
+
+    expect(owner(readKey)).toBeNull();
   });
 });
 

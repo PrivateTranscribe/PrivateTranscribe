@@ -39,7 +39,18 @@ describe("auto-start respects the Windows Task Manager state", () => {
     const source = read("main.js");
 
     expect(source).toContain("getAutoStartApprovalState");
-    expect(source).toContain("if (existingApproval === null) {");
+    expect(source).toContain("} else if (existingApproval === null) {");
+  });
+
+  // Every copy of the app writes the same Run value name. A packaged test build started
+  // with a fresh profile took login away from the installed app on 2026-10-19.
+  it("keeps the first-run default off another copy's Run value", () => {
+    const source = read("main.js");
+
+    expect(source).toContain(
+      "findOtherRunValueOwner({ execPath: process.execPath, valueName: APP_ID })"
+    );
+    expect(source).toMatch(/let defaultApplied = true;\s*if \(otherRunValueOwner\) \{/);
   });
 
   // Dev runs launch node_modules/electron/dist/electron.exe against the checkout. Letting
