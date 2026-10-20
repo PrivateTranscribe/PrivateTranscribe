@@ -139,18 +139,27 @@ export function isKnownEditorProcess(processName) {
 /**
  * Common window title patterns for extracting the active filename.
  *
- * VS Code default:  "filename.ext — rootName — Visual Studio Code"
+ * VS Code default:  "filename.ext — rootName — Visual Studio Code" (" - " on Windows)
  * Sublime / Atom:   "filename.ext - AppName"
  * JetBrains IDEs:   "filename.ext [project] - AppName"
  */
 const FILENAME_TITLE_PATTERNS = [
   // VS Code em-dash separator (most common)
   /^([\w][\w. -]*\.\w+)\s*[—–]/,
-  // Regular hyphen separator (Sublime Text, Atom, etc.)
-  /^([\w][\w. -]*\.\w+)\s+-\s+\w/,
+  // Regular hyphen separator (Sublime Text, Atom, VS Code on Windows). Lazy, so
+  // "App.jsx - my.site - Visual Studio Code" stops at the first name.
+  /^([\w][\w. -]*?\.\w+)\s+-\s+\w/,
   // JetBrains square bracket style
   /^([\w][\w. -]*\.\w+)\s+\[/,
 ];
+
+/**
+ * What a title shows after the filename when it names the project folder.
+ *
+ * VS Code family:  " — rootName — Visual Studio Code" (or " - ")
+ * JetBrains IDEs:  " [project] - AppName"
+ */
+const FOLDER_TITLE_PATTERNS = [/^\s*[—–-]\s+(.+?)\s+[—–-]\s+\S/, /^\s*\[([^\]]+)\]/];
 
 /**
  * Parse a filename from a window title string.
@@ -172,7 +181,34 @@ export function parseFilenameFromTitle(windowTitle) {
   return null;
 }
 
+/**
+ * Parse the project folder a window title names beside the file.
+ *
+ * Only a file inside that folder is read, since the filename alone matches
+ * every project's index.js. A title without one, as Notepad's
+ * "notes.txt - Notepad", returns null and no file is read.
+ *
+ * @example
+ * parseFolderFromTitle("App.jsx - privoca - Visual Studio Code")
+ * // → "privoca"
+ *
+ * @param {string|null|undefined} windowTitle
+ * @returns {string|null}
+ */
+export function parseFolderFromTitle(windowTitle) {
+  const filename = parseFilenameFromTitle(windowTitle);
+  if (!filename) return null;
+  const rest = windowTitle.trim().slice(filename.length);
+  for (const pattern of FOLDER_TITLE_PATTERNS) {
+    const match = pattern.exec(rest);
+    if (match) return match[1].trim() || null;
+  }
+  return null;
+}
+
 // ─── File identifier extraction ───────────────────────────────────────────────
+
+const NO_FOLDER_REASON = "window title names no project folder";
 
 /**
  * Extract source-code identifiers from the active file (opt-in, local only).
@@ -204,6 +240,10 @@ export async function extractFileIdentifiers(windowTitle, processName, options =
   if (!filename) {
     return { available: false, reason: "no filename found in window title" };
   }
+  const folder = parseFolderFromTitle(windowTitle);
+  if (!folder) {
+    return { available: false, reason: NO_FOLDER_REASON };
+  }
 
   try {
     const ipcFn = window?.electronAPI?.extractFileIdentifiers;
@@ -211,7 +251,7 @@ export async function extractFileIdentifiers(windowTitle, processName, options =
       return { available: false, reason: "IPC not available" };
     }
 
-    const ipcPromise = ipcFn(filename).then((result) => {
+    const ipcPromise = ipcFn(filename, { folder }).then((result) => {
       if (!result) return { available: false, reason: "no result from IPC" };
       if (result.blocked) return { available: false, reason: result.reason };
       return {
@@ -246,6 +286,10 @@ export async function extractFileContent(windowTitle, processName, options = {})
   if (!filename) {
     return { available: false, reason: "no filename found in window title" };
   }
+  const folder = parseFolderFromTitle(windowTitle);
+  if (!folder) {
+    return { available: false, reason: NO_FOLDER_REASON };
+  }
 
   try {
     const ipcFn = window?.electronAPI?.extractFileContext;
@@ -253,7 +297,7 @@ export async function extractFileContent(windowTitle, processName, options = {})
       return { available: false, reason: "IPC not available" };
     }
 
-    const ipcPromise = ipcFn(filename, { maxChars }).then((result) => {
+    const ipcPromise = ipcFn(filename, { maxChars, folder }).then((result) => {
       if (!result) return { available: false, reason: "no result from IPC" };
       if (result.blocked) return { available: false, reason: result.reason };
       if (!result.excerpt)

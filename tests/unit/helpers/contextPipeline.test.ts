@@ -21,6 +21,7 @@ import {
   extractFileIdentifiers,
   isKnownEditorProcess,
   parseFilenameFromTitle,
+  parseFolderFromTitle,
 } from "../../../src/helpers/contextPipeline";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,6 +213,29 @@ describe("parseFilenameFromTitle", () => {
   it("handles filenames with dots", () => {
     expect(parseFilenameFromTitle("my.config.ts — project — VS Code")).toBe("my.config.ts");
   });
+
+  it("stops at the first name in a Windows VS Code title whose folder has a dot", () => {
+    expect(parseFilenameFromTitle("App.jsx - my.site - Visual Studio Code")).toBe("App.jsx");
+  });
+});
+
+describe("parseFolderFromTitle", () => {
+  it.each([
+    ["App.jsx — privoca — Visual Studio Code", "privoca"],
+    ["App.jsx - privoca - Visual Studio Code", "privoca"],
+    ["App.jsx - my.site - Visual Studio Code", "my.site"],
+    ["App.jsx - privoca - Work - Cursor", "privoca"],
+    ["index.py [myproject] - PyCharm", "myproject"],
+  ])("takes the project folder from %j", (title, folder) => {
+    expect(parseFolderFromTitle(title)).toBe(folder);
+  });
+
+  it.each(["notes.txt - Notepad", "main.ts - Sublime Text", "Google Chrome", "", null])(
+    "returns null when %j names no folder",
+    (title) => {
+      expect(parseFolderFromTitle(title)).toBeNull();
+    }
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -529,18 +553,18 @@ describe("extractFileIdentifiers", () => {
       localStorage: { getItem: vi.fn(() => null) },
     });
 
-    const result = await extractFileIdentifiers("App.jsx — VS Code — privoca", "Code");
+    const result = await extractFileIdentifiers("App.jsx — privoca — Visual Studio Code", "Code");
     expect(result.available).toBe(true);
     expect(result.identifiers).toContain("getContext");
     expect(result.filename).toBe("App.jsx");
-    // Verify the IPC was called with just the filename, not the full title
+    // Verify the IPC was called with the filename and folder, not the full title
     const mockFn = (globalThis.window as any).electronAPI.extractFileIdentifiers;
-    expect(mockFn).toHaveBeenCalledWith("App.jsx");
+    expect(mockFn).toHaveBeenCalledWith("App.jsx", { folder: "privoca" });
   });
 
   it("returns unavailable when IPC not available", async () => {
     globalThis.window = makeWindow({ electronAPI: undefined });
-    const result = await extractFileIdentifiers("App.jsx — VS Code", "Code");
+    const result = await extractFileIdentifiers("App.jsx — privoca — Visual Studio Code", "Code");
     expect(result.available).toBe(false);
     expect(result.reason).toContain("IPC not available");
   });
@@ -558,7 +582,7 @@ describe("extractFileIdentifiers", () => {
       localStorage: { getItem: vi.fn(() => null) },
     });
 
-    const result = await extractFileIdentifiers("App.jsx — VS Code", "Code");
+    const result = await extractFileIdentifiers("App.jsx — privoca — Visual Studio Code", "Code");
     expect(result.available).toBe(false);
     expect(result.reason).toBe("outside home dir");
   });
@@ -575,7 +599,9 @@ describe("extractFileIdentifiers", () => {
       localStorage: { getItem: vi.fn(() => null) },
     });
 
-    const resultPromise = extractFileIdentifiers("App.jsx — VS Code", "Code", { timeoutMs: 50 });
+    const resultPromise = extractFileIdentifiers("App.jsx — privoca — Visual Studio Code", "Code", {
+      timeoutMs: 50,
+    });
     vi.advanceTimersByTime(100);
     const result = await resultPromise;
 
@@ -665,19 +691,31 @@ describe("Smart Context file reads", () => {
     return electronAPI;
   }
 
-  it.each([
-    ["VS Code", "Code", VS_CODE_TITLE, "App.jsx"],
-    ["Notepad", "notepad.exe", NOTEPAD_TITLE, "notes.txt"],
-  ])("takes the filename from a %s title", async (_editor, processName, title, filename) => {
+  it("asks for the file and its project folder from a VS Code title", async () => {
     const ipc = stubFileIpc();
 
-    const identifiers = await extractFileIdentifiers(title, processName);
-    const content = await extractFileContent(title, processName);
+    const identifiers = await extractFileIdentifiers(VS_CODE_TITLE, "Code");
+    const content = await extractFileContent(VS_CODE_TITLE, "Code");
 
-    expect(identifiers).toMatchObject({ available: true, filename });
-    expect(content).toMatchObject({ available: true, filename, excerpt: "run();" });
-    expect(ipc.extractFileIdentifiers).toHaveBeenCalledWith(filename);
-    expect(ipc.extractFileContext).toHaveBeenCalledWith(filename, { maxChars: 4000 });
+    expect(identifiers).toMatchObject({ available: true, filename: "App.jsx" });
+    expect(content).toMatchObject({ available: true, filename: "App.jsx", excerpt: "run();" });
+    expect(ipc.extractFileIdentifiers).toHaveBeenCalledWith("App.jsx", { folder: "privoca" });
+    expect(ipc.extractFileContext).toHaveBeenCalledWith("App.jsx", {
+      maxChars: 4000,
+      folder: "privoca",
+    });
+  });
+
+  it("asks for no file when the title names no project folder, as Notepad's", async () => {
+    // Every folder can hold a notes.txt. Without the folder there is no telling
+    // which one is open, so none is read.
+    const ipc = stubFileIpc();
+    const noFolder = { available: false, reason: "window title names no project folder" };
+
+    expect(await extractFileIdentifiers(NOTEPAD_TITLE, "notepad.exe")).toEqual(noFolder);
+    expect(await extractFileContent(NOTEPAD_TITLE, "notepad.exe")).toEqual(noFolder);
+    expect(ipc.extractFileIdentifiers).not.toHaveBeenCalled();
+    expect(ipc.extractFileContext).not.toHaveBeenCalled();
   });
 
   it.each(["chrome.exe", "msedge.exe", "firefox.exe", "WindowsTerminal.exe", "unknown-app.exe"])(
@@ -733,7 +771,7 @@ describe("Smart Context file reads", () => {
       const ctx = await getContext();
 
       expect(ctx.fileIdentifiers).toMatchObject({ available: true, filename: "App.jsx" });
-      expect(ipc.extractFileIdentifiers).toHaveBeenCalledWith("App.jsx");
+      expect(ipc.extractFileIdentifiers).toHaveBeenCalledWith("App.jsx", { folder: "privoca" });
     });
 
     it("reads nothing when a browser shows the same title", async () => {

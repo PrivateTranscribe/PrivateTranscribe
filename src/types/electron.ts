@@ -660,11 +660,15 @@ declare global {
       // Context capture (best-effort; returns {available:false} if unsupported)
       getActiveWindowContext: () => Promise<ActiveWindowContextResult>;
       // File identifier extraction for Smart Context (opt-in, local only)
-      extractFileIdentifiers: (filename: string) => Promise<FileIdentifiersResult>;
+      // `folder` is the project folder the editor's title names; only a file inside it is read.
+      extractFileIdentifiers: (
+        filename: string,
+        options?: { folder?: string }
+      ) => Promise<FileIdentifiersResult>;
       // File content extraction for LLM Context Enhancement (opt-in, local only)
       extractFileContext: (
         filename: string,
-        options?: { maxChars?: number }
+        options?: { maxChars?: number; folder?: string }
       ) => Promise<{
         blocked?: boolean;
         reason?: string;
