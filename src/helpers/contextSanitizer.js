@@ -222,10 +222,14 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/g,
     replacement: "[REDACTED_SLACK_TOKEN]",
   },
-  // PEM private key blocks
+  // PEM and PGP private key blocks. A block with no END line, as in a read
+  // cut off at a length, is redacted to the end of the text. Once a label's
+  // "PRIVATE KEY" is found the match never goes back for an earlier one, so
+  // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once.
   {
     name: "privateKeyBlock",
-    regex: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    regex:
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
   // Emails (can appear in window titles, docs, tickets, etc.)

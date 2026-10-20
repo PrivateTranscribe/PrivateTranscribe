@@ -261,6 +261,44 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("private key blocks", () => {
+    // Assembled at runtime so no line in this file reads as a key.
+    const line = (...words: string[]) => `-----${words.join(" ")}-----`;
+    const body = Array.from({ length: 8 }, () => "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC").join("\n");
+
+    it("redacts a whole block and keeps the text after it", () => {
+      const input = `key:\n${line("BEGIN", "RSA", "PRIVATE", "KEY")}\n${body}\n${line("END", "RSA", "PRIVATE", "KEY")}\nnext`;
+      expect(sanitizeContextText(input)).toBe("key:\n[REDACTED_PRIVATE_KEY]\nnext");
+    });
+
+    it("redacts a PGP private key block", () => {
+      const input = `${line("BEGIN", "PGP", "PRIVATE", "KEY", "BLOCK")}\n${body}\n${line("END", "PGP", "PRIVATE", "KEY", "BLOCK")}\nnext`;
+      expect(sanitizeContextText(input)).toBe("[REDACTED_PRIVATE_KEY]\nnext");
+    });
+
+    it("redacts to the end of the text when the END line is cut off", () => {
+      // A focused field is read 512 characters at a time.
+      const input = `ssh key ${line("BEGIN", "OPENSSH", "PRIVATE", "KEY")}\n${body}`.slice(0, 200);
+      expect(sanitizeContextText(input)).toBe("ssh key [REDACTED_PRIVATE_KEY]");
+    });
+
+    const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
+
+    it.each([
+      ["repeated BEGIN lines", megabyteOf(`${line("BEGIN", "PRIVATE", "KEY")}\n`)],
+      ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
+      [
+        "an END label repeating PRIVATE KEY",
+        `${line("BEGIN", "PRIVATE", "KEY")}\n-----END ${megabyteOf("PRIVATE KEY ")}`,
+      ],
+    ])("redacts 1 MB of %s in well under a second", (_shape, input) => {
+      const started = performance.now();
+      const output = sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(output).not.toContain("BEGIN");
+    });
+  });
+
   describe("time on long text", () => {
     // Before the patterns were bounded, 64 KB of "a.a.a." took about 2.5 s and
     // grew with the square of the length. Each now finishes in tens of ms.
