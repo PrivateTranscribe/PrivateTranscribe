@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.24.0 - 2026-10-20
+
+### Added
+
+- While Read Aloud speaks, the round overlay button shows bars that move with the voice, the same way it shows your voice while you dictate. The bars rest while a read is paused, and the button goes back to the logo when the read stops.
+
+### Changed
+
+- On PCs with 3 or 4 cores and no hyper-threading, Parakeet leaves one core free. One busy background program no longer slows a dictation down as much. In our tests it made Parakeet 1.6 to 1.9 times slower before, and now at most about a third slower.
+
+### Fixed
+
+- Speaker labels work in the installed app. In 0.23.0 they failed every time.
+- If speaker labels fail, the Transcribe page keeps the transcript and shows it without speaker names, with a note that says why. Before, the whole transcript was lost.
+- Local Whisper works when your Windows user folder has letters such as ø or æ in its name, or letters from another alphabet such as Greek or Chinese.
+- Converse no longer freezes the whole app when an answer contains a numbered or lettered list.
+- Reset app data deletes your saved API keys, history, settings and logs. It restarts the app to finish the job and lists anything it could not delete. It removes only this app's own folders, never a linked folder or the Whisper models other programs keep. Before, it reported success while some of your data stayed on disk.
+- Dictation records from the Windows default microphone while the microphone you picked is unplugged, as the microphone picker says, instead of stopping with an error. With no microphone at all, the error says no microphone was found.
+- Every key the hotkey picker offers works, including the arrow keys, Enter, Print Screen, the number pad and media keys, alone or with modifiers. Before, such a hotkey could be saved but never started dictation.
+- Hotkeys made only of modifiers, such as Ctrl+Shift, start dictation with the left or right keys, pressed in any order. They start once the keys are held alone for a moment, so another shortcut such as Ctrl+Shift+T, a mouse click or drag with the keys held, or typing with AltGr does not trigger them.
+- After Ctrl+Alt+Del, a Windows permission prompt or locking the PC, a key you let go of there no longer counts as held, so a hotkey no longer fires on the wrong keys.
+- Parakeet and speaker label models download and install when your user folder name uses letters from another alphabet, such as Greek or Chinese.
+- Auto-start can be turned off when your user folder has letters such as ø in its name. The switch shows its real state, and changing it no longer reports a false security software error.
+- Changing the dictation language, Translate to English or the custom transcription address applies to your next dictation, without a restart.
+- Converse no longer repeats a sentence after a pause, such as while the agent runs a tool, and no longer stays on speaking after the last sentence.
+- Converse and Agent mode use your own Claude Code sign-in and setup, such as Bedrock or a gateway, the way Claude Code does in a terminal. The Anthropic API key saved in the app is no longer used for them.
+- The suggested local Ollama address can be saved as a custom AI endpoint, and an endpoint that needs no API key works without one. Custom addresses accept plain http on this PC and https for any host, and a refused address shows why under the field.
+- You can type an address into the custom transcription Endpoint URL field. Before, only a pasted address was kept.
+- Local AI cleanup loads its model once with room for any dictation. A long dictation no longer makes the model load again, and the memory it reserves stays small.
+- The Read Aloud word highlight hides when another window covers the app being read, and comes back with that app.
+
+### Security
+
+- API keys saved in the app stay inside the app. Programs it starts, such as Claude Code in Converse and the commands it runs, do not receive them. A key you set in Windows yourself is no longer replaced by the saved one.
+- With the custom AI endpoint selected, dictation text goes only to that endpoint, whatever the model is called. With custom transcription selected, audio goes only to the address you entered. If the address cannot be used, the app stops with the reason and sends nothing to another provider.
+- Temporary dictation audio always stays in your own Windows temp folder, also when its path has a space or letters such as ø. At startup the app deletes audio that older versions left in a shared folder.
+- The whisper.cpp and llama.cpp engines in the installer come from fixed versions that are checked against a SHA-256 fingerprint when the app is built. The push-to-talk key listener is built only from the app's own source code.
+
 ## 0.23.0 - 2026-10-17
 
 ### Changed
