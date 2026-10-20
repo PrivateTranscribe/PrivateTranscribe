@@ -51,6 +51,19 @@ describe("beta feature gates fail closed", () => {
     localStorageMock.setItem("reasoningModel", "claude-code");
     await expect(manager.isReasoningAvailable()).resolves.toBe(false);
   });
+  it("checks availability again when the custom endpoint is chosen", async () => {
+    const manager: any = new AudioManager();
+    manager._checkBetaFeatureAccess = () => true;
+    localStorageMock.setItem("useReasoningModel", "true");
+    localStorageMock.setItem("reasoningProvider", "openai");
+    localStorageMock.setItem("reasoningModel", "qwen3:8b");
+    vi.mocked(ReasoningService.isAvailable)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    await expect(manager.isReasoningAvailable()).resolves.toBe(false);
+    localStorageMock.setItem("reasoningProvider", "custom");
+    await expect(manager.isReasoningAvailable()).resolves.toBe(true);
+  });
   beforeEach(() => {
     (globalThis as any).localStorage = localStorageMock;
     localStorageMock.clear();
