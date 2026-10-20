@@ -318,3 +318,28 @@ describe("a new dictation right after Escape", () => {
     await muter.release();
   });
 });
+
+describe("a forced key-up for an old helper", () => {
+  it("is skipped when a newer dictation holds the same key", async () => {
+    const { muter, helpers, keyUps } = makeMuter();
+    // The first helper hangs: it never confirms and ignores its release.
+    const first = muter.hold("F13");
+    await tick();
+    helpers[0].ignoreRelease = true;
+
+    // It gives up on the first helper after 200 ms, then waits 200 ms more
+    // for it to exit before the kill. The next dictation starts in between.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const second = muter.hold("F13");
+    await waitForHelpers(helpers, 2);
+    helpers[1].printHeld();
+    await expect(second).resolves.toBe(true);
+
+    await expect(first).resolves.toBe(false);
+    expect(helpers[0].killed).toBe(true);
+    expect(keyUps).toEqual([]);
+    expect(muter.isMuted()).toBe(true);
+    expect(helpers[1].pressed).toBe(true);
+    await muter.release();
+  });
+});

@@ -368,6 +368,15 @@ class VoiceMuter {
       this._clearMarker(session.markerId);
       return;
     }
+    if (this._newerHoldOwns(session)) {
+      // A later dictation holds the same key now. A key-up would unmute its
+      // call mid-dictation, and its own release sends one at the end anyway.
+      debugLogger.debug("voiceMuter: skipped key-up, a newer hold owns the key", {
+        key: session.key,
+      });
+      this._clearMarker(session.markerId);
+      return;
+    }
     debugLogger.warn("voiceMuter: helper ended without its key-up, sending it", {
       key: session.key,
       code,
@@ -376,6 +385,12 @@ class VoiceMuter {
       this._clearMarker(session.markerId);
     }
     // Otherwise the marker stays for the next start to try again.
+  }
+
+  _newerHoldOwns(session) {
+    const holding = this._session && this._session !== session ? this._session : null;
+    const starting = this.pending && this.pending !== session ? this.pending : null;
+    return [holding, starting].some((other) => other && other.key === session.key);
   }
 
   _writeMarker(key) {
@@ -472,7 +487,9 @@ class VoiceMuter {
       // start would trip over it again.
     }
     const key = typeof marker?.key === "string" ? marker.key : null;
-    const cleared = key ? await this.clearStuckKey(key) : false;
+    // Same rule as after a kill: never release a key a dictation holds now.
+    const ownedNow = key && this._newerHoldOwns({ key });
+    const cleared = key && !ownedNow ? await this.clearStuckKey(key) : false;
     // A dictation that started meanwhile has written its own marker.
     if (this._markerId === null) {
       try {
