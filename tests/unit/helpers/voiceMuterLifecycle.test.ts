@@ -404,3 +404,42 @@ describe("a dictation that starts while a quick tap's helper lets go", () => {
     await muter.release();
   });
 });
+
+describe("a stop for a dictation still waiting to press", () => {
+  it("cancels it when two quick taps both end before the first helper is up", async () => {
+    const { muter, helpers } = makeMuter();
+    const first = muter.hold("F13");
+    await tick();
+    const releaseFirst = muter.release();
+    // The second dictation starts and ends while the first helper starts.
+    const second = muter.hold("F13");
+    const releaseSecond = muter.release();
+    helpers[0].printHeld();
+
+    await expect(first).resolves.toBe(true);
+    await expect(releaseFirst).resolves.toBe(true);
+    await expect(releaseSecond).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(helpers).toHaveLength(1);
+    expect(muter.isMuted()).toBe(false);
+  });
+
+  it("cancels it when it ends while the last helper is still letting go", async () => {
+    const { muter, helpers } = makeMuter();
+    const first = muter.hold("F13");
+    helpers[0].printHeld();
+    await first;
+
+    helpers[0].exitDelayMs = 30;
+    const releaseFirst = muter.release();
+    const second = muter.hold("F13");
+    await expect(muter.release()).resolves.toBe(true);
+
+    await releaseFirst;
+    await expect(second).resolves.toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(helpers).toHaveLength(1);
+    expect(muter.isMuted()).toBe(false);
+  });
+});

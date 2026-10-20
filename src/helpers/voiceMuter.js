@@ -153,6 +153,8 @@ class VoiceMuter {
     this._session = null;
     // The previous helper's release, while it is still letting go.
     this._releasing = null;
+    // A hold waiting for _releasing or a releasing pending hold to finish.
+    this._waitingHold = null;
     this._spawn = spawnHelper;
     this._resolveExecutable = resolveExecutable;
     this._heldTimeoutMs = heldTimeoutMs;
@@ -196,14 +198,12 @@ class VoiceMuter {
       if (!this.pending.releaseRequested) {
         return this.pending.result;
       }
-      await this.pending.result;
-      return this.hold(key, maxHoldMs);
+      return this._holdAfter(this.pending.result, key, maxHoldMs);
     }
     if (this._releasing) {
       // The last helper is still letting go. A press started now could land
       // before its key-up and be cancelled by it.
-      await this._releasing;
-      return this.hold(key, maxHoldMs);
+      return this._holdAfter(this._releasing, key, maxHoldMs);
     }
 
     const executable = this._resolveExecutable();
@@ -256,6 +256,26 @@ class VoiceMuter {
     this.pending = session;
     session.result = this._confirmHold(session);
     return session.result;
+  }
+
+  /**
+   * Waits for `busy`, then holds. The wait is registered, so a release() that
+   * arrives meanwhile cancels the hold. Missing it pressed a key nobody would
+   * release, which held the call muted for the helper's 10-minute limit.
+   */
+  async _holdAfter(busy, key, maxHoldMs) {
+    const ticket = { cancelled: false };
+    this._waitingHold = ticket;
+    await busy;
+    if (this._waitingHold === ticket) {
+      this._waitingHold = null;
+    }
+    if (ticket.cancelled) {
+      // Counted as a mute that already ended, as for a quick tap, so no
+      // warning says the call heard the dictation.
+      return true;
+    }
+    return this.hold(key, maxHoldMs);
   }
 
   async _confirmHold(session) {
@@ -324,6 +344,14 @@ class VoiceMuter {
    * 10-minute limit.
    */
   async release() {
+    if (this._waitingHold) {
+      // A hold still waiting for the last helper. It has pressed nothing yet,
+      // so cancelling it is the whole release.
+      this._waitingHold.cancelled = true;
+      this._waitingHold = null;
+      return true;
+    }
+
     const pending = this.pending;
     if (!this.process && pending) {
       pending.releaseRequested = true;
