@@ -268,7 +268,7 @@ class VoiceMuter {
     if (!held) {
       // The helper may still press late, so it is asked to let go before
       // anything harder is tried.
-      await this._finishHelper(session);
+      await this._letGo(session);
       debugLogger.warn("voiceMuter: helper did not confirm the key was held", { key });
       return false;
     }
@@ -278,7 +278,7 @@ class VoiceMuter {
       // release line is already waiting on its stdin, so it lets go as soon as
       // it reads it. Wait for that, then report the mute as done: the key did
       // go down, and false would warn that the call heard the dictation.
-      await this._finishHelper(session);
+      await this._letGo(session);
       debugLogger.debug("voiceMuter: released mute key straight after the hold", { key });
       return true;
     }
@@ -344,6 +344,14 @@ class VoiceMuter {
     this._session = null;
     clearTimeout(session.safetyTimer);
 
+    await this._letGo(session);
+
+    debugLogger.debug("voiceMuter: released mute key", { key });
+    return true;
+  }
+
+  /** _finishHelper, published as _releasing so a new hold waits for it. */
+  async _letGo(session) {
     const finishing = this._finishHelper(session);
     this._releasing = finishing;
     try {
@@ -353,9 +361,6 @@ class VoiceMuter {
         this._releasing = null;
       }
     }
-
-    debugLogger.debug("voiceMuter: released mute key", { key });
-    return true;
   }
 
   /**

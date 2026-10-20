@@ -338,7 +338,7 @@ describe("a new dictation right after Escape", () => {
 });
 
 describe("a forced key-up for an old helper", () => {
-  it("is skipped when a newer dictation holds the same key", async () => {
+  it("goes out before the next dictation presses, never after", async () => {
     const { muter, helpers, keyUps } = makeMuter();
     // The first helper hangs: it never confirms and ignores its release.
     const first = muter.hold("F13");
@@ -346,18 +346,61 @@ describe("a forced key-up for an old helper", () => {
     helpers[0].ignoreRelease = true;
 
     // It gives up on the first helper after 200 ms, then waits 200 ms more
-    // for it to exit before the kill. The next dictation starts in between.
+    // for it to exit before the kill. The next dictation starts in between
+    // and waits for that kill and its key-up.
     await new Promise((resolve) => setTimeout(resolve, 250));
     const second = muter.hold("F13");
     await waitForHelpers(helpers, 2);
-    helpers[1].printHeld();
-    await expect(second).resolves.toBe(true);
-
-    await expect(first).resolves.toBe(false);
     expect(helpers[0].killed).toBe(true);
-    expect(keyUps).toEqual([]);
+    expect(keyUps).toEqual(["F13"]);
+
+    helpers[1].printHeld();
+    await expect(first).resolves.toBe(false);
+    await expect(second).resolves.toBe(true);
+    expect(keyUps).toEqual(["F13"]);
     expect(muter.isMuted()).toBe(true);
-    expect(helpers[1].pressed).toBe(true);
+    await muter.release();
+  });
+
+  it("is skipped at startup when a dictation already holds the same key", async () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), "pt-voice-mute-"));
+    try {
+      const { muter, helpers, keyUps } = makeMuter(userData);
+      const holding = muter.hold("F13");
+      helpers[0].printHeld();
+      await holding;
+
+      // The startup recovery runs late and finds this dictation's marker.
+      await expect(muter.recoverStuckKey()).resolves.toBe(false);
+      expect(keyUps).toEqual([]);
+      expect(muter.isMuted()).toBe(true);
+      expect(fs.existsSync(path.join(userData, HELD_MARKER_FILE_NAME))).toBe(true);
+      await muter.release();
+    } finally {
+      fs.rmSync(userData, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a dictation that starts while a quick tap's helper lets go", () => {
+  it("waits for that helper before pressing", async () => {
+    const { muter, helpers } = makeMuter();
+    const first = muter.hold("F13");
+    await tick();
+    const releasing = muter.release();
+    helpers[0].exitDelayMs = 30;
+    helpers[0].printHeld();
+    // The quick tap's hold has resolved its "held" but is still letting go.
+    await tick();
+    const second = muter.hold("F13");
+    await waitForHelpers(helpers, 2);
+    expect(helpers[0].exitCode).toBe(0);
+
+    helpers[1].printHeld();
+    await expect(first).resolves.toBe(true);
+    await releasing;
+    await expect(second).resolves.toBe(true);
+    expect(muter.isMuted()).toBe(true);
     await muter.release();
   });
 });
