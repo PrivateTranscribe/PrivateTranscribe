@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 /**
  * The hold and release timing of the voice-call mute, against a fake helper.
@@ -8,7 +11,7 @@ import { describe, expect, it } from "vitest";
  */
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { VoiceMuter } = require("../../../src/helpers/voiceMuter");
+const { VoiceMuter, HELD_MARKER_FILE_NAME } = require("../../../src/helpers/voiceMuter");
 
 /**
  * Behaves like windows-hold-key.exe: the key goes down, "held" is printed,
@@ -25,6 +28,7 @@ class FakeHelper extends EventEmitter {
   private lines: string[] = [];
   private stdinClosed = false;
   stdin = Object.assign(new EventEmitter(), {
+    writableEnded: false,
     write: (text: string) => {
       if (this.exitCode !== null) throw new Error("EPIPE");
       this.lines.push(...text.split("\n").filter(Boolean));
@@ -32,6 +36,7 @@ class FakeHelper extends EventEmitter {
       return true;
     },
     end: () => {
+      this.stdin.writableEnded = true;
       this.stdinClosed = true;
       this.drain();
     },
@@ -50,9 +55,11 @@ class FakeHelper extends EventEmitter {
   }
 
   kill() {
-    if (this.exitCode !== null) return;
+    if (this.exitCode !== null || this.killed) return;
     this.killed = true;
-    this.exit(1);
+    // Node reports a killed child with no exit code.
+    this.exitCode = -1;
+    setImmediate(() => this.emit("close", null));
   }
 
   private drain() {
@@ -63,16 +70,35 @@ class FakeHelper extends EventEmitter {
     }
   }
 
-  private exit(code: number) {
+  /** The helper dies on its own, without its key-up. */
+  crash() {
+    this.exit(1);
+  }
+
+  private exit(code: number | null) {
     this.exitCode = code;
     setImmediate(() => this.emit("close", code));
   }
 }
 
-function makeMuter() {
+/** --release-only: sends the key-up for --key and exits 0. */
+class FakeReleaseOnly extends EventEmitter {
+  constructor(public key: string) {
+    super();
+    setImmediate(() => this.emit("close", 0));
+  }
+}
+
+function makeMuter(userDataPath?: string) {
   const helpers: FakeHelper[] = [];
+  const keyUps: string[] = [];
   const muter = new VoiceMuter({
     spawn: (_exe: string, args: string[]) => {
+      if (args.includes("--release-only")) {
+        const key = args.find((arg) => arg.startsWith("--key="))!.slice(6);
+        keyUps.push(key);
+        return new FakeReleaseOnly(key);
+      }
       const helper = new FakeHelper(args);
       helpers.push(helper);
       return helper;
@@ -82,7 +108,8 @@ function makeMuter() {
     releaseTimeoutMs: 200,
   });
   muter.isSupported = true;
-  return { muter, helpers };
+  if (userDataPath) muter.configure({ userDataPath });
+  return { muter, helpers, keyUps };
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -131,5 +158,103 @@ describe("a quick tap", () => {
     await expect(second).resolves.toBe(true);
     expect(helpers).toHaveLength(1);
     await muter.release();
+  });
+});
+
+describe("a helper that ends without its key-up", () => {
+  it("sends the key-up after a kill instead of leaving the key down", async () => {
+    const { muter, helpers, keyUps } = makeMuter();
+    const holding = muter.hold("Ctrl+Shift+M");
+    helpers[0].printHeld();
+    await holding;
+
+    helpers[0].ignoreRelease = true;
+    await muter.release();
+
+    expect(helpers[0].killed).toBe(true);
+    expect(keyUps).toEqual(["Ctrl+Shift+M"]);
+  });
+
+  it("asks a helper that never confirmed to let go before killing it", async () => {
+    const { muter, helpers, keyUps } = makeMuter();
+    const holding = muter.hold("F13");
+    await tick();
+    // Pressed late, after the hold gave up waiting.
+    setTimeout(() => helpers[0].printHeld(), 250);
+
+    await expect(holding).resolves.toBe(false);
+    expect(helpers[0].everPressed).toBe(true);
+    expect(helpers[0].pressed).toBe(false);
+    expect(helpers[0].killed).toBe(false);
+    expect(keyUps).toEqual([]);
+  });
+
+  it("sends the key-up when the helper crashes mid-hold", async () => {
+    const { muter, helpers, keyUps } = makeMuter();
+    const holding = muter.hold("F13");
+    helpers[0].printHeld();
+    await holding;
+
+    helpers[0].crash();
+    await tick();
+    await tick();
+
+    expect(muter.isMuted()).toBe(false);
+    expect(keyUps).toEqual(["F13"]);
+  });
+});
+
+describe("the held-key marker", () => {
+  let userData: string;
+  let marker: string;
+
+  beforeEach(() => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), "pt-voice-mute-"));
+    marker = path.join(userData, HELD_MARKER_FILE_NAME);
+  });
+
+  afterEach(() => {
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  it("is on disk while the key is held and gone after a clean release", async () => {
+    const { muter, helpers } = makeMuter(userData);
+    const holding = muter.hold("F13");
+    expect(JSON.parse(fs.readFileSync(marker, "utf8")).key).toBe("F13");
+
+    helpers[0].printHeld();
+    await holding;
+    expect(fs.existsSync(marker)).toBe(true);
+
+    await muter.release();
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it("lets the next start release the key a killed run left down", async () => {
+    // The last run's helper was killed outright, so its marker survived.
+    const lastRun = makeMuter(userData);
+    const holding = lastRun.muter.hold("Ctrl+Shift+M");
+    lastRun.helpers[0].printHeld();
+    await holding;
+    expect(fs.existsSync(marker)).toBe(true);
+
+    const nextStart = makeMuter(userData);
+    await expect(nextStart.muter.recoverStuckKey()).resolves.toBe(true);
+    expect(nextStart.keyUps).toEqual(["Ctrl+Shift+M"]);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it("deletes an unreadable marker instead of tripping over it every start", async () => {
+    fs.writeFileSync(marker, "{not json");
+    const { muter, keyUps } = makeMuter(userData);
+    await expect(muter.recoverStuckKey()).resolves.toBe(false);
+    expect(keyUps).toEqual([]);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it("does nothing at startup when the last run ended cleanly", async () => {
+    const { muter, keyUps } = makeMuter(userData);
+    await expect(muter.recoverStuckKey()).resolves.toBe(false);
+    expect(keyUps).toEqual([]);
   });
 });

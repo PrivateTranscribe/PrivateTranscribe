@@ -586,13 +586,14 @@ async function startApp() {
 
     // Clear a mute key a previous crash may have left logically held. A helper
     // killed outright never runs its own release, and a stuck modifier would
-    // corrupt every keystroke the user types. Sending the key-up half for a key
-    // that is already up is harmless.
+    // corrupt every keystroke the user types. The muter keeps a marker in
+    // userData for as long as a key may be down, and this sends the key-up for
+    // the key a leftover marker names.
     try {
-      const lastMuteKey = process.env.PRIVATETRANSCRIBE_VOICE_MUTE_KEY || null;
-      if (lastMuteKey) {
-        voiceMuter.clearStuckKey(lastMuteKey);
-      }
+      voiceMuter.configure({ userDataPath: app.getPath("userData") });
+      voiceMuter.recoverStuckKey().catch((err) => {
+        debugLogger.debug("voice mute cleanup failed", { error: err.message });
+      });
     } catch (err) {
       debugLogger.debug("voice mute cleanup skipped", { error: err.message });
     }
