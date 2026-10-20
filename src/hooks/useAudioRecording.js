@@ -130,6 +130,13 @@ export const useAudioRecording = (toast, options = {}) => {
    * cancelProcessing live out here and have to be able to clear the flag.
    */
   const clearAgentSessionRef = useRef(null);
+  /**
+   * Puts back what the start of a recording changed: the ducked volume, paused
+   * media and a muted voice call. cancelRecording lives out here and a
+   * discarded recording never reaches onTranscriptionComplete, so without this
+   * Escape left the call muted until the helper's own timeout.
+   */
+  const endSessionAudioRef = useRef(null);
 
   useEffect(() => {
     toastRef.current = toast;
@@ -263,6 +270,12 @@ export const useAudioRecording = (toast, options = {}) => {
       if (!voiceMuteRequested) return;
       voiceMuteRequested = false;
       window.electronAPI?.voiceMuteStop?.();
+    };
+
+    const endSessionAudio = () => {
+      restoreAudio();
+      resumeMedia();
+      unmuteVoiceCall();
     };
 
     // ── Audio feedback helper ─────────────────────────────────────────────────
@@ -1043,6 +1056,7 @@ export const useAudioRecording = (toast, options = {}) => {
 
     recordingFlowRef.current = { begin: beginRecordingFlow, end: endRecordingFlow };
     clearAgentSessionRef.current = () => setAgentSession(false);
+    endSessionAudioRef.current = endSessionAudio;
 
     // Cleanup
     return () => {
@@ -1050,6 +1064,7 @@ export const useAudioRecording = (toast, options = {}) => {
       clearColdStartTimer();
       recordingFlowRef.current = null;
       clearAgentSessionRef.current = null;
+      endSessionAudioRef.current = null;
       disposeToggle?.();
       disposeStart?.();
       disposeStop?.();
@@ -1093,8 +1108,14 @@ export const useAudioRecording = (toast, options = {}) => {
       return false;
     } finally {
       clearAgentSessionRef.current?.();
-      window.electronAPI?.restoreSystemAudio?.();
-      window.electronAPI?.mediaResume?.();
+      const endSessionAudio = endSessionAudioRef.current;
+      if (endSessionAudio) {
+        endSessionAudio();
+      } else {
+        window.electronAPI?.restoreSystemAudio?.();
+        window.electronAPI?.mediaResume?.();
+        window.electronAPI?.voiceMuteStop?.();
+      }
       // Notify main process that dictation was cancelled.
       // When overlay is disabled, this triggers the window to be destroyed.
       window.electronAPI?.notifyDictationCompleted?.().catch(() => {});

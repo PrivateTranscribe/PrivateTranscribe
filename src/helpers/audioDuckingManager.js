@@ -213,7 +213,13 @@ function buildStillDuckedTest(previous, f4) {
   if (previous.mode === "mute") return "$mute";
   const baseline = Number(previous.volume);
   if (!Number.isFinite(baseline)) return null;
-  return `$vol -lt ${f4(baseline - STILL_DUCKED_EPSILON)}`;
+  const below = `$vol -lt ${f4(baseline - STILL_DUCKED_EPSILON)}`;
+  const target = Number(previous.duckTarget);
+  if (Number.isFinite(target) && target > baseline) {
+    // An older build's duck from 0% raised the volume to its 1% floor.
+    return `(${below}) -or ([Math]::Abs($vol - ${f4(target)}) -le ${f4(STILL_DUCKED_EPSILON / 2)})`;
+  }
+  return below;
 }
 
 /**
@@ -258,8 +264,17 @@ function buildWindowsDuckScriptLines({ mode, duckLevel, statePath, previous = nu
   lines.push(`Write-Output ($base.ToString('F4', ${inv}) + '|' + $baseMute.ToString())`);
 
   lines.push(
-    mode === "mute" ? "$target = $base" : `$target = [Math]::Max(0.01, $base * ${f4(duckLevel)})`
+    // Never above the baseline: the 1% floor keeps a duck audible, but at 0%
+    // it raised the volume instead of lowering it.
+    mode === "mute"
+      ? "$target = $base"
+      : `$target = [Math]::Min($base, [Math]::Max(0.01, $base * ${f4(duckLevel)}))`
   );
+
+  // A failed read leaves $vol or $mute $null, which PowerShell treats as 0 in
+  // the arithmetic below. Moving anything then would set the volume to 0 with
+  // nothing readable to restore it from, so the duck does nothing.
+  lines.push("if (($vol -ne $null) -and ($mute -ne $null)) {");
 
   if (statePath) {
     lines.push(
@@ -275,6 +290,61 @@ function buildWindowsDuckScriptLines({ mode, duckLevel, statePath, previous = nu
   }
 
   lines.push(mode === "mute" ? "[Audio]::SetMute($true)" : "[Audio]::SetVolume($target)");
+  lines.push("}");
+  return lines;
+}
+
+/**
+ * Reads the "volume|muted" line the duck script prints before it moves
+ * anything. That is the level restore() goes back to.
+ *
+ * A volume of 0 is a real level. Falling back on any falsy value restored a
+ * user whose master volume sits at 0% to 100% after every dictation. A part
+ * that cannot be read gives null, and restore() then leaves that part alone
+ * rather than guess: a guessed "not muted" unmuted a user who had muted.
+ */
+function parseWindowsSavedState(stdout) {
+  // stdout = "0.8000|False" (pipe separator, invariant decimal)
+  const firstLine = String(stdout ?? "")
+    .split(/\r?\n/)[0]
+    .trim();
+  const pipeIdx = firstLine.indexOf("|");
+  const volume = pipeIdx >= 0 ? parseFloat(firstLine.slice(0, pipeIdx)) : NaN;
+  const muteStr =
+    pipeIdx >= 0
+      ? firstLine
+          .slice(pipeIdx + 1)
+          .trim()
+          .toLowerCase()
+      : "";
+  return {
+    volume: Number.isFinite(volume) ? volume : null,
+    muted: muteStr === "true" ? true : muteStr === "false" ? false : null,
+  };
+}
+
+/** A saved level restore() may write back. null or NaN means it was unreadable. */
+function isKnownVolume(volume) {
+  return typeof volume === "number" && Number.isFinite(volume);
+}
+
+/**
+ * The restore script. A volume or mute state that could not be read when the
+ * duck saved it is skipped, rather than set to a guess. The old fallback
+ * guessed 100% and not muted.
+ */
+function buildWindowsRestoreScriptLines(savedState) {
+  const lines = [];
+  if (isKnownVolume(savedState.volume)) {
+    // Force invariant culture so locale decimal separators are not an issue
+    const volStr = savedState.volume.toFixed(4); // always dot-separated in JS
+    lines.push(
+      `[Audio]::SetVolume([float]::Parse('${volStr}', [System.Globalization.CultureInfo]::InvariantCulture))`
+    );
+  }
+  if (typeof savedState.muted === "boolean") {
+    lines.push(savedState.muted ? "[Audio]::SetMute($true)" : "[Audio]::SetMute($false)");
+  }
   return lines;
 }
 
@@ -291,15 +361,7 @@ const windows = {
     const stdout = await runPs(
       buildWindowsDuckScriptLines({ mode, duckLevel, statePath, previous }).join("\n")
     );
-    // stdout = "0.8000|False" (pipe separator, invariant decimal)
-    const firstLine = stdout.split(/\r?\n/)[0].trim();
-    const pipeIdx = firstLine.indexOf("|");
-    const volStr = pipeIdx >= 0 ? firstLine.slice(0, pipeIdx) : "1";
-    const muteStr = pipeIdx >= 0 ? firstLine.slice(pipeIdx + 1) : "False";
-    return {
-      volume: parseFloat(volStr) || 1,
-      muted: muteStr.toLowerCase() === "true",
-    };
+    return parseWindowsSavedState(stdout);
   },
 
   /** Read-only, for the startup repair's "does this still look ducked?" test. */
@@ -332,14 +394,7 @@ const windows = {
    * for anyone who was already muted when the recording started.
    */
   async restore(savedState) {
-    // Force invariant culture so locale decimal separators are not an issue
-    const volStr = Number(savedState.volume).toFixed(4); // always dot-separated in JS
-    await runPs(
-      [
-        `[Audio]::SetVolume([float]::Parse('${volStr}', [System.Globalization.CultureInfo]::InvariantCulture))`,
-        savedState.muted ? "[Audio]::SetMute($true)" : "[Audio]::SetMute($false)",
-      ].join("\n")
-    );
+    await runPs(buildWindowsRestoreScriptLines(savedState).join("\n"));
   },
 };
 
@@ -394,7 +449,18 @@ function shouldRepairFromState(state, current) {
   if (state.mode === "mute") return Boolean(current.muted);
   const baseline = Number(state.volume);
   if (!Number.isFinite(baseline)) return false;
-  return Number(current.volume) < baseline - STILL_DUCKED_EPSILON;
+  const now = Number(current.volume);
+  // Older builds floored the duck at 1%, so a duck from 0% raised the volume.
+  // Still sitting on that raised target means the duck is still standing.
+  const target = Number(state.duckTarget);
+  if (
+    Number.isFinite(target) &&
+    target > baseline &&
+    Math.abs(now - target) <= STILL_DUCKED_EPSILON / 2
+  ) {
+    return true;
+  }
+  return now < baseline - STILL_DUCKED_EPSILON;
 }
 
 /**
@@ -605,8 +671,12 @@ class AudioDuckingManager {
       await api.setMuted(true);
       return;
     }
-    await api.setVolume(saved.volume);
-    await api.setMuted(false);
+    if (isKnownVolume(saved.volume)) {
+      await api.setVolume(saved.volume);
+    }
+    if (saved.muted === false) {
+      await api.setMuted(false);
+    }
   }
 
   /**
@@ -670,7 +740,8 @@ class AudioDuckingManager {
         );
       }
       this._savedState = { volume: baseline.volume, muted: baseline.muted };
-      const targetVolume = Math.max(0.01, baseline.volume * duckLevel);
+      // Never above the baseline, so a duck from 0% stays at 0%.
+      const targetVolume = Math.min(baseline.volume, Math.max(0.01, baseline.volume * duckLevel));
       this._writeState({
         version: 1,
         mode: mode === "mute" ? "mute" : "duck",
@@ -682,7 +753,7 @@ class AudioDuckingManager {
 
       if (mode === "mute") {
         await api.setMuted(true);
-      } else if (!baseline.muted) {
+      } else if (!baseline.muted && isKnownVolume(targetVolume)) {
         await api.setVolume(targetVolume);
       }
       this._isDucked = true;
@@ -750,6 +821,8 @@ module.exports.AudioDuckingManager = AudioDuckingManager;
 module.exports.buildWindowsDuckScriptLines = buildWindowsDuckScriptLines;
 module.exports.shouldRepairFromState = shouldRepairFromState;
 module.exports.pickDuckBaseline = pickDuckBaseline;
+module.exports.parseWindowsSavedState = parseWindowsSavedState;
+module.exports.buildWindowsRestoreScriptLines = buildWindowsRestoreScriptLines;
 module.exports.STATE_FILE_NAME = STATE_FILE_NAME;
 module.exports.STILL_DUCKED_EPSILON = STILL_DUCKED_EPSILON;
 module.exports.DUCK_WATCHDOG_MS = DUCK_WATCHDOG_MS;
