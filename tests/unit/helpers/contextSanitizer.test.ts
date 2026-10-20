@@ -396,6 +396,13 @@ describe("sanitizeContextText (real implementation)", () => {
         '<setting name="Password" serializeAs="String"><value>hunter2</value></setting>',
         '<setting name="Password" serializeAs="String"><value>[REDACTED]</value></setting>',
       ],
+      [
+        "a protection bypass header",
+        `x-vercel-protection-bypass: ${value}`,
+        "x-vercel-protection-bypass: [REDACTED]",
+      ],
+      ["a BYPASS name", "BYPASS=hunter2", "BYPASS=[REDACTED]"],
+      ["a name ending in BYPASS", "MAINTENANCE_BYPASS=hunter2", "MAINTENANCE_BYPASS=[REDACTED]"],
     ])("redacts the value of %s", (_name, input, expected) => {
       expect(sanitizeContextText(input)).toBe(expected);
     });
@@ -437,8 +444,8 @@ describe("sanitizeContextText (real implementation)", () => {
       "function sign(token: string, secret: Buffer): string {",
       "def login(password: str, user: str) -> bool:",
       "const read = (token: string) => token.trim();",
-      "BYPASS=1",
       "COMPASS: north",
+      "OVERPASS=1",
     ])("leaves code that only names a secret alone: %s", (input) => {
       expect(sanitizeContextText(input)).toBe(input);
     });
@@ -506,9 +513,18 @@ describe("sanitizeContextText (real implementation)", () => {
       expect(sanitizeContextText(input)).toBe("ssh key [REDACTED_PRIVATE_KEY]");
     });
 
-    it("keeps code that only mentions a BEGIN line", () => {
-      const input = 'if (text.startsWith("-----BEGIN RSA PRIVATE KEY")) parse(text);\nreturn 42;';
-      expect(sanitizeContextText(input)).toBe(input);
+    it.each([
+      ["no closing dashes", ["-----BEGIN", "RSA", "PRIVATE", "KEY"].join(" ")],
+      ["four closing dashes", `${["-----BEGIN", "RSA", "PRIVATE", "KEY"].join(" ")}----`],
+      ["a space before the dashes", `${["-----BEGIN", "RSA", "PRIVATE", "KEY"].join(" ")} -----`],
+    ])("redacts a key body after a BEGIN line with %s", (_shape, begin) => {
+      expect(sanitizeContextText(`key ${begin}\n${body}`)).toBe("key [REDACTED_PRIVATE_KEY]");
+      expect(sanitizeContextText(`PRIVATE_KEY=${begin}\n${body}`)).not.toContain("MIIEvQ");
+    });
+
+    it("redacts from a BEGIN label in code to the end of the text, since a key may follow", () => {
+      const input = `if (text.startsWith("-----BEGIN RSA PRIVATE KEY")) parse(text);\n${body}`;
+      expect(sanitizeContextText(input)).toBe('if (text.startsWith("[REDACTED_PRIVATE_KEY]');
     });
 
     const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
@@ -533,6 +549,8 @@ describe("sanitizeContextText (real implementation)", () => {
     it.each([
       ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
       ["repeated BEGIN lines with no dashes", megabyteOf("-----BEGIN RSA PRIVATE KEY ")],
+      ["a BEGIN line followed by spaces", `-----BEGIN PRIVATE KEY${megabyteOf(" ")}x`],
+      ["repeated BEGIN lines with two dashes", megabyteOf("-----BEGIN PRIVATE KEY --")],
     ])("scans 1 MB of %s with no closing dashes in well under a second", (_shape, input) => {
       const started = performance.now();
       sanitizeContextText(input, { maxChars: input.length });

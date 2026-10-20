@@ -14,8 +14,9 @@
 // JWT_SECRET, AWS_SECRET_ACCESS_KEY, x-api-key, spring.datasource.password,
 // Ocp-Apim-Subscription-Key, and the password labels of Danish, Norwegian,
 // Swedish, German and French screens. Words that only end in "pass", such as
-// BYPASS and COMPASS, are not secret names.
-const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D|WORT|ORD)|(?<!BY|COM|SUR|TRES|OVER|UNDER)PASS|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
+// COMPASS and OVERPASS, are not secret names. BYPASS still is, since a bypass
+// header such as x-vercel-protection-bypass carries a secret.
+const SECRET_NAME = String.raw`[A-Z0-9_.-]*(?:SECRET|TOKEN|PASS(?:W(?:OR)?D|WORT|ORD)|(?<!COM|SUR|TRES|OVER|UNDER)PASS|PASSPHRASE|PWD|CREDENTIALS?|(?:SECRET|API|ACCESS|PRIVATE|ACCOUNT|AUTH|SIGNING|ENCRYPTION|MASTER|SUBSCRIPTION|FUNCTIONS?)[_-]?KEY|ADGANGSKODE|KODEORD|LÖSENORD|KENNWORT|MOT[ _-]DE[ _-]PASSE)`;
 // ":", "=" or ":=" after a name. "==", "=>" and "::" are code, not
 // assignments.
 const ASSIGNMENT = String.raw`(?::=|[:=](?![=>:]))`;
@@ -46,17 +47,15 @@ const TYPE_ANNOTATION = String.raw`${TYPE_WORD}(?:[ \t]*[|&][ \t]*${TYPE_WORD})*
 
 const DEFAULT_REDACTION_PATTERNS = [
   // PEM and PGP private key blocks. A block with no END line, as in a read
-  // cut off at a length, is redacted to the end of the text. The BEGIN line
-  // must end in "PRIVATE KEY-----", or "PRIVATE KEY BLOCK-----" for PGP, as
-  // every real one does, so source code that only mentions
-  // "-----BEGIN RSA PRIVATE KEY" keeps the code after it. That check has a
-  // fixed length, so text repeating "BEGIN" lines or "PRIVATE KEY" is still
-  // scanned in linear time. First in the list, so a field rule redacting
-  // PRIVATE_KEY=-----BEGIN cannot take the BEGIN line and leave the key body.
+  // cut off at a length, is redacted to the end of the text. Once a label's
+  // "PRIVATE KEY" is found the match never goes back for an earlier one, so
+  // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once. First in
+  // the list, so a field rule redacting PRIVATE_KEY=-----BEGIN cannot take
+  // the BEGIN line and leave the key body.
   {
     name: "privateKeyBlock",
     regex:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?|$)/g,
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
   // A value given to any name that ends in a secret word, whatever comes
