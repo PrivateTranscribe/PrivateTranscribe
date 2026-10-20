@@ -132,7 +132,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Context capture (best-effort; returns {available:false} if unsupported)
   getActiveWindowContext: () => ipcRenderer.invoke("get-active-window-context"),
   // File identifier extraction for Smart Context (opt-in, local only)
-  extractFileIdentifiers: (filename) => ipcRenderer.invoke("extract-file-identifiers", filename),
+  extractFileIdentifiers: (filename, options) =>
+    ipcRenderer.invoke("extract-file-identifiers", filename, options),
   // File content extraction for LLM Context Enhancement (opt-in, local only)
   extractFileContext: (filename, options) =>
     ipcRenderer.invoke("extract-file-context", filename, options),

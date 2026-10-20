@@ -72,6 +72,52 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("provider key shapes with '_' and '-' in the body", () => {
+    // Keys are assembled at runtime so no line in this file reads as a key.
+    const keyBody = (length: number) => "Ab3_x-9Q".repeat(Math.ceil(length / 8)).slice(0, length);
+
+    it("redacts a whole OpenAI project key", () => {
+      const key = ["sk", "proj", keyBody(156)].join("-");
+      expect(sanitizeContextText(`Terminal - ${key} - copied`)).toBe(
+        "Terminal - [REDACTED] - copied"
+      );
+    });
+
+    it("redacts a whole OpenAI service account key", () => {
+      const key = ["sk", "svcacct", keyBody(120)].join("-");
+      expect(sanitizeContextText(key)).toBe("[REDACTED]");
+    });
+
+    it("redacts a whole Anthropic key", () => {
+      const key = ["sk", "ant", "api03", `${keyBody(93)}AA`].join("-");
+      expect(sanitizeContextText(`Console: ${key}`)).toBe("Console: [REDACTED]");
+    });
+
+    it("redacts a whole Groq key", () => {
+      const key = ["gsk", keyBody(52)].join("_");
+      expect(sanitizeContextText(`Groq key ${key} created`)).toBe(
+        "Groq key [REDACTED_GROQ_KEY] created"
+      );
+    });
+
+    it("redacts a whole Google API key, including a trailing '-'", () => {
+      const key = ["AI", "za", keyBody(34), "-"].join("");
+      expect(sanitizeContextText(`Maps key ${key} (restricted)`)).toBe(
+        "Maps key [REDACTED_GOOGLE_API_KEY] (restricted)"
+      );
+    });
+
+    it("redacts a key that follows an underscore", () => {
+      const key = ["sk", "proj", keyBody(60)].join("-");
+      expect(sanitizeContextText(`OPENAI_${key}`)).toBe("OPENAI_[REDACTED]");
+    });
+
+    it("leaves words that only contain the prefixes alone", () => {
+      const input = "task-management-dashboard-overview and risk-assessment-template-final";
+      expect(sanitizeContextText(input)).toBe(input);
+    });
+  });
+
   describe("Bearer token redaction", () => {
     it("redacts Authorization: Bearer tokens", () => {
       const input = "Authorization: Bearer very.secret.token.here";
@@ -215,9 +261,205 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("secret names and token shapes", () => {
+    // Assembled at runtime so no line in this file reads as a key.
+    const value = "Zq9Xw2".repeat(6);
+    const azureKey = "Ab3x9Q".repeat(14);
+
+    it.each([
+      ["JWT_SECRET", `JWT_SECRET=${value}`, "JWT_SECRET=[REDACTED]"],
+      ["NPM_TOKEN", `NPM_TOKEN=${value}`, "NPM_TOKEN=[REDACTED]"],
+      ["HF_TOKEN", `export HF_TOKEN=${value}`, "export HF_TOKEN=[REDACTED]"],
+      [
+        "AWS_SECRET_ACCESS_KEY",
+        `AWS_SECRET_ACCESS_KEY=${value}`,
+        "AWS_SECRET_ACCESS_KEY=[REDACTED]",
+      ],
+      ["SECRET_KEY", `SECRET_KEY = '${value}'`, "SECRET_KEY = [REDACTED]"],
+      ["PRIVATE_KEY", `PRIVATE_KEY=${value}`, "PRIVATE_KEY=[REDACTED]"],
+      [
+        "a dotted name",
+        `spring.datasource.password=${value}`,
+        "spring.datasource.password=[REDACTED]",
+      ],
+      ["a Go assignment", `token := "${value}"`, "token := [REDACTED]"],
+      ["a JSON password", '{"password": "hunter two"}', '{"password": [REDACTED]}'],
+      ["a JSON token", `{"token":"${value}"}`, '{"token":[REDACTED]}'],
+      ["a JSON client secret", `{"client_secret": "${value}"}`, '{"client_secret": [REDACTED]}'],
+      [
+        "an Azure storage account key",
+        `AccountName=acct;AccountKey=${value}+/==;EndpointSuffix=core.windows.net`,
+        "AccountName=acct;AccountKey=[REDACTED]",
+      ],
+      [
+        "a JSON Authorization header",
+        `"Authorization": "Basic ${value}"`,
+        '"Authorization": "Basic [REDACTED]"',
+      ],
+      [
+        "a token after its scheme",
+        `X-Auth-Token: Bearer ${value}`,
+        "X-Auth-Token: Bearer [REDACTED]",
+      ],
+      ["a value holding ';'", "password=hun;ter,2 next", "password=[REDACTED] next"],
+      [
+        "each of two quoted values on their own lines",
+        'token: "abc\ntoken: "def',
+        "token: [REDACTED]\ntoken: [REDACTED]",
+      ],
+      [
+        "a quote cut off before it closes",
+        'password: "hunter two\nnext',
+        "password: [REDACTED]\nnext",
+      ],
+    ])("redacts the value of %s", (_name, input, expected) => {
+      expect(sanitizeContextText(input)).toBe(expected);
+    });
+
+    it.each([
+      ["a GitHub OAuth token", ["gho", value].join("_"), "[REDACTED_GITHUB_TOKEN]"],
+      ["a GitHub server token", ["ghs", value].join("_"), "[REDACTED_GITHUB_TOKEN]"],
+      ["a GitLab token", ["glpat", value].join("-"), "[REDACTED_GITLAB_TOKEN]"],
+      ["a Stripe restricted key", ["rk", "live", value].join("_"), "[REDACTED_STRIPE_KEY]"],
+      ["an npm token", ["npm", value].join("_"), "[REDACTED_NPM_TOKEN]"],
+      ["a Hugging Face token", ["hf", value].join("_"), "[REDACTED_HF_TOKEN]"],
+      ["an 84-character Azure key", azureKey, "[REDACTED]"],
+      [
+        "a Slack webhook",
+        ["https://hooks.slack.com", "services", "T0A1", "B0A1", value].join("/"),
+        "https://hooks.slack.com/services/[REDACTED]",
+      ],
+      [
+        "a Discord webhook",
+        ["https://discord.com/api", "webhooks", "1234567890", value].join("/"),
+        "https://discord.com/api/webhooks/[REDACTED]",
+      ],
+    ])("redacts %s", (_name, token, expected) => {
+      expect(sanitizeContextText(`key ${token} copied`)).toBe(`key ${expected} copied`);
+    });
+
+    it.each([
+      "if (token == null) return;",
+      "const trimmed = tokens.map((token) => token.trim());",
+      "let parsed = Token::new(source);",
+      "max_tokens: 4096",
+      "PASSWORD_MIN_LENGTH=8",
+    ])("leaves code that only names a secret alone: %s", (input) => {
+      expect(sanitizeContextText(input)).toBe(input);
+    });
+
+    const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
+
+    it.each([
+      ["one long name", megabyteOf("a_")],
+      ["a run of secret words", megabyteOf("SECRET_TOKEN")],
+      ["repeated quoted names", megabyteOf('"token":"')],
+      ["repeated assignments", megabyteOf("secret=")],
+      ["repeated token prefixes", megabyteOf("glpat-")],
+      ["repeated webhook prefixes", megabyteOf("https://hooks.slack.com/services/")],
+      ["one long run of letters", megabyteOf("a")],
+    ])("redacts 1 MB of %s in well under a second", (_shape, input) => {
+      const started = performance.now();
+      sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+  });
+
+  describe("private key blocks", () => {
+    // Assembled at runtime so no line in this file reads as a key.
+    const line = (...words: string[]) => `-----${words.join(" ")}-----`;
+    const body = Array.from({ length: 8 }, () => "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC").join("\n");
+
+    it("redacts a whole block and keeps the text after it", () => {
+      const input = `key:\n${line("BEGIN", "RSA", "PRIVATE", "KEY")}\n${body}\n${line("END", "RSA", "PRIVATE", "KEY")}\nnext`;
+      expect(sanitizeContextText(input)).toBe("key:\n[REDACTED_PRIVATE_KEY]\nnext");
+    });
+
+    it("redacts a PGP private key block", () => {
+      const input = `${line("BEGIN", "PGP", "PRIVATE", "KEY", "BLOCK")}\n${body}\n${line("END", "PGP", "PRIVATE", "KEY", "BLOCK")}\nnext`;
+      expect(sanitizeContextText(input)).toBe("[REDACTED_PRIVATE_KEY]\nnext");
+    });
+
+    it("redacts to the end of the text when the END line is cut off", () => {
+      // A focused field is read 512 characters at a time.
+      const input = `ssh key ${line("BEGIN", "OPENSSH", "PRIVATE", "KEY")}\n${body}`.slice(0, 200);
+      expect(sanitizeContextText(input)).toBe("ssh key [REDACTED_PRIVATE_KEY]");
+    });
+
+    const megabyteOf = (unit: string) => unit.repeat(Math.ceil((1024 * 1024) / unit.length));
+
+    it.each([
+      ["repeated BEGIN lines", megabyteOf(`${line("BEGIN", "PRIVATE", "KEY")}\n`)],
+      ["a BEGIN label repeating PRIVATE KEY", `-----BEGIN ${megabyteOf("PRIVATE KEY ")}`],
+      [
+        "an END label repeating PRIVATE KEY",
+        `${line("BEGIN", "PRIVATE", "KEY")}\n-----END ${megabyteOf("PRIVATE KEY ")}`,
+      ],
+    ])("redacts 1 MB of %s in well under a second", (_shape, input) => {
+      const started = performance.now();
+      const output = sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(output).not.toContain("BEGIN");
+    });
+  });
+
+  describe("time on long text", () => {
+    // Before the patterns were bounded, 64 KB of "a.a.a." took about 2.5 s and
+    // grew with the square of the length. Each now finishes in tens of ms.
+    it.each([
+      ["a run of short words joined by dots", "a.".repeat(64 * 1024)],
+      ["a run of short words joined by hyphens", "a-".repeat(64 * 1024)],
+      ["many URLs run together", "http://a".repeat(16 * 1024)],
+      ["many schemes run together", "s://a:b".repeat(18 * 1024)],
+    ])("redacts %s in well under a second", (_shape, input) => {
+      const started = performance.now();
+      sanitizeContextText(input, { maxChars: input.length });
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+
+    it("still redacts ordinary addresses and URLs", () => {
+      expect(
+        sanitizeContextText("Mail first.last+tag@mail.example.co.uk about https://ex.com/a?b=1")
+      ).toBe("Mail [REDACTED_EMAIL] about https://ex.com/a?[REDACTED_QUERY]");
+    });
+
+    it("redacts the query of a URL with a very long path", () => {
+      const url = `https://ex.com/${"seg/".repeat(1000)}`;
+      expect(sanitizeContextText(`${url}?token=abc123 next`, { maxChars: 10000 })).toBe(
+        `${url}?[REDACTED_QUERY] next`
+      );
+      expect(sanitizeContextText(`${url}#access_token=abc123`, { maxChars: 10000 })).toBe(
+        `${url}#[REDACTED_FRAGMENT]`
+      );
+    });
+
+    it("redacts all of an address with a long local part", () => {
+      const local = Array.from({ length: 12 }, (_, i) => `part${i}`).join(".");
+      expect(sanitizeContextText(`To ${local}@example.com today`)).toBe(
+        "To [REDACTED_EMAIL] today"
+      );
+    });
+
+    it.each(["-mysql", ".postgres", "+redis", "x_mongodb"])(
+      "redacts credentials when %s:// follows punctuation",
+      (scheme) => {
+        expect(sanitizeContextText(`${scheme}://u:hunter2@db.local`)).toBe(
+          `${scheme}://u:[REDACTED]@db.local`
+        );
+      }
+    );
+
+    it("redacts credentials behind a long scheme", () => {
+      const scheme = `db${"+driver".repeat(6)}`;
+      expect(sanitizeContextText(`${scheme}://admin:hunter2@db.local/app`)).toBe(
+        `${scheme}://admin:[REDACTED]@db.local/app`
+      );
+    });
+  });
+
   describe("truncation", () => {
     it("truncates text exceeding maxChars", () => {
-      const input = "z".repeat(5000);
+      const input = "zz ".repeat(2000);
       const output = sanitizeContextText(input, { maxChars: 100 });
       expect(output.length).toBe(100);
     });

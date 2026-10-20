@@ -666,8 +666,8 @@ suite("Context sanitization – privacy guardrails", () => {
   });
 
   test("truncates large content", () => {
-    // Use a non-hex character so token redaction patterns don't replace the payload.
-    const input = "z".repeat(5000);
+    // Short words, so no token redaction pattern replaces the payload.
+    const input = "zz ".repeat(2000);
     const output = sanitizeContextText(input, { maxChars: 100 });
     assert.strictEqual(output.length, 100);
   });

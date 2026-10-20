@@ -231,38 +231,6 @@ function buildFeedbackPayload(rawPayload) {
 }
 
 /**
- * Search for a filename inside `dir` up to `maxDepth` directory levels deep.
- * Returns the first matching absolute path found, or null.
- * Skips hidden directories (starting with ".") to avoid slow scans.
- *
- * @param {string} filename
- * @param {string} dir
- * @param {number} maxDepth
- * @returns {string|null}
- */
-function findFileInHome(filename, dir, maxDepth) {
-  if (maxDepth < 0) return null;
-  const fs = require("fs");
-  const path = require("path");
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue; // skip hidden dirs
-      if (entry.isFile() && entry.name === filename) {
-        return path.join(dir, entry.name);
-      }
-      if (entry.isDirectory() && maxDepth > 0) {
-        const found = findFileInHome(filename, path.join(dir, entry.name), maxDepth - 1);
-        if (found) return found;
-      }
-    }
-  } catch {
-    // Permission denied or other fs error — skip silently
-  }
-  return null;
-}
-
-/**
  * Every process this app owns, for the Read Aloud duck's exclusion list.
  *
  * Our playback session belongs to Chromium's audio service, not to the main
@@ -910,7 +878,7 @@ class IPCHandlers {
     });
 
     // File identifier extraction for Smart Context (opt-in, local only)
-    ipcMain.handle("extract-file-identifiers", async (_, filename) => {
+    ipcMain.handle("extract-file-identifiers", async (_, filename, options = {}) => {
       if (!filename || typeof filename !== "string") {
         return { blocked: true, reason: "invalid filename", identifiers: [] };
       }
@@ -921,11 +889,12 @@ class IPCHandlers {
       const os = require("os");
       const homeDir = os.homedir();
       const { extractFromFilePath } = require("./fileIdentifierExtractor");
-      const found = findFileInHome(filename, homeDir, 3);
-      if (!found) {
-        return { blocked: false, identifiers: [], reason: "file not found in home dir" };
+      const { findEditorFile } = require("./editorFileLocator");
+      const found = findEditorFile(filename, options?.folder, homeDir);
+      if (!found.path) {
+        return { blocked: false, identifiers: [], reason: found.reason };
       }
-      return extractFromFilePath(found, homeDir);
+      return extractFromFilePath(found.path, homeDir);
     });
 
     // File content extraction for LLM Context Enhancement (opt-in, local only)
@@ -939,11 +908,12 @@ class IPCHandlers {
       const os = require("os");
       const homeDir = os.homedir();
       const { extractFileContext } = require("./fileContextExtractor");
-      const found = findFileInHome(filename, homeDir, 3);
-      if (!found) {
-        return { blocked: false, reason: "file not found in home dir" };
+      const { findEditorFile } = require("./editorFileLocator");
+      const found = findEditorFile(filename, options?.folder, homeDir);
+      if (!found.path) {
+        return { blocked: false, reason: found.reason };
       }
-      return extractFileContext(found, homeDir, undefined, options);
+      return extractFileContext(found.path, homeDir, undefined, options);
     });
 
     // Whisper handlers

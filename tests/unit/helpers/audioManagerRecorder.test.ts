@@ -435,7 +435,11 @@ describe("AudioManager recorder lifecycle", () => {
     expect(runTranscription.mock.calls[0][1]).toMatchObject({ trimTrailingSilence: true });
     expect(runTranscription.mock.calls[1][1]).toMatchObject({ trimTrailingSilence: true });
     expect(processTranscription).toHaveBeenCalledTimes(1);
-    expect(processTranscription).toHaveBeenCalledWith("chunk-0 chunk-1", "long-session");
+    expect(processTranscription).toHaveBeenCalledWith(
+      "chunk-0 chunk-1",
+      "long-session",
+      expect.objectContaining({ processingGeneration: expect.any(Number) })
+    );
     expect(onTranscriptionComplete).toHaveBeenCalledTimes(1);
     expect(onTranscriptionComplete.mock.calls[0][0]).toMatchObject({
       success: true,
@@ -845,7 +849,8 @@ describe("AudioManager recorder lifecycle", () => {
     });
     expect(processTranscription).toHaveBeenCalledWith(
       `chunk-0 ${MISSING_SECTION_MARKER} chunk-2`,
-      "long-session"
+      "long-session",
+      expect.anything()
     );
   });
 

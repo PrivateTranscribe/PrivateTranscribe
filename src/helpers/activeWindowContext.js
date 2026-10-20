@@ -95,7 +95,8 @@ function isSensitiveAppContext({
     /\bdashlane\b/i,
     /\bnordpass\b/i,
     /\bkeepass(xc|2)?\b/i,
-    /\bkeeper\b/i,
+    /\bkeeper(passwordmanager)?\b/i, // Keeper's process is KeeperPasswordManager
+    /\bpassword\s*manager\b/i, // Google Password Manager, Keeper Password Manager
     /\broboform\b/i,
     /\benpass\b/i,
     /\bpassbolt\b/i,
@@ -134,6 +135,10 @@ function isSensitiveAppContext({
   const titlePatterns = appPatterns.filter((p) => p.toString() !== /\bpasswords\b/i.toString());
   if (titlePatterns.some((p) => p.test(title))) return true;
   if (extraPatterns.some((p) => p.test(title))) return true;
+
+  // A page or window named just "Passwords", as Firefox's about:logins and
+  // the macOS app are. A title only mentioning passwords stays allowed.
+  if (/^\s*passwords\s*(?:$|[-—–|:])/.test(title)) return true;
 
   // Avoid overly broad terms like "login" that would cause false positives.
   if (title.includes("enter password") || title.includes("master password")) return true;
@@ -388,7 +393,13 @@ function shouldCaptureWindowsUiaTextPattern() {
   return !(raw === "1" || raw === "true" || raw === "yes");
 }
 
-function getWindowsUiaText() {
+// PowerShell writes to a pipe in the console code page, and the capture reads
+// UTF-8, so ø, æ and å arrived as U+FFFD. Each script switches its output to
+// UTF-8 without a byte order mark first.
+const POWERSHELL_UTF8_OUTPUT =
+  "try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}";
+
+function getWindowsUiaText(runCommand = run) {
   if (!shouldCaptureWindowsUia()) return {};
 
   // Best-effort UI Automation (UIA) focused element text.
@@ -411,7 +422,8 @@ if (-not $txt) {
 # TextPattern fallback disabled via env var (PRIVOCA_DISABLE_WINDOWS_UIA_TEXTPATTERN).
 `;
 
-  const ps = `# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
+  const ps = `${POWERSHELL_UTF8_OUTPUT}
+# Load UI Automation types (best-effort). LoadWithPartialName is deprecated.
 try { Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue } catch {}
 try { $el = [System.Windows.Automation.AutomationElement]::FocusedElement } catch { $el = $null }
 if ($null -eq $el) { exit 0 }
@@ -438,7 +450,7 @@ if (-not $txt) {
 ${textPatternBlock}
 $txt;`;
 
-  const res = run(
+  const res = runCommand(
     "powershell.exe",
     [
       "-NoProfile",
@@ -471,10 +483,21 @@ $txt;`;
   };
 }
 
-function getWindowsContext() {
-  // PowerShell: get foreground window title + owning process name.
-  // Note: This may be blocked by AV or policy in some environments.
-  const ps = `Add-Type @"
+/**
+ * PowerShell that prints the foreground window's title on one line and the
+ * name of the process that owns it on the next.
+ *
+ * The id variable must not be $pid: that is PowerShell's own read-only process
+ * id, so assigning it fails and every window then reads as "powershell", which
+ * no denylist entry matches.
+ *
+ * @param {{ windowHandle?: string }} [options]  PowerShell expression for the
+ *   window to describe. Tests pass a fixed handle.
+ * @returns {string}
+ */
+function buildWindowsForegroundScript({ windowHandle = "[Win32]::GetForegroundWindow()" } = {}) {
+  return `${POWERSHELL_UTF8_OUTPUT}
+Add-Type @"
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -484,17 +507,42 @@ public class Win32 {
   [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
 "@;
-$h = [Win32]::GetForegroundWindow();
+$h = ${windowHandle};
 $sb = New-Object System.Text.StringBuilder 1024;
 [void][Win32]::GetWindowText($h, $sb, $sb.Capacity);
-$pid = 0;
-[void][Win32]::GetWindowThreadProcessId($h, [ref]$pid);
+$ownerId = 0;
+[void][Win32]::GetWindowThreadProcessId($h, [ref]$ownerId);
 $pname = "";
-try { $pname = (Get-Process -Id $pid -ErrorAction Stop).ProcessName } catch { $pname = "" }
+try { $pname = (Get-Process -Id $ownerId -ErrorAction Stop).ProcessName } catch { $pname = "" }
 $sb.ToString();
 $pname;`;
+}
 
-  const res = run(
+/**
+ * Title and process name from the foreground script's output, read by position
+ * from the end. A window without a title still prints its empty line, and
+ * dropping that line would read the process name as the title.
+ *
+ * @param {string} stdout
+ * @returns {{ windowTitle: string, processName: string }}
+ */
+function parseWindowsForegroundOutput(stdout) {
+  const lines = String(stdout || "")
+    .replace(/(\r?\n)+$/, "")
+    .split(/\r?\n/);
+  if (lines.length < 2) return { windowTitle: "", processName: "" };
+  return {
+    windowTitle: lines[lines.length - 2].trim(),
+    processName: lines[lines.length - 1].trim(),
+  };
+}
+
+function getWindowsContext(runCommand = run) {
+  // PowerShell: get foreground window title + owning process name.
+  // Note: This may be blocked by AV or policy in some environments.
+  const ps = buildWindowsForegroundScript();
+
+  const res = runCommand(
     "powershell.exe",
     [
       "-NoProfile",
@@ -513,13 +561,11 @@ $pname;`;
     return { available: false, reason: "powershell foreground query failed" };
   }
 
-  const lines = (res.stdout || "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  const windowTitle = sanitizeContextText(lines[0] || "", { maxChars: getWindowTitleMaxChars() });
-  const processName = sanitizeContextText(lines[1] || "", { maxChars: 128 });
+  const output = parseWindowsForegroundOutput(res.stdout);
+  const windowTitle = sanitizeContextText(output.windowTitle, {
+    maxChars: getWindowTitleMaxChars(),
+  });
+  const processName = sanitizeContextText(output.processName, { maxChars: 128 });
 
   if (!windowTitle && !processName) {
     return { available: false, reason: "no foreground window info" };
@@ -529,7 +575,7 @@ $pname;`;
     return { available: false, reason: "sensitive app/window", blocked: true };
   }
 
-  const uia = getWindowsUiaText();
+  const uia = getWindowsUiaText(runCommand);
 
   return {
     available: true,
@@ -568,5 +614,8 @@ module.exports = {
     getWindowTitleMaxChars,
     getUiaTextMaxChars,
     parseSensitivePatternsEnv,
+    buildWindowsForegroundScript,
+    parseWindowsForegroundOutput,
+    getWindowsContext,
   },
 };

@@ -47,6 +47,28 @@ function isFileTooLarge(fileSizeBytes, maxBytes) {
   return fileSizeBytes > (maxBytes !== undefined ? maxBytes : MAX_FILE_BYTES);
 }
 
+/** File names that hold credentials, so nothing is read from them at all. */
+const CREDENTIAL_FILE_PATTERNS = [
+  /(?:^|\.)env(?:\.|$)/i, // .env, .env.local, prod.env
+  /\.(?:pem|key|ppk|pfx|p12|jks|keystore|tfvars)(?:\.json)?$/i,
+  /^id_/i, // id_rsa, id_ed25519
+  /credential|secret/i,
+  /^[._](?:npmrc|netrc|pgpass|htpasswd|pypirc)$/i,
+];
+
+/**
+ * Returns true when the file's name says it holds credentials: .env files,
+ * key and certificate stores, SSH keys, Terraform variables, and any name
+ * with "credential" or "secret" in it.
+ *
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isCredentialFile(filePath) {
+  const name = path.basename(String(filePath || ""));
+  return CREDENTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name));
+}
+
 /**
  * Extract unique identifiers from source code content.
  *
@@ -103,6 +125,9 @@ function extractFromFilePath(filePath, homeDir, fsMod) {
   if (!isSafeFilePath(filePath, homeDir)) {
     return { blocked: true, reason: "outside home dir", identifiers: [] };
   }
+  if (isCredentialFile(filePath)) {
+    return { blocked: true, reason: "credentials file", identifiers: [] };
+  }
 
   try {
     const stat = fsImpl.statSync(filePath);
@@ -120,4 +145,10 @@ function extractFromFilePath(filePath, homeDir, fsMod) {
   }
 }
 
-module.exports = { isSafeFilePath, isFileTooLarge, extractIdentifiers, extractFromFilePath };
+module.exports = {
+  isSafeFilePath,
+  isFileTooLarge,
+  isCredentialFile,
+  extractIdentifiers,
+  extractFromFilePath,
+};
