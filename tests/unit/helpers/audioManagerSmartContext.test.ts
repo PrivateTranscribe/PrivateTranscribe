@@ -507,6 +507,40 @@ describe("AudioManager Smart Context capture timing", () => {
     expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: BROWSER_CONTEXT });
   });
 
+  it("keeps a cancelled dictation out of AI cleanup when it returns while the next one runs", async () => {
+    // Dictation A is cancelled while local Whisper still works on it, and A's
+    // Whisper call returns while B is still being transcribed, so a dictation
+    // is in progress when A comes back.
+    useEngine("whisper");
+    mockedGetContext
+      .mockResolvedValueOnce(EDITOR_CONTEXT as any)
+      .mockResolvedValueOnce(BROWSER_CONTEXT as any);
+    let finishFirst!: (value: unknown) => void;
+    let finishSecond!: (value: unknown) => void;
+    const transcribe = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
+      .mockImplementationOnce(() => new Promise((resolve) => (finishSecond = resolve)));
+    (window as any).electronAPI.transcribeLocalWhisper = transcribe;
+    const { manager, cleanup } = makeManager();
+
+    const { processing: first } = await dictate(manager);
+    expect(manager.cancelProcessing()).toBe(true);
+
+    const { processing: second } = await dictate(manager);
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    finishFirst({ success: true, text: "first dictation" });
+    await first;
+    expect(cleanup).not.toHaveBeenCalled();
+
+    finishSecond({ success: true, text: "second dictation" });
+    await second;
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(cleanup.mock.calls[0][0]).toBe("second dictation");
+    expect(cleanup.mock.calls[0][3]).toMatchObject({ smartContext: BROWSER_CONTEXT });
+  });
+
   it("never hands one recording's window to the next", async () => {
     useEngine("parakeet");
     mockedGetContext.mockResolvedValue(EDITOR_CONTEXT as any);
