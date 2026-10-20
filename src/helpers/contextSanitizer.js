@@ -312,9 +312,11 @@ function redactUrlCredentials(text) {
   if (typeof text !== "string" || !text) return "";
 
   // Redact `scheme://user:pass@host` style credentials. Common in database URLs,
-  // cloud service DSNs, and dev configs. The scheme starts only where a run of
-  // scheme characters starts, for the same reason as the email pattern.
-  const urlCredsRegex = /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)([^\s\/:@]+):([^\s@\/]+)@/gi;
+  // cloud service DSNs, and dev configs. The match starts at "://" and leaves
+  // whatever scheme comes before it as text: matching the scheme too either
+  // rescanned runs like "a.a.a." from every character or missed a scheme
+  // that follows "-", "." or "+".
+  const urlCredsRegex = /(:\/\/)([^\s\/:@]+):([^\s@\/]+)@/g;
 
   return text.replace(urlCredsRegex, "$1$2:[REDACTED]@");
 }

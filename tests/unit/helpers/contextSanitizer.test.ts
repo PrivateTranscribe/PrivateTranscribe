@@ -298,6 +298,15 @@ describe("sanitizeContextText (real implementation)", () => {
       );
     });
 
+    it.each(["-mysql", ".postgres", "+redis", "x_mongodb"])(
+      "redacts credentials when %s:// follows punctuation",
+      (scheme) => {
+        expect(sanitizeContextText(`${scheme}://u:hunter2@db.local`)).toBe(
+          `${scheme}://u:[REDACTED]@db.local`
+        );
+      }
+    );
+
     it("redacts credentials behind a long scheme", () => {
       const scheme = `db${"+driver".repeat(6)}`;
       expect(sanitizeContextText(`${scheme}://admin:hunter2@db.local/app`)).toBe(
