@@ -557,6 +557,21 @@ describe("sanitizeContextText (real implementation)", () => {
       );
     });
 
+    it.each([
+      [
+        "a lower-case END label before the text ends",
+        `${line("BEGIN", "RSA", "PRIVATE", "KEY")}\n-----end private key\nHx7qL2mZ9`,
+        "[REDACTED_PRIVATE_KEY]",
+      ],
+      [
+        "a lower-case END line before the real one",
+        `${line("BEGIN", "RSA", "PRIVATE", "KEY")}\nMIIEab\n${line("end", "rsa", "private", "key")}\nMIIEcd9Xk2\n${line("END", "RSA", "PRIVATE", "KEY")}\nnext`,
+        "[REDACTED_PRIVATE_KEY]\nnext",
+      ],
+    ])("ends an upper-case block only at an upper-case END line: %s", (_shape, input, expected) => {
+      expect(sanitizeContextText(input)).toBe(expected);
+    });
+
     it("redacts the rest of the END line, where a name inside the block left a value", () => {
       const input = `${line("BEGIN", "RSA", "PRIVATE", "KEY")}\ntoken: ${line("END", "RSA", "PRIVATE", "KEY")} hunter2\nnext`;
       expect(sanitizeContextText(input)).toBe("[REDACTED_PRIVATE_KEY]\nnext");

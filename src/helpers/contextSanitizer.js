@@ -51,12 +51,21 @@ const DEFAULT_REDACTION_PATTERNS = [
   // "PRIVATE KEY" is found the match never goes back for an earlier one, so
   // text repeating "BEGIN" lines or "PRIVATE KEY" is scanned once. First in
   // the list, so a field rule redacting PRIVATE_KEY=-----BEGIN cannot take
-  // the BEGIN line and leave the key body. The label is matched in any case,
-  // as in "-----begin rsa private key-----". The rest of the END line goes
+  // the BEGIN line and leave the key body. The rest of the END line goes
   // too: a secret name inside the block is gone, so a value after it on that
   // line would no longer be found by its name.
   {
     name: "privateKeyBlock",
+    regex:
+      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?[^\r\n]*|$)/g,
+    replacement: "[REDACTED_PRIVATE_KEY]",
+  },
+  // The same in any case, as in "-----begin rsa private key-----", for the
+  // blocks left after the rule above. It runs second so an upper-case block
+  // always ends at an upper-case END line, never at a lower-case one inside
+  // it.
+  {
+    name: "privateKeyBlockAnyCase",
     regex:
       /-----BEGIN [A-Z0-9 ]*PRIVATE KEY[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?:[A-Z ]*-----)?[^\r\n]*|$)/gi,
     replacement: "[REDACTED_PRIVATE_KEY]",
