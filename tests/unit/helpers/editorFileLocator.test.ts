@@ -85,8 +85,8 @@ describe("findEditorFile", () => {
     }
   );
 
-  it("skips hidden folders", () => {
-    addFile(".cache", "privoca", "App.jsx");
+  it.each([".cache", "AppData", "node_modules"])("skips the %s folder", (skipped) => {
+    addFile(skipped, "privoca", "App.jsx");
 
     expect(findEditorFile("App.jsx", "privoca", home).path).toBeNull();
   });
