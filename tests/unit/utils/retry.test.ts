@@ -57,5 +57,12 @@ describe("retry utilities", () => {
       expect(strategy.shouldRetry({ response: { status: 401 } })).toBe(false);
       expect(strategy.shouldRetry({ response: { status: 404 } })).toBe(false);
     });
+
+    it("reads the status an API error carries without a response object", () => {
+      const unauthorized = Object.assign(new Error("Invalid API key"), { status: 401 });
+      const unavailable = Object.assign(new Error("Overloaded"), { status: 503 });
+      expect(strategy.shouldRetry(unauthorized)).toBe(false);
+      expect(strategy.shouldRetry(unavailable)).toBe(true);
+    });
   });
 });

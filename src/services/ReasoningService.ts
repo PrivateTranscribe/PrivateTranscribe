@@ -82,6 +82,12 @@ function truncateErrorMessage(value: unknown, maxLength = 500): string {
   return message.length > maxLength ? `${message.slice(0, maxLength)}...` : message;
 }
 
+// Carries the HTTP status, so the retry strategy can tell a wrong key from a
+// network fault.
+function createApiError(message: unknown, status: number): Error & { status: number } {
+  return Object.assign(new Error(truncateErrorMessage(message)), { status });
+}
+
 function getTextLength(value: unknown): number | undefined {
   return typeof value === "string" ? value.length : undefined;
 }
@@ -592,7 +598,7 @@ class ReasoningService {
               errorData.message ||
               errorData.error ||
               `${providerName} API error: ${res.status}`;
-            throw new Error(truncateErrorMessage(errorMessage));
+            throw createApiError(errorMessage, res.status);
           }
 
           const jsonResponse = await res.json();
@@ -944,7 +950,7 @@ class ReasoningService {
                     continue;
                   }
 
-                  throw new Error(errorMessage);
+                  throw createApiError(errorMessage, res.status);
                 }
 
                 this.rememberOpenAiPreference(openAiBase, type);
@@ -1314,7 +1320,7 @@ class ReasoningService {
                 errorData.message ||
                 errorData.error ||
                 `Gemini API error: ${res.status}`;
-              throw new Error(truncateErrorMessage(errorMessage));
+              throw createApiError(errorMessage, res.status);
             }
 
             const jsonResponse = await res.json();
