@@ -21,9 +21,11 @@ function rejectedKeys(exePath: string, names: string[], concurrency = 8): Promis
     while (cursor < names.length) {
       const name = names[cursor++];
       const failed = await new Promise<boolean>((resolve) => {
-        // A non-zero exit surfaces as an error here, which is the same signal
-        // the previous spawnSync(...).status !== 0 check used.
-        execFile(exePath, [`--key=${name}`, "--release-only"], (error) => resolve(Boolean(error)));
+        // --print-keys parses the key and prints what it resolved to, sending
+        // nothing. --release-only reads the real keyboard and exits 4 on a
+        // locked PC or a UAC prompt, which failed every key here. A non-zero
+        // exit surfaces as an error.
+        execFile(exePath, [`--key=${name}`, "--print-keys"], (error) => resolve(Boolean(error)));
       });
       if (failed) rejected.push(name);
     }
@@ -136,8 +138,7 @@ describe("every key the picker can emit is one the helper can press", () => {
 
     expect(names.size).toBeGreaterThan(100);
 
-    // --release-only parses the key and sends the key-up half, which is a no-op
-    // for a key that is already up. Exit 3 means the parse failed.
+    // Exit 3 means the parse failed.
     const rejected = await rejectedKeys(exePath, [...names]);
     expect(rejected).toEqual([]);
   });
