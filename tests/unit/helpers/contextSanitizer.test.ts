@@ -72,6 +72,52 @@ describe("sanitizeContextText (real implementation)", () => {
     });
   });
 
+  describe("provider key shapes with '_' and '-' in the body", () => {
+    // Keys are assembled at runtime so no line in this file reads as a key.
+    const keyBody = (length: number) => "Ab3_x-9Q".repeat(Math.ceil(length / 8)).slice(0, length);
+
+    it("redacts a whole OpenAI project key", () => {
+      const key = ["sk", "proj", keyBody(156)].join("-");
+      expect(sanitizeContextText(`Terminal - ${key} - copied`)).toBe(
+        "Terminal - [REDACTED] - copied"
+      );
+    });
+
+    it("redacts a whole OpenAI service account key", () => {
+      const key = ["sk", "svcacct", keyBody(120)].join("-");
+      expect(sanitizeContextText(key)).toBe("[REDACTED]");
+    });
+
+    it("redacts a whole Anthropic key", () => {
+      const key = ["sk", "ant", "api03", `${keyBody(93)}AA`].join("-");
+      expect(sanitizeContextText(`Console: ${key}`)).toBe("Console: [REDACTED]");
+    });
+
+    it("redacts a whole Groq key", () => {
+      const key = ["gsk", keyBody(52)].join("_");
+      expect(sanitizeContextText(`Groq key ${key} created`)).toBe(
+        "Groq key [REDACTED_GROQ_KEY] created"
+      );
+    });
+
+    it("redacts a whole Google API key, including a trailing '-'", () => {
+      const key = ["AI", "za", keyBody(34), "-"].join("");
+      expect(sanitizeContextText(`Maps key ${key} (restricted)`)).toBe(
+        "Maps key [REDACTED_GOOGLE_API_KEY] (restricted)"
+      );
+    });
+
+    it("redacts a key that follows an underscore", () => {
+      const key = ["sk", "proj", keyBody(60)].join("-");
+      expect(sanitizeContextText(`OPENAI_${key}`)).toBe("OPENAI_[REDACTED]");
+    });
+
+    it("leaves words that only contain the prefixes alone", () => {
+      const input = "task-management-dashboard-overview and risk-assessment-template-final";
+      expect(sanitizeContextText(input)).toBe(input);
+    });
+  });
+
   describe("Bearer token redaction", () => {
     it("redacts Authorization: Bearer tokens", () => {
       const input = "Authorization: Bearer very.secret.token.here";

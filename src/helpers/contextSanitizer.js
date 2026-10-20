@@ -146,12 +146,20 @@ const DEFAULT_REDACTION_PATTERNS = [
     regex: /(\bbearer\s+)([A-Za-z0-9._-]{10,})\b/gi,
     replacement: "$1[REDACTED]",
   },
-  // Common OpenAI-style keys
+  // OpenAI and Anthropic keys: sk-..., sk-proj-..., sk-svcacct-..., sk-ant-api03-...
+  // Their bodies hold "_" and "-", where a word boundary can stop the match
+  // inside the key or miss it entirely, so the whole run of key characters is
+  // matched instead. The lookbehind keeps words like "task-" out.
   {
     name: "skKey",
-    // Covers OpenAI/Anthropic-style keys like sk-..., sk-proj-..., sk-ant-...
-    regex: /\bsk-[A-Za-z0-9-]{20,}\b/g,
+    regex: /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/g,
     replacement: "[REDACTED]",
+  },
+  // Groq keys
+  {
+    name: "groqKey",
+    regex: /(?<![A-Za-z0-9])gsk_[A-Za-z0-9_-]{20,}/g,
+    replacement: "[REDACTED_GROQ_KEY]",
   },
   // Stripe keys / secrets
   {
@@ -172,9 +180,11 @@ const DEFAULT_REDACTION_PATTERNS = [
   // Google API keys (often show up in URLs/config)
   {
     name: "googleApiKey",
-    // Typical Google API keys are 39 chars total ("AIza" + 35), but allow
-    // a small range to avoid missing real keys.
-    regex: /\bAIza[0-9A-Za-z_-]{30,40}\b/g,
+    // Typical Google API keys are 39 chars total ("AIza" + 35); accept 30 or
+    // more so a slightly different length is not missed. Matched to the end of
+    // the run of key characters, since a key ending in "-" has no word
+    // boundary where it ends.
+    regex: /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{30,}/g,
     replacement: "[REDACTED_GOOGLE_API_KEY]",
   },
   // Google OAuth access tokens (often start with ya29.)
