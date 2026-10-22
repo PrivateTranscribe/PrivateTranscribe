@@ -73,6 +73,7 @@ import { findVoice } from "../models/kokoroVoices";
 import { READ_ALOUD_SPEEDS } from "../utils/readAloudSpeed";
 import { SectionLabel } from "./ui/SectionLabel";
 import { setAgentName as persistAgentName } from "../utils/agentName";
+import { resolveImportedHistoryLimit } from "../utils/historyLimitImport";
 
 /**
  * The Settings tabs, and nothing else.
@@ -85,8 +86,6 @@ import { setAgentName as persistAgentName } from "../utils/agentName";
  */
 export type SettingsSectionType = "general" | "dictation" | "permissions" | "developer" | "beta";
 
-const HISTORY_LIMIT_MIN = 10;
-const HISTORY_LIMIT_MAX = 10000;
 const WHISPER_IDLE_TIMEOUT_MIN = 1;
 const WHISPER_IDLE_TIMEOUT_MAX = 1440;
 const AGENT_NAME_MAX_LENGTH = 100;
@@ -1659,10 +1658,11 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
 
       let importedHistoryLimit: number | undefined;
       if (s.historyLimit !== undefined) {
-        if (Number.isInteger(s.historyLimit) && s.historyLimit > 0) {
-          importedHistoryLimit = clamp(s.historyLimit, HISTORY_LIMIT_MIN, HISTORY_LIMIT_MAX);
+        const resolved = resolveImportedHistoryLimit(s.historyLimit, historyLimit);
+        if ("limit" in resolved) {
+          importedHistoryLimit = resolved.limit;
         } else {
-          skipField("historyLimit", "must be a positive integer");
+          skipField("historyLimit", resolved.skipReason);
         }
       }
 
@@ -1940,6 +1940,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     [
       allowApiKeysOnImport,
       setTheme,
+      historyLimit,
       setHistoryLimit,
       setDictationKey,
       setActivationMode,
