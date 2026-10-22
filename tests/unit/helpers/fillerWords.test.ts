@@ -74,6 +74,14 @@ describe("removeFillerWords", () => {
     });
   });
 
+  it.each([
+    ["Hmm? I don't know.", "I don't know."],
+    ["Uh! Wait a second.", "Wait a second."],
+    ["Really? Hmm? Okay then.", "Really? Okay then."],
+  ])("takes a filler's own ? or ! with it at a sentence start: %j", (input, expected) => {
+    expect(removeFillerWords(input, { languages: ["en"] })).toBe(expected);
+  });
+
   it("passes through non-strings", () => {
     expect(removeFillerWords(undefined)).toBeUndefined();
   });
