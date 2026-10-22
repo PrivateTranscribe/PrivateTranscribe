@@ -2322,6 +2322,9 @@ class AudioManager {
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,
         isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
+        // Stays true after processing ends, until a newer dictation or a
+        // cancel, for work that outlives the callback.
+        isLatest: () => this.processingGeneration === processingGeneration,
       });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
@@ -2431,6 +2434,7 @@ class AudioManager {
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,
         isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
+        isLatest: () => this.processingGeneration === processingGeneration,
       });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {

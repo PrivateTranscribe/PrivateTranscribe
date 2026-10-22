@@ -728,8 +728,14 @@ export const useAudioRecording = (toast, options = {}) => {
             // poll keeps running so a later word-for-word copy can still be learned.
             let explainedRejection = false;
 
+            // The dictation stops processing as soon as this callback returns,
+            // so the watch ends on a newer dictation instead of canCommit().
+            const canWatch = () =>
+              !disposed &&
+              (typeof commitContext.isLatest !== "function" || commitContext.isLatest());
+
             const intervalId = setInterval(async () => {
-              if (!canCommit()) {
+              if (!canWatch()) {
                 clearCorrectionInterval(intervalId);
                 return;
               }
@@ -739,7 +745,7 @@ export const useAudioRecording = (toast, options = {}) => {
               }
 
               const current = await window.electronAPI.readClipboard();
-              if (!canCommit()) {
+              if (!canWatch()) {
                 clearCorrectionInterval(intervalId);
                 return;
               }
