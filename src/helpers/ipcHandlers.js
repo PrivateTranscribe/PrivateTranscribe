@@ -968,10 +968,7 @@ class IPCHandlers {
             message: "FFmpeg is missing. Please reinstall the app or install FFmpeg manually.",
           };
         }
-        if (
-          errorMessage.includes("FFmpeg conversion failed") ||
-          errorMessage.includes("FFmpeg process error")
-        ) {
+        if (isAudioConversionFailure(errorMessage)) {
           return {
             success: false,
             error: "ffmpeg_error",
@@ -3237,6 +3234,13 @@ function readAloudNoticeReason(source) {
  * timestamped lines with no speaker names. Kept in the speakers format, every
  * segment would carry the same placeholder speaker and merge into one paragraph.
  */
+// The ways ffmpegUtils.convertToWav fails on a recording it cannot read.
+function isAudioConversionFailure(message) {
+  return /FFmpeg (exited with code|process error|conversion failed|conversion produced)/.test(
+    String(message || "")
+  );
+}
+
 // A silent minute inside a long dictation is normal, and the dictation still
 // pastes what was said around it, so only a whole recording gets the toast.
 function shouldToastNoAudio(result, options = {}) {
@@ -3260,5 +3264,6 @@ function formatFileTranscript(result, options, speakerDetectionMode) {
 module.exports = IPCHandlers;
 module.exports.formatFileTranscript = formatFileTranscript;
 module.exports.shouldToastNoAudio = shouldToastNoAudio;
+module.exports.isAudioConversionFailure = isAudioConversionFailure;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
 module.exports.readAloudNoticeReason = readAloudNoticeReason;
