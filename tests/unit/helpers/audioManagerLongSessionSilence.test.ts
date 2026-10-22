@@ -182,3 +182,22 @@ describe("AudioManager long-session silence on cloud transcription", () => {
     ).rejects.toThrow("No text transcribed");
   });
 });
+
+describe("AudioManager long-session chunk options", () => {
+  it("tells the main process a segment is part of a long dictation", async () => {
+    // The main process keeps its "No Audio Detected" toast for whole
+    // recordings, and knows a segment only by this flag.
+    (globalThis as any).localStorage = localStorageMock;
+    localStorageMock.clear();
+    localStorageMock.setItem("useLocalWhisper", "true");
+    const transcribeLocalWhisper = vi
+      .fn()
+      .mockResolvedValue({ success: false, message: "No audio detected" });
+    (globalThis as any).window = { electronAPI: { transcribeLocalWhisper } };
+    const manager: any = new AudioManager();
+
+    await manager.processWithLocalWhisper(audioBlob, "base", longSessionChunk);
+
+    expect(transcribeLocalWhisper.mock.calls[0][1]).toMatchObject({ longSessionChunk: true });
+  });
+});

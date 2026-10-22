@@ -946,7 +946,7 @@ class IPCHandlers {
         });
 
         // Check if no audio was detected and send appropriate event
-        if (!result.success && result.message === "No audio detected") {
+        if (shouldToastNoAudio(result, options)) {
           debugLogger.log("Sending no-audio-detected event to renderer");
           event.sender.send("no-audio-detected");
         }
@@ -3232,6 +3232,16 @@ function readAloudNoticeReason(source) {
  * timestamped lines with no speaker names. Kept in the speakers format, every
  * segment would carry the same placeholder speaker and merge into one paragraph.
  */
+// A silent minute inside a long dictation is normal, and the dictation still
+// pastes what was said around it, so only a whole recording gets the toast.
+function shouldToastNoAudio(result, options = {}) {
+  return (
+    result?.success === false &&
+    result.message === "No audio detected" &&
+    options?.longSessionChunk !== true
+  );
+}
+
 function formatFileTranscript(result, options, speakerDetectionMode) {
   const labelsFailed = Boolean(result.speakerLabelsError);
   const requestedFormat = options.outputFormat || "plain";
@@ -3244,5 +3254,6 @@ function formatFileTranscript(result, options, speakerDetectionMode) {
 
 module.exports = IPCHandlers;
 module.exports.formatFileTranscript = formatFileTranscript;
+module.exports.shouldToastNoAudio = shouldToastNoAudio;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
 module.exports.readAloudNoticeReason = readAloudNoticeReason;
