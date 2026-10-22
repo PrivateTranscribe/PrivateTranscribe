@@ -192,3 +192,11 @@ test("an import never lowers the history limit, which would delete history", asy
   expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("20000");
   expect(await limitCalls()).toContain(20000);
 });
+
+test("an import keeps a speech engine idle shutdown of 0", async ({ controlPanel }) => {
+  await seedPreferences(controlPanel);
+  await importSettings(controlPanel, { whisperServerIdleTimeoutMinutes: 0 });
+  expect(
+    await controlPanel.evaluate(() => localStorage.getItem("whisperServerIdleTimeoutMinutes"))
+  ).toBe("0");
+});

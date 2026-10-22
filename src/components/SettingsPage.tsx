@@ -86,7 +86,7 @@ import { resolveImportedHistoryLimit } from "../utils/historyLimitImport";
  */
 export type SettingsSectionType = "general" | "dictation" | "permissions" | "developer" | "beta";
 
-const WHISPER_IDLE_TIMEOUT_MIN = 1;
+const WHISPER_IDLE_TIMEOUT_MIN = 0;
 const WHISPER_IDLE_TIMEOUT_MAX = 1440;
 const AGENT_NAME_MAX_LENGTH = 100;
 const CUSTOM_PROMPT_MAX_LENGTH = 20000;
@@ -1668,9 +1668,10 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
 
       let importedWhisperIdleTimeout: number | undefined;
       if (s.whisperServerIdleTimeoutMinutes !== undefined) {
+        // 0 keeps the engine running, as the Idle shutdown field allows.
         if (
           Number.isInteger(s.whisperServerIdleTimeoutMinutes) &&
-          s.whisperServerIdleTimeoutMinutes > 0
+          s.whisperServerIdleTimeoutMinutes >= 0
         ) {
           importedWhisperIdleTimeout = clamp(
             s.whisperServerIdleTimeoutMinutes,
@@ -1678,7 +1679,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
             WHISPER_IDLE_TIMEOUT_MAX
           );
         } else {
-          skipField("whisperServerIdleTimeoutMinutes", "must be a positive integer");
+          skipField("whisperServerIdleTimeoutMinutes", "must be a whole number, 0 or more");
         }
       }
 
