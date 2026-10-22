@@ -298,6 +298,11 @@ class HotkeyManager {
     return this.sessionHotkeyEnabled;
   }
 
+  /** Test runs set this flag so they never take a key from the desktop. */
+  areGlobalShortcutsDisabled() {
+    return isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT");
+  }
+
   async setSessionHotkeyEnabled(enabled) {
     const nextEnabled = Boolean(enabled);
     if (nextEnabled === this.sessionHotkeyEnabled) {
@@ -428,7 +433,7 @@ class HotkeyManager {
     debugLogger.log(`[HotkeyManager] Platform: ${process.platform}, Arch: ${process.arch}`);
     debugLogger.log(`[HotkeyManager] Current hotkey: "${this.currentHotkey}"`);
 
-    if (isDiagFlagEnabled("PRIVATETRANSCRIBE_DIAG_DISABLE_GLOBAL_SHORTCUT")) {
+    if (this.areGlobalShortcutsDisabled()) {
       this.currentHotkey = hotkey;
       this.hotkeyCallback = callback;
       debugLogger.warn(`[Diagnostics] Skipping globalShortcut registration for "${hotkey}"`);

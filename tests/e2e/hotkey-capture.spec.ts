@@ -166,6 +166,33 @@ test.describe("hotkey capture", () => {
       .poll(() => storedHotkey(controlPanel, "dictationKey"))
       .toBe("CommandOrControl+Shift+F10");
   });
+
+  test("leaving the field registers no real shortcut in a test run", async ({
+    controlPanel,
+    electronApp,
+  }) => {
+    await seedHotkeys(controlPanel, {
+      dictationKey: "CommandOrControl+Space",
+      readAloudHotkey: "F8",
+    });
+
+    const field = await focusDictationHotkey(controlPanel);
+    await controlPanel.keyboard.press("Control+Shift+F10");
+    await expect
+      .poll(() => storedHotkey(controlPanel, "dictationKey"))
+      .toBe("CommandOrControl+Shift+F10");
+    await field.blur();
+
+    // Runs turn global shortcuts off. Leaving the field used to register the
+    // new key anyway, taking it from the desktop for the rest of the run. One
+    // more IPC round trip lets the capture exit land first.
+    await controlPanel.evaluate(() => window.electronAPI.getHotkeyModeInfo());
+    expect(
+      await electronApp.evaluate(({ globalShortcut }) =>
+        globalShortcut.isRegistered("CommandOrControl+Shift+F10")
+      )
+    ).toBe(false);
+  });
 });
 
 test.describe("read aloud default hotkey", () => {
