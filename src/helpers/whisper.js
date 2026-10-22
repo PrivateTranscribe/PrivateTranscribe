@@ -755,14 +755,21 @@ class WhisperManager {
     // decode boundaries. Collapse exact adjacent duplicates only when the phrase
     // is long enough that an intentional repeat is unlikely.
     for (let n = 50; n >= 8; n--) {
-      const duplicatePassagePattern = new RegExp(`((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1)+`, "gi");
+      const duplicatePassagePattern = new RegExp(
+        `(?<![\\p{L}\\p{N}])((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1)+(?![\\p{L}\\p{N}])`,
+        "giu"
+      );
       cleaned = cleaned.replace(duplicatePassagePattern, "$1");
     }
 
     for (let n = 30; n >= 3; n--) {
       // Build a regex that matches an n-word phrase repeated 3+ times in a row.
       // The phrase is captured, then required to repeat (with whitespace) 2+ more times.
-      const phrasePattern = new RegExp(`((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}`, "gi");
+      // Both ends sit on word edges, so "it" never repeats into "items".
+      const phrasePattern = new RegExp(
+        `(?<![\\p{L}\\p{N}])((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}(?![\\p{L}\\p{N}])`,
+        "giu"
+      );
       cleaned = cleaned.replace(phrasePattern, "$1");
     }
 
