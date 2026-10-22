@@ -2652,8 +2652,11 @@ class AudioManager {
       // A long-session chunk holding only silence is a normal outcome — the
       // speaker paused, or the recording ran on after they stopped talking.
       // It is not a failure: treating it as one exhausts the chunk's retries
-      // and makes finalizeLongSessionResult discard the whole dictation.
-      if (metadata?.source === "long-session" && !result.text) {
+      // and makes finalizeLongSessionResult discard the whole dictation. An
+      // error reply also has no text, but it is a failure: it needs the retry
+      // and, if that fails too, the gap marker.
+      const silent = result.success || result.message === "No audio detected";
+      if (metadata?.source === "long-session" && !result.text && silent) {
         return {
           success: true,
           text: "",
