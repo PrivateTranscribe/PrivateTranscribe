@@ -23,8 +23,23 @@ describe("resolveEffectiveHotkey", () => {
     expect(resolveEffectiveHotkey(false, "", "F8")).toBe("F8");
   });
 
-  test("adopts the captured hotkey only when one was reported", () => {
-    expect(resolveEffectiveHotkey(false, "F9", "`")).toBe("F9");
+  test("adopts the captured hotkey once update-hotkey accepted it", () => {
+    // update-hotkey runs first and makes an accepted key the current one.
+    expect(resolveEffectiveHotkey(false, "F9", "F9")).toBe("F9");
+  });
+
+  test("keeps the hotkey the app has when update-hotkey refused the captured one", () => {
+    // "-" is refused as unsupported, F9 when another app holds it. Wiring the
+    // refused key made "-" untypeable in every app and left the old key dead.
+    expect(resolveEffectiveHotkey(false, "-", "CommandOrControl+Space")).toBe(
+      "CommandOrControl+Space"
+    );
+    expect(resolveEffectiveHotkey(false, "F9", "`")).toBe("`");
+    expect(resolveEffectiveHotkey(false, "Mouse3", "`")).toBe("`");
+  });
+
+  test("takes the captured hotkey on GNOME, which confirms it only later", () => {
+    expect(resolveEffectiveHotkey(false, "F9", "`", true)).toBe("F9");
   });
 
   test("keeps the existing hotkey while capture mode is being entered", () => {

@@ -1817,7 +1817,8 @@ class IPCHandlers {
       const effectiveHotkey = resolveEffectiveHotkey(
         enabled,
         newHotkey,
-        hotkeyManager.getCurrentHotkey()
+        hotkeyManager.getCurrentHotkey(),
+        hotkeyManager.isUsingGnome()
       );
 
       if (enabled) {
@@ -3205,8 +3206,12 @@ class IPCHandlers {
  * settings screen passes null, because adopting a mute key as the dictation
  * hotkey would leave the user unable to start dictating at all.
  */
-function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
-  if (!enabled && newHotkey) {
+function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey, adoptUnconfirmed = false) {
+  // update-hotkey has already run when the field reports its key, so a key it
+  // refused is not the current one. Wiring it anyway would register a key
+  // such as "-" in every app and leave the old hotkey dead. GNOME sets the
+  // current hotkey only once its own update finishes, so it takes the key.
+  if (!enabled && newHotkey && (adoptUnconfirmed || newHotkey === currentHotkey)) {
     return newHotkey;
   }
   return currentHotkey;
