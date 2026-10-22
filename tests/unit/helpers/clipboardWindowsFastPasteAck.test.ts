@@ -96,4 +96,44 @@ describe("ClipboardManager native Windows acknowledgement", () => {
       })
     );
   });
+
+  // A helper that hangs or crashes after it pressed Ctrl+V has still pasted.
+  // Reporting nothing sent makes the app ask for a manual Ctrl+V, and the
+  // text then lands twice.
+  test.each([
+    ["times out", () => vi.advanceTimersByTimeAsync(2500)],
+    ["exits with an error", async () => child.emit("close", 3221225477)],
+  ])("reports a paste dispatched before the helper %s as sent", async (_label, fail) => {
+    const manager = new ClipboardManager();
+    vi.spyOn(manager.pasteDiagnostics, "record").mockResolvedValue(undefined);
+    vi.spyOn(manager, "getFastPastePath").mockReturnValue("C:\\helper.exe");
+    vi.spyOn(manager, "_spawnFastPaste").mockReturnValue(child);
+    const pending = manager.pasteWindows({ text: "before" });
+    await vi.advanceTimersByTimeAsync(30);
+    child.stderr.emit("data", Buffer.from("PT_PASTE_STAGE dispatched\n"));
+    await fail();
+
+    await expect(pending).resolves.toMatchObject({
+      delivered: false,
+      dispatched: true,
+      evidence: "none",
+    });
+  });
+
+  test("still reports a helper that failed before dispatch as not sent", async () => {
+    const manager = new ClipboardManager();
+    vi.spyOn(manager.pasteDiagnostics, "record").mockResolvedValue(undefined);
+    vi.spyOn(manager, "getFastPastePath").mockReturnValue("C:\\helper.exe");
+    vi.spyOn(manager, "_spawnFastPaste").mockReturnValue(child);
+    const pending = manager.pasteWindows({ text: "before" });
+    await vi.advanceTimersByTimeAsync(30);
+    child.stderr.emit("data", Buffer.from("PT_PASTE_STAGE input\n"));
+    await vi.advanceTimersByTimeAsync(2500);
+
+    await expect(pending).resolves.toMatchObject({
+      delivered: false,
+      dispatched: false,
+      evidence: "absent",
+    });
+  });
 });

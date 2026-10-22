@@ -9,6 +9,7 @@ const {
   assertWindowsFastPasteSucceeded,
   parseWindowsFastPasteOutput,
   PASTE_EVIDENCE_ABSENT,
+  PASTE_EVIDENCE_NONE,
   resolveWindowsFastPasteExecutable,
 } = require("./windowsPasteTarget");
 
@@ -370,6 +371,19 @@ class ClipboardManager {
                   : null,
           });
         };
+        // A helper that hangs or crashes after it sent the paste chord has
+        // still pasted, so it reports an unconfirmed dispatch instead of
+        // telling the user to paste again.
+        const helperFailure = (message) => {
+          const error = new Error(message);
+          if (stage === "dispatched" || stage === "observed") {
+            error.code = "WINDOWS_PASTE_NOT_CONFIRMED";
+            error.dispatched = true;
+            error.evidence = PASTE_EVIDENCE_NONE;
+            error.enterSent = false;
+          }
+          return error;
+        };
 
         this.safeLog(`⚡ Fast paste starting (delay: ${pasteDelay}ms)`, { helperArgs });
 
@@ -407,7 +421,7 @@ class ClipboardManager {
           if (code !== 0) {
             record("exit-error", { exitCode: code });
             reject(
-              new Error(
+              helperFailure(
                 `Fast paste helper exited with code ${code}${stderr ? `: ${stderr.trim()}` : ""}`
               )
             );
@@ -457,7 +471,7 @@ class ClipboardManager {
           record("timeout");
           killProcess(pasteProcess, "SIGKILL");
           pasteProcess.removeAllListeners();
-          reject(new Error("Fast paste helper timed out"));
+          reject(helperFailure("Fast paste helper timed out"));
         }, 2500);
       }, pasteDelay);
     });
