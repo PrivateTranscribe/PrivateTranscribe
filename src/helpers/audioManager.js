@@ -3880,6 +3880,11 @@ class AudioManager {
           "transcription"
         );
         return { success: true, text, source, timings };
+      } else if (metadata?.source === "long-session") {
+        // A silent minute of a long dictation, as on the local path. Failing
+        // it would retry it as more paid requests and mark a gap in the text.
+        timings.transcriptionProcessingDurationMs = Math.round(performance.now() - apiCallStart);
+        return { success: true, text: "", source: "openai", timings };
       } else {
         // Log at info level so it shows without debug mode
         logger.info(
