@@ -1494,6 +1494,7 @@ class AudioManager {
           skipOptimization: true,
           chunkIndex: item.index,
           trimTrailingSilence: item.trimTrailingSilence,
+          lockedLanguage: state.detectedLanguage,
           smartContextCapture: state.smartContextCapture,
         });
 
