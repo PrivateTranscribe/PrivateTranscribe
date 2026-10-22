@@ -3288,10 +3288,12 @@ class AudioManager {
 
       let result = repairSplitDictionaryTerms(text, repairWords);
       for (const word of repairWords) {
-        // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
+        // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive.
+        // \b only knows ASCII letters, so the edges check Unicode letters: "Østerbro" matches,
+        // and "Øl" stays out of "tuborgøl".
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`\\b${escaped}\\b`, "gi");
-        result = result.replace(regex, word);
+        const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, "giu");
+        result = result.replace(regex, () => word);
       }
       return result;
     } catch {

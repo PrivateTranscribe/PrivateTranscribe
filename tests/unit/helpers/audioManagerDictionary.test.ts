@@ -101,4 +101,44 @@ describe("AudioManager custom dictionary", () => {
       "syntyphoid is unrelated"
     );
   });
+
+  it("repairs terms that start or end with a letter like ø, æ or é", () => {
+    // \b only knows ASCII letters, so these were never matched at all.
+    localStorageMock.setItem("customDictionary", JSON.stringify(["Østerbro", "Ærø", "Café"]));
+
+    const manager = new AudioManager();
+
+    expect(manager.applyDictionaryReplacements("jeg bor på østerbro, ikke ærø")).toBe(
+      "jeg bor på Østerbro, ikke Ærø"
+    );
+    expect(manager.applyDictionaryReplacements("mød mig på café")).toBe("mød mig på Café");
+  });
+
+  it("leaves a term like Øl alone inside a Danish compound", () => {
+    localStorageMock.setItem("customDictionary", JSON.stringify(["Øl", "Ål"]));
+
+    const manager = new AudioManager();
+
+    expect(manager.applyDictionaryReplacements("en tuborgøl og sushiål")).toBe(
+      "en tuborgøl og sushiål"
+    );
+  });
+
+  it("repairs terms that start or end with a symbol, such as .NET and C++", () => {
+    localStorageMock.setItem("customDictionary", JSON.stringify([".NET", "C++"]));
+
+    const manager = new AudioManager();
+
+    expect(manager.applyDictionaryReplacements("we use .net and c++ code")).toBe(
+      "we use .NET and C++ code"
+    );
+  });
+
+  it("writes a term holding $ as it is stored", () => {
+    localStorageMock.setItem("customDictionary", JSON.stringify(["Ca$$h"]));
+
+    const manager = new AudioManager();
+
+    expect(manager.applyDictionaryReplacements("pay with ca$$h")).toBe("pay with Ca$$h");
+  });
 });
