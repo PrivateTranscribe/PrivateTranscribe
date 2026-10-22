@@ -2728,6 +2728,12 @@ class AudioManager {
         throw error;
       }
 
+      // A cancelled recording is thrown away, so its audio must not reach the
+      // cloud fallback on the way, as recoverFromParakeetFailure makes sure too.
+      if (error?.name === "AbortError" || this.isTranscriptionRequestCancelled(metadata)) {
+        throw Object.assign(new Error("Transcription cancelled"), { name: "AbortError" });
+      }
+
       const allowOpenAIFallback =
         this.getTranscriptionSetting("allowOpenAIFallback", "false") === "true";
       const isLocalMode = this.getTranscriptionSetting("useLocalWhisper", "false") === "true";
