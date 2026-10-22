@@ -27,12 +27,20 @@ import {
   buildFileIdentifierHint,
 } from "./contextPipeline";
 
-const normalizePunctuationSpacing = (text) =>
-  String(text || "")
+const normalizeSpacing = (text) =>
+  text
     .replace(/\s+([,.;:!?%])/g, "$1")
     .replace(/\b([A-Za-z]+)\s+(['’])\s*(m|re|ve|ll|d|s|t)\b/gi, "$1$2$3")
     .replace(/([([{])\s+/g, "$1")
     .replace(/\s+([)\]}])/g, "$1");
+
+// The gap marker's own " ...]" would close up to "...]", and the marker check
+// after cleanup would then miss it and add a second one at the end.
+const normalizePunctuationSpacing = (text) =>
+  String(text || "")
+    .split(MISSING_SECTION_MARKER)
+    .map(normalizeSpacing)
+    .join(MISSING_SECTION_MARKER);
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
