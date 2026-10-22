@@ -165,3 +165,30 @@ test("rejects invalid types and control characters while accepting a cleared mut
     readAloudVoice: "bf_emma",
   });
 });
+
+test("an import never lowers the history limit, which would delete history", async ({
+  electronApp,
+  controlPanel,
+}) => {
+  await seedPreferences(controlPanel);
+  await electronApp.evaluate(({ ipcMain }) => {
+    const calls: unknown[] = [];
+    (globalThis as any).__historyLimitCalls = calls;
+    ipcMain.removeHandler("set-history-limit");
+    ipcMain.handle("set-history-limit", (_event, limit) => {
+      calls.push(limit);
+      return { success: true };
+    });
+  });
+  const limitCalls = () =>
+    electronApp.evaluate(() => [...((globalThis as any).__historyLimitCalls as unknown[])]);
+
+  const message = await importSettings(controlPanel, { historyLimit: 10 }, true);
+  expect(message).toContain("historyLimit");
+  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("50");
+  expect(await limitCalls()).not.toContain(10);
+
+  await importSettings(controlPanel, { historyLimit: 20000 });
+  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("20000");
+  expect(await limitCalls()).toContain(20000);
+});
