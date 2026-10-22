@@ -177,6 +177,41 @@ describe("AudioManager long-session language lock", () => {
     expect(seenLockedLanguages).toEqual([null, "da", "da", "da", "da"]);
   });
 
+  it("takes the lock from the first segment with real speech", async () => {
+    // A silent first minute comes back as an invented "Thank you." that
+    // whisper reports as English. Locking on it would decode a Danish
+    // speaker's every later minute as English.
+    const manager: any = new AudioManager();
+    const seenLockedLanguages: Array<string | null> = [];
+    const replies = [
+      { text: "Thank you.", detectedLanguage: "en" },
+      { text: "Goddag allesammen", detectedLanguage: "da" },
+      { text: "og tak for i dag", detectedLanguage: "no" },
+    ];
+
+    manager.runTranscription = vi.fn(async (_blob: unknown, metadata: any) => {
+      seenLockedLanguages.push(metadata.lockedLanguage ?? null);
+      return { result: replies[metadata.chunkIndex] };
+    });
+
+    const state = manager.longSession;
+    state.active = true;
+    state.sessionId = 1;
+    state.queue = [0, 1, 2].map((index) => ({
+      blob: audioBlob,
+      durationMs: 60000,
+      index,
+      sessionId: 1,
+      attempts: 0,
+      trimTrailingSilence: false,
+    }));
+
+    await manager.drainLongSessionQueue();
+
+    expect(seenLockedLanguages).toEqual([null, null, "da"]);
+    expect(state.detectedLanguage).toBe("da");
+  });
+
   it("forgets the lock between recordings, so switching language still works", async () => {
     const manager: any = new AudioManager();
     manager.longSession.detectedLanguage = "da";

@@ -201,3 +201,48 @@ describe("AudioManager long-session chunk options", () => {
     expect(transcribeLocalWhisper.mock.calls[0][1]).toMatchObject({ longSessionChunk: true });
   });
 });
+
+describe("AudioManager long-session non-speech segments", () => {
+  const runSession = async (texts: string[], durationsMs: number[]) => {
+    (globalThis as any).localStorage = localStorageMock;
+    localStorageMock.clear();
+    (globalThis as any).window = { electronAPI: {} };
+    const manager: any = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
+    vi.spyOn(manager, "processTranscription").mockImplementation(async (text) => text);
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => ({
+      result: { success: true, text: texts[metadata.chunkIndex], source: "local" },
+      useLocalWhisper: true,
+      localProvider: "whisper",
+      activeModel: "base",
+    }));
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 9;
+    manager.longSession = state;
+    for (const durationMs of durationsMs) {
+      manager.enqueueLongSessionChunk(new Blob(["audio"]), durationMs);
+    }
+    await manager.waitForLongSessionQueue();
+    return manager.finalizeLongSessionResult(durationsMs.reduce((a, b) => a + b, 0) / 1000);
+  };
+
+  it("drops what Whisper made up for a minute of silence", async () => {
+    // A short dictation of nothing but breath is dropped by the same check.
+    // The minutes of a long one skipped it, so the invention landed mid-text.
+    const result = await runSession(
+      ["First minute of the report.", "Thank you.", "[Music]", "Last part of the report."],
+      [60_000, 60_000, 60_000, 30_000]
+    );
+
+    expect(result.text).toBe("First minute of the report. Last part of the report.");
+  });
+
+  it("keeps a short closing phrase the speaker really said", async () => {
+    // Under four seconds a stock phrase is plausibly speech, as for a short
+    // dictation.
+    const result = await runSession(["The report is done.", "Thank you."], [60_000, 2_000]);
+
+    expect(result.text).toBe("The report is done. Thank you.");
+  });
+});

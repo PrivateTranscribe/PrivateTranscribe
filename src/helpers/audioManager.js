@@ -626,6 +626,23 @@ class AudioManager {
     };
   }
 
+  // A silent minute of a long dictation gets the same invented "Thank you." or
+  // "[Music]" as a silent short one, so each segment passes the same check
+  // before it joins the transcript.
+  readLongSessionChunkText(item, transcription) {
+    const text = String(transcription?.result?.text || "").trim();
+    const artifact = classifyNonSpeechArtifact(text, { durationSeconds: item.durationMs / 1000 });
+    if (!artifact.isArtifact) {
+      return text;
+    }
+    logger.info(
+      "Dropped a non-speech long-session chunk",
+      { chunkIndex: item.index, reason: artifact.reason, text },
+      "transcription"
+    );
+    return "";
+  }
+
   recordLongSessionChunkTelemetry(state, item, transcription) {
     if (!state || !item || !transcription) {
       return;
@@ -1379,9 +1396,14 @@ class AudioManager {
             smartContextCapture: state.smartContextCapture,
           });
 
+          this.recordLongSessionChunkTelemetry(state, item, result);
+          const text = this.readLongSessionChunkText(item, result);
+
           // Segments are transcribed one at a time, so the language learned
-          // here is already pinned by the time the next one is submitted.
-          if (!state.detectedLanguage) {
+          // here is already pinned by the time the next one is submitted. A
+          // segment with no real speech says nothing about the language: an
+          // invented "Thank you." comes back as English for any speaker.
+          if (!state.detectedLanguage && text) {
             const detected = result?.result?.detectedLanguage;
             if (detected) {
               state.detectedLanguage = detected;
@@ -1393,8 +1415,6 @@ class AudioManager {
             }
           }
 
-          this.recordLongSessionChunkTelemetry(state, item, result);
-          const text = String(result?.result?.text || "").trim();
           if (text) {
             state.results.set(item.index, text);
           }
@@ -1507,7 +1527,7 @@ class AudioManager {
         });
 
         this.recordLongSessionChunkTelemetry(state, item, result);
-        const text = String(result?.result?.text || "").trim();
+        const text = this.readLongSessionChunkText(item, result);
         if (text) {
           state.results.set(item.index, text);
         }
