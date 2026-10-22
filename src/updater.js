@@ -14,6 +14,9 @@ class UpdateManager {
     this.controlPanelWindow = null;
     this.updateAvailable = false;
     this.updateDownloaded = false;
+    // The release whose installer is on disk. electron-updater installs that
+    // file, whatever a later check found.
+    this.downloadedVersion = null;
     this.lastUpdateInfo = null;
     this.isInstalling = false;
     this.isDownloading = false;
@@ -93,6 +96,11 @@ class UpdateManager {
       },
       "update-available": (info) => {
         this.updateAvailable = true;
+        // A newer release than the one downloaded needs its own download, or
+        // Install would run the older file under the newer version's name.
+        if (this.updateDownloaded && info?.version && info.version !== this.downloadedVersion) {
+          this.updateDownloaded = false;
+        }
         if (info) {
           this.lastUpdateInfo = {
             version: info.version,
@@ -104,8 +112,14 @@ class UpdateManager {
         this.notifyRenderers("update-available", info);
       },
       "update-not-available": (info) => {
+        // The feed no longer offers the release downloaded earlier, as when a
+        // release is pulled, so it must not install itself when the app quits.
+        if (this.updateDownloaded) {
+          autoUpdater.autoInstallOnAppQuit = false;
+        }
         this.updateAvailable = false;
         this.updateDownloaded = false;
+        this.downloadedVersion = null;
         this.isDownloading = false;
         this.lastUpdateInfo = null;
         this.notifyRenderers("update-not-available", info);
@@ -124,6 +138,8 @@ class UpdateManager {
       "update-downloaded": (info) => {
         console.log("✅ Update downloaded successfully:", info?.version);
         this.updateDownloaded = true;
+        this.downloadedVersion = info?.version || null;
+        autoUpdater.autoInstallOnAppQuit = true;
         this.isDownloading = false;
         if (info) {
           this.lastUpdateInfo = {
