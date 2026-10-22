@@ -3228,13 +3228,6 @@ function readAloudNoticeReason(source) {
   return source === "unsupported" ? "unsupported" : "empty-selection";
 }
 
-/**
- * A file transcription's text in the format the page asked for.
- *
- * Speaker labels that failed leave the transcript as it reads with labels off:
- * timestamped lines with no speaker names. Kept in the speakers format, every
- * segment would carry the same placeholder speaker and merge into one paragraph.
- */
 // The ways ffmpegUtils.convertToWav fails on a recording it cannot read.
 function isAudioConversionFailure(message) {
   return /FFmpeg (exited with code|process error|conversion failed|conversion produced)/.test(
@@ -3252,6 +3245,13 @@ function shouldToastNoAudio(result, options = {}) {
   );
 }
 
+/**
+ * A file transcription's text in the format the page asked for.
+ *
+ * Speaker labels that failed leave the transcript as it reads with labels off:
+ * timestamped lines with no speaker names. Kept in the speakers format, every
+ * segment would carry the same placeholder speaker and merge into one paragraph.
+ */
 function formatFileTranscript(result, options, speakerDetectionMode) {
   const labelsFailed = Boolean(result.speakerLabelsError);
   const requestedFormat = options.outputFormat || "plain";
