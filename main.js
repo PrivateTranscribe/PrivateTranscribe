@@ -231,6 +231,17 @@ async function initializeManagers() {
     })
     .catch(() => {});
 
+  // A crash or a killed process leaves its temp audio in the user's own temp
+  // folder too, where nothing else ever removes it.
+  require("./src/helpers/safeTempDir")
+    .removeLeftoverTempAudio()
+    .then((removed) => {
+      if (removed > 0) {
+        debugLogger.info("Removed leftover temp audio from the temp folder", { removed });
+      }
+    })
+    .catch(() => {});
+
   const analyticsManager = require("./src/helpers/analyticsManager");
   analyticsManager.initialize(process.env.SUPABASE_ANON_KEY || "");
 

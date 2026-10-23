@@ -74,6 +74,28 @@ describe("removeFillerWords", () => {
     });
   });
 
+  it.each([
+    ["Hmm? I don't know.", "I don't know."],
+    ["Uh! Wait a second.", "Wait a second."],
+    ["Really? Hmm? Okay then.", "Really? Okay then."],
+  ])("takes a filler's own ? or ! with it at a sentence start: %j", (input, expected) => {
+    expect(removeFillerWords(input, { languages: ["en"] })).toBe(expected);
+  });
+
+  it.each([
+    ["Okay. Hmm?", "Okay."],
+    ["Okay. Hmm.", "Okay."],
+    ["Hmm? 5 items", "5 items"],
+    ['Okay. Hmm? "Quote"', 'Okay. "Quote"'],
+    ["Okay. Hmm. 5 left.", "Okay. 5 left."],
+  ])("drops a filler that is a whole sentence with no letter after it: %j", (input, expected) => {
+    expect(removeFillerWords(input, { languages: ["en"] })).toBe(expected);
+  });
+
+  it("keeps an acronym that is a sentence of its own", () => {
+    expect(removeFillerWords("Done. ERM? 5", { languages: ["en"] })).toBe("Done. ERM? 5");
+  });
+
   it("passes through non-strings", () => {
     expect(removeFillerWords(undefined)).toBeUndefined();
   });

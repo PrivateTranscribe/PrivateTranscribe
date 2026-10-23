@@ -854,6 +854,39 @@ describe("AudioManager recorder lifecycle", () => {
     );
   });
 
+  it("keeps the gap marker whole through the transcript's own punctuation pass", async () => {
+    // processTranscription runs for real here. Its spacing pass closes up a
+    // space before "." and used to turn " ...]" into "...]", so the marker no
+    // longer matched and a second one was added at the end.
+    const manager = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
+    const state = manager.createLongSessionState();
+    state.active = true;
+    state.sessionId = 48;
+    manager.longSession = state;
+
+    vi.spyOn(manager, "runTranscription").mockImplementation(async (_blob, metadata: any) => {
+      if (metadata.chunkIndex === 1) {
+        throw new Error("persistent provider failure");
+      }
+      return {
+        result: { success: true, text: `chunk-${metadata.chunkIndex}`, source: "openai" },
+        useLocalWhisper: false,
+        localProvider: "whisper",
+        activeModel: "gpt-transcribe",
+      } as never;
+    });
+
+    manager.enqueueLongSessionChunk(new Blob(["first"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["middle"]), 60_000);
+    manager.enqueueLongSessionChunk(new Blob(["tail"]), 60_000);
+
+    await manager.waitForLongSessionQueue();
+    const result = await manager.finalizeLongSessionResult(180);
+
+    expect(result.text).toBe(`chunk-0 ${MISSING_SECTION_MARKER} chunk-2`);
+  });
+
   it("gives a failed chunk one more attempt once the queue has drained", async () => {
     // Whatever broke the chunk mid-recording is usually gone by the end, and a
     // recovered chunk is worth far more than a marked gap.

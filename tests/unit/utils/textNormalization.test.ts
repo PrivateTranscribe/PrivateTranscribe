@@ -26,6 +26,19 @@ describe("textNormalization", () => {
     expect(normalizeTranscriptText("  Hello\n\nworld  ?  ")).toBe("Hello world?");
   });
 
+  it.each([
+    ["Add the file to .gitignore today.", "Add the file to .gitignore today."],
+    ["We use .NET 8 and the .tsx files.", "We use .NET 8 and the .tsx files."],
+    ["Run it with !important set.", "Run it with !important set."],
+  ])("keeps the space before a word that starts with punctuation: %j", (input, expected) => {
+    expect(normalizeTranscriptText(input)).toBe(expected);
+  });
+
+  it("still closes up a space before a comma, an ellipsis or a closing mark", () => {
+    expect(normalizePunctuationSpacing("Well , wait ... okay .")).toBe("Well, wait... okay.");
+    expect(normalizePunctuationSpacing("Is it 50 % ?")).toBe("Is it 50%?");
+  });
+
   it("keeps normal spacing between words", () => {
     expect(normalizeTranscriptText("This is already clean.")).toBe("This is already clean.");
   });

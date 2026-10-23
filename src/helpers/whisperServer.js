@@ -1185,9 +1185,20 @@ class WhisperServerManager {
         this.stopHealthCheck();
         return;
       }
-      if (!(await this.checkHealth())) {
+      const probed = this.process;
+      const healthy = await this.checkHealth();
+      // A restart while the probe ran has a readiness check of its own.
+      if (this.process !== probed) return;
+      if (!healthy) {
         debugLogger.warn("whisper-server health check failed");
         this.ready = false;
+      } else if (!this.ready) {
+        // One slow probe on a busy or just-woken PC must not leave a working
+        // server marked down: that stops the idle unload and makes the next
+        // dictation restart it from cold.
+        debugLogger.info("whisper-server answers its health check again");
+        this.ready = true;
+        if (!this.idleCheckTimeout) this._scheduleIdleCheck();
       }
     }, HEALTH_CHECK_INTERVAL_MS);
   }

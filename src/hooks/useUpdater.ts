@@ -77,6 +77,30 @@ function updateGlobalState(updates: Partial<UpdateState>) {
 }
 
 /**
+ * The state after a check finds a release. A downloaded update stays ready
+ * only when it is that release: electron-updater installs the file on disk,
+ * so a newer release needs its own download.
+ */
+export function updateAvailableState(
+  state: UpdateState,
+  info?: UpdateInfo | null
+): Partial<UpdateState> {
+  const supersedes =
+    state.status.updateDownloaded &&
+    Boolean(info?.version) &&
+    info?.version !== state.info?.version;
+  return {
+    status: {
+      ...state.status,
+      updateAvailable: true,
+      ...(supersedes ? { updateDownloaded: false } : {}),
+    },
+    info: info || state.info,
+    ...(supersedes ? { downloadProgress: 0 } : {}),
+  };
+}
+
+/**
  * Register IPC event listeners (only once globally)
  */
 function registerEventListeners() {
@@ -89,10 +113,7 @@ function registerEventListeners() {
   // Update available
   if (window.electronAPI.onUpdateAvailable) {
     const dispose = window.electronAPI.onUpdateAvailable((_event, info) => {
-      updateGlobalState({
-        status: { ...globalState.status, updateAvailable: true },
-        info: info || globalState.info,
-      });
+      updateGlobalState(updateAvailableState(globalState, info));
     });
     if (dispose) cleanupFunctions.push(dispose);
   }

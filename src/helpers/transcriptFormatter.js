@@ -28,14 +28,18 @@ function removeRepetitions(text) {
   let cleaned = text;
 
   // 1) Collapse long repeated phrases (3–30 word n-grams repeated 3+ times)
+  // Both ends sit on word edges, so "the the theory" is not three of "the".
   for (let n = 30; n >= 3; n--) {
-    const phrasePattern = new RegExp(`((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}`, "gi");
+    const phrasePattern = new RegExp(
+      `(?<![\\p{L}\\p{N}])((?:\\S+\\s+){${n - 1}}\\S+)(?:\\s+\\1){2,}(?![\\p{L}\\p{N}])`,
+      "giu"
+    );
     cleaned = cleaned.replace(phrasePattern, "$1");
   }
 
   // 2) Collapse single-word stutters (3+ consecutive identical words/tokens including punctuation)
   // Handles "Ja. Ja. Ja. Ja." and "Hvad? Hvad? Hvad?" patterns
-  cleaned = cleaned.replace(/(\S+[.!?]?)(?:\s+\1){2,}/gi, "$1");
+  cleaned = cleaned.replace(/(?<![\p{L}\p{N}])(\S+[.!?]?)(?:\s+\1){2,}(?![\p{L}\p{N}])/giu, "$1");
 
   // 3) Collapse repeated single characters (e.g. "åååååå..." → "å")
   cleaned = cleaned.replace(/(.)\1{9,}/g, "$1");

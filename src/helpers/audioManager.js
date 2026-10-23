@@ -27,14 +27,29 @@ import {
   buildFileIdentifierHint,
 } from "./contextPipeline";
 
-const normalizePunctuationSpacing = (text) =>
-  String(text || "")
-    .replace(/\s+([,.;:!?%])/g, "$1")
+// Only punctuation that ends a word loses the space before it, so ".gitignore"
+// and ".NET" keep theirs.
+const normalizeSpacing = (text) =>
+  text
+    .replace(/\s+([,.;:!?%])(?=[\s,.;:!?%)\]}"'”’»…]|$)/g, "$1")
     .replace(/\b([A-Za-z]+)\s+(['’])\s*(m|re|ve|ll|d|s|t)\b/gi, "$1$2$3")
     .replace(/([([{])\s+/g, "$1")
     .replace(/\s+([)\]}])/g, "$1");
 
+// The gap marker's own " ...]" would close up to "...]", and the marker check
+// after cleanup would then miss it and add a second one at the end.
+const normalizePunctuationSpacing = (text) =>
+  String(text || "")
+    .split(MISSING_SECTION_MARKER)
+    .map(normalizeSpacing)
+    .join(MISSING_SECTION_MARKER);
+
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
+// A Bluetooth headset switching to its microphone profile can take several
+// seconds; past this the audio service is taken to have stopped answering.
+const MICROPHONE_OPEN_TIMEOUT_MS = 15000;
+// A recorder flushes its last chunk within milliseconds of stop().
+const LONG_SESSION_SEGMENT_STOP_TIMEOUT_MS = 10000;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
@@ -410,10 +425,46 @@ class AudioManager {
     }
     // Pool miss or stale — tear down old pooled stream and acquire fresh
     this._clearPooledStream();
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const stream = await this._openMicrophone(constraints);
     this._pooledStream = stream;
     this._pooledStreamConstraintsKey = key;
     return stream;
+  }
+
+  /**
+   * getUserMedia can hang when the Windows audio service stops answering.
+   * Waiting forever left isStartingRecording set, so every later hotkey press
+   * was ignored until a restart. A stream that arrives after the timeout is
+   * stopped at once, so no microphone stays open that the app is not using.
+   */
+  _openMicrophone(constraints) {
+    return new Promise((resolve, reject) => {
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        reject(
+          Object.assign(new Error("The microphone did not respond"), { name: "TimeoutError" })
+        );
+      }, MICROPHONE_OPEN_TIMEOUT_MS);
+      navigator.mediaDevices.getUserMedia(constraints).then(
+        (stream) => {
+          clearTimeout(timer);
+          if (!timedOut) {
+            resolve(stream);
+            return;
+          }
+          try {
+            stream.getTracks().forEach((track) => track.stop());
+          } catch {
+            // ignore cleanup errors
+          }
+        },
+        (error) => {
+          clearTimeout(timer);
+          if (!timedOut) reject(error);
+        }
+      );
+    });
   }
 
   /**
@@ -616,6 +667,23 @@ class AudioManager {
       // language between recordings still works without touching a setting.
       detectedLanguage: null,
     };
+  }
+
+  // A silent minute of a long dictation gets the same invented "Thank you." or
+  // "[Music]" as a silent short one, so each segment passes the same check
+  // before it joins the transcript.
+  readLongSessionChunkText(item, transcription) {
+    const text = String(transcription?.result?.text || "").trim();
+    const artifact = classifyNonSpeechArtifact(text, { durationSeconds: item.durationMs / 1000 });
+    if (!artifact.isArtifact) {
+      return text;
+    }
+    logger.info(
+      "Dropped a non-speech long-session chunk",
+      { chunkIndex: item.index, reason: artifact.reason, text },
+      "transcription"
+    );
+    return "";
   }
 
   recordLongSessionChunkTelemetry(state, item, transcription) {
@@ -962,6 +1030,7 @@ class AudioManager {
         chunks: [],
         startedAt: Date.now(),
         rotateTimer: null,
+        stopWatchdog: null,
         pauseHeldMs: 0,
         stopping: false,
         discard: false,
@@ -1020,6 +1089,10 @@ class AudioManager {
     if (segment.rotateTimer) {
       clearTimeout(segment.rotateTimer);
       segment.rotateTimer = null;
+    }
+    if (segment.stopWatchdog) {
+      clearTimeout(segment.stopWatchdog);
+      segment.stopWatchdog = null;
     }
 
     const durationMs = Math.max(Date.now() - segment.startedAt, 1000);
@@ -1334,7 +1407,21 @@ class AudioManager {
         segment.recorder.stop();
       } catch {
         this.finishLongSessionSegment(segment);
+        return;
       }
+
+      // A recorder that never sends its stop event would leave the dictation
+      // processing forever; finish with the audio it already handed over.
+      segment.stopWatchdog = setTimeout(() => {
+        segment.stopWatchdog = null;
+        if (segment.finished) return;
+        logger.warn(
+          "Long-session segment recorder never reported its stop; finishing without it",
+          {},
+          "audio"
+        );
+        this.finishLongSessionSegment(segment);
+      }, LONG_SESSION_SEGMENT_STOP_TIMEOUT_MS);
     });
   }
 
@@ -1371,9 +1458,14 @@ class AudioManager {
             smartContextCapture: state.smartContextCapture,
           });
 
+          this.recordLongSessionChunkTelemetry(state, item, result);
+          const text = this.readLongSessionChunkText(item, result);
+
           // Segments are transcribed one at a time, so the language learned
-          // here is already pinned by the time the next one is submitted.
-          if (!state.detectedLanguage) {
+          // here is already pinned by the time the next one is submitted. A
+          // segment with no real speech says nothing about the language: an
+          // invented "Thank you." comes back as English for any speaker.
+          if (!state.detectedLanguage && text) {
             const detected = result?.result?.detectedLanguage;
             if (detected) {
               state.detectedLanguage = detected;
@@ -1385,8 +1477,6 @@ class AudioManager {
             }
           }
 
-          this.recordLongSessionChunkTelemetry(state, item, result);
-          const text = String(result?.result?.text || "").trim();
           if (text) {
             state.results.set(item.index, text);
           }
@@ -1494,11 +1584,12 @@ class AudioManager {
           skipOptimization: true,
           chunkIndex: item.index,
           trimTrailingSilence: item.trimTrailingSilence,
+          lockedLanguage: state.detectedLanguage,
           smartContextCapture: state.smartContextCapture,
         });
 
         this.recordLongSessionChunkTelemetry(state, item, result);
-        const text = String(result?.result?.text || "").trim();
+        const text = this.readLongSessionChunkText(item, result);
         if (text) {
           state.results.set(item.index, text);
         }
@@ -2049,6 +2140,10 @@ class AudioManager {
         errorTitle = "Microphone In Use";
         errorDescription =
           "The microphone is being used by another application. Please close other apps and try again.";
+      } else if (error.name === "TimeoutError") {
+        errorTitle = "Microphone Not Responding";
+        errorDescription =
+          "Windows did not open the microphone within 15 seconds. Unplug and reconnect it, or pick another microphone in Settings, then try again.";
       }
 
       this.onError?.({
@@ -2291,6 +2386,9 @@ class AudioManager {
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,
         isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
+        // Stays true after processing ends, until a newer dictation or a
+        // cancel, for work that outlives the callback.
+        isLatest: () => this.processingGeneration === processingGeneration,
       });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
@@ -2400,6 +2498,7 @@ class AudioManager {
       await this.onTranscriptionComplete?.(result, {
         processingGeneration,
         isCurrent: () => this.isCurrentProcessingGeneration(processingGeneration),
+        isLatest: () => this.processingGeneration === processingGeneration,
       });
 
       if (!this.isCurrentProcessingGeneration(processingGeneration)) {
@@ -2643,8 +2742,11 @@ class AudioManager {
       // A long-session chunk holding only silence is a normal outcome — the
       // speaker paused, or the recording ran on after they stopped talking.
       // It is not a failure: treating it as one exhausts the chunk's retries
-      // and makes finalizeLongSessionResult discard the whole dictation.
-      if (metadata?.source === "long-session" && !result.text) {
+      // and makes finalizeLongSessionResult discard the whole dictation. An
+      // error reply also has no text, but it is a failure: it needs the retry
+      // and, if that fails too, the gap marker.
+      const silent = result.success || result.message === "No audio detected";
+      if (metadata?.source === "long-session" && !result.text && silent) {
         return {
           success: true,
           text: "",
@@ -2692,6 +2794,12 @@ class AudioManager {
     } catch (error) {
       if (error.message === "No audio detected") {
         throw error;
+      }
+
+      // A cancelled recording is thrown away, so its audio must not reach the
+      // cloud fallback on the way, as recoverFromParakeetFailure makes sure too.
+      if (error?.name === "AbortError" || this.isTranscriptionRequestCancelled(metadata)) {
+        throw Object.assign(new Error("Transcription cancelled"), { name: "AbortError" });
       }
 
       const allowOpenAIFallback =
@@ -3248,10 +3356,12 @@ class AudioManager {
 
       let result = repairSplitDictionaryTerms(text, repairWords);
       for (const word of repairWords) {
-        // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive
+        // Escape special regex chars in the dictionary word, then match whole-word, case-insensitive.
+        // \b only knows ASCII letters, so the edges check Unicode letters: "Østerbro" matches,
+        // and "Øl" stays out of "tuborgøl".
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`\\b${escaped}\\b`, "gi");
-        result = result.replace(regex, word);
+        const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, "giu");
+        result = result.replace(regex, () => word);
       }
       return result;
     } catch {
@@ -3428,7 +3538,9 @@ class AudioManager {
     return normalized.startsWith("gpt-4o-mini-transcribe");
   }
 
-  async readTranscriptionStream(response) {
+  // outcome.finished says whether the final event arrived, which an empty
+  // transcript needs before it can count as silence.
+  async readTranscriptionStream(response, outcome = {}) {
     const reader = response.body?.getReader();
     if (!reader) {
       logger.error("Streaming response body not available", {}, "transcription");
@@ -3572,6 +3684,7 @@ class AudioManager {
     }
 
     const result = finalText ?? collectedText;
+    outcome.finished = finalText !== null;
     logger.debug(
       "Stream processing complete",
       {
@@ -3796,8 +3909,9 @@ class AudioManager {
 
       if (shouldStream && contentType.includes("text/event-stream")) {
         logger.debug("Processing streaming response", { contentType }, "transcription");
-        const streamedText = await this.readTranscriptionStream(response);
-        result = { text: streamedText };
+        const streamOutcome = {};
+        const streamedText = await this.readTranscriptionStream(response, streamOutcome);
+        result = { text: streamedText, streamFinished: streamOutcome.finished === true };
         logger.debug(
           "Streaming response parsed",
           {
@@ -3868,6 +3982,17 @@ class AudioManager {
           "transcription"
         );
         return { success: true, text, source, timings };
+      } else if (
+        metadata?.source === "long-session" &&
+        typeof result.text === "string" &&
+        result.streamFinished !== false
+      ) {
+        // A silent minute of a long dictation, as on the local path. Failing
+        // it would retry it as more paid requests and mark a gap in the text.
+        // Only a real transcript says so: an error body or a stream cut off
+        // before its final event is a failure, retried and then marked.
+        timings.transcriptionProcessingDurationMs = Math.round(performance.now() - apiCallStart);
+        return { success: true, text: "", source: "openai", timings };
       } else {
         // Log at info level so it shows without debug mode
         logger.info(

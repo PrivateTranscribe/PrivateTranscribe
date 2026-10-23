@@ -14,7 +14,11 @@ const FILLER = "(uh+|u+h?m+|erm|hm+|mm+|øh+m*|æh+m*)";
 const UM_IS_A_WORD = new Set(["de", "pt", "hr", "sl"]);
 
 // "Uh, so I" at the start of a sentence: drop it and capitalise what follows.
-const SENTENCE_START = new RegExp(`(^|[.!?]\\s+)${FILLER}[,.…]*\\s+(\\p{L})(?=(\\S*))`, "giu");
+// A filler said as its own question or exclamation ("Hmm? I") takes its mark.
+const SENTENCE_START = new RegExp(`(^|[.!?]\\s+)${FILLER}[,.…?!]*\\s+(\\p{L})(?=(\\S*))`, "giu");
+// A filler that is a whole sentence with no letter after it ("Okay. Hmm?",
+// "Hmm. 5 left") goes with its mark and the space after it.
+const OWN_SENTENCE = new RegExp(`(^|[.!?]\\s+)${FILLER}[,.…?!]*[.…?!](\\s+|$)`, "giu");
 // Anywhere else, as a whole word. A full stop after it still ends the sentence.
 const INLINE = new RegExp(`(^|\\s)${FILLER}[,…]*(?=\\s|$|[.!?;:)"'])`, "giu");
 
@@ -66,6 +70,10 @@ function removeFillerWords(text, { languages } = {}) {
       const abbreviation = /(?:^|[\s(])\p{L}(?:\.\p{L})+$/u.test(before);
       const ownCase = /\p{Lu}/u.test(rest);
       return `${lead}${abbreviation || ownCase ? letter : letter.toUpperCase()}`;
+    });
+    result = result.replace(OWN_SENTENCE, (match, lead, word, trail, offset, whole) => {
+      if (keepsWord(word, whole.slice(0, offset) + lead, removeUm)) return match;
+      return trail ? lead : lead.trimEnd();
     });
   } while (result !== previous);
 

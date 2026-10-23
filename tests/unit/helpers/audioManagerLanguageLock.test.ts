@@ -134,6 +134,84 @@ describe("AudioManager long-session language lock", () => {
     expect(state.detectedLanguage).toBe("da");
   });
 
+  it("keeps the locked language on the final retry of a failed segment", async () => {
+    // The retry runs after the queue has drained. Without the lock, a Danish
+    // recording's recovered minute could come back auto-detected as Norwegian.
+    const manager: any = new AudioManager();
+    manager.longSessionChunkRetryBackoffMs = 0;
+    const seenLockedLanguages: Array<string | null> = [];
+    let failures = 0;
+
+    manager.runTranscription = vi.fn(async (_blob: unknown, metadata: any) => {
+      seenLockedLanguages.push(metadata.lockedLanguage ?? null);
+      if (metadata.chunkIndex === 1 && failures < 3) {
+        failures += 1;
+        throw new Error("server restarting");
+      }
+      return {
+        result: {
+          text: `chunk ${metadata.chunkIndex}`,
+          detectedLanguage: metadata.chunkIndex === 0 ? "da" : "no",
+        },
+      };
+    });
+
+    const state = manager.longSession;
+    state.active = true;
+    state.sessionId = 1;
+    state.queue = [0, 1].map((index) => ({
+      blob: audioBlob,
+      durationMs: 60000,
+      index,
+      sessionId: 1,
+      attempts: 0,
+      trimTrailingSilence: false,
+    }));
+
+    await manager.drainLongSessionQueue();
+    await manager.retryFailedLongSessionChunks();
+
+    expect(state.errors).toEqual([]);
+    expect(state.results.get(1)).toBe("chunk 1");
+    // First segment, three inline attempts at the second, then the final retry.
+    expect(seenLockedLanguages).toEqual([null, "da", "da", "da", "da"]);
+  });
+
+  it("takes the lock from the first segment with real speech", async () => {
+    // A silent first minute comes back as an invented "Thank you." that
+    // whisper reports as English. Locking on it would decode a Danish
+    // speaker's every later minute as English.
+    const manager: any = new AudioManager();
+    const seenLockedLanguages: Array<string | null> = [];
+    const replies = [
+      { text: "Thank you.", detectedLanguage: "en" },
+      { text: "Goddag allesammen", detectedLanguage: "da" },
+      { text: "og tak for i dag", detectedLanguage: "no" },
+    ];
+
+    manager.runTranscription = vi.fn(async (_blob: unknown, metadata: any) => {
+      seenLockedLanguages.push(metadata.lockedLanguage ?? null);
+      return { result: replies[metadata.chunkIndex] };
+    });
+
+    const state = manager.longSession;
+    state.active = true;
+    state.sessionId = 1;
+    state.queue = [0, 1, 2].map((index) => ({
+      blob: audioBlob,
+      durationMs: 60000,
+      index,
+      sessionId: 1,
+      attempts: 0,
+      trimTrailingSilence: false,
+    }));
+
+    await manager.drainLongSessionQueue();
+
+    expect(seenLockedLanguages).toEqual([null, null, "da"]);
+    expect(state.detectedLanguage).toBe("da");
+  });
+
   it("forgets the lock between recordings, so switching language still works", async () => {
     const manager: any = new AudioManager();
     manager.longSession.detectedLanguage = "da";

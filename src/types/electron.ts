@@ -601,6 +601,7 @@ declare global {
         limit: number
       ) => Promise<{ trimmed?: number; cleared?: number; success: boolean }>;
       setHistoryLimit?: (limit: number) => Promise<{ success: boolean }>;
+      getHistoryLimit?: () => Promise<number | null>;
       // Dictionary operations
       getDictionary: () => Promise<string[]>;
       setDictionary: (words: string[]) => Promise<{ success: boolean }>;
@@ -648,6 +649,7 @@ declare global {
         whisperServerIdleTimeoutMinutes?: number;
         parakeetServerIdleTimeoutMinutes?: number;
         llamaServerIdleTimeoutMinutes?: number;
+        reasoningEnabled?: boolean;
         reasoningProvider: string;
         reasoningModel?: string;
       }) => Promise<void>;

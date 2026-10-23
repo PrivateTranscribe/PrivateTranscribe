@@ -11,6 +11,7 @@ import {
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
 import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../models/kokoroVoices";
 import { EXPERIMENTAL_FEATURES_KEY } from "../utils/experimentalFeatures";
+import { useBetaFeaturesEnabled } from "../utils/betaFeatures";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -88,6 +89,9 @@ export interface BehaviorSettings {
 }
 
 let lastSyncedStartupPreferencesKey = "";
+
+const sameWords = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((word, index) => word === b[index]);
 
 export function useSettings() {
   const [useLocalWhisper, setUseLocalWhisper] = useLocalStorage("useLocalWhisper", false, {
@@ -259,20 +263,24 @@ export function useSettings() {
     const syncDictionary = async () => {
       if (typeof window === "undefined" || !window.electronAPI?.getDictionary) return;
       try {
-        // Ensure "PrivateTranscribe" is always in the dictionary
-        if (!customDictionary.includes("PrivateTranscribe")) {
-          const updated = ["PrivateTranscribe", ...customDictionary];
-          setCustomDictionaryRaw(updated);
-          await window.electronAPI.setDictionary(updated);
-        }
-
         const dbWords = await window.electronAPI.getDictionary();
-        if (dbWords.length === 0 && customDictionary.length > 0) {
-          // Seed SQLite from localStorage (first-time migration)
-          await window.electronAPI.setDictionary(customDictionary);
-        } else if (dbWords.length > 0 && customDictionary.length === 0) {
-          // Recover localStorage from SQLite (e.g. localStorage was cleared)
-          setCustomDictionaryRaw(dbWords);
+        const saved = Array.isArray(dbWords) ? dbWords : [];
+        // Lost or unreadable settings read as the default list or an empty one.
+        // Neither holds words of the user's, so the saved copy wins then; read
+        // first, because writing the default would overwrite it.
+        const localHasWords = customDictionary.some((word) => word !== "PrivateTranscribe");
+        const base = !localHasWords && saved.length > 0 ? saved : customDictionary;
+        // Ensure "PrivateTranscribe" is always in the dictionary
+        const words = base.includes("PrivateTranscribe") ? base : ["PrivateTranscribe", ...base];
+
+        if (!sameWords(words, customDictionary)) setCustomDictionaryRaw(words);
+        if (
+          !sameWords(words, saved) &&
+          // Seeding SQLite (first-time migration), adding the product name to
+          // the saved copy, or to a local list that lacked it, as before.
+          (saved.length === 0 || base === saved || !customDictionary.includes("PrivateTranscribe"))
+        ) {
+          await window.electronAPI.setDictionary(words);
         }
       } catch {
         // Silently ignore sync errors
@@ -491,9 +499,21 @@ export function useSettings() {
     syncHistoryLimit(limit);
   };
 
-  // Send the current value on mount so main process is accurate from the start
+  // The main process saves the limit, and its copy wins over this window's:
+  // lost settings read as the default 50, and sending that would trim the
+  // history to 50 at once. Only a limit the app never saved is sent from here.
   useEffect(() => {
-    syncHistoryLimit(historyLimit);
+    const getSaved = typeof window !== "undefined" ? window.electronAPI?.getHistoryLimit : null;
+    if (!getSaved) {
+      syncHistoryLimit(historyLimit);
+      return;
+    }
+    getSaved()
+      .then((saved) => {
+        if (typeof saved !== "number") syncHistoryLimit(historyLimit);
+        else if (saved !== historyLimit) setHistoryLimitLocal(saved);
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -793,6 +813,8 @@ export function useSettings() {
     deserialize: String,
   });
 
+  const [betaFeaturesEnabled] = useBetaFeaturesEnabled();
+
   // Sync startup pre-warming preferences to main process.
   // Several pages call useSettings(); avoid re-applying identical startup prefs on every tab mount.
   useEffect(() => {
@@ -804,6 +826,8 @@ export function useSettings() {
       model: whisperModel || undefined,
       whisperServerIdleTimeoutMinutes,
       llamaServerIdleTimeoutMinutes,
+      // AI enhancement is a beta feature, so it runs only with both switches on.
+      reasoningEnabled: useReasoningModel && betaFeaturesEnabled,
       reasoningProvider,
       reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
       whisperForceCpu,
@@ -823,6 +847,8 @@ export function useSettings() {
     whisperModel,
     whisperServerIdleTimeoutMinutes,
     llamaServerIdleTimeoutMinutes,
+    useReasoningModel,
+    betaFeaturesEnabled,
     reasoningProvider,
     reasoningModel,
     whisperForceCpu,

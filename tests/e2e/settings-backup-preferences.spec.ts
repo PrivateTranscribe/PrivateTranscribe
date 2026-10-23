@@ -165,3 +165,68 @@ test("rejects invalid types and control characters while accepting a cleared mut
     readAloudVoice: "bf_emma",
   });
 });
+
+test("an import never lowers the history limit, which would delete history", async ({
+  electronApp,
+  controlPanel,
+}) => {
+  await seedPreferences(controlPanel);
+  await electronApp.evaluate(({ ipcMain }) => {
+    const calls: unknown[] = [];
+    (globalThis as any).__historyLimitCalls = calls;
+    ipcMain.removeHandler("set-history-limit");
+    ipcMain.handle("set-history-limit", (_event, limit) => {
+      calls.push(limit);
+      return { success: true };
+    });
+  });
+  const limitCalls = () =>
+    electronApp.evaluate(() => [...((globalThis as any).__historyLimitCalls as unknown[])]);
+
+  const message = await importSettings(controlPanel, { historyLimit: 10 }, true);
+  expect(message).toContain("historyLimit");
+  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("50");
+  expect(await limitCalls()).not.toContain(10);
+
+  await importSettings(controlPanel, { historyLimit: 20000 });
+  expect(await controlPanel.evaluate(() => localStorage.getItem("historyLimit"))).toBe("20000");
+  expect(await limitCalls()).toContain(20000);
+});
+
+test("an import keeps a speech engine idle shutdown of 0", async ({ controlPanel }) => {
+  await seedPreferences(controlPanel);
+  await importSettings(controlPanel, { whisperServerIdleTimeoutMinutes: 0 });
+  expect(
+    await controlPanel.evaluate(() => localStorage.getItem("whisperServerIdleTimeoutMinutes"))
+  ).toBe("0");
+});
+
+test("an imported dictation hotkey is registered at once, and a refused one is not saved", async ({
+  electronApp,
+  controlPanel,
+}) => {
+  await seedPreferences(controlPanel);
+  await electronApp.evaluate(({ ipcMain }) => {
+    const calls: string[] = [];
+    (globalThis as any).__hotkeyCalls = calls;
+    ipcMain.removeHandler("update-hotkey");
+    ipcMain.handle("update-hotkey", (_event, hotkey) => {
+      calls.push(hotkey);
+      return hotkey === "CommandOrControl+Shift+F9"
+        ? { success: true, hotkey }
+        : { success: false, message: "Another app already uses this key." };
+    });
+  });
+  const hotkeyCalls = () =>
+    electronApp.evaluate(() => [...((globalThis as any).__hotkeyCalls as string[])]);
+  const storedKey = () => controlPanel.evaluate(() => localStorage.getItem("dictationKey"));
+
+  // Saving the key alone left the old one working until the app restarted.
+  await importSettings(controlPanel, { dictationKey: "CommandOrControl+Shift+F9" });
+  expect(await hotkeyCalls()).toEqual(["CommandOrControl+Shift+F9"]);
+  expect(await storedKey()).toBe("CommandOrControl+Shift+F9");
+
+  const message = await importSettings(controlPanel, { dictationKey: "F7" }, true);
+  expect(message).toContain("dictationKey");
+  expect(await storedKey()).toBe("CommandOrControl+Shift+F9");
+});

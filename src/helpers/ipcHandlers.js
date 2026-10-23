@@ -328,9 +328,9 @@ class IPCHandlers {
     // The live Converse session, created by `converse-start`. One at a time:
     // it owns a persistent `claude` child process.
     this.converseSession = null;
-    // Current history limit - synced from control panel via set-history-limit.
-    // Default 50 until the renderer sends the real value.
-    this.historyLimit = 50;
+    // Current history limit - set from the control panel via set-history-limit
+    // and saved, so it holds from the first dictation after a restart.
+    this.historyLimit = parseSavedHistoryLimit(process.env.HISTORY_LIMIT) ?? 50;
     // In-flight file transcriptions, by job id, so `cancel-file-transcription`
     // can reach the http.request inside the decode loop. The page starts one at
     // a time, but keying by id means a stale Cancel from an abandoned run can
@@ -648,6 +648,7 @@ class IPCHandlers {
       const parsed = parseInt(limit, 10);
       // Clamp to [0, 100 000]: 0 = disabled (no history), upper bound prevents runaway values.
       this.historyLimit = isNaN(parsed) || parsed < 0 ? 50 : Math.min(parsed, 100_000);
+      this._syncStartupEnv({ HISTORY_LIMIT: String(this.historyLimit) });
       try {
         const result = this.databaseManager.trimTranscriptions(this.historyLimit);
         return { success: true, ...result };
@@ -655,6 +656,12 @@ class IPCHandlers {
         debugLogger.error("Failed to enforce history limit:", error.message);
         return { success: false, error: error.message };
       }
+    });
+
+    // The saved limit, or null before one was ever set. A window that lost its
+    // own settings takes this instead of trimming history to its default.
+    ipcMain.handle("get-history-limit", async () => {
+      return parseSavedHistoryLimit(process.env.HISTORY_LIMIT);
     });
 
     ipcMain.handle("db-save-transcription", async (event, text, durationSeconds, options = {}) => {
@@ -946,7 +953,7 @@ class IPCHandlers {
         });
 
         // Check if no audio was detected and send appropriate event
-        if (!result.success && result.message === "No audio detected") {
+        if (shouldToastNoAudio(result, options)) {
           debugLogger.log("Sending no-audio-detected event to renderer");
           event.sender.send("no-audio-detected");
         }
@@ -968,10 +975,7 @@ class IPCHandlers {
             message: "FFmpeg is missing. Please reinstall the app or install FFmpeg manually.",
           };
         }
-        if (
-          errorMessage.includes("FFmpeg conversion failed") ||
-          errorMessage.includes("FFmpeg process error")
-        ) {
+        if (isAudioConversionFailure(errorMessage)) {
           return {
             success: false,
             error: "ffmpeg_error",
@@ -1817,7 +1821,8 @@ class IPCHandlers {
       const effectiveHotkey = resolveEffectiveHotkey(
         enabled,
         newHotkey,
-        hotkeyManager.getCurrentHotkey()
+        hotkeyManager.getCurrentHotkey(),
+        hotkeyManager.isUsingGnome()
       );
 
       if (enabled) {
@@ -1859,6 +1864,7 @@ class IPCHandlers {
         // Exiting capture mode - re-register globalShortcut if not already registered
         // (Skip native-listener hotkeys: mouse buttons and modifier-only combos like Control+Super)
         if (
+          !hotkeyManager.areGlobalShortcutsDisabled() &&
           effectiveHotkey &&
           effectiveHotkey !== "GLOBE" &&
           !hotkeyManager.isNativeListenerHotkey(effectiveHotkey)
@@ -2336,12 +2342,9 @@ class IPCHandlers {
       // Clear any stale pre-warm vars from prior versions.
       clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
 
-      if (prefs.reasoningProvider === "local" && prefs.reasoningModel) {
-        setVars.REASONING_PROVIDER = "local";
-        setVars.LOCAL_REASONING_MODEL = prefs.reasoningModel;
-      } else if (prefs.reasoningProvider && prefs.reasoningProvider !== "local") {
-        clearVars.push("REASONING_PROVIDER", "LOCAL_REASONING_MODEL");
-      }
+      const reasoningVars = startupReasoningVars(prefs);
+      Object.assign(setVars, reasoningVars.set);
+      clearVars.push(...reasoningVars.clear);
 
       this._syncStartupEnv(setVars, clearVars);
       return { success: true, synced: true };
@@ -3205,8 +3208,12 @@ class IPCHandlers {
  * settings screen passes null, because adopting a mute key as the dictation
  * hotkey would leave the user unable to start dictating at all.
  */
-function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
-  if (!enabled && newHotkey) {
+function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey, adoptUnconfirmed = false) {
+  // update-hotkey has already run when the field reports its key, so a key it
+  // refused is not the current one. Wiring it anyway would register a key
+  // such as "-" in every app and leave the old hotkey dead. GNOME sets the
+  // current hotkey only once its own update finishes, so it takes the key.
+  if (!enabled && newHotkey && (adoptUnconfirmed || newHotkey === currentHotkey)) {
     return newHotkey;
   }
   return currentHotkey;
@@ -3223,6 +3230,48 @@ function resolveEffectiveHotkey(enabled, newHotkey, currentHotkey) {
  */
 function readAloudNoticeReason(source) {
   return source === "unsupported" ? "unsupported" : "empty-selection";
+}
+
+// The history limit saved by set-history-limit, or null when none was saved.
+function parseSavedHistoryLimit(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return null;
+  const parsed = parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? Math.min(parsed, 100_000) : null;
+}
+
+// main.js loads the local AI model at login when these are saved. It holds
+// gigabytes of memory, so it loads only while AI enhancement is on.
+// reasoningEnabled is left out by older windows, which keep the old behaviour.
+function startupReasoningVars(prefs = {}) {
+  if (prefs.reasoningEnabled !== false && prefs.reasoningProvider === "local") {
+    return prefs.reasoningModel
+      ? {
+          set: { REASONING_PROVIDER: "local", LOCAL_REASONING_MODEL: prefs.reasoningModel },
+          clear: [],
+        }
+      : { set: {}, clear: [] };
+  }
+  if (prefs.reasoningEnabled === false || prefs.reasoningProvider) {
+    return { set: {}, clear: ["REASONING_PROVIDER", "LOCAL_REASONING_MODEL"] };
+  }
+  return { set: {}, clear: [] };
+}
+
+// The ways ffmpegUtils.convertToWav fails on a recording it cannot read.
+function isAudioConversionFailure(message) {
+  return /FFmpeg (exited with code|process error|conversion failed|conversion produced)/.test(
+    String(message || "")
+  );
+}
+
+// A silent minute inside a long dictation is normal, and the dictation still
+// pastes what was said around it, so only a whole recording gets the toast.
+function shouldToastNoAudio(result, options = {}) {
+  return (
+    result?.success === false &&
+    result.message === "No audio detected" &&
+    options?.longSessionChunk !== true
+  );
 }
 
 /**
@@ -3244,5 +3293,9 @@ function formatFileTranscript(result, options, speakerDetectionMode) {
 
 module.exports = IPCHandlers;
 module.exports.formatFileTranscript = formatFileTranscript;
+module.exports.shouldToastNoAudio = shouldToastNoAudio;
+module.exports.startupReasoningVars = startupReasoningVars;
+module.exports.parseSavedHistoryLimit = parseSavedHistoryLimit;
+module.exports.isAudioConversionFailure = isAudioConversionFailure;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
 module.exports.readAloudNoticeReason = readAloudNoticeReason;

@@ -32,6 +32,7 @@ const PLAIN_ENV_KEYS = [
   "REASONING_PROVIDER",
   "LOCAL_REASONING_MODEL",
   "DICTATION_KEY",
+  "HISTORY_LIMIT",
 ];
 
 class EnvironmentManager {
@@ -122,9 +123,38 @@ class EnvironmentManager {
           }
         }
       }
-    } catch {
+    } catch (err) {
       // Corrupt file or decryption failure — keep whatever plain-env loaded.
+      // The file may only be unreadable for this start, so it must survive
+      // the settings rewrite every window sends a few seconds after launch.
+      this._encryptedStoreUnreadable = true;
+      console.warn("Could not read the encrypted key store:", err.message);
     }
+  }
+
+  /**
+   * A store this start could not read is never written over. With no key to
+   * save it is left as it is, so the next start can try it again. Once a key
+   * is saved, the old file is moved aside first, so its keys can still be
+   * recovered.
+   */
+  _keepUnreadableEncryptedStore() {
+    if (!this._encryptedStoreUnreadable) return true;
+    // A cleared key leaves an empty entry, which is no key to save.
+    if (![...this._secrets.values()].some(Boolean)) return false;
+    try {
+      fs.renameSync(
+        this._encryptedStorePath,
+        `${this._encryptedStorePath}.unreadable-${Date.now()}`
+      );
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        console.error("Failed to move the unreadable key store aside:", err.message);
+        return false;
+      }
+    }
+    this._encryptedStoreUnreadable = false;
+    return true;
   }
 
   /**
@@ -138,6 +168,7 @@ class EnvironmentManager {
     for (const [key, value] of this._secrets) {
       if (value) secrets[key] = value;
     }
+    if (!this._keepUnreadableEncryptedStore()) return false;
     try {
       const cipherBuf = this._safeStorage.encryptString(JSON.stringify(secrets));
       fs.writeFileSync(this._encryptedStorePath, cipherBuf);
