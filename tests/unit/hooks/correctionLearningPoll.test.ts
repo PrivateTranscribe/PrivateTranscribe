@@ -93,7 +93,7 @@ const teachToasts = (toast: ReturnType<typeof vi.fn>) =>
 beforeEach(() => {
   vi.useFakeTimers();
   harness.effects = [];
-  clipboard = "please email Kristen";
+  clipboard = "restart the kubernets pod";
   store = new Map([
     ["enableVariableSnapping", "false"],
     ["betaFeaturesEnabled", "true"],
@@ -112,10 +112,10 @@ afterEach(() => {
 describe("Correction Memory clipboard watch", () => {
   it("offers to learn a correction copied after the dictation finished", async () => {
     const { manager, toast } = mount();
-    const { done } = completeDictation(manager, "please email Kristen");
+    const { done } = completeDictation(manager, "restart the kubernets pod");
     await done;
 
-    clipboard = "please email Kristian";
+    clipboard = "restart the kubernetes pod";
     await vi.advanceTimersByTimeAsync(800);
 
     expect(teachToasts(toast)).toHaveLength(1);
@@ -123,11 +123,11 @@ describe("Correction Memory clipboard watch", () => {
 
   it("stops watching once a newer dictation starts", async () => {
     const { manager, toast } = mount();
-    const { done, supersede } = completeDictation(manager, "please email Kristen");
+    const { done, supersede } = completeDictation(manager, "restart the kubernets pod");
     await done;
     supersede();
 
-    clipboard = "please email Kristian";
+    clipboard = "restart the kubernetes pod";
     await vi.advanceTimersByTimeAsync(800);
 
     expect(teachToasts(toast)).toHaveLength(0);
@@ -135,11 +135,11 @@ describe("Correction Memory clipboard watch", () => {
 
   it("stops watching after 30 seconds", async () => {
     const { manager, toast } = mount();
-    const { done } = completeDictation(manager, "please email Kristen");
+    const { done } = completeDictation(manager, "restart the kubernets pod");
     await done;
     await vi.advanceTimersByTimeAsync(31_000);
 
-    clipboard = "please email Kristian";
+    clipboard = "restart the kubernetes pod";
     await vi.advanceTimersByTimeAsync(800);
 
     expect(teachToasts(toast)).toHaveLength(0);
