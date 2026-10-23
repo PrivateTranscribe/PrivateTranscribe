@@ -96,4 +96,52 @@ async function removeLegacySharedTemp({
   return removed;
 }
 
-module.exports = { getSafeTempDir, getLegacySharedTempDirs, removeLegacySharedTemp };
+// The rest of what a transcription writes to the user's own temp folder:
+// speaker detection's audio and payload, and Parakeet's mkdtemp folder of pieces.
+const DIARIZATION_TEMP_FILE = /^privatetranscribe-diarization-[0-9a-f-]{36}\.(?:wav|json)$/i;
+const PARAKEET_TEMP_DIR = /^parakeet-audio-[A-Za-z0-9]{6}$/;
+const LEFTOVER_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Delete the temp audio a crash or a killed process left in the user's own temp
+ * folder. Each transcription deletes its own files, so an entry older than a day
+ * is a leftover; the age spares a long file transcription that another copy of
+ * the app, such as a test run with its own profile, is running right now. Only
+ * names the app gives its files are touched, and a link is never followed.
+ * Never throws.
+ *
+ * @returns {Promise<number>} how many files and folders were removed
+ */
+async function removeLeftoverTempAudio({
+  dir = getSafeTempDir(),
+  now = Date.now(),
+  minAgeMs = LEFTOVER_MIN_AGE_MS,
+} = {}) {
+  let removed = 0;
+  const names = await fs.promises.readdir(dir).catch(() => []);
+  for (const name of names) {
+    const isFile = LEGACY_TEMP_FILE.test(name) || DIARIZATION_TEMP_FILE.test(name);
+    if (!isFile && !PARAKEET_TEMP_DIR.test(name)) continue;
+    const entry = path.join(dir, name);
+    const stat = await fs.promises.lstat(entry).catch(() => null);
+    if (!stat || stat.isSymbolicLink()) continue;
+    if (isFile ? !stat.isFile() : !stat.isDirectory()) continue;
+    if (now - stat.mtimeMs < minAgeMs) continue;
+    const deleting = isFile
+      ? fs.promises.unlink(entry)
+      : fs.promises.rm(entry, { recursive: true });
+    const deleted = await deleting.then(
+      () => true,
+      () => false
+    );
+    if (deleted) removed += 1;
+  }
+  return removed;
+}
+
+module.exports = {
+  getSafeTempDir,
+  getLegacySharedTempDirs,
+  removeLegacySharedTemp,
+  removeLeftoverTempAudio,
+};
