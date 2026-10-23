@@ -648,6 +648,7 @@ declare global {
         whisperServerIdleTimeoutMinutes?: number;
         parakeetServerIdleTimeoutMinutes?: number;
         llamaServerIdleTimeoutMinutes?: number;
+        reasoningEnabled?: boolean;
         reasoningProvider: string;
         reasoningModel?: string;
       }) => Promise<void>;

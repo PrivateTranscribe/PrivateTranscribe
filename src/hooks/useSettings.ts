@@ -11,6 +11,7 @@ import {
 import { DEFAULT_READ_ALOUD_HOTKEY } from "../utils/hotkeys";
 import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../models/kokoroVoices";
 import { EXPERIMENTAL_FEATURES_KEY } from "../utils/experimentalFeatures";
+import { useBetaFeaturesEnabled } from "../utils/betaFeatures";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
@@ -793,6 +794,8 @@ export function useSettings() {
     deserialize: String,
   });
 
+  const [betaFeaturesEnabled] = useBetaFeaturesEnabled();
+
   // Sync startup pre-warming preferences to main process.
   // Several pages call useSettings(); avoid re-applying identical startup prefs on every tab mount.
   useEffect(() => {
@@ -804,6 +807,8 @@ export function useSettings() {
       model: whisperModel || undefined,
       whisperServerIdleTimeoutMinutes,
       llamaServerIdleTimeoutMinutes,
+      // AI enhancement is a beta feature, so it runs only with both switches on.
+      reasoningEnabled: useReasoningModel && betaFeaturesEnabled,
       reasoningProvider,
       reasoningModel: reasoningProvider === "local" ? reasoningModel : undefined,
       whisperForceCpu,
@@ -823,6 +828,8 @@ export function useSettings() {
     whisperModel,
     whisperServerIdleTimeoutMinutes,
     llamaServerIdleTimeoutMinutes,
+    useReasoningModel,
+    betaFeaturesEnabled,
     reasoningProvider,
     reasoningModel,
     whisperForceCpu,

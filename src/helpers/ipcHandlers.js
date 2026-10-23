@@ -2335,12 +2335,9 @@ class IPCHandlers {
       // Clear any stale pre-warm vars from prior versions.
       clearVars.push("LOCAL_TRANSCRIPTION_PROVIDER", "PARAKEET_MODEL", "LOCAL_WHISPER_MODEL");
 
-      if (prefs.reasoningProvider === "local" && prefs.reasoningModel) {
-        setVars.REASONING_PROVIDER = "local";
-        setVars.LOCAL_REASONING_MODEL = prefs.reasoningModel;
-      } else if (prefs.reasoningProvider && prefs.reasoningProvider !== "local") {
-        clearVars.push("REASONING_PROVIDER", "LOCAL_REASONING_MODEL");
-      }
+      const reasoningVars = startupReasoningVars(prefs);
+      Object.assign(setVars, reasoningVars.set);
+      clearVars.push(...reasoningVars.clear);
 
       this._syncStartupEnv(setVars, clearVars);
       return { success: true, synced: true };
@@ -3228,6 +3225,24 @@ function readAloudNoticeReason(source) {
   return source === "unsupported" ? "unsupported" : "empty-selection";
 }
 
+// main.js loads the local AI model at login when these are saved. It holds
+// gigabytes of memory, so it loads only while AI enhancement is on.
+// reasoningEnabled is left out by older windows, which keep the old behaviour.
+function startupReasoningVars(prefs = {}) {
+  if (prefs.reasoningEnabled !== false && prefs.reasoningProvider === "local") {
+    return prefs.reasoningModel
+      ? {
+          set: { REASONING_PROVIDER: "local", LOCAL_REASONING_MODEL: prefs.reasoningModel },
+          clear: [],
+        }
+      : { set: {}, clear: [] };
+  }
+  if (prefs.reasoningEnabled === false || prefs.reasoningProvider) {
+    return { set: {}, clear: ["REASONING_PROVIDER", "LOCAL_REASONING_MODEL"] };
+  }
+  return { set: {}, clear: [] };
+}
+
 // The ways ffmpegUtils.convertToWav fails on a recording it cannot read.
 function isAudioConversionFailure(message) {
   return /FFmpeg (exited with code|process error|conversion failed|conversion produced)/.test(
@@ -3265,6 +3280,7 @@ function formatFileTranscript(result, options, speakerDetectionMode) {
 module.exports = IPCHandlers;
 module.exports.formatFileTranscript = formatFileTranscript;
 module.exports.shouldToastNoAudio = shouldToastNoAudio;
+module.exports.startupReasoningVars = startupReasoningVars;
 module.exports.isAudioConversionFailure = isAudioConversionFailure;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
 module.exports.readAloudNoticeReason = readAloudNoticeReason;
