@@ -48,6 +48,8 @@ const SHORT_CLIP_DURATION_SECONDS = 2.5;
 // A Bluetooth headset switching to its microphone profile can take several
 // seconds; past this the audio service is taken to have stopped answering.
 const MICROPHONE_OPEN_TIMEOUT_MS = 15000;
+// A recorder flushes its last chunk within milliseconds of stop().
+const LONG_SESSION_SEGMENT_STOP_TIMEOUT_MS = 10000;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
@@ -1028,6 +1030,7 @@ class AudioManager {
         chunks: [],
         startedAt: Date.now(),
         rotateTimer: null,
+        stopWatchdog: null,
         pauseHeldMs: 0,
         stopping: false,
         discard: false,
@@ -1086,6 +1089,10 @@ class AudioManager {
     if (segment.rotateTimer) {
       clearTimeout(segment.rotateTimer);
       segment.rotateTimer = null;
+    }
+    if (segment.stopWatchdog) {
+      clearTimeout(segment.stopWatchdog);
+      segment.stopWatchdog = null;
     }
 
     const durationMs = Math.max(Date.now() - segment.startedAt, 1000);
@@ -1400,7 +1407,21 @@ class AudioManager {
         segment.recorder.stop();
       } catch {
         this.finishLongSessionSegment(segment);
+        return;
       }
+
+      // A recorder that never sends its stop event would leave the dictation
+      // processing forever; finish with the audio it already handed over.
+      segment.stopWatchdog = setTimeout(() => {
+        segment.stopWatchdog = null;
+        if (segment.finished) return;
+        logger.warn(
+          "Long-session segment recorder never reported its stop; finishing without it",
+          {},
+          "audio"
+        );
+        this.finishLongSessionSegment(segment);
+      }, LONG_SESSION_SEGMENT_STOP_TIMEOUT_MS);
     });
   }
 
