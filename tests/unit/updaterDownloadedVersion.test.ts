@@ -64,7 +64,11 @@ beforeEach(() => {
   process.env.NODE_ENV = "production";
   fs.writeFileSync(
     path.join(appPath, "package.json"),
-    JSON.stringify({ name: "privatetranscribe", version: "0.24.1", privatetranscribeOfficialBuild: true })
+    JSON.stringify({
+      name: "privatetranscribe",
+      version: "0.24.1",
+      privatetranscribeOfficialBuild: true,
+    })
   );
   fs.writeFileSync(
     path.join(resourcesPath, "app-update.yml"),
@@ -115,6 +119,17 @@ describe("a downloaded update and a later check", () => {
     new UpdateManager();
     emit("update-available", { version: "0.25.0" });
     emit("update-downloaded", { version: "0.25.0" });
+
+    emit("update-not-available", { version: "0.24.1" });
+
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(false);
+  });
+
+  it("does not install a downloaded release on quit once a newer one is found and then pulled", () => {
+    // The newer release clears the ready state, but the older file stays on disk.
+    new UpdateManager();
+    emit("update-downloaded", { version: "0.25.0" });
+    emit("update-available", { version: "0.25.1" });
 
     emit("update-not-available", { version: "0.24.1" });
 

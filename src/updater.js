@@ -114,7 +114,9 @@ class UpdateManager {
       "update-not-available": (info) => {
         // The feed no longer offers the release downloaded earlier, as when a
         // release is pulled, so it must not install itself when the app quits.
-        if (this.updateDownloaded) {
+        // downloadedVersion, not updateDownloaded: a newer release found since
+        // clears the ready state but leaves the older file on disk.
+        if (this.downloadedVersion || this.updateDownloaded) {
           autoUpdater.autoInstallOnAppQuit = false;
         }
         this.updateAvailable = false;
