@@ -45,6 +45,9 @@ const normalizePunctuationSpacing = (text) =>
     .join(MISSING_SECTION_MARKER);
 
 const SHORT_CLIP_DURATION_SECONDS = 2.5;
+// A Bluetooth headset switching to its microphone profile can take several
+// seconds; past this the audio service is taken to have stopped answering.
+const MICROPHONE_OPEN_TIMEOUT_MS = 15000;
 const REASONING_CACHE_TTL = 30000; // 30 seconds
 const RECORDER_TIMESLICE_MS = 30000;
 const RECORDER_STOP_TIMEOUT_MS = 30000;
@@ -420,10 +423,46 @@ class AudioManager {
     }
     // Pool miss or stale — tear down old pooled stream and acquire fresh
     this._clearPooledStream();
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const stream = await this._openMicrophone(constraints);
     this._pooledStream = stream;
     this._pooledStreamConstraintsKey = key;
     return stream;
+  }
+
+  /**
+   * getUserMedia can hang when the Windows audio service stops answering.
+   * Waiting forever left isStartingRecording set, so every later hotkey press
+   * was ignored until a restart. A stream that arrives after the timeout is
+   * stopped at once, so no microphone stays open that the app is not using.
+   */
+  _openMicrophone(constraints) {
+    return new Promise((resolve, reject) => {
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        reject(
+          Object.assign(new Error("The microphone did not respond"), { name: "TimeoutError" })
+        );
+      }, MICROPHONE_OPEN_TIMEOUT_MS);
+      navigator.mediaDevices.getUserMedia(constraints).then(
+        (stream) => {
+          clearTimeout(timer);
+          if (!timedOut) {
+            resolve(stream);
+            return;
+          }
+          try {
+            stream.getTracks().forEach((track) => track.stop());
+          } catch {
+            // ignore cleanup errors
+          }
+        },
+        (error) => {
+          clearTimeout(timer);
+          if (!timedOut) reject(error);
+        }
+      );
+    });
   }
 
   /**
@@ -2080,6 +2119,10 @@ class AudioManager {
         errorTitle = "Microphone In Use";
         errorDescription =
           "The microphone is being used by another application. Please close other apps and try again.";
+      } else if (error.name === "TimeoutError") {
+        errorTitle = "Microphone Not Responding";
+        errorDescription =
+          "Windows did not open the microphone within 15 seconds. Unplug and reconnect it, or pick another microphone in Settings, then try again.";
       }
 
       this.onError?.({
