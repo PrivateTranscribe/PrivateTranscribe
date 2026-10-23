@@ -126,10 +126,10 @@ describe("AudioManager long-session silence on cloud transcription", () => {
     vi.stubGlobal("fetch", replyWith({ text: "" }));
     const manager = cloudManager();
 
-    const result = await manager.processWithOpenAIAPI(
-      new Blob(["audio"], { type: "audio/webm" }),
-      { ...longSessionChunk, durationSeconds: 60 }
-    );
+    const result = await manager.processWithOpenAIAPI(new Blob(["audio"], { type: "audio/webm" }), {
+      ...longSessionChunk,
+      durationSeconds: 60,
+    });
 
     expect(result).toMatchObject({ success: true, text: "" });
   });
@@ -169,6 +169,58 @@ describe("AudioManager long-session silence on cloud transcription", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(result.text).toBe("spoken words spoken words");
     expect(result.longSession).toMatchObject({ failedChunks: 0 });
+  });
+
+  // Only a reply that is a transcript can say the minute was silent. Anything
+  // else is a failure, which gets its retry and, if that fails, the gap marker.
+  it.each([
+    { name: "a reply with no transcript field", body: { error: { message: "Bad model" } } },
+    { name: "a reply whose text is not a string", body: { text: null } },
+  ])("fails $name instead of calling it silence", async ({ body }) => {
+    vi.stubGlobal("fetch", replyWith(body));
+    const manager = cloudManager();
+
+    await expect(
+      manager.processWithOpenAIAPI(new Blob(["audio"], { type: "audio/webm" }), {
+        ...longSessionChunk,
+        durationSeconds: 60,
+      })
+    ).rejects.toThrow();
+  });
+
+  const streamOf = (lines: string[]) =>
+    vi.fn().mockImplementation(
+      async () =>
+        new Response(lines.map((line) => `${line}\n\n`).join(""), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+    );
+
+  it("fails a stream that ends before its final event", async () => {
+    vi.stubGlobal("fetch", streamOf(['data: {"type":"transcript.text.unknown"}']));
+    const manager = cloudManager();
+    manager.shouldStreamTranscription.mockReturnValue(true);
+
+    await expect(
+      manager.processWithOpenAIAPI(new Blob(["audio"], { type: "audio/webm" }), {
+        ...longSessionChunk,
+        durationSeconds: 60,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("counts a finished stream with no words as a silent segment", async () => {
+    vi.stubGlobal("fetch", streamOf(['data: {"type":"transcript.text.done","text":""}']));
+    const manager = cloudManager();
+    manager.shouldStreamTranscription.mockReturnValue(true);
+
+    const result = await manager.processWithOpenAIAPI(new Blob(["audio"], { type: "audio/webm" }), {
+      ...longSessionChunk,
+      durationSeconds: 60,
+    });
+
+    expect(result).toMatchObject({ success: true, text: "" });
   });
 
   it("still fails an empty transcript for an ordinary dictation", async () => {

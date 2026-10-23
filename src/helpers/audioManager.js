@@ -3517,7 +3517,9 @@ class AudioManager {
     return normalized.startsWith("gpt-4o-mini-transcribe");
   }
 
-  async readTranscriptionStream(response) {
+  // outcome.finished says whether the final event arrived, which an empty
+  // transcript needs before it can count as silence.
+  async readTranscriptionStream(response, outcome = {}) {
     const reader = response.body?.getReader();
     if (!reader) {
       logger.error("Streaming response body not available", {}, "transcription");
@@ -3661,6 +3663,7 @@ class AudioManager {
     }
 
     const result = finalText ?? collectedText;
+    outcome.finished = finalText !== null;
     logger.debug(
       "Stream processing complete",
       {
@@ -3885,8 +3888,9 @@ class AudioManager {
 
       if (shouldStream && contentType.includes("text/event-stream")) {
         logger.debug("Processing streaming response", { contentType }, "transcription");
-        const streamedText = await this.readTranscriptionStream(response);
-        result = { text: streamedText };
+        const streamOutcome = {};
+        const streamedText = await this.readTranscriptionStream(response, streamOutcome);
+        result = { text: streamedText, streamFinished: streamOutcome.finished === true };
         logger.debug(
           "Streaming response parsed",
           {
@@ -3957,9 +3961,15 @@ class AudioManager {
           "transcription"
         );
         return { success: true, text, source, timings };
-      } else if (metadata?.source === "long-session") {
+      } else if (
+        metadata?.source === "long-session" &&
+        typeof result.text === "string" &&
+        result.streamFinished !== false
+      ) {
         // A silent minute of a long dictation, as on the local path. Failing
         // it would retry it as more paid requests and mark a gap in the text.
+        // Only a real transcript says so: an error body or a stream cut off
+        // before its final event is a failure, retried and then marked.
         timings.transcriptionProcessingDurationMs = Math.round(performance.now() - apiCallStart);
         return { success: true, text: "", source: "openai", timings };
       } else {
