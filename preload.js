@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteTranscription: (id) => ipcRenderer.invoke("db-delete-transcription", id),
   trimTranscriptions: (limit) => ipcRenderer.invoke("db-trim-transcriptions", limit),
   setHistoryLimit: (limit) => ipcRenderer.invoke("set-history-limit", limit),
+  getHistoryLimit: () => ipcRenderer.invoke("get-history-limit"),
   // Dictionary functions
   getDictionary: () => ipcRenderer.invoke("db-get-dictionary"),
   setDictionary: (words) => ipcRenderer.invoke("db-set-dictionary", words),

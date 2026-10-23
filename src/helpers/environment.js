@@ -32,6 +32,7 @@ const PLAIN_ENV_KEYS = [
   "REASONING_PROVIDER",
   "LOCAL_REASONING_MODEL",
   "DICTATION_KEY",
+  "HISTORY_LIMIT",
 ];
 
 class EnvironmentManager {

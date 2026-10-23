@@ -328,9 +328,9 @@ class IPCHandlers {
     // The live Converse session, created by `converse-start`. One at a time:
     // it owns a persistent `claude` child process.
     this.converseSession = null;
-    // Current history limit - synced from control panel via set-history-limit.
-    // Default 50 until the renderer sends the real value.
-    this.historyLimit = 50;
+    // Current history limit - set from the control panel via set-history-limit
+    // and saved, so it holds from the first dictation after a restart.
+    this.historyLimit = parseSavedHistoryLimit(process.env.HISTORY_LIMIT) ?? 50;
     // In-flight file transcriptions, by job id, so `cancel-file-transcription`
     // can reach the http.request inside the decode loop. The page starts one at
     // a time, but keying by id means a stale Cancel from an abandoned run can
@@ -648,6 +648,7 @@ class IPCHandlers {
       const parsed = parseInt(limit, 10);
       // Clamp to [0, 100 000]: 0 = disabled (no history), upper bound prevents runaway values.
       this.historyLimit = isNaN(parsed) || parsed < 0 ? 50 : Math.min(parsed, 100_000);
+      this._syncStartupEnv({ HISTORY_LIMIT: String(this.historyLimit) });
       try {
         const result = this.databaseManager.trimTranscriptions(this.historyLimit);
         return { success: true, ...result };
@@ -655,6 +656,12 @@ class IPCHandlers {
         debugLogger.error("Failed to enforce history limit:", error.message);
         return { success: false, error: error.message };
       }
+    });
+
+    // The saved limit, or null before one was ever set. A window that lost its
+    // own settings takes this instead of trimming history to its default.
+    ipcMain.handle("get-history-limit", async () => {
+      return parseSavedHistoryLimit(process.env.HISTORY_LIMIT);
     });
 
     ipcMain.handle("db-save-transcription", async (event, text, durationSeconds, options = {}) => {
@@ -3225,6 +3232,13 @@ function readAloudNoticeReason(source) {
   return source === "unsupported" ? "unsupported" : "empty-selection";
 }
 
+// The history limit saved by set-history-limit, or null when none was saved.
+function parseSavedHistoryLimit(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return null;
+  const parsed = parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? Math.min(parsed, 100_000) : null;
+}
+
 // main.js loads the local AI model at login when these are saved. It holds
 // gigabytes of memory, so it loads only while AI enhancement is on.
 // reasoningEnabled is left out by older windows, which keep the old behaviour.
@@ -3281,6 +3295,7 @@ module.exports = IPCHandlers;
 module.exports.formatFileTranscript = formatFileTranscript;
 module.exports.shouldToastNoAudio = shouldToastNoAudio;
 module.exports.startupReasoningVars = startupReasoningVars;
+module.exports.parseSavedHistoryLimit = parseSavedHistoryLimit;
 module.exports.isAudioConversionFailure = isAudioConversionFailure;
 module.exports.resolveEffectiveHotkey = resolveEffectiveHotkey;
 module.exports.readAloudNoticeReason = readAloudNoticeReason;
