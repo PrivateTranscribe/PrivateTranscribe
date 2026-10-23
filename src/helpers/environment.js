@@ -140,7 +140,8 @@ class EnvironmentManager {
    */
   _keepUnreadableEncryptedStore() {
     if (!this._encryptedStoreUnreadable) return true;
-    if (this._secrets.size === 0) return false;
+    // A cleared key leaves an empty entry, which is no key to save.
+    if (![...this._secrets.values()].some(Boolean)) return false;
     try {
       fs.renameSync(
         this._encryptedStorePath,

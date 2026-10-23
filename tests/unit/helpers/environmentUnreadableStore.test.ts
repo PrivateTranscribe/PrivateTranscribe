@@ -80,6 +80,20 @@ describe("EnvironmentManager with an unreadable key store", () => {
     expect(new EnvironmentManager(runtime()).getGroqKey()).toBe("gsk-test-only-new");
   });
 
+  it("leaves the store untouched when a key is only cleared", () => {
+    // A cleared key is no key to save, so the next start can still read the
+    // old store once decryption works.
+    const before = fs.readFileSync(storePath());
+    decryptShouldThrow = true;
+
+    new EnvironmentManager(runtime()).saveGroqKey("");
+
+    expect(fs.readFileSync(storePath())).toEqual(before);
+    expect(asideFiles()).toEqual([]);
+    decryptShouldThrow = false;
+    expect(new EnvironmentManager(runtime()).getOpenAIKey()).toBe("sk-test-only-saved");
+  });
+
   it("writes a readable store as before", () => {
     const manager = new EnvironmentManager(runtime());
     manager.saveGroqKey("gsk-test-only-new");
