@@ -200,3 +200,33 @@ test("an import keeps a speech engine idle shutdown of 0", async ({ controlPanel
     await controlPanel.evaluate(() => localStorage.getItem("whisperServerIdleTimeoutMinutes"))
   ).toBe("0");
 });
+
+test("an imported dictation hotkey is registered at once, and a refused one is not saved", async ({
+  electronApp,
+  controlPanel,
+}) => {
+  await seedPreferences(controlPanel);
+  await electronApp.evaluate(({ ipcMain }) => {
+    const calls: string[] = [];
+    (globalThis as any).__hotkeyCalls = calls;
+    ipcMain.removeHandler("update-hotkey");
+    ipcMain.handle("update-hotkey", (_event, hotkey) => {
+      calls.push(hotkey);
+      return hotkey === "CommandOrControl+Shift+F9"
+        ? { success: true, hotkey }
+        : { success: false, message: "Another app already uses this key." };
+    });
+  });
+  const hotkeyCalls = () =>
+    electronApp.evaluate(() => [...((globalThis as any).__hotkeyCalls as string[])]);
+  const storedKey = () => controlPanel.evaluate(() => localStorage.getItem("dictationKey"));
+
+  // Saving the key alone left the old one working until the app restarted.
+  await importSettings(controlPanel, { dictationKey: "CommandOrControl+Shift+F9" });
+  expect(await hotkeyCalls()).toEqual(["CommandOrControl+Shift+F9"]);
+  expect(await storedKey()).toBe("CommandOrControl+Shift+F9");
+
+  const message = await importSettings(controlPanel, { dictationKey: "F7" }, true);
+  expect(message).toContain("dictationKey");
+  expect(await storedKey()).toBe("CommandOrControl+Shift+F9");
+});

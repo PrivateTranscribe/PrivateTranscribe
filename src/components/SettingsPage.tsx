@@ -1646,6 +1646,15 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
     [buildSettingsExport]
   );
 
+  const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
+    onSuccess: (registeredHotkey) => {
+      setDictationKey(registeredHotkey);
+    },
+    showSuccessToast: false,
+    showErrorToast: true,
+    showAlert: showAlertDialog,
+  });
+
   const applyImportedSettings = useCallback(
     async (data: any) => {
       const s = data?.settings || data;
@@ -1734,7 +1743,15 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
 
       if (s.theme === "light" || s.theme === "dark" || s.theme === "auto") setTheme(s.theme);
       if (importedHistoryLimit !== undefined) setHistoryLimit(importedHistoryLimit);
-      if (typeof s.dictationKey === "string") setDictationKey(s.dictationKey);
+      if (typeof s.dictationKey === "string") {
+        // The hotkey field's own path, so the key works at once instead of after
+        // a restart, and a key this PC refuses is reported instead of saved.
+        if (!s.dictationKey.trim()) {
+          setDictationKey(s.dictationKey);
+        } else if (!(await registerHotkey(s.dictationKey))) {
+          skipField("dictationKey", "could not be registered on this PC");
+        }
+      }
       if (
         s.activationMode === "tap" ||
         s.activationMode === "push" ||
@@ -1944,6 +1961,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
       historyLimit,
       setHistoryLimit,
       setDictationKey,
+      registerHotkey,
       setActivationMode,
       updateTranscriptionSettings,
       updateReasoningSettings,
@@ -2006,15 +2024,6 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
   const { checkPasteToolsAvailability } = permissionsHook;
   useClipboard(showAlertDialog);
   const installTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
-    onSuccess: (registeredHotkey) => {
-      setDictationKey(registeredHotkey);
-    },
-    showSuccessToast: false,
-    showErrorToast: true,
-    showAlert: showAlertDialog,
-  });
 
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
 
