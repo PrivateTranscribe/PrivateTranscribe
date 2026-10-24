@@ -12,7 +12,7 @@
 - A microphone that never opens shows "Microphone Not Responding" after 15 seconds. Before, the hotkey did nothing until the app was restarted.
 - A long dictation no longer stays on processing forever when its recorder stops answering, which can happen when the microphone is unplugged.
 - A silent minute in a long dictation adds nothing to the text. Before, Whisper could put an invented "Thank you." or "[Music]" in the middle of the text, the app showed "No Audio Detected", and with cloud transcription the minute was sent four times and marked as missing.
-- A minute of a long dictation that fails to transcribe is retried, and marked once with "[... missing section ...]" if it still fails. Before, a minute local Whisper failed on could vanish with no mark, and the mark could come out broken or twice.
+- A minute of a long dictation that fails to transcribe is retried, and marked once with "[... missing section ...]" if it still fails. Before, a minute local Whisper could not transcribe could vanish with no mark, and the mark could come out broken or twice.
 - The last retry of a long dictation keeps the language the dictation started in.
 - A dictation you cancel with Escape is never sent to OpenAI. Before, with the OpenAI fallback turned on, a cancelled dictation whose local transcription then failed was still uploaded.
 - When the paste helper hangs or crashes after it has pasted, the app no longer asks you to press Ctrl+V, which pasted the text twice.
@@ -21,7 +21,7 @@
 - Temporary audio left behind by a crash is removed the next time the app starts. Only files the app made itself and that are more than a day old are removed.
 - The local AI model no longer loads at every login while AI enhancement is off.
 - Installing an update installs the version the app says is ready. Before, an older downloaded update could be installed after a newer one was found, and a pulled update could still install itself when you quit.
-- Correction Memory offers to learn from a correction you copy after a dictation again. Before, the offer never appeared.
+- Correction Memory again offers to learn from a correction you copy after a dictation. Before, the offer never appeared.
 - ".gitignore", ".NET" and other words that start with a dot keep the space in front of them.
 - Repeated words are collapsed only as whole words. Before, "the the theory" could come out as "theory".
 - Dictionary words that start or end with a letter such as ø, æ or å, like "Østerbro", now get the dictionary's capitals, and "tuborgøl" no longer turns into "tuborgØl". Words such as ".NET" and "C++" are matched too.
