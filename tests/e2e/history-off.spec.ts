@@ -7,7 +7,12 @@ test.beforeAll(() => {
 });
 
 test("disabled history explains its state and can be enabled", async ({ controlPanel }) => {
-  await controlPanel.evaluate(() => localStorage.setItem("historyLimit", "0"));
+  // Turn history off the way the Settings field does: the main process keeps
+  // its own saved limit, and a reloaded window takes that one.
+  await controlPanel.evaluate(async () => {
+    localStorage.setItem("historyLimit", "0");
+    await (window as any).electronAPI.setHistoryLimit(0);
+  });
   await controlPanel.reload({ waitUntil: "domcontentloaded" });
   await expect(controlPanel.getByText("History is off", { exact: true })).toBeVisible();
   await controlPanel.getByText("History is off", { exact: true }).scrollIntoViewIfNeeded();
