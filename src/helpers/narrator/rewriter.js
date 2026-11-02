@@ -42,7 +42,7 @@ const SYSTEM_PROMPT = [
   "spoken: at most three short sentences. The first fits in one breath and puts the next step or the question first. Name the chat briefly at the start, as it is called.",
   "card: at most 20 words, for glancing at, in different words from spoken.",
   "more: two to four sentences of background: what happened, why, and what is not done.",
-  "In Danish, software words stay English: commit, push, deploy, bug, login, branch, merge, release, test, build, PR. Never translate them.",
+  'In Danish, words from building software stay English inside the Danish sentence, the way Danish developers speak: commit, push, merge, draft, deploy, bug, login, branch, release, test, build, check, CI, PR. For example: "Export fix venter på dig. Skal jeg merge PR 65? Den er stadig en draft, og alle checks er grønne."',
   "Explain a name the first time it is used, such as a PR number or an internal module name: say what it is.",
   "Never write code, diffs, paths, file names, links or hashes. Say the point instead.",
   "Invent nothing. If it is not in the item, do not say it. Each request stands alone: never mention items from earlier requests.",
