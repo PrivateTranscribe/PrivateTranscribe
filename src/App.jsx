@@ -25,6 +25,7 @@ import { useReadAloudLevel } from "./hooks/useReadAloudLevel";
 import { VOICE_BAR_HEIGHTS, voiceBarScale } from "./utils/voiceBars";
 import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { ConversePlayer } from "./helpers/conversePlayer";
+import NarratorOverlay from "./components/NarratorOverlay";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
@@ -1511,6 +1512,7 @@ export default function App() {
 
   return (
     <div className="dictation-window">
+      <NarratorOverlay isRecording={isRecording} />
       <style>{`
         @keyframes overlay-surface-in {
           from {

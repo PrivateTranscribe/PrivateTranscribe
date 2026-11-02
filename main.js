@@ -1090,6 +1090,9 @@ if (gotSingleInstanceLock) {
     if (ipcHandlers && ipcHandlers.agentModeHotkey) {
       ipcHandlers.agentModeHotkey.unregister();
     }
+    // Stops the transcript watcher and the opt-in Røst worker, which would
+    // otherwise outlive the app as an orphan Python process.
+    ipcHandlers?.narrator?.dispose();
     if (selectionCapture) {
       selectionCapture.stop();
     }

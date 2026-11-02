@@ -279,6 +279,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Renderer -> main: where playback actually is. Fire-and-forget, not a request. */
   converseReportPlayerState: (state) => ipcRenderer.send("converse-player-state", state),
 
+  // Agent narrator (Experimental)
+  narratorSetGate: (experimentalOn) => ipcRenderer.invoke("narrator-set-gate", experimentalOn),
+  narratorGetState: () => ipcRenderer.invoke("narrator-get-state"),
+  narratorUpdateSettings: (patch) => ipcRenderer.invoke("narrator-update-settings", patch),
+  narratorCommand: (name, language) => ipcRenderer.invoke("narrator-command", name, language),
+  narratorUtterance: (text) => ipcRenderer.invoke("narrator-utterance", text),
+  narratorStop: () => ipcRenderer.invoke("narrator-stop"),
+  narratorTestVoice: (language) => ipcRenderer.invoke("narrator-test-voice", language),
+  narratorOpen: (itemId) => ipcRenderer.invoke("narrator-open", itemId),
+  narratorDismiss: (itemId) => ipcRenderer.invoke("narrator-dismiss", itemId),
+  narratorFollow: (chatId, on) => ipcRenderer.invoke("narrator-follow", chatId, on),
+  narratorVoiceStatus: () => ipcRenderer.invoke("narrator-voice-status"),
+  narratorDownloadVoice: (id) => ipcRenderer.invoke("narrator-download-voice", id),
+  narratorRemoveVoice: (id) => ipcRenderer.invoke("narrator-remove-voice", id),
+  onNarratorState: registerListener("narrator-state"),
+  onNarratorPlay: registerListener("narrator-play"),
+  onNarratorStopPlayback: registerListener("narrator-stop-playback"),
+  onNarratorDownloadProgress: registerListener("narrator-download-progress"),
+  /** Overlay -> main: a narrator job started playing, finished, or was stopped. */
+  narratorReportPlayback: (payload) => ipcRenderer.send("narrator-playback", payload),
+
   // Local llama-server functions
   llamaServerSetIdleTimeoutMinutes: (minutes) =>
     ipcRenderer.invoke("llama-server-set-idle-timeout-minutes", minutes),
