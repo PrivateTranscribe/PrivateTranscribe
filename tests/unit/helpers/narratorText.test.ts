@@ -75,10 +75,26 @@ describe("narrator rewriter", () => {
       CLAUDE_CODE_SESSION_ID: "session",
       CLAUDE_CODE_MESSAGING_TOKEN: "not-a-real-token",
       CLAUDE_EFFORT: "max",
-      ANTHROPIC_BASE_URL: "http://127.0.0.1:9",
       anthropic_api_key: "not-a-real-key",
     });
     expect(env).toEqual({ PATH: "C:\\bin", CLAUDE_CONFIG_DIR: "D:\\claude" });
+  });
+
+  it("keeps the user's own Claude Code setup, with or without a session", () => {
+    const setup = {
+      PATH: "C:\\bin",
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1",
+      CLAUDE_CODE_CLIENT_CERT: "D:\\certs\\client.pem",
+      CLAUDE_CODE_GIT_BASH_PATH: "D:\\Git\\bin\\bash.exe",
+      CLAUDE_CODE_OAUTH_TOKEN: "not-a-real-token",
+      ANTHROPIC_BASE_URL: "https://gateway.example",
+    };
+    expect(rewriterEnv({ ...setup, CLAUDECODE: "1", CLAUDE_EFFORT: "max" })).toEqual(setup);
+    expect(rewriterEnv({ ...setup, CLAUDE_EFFORT: "high", ANTHROPIC_API_KEY: "x" })).toEqual({
+      ...setup,
+      CLAUDE_EFFORT: "high",
+    });
   });
 
   it("gives the CLI no tools, no MCP servers, no settings files and no saved session", () => {

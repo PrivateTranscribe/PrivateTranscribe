@@ -132,21 +132,27 @@ function isLoginProblem(text) {
   return /not logged in|log ?in|\/login|authenticat|invalid api key/i.test(String(text || ""));
 }
 
+/** The user's own Claude Code setup: where the login lives, which cloud and how to reach it. */
+const USER_SETUP_ENV =
+  /^CLAUDE_(CONFIG_DIR|CODE_OAUTH_TOKEN|CODE_GIT_BASH_PATH|CODE_USE_\w+|CODE_SKIP_\w+_AUTH|CODE_CLIENT_(CERT|KEY|KEY_PASSPHRASE))$/;
+
 /**
  * The CLI's environment: the user's own, as a fresh terminal has it. A Claude
- * Code session hands every process it starts its session id, messaging
- * socket, effort and API route, and a CLI that inherits them runs as part of
+ * Code session hands every process it starts CLAUDECODE=1 and its session id,
+ * messaging socket and effort, and a CLI that inherits them runs as part of
  * that session: measured on 3 Nov 2026 with the app started from one, it ran
  * a desktop summary step after every answer and thought at the session's
- * effort, and a wait's words came 18.7 s after its turn ended. Only
- * CLAUDE_CONFIG_DIR, which says where the login lives, stays.
+ * effort, and a wait's words came 18.7 s after its turn ended. So with
+ * CLAUDECODE set, every CLAUDE_* variable goes except the user's own setup.
+ * Without it the environment is the user's own and stays whole, as Converse
+ * keeps it.
  */
 function rewriterEnv(baseEnv) {
   const env = withoutClaudeBillingEnv(baseEnv);
+  if (!Object.keys(env).some((key) => key.toUpperCase() === "CLAUDECODE")) return env;
   for (const key of Object.keys(env)) {
     const name = key.toUpperCase();
-    if (name === "CLAUDE_CONFIG_DIR") continue;
-    if (name === "CLAUDECODE" || name.startsWith("CLAUDE_") || name === "ANTHROPIC_BASE_URL") {
+    if (name === "CLAUDECODE" || (name.startsWith("CLAUDE_") && !USER_SETUP_ENV.test(name))) {
       delete env[key];
     }
   }
