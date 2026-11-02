@@ -40,6 +40,26 @@ describe("narrator transcript parser", () => {
     });
   });
 
+  it("reports the wrap_up at once as the turn ending, before the turn has ended", () => {
+    const state = new TranscriptState();
+    const early = state.push(wrapUpLine({ recap: "Fixed.", ask: "Push?" }, T), T);
+    expect(early).toEqual([
+      {
+        type: "turn-ending",
+        waiting: true,
+        recap: "Fixed.",
+        ask: "Push?",
+        at: T,
+        fromWrapUp: true,
+      },
+    ]);
+    expect(state.poll(T + END_TURN_GRACE_MS * 10)).toEqual([]);
+    state.push(assistantText("Done.", T + 500), T + 500);
+    expect(state.push(stopHookLine(T + 900), T + 900)).toEqual([
+      expect.objectContaining({ type: "turn-ended", waiting: true, ask: "Push?", at: T + 500 }),
+    ]);
+  });
+
   it("treats blocked: true as waiting even without an ask", () => {
     const { events } = feed([
       wrapUpLine({ recap: "Stuck on a login.", blocked: true }, T),
@@ -129,7 +149,11 @@ describe("narrator transcript parser", () => {
       assistantText("Done.", T + 10),
       userLine("yes", T + 20),
     ]);
-    expect(events.map((e: { type: string }) => e.type)).toEqual(["turn-ended", "answered"]);
+    expect(events.map((e: { type: string }) => e.type)).toEqual([
+      "turn-ending",
+      "turn-ended",
+      "answered",
+    ]);
   });
 
   it("ignores subagent lines", () => {

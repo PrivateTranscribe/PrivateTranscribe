@@ -44,6 +44,8 @@ function turnSignature(event) {
  * @property {string} [ask]
  * @property {number} at               epoch ms
  * @property {boolean} [backlog]       found at startup, not live
+ * @property {boolean} [provisional]   a wrap_up whose turn has not ended; the narrator
+ *                                     starts its rewrite and never routes it here
  * @property {string} [openUrl]        how to open the chat, when known
  * @property {string} [source]         "claude-code", later "codex"
  */

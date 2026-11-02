@@ -24,6 +24,11 @@
  * also ends the turn; the source calls poll() with its clock to find those.
  * Either way the turn's time is its end_turn line's, so the same turn read
  * twice carries the same time.
+ *
+ * The wrap_up call comes before all that: the closing words still stream and
+ * the Stop hooks still run, seconds in all. Its recap and ask are final when
+ * it is made, so it is reported at once as "turn-ending", for work that can
+ * start early. Only "turn-ended" says the turn is over.
  */
 
 const WRAP_UP_TOOL = "mcp__ccd_turn__wrap_up";
@@ -109,6 +114,7 @@ function isPersonText(record) {
  *
  * Events:
  *   { type: "title", title }
+ *   { type: "turn-ending", waiting, recap, ask, at, fromWrapUp }   the wrap_up call; `at` is its line's
  *   { type: "turn-ended", waiting, recap, ask, at, fromWrapUp }
  *   { type: "answered", at }        the person wrote in the chat again
  */
@@ -157,6 +163,7 @@ class TranscriptState {
             ask: clip(input.ask, MAX_FIELD),
             blocked: input.blocked === true,
           };
+          events.push({ ...this._turn(at), type: "turn-ending" });
         }
       }
       const text = textOf(blocks);
@@ -192,18 +199,21 @@ class TranscriptState {
     return [this._endTurn(this.endTurnAt)];
   }
 
-  _endTurn(at) {
+  /** What the turn says so far, as a turn ending at `at`. */
+  _turn(at) {
     const wrapUp = this.wrapUp;
-    const recap = wrapUp?.recap || clip(this.lastAssistantText, MAX_FALLBACK_RECAP);
-    const ask = wrapUp?.ask || "";
-    const event = {
+    return {
       type: "turn-ended",
       waiting: Boolean(wrapUp && (wrapUp.ask || wrapUp.blocked)),
-      recap,
-      ask,
+      recap: wrapUp?.recap || clip(this.lastAssistantText, MAX_FALLBACK_RECAP),
+      ask: wrapUp?.ask || "",
       at,
       fromWrapUp: Boolean(wrapUp),
     };
+  }
+
+  _endTurn(at) {
+    const event = this._turn(at);
     this.endTurnAt = null;
     this.wrapUp = null;
     return event;

@@ -15,10 +15,11 @@
  *   voices    synthesize(text) -> {pcm, sampleRate}, one per language
  *   playback  openPlayback({chime}) -> push(part), end(), cancel(), result
  *
- * A wait chimes the moment it is seen, or when its turn comes if something
- * else is being said, and is spoken once its rewrite is back, a few seconds
- * later. The chime is a playback of its own, so an item counts as heard only
- * once its words play. Each sentence plays as soon as it is made. Stop, switching off, and an answer in the chat all cut off
+ * A wait's rewrite starts at its wrap_up call, while the chat still writes its
+ * closing words. It chimes the moment its turn ends, or when its turn comes
+ * if something else is being said, and is spoken once its rewrite is back.
+ * The chime is a playback of its own, so an item counts as heard only once
+ * its words play. Each sentence plays as soon as it is made. Stop, switching off, and an answer in the chat all cut off
  * the item they concern, including one still being rewritten or made.
  *
  * It never answers a chat. Speech recognition can invent a "yes", so every
@@ -145,6 +146,8 @@ class Narrator {
     /** How the last spoken item ended in the overlay, and how soon after its turn ended it began. */
     this.lastPlayback = null;
     this.rewrites = new Map();
+    /** Rewrites started from a wrap_up before its turn ended, by what they rewrite. */
+    this.prefetched = new Map();
   }
 
   // ------------------------------------------------------------- lifecycle
@@ -196,6 +199,7 @@ class Narrator {
       // Cards describe chats as they were while it ran; switched off, they would go stale.
       this.router.clear();
       this.rewrites.clear();
+      this.prefetched.clear();
       this.rewriter.close?.();
       for (const voice of Object.values(this.voices)) voice?.unload?.();
     }
@@ -215,6 +219,10 @@ class Narrator {
   // ---------------------------------------------------------------- events
 
   ingest(event) {
+    if (event?.provisional) {
+      this._prefetch(event);
+      return { action: "ignore" };
+    }
     const decision = this.router.ingest(event);
     // Every card that turned up while it ran counts; cards from startup do not.
     if (["interrupt", "speak", "card"].includes(decision.action) && !event.backlog) {
@@ -391,10 +399,51 @@ class Narrator {
     }
   }
 
+  /**
+   * A chat's wrap_up says what its turn ends with before the turn is over:
+   * the closing words still stream and the Stop hooks still run, seconds in
+   * all. A turn that will be spoken is rewritten from then on, so its words
+   * can follow its chime. That also hides the model's thinking, which Haiku
+   * does at will, often for 5 s on a process's first rewrite, and which no
+   * CLI setting turns off. A turn that goes on after all costs one rewrite.
+   */
+  _prefetch(event) {
+    if (!this.running) return;
+    if (event.kind !== "waiting" && !this.router.isFollowed(event.chatId)) return;
+    const language = this.settings.language;
+    const key = this._prefetchKey(event, language);
+    if (this.prefetched.has(key)) return;
+    // Its turn ended in the same read and was taken in first.
+    if (this.router.snapshot().some((item) => this._prefetchKey(item, language) === key)) return;
+    const pending = this.rewriter.rewrite(
+      {
+        chatId: event.chatId,
+        chatTitle: event.chatTitle || "",
+        project: event.project || "",
+        kind: event.kind,
+        recap: event.recap || "",
+        ask: event.ask || "",
+      },
+      language
+    );
+    this.prefetched.set(key, pending);
+    pending.catch(() => this.prefetched.delete(key));
+    if (this.prefetched.size > 20) this.prefetched.delete(this.prefetched.keys().next().value);
+  }
+
+  /** Everything a rewrite reads, so an early one is used only for the same words. */
+  _prefetchKey(item, language) {
+    const fields = [item.chatId, item.kind, item.chatTitle, item.project, item.recap, item.ask];
+    return [...fields.map((field) => field || ""), language].join("\n");
+  }
+
   _rewrite(item, language) {
     const key = `${item.id}:${language}`;
     if (!this.rewrites.has(key)) {
-      this._remember(key, this.rewriter.rewrite(item, language), item, language);
+      const early = this._prefetchKey(item, language);
+      const pending = this.prefetched.get(early) || this.rewriter.rewrite(item, language);
+      this.prefetched.delete(early);
+      this._remember(key, pending, item, language);
     }
     return this.rewrites.get(key);
   }

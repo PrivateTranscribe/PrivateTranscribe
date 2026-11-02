@@ -308,18 +308,22 @@ class ClaudeTranscriptSource {
       this.onEvent({ kind: "answered", chatId: entry.chatId, at: event.at, source: "claude-code" });
       return;
     }
-    if (event.type !== "turn-ended") return;
+    if (event.type !== "turn-ended" && event.type !== "turn-ending") return;
     if (this.now() - event.at > LIVE_MAX_AGE_MS) return;
-    void this._emitTurn(entry, event, { backlog: false });
+    void this._emitTurn(entry, event, {
+      backlog: false,
+      provisional: event.type === "turn-ending",
+    });
   }
 
   /**
    * Emits a turn once the desktop app's record for its chat is known. The
    * lookup can take a moment, and an answer read meanwhile, often from the
    * same read, goes out at once: a turn answered before it went out is dropped
-   * rather than arriving after its own answer.
+   * rather than arriving after its own answer. A provisional turn is one whose
+   * wrap_up was made but whose end is not confirmed yet.
    */
-  async _emitTurn(entry, event, { backlog }) {
+  async _emitTurn(entry, event, { backlog, provisional = false }) {
     const answers = entry.answers;
     let record = null;
     try {
@@ -339,6 +343,7 @@ class ClaudeTranscriptSource {
       ask: event.ask,
       at: event.at,
       backlog,
+      ...(provisional ? { provisional: true } : {}),
       openUrl: record ? desktopChatUrl(record.localId) : "",
       source: "claude-code",
     });

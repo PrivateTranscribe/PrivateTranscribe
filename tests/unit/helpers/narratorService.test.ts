@@ -199,6 +199,37 @@ describe("narrator service", () => {
     expect(narrator.getState().lastPlayback.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("starts a wait's words at its wrap_up, and makes no sound until its turn ends", async () => {
+    const { narrator, overlay, rewriter, emit } = startNarrator(dir);
+    emit(wait("c1", "Build", "Retry?", { provisional: true }));
+    emit({
+      kind: "finished",
+      chatId: "c2",
+      chatTitle: "Docs",
+      recap: "Done.",
+      at: Date.now(),
+      provisional: true,
+    });
+    // Only the wait is rewritten early: a finish nobody follows is never spoken.
+    expect(rewriter.rewrite).toHaveBeenCalledTimes(1);
+    expect(overlay.played).toHaveLength(0);
+    expect(narrator.getState().items).toHaveLength(0);
+
+    emit(wait("c1", "Build", "Retry?"));
+    await vi.waitFor(() => expect(overlay.spoken()).toEqual(["Build venter på dig. Retry?"]));
+    expect(rewriter.rewrite).toHaveBeenCalledTimes(1);
+  });
+
+  it("rewrites a wait again when its words changed after the wrap_up", async () => {
+    const { overlay, rewriter, emit } = startNarrator(dir);
+    emit(wait("c1", "Build", "Retry?", { provisional: true }));
+    emit(wait("c1", "Build", "Retry on main?"));
+    await vi.waitFor(() =>
+      expect(overlay.spoken()).toEqual(["Build venter på dig. Retry on main?"])
+    );
+    expect(rewriter.rewrite).toHaveBeenCalledTimes(2);
+  });
+
   it("chimes a wait queued behind speech when its turn comes, then speaks it", async () => {
     const overlay = fakeOverlay({ hold: true });
     const { narrator, emit } = startNarrator(dir, { overlay });
@@ -448,7 +479,9 @@ describe("Claude transcript source", () => {
   let sessions: string;
   let file: string;
   const events: Record<string, unknown>[] = [];
-  const kinds = () => events.map((event) => event.kind);
+  /** Each event's kind; one reported early from its wrap_up reads "waiting (early)". */
+  const kinds = () =>
+    events.map((event) => (event.provisional ? `${event.kind} (early)` : event.kind));
 
   const writeRecord = (fields: Record<string, unknown>) => {
     fs.mkdirSync(path.join(sessions, "acct", "org"), { recursive: true });
@@ -500,19 +533,23 @@ describe("Claude transcript source", () => {
       )
     );
     await source.readFile(file);
-    await vi.waitFor(() => expect(kinds()).toEqual(["answered", "waiting"]));
-    expect(events[1]).toMatchObject({
+    await vi.waitFor(() => expect(kinds()).toEqual(["answered", "waiting (early)", "waiting"]));
+    const wait = {
       chatId: SESSION,
       chatTitle: "App title",
       project: "example-repo",
+      recap: "Fixed.",
       ask: "Push?",
       backlog: false,
       openUrl: "claude://claude.ai/epitaxy/local_613d00cc-98b6-4bcd-8c4a-5466c71eb33f",
-    });
+    };
+    expect(events[1]).toMatchObject({ ...wait, provisional: true });
+    expect(events[2]).toMatchObject(wait);
+    expect(events[2].provisional).toBeUndefined();
 
     fs.appendFileSync(file, lines(userLine("yes", now + 10)));
     await source.readFile(file);
-    expect(kinds()).toEqual(["answered", "waiting", "answered"]);
+    expect(kinds()).toEqual(["answered", "waiting (early)", "waiting", "answered"]);
     source.stop();
   });
 
@@ -572,8 +609,8 @@ describe("Claude transcript source", () => {
       ])
     );
     await source.readFile(file);
-    await vi.waitFor(() => expect(kinds()).toEqual(["waiting"]));
-    expect(events[0].ask).toBe("Skal jeg køre den?");
+    await vi.waitFor(() => expect(kinds()).toEqual(["waiting (early)", "waiting"]));
+    expect(events[1].ask).toBe("Skal jeg køre den?");
     source.stop();
   });
 
@@ -601,7 +638,7 @@ describe("Claude transcript source", () => {
     const source = newSource();
     await source.start();
     await source.readFile(file);
-    await vi.waitFor(() => expect(kinds()).toEqual(["answered", "waiting"]));
+    await vi.waitFor(() => expect(kinds()).toEqual(["answered", "waiting (early)", "waiting"]));
     fs.writeFileSync(
       file,
       lines(
@@ -611,8 +648,16 @@ describe("Claude transcript source", () => {
       )
     );
     await source.readFile(file);
-    await vi.waitFor(() => expect(kinds()).toEqual(["answered", "waiting", "waiting"]));
-    expect(events[2].ask).toBe("Second?");
+    await vi.waitFor(() =>
+      expect(kinds()).toEqual([
+        "answered",
+        "waiting (early)",
+        "waiting",
+        "waiting (early)",
+        "waiting",
+      ])
+    );
+    expect(events[4].ask).toBe("Second?");
     source.stop();
   });
 
