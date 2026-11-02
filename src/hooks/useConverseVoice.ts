@@ -41,6 +41,11 @@ export interface ConverseVoiceOptions {
   muted: boolean;
   /** Silence that ends a turn. */
   endOfTurnMs: number;
+  /**
+   * Speech longer than this is dropped without being transcribed. The
+   * narrator listens only for short commands; Converse leaves it unset.
+   */
+  maxSpeechMs?: number;
   /** A finished, transcribed turn. */
   onUtterance: (text: string) => void;
   /** The moment speech is detected, before any transcription — this is barge-in. */
@@ -94,6 +99,7 @@ export function useConverseVoice({
   active,
   muted,
   endOfTurnMs,
+  maxSpeechMs,
   onUtterance,
   onSpeechStart,
 }: ConverseVoiceOptions): ConverseVoice {
@@ -113,6 +119,7 @@ export function useConverseVoice({
   const streamRef = useRef<MediaStream | null>(null);
   const vadRef = useRef<VoiceActivityDetector | null>(null);
   const mutedRef = useRef(muted);
+  const maxSpeechMsRef = useRef(maxSpeechMs);
   /** Transcriptions run one after another, so two turns cannot arrive swapped. */
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -121,6 +128,10 @@ export function useConverseVoice({
   useEffect(() => {
     vadRef.current?.setEndOfTurnMs(endOfTurnMs);
   }, [endOfTurnMs]);
+
+  useEffect(() => {
+    maxSpeechMsRef.current = maxSpeechMs;
+  }, [maxSpeechMs]);
 
   // The input is closed by disabling the track rather than by dropping the
   // stream: re-acquiring a device between every turn costs a few hundred
@@ -153,6 +164,7 @@ export function useConverseVoice({
     /** The recorder currently capturing, and what it has produced so far. */
     let segment: { recorder: MediaRecorder; chunks: Blob[]; startedAt: number } | null = null;
     let lastLoudAt = 0;
+    let speechStartedAt = 0;
 
     const manager = managerRef.current || new AudioManager();
     managerRef.current = manager;
@@ -302,12 +314,16 @@ export function useConverseVoice({
 
       const event = vad.push(rms, now);
       if (event === "speech-start") {
+        speechStartedAt = now;
         setPhase("hearing");
         onSpeechStartRef.current?.();
         return;
       }
       if (event === "speech-end") {
-        rotateSegment(true);
+        const limit = maxSpeechMsRef.current;
+        const tooLong = limit !== undefined && now - speechStartedAt > limit;
+        rotateSegment(!tooLong);
+        if (tooLong) setPhase("listening");
         return;
       }
       if (event === "speech-discarded") {
