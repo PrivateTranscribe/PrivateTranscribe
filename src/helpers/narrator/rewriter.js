@@ -133,6 +133,50 @@ function isLoginProblem(text) {
 }
 
 /**
+ * The CLI's environment: the user's own, as a fresh terminal has it. A Claude
+ * Code session hands every process it starts its session id, messaging
+ * socket, effort and API route, and a CLI that inherits them runs as part of
+ * that session: measured on 3 Nov 2026 with the app started from one, it ran
+ * a desktop summary step after every answer and thought at the session's
+ * effort, and a wait's words came 18.7 s after its turn ended. Only
+ * CLAUDE_CONFIG_DIR, which says where the login lives, stays.
+ */
+function rewriterEnv(baseEnv) {
+  const env = withoutClaudeBillingEnv(baseEnv);
+  for (const key of Object.keys(env)) {
+    const name = key.toUpperCase();
+    if (name === "CLAUDE_CONFIG_DIR") continue;
+    if (name === "CLAUDECODE" || name.startsWith("CLAUDE_") || name === "ANTHROPIC_BASE_URL") {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
+/** No tools, no MCP servers, no settings or hooks from any settings file, nothing saved. */
+function rewriterArgs({ model = REWRITE_MODEL, systemPrompt = SYSTEM_PROMPT } = {}) {
+  return [
+    ...resolveClaudeArgPrefix(),
+    "--print",
+    "--verbose",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--no-session-persistence",
+    "--model",
+    model,
+    "--tools",
+    "",
+    "--strict-mcp-config",
+    "--setting-sources",
+    "",
+    "--system-prompt",
+    systemPrompt,
+  ];
+}
+
+/**
  * One `claude` process over stream-json, one request at a time. Each request
  * is a user message; the reply is the `result` of the turn it starts.
  */
@@ -167,30 +211,12 @@ class ClaudeStreamClient {
     if (this.proc) return this.proc;
     const bin = resolveClaudeBin(this.claudeBin, { cwd: os.tmpdir() });
     if (path.basename(bin) === bin) throw rejection("claude-missing", "Claude Code was not found");
-    const args = [
-      ...resolveClaudeArgPrefix(),
-      "--print",
-      "--verbose",
-      "--input-format",
-      "stream-json",
-      "--output-format",
-      "stream-json",
-      "--no-session-persistence",
-      "--model",
-      this.model,
-      "--tools",
-      "",
-      "--strict-mcp-config",
-      "--setting-sources",
-      "",
-      "--system-prompt",
-      this.systemPrompt,
-    ];
+    const args = rewriterArgs({ model: this.model, systemPrompt: this.systemPrompt });
     const proc = spawn(bin, args, {
       cwd: os.tmpdir(),
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
-      env: withoutClaudeBillingEnv(process.env),
+      env: rewriterEnv(process.env),
     });
     this.proc = proc;
     this.buffer = "";
@@ -364,6 +390,8 @@ module.exports = {
   parseRewrite,
   buildInput,
   isLoginProblem,
+  rewriterEnv,
+  rewriterArgs,
   REWRITE_MODEL,
   SYSTEM_PROMPT,
 };

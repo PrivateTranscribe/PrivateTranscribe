@@ -10,6 +10,8 @@ const {
   parseRewrite,
   templateRewrite,
   buildInput,
+  rewriterEnv,
+  rewriterArgs,
 } = require("../../../src/helpers/narrator/rewriter");
 
 describe("narrator commands", () => {
@@ -64,6 +66,33 @@ describe("narrator spoken text", () => {
 });
 
 describe("narrator rewriter", () => {
+  it("runs the CLI as a fresh terminal would, without the session that started the app", () => {
+    const env = rewriterEnv({
+      PATH: "C:\\bin",
+      CLAUDE_CONFIG_DIR: "D:\\claude",
+      CLAUDECODE: "1",
+      CLAUDE_CODE_ENTRYPOINT: "claude-desktop",
+      CLAUDE_CODE_SESSION_ID: "session",
+      CLAUDE_CODE_MESSAGING_TOKEN: "not-a-real-token",
+      CLAUDE_EFFORT: "max",
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:9",
+      anthropic_api_key: "not-a-real-key",
+    });
+    expect(env).toEqual({ PATH: "C:\\bin", CLAUDE_CONFIG_DIR: "D:\\claude" });
+  });
+
+  it("gives the CLI no tools, no MCP servers, no settings files and no saved session", () => {
+    const args: string[] = rewriterArgs({ model: "claude-haiku-5-5", systemPrompt: "Rewrite." });
+    const after = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(after("--model")).toBe("claude-haiku-5-5");
+    expect(after("--tools")).toBe("");
+    expect(after("--setting-sources")).toBe("");
+    expect(after("--system-prompt")).toBe("Rewrite.");
+    expect(args).toEqual(
+      expect.arrayContaining(["--strict-mcp-config", "--no-session-persistence"])
+    );
+  });
+
   it("reads the JSON out of a model reply with text around it", () => {
     expect(
       parseRewrite('Here:\n```json\n{"spoken":"Hej.","card":"Kort","more":"Mere."}\n```')
