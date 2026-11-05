@@ -30,6 +30,7 @@ const micWatcher = require("./micWatcher");
 const voiceMuter = require("./voiceMuter");
 const { formatTranscript } = require("./transcriptFormatter");
 const { isCancelledError } = require("./whisperServer");
+const { createOpenDialogFolderMemory } = require("./openDialogFolderMemory");
 const {
   MAX_AUTO_THREADS,
   getPhysicalCoreCount,
@@ -2955,15 +2956,17 @@ class IPCHandlers {
     // Native file-open dialog - used by Action Engine "Open application" and other pickers.
     // The dialog is always shown as a sheet attached to the requesting window, so the user
     // explicitly chooses a path; no sensitive data is exposed without interaction.
+    const openDialogFolder = createOpenDialogFolderMemory();
     ipcMain.handle("show-open-dialog", async (event, options) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       const safeOptions = {
         title: typeof options?.title === "string" ? options.title : "Select file",
-        defaultPath: typeof options?.defaultPath === "string" ? options.defaultPath : undefined,
+        defaultPath: openDialogFolder.defaultPath(options?.defaultPath),
         properties: Array.isArray(options?.properties) ? options.properties : ["openFile"],
         filters: Array.isArray(options?.filters) ? options.filters : [],
       };
       const result = await dialog.showOpenDialog(win ?? undefined, safeOptions);
+      openDialogFolder.remember(result);
       return result; // { canceled: boolean; filePaths: string[] }
     });
 
