@@ -177,7 +177,8 @@
           "!sherpa-onnx-*",
           "windows-fast-paste.exe",
           "windows-mic-watch.exe",
-          "windows-hold-key.exe"
+          "windows-hold-key.exe",
+          "windows-audio-meter.exe"
         ]
       },
       {
