@@ -24,6 +24,7 @@
  *
  * Making room: after the chime, an unasked line waits for a pause in a voice
  * call (at most 8 s), and while the narrator speaks, other apps play at 30%.
+ * Gaming mode speaks only what waits on the user and never listens.
  *
  * It never answers a chat. Speech recognition can invent a "yes", so every
  * answer stays in the chat itself.
@@ -54,6 +55,11 @@ const DEFAULT_SETTINGS = {
    * looked at interrupts on sound for that reason. Meant for a headset.
    */
   bargeIn: false,
+  /**
+   * Gaming mode: only chats that wait on the user are spoken, and nothing
+   * listens to the room, so talk on a voice call is never taken for a command.
+   */
+  gaming: false,
   /**
    * Before a line nobody asked for, wait for a pause in a voice call (Discord,
    * Teams, Zoom, Slack); while speaking, lower every other app.
@@ -183,6 +189,7 @@ class Narrator {
     }
     if (typeof patch.listen === "boolean") next.listen = patch.listen;
     if (typeof patch.bargeIn === "boolean") next.bargeIn = patch.bargeIn;
+    if (typeof patch.gaming === "boolean") next.gaming = patch.gaming;
     if (typeof patch.makeRoom === "boolean") next.makeRoom = patch.makeRoom;
     const previous = this.settings;
     this.settings = next;
@@ -244,7 +251,9 @@ class Narrator {
         chatTitle: redact(decision.item.chatTitle, 200),
       });
     }
-    if (decision.action === "interrupt" || decision.action === "speak") {
+    // Gaming mode speaks only what waits on the user: a followed chat's news stays a card.
+    const speakFollowed = decision.action === "speak" && !this.settings.gaming;
+    if (decision.action === "interrupt" || speakFollowed) {
       // Rewritten at once, so an item queued behind other speech is ready when its turn comes.
       void this._rewrite(decision.item, this.settings.language);
     }
@@ -254,7 +263,7 @@ class Narrator {
       // being said: then it sounds when the item's turn comes (_run).
       if (!this.current && this.queue.length === 0) job.chimePlayback = this._chime();
       this._enqueue(job);
-    } else if (decision.action === "speak") {
+    } else if (speakFollowed) {
       this._enqueue(this._job({ kind: "followed", itemId: decision.item.id, chime: false }));
     } else if (decision.action === "removed") {
       this._dropItems(decision.removed);
@@ -421,7 +430,8 @@ class Narrator {
    */
   _prefetch(event) {
     if (!this.running) return;
-    if (event.kind !== "waiting" && !this.router.isFollowed(event.chatId)) return;
+    const spoken = this.router.isFollowed(event.chatId) && !this.settings.gaming;
+    if (event.kind !== "waiting" && !spoken) return;
     const language = this.settings.language;
     const key = this._prefetchKey(event, language);
     if (this.prefetched.has(key)) return;
@@ -496,6 +506,8 @@ class Narrator {
     if (job.kind === "interrupt" || job.kind === "followed") {
       const item = this.router.get(job.itemId);
       if (!item || item.heard) return;
+      // Gaming mode was switched on while it waited in the queue.
+      if (job.kind === "followed" && this.settings.gaming) return;
       if (job.kind === "interrupt" && !job.chimePlayback) job.chimePlayback = this._chime();
       const language = this.settings.language;
       // Listening starts with the chime, so a pause that began during it counts.

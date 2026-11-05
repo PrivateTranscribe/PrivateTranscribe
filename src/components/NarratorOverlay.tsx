@@ -112,7 +112,8 @@ export default function NarratorOverlay({ isRecording }: { isRecording: boolean 
   }, [isRecording]);
 
   const running = Boolean(state?.running);
-  const listen = Boolean(state?.settings.listen) && localOnly;
+  // Gaming mode never listens: talk on a voice call must not become a command.
+  const listen = Boolean(state?.settings.listen) && localOnly && !state?.settings.gaming;
   const bargeIn = state?.settings.bargeIn === true;
 
   const onUtterance = useCallback((text: string) => {

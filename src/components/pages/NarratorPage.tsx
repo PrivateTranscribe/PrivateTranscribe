@@ -176,6 +176,7 @@ export default function NarratorPage() {
     if (!state.running) return "Waiting for Experimental features to be on.";
     if (!voiceReady)
       return "Following your chats. A wait only chimes until the voice for this language is downloaded.";
+    if (settings?.gaming) return "Gaming mode. Only chats that wait on you are spoken.";
     return "Following every Claude Code chat on this PC.";
   };
 
@@ -210,6 +211,14 @@ export default function NarratorPage() {
               checked={Boolean(settings?.enabled)}
               onChange={(enabled) => update({ enabled })}
             />
+          </SettingsRow>
+        </PanelRow>
+        <PanelRow>
+          <SettingsRow
+            label="Gaming mode"
+            description="Speaks only chats that wait on you, and never listens, so talk on Discord is never taken for a command."
+          >
+            <Toggle checked={settings?.gaming === true} onChange={(gaming) => update({ gaming })} />
           </SettingsRow>
         </PanelRow>
         <PanelRow>
@@ -327,16 +336,18 @@ export default function NarratorPage() {
           <SettingsRow
             label="Listen for questions"
             description={
-              localOnly
-                ? "Say “hvad er nyt?” or “what's new?”, “fortæl mere” or “tell me more”, “følg den chat” or “follow that chat”, and “stop”. Short sentences only, transcribed on this PC."
-                : useLocalWhisper
-                  ? "Unavailable while your transcription settings allow a cloud fallback. Room audio must never leave this PC."
-                  : "Needs local transcription, so room audio never leaves this PC. Turn it on under Dictation."
+              settings?.gaming
+                ? "Off while gaming mode is on."
+                : localOnly
+                  ? "Say “hvad er nyt?” or “what's new?”, “fortæl mere” or “tell me more”, “følg den chat” or “follow that chat”, and “stop”. Short sentences only, transcribed on this PC."
+                  : useLocalWhisper
+                    ? "Unavailable while your transcription settings allow a cloud fallback. Room audio must never leave this PC."
+                    : "Needs local transcription, so room audio never leaves this PC. Turn it on under Dictation."
             }
           >
             <Toggle
-              checked={Boolean(settings?.listen) && localOnly}
-              disabled={!localOnly}
+              checked={Boolean(settings?.listen) && localOnly && !settings?.gaming}
+              disabled={!localOnly || settings?.gaming === true}
               onChange={(listen) => update({ listen })}
             />
           </SettingsRow>
@@ -344,10 +355,15 @@ export default function NarratorPage() {
         <PanelRow>
           <SettingsRow
             label="Stop speaking when I talk"
-            description="For a headset. Through speakers the microphone would hear the narrator itself. The dictation hotkey always stops it."
+            description={
+              settings?.gaming
+                ? "Off while gaming mode is on. The dictation hotkey always stops it."
+                : "For a headset. Through speakers the microphone would hear the narrator itself. The dictation hotkey always stops it."
+            }
           >
             <Toggle
-              checked={settings?.bargeIn === true}
+              checked={settings?.bargeIn === true && !settings?.gaming}
+              disabled={settings?.gaming === true}
               onChange={(bargeIn) => update({ bargeIn })}
             />
           </SettingsRow>

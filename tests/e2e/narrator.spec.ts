@@ -194,6 +194,35 @@ test("stays off while Experimental features are off", async ({ controlPanel }) =
   expect((await narratorState(controlPanel)).running).toBe(true);
 });
 
+test("gaming mode speaks only waits and turns listening off", async ({ controlPanel }) => {
+  await controlPanel.getByRole("button", { name: "Narrator", exact: true }).click();
+  await controlPanel.getByRole("button", { name: "Narrate my Claude Code chats" }).click();
+  const gaming = controlPanel.getByRole("button", { name: "Gaming mode", exact: true });
+  const makeRoom = controlPanel.getByRole("button", { name: "Wait for a pause in calls" });
+  const listen = controlPanel.getByRole("button", { name: "Listen for questions" });
+  await expect(gaming).toHaveAttribute("aria-pressed", "false");
+  // Making room in a call is on by default; gaming mode is not.
+  await expect(makeRoom).toHaveAttribute("aria-pressed", "true");
+
+  await gaming.click();
+  await expect.poll(async () => (await narratorState(controlPanel)).settings.gaming).toBe(true);
+  await expect(gaming).toHaveAttribute("aria-pressed", "true");
+  // Nothing opens the microphone: listening and stopping on speech are both off.
+  await expect(listen).toBeDisabled();
+  await expect(
+    controlPanel.getByRole("button", { name: "Stop speaking when I talk" })
+  ).toBeDisabled();
+  await expect(
+    controlPanel.getByText("Off while gaming mode is on.", { exact: true })
+  ).toBeVisible();
+  if (HAS_VOICE) {
+    await expect(controlPanel.getByTestId("narrator-status")).toHaveText(
+      "Gaming mode. Only chats that wait on you are spoken."
+    );
+  }
+  await capture(controlPanel, "gaming");
+});
+
 test.describe("without the Danish voice", () => {
   const EMPTY_VOICE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-narrator-no-voice-"));
   test.use({ appEnv: { ...NARRATOR_ENV, PT_NARRATOR_PIPER_DIR: EMPTY_VOICE_DIR } });

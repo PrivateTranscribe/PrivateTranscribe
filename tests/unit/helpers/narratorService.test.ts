@@ -472,6 +472,24 @@ describe("narrator service", () => {
     expect(room.duck).not.toHaveBeenCalled();
   });
 
+  it("speaks only waits in gaming mode, and keeps a followed chat's news as a card", async () => {
+    const { narrator, overlay, rewriter, emit } = startNarrator(dir);
+    narrator.follow("c3");
+    narrator.updateSettings({ gaming: true });
+    const news = { kind: "finished", chatId: "c3", chatTitle: "Build", recap: "Green." };
+    emit({ ...news, at: Date.now(), provisional: true });
+    emit({ ...news, at: Date.now() });
+    emit(wait("c4", "Docs", "Publish?"));
+    await vi.waitFor(() => expect(overlay.spoken()).toEqual(["Docs venter på dig. Publish?"]));
+    await settle();
+    expect(overlay.spoken()).toHaveLength(1);
+    expect(narrator.getState().items.map((item: Item) => item.chatTitle)).toEqual(
+      expect.arrayContaining(["Build", "Docs"])
+    );
+    // Not even rewritten: only the wait was.
+    expect(rewriter.rewrite).toHaveBeenCalledTimes(1);
+  });
+
   it("hands Danish to Piper when Røst fails, and stays on Piper for a while", async () => {
     const roest = fakeVoice("roest-da", async () => {
       throw new Error("no graphics card");
@@ -536,19 +554,21 @@ describe("narrator service", () => {
     expect(opened).toHaveLength(1);
   });
 
-  it("remembers its settings and followed chats, and starts with barge-in off and making room on", () => {
+  it("remembers its settings and followed chats, and starts with barge-in and gaming mode off", () => {
     const first = startNarrator(dir).narrator;
     expect(first.getState().settings).toMatchObject({
       bargeIn: false,
+      gaming: false,
       makeRoom: true,
     });
-    first.updateSettings({ language: "en", listen: true, makeRoom: false });
+    first.updateSettings({ language: "en", listen: true, gaming: true, makeRoom: false });
     first.follow("c9");
     const second = startNarrator(dir).narrator;
     expect(second.getState().settings).toMatchObject({
       enabled: true,
       language: "en",
       listen: true,
+      gaming: true,
       makeRoom: false,
       followed: ["c9"],
     });

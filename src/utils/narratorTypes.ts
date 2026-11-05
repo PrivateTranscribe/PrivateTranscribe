@@ -10,6 +10,8 @@ export interface NarratorSettings {
   voiceEn: string;
   listen: boolean;
   bargeIn: boolean;
+  /** Only waits are spoken, and nothing listens to the room. */
+  gaming: boolean;
   /** Wait for a pause in a voice call, and lower other apps while speaking. */
   makeRoom: boolean;
   followed: string[];
