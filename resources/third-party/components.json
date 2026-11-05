@@ -81,10 +81,10 @@
     },
     {
       "name": "Electron (with Chromium, Node.js and V8)",
-      "version": "41.10.6",
+      "version": "43.8.4",
       "license": "MIT",
       "copyright": ["Copyright (c) Electron contributors", "Copyright (c) 2013-2020 GitHub Inc."],
-      "source": "https://github.com/electron/electron/tree/v41.10.6",
+      "source": "https://github.com/electron/electron/tree/v43.8.4",
       "files": [
         "../PrivateTranscribe.exe",
         "../*.dll",
