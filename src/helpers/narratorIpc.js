@@ -22,7 +22,7 @@
 const crypto = require("node:crypto");
 const debugLogger = require("./debugLogger");
 const { Narrator } = require("./narrator");
-const { NarratorAskServer, askCommand } = require("./narrator/askServer");
+const { NarratorAskServer, askCommand, ALLOW_RULE } = require("./narrator/askServer");
 const { PiperVoice, RoestVoice, KokoroVoice } = require("./narrator/voices");
 const { VoiceCallMeter } = require("./narrator/voiceCallMeter");
 
@@ -247,13 +247,14 @@ function setupNarratorHandlers({
     return narrator.getState();
   });
   ipcMain.handle("narrator-get-state", () => narrator.getState());
-  ipcMain.handle("narrator-ask-command", () =>
-    askCommand({
+  ipcMain.handle("narrator-ask-command", () => ({
+    command: askCommand({
       userData: app.getPath("userData"),
       execPath: process.execPath,
       packaged: app.isPackaged,
-    })
-  );
+    }),
+    allowRule: ALLOW_RULE,
+  }));
   ipcMain.handle("narrator-update-settings", (_event, patch) =>
     narrator.updateSettings(patch || {})
   );

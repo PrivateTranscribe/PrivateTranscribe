@@ -61,20 +61,19 @@ function LastQuestion({ question }: { question: NarratorVoiceQuestion }) {
   );
 }
 
-/**
- * The one command that gives Claude Code the ask_by_voice tool. The user runs
- * it; the app never writes Claude Code's settings.
- */
-function ConnectClaudeCode() {
-  const [command, setCommand] = useState<string | null>(null);
+/** One line to copy, with what it is for. */
+function ConnectStep({
+  text,
+  line,
+  copyLabel,
+  testId,
+}: {
+  text: string;
+  line: string;
+  copyLabel: string;
+  testId: string;
+}) {
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    void window.electronAPI
-      ?.narratorAskCommand?.()
-      .then((line) => setCommand(line || null))
-      .catch(() => setCommand(null));
-  }, []);
 
   useEffect(() => {
     if (!copied) return undefined;
@@ -82,12 +81,10 @@ function ConnectClaudeCode() {
     return () => clearTimeout(timer);
   }, [copied]);
 
-  if (!command) return null;
-
   const copy = async () => {
     try {
-      if (window.electronAPI?.writeClipboard) await window.electronAPI.writeClipboard(command);
-      else await navigator.clipboard.writeText(command);
+      if (window.electronAPI?.writeClipboard) await window.electronAPI.writeClipboard(line);
+      else await navigator.clipboard.writeText(line);
       setCopied(true);
     } catch {
       // The line stays on screen to select by hand.
@@ -95,29 +92,59 @@ function ConnectClaudeCode() {
   };
 
   return (
-    <div
-      data-testid="narrator-connect"
-      className="mt-3 rounded-lg border border-border-subtle/50 bg-background/40 px-3 py-2.5"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[13px] font-medium text-foreground">Connect Claude Code</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Run this once in PowerShell. Your Claude Code chats get the ask_by_voice tool, which
-            only talks to this app on this PC.
-          </p>
-        </div>
-        <Button size="sm" variant="ghost" onClick={() => void copy()} aria-label="Copy command">
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs text-muted-foreground">{text}</p>
+        <Button size="sm" variant="ghost" onClick={() => void copy()} aria-label={copyLabel}>
           {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
       <code
-        data-testid="narrator-connect-command"
-        className="mt-2 block select-all break-all font-mono text-[12px] leading-relaxed text-foreground/90"
+        data-testid={testId}
+        className="mt-1.5 block select-all break-all font-mono text-[12px] leading-relaxed text-foreground/90"
       >
-        {command}
+        {line}
       </code>
+    </div>
+  );
+}
+
+/**
+ * What the user does once in Claude Code for ask_by_voice: add the tool, and
+ * allow it, so a chat never waits on an approval prompt while they are away.
+ * The app never writes Claude Code's settings.
+ */
+function ConnectClaudeCode() {
+  const [setup, setSetup] = useState<{ command: string; allowRule: string } | null>(null);
+
+  useEffect(() => {
+    void window.electronAPI
+      ?.narratorAskCommand?.()
+      .then((value) => setSetup(value?.command && value.allowRule ? value : null))
+      .catch(() => setSetup(null));
+  }, []);
+
+  if (!setup) return null;
+
+  return (
+    <div
+      data-testid="narrator-connect"
+      className="mt-3 space-y-3 rounded-lg border border-border-subtle/50 bg-background/40 px-3 py-2.5"
+    >
+      <p className="text-[13px] font-medium text-foreground">Connect Claude Code</p>
+      <ConnectStep
+        text="Run this once in PowerShell. Your Claude Code chats get the ask_by_voice tool, which only talks to this app on this PC."
+        line={setup.command}
+        copyLabel="Copy command"
+        testId="narrator-connect-command"
+      />
+      <ConnectStep
+        text="Then add this rule to permissions.allow in %USERPROFILE%\.claude\settings.json. Without it, Claude Code's default permission mode asks before a chat's first voice question, and that prompt waits at the PC."
+        line={setup.allowRule}
+        copyLabel="Copy rule"
+        testId="narrator-connect-allow"
+      />
     </div>
   );
 }

@@ -282,7 +282,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Agent narrator (Experimental)
   narratorSetGate: (experimentalOn) => ipcRenderer.invoke("narrator-set-gate", experimentalOn),
   narratorGetState: () => ipcRenderer.invoke("narrator-get-state"),
-  /** The command that connects Claude Code's ask_by_voice tool to this app. */
+  /** The command that connects Claude Code's ask_by_voice tool to this app, and its allow rule. */
   narratorAskCommand: () => ipcRenderer.invoke("narrator-ask-command"),
   narratorUpdateSettings: (patch) => ipcRenderer.invoke("narrator-update-settings", patch),
   narratorCommand: (name, language) => ipcRenderer.invoke("narrator-command", name, language),

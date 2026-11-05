@@ -990,7 +990,7 @@ declare global {
       // Agent narrator (Experimental)
       narratorSetGate: (experimentalOn: boolean) => Promise<NarratorState>;
       narratorGetState: () => Promise<NarratorState>;
-      narratorAskCommand: () => Promise<string>;
+      narratorAskCommand: () => Promise<{ command: string; allowRule: string }>;
       narratorUpdateSettings: (patch: Partial<NarratorSettings>) => Promise<NarratorState>;
       narratorCommand: (name: NarratorCommand, language?: NarratorLanguage) => Promise<boolean>;
       narratorUtterance: (

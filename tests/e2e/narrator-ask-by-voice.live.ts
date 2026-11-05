@@ -608,6 +608,10 @@ test("ask_by_voice end to end, with a real key press", async ({
   await expect(controlPanel.getByTestId("narrator-connect-command")).toContainText(
     "claude mcp add --scope user privatetranscribe -- node"
   );
+  // And the rule that keeps Claude Code from stopping a chat on an approval prompt.
+  await expect(controlPanel.getByTestId("narrator-connect-allow")).toHaveText(
+    "mcp__privatetranscribe__ask_by_voice"
+  );
   await connect.scrollIntoViewIfNeeded();
   fs.mkdirSync(EVIDENCE, { recursive: true });
   await controlPanel.screenshot({ path: path.join(EVIDENCE, "page-hands-free.png") });

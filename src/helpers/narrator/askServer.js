@@ -296,6 +296,15 @@ class NarratorAskServer {
 const SERVER_NAME = "privatetranscribe";
 
 /**
+ * The Claude Code permission rule for ask_by_voice (the bridge's one tool).
+ * Without it in permissions.allow, Claude Code's default permission mode
+ * asks for approval before a chat's first call, and that prompt waits at
+ * the PC while the user is away. The user adds it; the app never writes
+ * Claude Code's settings.
+ */
+const ALLOW_RULE = `mcp__${SERVER_NAME}__ask_by_voice`;
+
+/**
  * A Windows path as PowerShell writes it, with the user's own folders as
  * variables: the line is then the same on every PC and shows no user name.
  */
@@ -343,6 +352,7 @@ module.exports = {
   readQuestion,
   askCommand,
   ADDRESS_FILE,
+  ALLOW_RULE,
   BRIDGE_FILE,
   LIMITS,
   SERVER_NAME,

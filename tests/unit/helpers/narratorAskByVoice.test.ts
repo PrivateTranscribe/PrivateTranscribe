@@ -10,7 +10,9 @@ const {
   NarratorAskServer,
   readQuestion,
   ADDRESS_FILE,
+  ALLOW_RULE,
   BRIDGE_FILE,
+  SERVER_NAME,
 } = require("../../../src/helpers/narrator/askServer");
 
 const BRIDGE = path.resolve(__dirname, "../../../src/helpers/narrator/askByVoiceMcp.cjs");
@@ -171,6 +173,8 @@ describe("ask_by_voice end to end", () => {
     expect(tool.description).toMatch(/narrator mode/);
     expect(tool.description).toMatch(/never consent to push, merge, post, release/);
     expect(tool.description).toMatch(/never approves a tool/);
+    // The permission rule the Narrator page shows names this very tool.
+    expect(ALLOW_RULE).toBe(`mcp__${SERVER_NAME}__${tool.name}`);
   });
 
   it("names the conversation the call comes from, which /clear moves to a new session id", async () => {
