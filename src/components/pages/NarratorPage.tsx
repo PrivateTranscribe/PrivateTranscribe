@@ -214,6 +214,17 @@ export default function NarratorPage() {
         </PanelRow>
         <PanelRow>
           <SettingsRow
+            label="Wait for a pause in calls"
+            description="Before it reads a chat out, waits up to 8 seconds for a pause on Discord, Teams, Zoom or Slack. Other apps play at 30% while it speaks."
+          >
+            <Toggle
+              checked={settings?.makeRoom !== false}
+              onChange={(makeRoom) => update({ makeRoom })}
+            />
+          </SettingsRow>
+        </PanelRow>
+        <PanelRow>
+          <SettingsRow
             label="Speak in"
             description="Used when a chat interrupts. A question you ask is answered in its own language."
           >

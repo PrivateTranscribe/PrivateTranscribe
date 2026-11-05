@@ -345,6 +345,8 @@ class IPCHandlers {
       shell,
       windowManager: this.windowManager,
       kokoroManager: this.kokoroManager,
+      // Read Aloud's way of lowering other apps, crash repair included.
+      ducking: this.readAloudDucking,
       broadcast: (channel, payload) => this.broadcastToWindows(channel, payload),
     });
 

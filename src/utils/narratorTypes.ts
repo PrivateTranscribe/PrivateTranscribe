@@ -10,6 +10,8 @@ export interface NarratorSettings {
   voiceEn: string;
   listen: boolean;
   bargeIn: boolean;
+  /** Wait for a pause in a voice call, and lower other apps while speaking. */
+  makeRoom: boolean;
   followed: string[];
 }
 
@@ -47,6 +49,10 @@ export interface NarratorState {
     latencyMs: number | null;
     /** From the end of the chat's turn to the chime played ahead of its words. */
     chimeLatencyMs: number | null;
+    /** Why it spoke when it did, after waiting on a voice call. */
+    pause: { reason: string; waitedMs: number } | null;
+    /** Whether other apps played lower while it spoke. */
+    ducked: boolean;
   } | null;
   rewriterError: { code: string; message: string } | null;
   week: Record<string, number>;

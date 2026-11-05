@@ -93,14 +93,48 @@ function fakeOverlay({ hold = false } = {}) {
   };
 }
 
+/**
+ * A voice call to wait on and other apps to lower, with every step written
+ * down in order. The pause comes when the test says so.
+ */
+function fakeRoom() {
+  const steps: string[] = [];
+  let release: (value: { reason: string; waitedMs: number }) => void = () => {};
+  return {
+    steps,
+    watchCall: vi.fn(() => {
+      steps.push("watch");
+      return {
+        waitForPause: () => {
+          steps.push("wait");
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+        close: () => steps.push("close"),
+      };
+    }),
+    duck: vi.fn(async () => {
+      steps.push("duck");
+      return true;
+    }),
+    restore: vi.fn(async () => {
+      steps.push("restore");
+    }),
+    pause: (reason = "pause", waitedMs = 900) => release({ reason, waitedMs }),
+  };
+}
+
 function startNarrator(
   dataDir: string | null,
   {
     voices = { "piper-da": fakeVoice("piper-da"), "kokoro-en": fakeVoice("kokoro-en") },
     overlay = fakeOverlay(),
+    room = null,
   }: {
     voices?: Record<string, ReturnType<typeof fakeVoice>>;
     overlay?: ReturnType<typeof fakeOverlay>;
+    room?: ReturnType<typeof fakeRoom> | null;
   } = {}
 ) {
   let emit: (event: object) => void = () => {};
@@ -124,6 +158,7 @@ function startNarrator(
       return source;
     },
     rewriter,
+    room,
     openUrl: (url: string) => opened.push(url),
   });
   narrator.updateSettings({ enabled: true });
@@ -367,6 +402,76 @@ describe("narrator service", () => {
     expect(overlay.played.at(-1)?.chime).toBe(false);
   });
 
+  it("waits for a pause in a voice call after the chime, and lowers other apps only while it speaks", async () => {
+    const room = fakeRoom();
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator, emit } = startNarrator(dir, { overlay, room });
+    emit(wait("c1", "Build", "Retry?"));
+    expect(overlay.played).toHaveLength(1);
+    overlay.finish(0);
+    await vi.waitFor(() => expect(room.steps).toEqual(["watch", "wait"]));
+    await settle();
+    // Nothing is said over the call.
+    expect(overlay.spoken()).toEqual([]);
+
+    room.pause("pause", 1200);
+    await vi.waitFor(() => expect(overlay.spoken()).toEqual(["Build venter på dig. Retry?"]));
+    await vi.waitFor(() => expect(room.steps).toEqual(["watch", "wait", "close", "duck"]));
+    overlay.finish(1);
+    await vi.waitFor(() => expect(room.steps.at(-1)).toBe("restore"));
+    await vi.waitFor(() =>
+      expect(narrator.getState().lastPlayback).toMatchObject({
+        result: "done",
+        pause: { reason: "pause", waitedMs: 1200 },
+        ducked: true,
+      })
+    );
+  });
+
+  it("makes the first sentence while it waits, so the words start with the pause", async () => {
+    const room = fakeRoom();
+    const { voices, overlay, emit } = startNarrator(dir, { room });
+    emit(wait("c1", "Build", "Retry?"));
+    await vi.waitFor(() => expect(room.steps).toEqual(["watch", "wait"]));
+    await vi.waitFor(() =>
+      expect(voices["piper-da"].synthesize.mock.calls).toEqual([["Build venter på dig."]])
+    );
+    room.pause();
+    await vi.waitFor(() => expect(overlay.spoken()).toEqual(["Build venter på dig. Retry?"]));
+    // The first sentence is used as made, not made again.
+    expect(voices["piper-da"].synthesize.mock.calls).toEqual([
+      ["Build venter på dig."],
+      ["Retry?"],
+    ]);
+  });
+
+  it("puts other apps back when the voice fails", async () => {
+    const room = fakeRoom();
+    const voices = {
+      "piper-da": fakeVoice("piper-da", async () => {
+        throw new Error("broken");
+      }),
+      "kokoro-en": fakeVoice("kokoro-en"),
+    };
+    const { emit } = startNarrator(dir, { room, voices });
+    emit(wait("c1", "Build", "Retry?"));
+    await vi.waitFor(() => expect(room.steps).toContain("wait"));
+    room.pause();
+    await vi.waitFor(() =>
+      expect(room.steps).toEqual(["watch", "wait", "close", "duck", "restore"])
+    );
+  });
+
+  it("neither waits nor lowers other apps when told not to make room", async () => {
+    const room = fakeRoom();
+    const { narrator, overlay, emit } = startNarrator(dir, { room });
+    narrator.updateSettings({ makeRoom: false });
+    emit(wait("c1", "Build", "Retry?"));
+    await vi.waitFor(() => expect(overlay.spoken()).toHaveLength(1));
+    expect(room.watchCall).not.toHaveBeenCalled();
+    expect(room.duck).not.toHaveBeenCalled();
+  });
+
   it("hands Danish to Piper when Røst fails, and stays on Piper for a while", async () => {
     const roest = fakeVoice("roest-da", async () => {
       throw new Error("no graphics card");
@@ -431,16 +536,20 @@ describe("narrator service", () => {
     expect(opened).toHaveLength(1);
   });
 
-  it("remembers its settings and followed chats, and leaves barge-in off by default", () => {
+  it("remembers its settings and followed chats, and starts with barge-in off and making room on", () => {
     const first = startNarrator(dir).narrator;
-    expect(first.getState().settings.bargeIn).toBe(false);
-    first.updateSettings({ language: "en", listen: true });
+    expect(first.getState().settings).toMatchObject({
+      bargeIn: false,
+      makeRoom: true,
+    });
+    first.updateSettings({ language: "en", listen: true, makeRoom: false });
     first.follow("c9");
     const second = startNarrator(dir).narrator;
     expect(second.getState().settings).toMatchObject({
       enabled: true,
       language: "en",
       listen: true,
+      makeRoom: false,
       followed: ["c9"],
     });
     expect(second.router.isFollowed("c9")).toBe(true);

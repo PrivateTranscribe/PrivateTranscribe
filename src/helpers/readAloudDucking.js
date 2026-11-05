@@ -601,6 +601,11 @@ class ReadAloudDucking {
     return this.platform === "win32";
   }
 
+  /** Ducked, or a duck on its way: another caller must not take it over. */
+  get busy() {
+    return this.ducked || Boolean(this._inFlight);
+  }
+
   getStatus() {
     return {
       supported: this.supported,

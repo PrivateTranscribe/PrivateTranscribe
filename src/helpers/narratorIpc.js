@@ -13,13 +13,47 @@ const crypto = require("node:crypto");
 const debugLogger = require("./debugLogger");
 const { Narrator } = require("./narrator");
 const { PiperVoice, RoestVoice, KokoroVoice } = require("./narrator/voices");
+const { VoiceCallMeter } = require("./narrator/voiceCallMeter");
 
 /** Slack on top of the audio's own length before a playback counts as lost. */
 const PLAYBACK_SLACK_MS = 15_000;
 /** The overlay holds speech while a dictation runs, for at most this long (narratorPlayer.js). */
 const HOLD_MAX_MS = 60_000;
 
-function setupNarratorHandlers({ ipcMain, app, shell, windowManager, kokoroManager, broadcast }) {
+/**
+ * Room for the narrator's voice: a voice call to wait on, and other apps to
+ * lower while it speaks. The lowering is Read Aloud's, so it holds the duck
+ * only when Read Aloud does not, and never puts back one Read Aloud made.
+ */
+function createRoom({ ducking, log }) {
+  const meter = new VoiceCallMeter({ log });
+  let holding = false;
+  return {
+    watchCall: () => meter.watch(),
+    async duck() {
+      if (!ducking || ducking.busy) return false;
+      await ducking.duckOthers();
+      // False when nothing moved, as on another platform or under the e2e switch.
+      holding = ducking.ducked;
+      return holding;
+    },
+    async restore() {
+      if (!holding) return;
+      holding = false;
+      await ducking.restore();
+    },
+  };
+}
+
+function setupNarratorHandlers({
+  ipcMain,
+  app,
+  shell,
+  windowManager,
+  kokoroManager,
+  ducking = null,
+  broadcast,
+}) {
   const log = (message, data) => debugLogger.info(message, data, "narrator");
   const overlay = () => {
     const win = windowManager?.mainWindow;
@@ -124,6 +158,7 @@ function setupNarratorHandlers({ ipcMain, app, shell, windowManager, kokoroManag
       for (const job of Array.from(jobs.values())) job.finish("stopped");
     },
     voices,
+    room: createRoom({ ducking, log }),
     openUrl: (url) => {
       shell
         .openExternal(url)

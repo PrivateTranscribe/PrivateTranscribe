@@ -22,6 +22,9 @@
  * its words play. Each sentence plays as soon as it is made. Stop, switching off, and an answer in the chat all cut off
  * the item they concern, including one still being rewritten or made.
  *
+ * Making room: after the chime, an unasked line waits for a pause in a voice
+ * call (at most 8 s), and while the narrator speaks, other apps play at 30%.
+ *
  * It never answers a chat. Speech recognition can invent a "yes", so every
  * answer stays in the chat itself.
  */
@@ -51,6 +54,11 @@ const DEFAULT_SETTINGS = {
    * looked at interrupts on sound for that reason. Meant for a headset.
    */
   bargeIn: false,
+  /**
+   * Before a line nobody asked for, wait for a pause in a voice call (Discord,
+   * Teams, Zoom, Slack); while speaking, lower every other app.
+   */
+  makeRoom: true,
   followed: [],
 };
 
@@ -103,6 +111,7 @@ class Narrator {
    * @param {Record<string, object>} deps.voices   by id: piper-da, roest-da, kokoro-en
    * @param {(onEvent: Function) => {start: Function, stop: Function}} [deps.createSource]
    * @param {object} [deps.rewriter]
+   * @param {object} [deps.room]   watchCall() -> {waitForPause, close}; duck(); restore()
    * @param {(url: string) => void} [deps.openUrl]
    * @param {(state: object) => void} [deps.onState]
    */
@@ -113,6 +122,7 @@ class Narrator {
     voices = {},
     createSource,
     rewriter,
+    room = null,
     openUrl = () => {},
     onState = () => {},
     log = () => {},
@@ -124,6 +134,7 @@ class Narrator {
     this.voices = voices;
     this.createSource = createSource || ((onEvent) => new ClaudeTranscriptSource({ onEvent, log }));
     this.rewriter = rewriter || new NarratorRewriter({ log });
+    this.room = room;
     this.openUrlHandler = openUrl;
     this.onState = onState;
     this.debug = log;
@@ -172,6 +183,7 @@ class Narrator {
     }
     if (typeof patch.listen === "boolean") next.listen = patch.listen;
     if (typeof patch.bargeIn === "boolean") next.bargeIn = patch.bargeIn;
+    if (typeof patch.makeRoom === "boolean") next.makeRoom = patch.makeRoom;
     const previous = this.settings;
     this.settings = next;
     this._saveSettings();
@@ -486,10 +498,18 @@ class Narrator {
       if (!item || item.heard) return;
       if (job.kind === "interrupt" && !job.chimePlayback) job.chimePlayback = this._chime();
       const language = this.settings.language;
-      const [rewrite] = await Promise.all([
-        this._rewrite(item, language),
-        job.chimePlayback?.result,
-      ]);
+      // Listening starts with the chime, so a pause that began during it counts.
+      const call = this.settings.makeRoom ? this.room?.watchCall?.() : null;
+      let rewrite;
+      try {
+        [rewrite] = await Promise.all([this._rewrite(item, language), job.chimePlayback?.result]);
+        if (!this._alive(job)) return;
+        // Made while the call talks, so the words start the moment a pause comes.
+        job.firstPart = this._prepare(rewrite.spoken, language);
+        if (call) job.pause = await call.waitForPause({ isAlive: () => this._alive(job) });
+      } finally {
+        call?.close();
+      }
       if (!this._alive(job)) return;
       await this._speak(rewrite.spoken, language, {
         job,
@@ -552,6 +572,18 @@ class Narrator {
     return withTimeout(voice.synthesize(sentence), timeout, `The ${voice.id} voice did not answer`);
   }
 
+  /** Starts making the first sentence of `text`; _play uses it if nothing changed meanwhile. */
+  _prepare(text, language) {
+    const spoken = toSpeakable(text);
+    const voice = spoken ? this._voiceFor(language) : null;
+    const sentence = voice ? splitSentences(spoken)[0] : null;
+    if (!sentence) return null;
+    const part = this._synthesize(voice, sentence);
+    // A failure surfaces when _play uses the part, with the usual fallback.
+    part.catch(() => {});
+    return { voiceId: voice.id, sentence, part };
+  }
+
   /**
    * Speaks `text` sentence by sentence: the first plays as soon as it is made,
    * the rest follow as they are made. `onHeard` runs once the first sound
@@ -561,7 +593,7 @@ class Narrator {
   async _speak(text, language, { job, item = null, onHeard = () => {} } = {}) {
     const spoken = toSpeakable(text);
     if (!spoken || !this._alive(job)) return;
-    let voice = this._voiceFor(language);
+    const voice = this._voiceFor(language);
     if (!voice) {
       this.voiceError = { language, code: "voice-missing", message: "No voice for this language" };
       this._emitState();
@@ -577,39 +609,16 @@ class Narrator {
       this._emitState();
     });
     this._emitState();
+    // Not awaited, as for Read Aloud: lowering other apps must never hold up
+    // the first word. Putting them back is awaited, once the words have ended.
+    const ducking = this.settings.makeRoom && this.room?.duck ? this._duck() : null;
+    let played = false;
     try {
-      for (const sentence of splitSentences(spoken)) {
-        let part;
-        try {
-          part = await this._synthesize(voice, sentence);
-        } catch (error) {
-          // Røst failing hands the item to Piper, and Danish stays on Piper
-          // for a while rather than waiting out a broken Røst on every item.
-          if (voice.id !== "roest-da" || !this.voices["piper-da"]) throw error;
-          this.debug("Røst failed; using Piper", { error: String(error?.message || error) });
-          voice.unload?.();
-          this.roestDownUntil = this.now() + ROEST_RETRY_MS;
-          voice = this.voices["piper-da"];
-          part = await this._synthesize(voice, sentence);
-        }
-        if (!this._alive(job)) {
-          playback.cancel();
-          return;
-        }
-        playback.push(part);
-      }
-      playback.end();
-      this.voiceError = null;
-    } catch (error) {
-      playback.cancel();
-      this.voiceError = {
-        language,
-        code: error?.code || "error",
-        message: String(error?.message || error),
-      };
-      this._emitState();
-      throw error;
+      played = await this._play(playback, spoken, voice, language, job);
+    } finally {
+      if (ducking) await this._undo(ducking);
     }
+    if (!played) return;
 
     const result = await playback.result;
     const startedAt = await playback.started;
@@ -625,6 +634,8 @@ class Narrator {
       at: startedAt,
       latencyMs,
       chimeLatencyMs: live && job.chimePlayback && chimeAt ? chimeAt - item.at : null,
+      pause: job.pause || null,
+      ducked: ducking ? await ducking : false,
     };
     if (startedAt) {
       this.log.append({
@@ -638,6 +649,79 @@ class Narrator {
       });
     }
     this._emitState();
+  }
+
+  /** Lowers other apps; resolves true once this narrator holds the duck. */
+  _duck() {
+    return Promise.resolve()
+      .then(() => this.room.duck())
+      .then(
+        (held) => held !== false,
+        (error) => {
+          this.debug("Narrator could not lower other apps", {
+            error: String(error?.message || error),
+          });
+          return false;
+        }
+      );
+  }
+
+  async _undo(ducking) {
+    if (!(await ducking)) return;
+    try {
+      await this.room.restore();
+    } catch (error) {
+      this.debug("Narrator could not put other apps back", {
+        error: String(error?.message || error),
+      });
+    }
+  }
+
+  /**
+   * Sends one item's sentences to the overlay as they are made, then waits for
+   * it to finish playing. Throws, after cancelling the playback, if the voice
+   * fails.
+   */
+  async _play(playback, spoken, voice, language, job) {
+    try {
+      for (const [index, sentence] of splitSentences(spoken).entries()) {
+        const ready = index === 0 ? job.firstPart : null;
+        let part;
+        try {
+          part =
+            ready && ready.voiceId === voice.id && ready.sentence === sentence
+              ? await ready.part
+              : await this._synthesize(voice, sentence);
+        } catch (error) {
+          // Røst failing hands the item to Piper, and Danish stays on Piper
+          // for a while rather than waiting out a broken Røst on every item.
+          if (voice.id !== "roest-da" || !this.voices["piper-da"]) throw error;
+          this.debug("Røst failed; using Piper", { error: String(error?.message || error) });
+          voice.unload?.();
+          this.roestDownUntil = this.now() + ROEST_RETRY_MS;
+          voice = this.voices["piper-da"];
+          part = await this._synthesize(voice, sentence);
+        }
+        if (!this._alive(job)) {
+          playback.cancel();
+          return false;
+        }
+        playback.push(part);
+      }
+      playback.end();
+      this.voiceError = null;
+    } catch (error) {
+      playback.cancel();
+      this.voiceError = {
+        language,
+        code: error?.code || "error",
+        message: String(error?.message || error),
+      };
+      this._emitState();
+      throw error;
+    }
+    await playback.result;
+    return true;
   }
 
   // ----------------------------------------------------------------- state
