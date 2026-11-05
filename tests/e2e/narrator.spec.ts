@@ -20,8 +20,13 @@ const SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const LOCAL_ID = "local_00000000-1111-4222-8333-444444444444";
 const PROJECT = "C--work-example-repo";
 
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-narrator-projects-"));
-const SESSIONS = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-narrator-sessions-"));
+/**
+ * Folders are named here and made in beforeAll: Playwright also loads this
+ * file in its runner, which runs no test and would leave them behind.
+ */
+const RUN = `${process.pid}-${Date.now().toString(36)}`;
+const ROOT = path.join(os.tmpdir(), `pt-e2e-narrator-projects-${RUN}`);
+const SESSIONS = path.join(os.tmpdir(), `pt-e2e-narrator-sessions-${RUN}`);
 const TRANSCRIPT = path.join(ROOT, PROJECT, `${SESSION}.jsonl`);
 const PIPER_DIR =
   process.env.PT_E2E_NARRATOR_PIPER_DIR ||
@@ -255,8 +260,9 @@ test("gaming mode speaks only waits, turns listening off, and counts waits only 
 });
 
 test.describe("without the Danish voice", () => {
-  const EMPTY_VOICE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "pt-e2e-narrator-no-voice-"));
+  const EMPTY_VOICE_DIR = path.join(os.tmpdir(), `pt-e2e-narrator-no-voice-${RUN}`);
   test.use({ appEnv: { ...NARRATOR_ENV, PT_NARRATOR_PIPER_DIR: EMPTY_VOICE_DIR } });
+  test.beforeAll(() => fs.mkdirSync(EMPTY_VOICE_DIR, { recursive: true }));
   test.afterAll(() => fs.rmSync(EMPTY_VOICE_DIR, { recursive: true, force: true }));
 
   test("offers the download, and says a wait only chimes until then", async ({ controlPanel }) => {
