@@ -34,8 +34,10 @@ describe("the command that connects Claude Code to ask_by_voice", () => {
       platform: "win32",
       vars: VARS,
     });
+    // The name comes before --env: Claude Code reads every word after --env up
+    // to the next option as a variable, and refuses a name there.
     expect(perUser).toBe(
-      'claude mcp add --scope user --env ELECTRON_RUN_AS_NODE=1 privatetranscribe -- "$env:LOCALAPPDATA\\Programs\\PrivateTranscribe\\PrivateTranscribe.exe" "$env:APPDATA\\PrivateTranscribe\\ask-by-voice-mcp.cjs"'
+      'claude mcp add --scope user privatetranscribe --env ELECTRON_RUN_AS_NODE=1 -- "$env:LOCALAPPDATA\\Programs\\PrivateTranscribe\\PrivateTranscribe.exe" "$env:APPDATA\\PrivateTranscribe\\ask-by-voice-mcp.cjs"'
     );
 
     const allUsers = askCommand({

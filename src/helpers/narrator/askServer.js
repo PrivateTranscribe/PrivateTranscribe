@@ -317,6 +317,8 @@ function powershellPath(file, vars) {
  * page to copy, written for PowerShell on Windows. An installed app runs the
  * bridge with its own runtime, so no Node install is needed. A development
  * copy runs it with node, which keeps the line working when the copy moves.
+ * The server's name comes before --env, which takes every word up to the
+ * next option, so `--env X=1 name` would read the name as a second variable.
  */
 function askCommand({
   userData,
@@ -331,7 +333,7 @@ function askCommand({
     windows ? `"${powershellPath(file, vars)}"` : `'${String(file).replace(/'/g, "'\\''")}'`;
   const bridge = quote(paths.join(userData, BRIDGE_FILE));
   const run = packaged
-    ? `--env ELECTRON_RUN_AS_NODE=1 ${SERVER_NAME} -- ${quote(execPath)}`
+    ? `${SERVER_NAME} --env ELECTRON_RUN_AS_NODE=1 -- ${quote(execPath)}`
     : `${SERVER_NAME} -- node`;
   return `claude mcp add --scope user ${run} ${bridge}`;
 }
