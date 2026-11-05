@@ -46,6 +46,12 @@ export interface ConverseVoiceOptions {
    * narrator listens only for short commands; Converse leaves it unset.
    */
   maxSpeechMs?: number;
+  /**
+   * Hand each turn on as it was heard, without the AI cleanup dictation uses,
+   * which can be a cloud model. The narrator hears the room, and nothing of it
+   * may leave the PC; Converse leaves it unset.
+   */
+  skipCleanup?: boolean;
   /** A finished, transcribed turn. */
   onUtterance: (text: string) => void;
   /** The moment speech is detected, before any transcription — this is barge-in. */
@@ -100,6 +106,7 @@ export function useConverseVoice({
   muted,
   endOfTurnMs,
   maxSpeechMs,
+  skipCleanup = false,
   onUtterance,
   onSpeechStart,
 }: ConverseVoiceOptions): ConverseVoice {
@@ -120,6 +127,8 @@ export function useConverseVoice({
   const vadRef = useRef<VoiceActivityDetector | null>(null);
   const mutedRef = useRef(muted);
   const maxSpeechMsRef = useRef(maxSpeechMs);
+  const skipCleanupRef = useRef(skipCleanup);
+  skipCleanupRef.current = skipCleanup;
   /** Transcriptions run one after another, so two turns cannot arrive swapped. */
   const queueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -187,6 +196,7 @@ export function useConverseVoice({
         const { result } = await manager.runTranscription(blob, {
           source: "converse",
           durationSeconds,
+          ...(skipCleanupRef.current ? { skipPostProcessing: true } : {}),
         });
         if (cancelled) return;
 

@@ -132,6 +132,8 @@ export default function NarratorOverlay({ isRecording }: { isRecording: boolean 
     muted: isRecording || (playing && !bargeIn),
     endOfTurnMs: COMMAND_END_OF_TURN_MS,
     maxSpeechMs: COMMAND_MAX_SPEECH_MS,
+    // A command is matched as it was heard; AI cleanup can be a cloud model.
+    skipCleanup: true,
     onUtterance,
     onSpeechStart,
   });
