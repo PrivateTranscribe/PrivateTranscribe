@@ -138,14 +138,27 @@ describe("ask_by_voice end to end", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  /** Claude Code's folder, here empty: no record of running sessions unless a test writes one. */
+  const claudeDir = () => path.join(dir, "claude");
+
   const bridge = (env: Record<string, string> = {}) => {
     const started = startBridge({
       PT_NARRATOR_ASK_FILE: path.join(dir, ADDRESS_FILE),
       CLAUDE_CODE_SESSION_ID: SESSION,
+      CLAUDE_CONFIG_DIR: claudeDir(),
       ...env,
     });
     bridges.push(started);
     return started;
+  };
+
+  /** Claude Code's record of its running process, for the process that starts the bridge: this one. */
+  const recordSession = (entry: object | string) => {
+    fs.mkdirSync(path.join(claudeDir(), "sessions"), { recursive: true });
+    fs.writeFileSync(
+      path.join(claudeDir(), "sessions", `${process.pid}.json`),
+      typeof entry === "string" ? entry : JSON.stringify(entry)
+    );
   };
 
   it("lists exactly one tool, ask_by_voice, that says a pick is never consent", async () => {
@@ -158,6 +171,31 @@ describe("ask_by_voice end to end", () => {
     expect(tool.description).toMatch(/narrator mode/);
     expect(tool.description).toMatch(/never consent to push, merge, post, release/);
     expect(tool.description).toMatch(/never approves a tool/);
+  });
+
+  it("names the conversation the call comes from, which /clear moves to a new session id", async () => {
+    await server.start();
+    // After /clear, Claude Code's record of the process names the new conversation,
+    // while the bridge's environment still holds the one it started in.
+    const cleared = "99999999-8888-4777-8666-555555555555";
+    recordSession({ pid: process.pid, sessionId: cleared, status: "busy" });
+    await bridge().call(QUESTION);
+    expect(asked.map((question) => question.sessionId)).toEqual([cleared]);
+  });
+
+  it("keeps the session id it started with when Claude Code's record is not its parent's", async () => {
+    await server.start();
+    const other = "99999999-8888-4777-8666-555555555555";
+    // Another process's record, a cut-off record, and a record without a session id.
+    for (const entry of [
+      { pid: process.pid + 1, sessionId: other },
+      `{"pid":${process.pid},"sessionId":"${other.slice(0, 10)}`,
+      { pid: process.pid, sessionId: "../x" },
+    ]) {
+      recordSession(entry);
+      await bridge().call(QUESTION);
+    }
+    expect(asked.map((question) => question.sessionId)).toEqual([SESSION, SESSION, SESSION]);
   });
 
   it("returns not_active at once when the app is not running", async () => {

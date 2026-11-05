@@ -25,6 +25,8 @@ import type { NarratorVoiceQuestion } from "../../src/utils/narratorTypes";
  *   cancelled   a second press in the 3 s read-back: reason "cancelled"
  *   no_match    an answer that is no choice, twice heard: reason "no_match"
  *   no_answer   no press: reason "no_answer", inside 40 s
+ *   /clear      narrator mode stays with the conversation it was turned on in:
+ *               not_active right after /clear, answered once turned on again
  *   not_active  a chat without narrator mode, gaming mode off, Answer by voice
  *               off, the app quit (no address file) and the app crashed (an
  *               address file left by a dead process): each at once
@@ -175,10 +177,108 @@ type AskRun = {
   isError: boolean;
 };
 
+/** What a throwaway chat is told: optionally load the narrator skill, then ask once. */
+function askPrompt(ask: typeof QUESTION, loadSkill: boolean): string {
+  return [
+    loadSkill ? "First run the narrator skill with the Skill tool." : "",
+    `Then call the ask_by_voice tool exactly once with this input: ${JSON.stringify(ask)}.`,
+    "Call no other tool.",
+    "When it returns, reply with exactly one line: RESULT followed by the tool's JSON output, unchanged.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** The environment of a throwaway chat: not a side session of the one running this spec. */
+function chatEnv() {
+  const vars = { ...process.env };
+  for (const name of [
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_HOST_SESSION_ID",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+  ]) {
+    delete vars[name];
+  }
+  return vars;
+}
+
+/** Haiku, only this app's MCP server, and none of the user's settings, hooks or MCP servers. */
+const chatArgs = (sessionId: string, mcpConfig: string) => [
+  "--model",
+  "haiku",
+  "--session-id",
+  sessionId,
+  "--mcp-config",
+  mcpConfig,
+  "--strict-mcp-config",
+  "--setting-sources",
+  "project",
+  "--allowedTools",
+  "Skill",
+  "mcp__privatetranscribe__ask_by_voice",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+];
+
 /**
- * One throwaway Claude Code session, in -p mode, on haiku, with only this
- * app's MCP server and none of the user's settings, hooks or MCP servers.
+ * Reads a throwaway chat's stream-json events into one run: the ask_by_voice
+ * call, its result and how long it took, and the reply.
  */
+function trackRun(run: AskRun) {
+  let toolId: string | null = null;
+  let calledAt = 0;
+  return (event: any) => {
+    for (const block of event.message?.content || []) {
+      if (block.type === "tool_use" && String(block.name).endsWith("__ask_by_voice")) {
+        toolId = block.id;
+        calledAt = Date.now();
+        run.toolInput = block.input;
+      }
+      if (block.type === "tool_result" && block.tool_use_id === toolId) {
+        run.toolMs = Date.now() - calledAt;
+        run.toolText = Array.isArray(block.content)
+          ? block.content.map((part: any) => part.text || "").join("")
+          : String(block.content);
+      }
+    }
+    if (event.type === "result") {
+      run.result = String(event.result || "");
+      run.isError = Boolean(event.is_error);
+    }
+  };
+}
+
+/** Calls `onEvent` for each JSON line a chat writes. */
+function readEvents(child: ReturnType<typeof spawn>, onEvent: (event: any) => void) {
+  let buffer = "";
+  child.stdout!.on("data", (chunk) => {
+    buffer += chunk;
+    let at;
+    while ((at = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, at).trim();
+      buffer = buffer.slice(at + 1);
+      if (!line) continue;
+      try {
+        onEvent(JSON.parse(line));
+      } catch {
+        // Not an event.
+      }
+    }
+  });
+}
+
+const newRun = (sessionId: string): AskRun => ({
+  sessionId,
+  toolInput: null,
+  toolText: null,
+  toolMs: null,
+  result: "",
+  isError: false,
+});
+
+/** One throwaway Claude Code session, in -p mode: one prompt, one turn. */
 function askClaude({
   cwd,
   mcpConfig,
@@ -191,91 +291,15 @@ function askClaude({
   loadSkill: boolean;
 }): { sessionId: string; done: Promise<AskRun> } {
   const sessionId = crypto.randomUUID();
-  const prompt = [
-    loadSkill ? "First run the narrator skill with the Skill tool." : "",
-    `Then call the ask_by_voice tool exactly once with this input: ${JSON.stringify(ask)}.`,
-    "Call no other tool.",
-    "When it returns, reply with exactly one line: RESULT followed by the tool's JSON output, unchanged.",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const vars = { ...process.env };
-  // Not a side session of the one running this spec: it gets no messaging channel.
-  for (const name of [
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_CODE_HOST_SESSION_ID",
-    "CLAUDE_CODE_MESSAGING_SOCKET",
-    "CLAUDE_CODE_MESSAGING_TOKEN",
-  ]) {
-    delete vars[name];
-  }
-  const child = spawn(
-    "claude",
-    [
-      "-p",
-      prompt,
-      "--model",
-      "haiku",
-      "--session-id",
-      sessionId,
-      "--mcp-config",
-      mcpConfig,
-      "--strict-mcp-config",
-      "--setting-sources",
-      "project",
-      "--allowedTools",
-      "Skill",
-      "mcp__privatetranscribe__ask_by_voice",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-    ],
-    { cwd, env: vars, stdio: ["ignore", "pipe", "pipe"], windowsHide: true }
-  );
+  const child = spawn("claude", ["-p", askPrompt(ask, loadSkill), ...chatArgs(sessionId, mcpConfig)], {
+    cwd,
+    env: chatEnv(),
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const run = newRun(sessionId);
+  readEvents(child, trackRun(run));
   const done = new Promise<AskRun>((resolve, reject) => {
-    let buffer = "";
-    let toolId: string | null = null;
-    let calledAt = 0;
-    const run: AskRun = {
-      sessionId,
-      toolInput: null,
-      toolText: null,
-      toolMs: null,
-      result: "",
-      isError: false,
-    };
-    child.stdout.on("data", (chunk) => {
-      buffer += chunk;
-      let at;
-      while ((at = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, at).trim();
-        buffer = buffer.slice(at + 1);
-        if (!line) continue;
-        let event: any;
-        try {
-          event = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        for (const block of event.message?.content || []) {
-          if (block.type === "tool_use" && String(block.name).endsWith("__ask_by_voice")) {
-            toolId = block.id;
-            calledAt = Date.now();
-            run.toolInput = block.input;
-          }
-          if (block.type === "tool_result" && block.tool_use_id === toolId) {
-            run.toolMs = Date.now() - calledAt;
-            run.toolText = Array.isArray(block.content)
-              ? block.content.map((part: any) => part.text || "").join("")
-              : String(block.content);
-          }
-        }
-        if (event.type === "result") {
-          run.result = String(event.result || "");
-          run.isError = Boolean(event.is_error);
-        }
-      }
-    });
     let stderr = "";
     child.stderr.on("data", (chunk) => (stderr += chunk));
     child.on("error", reject);
@@ -286,6 +310,72 @@ function askClaude({
     });
   });
   return { sessionId, done };
+}
+
+/**
+ * One throwaway Claude Code session kept open over stream-json, the way the
+ * desktop app drives one, so it can /clear between turns. Each `say` is one
+ * turn; its run carries the session id the chat is on when the turn ends.
+ */
+function openChat({ cwd, mcpConfig }: { cwd: string; mcpConfig: string }) {
+  const firstSessionId = crypto.randomUUID();
+  const child = spawn(
+    "claude",
+    ["-p", "--input-format", "stream-json", ...chatArgs(firstSessionId, mcpConfig)],
+    { cwd, env: chatEnv(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true }
+  );
+  let sessionId = firstSessionId;
+  let turn: { run: AskRun; track: (event: any) => void; resolve: (run: AskRun) => void } | null =
+    null;
+  let stderr = "";
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  readEvents(child, (event) => {
+    // /clear starts a new conversation, announced with a new init and its id.
+    if (event.type === "system" && event.subtype === "init" && event.session_id) {
+      sessionId = event.session_id;
+    }
+    if (!turn) return;
+    turn.track(event);
+    if (event.type === "result") {
+      const done = turn;
+      turn = null;
+      done.run.sessionId = sessionId;
+      done.resolve(done.run);
+    }
+  });
+  const closed = new Promise<void>((resolve) =>
+    child.on("close", () => {
+      // A chat that ends mid-turn ends that turn, with what it said on the way out.
+      if (turn) {
+        const done = turn;
+        turn = null;
+        Object.assign(done.run, { result: `exited: ${stderr.slice(0, 400)}`, isError: true });
+        done.resolve(done.run);
+      }
+      resolve();
+    })
+  );
+  return {
+    firstSessionId,
+    say(text: string): Promise<AskRun> {
+      return new Promise((resolve) => {
+        const run = newRun(sessionId);
+        turn = { run, track: trackRun(run), resolve };
+        child.stdin!.write(
+          `${JSON.stringify({
+            type: "user",
+            session_id: "",
+            parent_tool_use_id: null,
+            message: { role: "user", content: [{ type: "text", text }] },
+          })}\n`
+        );
+      });
+    },
+    async close() {
+      child.stdin!.end();
+      await closed;
+    },
+  };
 }
 
 /** Holds the dictation key for real (SendInput) for `ms`, then lets go. */
@@ -630,6 +720,40 @@ test("ask_by_voice end to end, with a real key press", async ({
         reason: "no_answer",
       });
       expect(results.noAnswer.toolMs).toBeLessThan(41_000);
+    }
+
+    // 5. /clear: narrator mode belongs to a conversation. /clear moves the chat
+    //    to a new one while Claude Code keeps the same tool server running, so
+    //    a question right after it finds narrator mode off. Turned on again,
+    //    the question is said and answered.
+    {
+      const before = (await question())?.id || "";
+      const chat = openChat({ cwd: CHAT_DIR, mcpConfig });
+      try {
+        const on = await chat.say("Run the narrator skill with the Skill tool. Then reply with OK.");
+        expect(on.isError).toBe(false);
+        const cleared = await chat.say("/clear");
+        expect(cleared.sessionId).not.toBe(chat.firstSessionId);
+        results.afterClear = await chat.say(askPrompt(QUESTION, false));
+        expect(JSON.parse(results.afterClear.toolText || "null")).toEqual({
+          answer: null,
+          reason: "not_active",
+        });
+        expect(results.afterClear.toolMs).toBeLessThan(5_000);
+        expect((await question())?.id || "").toBe(before);
+
+        const asking = chat.say(askPrompt(QUESTION, true));
+        await waitPhase(["open"], { after: before });
+        await holdKey(ANSWER_HOLD_MS);
+        await waitPhase(["done"], { after: before });
+        results.clearedThenOn = await asking;
+        expect(results.clearedThenOn.sessionId).toBe(cleared.sessionId);
+        expect(JSON.parse(results.clearedThenOn.toolText || "null")).toEqual({
+          answer: "Export bug",
+        });
+      } finally {
+        await chat.close();
+      }
     }
   } finally {
     focus = await probe.stop();

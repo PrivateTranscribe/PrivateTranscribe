@@ -123,6 +123,44 @@ function readAddress() {
   return null;
 }
 
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The session id of the conversation the call comes from. Claude Code keeps
+ * one stdio server for the life of its process, and /clear or /resume moves
+ * that process to another conversation, with its own id and transcript,
+ * while CLAUDE_CODE_SESSION_ID in this server's environment keeps the first
+ * one. Claude Code's own record of its running process, in
+ * <config>/sessions/<pid>.json, follows the move, so it wins. Only the
+ * record of the process that started this server counts; without one, the
+ * environment's id is used.
+ */
+async function currentSessionId() {
+  const fallback = process.env.CLAUDE_CODE_SESSION_ID || null;
+  const pid = process.ppid;
+  const file = path.join(
+    process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"),
+    "sessions",
+    `${pid}.json`
+  );
+  // Claude Code may be writing the record as it is read: a cut-off read is tried again.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let text;
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      return fallback;
+    }
+    try {
+      const entry = JSON.parse(text);
+      return entry?.pid === pid && SESSION_ID.test(entry.sessionId) ? entry.sessionId : fallback;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  return fallback;
+}
+
 /** Only the two documented keys go back to the chat. */
 function cleanResult(result) {
   if (typeof result?.answer === "string") return { answer: result.answer };
@@ -152,54 +190,62 @@ function askApp(args) {
     }
     settle = finish;
 
+    function post(address, sessionId) {
+      const body = JSON.stringify({
+        question: args?.question,
+        choices: args?.choices,
+        chat: args?.chat,
+        sessionId,
+        cwd: process.cwd(),
+      });
+      request = http.request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/ask",
+          method: "POST",
+          agent: false,
+          headers: {
+            Authorization: `Bearer ${address.token}`,
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("error", () => finish({ result: NOT_ACTIVE }));
+          res.on("end", () => {
+            let parsed = null;
+            try {
+              parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            } catch {
+              // Read below as not active.
+            }
+            if (res.statusCode === 200 && parsed && "answer" in parsed) {
+              finish({ result: cleanResult(parsed) });
+            } else if (res.statusCode === 400 && typeof parsed?.error === "string") {
+              finish({ error: parsed.error });
+            } else {
+              finish({ result: NOT_ACTIVE });
+            }
+          });
+        }
+      );
+      request.on("error", () => finish({ result: NOT_ACTIVE }));
+      request.end(body);
+    }
+
     const address = readAddress();
     if (!address) {
       finish({ result: NOT_ACTIVE });
       return;
     }
-    const body = JSON.stringify({
-      question: args?.question,
-      choices: args?.choices,
-      chat: args?.chat,
-      sessionId: process.env.CLAUDE_CODE_SESSION_ID || null,
-      cwd: process.cwd(),
-    });
-    request = http.request(
-      {
-        host: "127.0.0.1",
-        port: address.port,
-        path: "/ask",
-        method: "POST",
-        agent: false,
-        headers: {
-          Authorization: `Bearer ${address.token}`,
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("error", () => finish({ result: NOT_ACTIVE }));
-        res.on("end", () => {
-          let parsed = null;
-          try {
-            parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-          } catch {
-            // Read below as not active.
-          }
-          if (res.statusCode === 200 && parsed && "answer" in parsed) {
-            finish({ result: cleanResult(parsed) });
-          } else if (res.statusCode === 400 && typeof parsed?.error === "string") {
-            finish({ error: parsed.error });
-          } else {
-            finish({ result: NOT_ACTIVE });
-          }
-        });
-      }
-    );
-    request.on("error", () => finish({ result: NOT_ACTIVE }));
-    request.end(body);
+    currentSessionId()
+      .then((sessionId) => {
+        if (!settled) post(address, sessionId);
+      })
+      .catch(() => finish({ result: NOT_ACTIVE }));
   });
   return { done, cancel: () => settle({ result: { answer: null, reason: "cancelled" } }) };
 }
