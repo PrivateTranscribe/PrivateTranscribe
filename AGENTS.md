@@ -66,6 +66,7 @@ Playwright drives the real Electron app (`playwright.config.ts`, specs and fixtu
 | Paste                               | `src/helpers/clipboard.js`                                                                                                                                                                                                               |
 | Hotkeys                             | `src/helpers/hotkeyManager.js`; Windows push-to-talk `src/helpers/windowsKeyManager.js` + `resources/windows-key-listener.c`                                                                                                             |
 | Read Aloud in-place highlight       | `src/helpers/readAloudHighlight.js`, `resources/readaloud-highlight-worker.ps1`                                                                                                                                                          |
+| Agent narrator (Experimental)       | `src/helpers/narrator/` (reads `~/.claude` and never writes there), `src/helpers/narratorIpc.js`, `src/helpers/narratorPlayer.js` + `src/components/NarratorOverlay.tsx` (playback and listening, in the overlay)                        |
 | Database                            | `src/helpers/database.js`                                                                                                                                                                                                                |
 | Auto-updater                        | `src/updater.js`, `src/hooks/useUpdater.ts`                                                                                                                                                                                              |
 | Logging                             | `src/helpers/debugLogger.js`, `src/utils/logger.ts`                                                                                                                                                                                      |
@@ -86,6 +87,7 @@ Each sidebar page is a component in `src/components/pages/`, routed by page id i
 | `read-aloud`                      | `ReadAloudPage.tsx`                                                              |
 | `ai-enhancement`                  | `AIEnhancementPage.tsx`                                                          |
 | `converse`                        | `ConversePage.tsx`                                                               |
+| `narrator`                        | `NarratorPage.tsx`                                                               |
 | `action-engine`                   | `ActionEnginePage.tsx`                                                           |
 | `settings`                        | `SettingsPageWrapper.tsx` → `SettingsPage.tsx`                                   |
 

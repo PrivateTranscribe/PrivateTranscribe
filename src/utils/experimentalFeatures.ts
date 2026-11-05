@@ -1,12 +1,13 @@
 import { useLocalStorage } from "../hooks/useLocalStorage";
 
-// Converse, Agent Mode and the Action Engine are less tested, so they stay out
-// of sight until "Experimental features" is on. Their own saved settings are
-// never rewritten, so turning the switch back on restores them as they were.
+// Converse, the Narrator, Agent Mode and the Action Engine are less tested, so
+// they stay out of sight until "Experimental features" is on. Their own saved
+// settings are never rewritten, so turning the switch back on restores them as
+// they were.
 export const EXPERIMENTAL_FEATURES_KEY = "experimentalFeatures";
 export const AGENT_MODE_ENABLED_KEY = "agentModeDictationEnabled";
 
-const EXPERIMENTAL_PAGES = new Set(["converse", "action-engine"]);
+const EXPERIMENTAL_PAGES = new Set(["converse", "narrator", "action-engine"]);
 export const EXPERIMENTAL_FALLBACK_PAGE = "home";
 
 const serialize = (value: boolean) => String(value);

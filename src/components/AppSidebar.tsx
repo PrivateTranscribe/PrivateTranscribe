@@ -16,6 +16,7 @@ export type PageId =
   | "read-aloud"
   | "ai-enhancement"
   | "converse"
+  | "narrator"
   | "correction-memory"
   | "action-engine"
   | "settings";

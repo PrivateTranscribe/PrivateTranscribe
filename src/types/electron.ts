@@ -1,3 +1,14 @@
+import type {
+  NarratorAnswerMessage,
+  NarratorCommand,
+  NarratorDownloadProgress,
+  NarratorLanguage,
+  NarratorPlayMessage,
+  NarratorSettings,
+  NarratorState,
+  NarratorVoiceStatus,
+} from "../utils/narratorTypes";
+
 export type LocalTranscriptionProvider = "whisper" | "nvidia";
 
 export type {
@@ -975,6 +986,48 @@ declare global {
         callback: (event: any, data: { gen: number; reason: string }) => void
       ) => (() => void) | void;
       converseReportPlayerState: (state: ConversePlayerReport) => void;
+
+      // Agent narrator (Experimental)
+      narratorSetGate: (experimentalOn: boolean) => Promise<NarratorState>;
+      narratorGetState: () => Promise<NarratorState>;
+      narratorAskCommand: () => Promise<{ command: string; allowRule: string }>;
+      narratorUpdateSettings: (patch: Partial<NarratorSettings>) => Promise<NarratorState>;
+      narratorCommand: (name: NarratorCommand, language?: NarratorLanguage) => Promise<boolean>;
+      narratorUtterance: (
+        text: string
+      ) => Promise<{ command: NarratorCommand; language: NarratorLanguage } | null>;
+      narratorStop: () => Promise<boolean>;
+      narratorTestVoice: (language: NarratorLanguage) => Promise<boolean>;
+      narratorOpen: (itemId: string) => Promise<boolean>;
+      narratorDismiss: (itemId: string) => Promise<NarratorState>;
+      narratorFollow: (chatId: string, on: boolean) => Promise<NarratorState>;
+      narratorVoiceStatus: () => Promise<NarratorVoiceStatus>;
+      narratorDownloadVoice: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      narratorRemoveVoice: (id: string) => Promise<boolean>;
+      onNarratorState: (
+        callback: (event: any, state: NarratorState) => void
+      ) => (() => void) | void;
+      onNarratorPlay: (
+        callback: (event: any, message: NarratorPlayMessage) => void
+      ) => (() => void) | void;
+      onNarratorStopPlayback: (callback: (event: any) => void) => (() => void) | void;
+      onNarratorDownloadProgress: (
+        callback: (event: any, progress: NarratorDownloadProgress) => void
+      ) => (() => void) | void;
+      narratorReportPlayback: (payload: {
+        jobId: string;
+        state: "started" | "done" | "stopped";
+      }) => void;
+      onNarratorAnswer: (
+        callback: (event: any, message: NarratorAnswerMessage) => void
+      ) => (() => void) | void;
+      narratorAnswerHeard: (payload: {
+        id: string;
+        text?: string;
+        error?: string;
+        message?: string;
+      }) => void;
+      narratorSetLocalOnly: (localOnly: boolean) => Promise<boolean>;
 
       // Local AI model management
       modelGetAll: () => Promise<any[]>;
