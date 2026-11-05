@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  askByVoiceLines,
   assistantText,
   stopHookLine,
   titleLine,
@@ -51,6 +52,7 @@ describe("narrator transcript parser", () => {
         ask: "Push?",
         at: T,
         fromWrapUp: true,
+        voiceAsked: false,
       },
     ]);
     expect(state.poll(T + END_TURN_GRACE_MS * 10)).toEqual([]);
@@ -154,6 +156,93 @@ describe("narrator transcript parser", () => {
       "turn-ended",
       "answered",
     ]);
+  });
+
+  it("marks a turn whose question ask_by_voice said and nobody answered, under any server name", () => {
+    for (const result of [
+      { answer: null, reason: "no_answer" },
+      { answer: null, reason: "no_match" },
+      { answer: null, reason: "cancelled" },
+    ]) {
+      const { events } = feed([
+        userLine("fix it", T),
+        ...askByVoiceLines(result, T + 10, "mcp__pt__ask_by_voice"),
+        wrapUpLine({ recap: "Fixed.", ask: "Merge it?" }, T + 20),
+        assistantText("Waiting.", T + 25),
+        stopHookLine(T + 30),
+      ]);
+      expect(events.at(-1)).toMatchObject({ type: "turn-ended", voiceAsked: true });
+    }
+  });
+
+  it("does not mark a turn when nothing was said: not_active, a refused call, or another tool", () => {
+    for (const lines of [
+      askByVoiceLines({ answer: null, reason: "not_active" }, T + 10),
+      askByVoiceLines("choices must be 1 to 4 different labels", T + 10),
+      askByVoiceLines({ answer: "Merge it" }, T + 10, "mcp__pt__ask_by_text"),
+    ]) {
+      const { events } = feed([
+        userLine("fix it", T),
+        ...lines,
+        wrapUpLine({ recap: "Fixed.", ask: "Merge it?" }, T + 20),
+        assistantText("Waiting.", T + 25),
+        stopHookLine(T + 30),
+      ]);
+      expect(events.at(-1)).toMatchObject({ type: "turn-ended", voiceAsked: false });
+    }
+  });
+
+  it("does not mark a turn whose voice question got a pick: the chat carries on, and a later wait is new", () => {
+    const after = (results: Array<Record<string, unknown>>) => {
+      const { events } = feed([
+        userLine("fix both", T),
+        ...results.flatMap((result, i) => askByVoiceLines(result, T + 10 + i)),
+        wrapUpLine({ recap: "Both fixed.", ask: "Push now?" }, T + 20),
+        assistantText("Waiting.", T + 25),
+        stopHookLine(T + 30),
+      ]);
+      return events.at(-1);
+    };
+    expect(after([{ answer: "Merge it" }])).toMatchObject({ voiceAsked: false });
+    // The latest question that was said decides; nothing said changes nothing.
+    expect(after([{ answer: null, reason: "no_answer" }, { answer: "Merge it" }])).toMatchObject({
+      voiceAsked: false,
+    });
+    expect(after([{ answer: "Merge it" }, { answer: null, reason: "cancelled" }])).toMatchObject({
+      voiceAsked: true,
+    });
+    expect(
+      after([
+        { answer: null, reason: "no_answer" },
+        { answer: null, reason: "not_active" },
+      ])
+    ).toMatchObject({ voiceAsked: true });
+  });
+
+  it("forgets a voice question once the turn ends", () => {
+    const { events } = feed([
+      ...askByVoiceLines({ answer: null, reason: "no_answer" }, T),
+      wrapUpLine({ recap: "Fixed.", ask: "Merge it?" }, T + 20),
+      assistantText("Waiting.", T + 25),
+      stopHookLine(T + 30),
+      userLine("yes", T + 40),
+      wrapUpLine({ recap: "Merged.", ask: "Release?" }, T + 50),
+      assistantText("Waiting.", T + 55),
+      stopHookLine(T + 60),
+    ]);
+    const ended = events.filter((e: { type: string }) => e.type === "turn-ended");
+    expect(ended.map((e: { voiceAsked: boolean }) => e.voiceAsked)).toEqual([true, false]);
+  });
+
+  it("forgets a voice question when the person interrupts its turn with a new message", () => {
+    const { events } = feed([
+      ...askByVoiceLines({ answer: null, reason: "no_answer" }, T),
+      userLine("stop, do this instead", T + 10),
+      wrapUpLine({ recap: "Done instead.", ask: "Push?" }, T + 20),
+      assistantText("Waiting.", T + 25),
+      stopHookLine(T + 30),
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: "turn-ended", voiceAsked: false });
   });
 
   it("ignores subagent lines", () => {

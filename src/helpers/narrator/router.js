@@ -8,6 +8,7 @@
  *   waits on the user     → interrupt: chime, spoken at once, one at a time
  *   finished              → card, kept for "what's new?"
  *   finished, followed    → spoken like a wait, without the chime
+ *   asked by voice        → card: ask_by_voice said its question already
  *   user wrote in chat    → the chat's items leave the queue
  *
  * Every item is spoken once. A brief speaks the items not yet heard and marks
@@ -48,6 +49,8 @@ function turnSignature(event) {
  *                                     starts its rewrite and never routes it here
  * @property {string} [openUrl]        how to open the chat, when known
  * @property {string} [source]         "claude-code", later "codex"
+ * @property {boolean} [voiceAsked]    the turn's question was spoken by ask_by_voice
+ * @property {boolean} [narratorMode]  whether the chat has narrator mode on, when asked
  */
 
 class NarratorRouter {
@@ -71,11 +74,8 @@ class NarratorRouter {
     if (!event || typeof event.chatId !== "string" || !event.chatId) return { action: "ignore" };
 
     if (event.kind === "answered") {
-      const removed = this.items.filter((item) => item.chatId === event.chatId);
-      if (removed.length === 0) return { action: "ignore" };
-      this.items = this.items.filter((item) => item.chatId !== event.chatId);
-      if (removed.some((item) => item.id === this.currentId)) this.currentId = null;
-      return { action: "removed", removed: removed.map((item) => item.id) };
+      const removed = this.removeChat(event.chatId);
+      return removed.length === 0 ? { action: "ignore" } : { action: "removed", removed };
     }
 
     if (event.kind !== "waiting" && event.kind !== "finished") return { action: "ignore" };
@@ -112,6 +112,8 @@ class NarratorRouter {
       openUrl: event.openUrl || "",
       source: event.source || "claude-code",
       heard: false,
+      /** Its question was spoken through ask_by_voice already. */
+      voiceAsked: event.voiceAsked === true,
       spoken: null,
       card: null,
       more: null,
@@ -119,7 +121,8 @@ class NarratorRouter {
     this.items.push(item);
     this._trim();
 
-    if (event.backlog) return { action: "card", item };
+    // A question asked by voice was said once; the wait it leaves is a card.
+    if (event.backlog || item.voiceAsked) return { action: "card", item };
     if (item.kind === "waiting") return { action: "interrupt", item };
     if (this.followed.has(item.chatId)) return { action: "speak", item };
     return { action: "card", item };
@@ -167,6 +170,15 @@ class NarratorRouter {
 
   isFollowed(chatId) {
     return this.followed.has(chatId);
+  }
+
+  /** Removes every item of one chat; returns their ids. */
+  removeChat(chatId) {
+    const removed = this.items.filter((item) => item.chatId === chatId).map((item) => item.id);
+    if (removed.length === 0) return removed;
+    this.items = this.items.filter((item) => item.chatId !== chatId);
+    if (removed.includes(this.currentId)) this.currentId = null;
+    return removed;
   }
 
   dismiss(id) {

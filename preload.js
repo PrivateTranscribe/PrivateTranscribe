@@ -282,6 +282,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Agent narrator (Experimental)
   narratorSetGate: (experimentalOn) => ipcRenderer.invoke("narrator-set-gate", experimentalOn),
   narratorGetState: () => ipcRenderer.invoke("narrator-get-state"),
+  /** The command that connects Claude Code's ask_by_voice tool to this app. */
+  narratorAskCommand: () => ipcRenderer.invoke("narrator-ask-command"),
   narratorUpdateSettings: (patch) => ipcRenderer.invoke("narrator-update-settings", patch),
   narratorCommand: (name, language) => ipcRenderer.invoke("narrator-command", name, language),
   narratorUtterance: (text) => ipcRenderer.invoke("narrator-utterance", text),
@@ -299,6 +301,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onNarratorDownloadProgress: registerListener("narrator-download-progress"),
   /** Overlay -> main: a narrator job started playing, finished, or was stopped. */
   narratorReportPlayback: (payload) => ipcRenderer.send("narrator-playback", payload),
+  /** Main -> overlay: start, stop or discard a voice answer's recording. */
+  onNarratorAnswer: registerListener("narrator-answer"),
+  /** Overlay -> main: a voice answer's local transcript, or why there is none. */
+  narratorAnswerHeard: (payload) => ipcRenderer.send("narrator-answer-heard", payload),
+  narratorSetLocalOnly: (localOnly) => ipcRenderer.invoke("narrator-set-local-only", localOnly),
 
   // Local llama-server functions
   llamaServerSetIdleTimeoutMinutes: (minutes) =>

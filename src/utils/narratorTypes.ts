@@ -14,7 +14,52 @@ export interface NarratorSettings {
   gaming: boolean;
   /** Wait for a pause in a voice call, and lower other apps while speaking. */
   makeRoom: boolean;
+  /** For 15 s after a spoken question, the dictation key answers it with one of its options. */
+  answerByVoice: boolean;
+  /** Only chats with narrator mode on are heard; every other chat is silent. */
+  onlyNarratorMode: boolean;
   followed: string[];
+}
+
+/** Where a voice question is; the overlay draws one state per phase. */
+export type NarratorQuestionPhase =
+  | "speaking"
+  | "not-caught"
+  | "open"
+  | "recording"
+  | "hearing"
+  | "reading"
+  | "confirming"
+  | "closing"
+  | "done";
+
+/** What the chat got back from ask_by_voice. */
+export type NarratorQuestionResult =
+  "answered" | "no_answer" | "no_match" | "cancelled" | "not_active";
+
+/** The voice question being asked through ask_by_voice, or the last one. */
+export interface NarratorVoiceQuestion {
+  id: string;
+  /** The chat's short name for itself. */
+  chat: string;
+  question: string;
+  choices: string[];
+  /** The language the question was written, and is said, in. */
+  language: NarratorLanguage;
+  phase: NarratorQuestionPhase;
+  /** When the answer window closes (epoch ms), while it is open. */
+  windowEndsAt: number | null;
+  /** The choice heard, from its read-back on. */
+  picked: string | null;
+  /** When the pick goes (epoch ms), while it can still be cancelled. */
+  confirmEndsAt: number | null;
+  /** Tries heard that matched no choice. */
+  missed: number;
+  /** How the answer window ended, while its last line is said. */
+  ended: string | null;
+  result: NarratorQuestionResult | null;
+  startedAt: number;
+  endedAt: number | null;
 }
 
 export interface NarratorItem {
@@ -30,6 +75,8 @@ export interface NarratorItem {
   heard: boolean;
   canOpen: boolean;
   followed: boolean;
+  /** Its question was said through ask_by_voice already. */
+  voiceAsked: boolean;
 }
 
 export interface NarratorState {
@@ -58,6 +105,15 @@ export interface NarratorState {
   } | null;
   rewriterError: { code: string; message: string } | null;
   week: Record<string, number>;
+  /** Whether the overlay transcribes locally with no cloud fallback; voice answers need it. */
+  localOnly: boolean;
+  /** Whether the dictation key answers a question right now. */
+  answering: boolean;
+  /** Whether ask_by_voice is answered now: gaming mode, Answer by voice and local transcription. */
+  takesVoiceQuestions: boolean;
+  question: NarratorVoiceQuestion | null;
+  /** Chats that wait on the user: open waits and voice questions left unanswered. */
+  waiting: number;
 }
 
 export interface NarratorVoiceStatus {
@@ -72,6 +128,14 @@ export type NarratorPlayMessage =
   | { jobId: string; type: "part"; pcm: Float32Array; sampleRate: number }
   | { jobId: string; type: "end" }
   | { jobId: string; type: "cancel" };
+
+/** Main to overlay: start, stop or throw away the recording of a voice answer. */
+export interface NarratorAnswerMessage {
+  type: "start" | "stop" | "discard";
+  id: string;
+  /** With "start": the question's language, used when transcription is set to Auto. */
+  language?: NarratorLanguage;
+}
 
 export interface NarratorDownloadProgress {
   downloadedBytes: number;

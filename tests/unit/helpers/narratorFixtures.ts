@@ -90,3 +90,85 @@ export function stopHookLine(at: number, preventedContinuation = false): string 
 export function titleLine(title: string): string {
   return JSON.stringify({ type: "custom-title", customTitle: title, sessionId: SESSION });
 }
+
+/** The Skill tool loading a skill, as the model calls it. */
+export function skillLine(
+  skill: string,
+  at: number,
+  args?: string,
+  extra: Record<string, unknown> = {}
+): string {
+  return JSON.stringify({
+    isSidechain: false,
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: `s-${++counter}`,
+          name: "Skill",
+          input: args === undefined ? { skill } : { skill, args },
+        },
+      ],
+      stop_reason: "tool_use",
+    },
+    timestamp: ts(at),
+    entrypoint: "claude-desktop",
+    sessionId: SESSION,
+    ...extra,
+  });
+}
+
+/** A slash command the person typed, as Claude Code records it. */
+export function slashCommandLine(name: string, args: string, at: number): string {
+  return userLine(
+    `<command-name>/${name}</command-name>\n            <command-message>${name}</command-message>\n            <command-args>${args}</command-args>`,
+    at
+  );
+}
+
+/** An ask_by_voice call and its result: the assistant's tool_use, then the tool_result. */
+export function askByVoiceLines(
+  result: Record<string, unknown> | string,
+  at: number,
+  name = "mcp__privatetranscribe__ask_by_voice"
+): string[] {
+  const id = `toolu_${++counter}`;
+  const text = typeof result === "string" ? result : JSON.stringify(result);
+  return [
+    JSON.stringify({
+      isSidechain: false,
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id,
+            name,
+            input: {
+              question: "Merge it now?",
+              choices: ["Merge it", "Not now"],
+              chat: "Export fix",
+            },
+          },
+        ],
+        stop_reason: "tool_use",
+      },
+      timestamp: ts(at),
+      entrypoint: "claude-desktop",
+      sessionId: SESSION,
+    }),
+    JSON.stringify({
+      isSidechain: false,
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: id, content: [{ type: "text", text }] }],
+      },
+      timestamp: ts(at + 1),
+      sessionId: SESSION,
+    }),
+  ];
+}

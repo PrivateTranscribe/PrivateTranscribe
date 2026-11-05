@@ -26,8 +26,15 @@
  * call (at most 8 s), and while the narrator speaks, other apps play at 30%.
  * Gaming mode speaks only what waits on the user and never listens.
  *
- * It never answers a chat. Speech recognition can invent a "yes", so every
- * answer stays in the chat itself.
+ * Narrator mode: with "only chats in narrator mode" on (the default), a chat
+ * is heard only while it has narrator mode on (narratorMode.js); every other
+ * chat is silent and has no card.
+ *
+ * Voice questions: in gaming mode with "Answer by voice" on, a chat can call
+ * the ask_by_voice tool (askServer.js). Its question is said with its
+ * choices, the dictation key answers it (voiceAnswers.js), and the pick goes
+ * back to the chat as the tool's result: only ever one of the chat's own
+ * choices, never a consent. Everything else a chat asks stays in the chat.
  */
 
 const fs = require("node:fs");
@@ -38,6 +45,8 @@ const { ClaudeTranscriptSource } = require("./claudeTranscriptSource");
 const { matchCommand } = require("./commands");
 const { toSpeakable, splitSentences, redact } = require("./spokenText");
 const { NarratorLog } = require("./narratorLog");
+const { VoiceAnswers, questionLanguage, PHRASES: ANSWER_PHRASES } = require("./voiceAnswers");
+const { NarratorModes } = require("./narratorMode");
 
 const DEFAULT_SETTINGS = {
   enabled: false,
@@ -65,6 +74,16 @@ const DEFAULT_SETTINGS = {
    * Teams, Zoom, Slack); while speaking, lower every other app.
    */
   makeRoom: true,
+  /**
+   * For 15 s after a spoken question, the dictation key answers it with one of
+   * the question's own options instead of dictating. Needs local transcription.
+   */
+  answerByVoice: false,
+  /**
+   * Only chats with narrator mode on are heard; the rest are silent. A chat
+   * turns it on by loading a skill named "narrator" or "<something>-narrator".
+   */
+  onlyNarratorMode: true,
   followed: [],
 };
 
@@ -98,6 +117,24 @@ const SYNTH_TIMEOUT_MS = { "piper-da": 15_000, "kokoro-en": 30_000, "roest-da": 
 /** After Røst fails, Danish uses Piper for this long before Røst is tried again. */
 const ROEST_RETRY_MS = 10 * 60 * 1000;
 
+/**
+ * ask_by_voice's time budget, from the call: the tool must answer within
+ * about 40 s, and its bridge gives up at 40 s exactly.
+ *
+ *   0 s       call; chime; wait for a pause in a voice call (4 s at most)
+ *   ~10 s     the question with its choices has been said; the window opens
+ *   ≤ 27 s    the window closes: 15 s after the question, or at 27 s
+ *   ≤ 39 s    recording (6 s at most), hearing, read-back, the 3 s to cancel
+ */
+const QUESTION_START_BY_MS = 8_000;
+const QUESTION_CLOSE_BY_MS = 27_000;
+const QUESTION_DEADLINE_MS = 39_000;
+const QUESTION_PAUSE_MS = 4_000;
+/** A question left unanswered counts as waiting until its chat is answered, or this long. */
+const MISSED_TTL_MS = 2 * 60 * 60 * 1000;
+
+const NOT_ACTIVE = Object.freeze({ answer: null, reason: "not_active" });
+
 function withTimeout(promise, ms, message) {
   let timer;
   return Promise.race([
@@ -118,8 +155,11 @@ class Narrator {
    * @param {(onEvent: Function) => {start: Function, stop: Function}} [deps.createSource]
    * @param {object} [deps.rewriter]
    * @param {object} [deps.room]   watchCall() -> {waitForPause, close}; duck(); restore()
+   * @param {object} [deps.answerRecorder]   the overlay's answer recorder: start(id, {language}), stop(id), discard(id)
+   * @param {object} [deps.narratorModes]   which chats have narrator mode on (narratorMode.js)
    * @param {(url: string) => void} [deps.openUrl]
    * @param {(state: object) => void} [deps.onState]
+   * @param {() => void} [deps.onDispose]   lets go of what was opened for the narrator
    */
   constructor({
     dataDir = null,
@@ -129,8 +169,11 @@ class Narrator {
     createSource,
     rewriter,
     room = null,
+    answerRecorder = null,
+    narratorModes = null,
     openUrl = () => {},
     onState = () => {},
+    onDispose = () => {},
     log = () => {},
     now = () => Date.now(),
   }) {
@@ -138,11 +181,35 @@ class Narrator {
     this.openPlayback = openPlayback;
     this.stopPlayback = stopPlayback;
     this.voices = voices;
-    this.createSource = createSource || ((onEvent) => new ClaudeTranscriptSource({ onEvent, log }));
+    this.narratorModes = narratorModes || new NarratorModes({ log });
+    this.createSource =
+      createSource ||
+      ((onEvent) =>
+        new ClaudeTranscriptSource({
+          onEvent,
+          log,
+          // Asked only while it matters: the first answer for a chat reads its whole transcript.
+          narratorMode: (file) =>
+            this.settings.onlyNarratorMode ? this.narratorModes.modeOf(file) : null,
+        }));
     this.rewriter = rewriter || new NarratorRewriter({ log });
     this.room = room;
+    this.answerRecorder = answerRecorder;
+    this.answers = new VoiceAnswers({
+      recorder: answerRecorder || { start() {}, stop() {}, discard() {} },
+      log,
+      onChange: () => this._onAnswerChange(),
+    });
+    /** Whether the overlay transcribes locally with no cloud fallback; answers need it. */
+    this.localOnly = false;
+    /** The voice question being asked, or the last one, for the overlay and the page. */
+    this.question = null;
+    this.questionCount = 0;
+    /** Chats whose voice question went unanswered, until they are answered at the PC. */
+    this.missed = new Map();
     this.openUrlHandler = openUrl;
     this.onState = onState;
+    this.onDispose = onDispose;
     this.debug = log;
     this.now = now;
 
@@ -179,6 +246,23 @@ class Narrator {
     this._apply();
   }
 
+  /** Whether the overlay transcribes locally with no cloud fallback, as it reports it. */
+  setLocalOnly(localOnly) {
+    this.localOnly = Boolean(localOnly);
+    this._dropQuestionsIfOff();
+    this._emitState();
+  }
+
+  /** Whether a question asked now may open the answer window. */
+  get canAnswer() {
+    return Boolean(this.settings.answerByVoice && this.localOnly && this.answerRecorder);
+  }
+
+  /** Whether ask_by_voice is answered now: gaming mode, Answer by voice, and local transcription. */
+  get takesVoiceQuestions() {
+    return Boolean(this.running && this.settings.gaming && this.canAnswer);
+  }
+
   updateSettings(patch = {}) {
     const next = { ...this.settings };
     if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
@@ -191,15 +275,21 @@ class Narrator {
     if (typeof patch.bargeIn === "boolean") next.bargeIn = patch.bargeIn;
     if (typeof patch.gaming === "boolean") next.gaming = patch.gaming;
     if (typeof patch.makeRoom === "boolean") next.makeRoom = patch.makeRoom;
+    if (typeof patch.answerByVoice === "boolean") next.answerByVoice = patch.answerByVoice;
+    if (typeof patch.onlyNarratorMode === "boolean") next.onlyNarratorMode = patch.onlyNarratorMode;
     const previous = this.settings;
     this.settings = next;
     this._saveSettings();
+    if (next.onlyNarratorMode && !previous.onlyNarratorMode && this.running) {
+      void this._pruneOutOfMode();
+    }
     if (next.voiceDa !== previous.voiceDa) {
       // Røst holds gigabytes of model while it runs; a voice set aside lets go of it.
       this.voices[previous.voiceDa]?.unload?.();
       this.roestDownUntil = 0;
     }
     this._apply();
+    this._dropQuestionsIfOff();
     if (this.running) this._voiceFor(next.language)?.warm?.();
     return this.getState();
   }
@@ -219,6 +309,9 @@ class Narrator {
       this.router.clear();
       this.rewrites.clear();
       this.prefetched.clear();
+      this.missed.clear();
+      this.question = null;
+      this.narratorModes.clear();
       this.rewriter.close?.();
       for (const voice of Object.values(this.voices)) voice?.unload?.();
     }
@@ -229,19 +322,40 @@ class Narrator {
     this.source?.stop();
     this.source = null;
     this.generation += 1;
+    this._settleQueued();
     this.queue = [];
+    this.answers.close();
     this.current?.playback?.cancel();
     this.rewriter.close?.();
     for (const voice of Object.values(this.voices)) voice?.unload?.();
+    try {
+      this.onDispose();
+    } catch (error) {
+      this.debug("Narrator could not close everything", { error: String(error?.message || error) });
+    }
   }
 
   // ---------------------------------------------------------------- events
 
   ingest(event) {
+    if (
+      this.settings.onlyNarratorMode &&
+      event?.kind !== "answered" &&
+      event?.narratorMode !== true
+    ) {
+      // A chat out of narrator mode is silent and has no card; one that left it loses its card.
+      const removed = typeof event?.chatId === "string" ? this.router.removeChat(event.chatId) : [];
+      if (removed.length > 0) {
+        this._dropItems(removed);
+        this._emitState();
+      }
+      return { action: "ignore" };
+    }
     if (event?.provisional) {
       this._prefetch(event);
       return { action: "ignore" };
     }
+    if (event?.kind === "answered" && this.missed.delete(event.chatId)) this._emitState();
     const decision = this.router.ingest(event);
     // Every card that turned up while it ran counts; cards from startup do not.
     if (["interrupt", "speak", "card"].includes(decision.action) && !event.backlog) {
@@ -354,11 +468,180 @@ class Narrator {
   /** Barge-in and the "stop" command: silence now, and drop what was queued or being made. */
   stop() {
     this.generation += 1;
+    this._settleQueued();
     this.queue = [];
+    this.answers.close();
     if (this.current) this.current.cancelled = true;
     this.current?.playback?.cancel();
     this.stopPlayback();
     this._emitState();
+  }
+
+  // ------------------------------------------------------- voice questions
+
+  /**
+   * A chat's question through the ask_by_voice tool: said out loud with its
+   * choices, then answered with the dictation key. Resolves within
+   * QUESTION_DEADLINE_MS with exactly what the tool returns: {answer} or
+   * {answer: null, reason}. "not_active" means nothing was said.
+   *
+   * @param {{question: string, choices: string[], chat: string, sessionId?: string|null, cwd?: string}} ask
+   * @param {{signal?: AbortSignal}} [opts]   aborted when the chat stops waiting
+   */
+  async askByVoice(ask, { signal } = {}) {
+    const calledAt = this.now();
+    if (!this.takesVoiceQuestions || signal?.aborted) return NOT_ACTIVE;
+    const language = questionLanguage(`${ask.question} ${ask.choices.join(" ")}`);
+    if (!this._voiceFor(language)) return NOT_ACTIVE;
+    if (!(await this._inNarratorMode(ask.sessionId, ask.cwd))) return NOT_ACTIVE;
+    // Settings can change while the chat's transcript was read.
+    if (!this.takesVoiceQuestions || signal?.aborted) return NOT_ACTIVE;
+
+    const job = this._job({
+      kind: "question",
+      id: `q${++this.questionCount}`,
+      ask,
+      language,
+      startBy: calledAt + QUESTION_START_BY_MS,
+      closeBy: calledAt + QUESTION_CLOSE_BY_MS,
+      deadline: calledAt + QUESTION_DEADLINE_MS,
+      spoken: false,
+    });
+    const outcome = new Promise((resolve) => {
+      job.resolve = resolve;
+    });
+    const drop = () => this._dropQuestion(job);
+    signal?.addEventListener("abort", drop, { once: true });
+    const timer = setTimeout(drop, QUESTION_DEADLINE_MS);
+    timer.unref?.();
+    // Still waiting behind other speech when its window could no longer be whole: it stays unsaid.
+    const late = setTimeout(() => {
+      if (!job.started) drop();
+    }, QUESTION_START_BY_MS);
+    late.unref?.();
+    // Ahead of other speech, since a chat is blocked on it; behind questions already waiting.
+    const at = this.queue.findIndex((queued) => queued.kind !== "question");
+    this.queue.splice(at < 0 ? this.queue.length : at, 0, job);
+    this._emitState();
+    void this._drain();
+    try {
+      const reply = this._reply(job, await outcome);
+      this._questionEnded(job, reply);
+      return reply;
+    } finally {
+      clearTimeout(timer);
+      clearTimeout(late);
+      signal?.removeEventListener("abort", drop);
+    }
+  }
+
+  async _inNarratorMode(sessionId, cwd) {
+    if (!this.settings.onlyNarratorMode) return true;
+    try {
+      return (await this.narratorModes.modeOfSession(sessionId, { cwd })) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** What the tool returns for how a question ended. */
+  _reply(job, outcome) {
+    if (!job.spoken) return NOT_ACTIVE;
+    if (outcome?.result === "picked" && job.ask.choices.includes(outcome.label)) {
+      return { answer: outcome.label };
+    }
+    if (outcome?.result === "cancelled") return { answer: null, reason: "cancelled" };
+    const missed = outcome?.missed ?? (this.question?.id === job.id ? this.question.missed : 0);
+    return { answer: null, reason: missed > 0 ? "no_match" : "no_answer" };
+  }
+
+  _questionEnded(job, reply) {
+    if (this.question?.id === job.id) {
+      Object.assign(this.question, {
+        phase: "done",
+        result: reply.answer ? "answered" : reply.reason,
+        picked: reply.answer || null,
+        windowEndsAt: null,
+        confirmEndsAt: null,
+        endedAt: this.now(),
+      });
+    }
+    if (job.spoken) {
+      const key = job.ask.sessionId || job.id;
+      if (reply.answer) this.missed.delete(key);
+      else this.missed.set(key, { chat: job.ask.chat, at: this.now() });
+    }
+    this._emitState();
+  }
+
+  /** Ends one question now, queued or being asked; its chat gets its answer at once. */
+  _dropQuestion(job) {
+    job.cancelled = true;
+    this.queue = this.queue.filter((queued) => queued !== job);
+    if (this.current === job) {
+      job.chimePlayback?.cancel();
+      job.playback?.cancel();
+      this.answers.close("stopped");
+    }
+    job.resolve?.({ result: "stopped" });
+  }
+
+  /** Questions end when gaming mode, Answer by voice or local transcription go off. */
+  _dropQuestionsIfOff() {
+    if (this.takesVoiceQuestions) return;
+    const questions = this.queue.filter((job) => job.kind === "question");
+    if (this.current?.kind === "question") questions.push(this.current);
+    for (const job of questions) this._dropQuestion(job);
+  }
+
+  /** Every queued question learns that it will not be asked. */
+  _settleQueued() {
+    for (const job of this.queue) job.resolve?.({ result: "stopped" });
+    if (this.current?.kind === "question") this.current.resolve?.({ result: "stopped" });
+  }
+
+  /** The answer window moved on: the overlay shows where it is. */
+  _onAnswerChange() {
+    const snapshot = this.answers.snapshot();
+    if (snapshot && this.question && this.current?.id === this.question.id) {
+      let phase = snapshot.phase;
+      if (phase === "asking") phase = snapshot.missed > 0 ? "not-caught" : "speaking";
+      Object.assign(this.question, {
+        phase,
+        windowEndsAt: snapshot.windowEndsAt,
+        picked: snapshot.picked,
+        confirmEndsAt: snapshot.confirmEndsAt,
+        missed: snapshot.missed,
+        ended: snapshot.ended || null,
+      });
+    }
+    this._emitState();
+  }
+
+  /** Cards of chats that are not in narrator mode go, once the switch asks for it. */
+  async _pruneOutOfMode() {
+    for (const chatId of new Set(this.router.snapshot().map((item) => item.chatId))) {
+      const on = await this.narratorModes.modeOfSession(chatId).catch(() => null);
+      if (on === true || !this.settings.onlyNarratorMode) continue;
+      this._dropItems(this.router.removeChat(chatId));
+    }
+    this._emitState();
+  }
+
+  /** Chats waiting on the user: open waits, and voice questions left unanswered. */
+  _waitingCount() {
+    const chats = new Set(
+      this.router
+        .snapshot()
+        .filter((item) => item.kind === "waiting")
+        .map((item) => item.chatId)
+    );
+    const cutoff = this.now() - MISSED_TTL_MS;
+    for (const [key, missed] of this.missed) {
+      if (missed.at < cutoff) this.missed.delete(key);
+      else chats.add(key);
+    }
+    return chats.size;
   }
 
   /** Speaks a fixed sentence in a language, for the page's voice check. */
@@ -402,7 +685,10 @@ class Narrator {
     try {
       while (this.queue.length > 0) {
         const job = this.queue.shift();
-        if (!this._alive(job)) continue;
+        if (!this._alive(job)) {
+          job.resolve?.({ result: "stopped" });
+          continue;
+        }
         this.current = job;
         try {
           await this._run(job);
@@ -412,6 +698,8 @@ class Narrator {
           });
         } finally {
           this.current = null;
+          // A question always gets its answer, however its turn ended.
+          job.resolve?.({ result: "stopped" });
         }
       }
     } finally {
@@ -429,7 +717,8 @@ class Narrator {
    * CLI setting turns off. A turn that goes on after all costs one rewrite.
    */
   _prefetch(event) {
-    if (!this.running) return;
+    // A question said through ask_by_voice is not said again.
+    if (!this.running || event.voiceAsked) return;
     const spoken = this.router.isFollowed(event.chatId) && !this.settings.gaming;
     if (event.kind !== "waiting" && !spoken) return;
     const language = this.settings.language;
@@ -503,6 +792,11 @@ class Narrator {
       return;
     }
 
+    if (job.kind === "question") {
+      await this._runQuestion(job);
+      return;
+    }
+
     if (job.kind === "interrupt" || job.kind === "followed") {
       const item = this.router.get(job.itemId);
       if (!item || item.heard) return;
@@ -573,6 +867,65 @@ class Narrator {
     }
   }
 
+  async _runQuestion(job) {
+    // Too late for a full answer window: it stays in the chat, unsaid.
+    if (this.now() > job.startBy) return;
+    job.started = true;
+    const { ask, language } = job;
+    const text = ANSWER_PHRASES[language].question(ask.chat, ask.question, ask.choices);
+    job.chimePlayback = this._chime();
+    const call = this.settings.makeRoom ? this.room?.watchCall?.() : null;
+    try {
+      job.firstPart = this._prepare(text, language);
+      await job.chimePlayback.result;
+      if (call && this._alive(job)) {
+        job.pause = await call.waitForPause({
+          maxMs: QUESTION_PAUSE_MS,
+          isAlive: () => this._alive(job),
+        });
+      }
+    } finally {
+      call?.close();
+    }
+    if (!this._alive(job)) return;
+    // Held back by a dictation or a busy call: too late for a whole answer
+    // window, so it stays unsaid and the chat hears so at once.
+    if (this.now() > job.startBy + QUESTION_PAUSE_MS) {
+      job.resolve({ result: "late" });
+      return;
+    }
+    const outcome = await this._askAndListen(job, {
+      text,
+      language,
+      chatName: ask.chat,
+      options: ask.choices,
+      closeBy: job.closeBy,
+      deadline: job.deadline,
+      onHeard: () => {
+        job.spoken = true;
+        // The overlay shows the question from its first word, which is also
+        // when the key starts answering it: before that, a press dictates.
+        this.question = {
+          id: job.id,
+          chat: ask.chat,
+          question: ask.question,
+          choices: ask.choices.slice(),
+          language,
+          phase: "speaking",
+          windowEndsAt: null,
+          picked: null,
+          confirmEndsAt: null,
+          missed: 0,
+          ended: null,
+          result: null,
+          startedAt: this.now(),
+          endedAt: null,
+        };
+      },
+    });
+    job.resolve(outcome);
+  }
+
   _voiceFor(language) {
     if (language === "en") return this.voices["kokoro-en"] || null;
     const roestDown = this.settings.voiceDa === "roest-da" && this.roestDownUntil > this.now();
@@ -600,19 +953,35 @@ class Narrator {
    * Speaks `text` sentence by sentence: the first plays as soon as it is made,
    * the rest follow as they are made. `onHeard` runs once the first sound
    * plays, so an item a broken voice never said stays new. Logs what was
-   * actually heard.
+   * actually heard. Resolves with how the playback ended ("done", "stopped",
+   * ...), or null when nothing played.
+   *
+   * `holdRoom`: the caller keeps other apps lowered across several lines.
+   * `record`: false for a voice answer's short lines, which are neither the
+   * last playback nor in the log.
    */
-  async _speak(text, language, { job, item = null, onHeard = () => {} } = {}) {
+  async _speak(
+    text,
+    language,
+    {
+      job,
+      item = null,
+      onHeard = () => {},
+      holdRoom = false,
+      record = true,
+      chime = Boolean(job?.chime),
+    } = {}
+  ) {
     const spoken = toSpeakable(text);
-    if (!spoken || !this._alive(job)) return;
+    if (!spoken || !this._alive(job)) return null;
     const voice = this._voiceFor(language);
     if (!voice) {
       this.voiceError = { language, code: "voice-missing", message: "No voice for this language" };
       this._emitState();
-      return;
+      return null;
     }
 
-    const playback = this.openPlayback({ chime: Boolean(job.chime) });
+    const playback = this.openPlayback({ chime });
     job.playback = playback;
     job.speaking = { itemId: item?.id || null, language };
     playback.started.then((at) => {
@@ -623,18 +992,22 @@ class Narrator {
     this._emitState();
     // Not awaited, as for Read Aloud: lowering other apps must never hold up
     // the first word. Putting them back is awaited, once the words have ended.
-    const ducking = this.settings.makeRoom && this.room?.duck ? this._duck() : null;
+    const ducking = !holdRoom && this._makesRoom() ? this._duck() : null;
     let played = false;
     try {
       played = await this._play(playback, spoken, voice, language, job);
     } finally {
       if (ducking) await this._undo(ducking);
     }
-    if (!played) return;
+    if (!played) return "stopped";
 
     const result = await playback.result;
     const startedAt = await playback.started;
     job.speaking = null;
+    if (!record) {
+      this._emitState();
+      return result;
+    }
     // How long after its turn ended a chat was heard: the chime, then the words.
     const live = item && (job.kind === "interrupt" || job.kind === "followed");
     const chimeAt = (await job.chimePlayback?.started) || startedAt;
@@ -661,6 +1034,63 @@ class Narrator {
       });
     }
     this._emitState();
+    return result;
+  }
+
+  _makesRoom() {
+    return Boolean(this.settings.makeRoom && this.room?.duck);
+  }
+
+  /**
+   * Says a question, then holds the answer window open after it. Other apps
+   * stay lowered from the question to the outcome and come back once. Resolves
+   * with the outcome: {result: "picked", label} or {result} for anything else.
+   */
+  async _askAndListen(
+    job,
+    {
+      text,
+      language,
+      chatName,
+      options,
+      item = null,
+      onHeard = () => {},
+      closeBy = Infinity,
+      deadline = Infinity,
+    }
+  ) {
+    const ducking = this._makesRoom() ? this._duck() : null;
+    let answer = null;
+    try {
+      const result = await this._speak(text, language, {
+        job,
+        item,
+        holdRoom: true,
+        onHeard: () => {
+          onHeard();
+          // From its first word: a press while it is still said is an answer.
+          answer = this.answers.ask({
+            chatName,
+            options,
+            language,
+            say: (line) =>
+              this._speak(line, language, { job, holdRoom: true, record: false, chime: false }),
+            stopSpeech: () => job.playback?.cancel(),
+            isAlive: () => this._alive(job),
+            closeBy,
+            deadline,
+          });
+          this._emitState();
+        },
+      });
+      if (!answer) return { result: "not-heard" };
+      answer.questionDone(result === "done");
+      return await answer.outcome;
+    } finally {
+      answer?.close("stopped");
+      if (ducking) await this._undo(ducking);
+      this._emitState();
+    }
   }
 
   /** Lowers other apps; resolves true once this narrator holds the duck. */
@@ -746,6 +1176,7 @@ class Narrator {
       settings: { ...this.settings },
       items: this.router.snapshot().map((item) => ({
         id: item.id,
+        voiceAsked: Boolean(item.voiceAsked),
         chatId: item.chatId,
         chatTitle: redact(item.chatTitle, 200),
         project: item.project,
@@ -762,6 +1193,18 @@ class Narrator {
       queued: this.queue.length,
       voiceError: this.voiceError,
       lastPlayback: this.lastPlayback,
+      localOnly: this.localOnly,
+      answering: this.answers.active,
+      takesVoiceQuestions: this.takesVoiceQuestions,
+      question: this.question
+        ? {
+            ...this.question,
+            chat: redact(this.question.chat, 60),
+            question: redact(this.question.question, 300),
+            choices: this.question.choices.map((choice) => redact(choice, 80)),
+          }
+        : null,
+      waiting: this._waitingCount(),
       rewriterError: this.rewriter.lastError || null,
       week: this.log.countSince(this.now() - WEEK_MS),
     };

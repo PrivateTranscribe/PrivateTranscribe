@@ -4,7 +4,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SESSION,
+  askByVoiceLines,
   assistantText,
+  skillLine,
   stopHookLine,
   titleLine,
   userLine,
@@ -24,6 +26,10 @@ const { DesktopSessionIndex } = require("../../../src/helpers/narrator/desktopSe
 const { NarratorLog } = require("../../../src/helpers/narrator/narratorLog");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { templateRewrite } = require("../../../src/helpers/narrator/rewriter");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { NarratorModes } = require("../../../src/helpers/narrator/narratorMode");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { WINDOW_MS, CONFIRM_MS } = require("../../../src/helpers/narrator/voiceAnswers");
 
 type Item = Record<string, unknown>;
 type Played = { chime: boolean; texts: string[]; ended: boolean; cancelled: boolean };
@@ -131,10 +137,17 @@ function startNarrator(
     voices = { "piper-da": fakeVoice("piper-da"), "kokoro-en": fakeVoice("kokoro-en") },
     overlay = fakeOverlay(),
     room = null,
+    onlyNarratorMode = false,
+    answerRecorder = null,
+    narratorModes = null,
   }: {
     voices?: Record<string, ReturnType<typeof fakeVoice>>;
     overlay?: ReturnType<typeof fakeOverlay>;
     room?: ReturnType<typeof fakeRoom> | null;
+    answerRecorder?: object | null;
+    narratorModes?: object | null;
+    /** Off unless a test is about narrator mode: the other tests are about what is said. */
+    onlyNarratorMode?: boolean;
   } = {}
 ) {
   let emit: (event: object) => void = () => {};
@@ -159,9 +172,11 @@ function startNarrator(
     },
     rewriter,
     room,
+    answerRecorder,
+    narratorModes,
     openUrl: (url: string) => opened.push(url),
   });
-  narrator.updateSettings({ enabled: true });
+  narrator.updateSettings({ enabled: true, onlyNarratorMode });
   narrator.setGate(true);
   return {
     narrator,
@@ -576,6 +591,288 @@ describe("narrator service", () => {
   });
 });
 
+describe("narrator mode", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-narrator-"));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("is on by default, and hears only chats that have it on", async () => {
+    const { narrator, overlay, emit } = startNarrator(dir, { onlyNarratorMode: true });
+    expect(new Narrator({ openPlayback: overlay.openPlayback }).settings.onlyNarratorMode).toBe(
+      true
+    );
+    emit(wait("c1", "Quiet chat", "Push?"));
+    emit(wait("c2", "Other chat", "Push?", { narratorMode: false }));
+    expect(narrator.getState().items).toEqual([]);
+    expect(overlay.played).toEqual([]);
+    emit(wait("c3", "Narrated chat", "Push?", { narratorMode: true }));
+    await vi.waitFor(() =>
+      expect(overlay.spoken()).toEqual(["Narrated chat venter på dig. Push?"])
+    );
+  });
+
+  it("drops a chat's card once the chat turns narrator mode off", () => {
+    const { narrator, emit } = startNarrator(dir, { onlyNarratorMode: true });
+    emit({
+      kind: "finished",
+      chatId: "c1",
+      chatTitle: "A",
+      recap: "Done.",
+      at: 1,
+      narratorMode: true,
+    });
+    expect(narrator.getState().items).toHaveLength(1);
+    emit({
+      kind: "finished",
+      chatId: "c1",
+      chatTitle: "A",
+      recap: "Again.",
+      at: 2,
+      narratorMode: false,
+    });
+    expect(narrator.getState().items).toHaveLength(0);
+  });
+
+  it("files a wait whose question was said by voice as a card, without a word", async () => {
+    const { narrator, overlay, emit } = startNarrator(dir, { onlyNarratorMode: true });
+    emit(wait("c1", "Export fix", "Merge it?", { narratorMode: true, voiceAsked: true }));
+    await settle();
+    expect(overlay.played).toEqual([]);
+    expect(narrator.getState().items[0]).toMatchObject({ kind: "waiting", voiceAsked: true });
+    expect(narrator.getState().waiting).toBe(1);
+  });
+});
+
+describe("voice questions", () => {
+  const SESSION_ID = "11111111-2222-4333-8444-555555555555";
+  const QUESTION = {
+    question: "Merge PR 65 now?",
+    choices: ["Merge it", "Not now"],
+    chat: "Export fix",
+    sessionId: SESSION_ID,
+  };
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "pt-narrator-"));
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A narrator in gaming mode that answers by voice, for a chat in narrator mode. */
+  function voiceNarrator({ inNarratorMode = true, overlay = fakeOverlay() } = {}) {
+    const recorder = { start: vi.fn(), stop: vi.fn(), discard: vi.fn() };
+    const modes = {
+      modeOf: vi.fn(async () => inNarratorMode),
+      modeOfSession: vi.fn(async (id: string) => (id === SESSION_ID ? inNarratorMode : null)),
+      clear: vi.fn(),
+    };
+    const started = startNarrator(dir, {
+      onlyNarratorMode: true,
+      answerRecorder: recorder,
+      narratorModes: modes,
+      overlay,
+    });
+    started.narrator.updateSettings({ gaming: true, answerByVoice: true });
+    started.narrator.setLocalOnly(true);
+    const recordingId = () => recorder.start.mock.calls.at(-1)?.[0];
+    /** Holds the dictation key, says `text`, and lets go. */
+    const answer = (text: string) => {
+      started.narrator.answers.onKey({ type: "start", holdToken: 1 });
+      started.narrator.answers.onKey({ type: "stop" });
+      started.narrator.answers.heard(recordingId(), { text });
+    };
+    return { ...started, recorder, modes, answer, recordingId };
+  }
+
+  it("says the question with its choices, and returns the choice said once it was read back", async () => {
+    const { narrator, overlay, recorder, answer } = voiceNarrator();
+    const reply = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.played[0].chime).toBe(true);
+    expect(overlay.spoken()).toEqual([
+      "Export fix asks: Merge PR 65 now? Say Merge it, or Not now.",
+    ]);
+    expect(narrator.getState().question).toMatchObject({ chat: "Export fix", phase: "open" });
+    answer("Uh, merge it.");
+    expect(recorder.start).toHaveBeenCalledWith(expect.any(String), { language: "en" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken().at(-1)).toBe("Export fix: Merge it.");
+    expect(narrator.getState().question).toMatchObject({ phase: "confirming", picked: "Merge it" });
+    await vi.advanceTimersByTimeAsync(CONFIRM_MS);
+    await expect(reply).resolves.toEqual({ answer: "Merge it" });
+    expect(narrator.getState().question).toMatchObject({ phase: "done", result: "answered" });
+    expect(narrator.getState().waiting).toBe(0);
+  });
+
+  it("shows the question from its first word, and leaves it unsaid when a dictation held its chime too long", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator } = voiceNarrator({ overlay });
+    let reply: unknown = null;
+    void narrator.askByVoice(QUESTION).then((value: unknown) => {
+      reply = value;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.played[0]).toMatchObject({ chime: true });
+    // Before its first word a press dictates, so the overlay does not offer one.
+    expect(narrator.getState().question).toBeNull();
+    // Held past its start (8 s) and the pause it may wait for (4 s): no window could be whole.
+    await vi.advanceTimersByTimeAsync(12_500);
+    overlay.finish(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reply).toEqual({ answer: null, reason: "not_active" });
+    expect(overlay.spoken()).toEqual([]);
+    expect(narrator.getState().question).toBeNull();
+  });
+
+  it("masks a secret in the chat's name, as in the question, before the windows see it", async () => {
+    const { narrator } = voiceNarrator();
+    const key = `sk-${"x".repeat(24)}`;
+    const reply = narrator.askByVoice({ ...QUESTION, chat: `Fix ${key}` });
+    await vi.advanceTimersByTimeAsync(0);
+    const shown = narrator.getState().question?.chat;
+    expect(shown).not.toContain(key);
+    expect(shown).toMatch(/^Fix \[REDACTED/);
+    narrator.stop();
+    await reply;
+  });
+
+  it("returns not_active at once, saying nothing, unless every switch is on", async () => {
+    for (const off of [{ gaming: false }, { answerByVoice: false }, { enabled: false }]) {
+      const { narrator, overlay } = voiceNarrator();
+      narrator.updateSettings(off);
+      await expect(narrator.askByVoice(QUESTION)).resolves.toEqual({
+        answer: null,
+        reason: "not_active",
+      });
+      expect(overlay.played).toEqual([]);
+    }
+    const cloud = voiceNarrator();
+    cloud.narrator.setLocalOnly(false);
+    await expect(cloud.narrator.askByVoice(QUESTION)).resolves.toEqual({
+      answer: null,
+      reason: "not_active",
+    });
+  });
+
+  it("returns not_active for a chat that is not in narrator mode, or that it cannot find", async () => {
+    const off = voiceNarrator({ inNarratorMode: false });
+    await expect(off.narrator.askByVoice(QUESTION)).resolves.toEqual({
+      answer: null,
+      reason: "not_active",
+    });
+    const unknown = voiceNarrator();
+    await expect(unknown.narrator.askByVoice({ ...QUESTION, sessionId: null })).resolves.toEqual({
+      answer: null,
+      reason: "not_active",
+    });
+    // With narrator mode not required, any chat may ask.
+    const all = voiceNarrator({ inNarratorMode: false });
+    all.narrator.updateSettings({ onlyNarratorMode: false });
+    const reply = all.narrator.askByVoice({ ...QUESTION, sessionId: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(all.narrator.getState().question?.phase).toBe("open");
+    all.narrator.stop();
+    await expect(reply).resolves.toEqual({ answer: null, reason: "no_answer" });
+  });
+
+  it("returns no_answer when the window ends untouched, and no_match after a try that fit nothing", async () => {
+    const quiet = voiceNarrator();
+    const nothing = quiet.narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(WINDOW_MS);
+    await expect(nothing).resolves.toEqual({ answer: null, reason: "no_answer" });
+    expect(quiet.narrator.getState().waiting).toBe(1);
+
+    const wrong = voiceNarrator();
+    const missed = wrong.narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    wrong.answer("thank you");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrong.overlay.spoken().at(-1)).toBe("I didn't catch that.");
+    await vi.advanceTimersByTimeAsync(WINDOW_MS);
+    await expect(missed).resolves.toEqual({ answer: null, reason: "no_match" });
+  });
+
+  it("returns cancelled when the key is pressed again before the pick goes", async () => {
+    const { narrator, overlay, answer } = voiceNarrator();
+    const reply = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    answer("merge it");
+    await vi.advanceTimersByTimeAsync(1000);
+    narrator.answers.onKey({ type: "start", holdToken: 2 });
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(reply).resolves.toEqual({ answer: null, reason: "cancelled" });
+    expect(overlay.spoken().at(-1)).toBe("Cancelled.");
+  });
+
+  it("answers within 39 s whatever happens", async () => {
+    const { narrator, answer } = voiceNarrator();
+    const started = Date.now();
+    let done = 0;
+    const reply = narrator.askByVoice(QUESTION).then((value: object) => {
+      done = Date.now();
+      return value;
+    });
+    // Pressed at the last moment, and the transcript never comes back.
+    await vi.advanceTimersByTimeAsync(WINDOW_MS - 100);
+    narrator.answers.onKey({ type: "start", holdToken: 1 });
+    narrator.answers.onKey({ type: "stop" });
+    await vi.advanceTimersByTimeAsync(40_000);
+    await expect(reply).resolves.toEqual({ answer: null, reason: "no_answer" });
+    expect(done - started).toBeLessThanOrEqual(39_000);
+    void answer;
+  });
+
+  it("stops the question when the chat stops waiting", async () => {
+    const { narrator, overlay } = voiceNarrator();
+    const controller = new AbortController();
+    const reply = narrator.askByVoice(QUESTION, { signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await expect(reply).resolves.toEqual({ answer: null, reason: "no_answer" });
+    expect(narrator.answers.active).toBe(false);
+    expect(overlay.played.length).toBeGreaterThan(0);
+  });
+
+  it("asks one chat at a time, and leaves a question that would wait too long unsaid", async () => {
+    const { narrator, overlay } = voiceNarrator();
+    const first = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = narrator.askByVoice({ ...QUESTION, chat: "Docs", sessionId: SESSION_ID });
+    await vi.advanceTimersByTimeAsync(8_000);
+    await expect(second).resolves.toEqual({ answer: null, reason: "not_active" });
+    expect(overlay.spoken().filter((text) => text.startsWith("Docs"))).toEqual([]);
+    await vi.advanceTimersByTimeAsync(WINDOW_MS);
+    await expect(first).resolves.toEqual({ answer: null, reason: "no_answer" });
+  });
+
+  it("ends a question when gaming mode goes off", async () => {
+    const { narrator } = voiceNarrator();
+    const reply = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    narrator.updateSettings({ gaming: false });
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(reply).resolves.toEqual({ answer: null, reason: "no_answer" });
+    expect(narrator.answers.active).toBe(false);
+  });
+
+  it("counts an unanswered question as waiting until its chat is answered at the PC", async () => {
+    const { narrator, emit } = voiceNarrator();
+    const reply = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(WINDOW_MS);
+    await reply;
+    expect(narrator.getState().waiting).toBe(1);
+    emit({ kind: "answered", chatId: SESSION_ID, at: Date.now() });
+    expect(narrator.getState().waiting).toBe(0);
+  });
+});
+
 describe("narrator log", () => {
   let dir: string;
   beforeEach(() => {
@@ -788,6 +1085,54 @@ describe("Claude transcript source", () => {
     );
     expect(events[4].ask).toBe("Second?");
     source.stop();
+  });
+
+  it("says whether a turn's chat has narrator mode on, and whether ask_by_voice said its question", async () => {
+    const now = Date.now();
+    fs.writeFileSync(
+      file,
+      lines(skillLine("team-narrator", now - 2000), userLine("go", now - 1000))
+    );
+    const modes = new NarratorModes({ root });
+    const source = new ClaudeTranscriptSource({
+      root,
+      onEvent: (event: Record<string, unknown>) => events.push(event),
+      sessionIndex: null,
+      narratorMode: (target: string) => modes.modeOf(target),
+    });
+    await source.start();
+    await source.readFile(file);
+    fs.appendFileSync(
+      file,
+      lines(
+        ...askByVoiceLines({ answer: null, reason: "no_answer" }, now),
+        wrapUpLine({ recap: "Fixed.", ask: "Merge it?" }, now + 10),
+        assistantText("Done.", now + 20),
+        stopHookLine(now + 30)
+      )
+    );
+    await source.readFile(file);
+    await vi.waitFor(() => expect(kinds()).toEqual(["answered", "waiting (early)", "waiting"]));
+    expect(events[2]).toMatchObject({ narratorMode: true, voiceAsked: true });
+    source.stop();
+
+    // A source nobody asks for narrator mode leaves it out.
+    events.length = 0;
+    const plain = newSource();
+    await plain.start();
+    fs.appendFileSync(
+      file,
+      lines(
+        userLine("again", now + 40),
+        wrapUpLine({ recap: "Again.", ask: "Push?" }, now + 50),
+        assistantText("Done.", now + 60),
+        stopHookLine(now + 70)
+      )
+    );
+    await plain.readFile(file);
+    await vi.waitFor(() => expect(kinds()).toContain("waiting"));
+    expect(events.find((event) => event.kind === "waiting")).not.toHaveProperty("narratorMode");
+    plain.stop();
   });
 
   it("ignores headless runs such as its own rewriter and old turns in a copied chat", async () => {

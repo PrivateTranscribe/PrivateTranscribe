@@ -1,4 +1,4 @@
-import { Download, ExternalLink, Headphones, Square, X } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Headphones, Square, X } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Toggle } from "../ui/toggle";
@@ -13,6 +13,7 @@ import type {
   NarratorItem,
   NarratorLanguage,
   NarratorState,
+  NarratorVoiceQuestion,
   NarratorVoiceStatus,
 } from "../../utils/narratorTypes";
 
@@ -39,6 +40,86 @@ function minutesAgo(at: number): string {
 
 function megabytes(bytes: number): string {
   return `${Math.round(bytes / 1e6)} MB`;
+}
+
+/** How the last voice question ended, so an answer is never sent without a trace here. */
+function LastQuestion({ question }: { question: NarratorVoiceQuestion }) {
+  const when = minutesAgo(question.endedAt ?? question.startedAt);
+  const line =
+    question.result === "answered" && question.picked
+      ? `Last question: “${question.picked}” sent to ${question.chat}, ${when}.`
+      : question.result === "cancelled"
+        ? `Last question: cancelled, nothing sent to ${question.chat}, ${when}.`
+        : question.result === "no_answer" || question.result === "no_match"
+          ? `Last question: not answered by voice, so it waits in ${question.chat}.`
+          : null;
+  if (!line) return null;
+  return (
+    <p data-testid="narrator-last-question" className="text-[13px] mt-2 text-muted-foreground">
+      {line}
+    </p>
+  );
+}
+
+/**
+ * The one command that gives Claude Code the ask_by_voice tool. The user runs
+ * it; the app never writes Claude Code's settings.
+ */
+function ConnectClaudeCode() {
+  const [command, setCommand] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    void window.electronAPI
+      ?.narratorAskCommand?.()
+      .then((line) => setCommand(line || null))
+      .catch(() => setCommand(null));
+  }, []);
+
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  if (!command) return null;
+
+  const copy = async () => {
+    try {
+      if (window.electronAPI?.writeClipboard) await window.electronAPI.writeClipboard(command);
+      else await navigator.clipboard.writeText(command);
+      setCopied(true);
+    } catch {
+      // The line stays on screen to select by hand.
+    }
+  };
+
+  return (
+    <div
+      data-testid="narrator-connect"
+      className="mt-3 rounded-lg border border-border-subtle/50 bg-background/40 px-3 py-2.5"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[13px] font-medium text-foreground">Connect Claude Code</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Run this once in PowerShell. Your Claude Code chats get the ask_by_voice tool, which
+            only talks to this app on this PC.
+          </p>
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => void copy()} aria-label="Copy command">
+          {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <code
+        data-testid="narrator-connect-command"
+        className="mt-2 block select-all break-all font-mono text-[12px] leading-relaxed text-foreground/90"
+      >
+        {command}
+      </code>
+    </div>
+  );
 }
 
 function NarratorCard({ item }: { item: NarratorItem }) {
@@ -176,8 +257,15 @@ export default function NarratorPage() {
     if (!state.running) return "Waiting for Experimental features to be on.";
     if (!voiceReady)
       return "Following your chats. A wait only chimes until the voice for this language is downloaded.";
-    if (settings?.gaming) return "Gaming mode. Only chats that wait on you are spoken.";
-    return "Following every Claude Code chat on this PC.";
+    const onlyNarratorMode = settings?.onlyNarratorMode !== false;
+    if (settings?.gaming) {
+      return onlyNarratorMode
+        ? "Gaming mode. Only waits from chats in narrator mode are spoken."
+        : "Gaming mode. Only chats that wait on you are spoken.";
+    }
+    return onlyNarratorMode
+      ? "Following chats in narrator mode."
+      : "Following every Claude Code chat on this PC.";
   };
 
   const pct =
@@ -210,6 +298,17 @@ export default function NarratorPage() {
             <Toggle
               checked={Boolean(settings?.enabled)}
               onChange={(enabled) => update({ enabled })}
+            />
+          </SettingsRow>
+        </PanelRow>
+        <PanelRow>
+          <SettingsRow
+            label="Only chats in narrator mode"
+            description="A chat turns narrator mode on by loading a narrator skill, and off by loading it with “off”. Every other chat stays silent and gets no card."
+          >
+            <Toggle
+              checked={settings?.onlyNarratorMode !== false}
+              onChange={(onlyNarratorMode) => update({ onlyNarratorMode })}
             />
           </SettingsRow>
         </PanelRow>
@@ -332,6 +431,26 @@ export default function NarratorPage() {
 
       <SectionLabel>Hands-free</SectionLabel>
       <Panel>
+        <PanelRow>
+          <SettingsRow
+            label="Answer by voice"
+            description={
+              localOnly
+                ? "In gaming mode, a chat can ask you a question out loud. Hold your dictation key within 15 seconds and say one of its choices. It is read back and sent 3 seconds later, unless you press the key again. Nothing is pasted."
+                : useLocalWhisper
+                  ? "Unavailable while your transcription settings allow a cloud fallback. Your answer must never leave this PC."
+                  : "Needs local transcription, so your answer never leaves this PC. Turn it on under Dictation."
+            }
+          >
+            <Toggle
+              checked={settings?.answerByVoice === true && localOnly}
+              disabled={!localOnly}
+              onChange={(answerByVoice) => update({ answerByVoice })}
+            />
+          </SettingsRow>
+          {settings?.answerByVoice === true && localOnly && <ConnectClaudeCode />}
+          {state?.question && <LastQuestion question={state.question} />}
+        </PanelRow>
         <PanelRow>
           <SettingsRow
             label="Listen for questions"

@@ -1,4 +1,5 @@
 import type {
+  NarratorAnswerMessage,
   NarratorCommand,
   NarratorDownloadProgress,
   NarratorLanguage,
@@ -989,6 +990,7 @@ declare global {
       // Agent narrator (Experimental)
       narratorSetGate: (experimentalOn: boolean) => Promise<NarratorState>;
       narratorGetState: () => Promise<NarratorState>;
+      narratorAskCommand: () => Promise<string>;
       narratorUpdateSettings: (patch: Partial<NarratorSettings>) => Promise<NarratorState>;
       narratorCommand: (name: NarratorCommand, language?: NarratorLanguage) => Promise<boolean>;
       narratorUtterance: (
@@ -1016,6 +1018,16 @@ declare global {
         jobId: string;
         state: "started" | "done" | "stopped";
       }) => void;
+      onNarratorAnswer: (
+        callback: (event: any, message: NarratorAnswerMessage) => void
+      ) => (() => void) | void;
+      narratorAnswerHeard: (payload: {
+        id: string;
+        text?: string;
+        error?: string;
+        message?: string;
+      }) => void;
+      narratorSetLocalOnly: (localOnly: boolean) => Promise<boolean>;
 
       // Local AI model management
       modelGetAll: () => Promise<any[]>;

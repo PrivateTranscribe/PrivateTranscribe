@@ -29,9 +29,17 @@
  * the Stop hooks still run, seconds in all. Its recap and ask are final when
  * it is made, so it is reported at once as "turn-ending", for work that can
  * start early. Only "turn-ended" says the turn is over.
+ *
+ * A turn in which the chat asked by voice (PrivateTranscribe's ask_by_voice
+ * tool, under any server name), and the question was spoken but not answered,
+ * is marked `voiceAsked`: the chat now waits on a question that was said
+ * already, so it is not said again. A pick that came back clears the mark, as
+ * the chat carries on and a later wait is a new question. A call answered
+ * "not_active" spoke nothing and changes nothing.
  */
 
 const WRAP_UP_TOOL = "mcp__ccd_turn__wrap_up";
+const ASK_BY_VOICE_TOOL = "ask_by_voice";
 /** Quiet after end_turn that counts as the end of a turn with no Stop hook. */
 const END_TURN_GRACE_MS = 4000;
 /** Longest last-message text kept as a terminal chat's recap. */
@@ -71,15 +79,45 @@ function timeOf(record, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function isAskByVoice(name) {
+  return (
+    typeof name === "string" &&
+    (name === ASK_BY_VOICE_TOOL || name.endsWith(`__${ASK_BY_VOICE_TOOL}`))
+  );
+}
+
+/**
+ * What an ask_by_voice result means for the chat's wait: "open" when the
+ * question was spoken and nothing was picked, "answered" when a pick came
+ * back, null when nothing was said ("not_active", or an error from the tool).
+ */
+function voiceOutcome(content) {
+  const text = typeof content === "string" ? content : textOf(contentBlocks({ content }));
+  let result;
+  try {
+    result = JSON.parse(text);
+  } catch {
+    // An error from the tool, such as a refused input: nothing was said.
+    return null;
+  }
+  if (!result || typeof result !== "object" || !("answer" in result)) return null;
+  if (typeof result.answer === "string" && result.answer) return "answered";
+  return result.reason === "not_active" ? null : "open";
+}
+
 /**
  * Whether a raw line can matter, decided without parsing it. Most of a
  * transcript's bytes are attachment and api-request lines (measured: 280 of
  * 334 MB), which never do. A marker found here is structure, not text: inside
  * a JSON string every quote is escaped, so `"type":"user"` cannot come from
- * what someone wrote. A tool result is never something the person wrote.
+ * what someone wrote. A tool result is never something the person wrote; the
+ * only results read are those that can be ask_by_voice's, whose text holds an
+ * escaped `"answer":`.
  */
 function isRelevantLine(line) {
-  if (line.includes('"type":"user"')) return !line.includes('"type":"tool_result"');
+  if (line.includes('"type":"user"')) {
+    return !line.includes('"type":"tool_result"') || line.includes('\\"answer\\":');
+  }
   return (
     line.includes('"type":"assistant"') ||
     line.includes('"stop_hook_summary"') ||
@@ -114,8 +152,8 @@ function isPersonText(record) {
  *
  * Events:
  *   { type: "title", title }
- *   { type: "turn-ending", waiting, recap, ask, at, fromWrapUp }   the wrap_up call; `at` is its line's
- *   { type: "turn-ended", waiting, recap, ask, at, fromWrapUp }
+ *   { type: "turn-ending", waiting, recap, ask, at, fromWrapUp, voiceAsked }   the wrap_up call; `at` is its line's
+ *   { type: "turn-ended", waiting, recap, ask, at, fromWrapUp, voiceAsked }
  *   { type: "answered", at }        the person wrote in the chat again
  */
 class TranscriptState {
@@ -127,6 +165,10 @@ class TranscriptState {
     this.lastAssistantText = "";
     this.endTurnAt = null;
     this.lastActivityAt = 0;
+    /** ask_by_voice calls of this turn still waiting for their result, by tool_use id. */
+    this.voiceAskIds = new Set();
+    /** Whether this turn spoke a question through ask_by_voice. */
+    this.voiceAsked = false;
   }
 
   /** @param {string|object} lineOrRecord */
@@ -156,6 +198,9 @@ class TranscriptState {
       this.lastActivityAt = at;
       const blocks = contentBlocks(record.message);
       for (const block of blocks) {
+        if (block?.type === "tool_use" && isAskByVoice(block.name) && block.id) {
+          this.voiceAskIds.add(block.id);
+        }
         if (block?.type === "tool_use" && block.name === WRAP_UP_TOOL) {
           const input = block.input || {};
           this.wrapUp = {
@@ -181,6 +226,16 @@ class TranscriptState {
       return events;
     }
 
+    if (record.type === "user" && this.voiceAskIds.size > 0) {
+      for (const block of contentBlocks(record.message)) {
+        if (block?.type !== "tool_result" || !this.voiceAskIds.has(block.tool_use_id)) continue;
+        this.voiceAskIds.delete(block.tool_use_id);
+        const outcome = voiceOutcome(block.content);
+        if (outcome === "open") this.voiceAsked = true;
+        else if (outcome === "answered") this.voiceAsked = false;
+      }
+    }
+
     if (isPersonText(record)) {
       this.lastActivityAt = at;
       // A new message from the user before the turn was closed still closes it
@@ -188,6 +243,8 @@ class TranscriptState {
       if (this.endTurnAt !== null) events.push(this._endTurn(this.endTurnAt));
       this.wrapUp = null;
       this.lastAssistantText = "";
+      this.voiceAskIds.clear();
+      this.voiceAsked = false;
       events.push({ type: "answered", at });
     }
     return events;
@@ -209,6 +266,7 @@ class TranscriptState {
       ask: wrapUp?.ask || "",
       at,
       fromWrapUp: Boolean(wrapUp),
+      voiceAsked: this.voiceAsked,
     };
   }
 
@@ -216,6 +274,7 @@ class TranscriptState {
     const event = this._turn(at);
     this.endTurnAt = null;
     this.wrapUp = null;
+    this.voiceAsked = false;
     return event;
   }
 }
@@ -225,6 +284,7 @@ module.exports = {
   parseLine,
   isRelevantLine,
   isPersonText,
+  isAskByVoice,
   WRAP_UP_TOOL,
   END_TURN_GRACE_MS,
   HEADLESS_ENTRYPOINTS,

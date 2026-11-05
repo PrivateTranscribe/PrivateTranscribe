@@ -111,6 +111,16 @@ test.beforeAll(() => {
         type: "user",
         timestamp: iso(Date.now() - 1000),
         message: { role: "user", content: "fix it" },
+      }) +
+      // Narrator mode on: only such chats are heard by default.
+      line({
+        type: "assistant",
+        timestamp: iso(Date.now() - 900),
+        message: {
+          role: "assistant",
+          stop_reason: "tool_use",
+          content: [{ type: "tool_use", id: "s1", name: "Skill", input: { skill: "narrator" } }],
+        },
       })
   );
   fs.mkdirSync(path.join(SESSIONS, "account", "org"), { recursive: true });
@@ -194,7 +204,10 @@ test("stays off while Experimental features are off", async ({ controlPanel }) =
   expect((await narratorState(controlPanel)).running).toBe(true);
 });
 
-test("gaming mode speaks only waits and turns listening off", async ({ controlPanel }) => {
+test("gaming mode speaks only waits, turns listening off, and counts waits only with Answer by voice", async ({
+  controlPanel,
+  overlayWindow,
+}) => {
   await controlPanel.getByRole("button", { name: "Narrator", exact: true }).click();
   await controlPanel.getByRole("button", { name: "Narrate my Claude Code chats" }).click();
   const gaming = controlPanel.getByRole("button", { name: "Gaming mode", exact: true });
@@ -217,10 +230,28 @@ test("gaming mode speaks only waits and turns listening off", async ({ controlPa
   ).toBeVisible();
   if (HAS_VOICE) {
     await expect(controlPanel.getByTestId("narrator-status")).toHaveText(
-      "Gaming mode. Only chats that wait on you are spoken."
+      "Gaming mode. Only waits from chats in narrator mode are spoken."
     );
   }
   await capture(controlPanel, "gaming");
+
+  // A chat waits. With Answer by voice off the overlay stays as it always was:
+  // the quiet waiting count is part of Answer by voice.
+  const marker = overlayWindow.getByTestId("narrator-waiting");
+  writeWait("Push the fix to main?");
+  await expect
+    .poll(async () => (await narratorState(controlPanel)).waiting, { timeout: 10_000 })
+    .toBe(1);
+  await overlayWindow.waitForTimeout(1000);
+  await expect(marker).toHaveCount(0);
+  await controlPanel.evaluate(() =>
+    window.electronAPI.narratorUpdateSettings({ answerByVoice: true })
+  );
+  await expect(marker).toBeVisible({ timeout: 10_000 });
+  await expect(marker).toHaveAttribute("data-count", "1");
+  // Answered at the PC: the count goes.
+  writeAnswer();
+  await expect(marker).toHaveCount(0, { timeout: 10_000 });
 });
 
 test.describe("without the Danish voice", () => {

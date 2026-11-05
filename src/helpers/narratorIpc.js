@@ -7,11 +7,22 @@
  * chime), one "part" per sentence, then "end". The overlay answers on
  * "narrator-playback": "started" when the first sound plays, then "done" or
  * "stopped".
+ *
+ * Voice answers: while a question's answer window is open, the window manager
+ * hands dictation key events to the narrator instead of the overlay's
+ * dictation. Main tells the overlay's answer recorder to "start", "stop" or
+ * "discard" on "narrator-answer"; the overlay sends the local transcript back
+ * on "narrator-answer-heard".
+ *
+ * ask_by_voice: while the narrator runs with "Answer by voice" on, a local
+ * server (narrator/askServer.js) takes questions from the Claude Code bridge.
+ * With the switch off, nothing listens.
  */
 
 const crypto = require("node:crypto");
 const debugLogger = require("./debugLogger");
 const { Narrator } = require("./narrator");
+const { NarratorAskServer, askCommand } = require("./narrator/askServer");
 const { PiperVoice, RoestVoice, KokoroVoice } = require("./narrator/voices");
 const { VoiceCallMeter } = require("./narrator/voiceCallMeter");
 
@@ -150,6 +161,43 @@ function setupNarratorHandlers({
     };
   };
 
+  const answerRecorder = {
+    start: (id, { language } = {}) =>
+      overlay()?.send("narrator-answer", { type: "start", id, language }),
+    stop: (id) => overlay()?.send("narrator-answer", { type: "stop", id }),
+    discard: (id) => overlay()?.send("narrator-answer", { type: "discard", id }),
+  };
+
+  const askServer = new NarratorAskServer({
+    dataDir: app.getPath("userData"),
+    ask: (question, opts) => narrator.askByVoice(question, opts),
+    log,
+  });
+  let askWanted = false;
+  /** The server listens only while a question could be answered at all. */
+  const syncAskServer = (state) => {
+    const wanted = Boolean(state.running && state.settings.answerByVoice);
+    if (wanted === askWanted) return;
+    askWanted = wanted;
+    if (wanted) askServer.start().catch(() => {});
+    else void askServer.stop();
+  };
+
+  let shownQuestionId = null;
+  /**
+   * A voice question is drawn in the overlay, so an overlay hidden with Escape
+   * comes back for it: once per question, without focus, as a dictation does.
+   * showDictationPanel keeps a snoozed or switched-off overlay hidden.
+   */
+  const showQuestion = (state) => {
+    const question = state.question;
+    if (!question || question.phase !== "speaking" || question.id === shownQuestionId) return;
+    shownQuestionId = question.id;
+    Promise.resolve(windowManager?.showDictationPanel?.()).catch((error) =>
+      log("Narrator could not show the overlay for a question", { error: error?.message })
+    );
+  };
+
   narrator = new Narrator({
     dataDir: app.getPath("userData"),
     openPlayback,
@@ -159,12 +207,18 @@ function setupNarratorHandlers({
     },
     voices,
     room: createRoom({ ducking, log }),
+    answerRecorder,
     openUrl: (url) => {
       shell
         .openExternal(url)
         .catch((error) => log("Narrator could not open a chat", { error: error.message }));
     },
-    onState: (state) => broadcast("narrator-state", state),
+    onState: (state) => {
+      syncAskServer(state);
+      showQuestion(state);
+      broadcast("narrator-state", state);
+    },
+    onDispose: () => askServer.close(),
     log,
   });
 
@@ -175,11 +229,31 @@ function setupNarratorHandlers({
     else job.finish(payload.state === "stopped" ? "stopped" : "done");
   });
 
+  // Inside an answer window the dictation key answers; outside it, it dictates.
+  windowManager?.setDictationKeyFilter?.((event) => narrator.answers.onKey(event));
+  ipcMain.on("narrator-answer-heard", (_event, payload) => {
+    narrator.answers.heard(String(payload?.id || ""), {
+      text: typeof payload?.text === "string" ? payload.text.slice(0, 500) : "",
+      error: payload?.error ? String(payload.error) : null,
+    });
+  });
+  ipcMain.handle("narrator-set-local-only", (_event, localOnly) => {
+    narrator.setLocalOnly(Boolean(localOnly));
+    return true;
+  });
+
   ipcMain.handle("narrator-set-gate", (_event, experimentalOn) => {
     narrator.setGate(Boolean(experimentalOn));
     return narrator.getState();
   });
   ipcMain.handle("narrator-get-state", () => narrator.getState());
+  ipcMain.handle("narrator-ask-command", () =>
+    askCommand({
+      userData: app.getPath("userData"),
+      execPath: process.execPath,
+      packaged: app.isPackaged,
+    })
+  );
   ipcMain.handle("narrator-update-settings", (_event, patch) =>
     narrator.updateSettings(patch || {})
   );

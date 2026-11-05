@@ -26,6 +26,17 @@ import { VOICE_BAR_HEIGHTS, voiceBarScale } from "./utils/voiceBars";
 import { ReadAloudPlayer } from "./helpers/readAloudPlayer";
 import { ConversePlayer } from "./helpers/conversePlayer";
 import NarratorOverlay from "./components/NarratorOverlay";
+import NarratorQuestionRows from "./components/NarratorQuestionRows";
+import { createLevelStore, useNarratorRows } from "./hooks/useNarratorRows";
+import {
+  OVERLAY_RADIUS,
+  OVERLAY_STATUS_DETAIL_CLASS,
+  OVERLAY_STATUS_TEXT_CLASS,
+  OVERLAY_SURFACE_ANIMATION,
+  OVERLAY_SURFACE_CLASS,
+  liveDotStyle,
+  overlayRowStyle,
+} from "./components/overlaySurface";
 import { LANGUAGE_OPTIONS, getLanguageLabel } from "./utils/languages";
 import { buildQuickLanguageCodes, readSpokenLanguages } from "./utils/spokenLanguages";
 import { DEFAULT_READ_ALOUD_HOTKEY } from "./utils/hotkeys";
@@ -140,14 +151,6 @@ const CONVERSE_STATUS_LABELS = {
 const OVERLAY_COLUMN_W = 352;
 
 /**
- * The dictation button's radius, and therefore every radius in the overlay.
- * CSS clamps a corner to half the box, so one number gives a 44px button a
- * circle, a 32px status row a pill, and the taller player panel corners that
- * are exactly the button's arc. One rule, the whole family.
- */
-const OVERLAY_RADIUS = 22;
-
-/**
  * The resting line. When nothing is happening the button is not a 44px disc
  * on top of whatever the user is reading, it is this: a short dark line with
  * nothing in it. It grows into the circle, mostly upward, the moment there is
@@ -200,17 +203,6 @@ const OVERLAY_BUTTON_GAP = 8;
 const OVERLAY_STACK_BOTTOM = OVERLAY_BUTTON_TOP + OVERLAY_BUTTON_GAP;
 
 /**
- * Vertical padding of a status row. With a 12px line this is a 30px capsule,
- * against the 49px full-width row before - the "way smaller" Kristian asked
- * for on 2026-09-02.
- */
-const OVERLAY_STATUS_PAD_Y = 8;
-
-/** A status row's one line: the status word, then anything after it in a quieter tone. */
-const OVERLAY_STATUS_TEXT_CLASS = "text-[12px] font-medium leading-none text-white/90";
-const OVERLAY_STATUS_DETAIL_CLASS = "text-[12px] leading-none tabular-nums text-white/60";
-
-/**
  * The stop control of a status row: a tinted disc, so the one thing in the
  * row that can be pressed looks pressable and the count next to it stays the
  * brighter of the two. Its 20px sit inside the row's padding (see the
@@ -219,63 +211,9 @@ const OVERLAY_STATUS_DETAIL_CLASS = "text-[12px] leading-none tabular-nums text-
 const OVERLAY_STATUS_CONTROL_CLASS =
   "flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors duration-150 hover:bg-white/18 hover:text-white focus:outline-none focus:bg-white/18";
 
-/**
- * The material every row and the command menu are made of: `--color-muted` at
- * 96%, a hairline white border, the same blur and the same shadow, so they are
- * recognisably the same surface caught in different states. The dictation
- * button deliberately sits outside this - see getMicButtonStyles.
- */
-const OVERLAY_SURFACE_CLASS =
-  "border border-white/12 bg-muted/96 text-white shadow-[0_6px_18px_rgba(0,0,0,0.32)] backdrop-blur-xl";
-
-/**
- * One entrance for every surface, growing from the anchor. Rows and the menu
- * both use it, so opening the menu and starting a read are the same gesture.
- */
-const OVERLAY_SURFACE_ANIMATION = "overlay-surface-in 180ms cubic-bezier(0.22, 1, 0.36, 1)";
-
 /** Shared trailing-control button: same target, same feedback, every row. */
 const OVERLAY_CONTROL_CLASS =
   "rounded-full p-1 text-white/72 transition-colors duration-150 hover:bg-white/6 hover:text-white focus:outline-none focus:bg-white/6";
-
-/**
- * The style a row carries. `status` rows hug their content and sit centred in
- * the column; everything else stretches to the column width.
- */
-function overlayRowStyle({ interactive, status = false }) {
-  return {
-    borderRadius: OVERLAY_RADIUS,
-    paddingTop: status ? OVERLAY_STATUS_PAD_Y : undefined,
-    paddingBottom: status ? OVERLAY_STATUS_PAD_Y : undefined,
-    alignSelf: status ? "center" : "stretch",
-    maxWidth: "100%",
-    transformOrigin: "bottom center",
-    animation: OVERLAY_SURFACE_ANIMATION,
-    pointerEvents: interactive ? "auto" : "none",
-  };
-}
-
-/**
- * The live marker in front of every status word - the one place a row uses
- * colour. Lit while something is audibly happening (speaking, listening,
- * reading), pulsing while the user is waiting on the machine (thinking,
- * preparing), dim otherwise. The same dot on the Converse capsule and the
- * Read Aloud panel is what makes them one family across two shapes.
- */
-function liveDotStyle({ live, pulse, warn = false }) {
-  return {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    flexShrink: 0,
-    backgroundColor: warn
-      ? "var(--color-warning)"
-      : live || pulse
-        ? "var(--color-primary)"
-        : "rgba(255,255,255,0.4)",
-    animation: pulse ? "overlay-dot-pulse 1.6s ease-in-out infinite" : undefined,
-  };
-}
 
 /**
  * How far through a read or an answer the voice is, as a hairline instead of
@@ -521,6 +459,11 @@ export default function App() {
   const [readAloudNoticeLanguage, setReadAloudNoticeLanguage] = useState(null);
   // { state, playIndex, total } while a Converse session is running, else null.
   const [converseState, setConverseState] = useState(null);
+  // The narrator's voice question and waiting count, from NarratorOverlay, and
+  // the level of an answer being recorded, which the bars read without a render.
+  const [narratorView, setNarratorView] = useState(null);
+  const [narratorLevel] = useState(createLevelStore);
+  const narratorRows = useNarratorRows(narratorView);
   const { toast } = useToast();
   const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
   useHotkey();
@@ -1289,7 +1232,8 @@ export default function App() {
     isCommandMenuOpen ||
     Boolean(readAloudState) ||
     Boolean(readAloudNotice) ||
-    Boolean(converseState);
+    Boolean(converseState) ||
+    narratorRows.visible;
 
   // The hit box: always 44px, always transparent. Hover, click, drag and the
   // context menu land on this, so the line is as easy to hit as the circle,
@@ -1512,7 +1456,7 @@ export default function App() {
 
   return (
     <div className="dictation-window">
-      <NarratorOverlay isRecording={isRecording} />
+      <NarratorOverlay isRecording={isRecording} onView={setNarratorView} level={narratorLevel} />
       <style>{`
         @keyframes overlay-surface-in {
           from {
@@ -1527,6 +1471,10 @@ export default function App() {
         @keyframes overlay-dot-pulse {
           0%, 100% { opacity: 0.35; }
           50% { opacity: 1; }
+        }
+        @keyframes overlay-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         @media (prefers-reduced-motion: reduce) {
           .overlay-shell, .overlay-shell > * {
@@ -1731,12 +1679,16 @@ export default function App() {
           The overlay column. One fixed-width stack, docked to the top of the
           dictation button, holding every surface the overlay has to show.
           Converse sits above Read Aloud when both are running, so the order on
-          screen is stable and the button never moves.
+          screen is stable and the button never moves. The narrator's voice
+          question sits lowest, next to the key that answers it, and is the
+          one row that takes the column's full width: it carries a question
+          to read and its choices, and keeps one width through every phase so
+          the card never jumps while it is read.
 
           The column itself is click-through; each row opts back in only if it
           has something to press.
         */}
-        {(readAloudState || noticeRowVisible || converseState) && (
+        {(readAloudState || noticeRowVisible || converseState || narratorRows.visible) && (
           <div
             style={{
               position: "absolute",
@@ -1904,6 +1856,14 @@ export default function App() {
                     : READ_ALOUD_NOTICE_LABELS[readAloudNotice]}
                 </span>
               </div>
+            )}
+
+            {narratorRows.visible && (
+              <NarratorQuestionRows
+                rows={narratorRows}
+                language={narratorView?.language || "en"}
+                level={narratorLevel}
+              />
             )}
           </div>
         )}

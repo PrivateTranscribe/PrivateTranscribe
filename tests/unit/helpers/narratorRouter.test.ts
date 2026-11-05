@@ -88,6 +88,28 @@ describe("narrator router", () => {
     expect(router.current()).toBeNull();
   });
 
+  it("files a wait whose question was said through ask_by_voice as a card, even when followed", () => {
+    const router = new NarratorRouter();
+    router.follow("chat-a");
+    const { action, item } = router.ingest(
+      event({ kind: "waiting", ask: "Push?", voiceAsked: true })
+    );
+    expect(action).toBe("card");
+    expect(item.voiceAsked).toBe(true);
+    expect(router.ingest(event({ chatId: "chat-b", voiceAsked: true })).action).toBe("card");
+  });
+
+  it("removes one chat's items, and only that chat's", () => {
+    const router = new NarratorRouter();
+    const { item } = router.ingest(event({ kind: "waiting", ask: "Push?" }));
+    router.ingest(event({ chatId: "chat-b" }));
+    router.markHeard(item.id);
+    expect(router.removeChat("chat-a")).toEqual([item.id]);
+    expect(router.removeChat("chat-a")).toEqual([]);
+    expect(router.snapshot().map((left: { chatId: string }) => left.chatId)).toEqual(["chat-b"]);
+    expect(router.current()).toBeNull();
+  });
+
   it("briefs unheard items, waits first, newest first, and marks nothing itself", () => {
     const router = new NarratorRouter();
     router.ingest(event({ chatId: "old-finish", at: 1 }));

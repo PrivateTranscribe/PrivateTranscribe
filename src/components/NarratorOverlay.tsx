@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NarratorAnswerRecorder } from "../helpers/narratorAnswerRecorder";
 import { NarratorPlayer } from "../helpers/narratorPlayer";
 import { useConverseVoice } from "../hooks/useConverseVoice";
 import { DEFAULT_KOKORO_VOICE_ID, VOICE_STORAGE_KEY } from "../models/kokoroVoices";
@@ -7,6 +8,7 @@ import {
   areExperimentalFeaturesEnabled,
 } from "../utils/experimentalFeatures";
 import type { NarratorState } from "../utils/narratorTypes";
+import type { LevelStore, NarratorOverlayView } from "../hooks/useNarratorRows";
 
 /** A command is a short sentence; a quick pause ends it. */
 const COMMAND_END_OF_TURN_MS = 700;
@@ -39,18 +41,34 @@ function readAloudVoice(): string {
  * nothing. It plays what the main process sends, tells main whether the
  * Experimental switch is on and which Read Aloud voice is picked, stops
  * speech when a dictation starts, and, when the user turned listening on,
- * hears "hvad er nyt?" without a key.
+ * hears "hvad er nyt?" without a key. It also records a voice answer when
+ * main asks, separately from dictation, so an answer is never pasted.
  *
- * Listening only ever runs with local transcription and no cloud fallback.
- * Every sound in the room is transcribed to find a command, and that audio
- * must not go to a cloud provider.
+ * Listening and answers only ever run with local transcription and no cloud
+ * fallback. What the microphone hears there must not go to a cloud provider.
+ *
+ * What the overlay draws of a voice question comes out through `onView`, and
+ * the level of an answer being recorded through `level`; App.jsx draws both
+ * in its column (NarratorQuestionRows.tsx).
  */
-export default function NarratorOverlay({ isRecording }: { isRecording: boolean }) {
+export default function NarratorOverlay({
+  isRecording,
+  onView,
+  level,
+}: {
+  isRecording: boolean;
+  onView?: (view: NarratorOverlayView | null) => void;
+  level?: LevelStore;
+}) {
   const [state, setState] = useState<NarratorState | null>(null);
   const [playing, setPlaying] = useState(false);
   const [localOnly, setLocalOnly] = useState(isLocalOnlyTranscription);
   const recordingRef = useRef(isRecording);
   const playerRef = useRef<NarratorPlayer | null>(null);
+  const levelRef = useRef(level);
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -60,10 +78,15 @@ export default function NarratorOverlay({ isRecording }: { isRecording: boolean 
       onPlayingChange: setPlaying,
     });
     playerRef.current = player;
+    const recorder = new NarratorAnswerRecorder({
+      isLocalOnly: isLocalOnlyTranscription,
+      onLevel: (value: number) => levelRef.current?.set(value),
+    });
 
     const offState = api.onNarratorState?.((_event, next) => setState(next));
     const offPlay = api.onNarratorPlay?.((_event, message) => player.handle(message));
     const offStop = api.onNarratorStopPlayback?.(() => player.stop());
+    const offAnswer = api.onNarratorAnswer?.((_event, message) => recorder.handle(message));
 
     void api
       .narratorSetGate(areExperimentalFeaturesEnabled())
@@ -89,10 +112,17 @@ export default function NarratorOverlay({ isRecording }: { isRecording: boolean 
       offState?.();
       offPlay?.();
       offStop?.();
+      offAnswer?.();
+      recorder.dispose();
       player.stop();
       playerRef.current = null;
     };
   }, []);
+
+  // Voice answers need local-only transcription; main opens no answer window without it.
+  useEffect(() => {
+    void window.electronAPI?.narratorSetLocalOnly?.(localOnly)?.catch?.(() => {});
+  }, [localOnly]);
 
   // A voice picked on the Read Aloud page before this window opened.
   const voiceEn = state?.settings.voiceEn;
@@ -112,6 +142,26 @@ export default function NarratorOverlay({ isRecording }: { isRecording: boolean 
   }, [isRecording]);
 
   const running = Boolean(state?.running);
+
+  // Main broadcasts the whole state on every change; the overlay only redraws
+  // when the part it shows changed. The waiting count is part of Answer by
+  // voice: with it off, the overlay looks exactly as it did before.
+  const viewKey =
+    running && state
+      ? JSON.stringify({
+          question: state.question ?? null,
+          waiting: state.settings.answerByVoice === true ? (state.waiting ?? 0) : 0,
+          gaming: state.settings.gaming === true,
+          language: state.settings.language === "da" ? "da" : "en",
+        })
+      : "";
+  const view = useMemo<NarratorOverlayView | null>(
+    () => (viewKey ? (JSON.parse(viewKey) as NarratorOverlayView) : null),
+    [viewKey]
+  );
+  useEffect(() => {
+    onView?.(view);
+  }, [onView, view]);
   // Gaming mode never listens: talk on a voice call must not become a command.
   const listen = Boolean(state?.settings.listen) && localOnly && !state?.settings.gaming;
   const bargeIn = state?.settings.bargeIn === true;
@@ -129,7 +179,8 @@ export default function NarratorOverlay({ isRecording }: { isRecording: boolean 
   useConverseVoice({
     enabled: listen,
     active: running,
-    muted: isRecording || (playing && !bargeIn),
+    // An answer being recorded is not a command.
+    muted: isRecording || Boolean(state?.answering) || (playing && !bargeIn),
     endOfTurnMs: COMMAND_END_OF_TURN_MS,
     maxSpeechMs: COMMAND_MAX_SPEECH_MS,
     // A command is matched as it was heard; AI cleanup can be a cloud model.

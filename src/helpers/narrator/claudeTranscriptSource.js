@@ -23,8 +23,9 @@
  * is never mangled.
  *
  * A source emits normalised events (see router.js) through `onEvent`, and has
- * start() and stop(). A Codex source for ~/.codex/sessions would be a sibling
- * with the same shape.
+ * start() and stop(). A turn says whether its chat has narrator mode on
+ * (narratorMode.js) when the narrator asks for it. A Codex source for
+ * ~/.codex/sessions would be a sibling with the same shape.
  */
 
 const fs = require("node:fs");
@@ -98,12 +99,18 @@ class ClaudeTranscriptSource {
     log = () => {},
     now = () => Date.now(),
     sessionIndex = new DesktopSessionIndex(),
+    narratorMode = null,
   } = {}) {
     this.root = root;
     this.onEvent = onEvent;
     this.log = log;
     this.now = now;
     this.sessionIndex = sessionIndex;
+    /**
+     * (file) => whether that chat has narrator mode on, or null when nobody
+     * asks; a turn carries the answer as `narratorMode`.
+     */
+    this.narratorMode = narratorMode;
     /** file -> entry, for every transcript seen since start */
     this.files = new Map();
     this.watcher = null;
@@ -325,12 +332,17 @@ class ClaudeTranscriptSource {
    */
   async _emitTurn(entry, event, { backlog, provisional = false }) {
     const answers = entry.answers;
-    let record = null;
-    try {
-      record = (await this.sessionIndex?.lookup(entry.chatId)) || null;
-    } catch {
-      record = null;
-    }
+    const [record, narratorMode] = await Promise.all([
+      Promise.resolve()
+        .then(() => this.sessionIndex?.lookup(entry.chatId))
+        .then(
+          (found) => found || null,
+          () => null
+        ),
+      Promise.resolve()
+        .then(() => this.narratorMode?.(entry.file) ?? null)
+        .catch(() => null),
+    ]);
     if (record?.archived || !this.running || entry.answers !== answers) return;
     const cwd = record?.originCwd || entry.state.cwd || "";
     this.onEvent({
@@ -344,6 +356,8 @@ class ClaudeTranscriptSource {
       at: event.at,
       backlog,
       ...(provisional ? { provisional: true } : {}),
+      ...(event.voiceAsked ? { voiceAsked: true } : {}),
+      ...(typeof narratorMode === "boolean" ? { narratorMode } : {}),
       openUrl: record ? desktopChatUrl(record.localId) : "",
       source: "claude-code",
     });
