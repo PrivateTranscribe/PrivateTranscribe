@@ -367,7 +367,8 @@ class VoiceAnswers {
     session.phase = "asking";
     session.recording = null;
     this._changed();
-    const result = await session.say(session.phrases.notCaught);
+    // A voice that fails ends the question now, not at the 39 s deadline.
+    const result = await session.say(session.phrases.notCaught).catch(() => "failed");
     if (this.session === session && session.phase === "asking") {
       this._questionDone(session, result === "done" || result === "stopped");
     }
@@ -387,7 +388,7 @@ class VoiceAnswers {
     session.phase = "reading";
     session.picked = label;
     this._changed();
-    const result = await session.say(line);
+    const result = await session.say(line).catch(() => "failed");
     if (this.session !== session || session.phase !== "reading") return;
     // A pick goes only after it was heard in full.
     if (result !== "done") {

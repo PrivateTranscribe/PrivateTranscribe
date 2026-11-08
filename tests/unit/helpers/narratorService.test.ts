@@ -734,6 +734,24 @@ describe("voice questions", () => {
     expect(roest.synthesize).not.toHaveBeenCalled();
   });
 
+  it("ends the question at once when the voice fails on the read-back", async () => {
+    const english = fakeVoice("kokoro-en", async (text: string) => {
+      if (text.startsWith("Export fix: ")) throw new Error("voice crashed");
+      return { pcm: new Float32Array(4), sampleRate: 24000 };
+    });
+    const { narrator, answer } = voiceNarrator({
+      voices: { "piper-da": fakeVoice("piper-da"), "kokoro-en": english },
+    });
+    let reply: unknown = null;
+    void narrator.askByVoice(QUESTION).then((value: unknown) => {
+      reply = value;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    answer("Merge it.");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(reply).toEqual({ answer: null, reason: "cancelled" });
+  });
+
   it("shows the question from its first word, and leaves it unsaid when a dictation held its chime too long", async () => {
     const overlay = fakeOverlay({ hold: true });
     const { narrator } = voiceNarrator({ overlay });
