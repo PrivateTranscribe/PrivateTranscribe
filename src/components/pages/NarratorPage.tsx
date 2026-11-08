@@ -265,6 +265,8 @@ export default function NarratorPage() {
   };
 
   const settings = state?.settings;
+  // Stopping on speech runs inside the listener, so it works only while listening does.
+  const listening = Boolean(settings?.listen) && localOnly && !settings?.gaming;
   const piper = voices?.["piper-da"];
   const roest = voices?.["roest-da"];
   const kokoro = voices?.["kokoro-en"];
@@ -492,7 +494,7 @@ export default function NarratorPage() {
             }
           >
             <Toggle
-              checked={Boolean(settings?.listen) && localOnly && !settings?.gaming}
+              checked={listening}
               disabled={!localOnly || settings?.gaming === true}
               onChange={(listen) => update({ listen })}
             />
@@ -504,12 +506,14 @@ export default function NarratorPage() {
             description={
               settings?.gaming
                 ? "Off while gaming mode is on. The dictation hotkey always stops it."
-                : "For a headset. Through speakers the microphone would hear the narrator itself. The dictation hotkey always stops it."
+                : !listening
+                  ? "Works with Listen for questions on, which hears you talk. The dictation hotkey always stops it."
+                  : "For a headset. Through speakers the microphone would hear the narrator itself. The dictation hotkey always stops it."
             }
           >
             <Toggle
-              checked={settings?.bargeIn === true && !settings?.gaming}
-              disabled={settings?.gaming === true}
+              checked={settings?.bargeIn === true && listening}
+              disabled={!listening}
               onChange={(bargeIn) => update({ bargeIn })}
             />
           </SettingsRow>

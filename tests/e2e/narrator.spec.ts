@@ -219,6 +219,14 @@ test("gaming mode speaks only waits, turns listening off, and counts waits only 
   const makeRoom = controlPanel.getByRole("button", { name: "Wait for a pause in calls" });
   const listen = controlPanel.getByRole("button", { name: "Listen for questions" });
   await expect(gaming).toHaveAttribute("aria-pressed", "false");
+  // Stopping on speech runs inside the listener, so it waits for listening.
+  await expect(listen).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    controlPanel.getByRole("button", { name: "Stop speaking when I talk" })
+  ).toBeDisabled();
+  await expect(
+    controlPanel.getByText("Works with Listen for questions on", { exact: false })
+  ).toBeVisible();
   // Making room in a call is on by default; gaming mode is not.
   await expect(makeRoom).toHaveAttribute("aria-pressed", "true");
 
