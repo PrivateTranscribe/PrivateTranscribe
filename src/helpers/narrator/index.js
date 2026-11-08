@@ -492,7 +492,7 @@ class Narrator {
     const calledAt = this.now();
     if (!this.takesVoiceQuestions || signal?.aborted) return NOT_ACTIVE;
     const language = questionLanguage(`${ask.question} ${ask.choices.join(" ")}`);
-    if (!this._voiceFor(language)) return NOT_ACTIVE;
+    if (!this._voiceFor(language, { quick: true })) return NOT_ACTIVE;
     if (!(await this._inNarratorMode(ask.sessionId, ask.cwd))) return NOT_ACTIVE;
     // Settings can change while the chat's transcript was read.
     if (!this.takesVoiceQuestions || signal?.aborted) return NOT_ACTIVE;
@@ -876,7 +876,7 @@ class Narrator {
     job.chimePlayback = this._chime();
     const call = this.settings.makeRoom ? this.room?.watchCall?.() : null;
     try {
-      job.firstPart = this._prepare(text, language);
+      job.firstPart = this._prepare(text, language, job);
       await job.chimePlayback.result;
       if (call && this._alive(job)) {
         job.pause = await call.waitForPause({
@@ -926,8 +926,14 @@ class Narrator {
     job.resolve(outcome);
   }
 
-  _voiceFor(language) {
+  /**
+   * `quick`: a voice question, whose answer window closes 27 s after the call.
+   * Røst takes about half a minute to start a line on the processor, so a
+   * Danish question always uses Piper.
+   */
+  _voiceFor(language, { quick = false } = {}) {
     if (language === "en") return this.voices["kokoro-en"] || null;
+    if (quick) return this.voices["piper-da"] || null;
     const roestDown = this.settings.voiceDa === "roest-da" && this.roestDownUntil > this.now();
     return (!roestDown && this.voices[this.settings.voiceDa]) || this.voices["piper-da"] || null;
   }
@@ -938,9 +944,9 @@ class Narrator {
   }
 
   /** Starts making the first sentence of `text`; _play uses it if nothing changed meanwhile. */
-  _prepare(text, language) {
+  _prepare(text, language, job = null) {
     const spoken = toSpeakable(text);
-    const voice = spoken ? this._voiceFor(language) : null;
+    const voice = spoken ? this._voiceFor(language, { quick: job?.kind === "question" }) : null;
     const sentence = voice ? splitSentences(spoken)[0] : null;
     if (!sentence) return null;
     const part = this._synthesize(voice, sentence);
@@ -974,7 +980,7 @@ class Narrator {
   ) {
     const spoken = toSpeakable(text);
     if (!spoken || !this._alive(job)) return null;
-    const voice = this._voiceFor(language);
+    const voice = this._voiceFor(language, { quick: job?.kind === "question" });
     if (!voice) {
       this.voiceError = { language, code: "voice-missing", message: "No voice for this language" };
       this._emitState();

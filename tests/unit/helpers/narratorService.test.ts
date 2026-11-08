@@ -666,7 +666,11 @@ describe("voice questions", () => {
   });
 
   /** A narrator in gaming mode that answers by voice, for a chat in narrator mode. */
-  function voiceNarrator({ inNarratorMode = true, overlay = fakeOverlay() } = {}) {
+  function voiceNarrator({
+    inNarratorMode = true,
+    overlay = fakeOverlay(),
+    voices = undefined as Record<string, ReturnType<typeof fakeVoice>> | undefined,
+  } = {}) {
     const recorder = { start: vi.fn(), stop: vi.fn(), discard: vi.fn() };
     const modes = {
       modeOf: vi.fn(async () => inNarratorMode),
@@ -678,6 +682,7 @@ describe("voice questions", () => {
       answerRecorder: recorder,
       narratorModes: modes,
       overlay,
+      ...(voices ? { voices } : {}),
     });
     started.narrator.updateSettings({ gaming: true, answerByVoice: true });
     started.narrator.setLocalOnly(true);
@@ -709,6 +714,24 @@ describe("voice questions", () => {
     await expect(reply).resolves.toEqual({ answer: "Merge it" });
     expect(narrator.getState().question).toMatchObject({ phase: "done", result: "answered" });
     expect(narrator.getState().waiting).toBe(0);
+  });
+
+  it("says a Danish question with Piper even when Røst is the Danish voice, since Røst starts too late", async () => {
+    const roest = fakeVoice("roest-da");
+    const piper = fakeVoice("piper-da");
+    const { narrator, overlay } = voiceNarrator({
+      voices: { "roest-da": roest, "piper-da": piper, "kokoro-en": fakeVoice("kokoro-en") },
+    });
+    narrator.updateSettings({ voiceDa: "roest-da" });
+    void narrator.askByVoice({
+      ...QUESTION,
+      question: "Skal jeg merge PR 65 nu?",
+      choices: ["Merge den", "Ikke nu"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken()).toHaveLength(1);
+    expect(piper.synthesize).toHaveBeenCalled();
+    expect(roest.synthesize).not.toHaveBeenCalled();
   });
 
   it("shows the question from its first word, and leaves it unsaid when a dictation held its chime too long", async () => {

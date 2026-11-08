@@ -428,7 +428,7 @@ export default function NarratorPage() {
           <PanelRow>
             <SettingsRow
               label="Use Røst for Danish"
-              description="Higher quality, made by the CoRal project, run from the Python setup on this PC. It needs the graphics card. On the processor each item takes about half a minute to start. Falls back to Piper when it fails."
+              description="Higher quality, made by the CoRal project, run from the Python setup on this PC. It needs the graphics card. On the processor each item takes about half a minute to start. Falls back to Piper when it fails. Questions you answer by voice always use Piper, since Røst would start too late for the answer."
             >
               <Toggle
                 checked={settings?.voiceDa === "roest-da"}
