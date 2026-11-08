@@ -141,8 +141,9 @@ export class NarratorAnswerRecorder {
         durationSeconds,
         // Cleanup can be a cloud model; an answer is matched as it was said.
         skipPostProcessing: true,
-        // Used only when the user's language is Auto; a language they picked wins.
-        ...(take.language ? { lockedLanguage: take.language } : {}),
+        // The question's language, over the one the user picked for dictation:
+        // the answer is matched against choices written in it.
+        ...(take.language ? { answerLanguage: take.language } : {}),
       });
       const text = typeof result?.text === "string" ? result.text.trim() : "";
       this._report(id, { text });

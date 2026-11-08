@@ -2651,7 +2651,13 @@ class AudioManager {
         // left every ordinary dictation exposed.
         options.trimTrailingSilence = true;
       }
-      if (resolvedLanguage) {
+      // A spoken answer is matched against choices in the question's language,
+      // so that language wins over the user's own pick: with Danish pinned, an
+      // English "Export bug" would come back as Danish words matching nothing.
+      const answerLanguage = metadata?.answerLanguage || null;
+      if (answerLanguage) {
+        options.language = answerLanguage;
+      } else if (resolvedLanguage) {
         options.language = resolvedLanguage;
       } else if (metadata?.lockedLanguage) {
         // Auto-detect is still what the user asked for; we are only stopping
@@ -2671,7 +2677,7 @@ class AudioManager {
         resolvedLanguage,
         model,
       });
-      if (shouldTranslate) {
+      if (shouldTranslate && !answerLanguage) {
         options.translate = true;
       }
       if (metadata?.originalFileName) {
