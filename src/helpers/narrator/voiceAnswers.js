@@ -98,21 +98,29 @@ const ENGLISH_WORDS = new Set(
   )
 );
 
+/** How far one language's words must lead before they overrule the narrator's own language. */
+const LANGUAGE_LEAD = 2;
+
 /**
- * The language a chat wrote its question in, so the voice that says it can
- * pronounce it: Danish with æ, ø or å or more Danish than English words, else
- * English. A chat writes to a developer in English unless told otherwise.
+ * The language to say a chat's question in: the narrator's own language,
+ * unless the question's words are clearly the other one, so the voice can
+ * pronounce it. A word with æ, ø or å counts as one Danish word, so a Danish
+ * name in an English question does not flip it.
+ *
+ * @param {string} text   the question and its choices
+ * @param {"da"|"en"} [fallback]   the "Speak in" setting
  */
-function questionLanguage(text) {
+function questionLanguage(text, fallback = "en") {
   const value = String(text || "").toLowerCase();
-  if (/[æøå]/.test(value)) return "da";
   let danish = 0;
   let english = 0;
   for (const word of value.split(/[^\p{L}]+/u)) {
-    if (DANISH_WORDS.has(word)) danish += 1;
+    if (DANISH_WORDS.has(word) || /[æøå]/.test(word)) danish += 1;
     if (ENGLISH_WORDS.has(word)) english += 1;
   }
-  return danish > english ? "da" : "en";
+  if (danish - english >= LANGUAGE_LEAD) return "da";
+  if (english - danish >= LANGUAGE_LEAD) return "en";
+  return fallback === "da" ? "da" : "en";
 }
 
 class VoiceAnswers {

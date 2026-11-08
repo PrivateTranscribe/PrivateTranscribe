@@ -734,6 +734,27 @@ describe("voice questions", () => {
     expect(roest.synthesize).not.toHaveBeenCalled();
   });
 
+  it("says an English question in English when it names a Danish word, as Speak in says", async () => {
+    const english = fakeVoice("kokoro-en");
+    const piper = fakeVoice("piper-da");
+    const { narrator, overlay, recorder, answer } = voiceNarrator({
+      voices: { "piper-da": piper, "kokoro-en": english },
+    });
+    narrator.updateSettings({ language: "en" });
+    void narrator.askByVoice({
+      ...QUESTION,
+      question: "Which should Main take up next, the lease or the Talentværk board?",
+      choices: ["The lease", "The board"],
+      chat: "Main",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken()[0]).toMatch(/^Main asks: /);
+    expect(english.synthesize).toHaveBeenCalled();
+    expect(piper.synthesize).not.toHaveBeenCalled();
+    answer("The board");
+    expect(recorder.start).toHaveBeenCalledWith(expect.any(String), { language: "en" });
+  });
+
   it("ends the question at once when the voice fails on the read-back", async () => {
     const english = fakeVoice("kokoro-en", async (text: string) => {
       if (text.startsWith("Export fix: ")) throw new Error("voice crashed");

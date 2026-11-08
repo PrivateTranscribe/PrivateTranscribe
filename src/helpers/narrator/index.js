@@ -491,7 +491,10 @@ class Narrator {
   async askByVoice(ask, { signal } = {}) {
     const calledAt = this.now();
     if (!this.takesVoiceQuestions || signal?.aborted) return NOT_ACTIVE;
-    const language = questionLanguage(`${ask.question} ${ask.choices.join(" ")}`);
+    const language = questionLanguage(
+      `${ask.question} ${ask.choices.join(" ")}`,
+      this.settings.language
+    );
     if (!this._voiceFor(language, { quick: true })) return NOT_ACTIVE;
     if (!(await this._inNarratorMode(ask.sessionId, ask.cwd))) return NOT_ACTIVE;
     // Settings can change while the chat's transcript was read.
