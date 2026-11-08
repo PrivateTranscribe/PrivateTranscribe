@@ -499,6 +499,11 @@ class KokoroVoice {
     return { id: this.id, installed: await this.installed() };
   }
 
+  /** Loads Read Aloud's engine ahead of the first item, as the Danish voices do. */
+  warm() {
+    this.kokoro?.loadEngine?.()?.catch?.(() => {});
+  }
+
   async synthesize(text) {
     if (!this.kokoro)
       throw Object.assign(new Error("Read Aloud is unavailable"), { code: "voice-missing" });
