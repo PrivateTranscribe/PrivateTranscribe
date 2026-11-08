@@ -11,6 +11,7 @@
  */
 
 import AudioManager from "./audioManager";
+import logger from "../utils/logger";
 import { readStoredHotkey } from "../utils/hotkeys";
 import { nextVoiceLevel } from "../utils/voiceBars";
 
@@ -59,6 +60,21 @@ export class NarratorAnswerRecorder {
     if (this.current) this._discard(this.current.id);
   }
 
+  /**
+   * Starts the local engine while a question is still being asked. A cold
+   * engine loads its model only once the answer arrives, which can take
+   * seconds, and a press in that wait cancels the question.
+   */
+  prepare() {
+    if (!this.isLocalOnly()) return;
+    try {
+      this.manager = this.manager || this.createManager();
+      this.manager.prewarmTranscription?.();
+    } catch {
+      // Warming up is an optimization only.
+    }
+  }
+
   async _start(id, language) {
     if (this.current) this._discard(this.current.id);
     // Every word the microphone hears here must stay on this PC.
@@ -66,6 +82,7 @@ export class NarratorAnswerRecorder {
       this._report(id, { error: "not-local" });
       return;
     }
+    this.prepare();
     const take = {
       id,
       /** The question's language: an answer of a word or two is too short to detect one. */
@@ -74,6 +91,8 @@ export class NarratorAnswerRecorder {
       stream: null,
       recorder: null,
       startedAt: performance.now(),
+      /** When the microphone opened, or null while it opens. */
+      openedAt: null,
       stopping: false,
       discarded: false,
       muted: false,
@@ -98,6 +117,19 @@ export class NarratorAnswerRecorder {
         if (event.data && event.data.size > 0) take.chunks.push(event.data);
       };
       take.recorder.start();
+      take.openedAt = performance.now();
+      const settings = take.stream.getAudioTracks?.()[0]?.getSettings?.() || {};
+      logger.info(
+        "Voice answer recording started",
+        {
+          label: take.stream.getAudioTracks?.()[0]?.label || null,
+          sampleRate: settings.sampleRate ?? null,
+          openMs: Math.round(take.openedAt - take.startedAt),
+          // The key came up while the microphone opened: almost nothing is recorded.
+          keyAlreadyUp: take.stopping,
+        },
+        "audio"
+      );
       this._meter(take);
       // The key came up while the microphone opened.
       if (take.stopping) void this._stop(id, { force: true });
@@ -134,7 +166,18 @@ export class NarratorAnswerRecorder {
       return;
     }
     const blob = new Blob(take.chunks, { type: recorder.mimeType || "audio/webm" });
-    const durationSeconds = (performance.now() - take.startedAt) / 1000;
+    const stoppedAt = performance.now();
+    const durationSeconds = (stoppedAt - take.startedAt) / 1000;
+    logger.info(
+      "Voice answer recording stopped",
+      {
+        heldSeconds: Number(durationSeconds.toFixed(2)),
+        recordedSeconds: Number(((stoppedAt - (take.openedAt ?? stoppedAt)) / 1000).toFixed(2)),
+        blobSize: blob.size,
+        chunksCount: take.chunks.length,
+      },
+      "audio"
+    );
     try {
       const { result } = await this.manager.runTranscription(blob, {
         source: "narrator-answer",

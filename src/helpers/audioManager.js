@@ -1895,6 +1895,11 @@ class AudioManager {
     return constraints;
   }
 
+  /** The same warm-up for a recording made outside startRecording, such as a voice answer. */
+  prewarmTranscription() {
+    this._preWarmLocalTranscriptionServer();
+  }
+
   // Fire-and-forget pre-warm of the local transcription server so the model
   // loads into memory while the user is still speaking instead of serially
   // after they stop. Server startup is idempotent: an in-flight start is

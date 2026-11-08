@@ -65,6 +65,7 @@ export default function NarratorOverlay({
   const [localOnly, setLocalOnly] = useState(isLocalOnlyTranscription);
   const recordingRef = useRef(isRecording);
   const playerRef = useRef<NarratorPlayer | null>(null);
+  const recorderRef = useRef<NarratorAnswerRecorder | null>(null);
   const levelRef = useRef(level);
   useEffect(() => {
     levelRef.current = level;
@@ -82,6 +83,7 @@ export default function NarratorOverlay({
       isLocalOnly: isLocalOnlyTranscription,
       onLevel: (value: number) => levelRef.current?.set(value),
     });
+    recorderRef.current = recorder;
 
     const offState = api.onNarratorState?.((_event, next) => setState(next));
     const offPlay = api.onNarratorPlay?.((_event, message) => player.handle(message));
@@ -114,10 +116,17 @@ export default function NarratorOverlay({
       offStop?.();
       offAnswer?.();
       recorder.dispose();
+      recorderRef.current = null;
       player.stop();
       playerRef.current = null;
     };
   }, []);
+
+  // A question being said may get a spoken answer: the engine starts loading now.
+  const speakingQuestionId = state?.question?.phase === "speaking" ? state.question.id : null;
+  useEffect(() => {
+    if (speakingQuestionId) recorderRef.current?.prepare();
+  }, [speakingQuestionId]);
 
   // Voice answers need local-only transcription; main opens no answer window without it.
   useEffect(() => {
