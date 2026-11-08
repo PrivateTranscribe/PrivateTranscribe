@@ -16,11 +16,13 @@ function setup({
   closeBy = Infinity,
   deadline = Infinity,
   onChange = () => {},
+  log = () => {},
 }: {
   alive?: () => boolean;
   closeBy?: number;
   deadline?: number;
   onChange?: () => void;
+  log?: (message: string, data?: object) => void;
 } = {}) {
   const recorder = { start: vi.fn(), stop: vi.fn(), discard: vi.fn() };
   const said: string[] = [];
@@ -31,7 +33,7 @@ function setup({
     return playback;
   });
   const stopSpeech = vi.fn();
-  const answers = new VoiceAnswers({ recorder, onChange });
+  const answers = new VoiceAnswers({ recorder, onChange, log });
   const handle = answers.ask({
     chatName: "Export fix",
     options: ["Merge it", "Not now"],
@@ -92,6 +94,23 @@ describe("the voice answer window", () => {
     expect(t.answers.onKey({ type: "toggle" })).toBe(true);
     await vi.advanceTimersByTimeAsync(GRACE_MS);
     expect(t.answers.onKey({ type: "toggle" })).toBe(false);
+  });
+
+  it("logs where a question ended, so a cancel shows which press caused it, without its words", async () => {
+    const log = vi.fn();
+    const t = setup({ log });
+    t.handle.questionDone();
+    t.hold();
+    t.release();
+    // Pressed again while the answer is still being transcribed.
+    t.hold(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(log).toHaveBeenCalledWith("Narrator voice question ended", {
+      result: "cancelled",
+      reason: undefined,
+      phase: "hearing",
+      missed: 0,
+    });
   });
 
   it("cancels on a second press while the pick waits, says so, and keeps the release from dictation", async () => {

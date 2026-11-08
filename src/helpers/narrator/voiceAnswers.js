@@ -426,6 +426,13 @@ class VoiceAnswers {
     if (session.phase === "recording") this.recorder.discard(session.recording.id);
     // A line still being said ends with the session, so nothing outlives the outcome.
     if (session.phase === "asking" || session.phase === "reading") session.stopSpeech?.();
+    // Where it ended says why, e.g. a press while "hearing" is the cancel gesture. No words.
+    this.debug("Narrator voice question ended", {
+      result: outcome.result,
+      reason: outcome.reason,
+      phase: session.phase,
+      missed: session.missed,
+    });
     session.phase = "closing";
     session.ended = outcome.result;
     this._changed();

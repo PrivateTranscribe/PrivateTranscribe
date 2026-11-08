@@ -200,6 +200,7 @@ function setupNarratorHandlers({
 
   narrator = new Narrator({
     dataDir: app.getPath("userData"),
+    log,
     openPlayback,
     stopPlayback: () => {
       overlay()?.send("narrator-stop-playback");
