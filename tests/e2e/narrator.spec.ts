@@ -259,6 +259,35 @@ test("gaming mode speaks only waits, turns listening off, and counts waits only 
   await expect(marker).toHaveCount(0, { timeout: 10_000 });
 });
 
+test("speaks the Danish test line after Read Aloud's splitter has run", async ({
+  electronApp,
+  controlPanel,
+}) => {
+  test.skip(!HAS_VOICE, "the Danish voice is not downloaded on this machine");
+  // The splitter imports kokoro-js in the main process, which loads ONNX
+  // Runtime 1.21 there. The Danish voice once ran sherpa-onnx in the same
+  // process, asked that runtime for API 28, and the whole app exited.
+  const sentences = await controlPanel.evaluate(() =>
+    window.electronAPI.readAloudSplit("Første sætning. Anden sætning.")
+  );
+  expect(sentences.length).toBeGreaterThan(0);
+
+  await controlPanel.evaluate(() => window.electronAPI.narratorTestVoice("da"));
+  await expect
+    .poll(async () => (await narratorState(controlPanel)).lastPlayback?.result, {
+      timeout: 20_000,
+    })
+    .toBe("done");
+  expect((await narratorState(controlPanel)).voiceError).toBeNull();
+  // The voice runs in its own utility process, never in the main one.
+  const mainLibraries = await electronApp.evaluate(() => {
+    const report = process.report?.getReport() as { sharedObjects?: string[] } | undefined;
+    return (report?.sharedObjects ?? []).filter((file) => /sherpa-onnx|onnxruntime/i.test(file));
+  });
+  expect(mainLibraries.some((file) => /onnxruntime-node/i.test(file))).toBe(true);
+  expect(mainLibraries.filter((file) => /sherpa-onnx/i.test(file))).toEqual([]);
+});
+
 test.describe("without the Danish voice", () => {
   const EMPTY_VOICE_DIR = path.join(os.tmpdir(), `pt-e2e-narrator-no-voice-${RUN}`);
   test.use({ appEnv: { ...NARRATOR_ENV, PT_NARRATOR_PIPER_DIR: EMPTY_VOICE_DIR } });

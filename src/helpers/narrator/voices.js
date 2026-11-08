@@ -1,11 +1,12 @@
 "use strict";
 
 /**
- * The narrator's voices. Each one turns a sentence into PCM in the main
- * process; the overlay window plays it.
+ * The narrator's voices. Each one turns a sentence into PCM outside the main
+ * process's own thread; the overlay window plays it.
  *
  *   piper-da   Danish, Piper "talesyntese" through sherpa-onnx (already in the
- *              app for Parakeet). CPU, about 0.3 s for 25 words. The default.
+ *              app for Parakeet), in its own utility process (piperHost.js).
+ *              CPU, about 0.3 s for 25 words. The default.
  *   roest-da   Danish, Røst v3 (Chatterbox, CoRal project). Opt-in: it runs in
  *              a Python environment the user installs outside the app, and
  *              stays off the installer.
@@ -62,16 +63,36 @@ function piperDir() {
   );
 }
 
-function sherpa() {
-  return require("sherpa-onnx-node");
+/**
+ * Starts piperHost.js. sherpa-onnx-node must never load in the main process:
+ * see that file for the ONNX Runtime clash that closed the app.
+ */
+function createPiperHost() {
+  const hostPath = path.join(__dirname, "piperHost.js");
+  // Undefined under ELECTRON_RUN_AS_NODE and plain Node, where a forked child does the same job.
+  const utilityProcess = process.versions.electron ? require("electron").utilityProcess : null;
+  if (utilityProcess) {
+    return utilityProcess.fork(hostPath, [], { serviceName: "PrivateTranscribe Narrator voice" });
+  }
+  const child = require("node:child_process").fork(hostPath, [], {
+    serialization: "advanced",
+    stdio: ["ignore", "ignore", "inherit", "ipc"],
+    windowsHide: true,
+  });
+  child.postMessage = (message) => child.send(message);
+  return child;
 }
 
 class PiperVoice {
-  constructor({ log = () => {} } = {}) {
+  constructor({ log = () => {}, createHost = createPiperHost } = {}) {
     this.id = "piper-da";
     this.language = "da";
     this.log = log;
+    this.createHost = createHost;
+    this.host = null;
     this.tts = null;
+    this.pending = new Map();
+    this.nextId = 1;
     this.downloading = null;
   }
 
@@ -159,14 +180,12 @@ class PiperVoice {
   }
 
   async remove() {
-    this.tts = null;
+    // Stop the engine first, so no process still has the voice's files in use.
+    await this._stopHost();
     await fsp.rm(piperDir(), { recursive: true, force: true });
   }
 
-  /**
-   * The engine, loaded once. createAsync keeps the ~1.7 s load off the main
-   * process's thread, which a plain constructor would block.
-   */
+  /** The engine, loaded once in the host process. */
   _load() {
     if (this.tts) return this.tts;
     if (!this.installed()) {
@@ -175,19 +194,15 @@ class PiperVoice {
       );
     }
     const p = this.paths();
-    this.tts = sherpa()
-      .OfflineTts.createAsync({
-        model: {
-          vits: { model: p.model, tokens: p.tokens, dataDir: p.espeak },
-          numThreads: Math.max(1, Math.min(2, os.cpus().length - 1)),
-          provider: "cpu",
-        },
-        maxNumSentences: 1,
-      })
-      .catch((error) => {
-        this.tts = null;
-        throw error;
-      });
+    this.tts = this._call("load", {
+      model: p.model,
+      tokens: p.tokens,
+      dataDir: p.espeak,
+      numThreads: Math.max(1, Math.min(2, os.cpus().length - 1)),
+    }).catch((error) => {
+      this.tts = null;
+      throw error;
+    });
     return this.tts;
   }
 
@@ -197,20 +212,78 @@ class PiperVoice {
   }
 
   async synthesize(text) {
-    const tts = await this._load();
-    // Electron's V8 refuses buffers that point at native memory, and sherpa
-    // hands back one by default ("TTS settlement failed"); a copy it accepts.
-    const audio = await tts.generateAsync({
-      text,
-      sid: 0,
-      speed: 1.0,
-      enableExternalBuffer: false,
-    });
-    return { pcm: Float32Array.from(audio.samples), sampleRate: audio.sampleRate };
+    await this._load();
+    const { samples, sampleRate } = await this._call("speak", { text });
+    return { pcm: samples, sampleRate };
   }
 
   unload() {
-    this.tts = null;
+    this._stopHost();
+  }
+
+  _call(op, args) {
+    const host = this._ensureHost();
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      try {
+        host.postMessage({ id, op, args });
+      } catch (error) {
+        this._dropHost(host, error);
+      }
+    });
+  }
+
+  _ensureHost() {
+    if (this.host) return this.host;
+    const host = this.createHost();
+    host.on("message", (message) => {
+      if (host !== this.host) return;
+      const waiter = this.pending.get(message?.id);
+      if (!waiter) return;
+      this.pending.delete(message.id);
+      if (message.ok) waiter.resolve(message.result);
+      else
+        waiter.reject(
+          Object.assign(new Error(message.error?.message || "The Danish voice failed"), {
+            code: message.error?.code || "voice-host-error",
+          })
+        );
+    });
+    host.once("exit", (code) => {
+      if (host !== this.host) return;
+      this.log("Narrator voice host exited", { code });
+      this._dropHost(host, new Error(`The Danish voice stopped (${code})`));
+    });
+    this.host = host;
+    return host;
+  }
+
+  /** Forgets `host`; every request still waiting on it fails with `error`. */
+  _dropHost(host, error) {
+    if (host === this.host) {
+      this.host = null;
+      this.tts = null;
+    }
+    for (const waiter of this.pending.values()) waiter.reject(error);
+    this.pending.clear();
+  }
+
+  /** Stops the host and resolves once it has exited, so its files can be removed. */
+  _stopHost() {
+    const host = this.host;
+    if (!host) return Promise.resolve();
+    const exited = new Promise((resolve) => {
+      host.once("exit", resolve);
+      setTimeout(resolve, 2000).unref?.();
+    });
+    this._dropHost(host, new Error("The Danish voice was stopped"));
+    try {
+      host.kill();
+    } catch {
+      // Already gone.
+    }
+    return exited;
   }
 }
 
