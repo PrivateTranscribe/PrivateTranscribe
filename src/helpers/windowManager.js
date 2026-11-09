@@ -7,6 +7,7 @@ const DragManager = require("./dragManager");
 const MenuManager = require("./menuManager");
 const DevServerManager = require("./devServerManager");
 const debugLogger = require("./debugLogger");
+const microphoneAccess = require("./microphoneAccess");
 const { applyNavigationGuard } = require("./navigationGuard");
 const { normalizeControlPanelDestination } = require("./controlPanelNavigation");
 const {
@@ -896,6 +897,26 @@ class WindowManager {
     return false;
   }
 
+  /**
+   * A dictation key pressed before the user has allowed the microphone opens
+   * setup instead of a recording. The session permission handler would refuse
+   * the capture anyway; this keeps the overlay from appearing with an error
+   * the user cannot act on, and puts them where the Allow button is.
+   */
+  async _microphoneAllowedOrOpenSetup() {
+    const panel = this.controlPanelWindow;
+    const host =
+      panel && !panel.isDestroyed()
+        ? panel.webContents
+        : this.mainWindow && !this.mainWindow.isDestroyed()
+          ? this.mainWindow.webContents
+          : null;
+    if (await microphoneAccess.resolve(host)) return true;
+    debugLogger.info("Dictation key ignored: the microphone is not allowed yet, opening setup");
+    await this.openControlPanel();
+    return false;
+  }
+
   createHotkeyCallback() {
     let lastToggleTime = 0;
     const DEBOUNCE_MS = 150;
@@ -931,6 +952,8 @@ class WindowManager {
         return;
       }
       lastToggleTime = now;
+
+      if (!(await this._microphoneAllowedOrOpenSetup())) return;
 
       if (this._dictationKeyTaken({ type: "toggle" })) {
         return;
@@ -987,6 +1010,7 @@ class WindowManager {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+    if (!(await this._microphoneAllowedOrOpenSetup())) return;
 
     if (this._dictationKeyTaken({ type: "toggle" })) {
       return;
@@ -1018,6 +1042,7 @@ class WindowManager {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+    if (!(await this._microphoneAllowedOrOpenSetup())) return;
 
     if (this._dictationKeyTaken({ type: "start", holdToken })) {
       return;
@@ -1093,6 +1118,7 @@ class WindowManager {
     if (this.hotkeyManager.isInListeningMode()) {
       return;
     }
+    if (!(await this._microphoneAllowedOrOpenSetup())) return;
 
     if (this.isOverlaySuppressed()) {
       if (!this.mainWindow || this.mainWindow.isDestroyed()) {

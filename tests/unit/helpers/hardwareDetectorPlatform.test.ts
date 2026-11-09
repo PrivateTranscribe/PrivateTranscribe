@@ -131,6 +131,42 @@ describe("detectWindowsGPU — WMIC detects NVIDIA, nvidia-smi absent", () => {
   });
 });
 
+// Windows 11 24H2 and later ship without WMIC.
+describe("detectWindowsGPU — WMIC missing, display adapters read through CIM", () => {
+  const CIM_ROWS = "cim,2147483648,32.0.21042.62,AMD Radeon(TM) Graphics\r\n";
+
+  it("still finds an AMD card, instead of reporting no GPU", async () => {
+    execSpy
+      .mockImplementationOnce(notFound) // wmic
+      .mockResolvedValueOnce(CIM_ROWS) // Get-CimInstance
+      .mockImplementationOnce(notFound); // nvidia-smi
+
+    const gpu = makeGpu();
+    await new HardwareDetector().detectWindowsGPU(gpu);
+
+    expect(String(execSpy.mock.calls[1][0])).toContain("Get-CimInstance Win32_VideoController");
+    expect(gpu.vendor).toBe("amd");
+    expect(gpu.available).toBe(true);
+    expect(gpu.model).toContain("Radeon");
+  });
+
+  it("gives nvidia-smi longer than the default, so a sleeping laptop card can wake", async () => {
+    execSpy
+      .mockImplementationOnce(notFound)
+      .mockResolvedValueOnce("cim,4293918720,32.0.16.2114,NVIDIA GeForce RTX 3090\r\n")
+      .mockResolvedValueOnce("NVIDIA GeForce RTX 3090, 24576 MiB, 621.14");
+
+    const gpu = makeGpu();
+    await new HardwareDetector().detectWindowsGPU(gpu);
+
+    const smiCall = execSpy.mock.calls[2];
+    expect(String(smiCall[0])).toContain("nvidia-smi");
+    expect((smiCall[1] as { timeout: number }).timeout).toBeGreaterThan(5000);
+    expect(gpu.cuda.available).toBe(true);
+    expect(gpu.vram).toBe(24576);
+  });
+});
+
 describe("detectWindowsGPU — nvidia-smi present (CUDA confirmed)", () => {
   it("marks cuda.available=true when nvidia-smi succeeds", async () => {
     execSpy.mockResolvedValueOnce(WMIC_NVIDIA_ONLY).mockResolvedValueOnce(NVIDIA_SMI_RTX);

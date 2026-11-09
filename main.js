@@ -1,4 +1,4 @@
-const { app, globalShortcut, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, globalShortcut, BrowserWindow, dialog, ipcMain, session } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const {
@@ -197,6 +197,11 @@ async function initializeManagers() {
   if (appResetOutcome) {
     debugLogger.info("App data reset finished", { leftOver: appResetOutcome.survivors });
   }
+
+  // Before any window exists: no renderer may open the microphone until the
+  // user has pressed Allow. Electron grants it by default and Windows never
+  // asks a desktop app, so this is the only place that answer is enforced.
+  require("./src/helpers/microphoneAccess").install(session.defaultSession);
 
   // Say plainly when the previous session died, and where the evidence is. A
   // crash the user only experiences as "it closed itself" is otherwise invisible
