@@ -25,6 +25,14 @@ interface HardwareSetupStepProps {
     whisperForceCpu?: boolean;
   }) => void;
   onAppliedChange?: (applied: boolean) => void;
+  /** Every finished detection, including a re-detect. */
+  onDetected?: (detection: HardwareDetectionResult) => void;
+  /**
+   * Recommendations were already applied in this setup. Coming Back to this
+   * step must not apply them again: that overwrote the model and engine the
+   * user had just picked on the next step.
+   */
+  alreadyApplied?: boolean;
   showSkip?: boolean;
 }
 
@@ -34,12 +42,14 @@ export default function HardwareSetupStep({
   stepLabel,
   onApplyRecommendations,
   onAppliedChange,
+  onDetected,
+  alreadyApplied = false,
   showSkip = true,
 }: HardwareSetupStepProps) {
   const [detectionState, setDetectionState] = useState<DetectionState>("idle");
   const [detection, setDetection] = useState<HardwareDetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [applied, setApplied] = useState(false);
+  const [applied, setApplied] = useState(alreadyApplied);
 
   const runDetection = async (clearCache = false) => {
     setDetectionState("detecting");
@@ -53,6 +63,7 @@ export default function HardwareSetupStep({
       if (result?.success && result.detection) {
         setDetection(result.detection);
         setDetectionState("complete");
+        onDetected?.(result.detection);
       } else {
         setError(result?.error || "Hardware detection failed");
         setDetectionState("error");
@@ -63,7 +74,11 @@ export default function HardwareSetupStep({
     }
   };
 
-  const handleRedetect = () => runDetection(true);
+  // A re-detect is the user asking for a fresh answer, so it is applied again.
+  const handleRedetect = () => {
+    setApplied(false);
+    void runDetection(true);
+  };
 
   // Auto-run detection on mount
   useEffect(() => {
@@ -171,7 +186,7 @@ export default function HardwareSetupStep({
                 <h3 className="text-sm font-medium text-foreground">Detection Failed</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
               </div>
-              <Button onClick={runDetection} variant="outline" size="sm" className="h-7 gap-1.5">
+              <Button onClick={handleRedetect} variant="outline" size="sm" className="h-7 gap-1.5">
                 <RefreshCw className="w-3 h-3" />
                 Retry
               </Button>
@@ -179,8 +194,8 @@ export default function HardwareSetupStep({
           </div>
           <div className="rounded-lg border border-border-subtle bg-surface-1 p-3">
             <p className="text-[11px] text-muted-foreground">
-              Can't detect hardware? You can continue with safe CPU defaults - Whisper Turbo model
-              works well on most machines and can be changed later in Settings.
+              Can't detect hardware? You can continue on the processor with Whisper Base, which runs
+              on any machine. You can change the model on the next step.
             </p>
             <Button
               onClick={handleContinueWithDefaults}
@@ -337,7 +352,7 @@ export default function HardwareSetupStep({
                 </h4>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {applied
-                    ? "Local Whisper on your processor with the Turbo model. You can change it on the next step."
+                    ? "Local Whisper on your processor with the Base model. You can change it on the next step."
                     : "The check finished without a clear recommendation, so safe processor defaults are used."}
                 </p>
               </div>

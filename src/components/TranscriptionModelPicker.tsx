@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ComponentType } from "react";
+import { describeDownloadError } from "../utils/gpuSetupMessages";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -328,6 +329,12 @@ interface TranscriptionModelPickerProps {
    */
   preferredLanguage?: string;
   onDownloadComplete?: () => void;
+  /**
+   * Called when the user starts (or retries) a Whisper model download. Setup
+   * uses it to fetch the GPU engine in the same click, so a GPU PC never ends
+   * setup with the model but without the engine that makes it fast.
+   */
+  onLocalModelDownloadStart?: (modelId: string) => void;
 }
 
 const CLOUD_PROVIDER_TABS = [
@@ -401,6 +408,7 @@ export default function TranscriptionModelPicker({
   preferredLanguage,
   spokenLanguages = [],
   onDownloadComplete,
+  onLocalModelDownloadStart,
 }: TranscriptionModelPickerProps) {
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [showAllLocalModels, setShowAllLocalModels] = useState(false);
@@ -473,19 +481,26 @@ export default function TranscriptionModelPicker({
     onLocalModelSelectRef.current = onLocalModelSelect;
   }, [onLocalModelSelect]);
 
-  const validateAndSelectModel = useCallback((loadedModels: LocalModel[]) => {
-    const current = selectedLocalModelRef.current;
-    if (!current) return;
+  const validateAndSelectModel = useCallback(
+    (loadedModels: LocalModel[]) => {
+      const current = selectedLocalModelRef.current;
+      if (!current) return;
+      // In setup a model that is not downloaded yet is the normal state: its card
+      // carries the Download button. Snapping to whatever happens to be on disk
+      // replaced setup's pick for this PC and language without telling anyone.
+      if (variant === "onboarding") return;
 
-    const downloaded = loadedModels.filter((m) => m.downloaded);
-    const isCurrentDownloaded = loadedModels.find((m) => m.model === current)?.downloaded;
+      const downloaded = loadedModels.filter((m) => m.downloaded);
+      const isCurrentDownloaded = loadedModels.find((m) => m.model === current)?.downloaded;
 
-    if (!isCurrentDownloaded && downloaded.length > 0) {
-      onLocalModelSelectRef.current(downloaded[0].model);
-    } else if (!isCurrentDownloaded && downloaded.length === 0) {
-      onLocalModelSelectRef.current("");
-    }
-  }, []);
+      if (!isCurrentDownloaded && downloaded.length > 0) {
+        onLocalModelSelectRef.current(downloaded[0].model);
+      } else if (!isCurrentDownloaded && downloaded.length === 0) {
+        onLocalModelSelectRef.current("");
+      }
+    },
+    [variant]
+  );
 
   const loadLocalModels = useCallback(async () => {
     if (isLoadingRef.current) return;
@@ -591,6 +606,7 @@ export default function TranscriptionModelPicker({
     cancelDownload,
     isCancelling,
     failedModel: failedWhisperModel,
+    lastError: whisperDownloadError,
     retryDownload: retryWhisperDownload,
   } = useModelDownload({
     modelType: "whisper",
@@ -782,21 +798,31 @@ export default function TranscriptionModelPicker({
     const info = WHISPER_MODEL_INFO[failedModel];
     return (
       <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/8 px-3 py-2">
-        <span className="text-xs text-destructive truncate">
-          Failed: {info?.name || failedModel}
+        <span className="text-xs text-destructive" data-testid="model-download-failed">
+          {info?.name || failedModel} did not download.{" "}
+          {describeDownloadError(whisperDownloadError, "model")}
         </span>
         <Button
           size="sm"
           variant="outline"
           className="h-6 px-2.5 text-[11px] shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
-          onClick={retryFn}
+          onClick={() => {
+            onLocalModelDownloadStart?.(failedModel);
+            retryFn();
+          }}
         >
           <RefreshCw size={11} className="mr-1" />
           Retry
         </Button>
       </div>
     );
-  }, [useLocalWhisper, failedWhisperModel, retryWhisperDownload]);
+  }, [
+    useLocalWhisper,
+    failedWhisperModel,
+    whisperDownloadError,
+    retryWhisperDownload,
+    onLocalModelDownloadStart,
+  ]);
 
   const renderLocalModels = () => {
     const allModelEntries = (
@@ -875,7 +901,10 @@ export default function TranscriptionModelPicker({
               perf={perf}
               onSelect={() => handleWhisperModelSelect(modelId)}
               onDelete={() => handleDelete(modelId)}
-              onDownload={() => downloadModel(modelId, handleWhisperModelSelect)}
+              onDownload={() => {
+                onLocalModelDownloadStart?.(modelId);
+                void downloadModel(modelId, handleWhisperModelSelect);
+              }}
               onCancel={cancelDownload}
               styles={styles}
             />

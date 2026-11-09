@@ -19,6 +19,7 @@ import { describeMicrophoneSelection } from "../../utils/audioDeviceUtils";
 import type { AggregateStats } from "../../types/electron";
 import logger from "../../utils/logger";
 import { SectionLabel } from "../ui/SectionLabel";
+import IdleGpuCard from "../ui/IdleGpuCard";
 
 interface DashboardPageProps {
   onNavigate: (page: PageId) => void;
@@ -147,6 +148,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     localTranscriptionProvider,
     cloudTranscriptionProvider,
     whisperForceCpu,
+    setWhisperForceCpu,
     preferBuiltInMic,
     selectedMicDeviceId,
     historyLimit,
@@ -402,6 +404,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">Dashboard</h1>
         </div>
+
+        <IdleGpuCard
+          useLocalWhisper={useLocalWhisper}
+          localTranscriptionProvider={localTranscriptionProvider}
+          whisperForceCpu={whisperForceCpu}
+          whisperModel={whisperModel}
+          onUseProcessor={() => setWhisperForceCpu(true)}
+        />
 
         {/* Stats + Config Row */}
         <div className="flex flex-col lg:flex-row gap-6">

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.25.0 - 2026-11-09
+
+### Added
+
+- If your NVIDIA graphics card is not used for dictation, Home says so and offers to download the GPU engine, about 750 MB. "Keep using the processor" hides the card for good.
+
+### Fixed
+
+- On a PC with an NVIDIA graphics card, setup downloads the GPU engine together with the Whisper model, and Next waits until Whisper runs on the graphics card. Before, the engine was an optional button further down the page, and setup could finish with Whisper running many times slower on the processor without saying so.
+- When the GPU engine cannot download or cannot run, setup says why and offers to try again. Using the processor instead is your own choice, never a quiet fallback.
+- The microphone stays off until you press Allow. Before, the microphone test and the dictation hotkey worked during setup without it. If you finished setup on an earlier version, your microphone keeps working.
+- Setup explains that Windows does not ask desktop apps before they use the microphone, and the Settings button reads Allow instead of Test.
+- On a PC without an NVIDIA card, setup picks Whisper Turbo for languages other than English, because the smaller models are weak in Danish and many other languages. Setup says it will be slower on that PC. A large model you pick yourself gets the same note.
+- AMD and Intel graphics cards are found again on Windows 11 24H2 and later. Before, setup said "No GPU Detected".
+- Setup waits up to 15 seconds for an NVIDIA card to answer, up from 5. Laptops with both an NVIDIA and a built-in graphics chip could miss the NVIDIA card while it woke up.
+- Going back to the hardware step in setup keeps the choices you made after it, and retrying hardware detection applies the new result.
+- Setup's safe defaults say Whisper Base, which is what they choose. Before, the text said Turbo.
+- The model you pick in setup stays picked. Before, setup could swap it for another model already on disk.
+- A model download that fails says why, for example no internet or a full disk, instead of only "Failed".
+- Cancelling the GPU engine download shows that you cancelled it, with a way to start it again.
+
 ## 0.24.2 - 2026-10-24
 
 ### Fixed

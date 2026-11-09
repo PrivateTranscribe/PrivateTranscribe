@@ -401,6 +401,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // System settings helpers for microphone/audio permissions
   openMicrophoneSettings: () => ipcRenderer.invoke("open-microphone-settings"),
+  getMicrophoneAccess: () => ipcRenderer.invoke("microphone-access-get"),
+  allowMicrophone: () => ipcRenderer.invoke("microphone-access-allow"),
   openSoundInputSettings: () => ipcRenderer.invoke("open-sound-input-settings"),
   openAccessibilitySettings: () => ipcRenderer.invoke("open-accessibility-settings"),
   openWhisperModelsFolder: () => ipcRenderer.invoke("open-whisper-models-folder"),

@@ -10,6 +10,8 @@ interface MicrophoneSettingsProps {
   selectedMicDeviceId: string;
   onPreferBuiltInChange: (value: boolean) => void;
   onDeviceSelect: (deviceId: string) => void;
+  /** Whether the user has pressed Allow; the device test waits for it. */
+  accessAllowed?: boolean;
 }
 
 export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
@@ -17,6 +19,7 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
   selectedMicDeviceId,
   onPreferBuiltInChange,
   onDeviceSelect,
+  accessAllowed,
 }) => {
   const [micWarmWindowSeconds, setMicWarmWindowSeconds] = useLocalStorage<number>(
     "micWarmWindowSeconds",
@@ -41,6 +44,8 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
           className="w-[300px]"
           preferBuiltInMic={preferBuiltInMic}
           selectedMicDeviceId={selectedMicDeviceId}
+          accessAllowed={accessAllowed}
+          reloadSignal={accessAllowed}
           onChange={(next) => {
             onPreferBuiltInChange(next.preferBuiltInMic);
             onDeviceSelect(next.selectedMicDeviceId);

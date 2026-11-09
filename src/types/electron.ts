@@ -420,6 +420,12 @@ export interface HardwareRecommendations {
   parakeetHardware?: { eligible: boolean; reasons: string[] };
 }
 
+export interface MicrophoneAccessState {
+  allowed: boolean;
+  decided: boolean;
+  source: string | null;
+}
+
 export interface HardwareDetectionResult {
   timestamp: number;
   platform: string;
@@ -1140,6 +1146,10 @@ declare global {
 
       // System settings helpers
       openMicrophoneSettings?: () => Promise<{ success: boolean; error?: string }>;
+      /** The in-app microphone consent the main process enforces. */
+      getMicrophoneAccess?: () => Promise<MicrophoneAccessState>;
+      /** Record the user's Allow. Accepted from the control panel only. */
+      allowMicrophone?: () => Promise<MicrophoneAccessState & { error?: string }>;
       openSoundInputSettings?: () => Promise<{ success: boolean; error?: string }>;
       openAccessibilitySettings?: () => Promise<{ success: boolean; error?: string }>;
       openWhisperModelsFolder?: () => Promise<{ success: boolean; error?: string }>;

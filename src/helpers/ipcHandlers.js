@@ -9,6 +9,7 @@ const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 const { requestAppReset } = require("./appReset");
 const debugLogger = require("./debugLogger");
+const microphoneAccess = require("./microphoneAccess");
 const { isOfficialBuild } = require("./officialBuild");
 const { getSystemPrompt } = require("./prompts");
 const { buildAnthropicRequestBody, readAnthropicText } = require("./anthropicReasoning");
@@ -2611,6 +2612,23 @@ class IPCHandlers {
     };
 
     ipcMain.handle("open-microphone-settings", () => openSystemSettings("microphone"));
+
+    // The in-app microphone consent the session permission handlers enforce
+    // (microphoneAccess.js). Reading it settles an install from before the gate.
+    ipcMain.handle("microphone-access-get", async (event) => {
+      await microphoneAccess.resolve(event.sender);
+      return microphoneAccess.getState();
+    });
+
+    // Only the control panel shows the Allow button. The dictation overlay has
+    // no reason to grant itself the microphone, so it is refused here.
+    ipcMain.handle("microphone-access-allow", async (event) => {
+      const panel = this.windowManager?.controlPanelWindow;
+      if (!panel || panel.isDestroyed() || event.sender !== panel.webContents) {
+        return { ...microphoneAccess.getState(), error: "Only the control panel can allow this" };
+      }
+      return microphoneAccess.allow("user");
+    });
     ipcMain.handle("open-sound-input-settings", () => openSystemSettings("sound"));
     ipcMain.handle("open-accessibility-settings", () => openSystemSettings("accessibility"));
 
