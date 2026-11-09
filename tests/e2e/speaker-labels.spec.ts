@@ -105,10 +105,14 @@ test("multilingual speaker settings and short replies", async ({
   await capture("short-replies");
   if (phase !== "before") {
     const transcript = await controlPanel.locator("textarea[readonly]").inputValue();
-    expect(transcript).toContain("Speaker 1: Kan vi starte?");
-    expect(transcript).toContain("Speaker 2: Ja.");
-    expect(transcript).toContain("Speaker 3: Ja.");
-    expect(transcript).toContain("Speaker 1: Let's begin.");
+    expect(transcript).toBe(
+      [
+        "[00:00:00] Speaker 1: Kan vi starte?",
+        "[00:00:03] Speaker 2: Ja.",
+        "[00:00:04] Speaker 3: Ja.",
+        "[00:00:05] Speaker 1: Let's begin.",
+      ].join("\n")
+    );
     await electronApp.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler("check-diarization-model-status");
       ipcMain.handle("check-diarization-model-status", () => ({ ready: false }));
@@ -231,6 +235,18 @@ for (const sample of [
       expect(transcript).toContain("Speaker 3");
     }
     expect(transcript).not.toContain("Unknown speaker");
+    // Every line opens with the time it started, and the times never run
+    // backwards. One voice keeps its times and drops only the label.
+    const lines = transcript.split("\n");
+    for (const line of lines) {
+      expect(line).toMatch(
+        sample.count > 1
+          ? /^\[\d{2}:\d{2}:\d{2}\] Speaker \d+: \S/
+          : /^\[\d{2}:\d{2}:\d{2}\] (?!Speaker \d+:)\S/
+      );
+    }
+    const stamps = lines.map((line) => line.slice(1, 9));
+    expect([...stamps].sort()).toEqual(stamps);
     const dir = evidenceDir || info.outputDir;
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${phase}-real-${sample.name}.txt`), transcript);

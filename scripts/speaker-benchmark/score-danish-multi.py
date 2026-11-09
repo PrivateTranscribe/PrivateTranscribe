@@ -69,7 +69,9 @@ def cpwer(reference, hypothesis):
 def wer(reference, text):
     from rapidfuzz.distance import Levenshtein
     ref = [t for turn in reference["turns"] for t in tokens(turn["text"])]
-    hyp = tokens(re.sub(r"^(?:Speaker \d+|Unknown speaker):\s*", "", text, flags=re.M))
+    # Each line opens with its time and, with labels shown, its speaker:
+    # "[00:01:23] Speaker 2: words". Neither is a spoken word.
+    hyp = tokens(re.sub(r"^(?:\[\d+:\d{2}:\d{2}\]\s*)?(?:(?:Speaker \d+|Unknown speaker):\s*)?", "", text, flags=re.M))
     errors = Levenshtein.distance(ref, hyp)
     return dict(errors=errors, referenceWords=len(ref), rate=errors / len(ref) if ref else None)
 

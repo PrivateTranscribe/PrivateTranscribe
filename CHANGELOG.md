@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.26.0 - 2026-11-09
+
+### Added
+
+- With speaker labels on, every speaker's turn starts with the time it began, for example "[00:01:23] Speaker 1: Thanks for joining me." The times show on the Transcribe page, in copied text and in the TXT download, so you can find a quote again in the recording. When one person talks for more than a minute, a new line with its own time starts at the end of a sentence. Transcripts without speaker labels and the SRT subtitle file are unchanged.
+
+### Fixed
+
+- The word count on the Transcribe page counts only the spoken words. Before, it also counted the time and speaker name in front of each line.
+
 ## 0.25.0 - 2026-11-09
 
 ### Added
