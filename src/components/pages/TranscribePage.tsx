@@ -47,6 +47,7 @@ import {
   derivePreferredLanguage,
   readSpokenLanguages,
 } from "../../utils/spokenLanguages";
+import { countTranscript } from "../../utils/transcriptStats";
 
 const AUDIO_EXTENSIONS = ["wav", "mp3", "m4a", "ogg", "flac", "webm"] as const;
 const VIDEO_EXTENSIONS = ["mp4", "m4v", "mov", "mkv", "avi", "webm"] as const;
@@ -441,14 +442,7 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     return "Max 25 MB (cloud)";
   }, [useLocalWhisper, cloudTranscriptionProvider]);
 
-  const transcriptStats = useMemo(() => {
-    const trimmed = transcript.trim();
-    if (!trimmed) return { words: 0, lines: 0 };
-    return {
-      words: trimmed.split(/\s+/).filter(Boolean).length,
-      lines: trimmed.split(/\n+/).filter((line) => line.trim()).length,
-    };
-  }, [transcript]);
+  const transcriptStats = useMemo(() => countTranscript(transcript), [transcript]);
 
   const validateFile = (file: File): string | null => {
     const extension = getFileExtension(file.name);
