@@ -13,6 +13,8 @@ const { evaluateParakeetHardware } = require("./parakeetEligibility");
  * Detects GPU capabilities to recommend optimal transcription settings
  */
 
+const NVIDIA_SMI_TIMEOUT_MS = 15000;
+
 class HardwareDetector {
   constructor() {
     this.cachedDetection = null;
@@ -244,16 +246,37 @@ class HardwareDetector {
   }
 
   /**
+   * The display adapters as WMIC-style CSV (Node,AdapterRAM,DriverVersion,Name).
+   *
+   * Windows 11 24H2 and later no longer install WMIC, so the old query failed
+   * and every AMD and Intel card showed as "No GPU Detected". The same
+   * Win32_VideoController class is read through PowerShell's CIM cmdlet when
+   * WMIC is missing.
+   */
+  async readWindowsVideoControllers() {
+    try {
+      return await this.execCommand(
+        "wmic path win32_VideoController get Name, AdapterRAM, DriverVersion /format:csv"
+      );
+    } catch (error) {
+      debugLogger.debug("WMIC unavailable, reading display adapters through CIM", {
+        error: error.message,
+      });
+    }
+    const rows = await this.execCommand(
+      `powershell.exe -NoProfile -NonInteractive -Command "Get-CimInstance Win32_VideoController | ForEach-Object { 'cim,' + $_.AdapterRAM + ',' + $_.DriverVersion + ',' + ($_.Name -replace ',', ' ') }"`,
+      { timeout: 15000 }
+    );
+    return `Node,AdapterRAM,DriverVersion,Name
+${rows}`;
+  }
+
+  /**
    * Detect GPU on Windows
    */
   async detectWindowsGPU(gpu) {
     try {
-      // Try WMIC first for GPU info. WMIC typically returns CSV with a header like:
-      // Node,AdapterRAM,DriverVersion,Name
-      const wmicOutput = await this.execCommand(
-        "wmic path win32_VideoController get Name, AdapterRAM, DriverVersion /format:csv"
-      );
-
+      const wmicOutput = await this.readWindowsVideoControllers();
       const best = this.pickBestWindowsGpuFromWmicOutput(wmicOutput);
       if (best) {
         gpu.model = best.model;
@@ -265,10 +288,13 @@ class HardwareDetector {
       debugLogger.debug("WMIC GPU detection failed", { error: error.message });
     }
 
-    // Check for CUDA
+    // Check for CUDA. nvidia-smi has to wake a sleeping graphics card on a
+    // hybrid laptop, which can take longer than the default 5 s, and a timeout
+    // here sent setup down the processor path on a PC with a working card.
     try {
       const cudaOutput = await this.execCommand(
-        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader"
+        "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader",
+        { timeout: NVIDIA_SMI_TIMEOUT_MS }
       );
 
       if (cudaOutput) {
