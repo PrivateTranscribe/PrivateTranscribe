@@ -247,6 +247,18 @@ for (const sample of [
     }
     const stamps = lines.map((line) => line.slice(1, 9));
     expect([...stamps].sort()).toEqual(stamps);
+    if (sample.name === "interview") {
+      // Whisper times a sentence's last words late, and the speaker models
+      // start one turn four words early. The whole sentence stays on the line
+      // of the speaker who said it, so each of these ends a line.
+      const sentences = [
+        "How accurate is it with a strong accent?",
+        "I keep a list of terms from my field.",
+        "Is there anything you would still like it to do?",
+        "In a seminar, the transcript reads like one long paragraph.",
+      ];
+      expect(sentences.filter((s) => !lines.some((line) => line.endsWith(` ${s}`)))).toEqual([]);
+    }
     const dir = evidenceDir || info.outputDir;
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${phase}-real-${sample.name}.txt`), transcript);
