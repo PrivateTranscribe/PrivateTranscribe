@@ -1,6 +1,6 @@
 # Whisper CUDA Engine Notes
 
-Last updated: 2026-10-19
+Last updated: 2026-11-09
 
 This documents the CUDA engine fixes shipped in PrivateTranscribe `0.8.2` → `0.8.4`, and the important lessons for future agents/devs.
 
@@ -208,6 +208,34 @@ a new engine on a machine with SAC actually enabled before calling it fixed.
 If both versioned packages already exist but the manifest is missing or stale, run the separate `Publish CUDA Manifest` workflow with the existing engine version. It verifies that both Windows and Linux packages exist in R2 before publishing, then verifies the manifest through the public CDN. Do not rebuild 800 MB packages solely to recover this small metadata file.
 
 ## UI/UX lessons
+
+### Setup installs the engine with the model (2026-11-09)
+
+A first-time user finished setup on an RTX PC without the engine: the download was an
+optional button below the fold, Next worked without it, and Whisper Large then ran on the
+CPU with no notice, because a missing engine is not a CUDA failure and fires no fallback
+toast. Setup (`OnboardingFlow.tsx`) now follows these rules on a PC whose detector says
+`nvidia_cuda`:
+
+- Pressing Download on a Whisper model also starts the engine download. One click, so the
+  rule from 9fe743d2 holds: nothing large downloads without a click.
+- Next stays disabled until the engine is installed and a test run (`whisper-server-start`,
+  then `getEngineStatus().effectiveEngine === "cuda"`) proved the card runs it, or until
+  the user chooses the processor. A failed download or test run shows the reason
+  (`src/utils/gpuSetupMessages.ts`) next to a retry.
+- "Use the processor instead", and every PC without a usable NVIDIA card, gets a model
+  picked by `src/utils/setupModelChoice.ts`: the detector's CPU model for English, Turbo
+  for a non-English language (Base gets most Danish words wrong), with the wait said
+  plainly. Parakeet still wins where it qualifies.
+
+Installs that finished the old setup without the engine see `IdleGpuCard` on Home until
+they install it or choose the processor.
+
+`tests/e2e/first-run-setup.spec.ts` covers these paths with stubbed downloads, and
+`tests/e2e/first-run-real-gpu.spec.ts` (`PT_E2E_REAL_GPU=1`) runs the real download and
+the real test run on an NVIDIA card.
+
+### Engine updates
 
 CUDA engine updates are separate from the main app update. Users may update PrivateTranscribe and still need to download/update the CUDA engine package.
 

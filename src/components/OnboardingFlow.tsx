@@ -46,6 +46,47 @@ import SpokenLanguagesSelector, { describeSpokenLanguages } from "./ui/SpokenLan
 import { getLanguageLabel } from "../utils/languages";
 import { isWeakForNonEnglish, resolveRatingLanguage } from "../utils/modelAccuracy";
 import { buildMicrophoneConstraints } from "../utils/audioDeviceUtils";
+import {
+  describeSlowCpuModel,
+  isHeavyOnCpu,
+  modelDisplayName,
+  pickSetupWhisperModel,
+} from "../utils/setupModelChoice";
+import { describeDownloadError, describeGpuCheckFailure } from "../utils/gpuSetupMessages";
+import type { HardwareDetectionResult } from "../types/electron";
+
+/** What setup keeps from the hardware check, so a resumed setup still knows it. */
+type SetupHardware = {
+  gpuCategory: string;
+  gpuName: string | null;
+  vramMb: number | null;
+  cpuThreads: number | null;
+  detectorModel: string;
+};
+
+const toSetupHardware = (detection: HardwareDetectionResult): SetupHardware => ({
+  gpuCategory: detection.recommendations?.gpuCategory ?? "cpu_only",
+  gpuName: detection.gpu?.model?.trim() || null,
+  vramMb: typeof detection.gpu?.vram === "number" ? detection.gpu.vram : null,
+  cpuThreads: typeof detection.cpu?.count === "number" ? detection.cpu.count : null,
+  detectorModel: detection.recommendations?.whisperModel || "base",
+});
+
+/** A failed hardware check: the processor defaults the hardware step applies. */
+const UNKNOWN_HARDWARE: SetupHardware = {
+  gpuCategory: "cpu_only",
+  gpuName: null,
+  vramMb: null,
+  cpuThreads: null,
+  detectorModel: "base",
+};
+
+type GpuCheck = {
+  state: "idle" | "running" | "passed" | "failed";
+  /** The model the check ran with; a different model needs a new check. */
+  model?: string;
+  message?: string;
+};
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -140,10 +181,15 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [cudaDownloadError, setCudaDownloadError] = useState<string | null>(null);
   const [skippedModelSetup, setSkippedModelSetup] = useState(false);
   const [hardwareRecommendationsApplied, setHardwareRecommendationsApplied] = useState(false);
-  const [onboardingGpuSupported, setOnboardingGpuSupported] = useState(false);
-  const [onboardingRecommendedWhisperModel, setOnboardingRecommendedWhisperModel] = useState<
-    string | undefined
-  >(undefined);
+  const [hardware, setHardware] = useState<SetupHardware | null>(null);
+  // An NVIDIA card the detector found usable with CUDA.
+  const gpuDetected = hardware?.gpuCategory === "nvidia_cuda";
+  const gpuName = hardware?.gpuName || "graphics card";
+  // Set when the user picks a model other than the one setup recommends, so
+  // setup stops re-picking for them as the language or engine changes.
+  const [modelChosenByUser, setModelChosenByUser] = useState(false);
+  const [gpuCheck, setGpuCheck] = useState<GpuCheck>({ state: "idle" });
+  const engineCardRef = useRef<HTMLDivElement | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isUsingGnomeHotkeys, setIsUsingGnomeHotkeys] = useState(false);
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
@@ -366,6 +412,28 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     void loadCudaStatus();
   }, [loadCudaStatus]);
 
+  // The hardware step reports its detection as it runs. A setup resumed past
+  // that step (the app closed mid-setup) reads the cached answer instead, or
+  // it would forget the graphics card and offer only the processor.
+  useEffect(() => {
+    if (hardware) return;
+    let cancelled = false;
+    window.electronAPI
+      ?.detectHardware?.()
+      .then((result) => {
+        if (cancelled) return;
+        setHardware(
+          result?.success && result.detection ? toSetupHardware(result.detection) : UNKNOWN_HARDWARE
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setHardware(UNKNOWN_HARDWARE);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hardware]);
+
   useEffect(() => {
     if (useLocalWhisper && !whisperForceCpu) {
       void loadCudaStatus();
@@ -383,7 +451,12 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     return () => cleanup?.();
   }, []);
 
+  const cudaDownloadInFlightRef = useRef(false);
   const handleDownloadCuda = useCallback(async () => {
+    // The main process joins a second request to the running download; this
+    // only keeps one card from awaiting it twice.
+    if (cudaDownloadInFlightRef.current) return;
+    cudaDownloadInFlightRef.current = true;
     setCudaDownloadState("downloading");
     setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
     setCudaDownloadError(null);
@@ -392,37 +465,44 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       const result = await window.electronAPI?.downloadCudaBinary?.();
       if (!result?.success) {
         setCudaDownloadState("error");
-        setCudaDownloadError(result?.error || "CUDA download failed");
+        setCudaDownloadError(describeDownloadError(result?.error));
         return;
       }
       setCudaDownloadState("done");
       await loadCudaStatus();
     } catch (error) {
       setCudaDownloadState("error");
-      setCudaDownloadError(error instanceof Error ? error.message : "CUDA download failed");
+      setCudaDownloadError(describeDownloadError(error instanceof Error ? error.message : null));
+    } finally {
+      cudaDownloadInFlightRef.current = false;
     }
   }, [loadCudaStatus]);
 
+  // A window reload during the download loses this state but not the
+  // download, which the main process owns. Join it instead of offering another.
+  const joinedActiveDownloadRef = useRef(false);
+  useEffect(() => {
+    if (joinedActiveDownloadRef.current) return;
+    const active = (cudaStatus as { activeDownload?: unknown } | null)?.activeDownload;
+    if (active && cudaDownloadState === "idle") {
+      joinedActiveDownloadRef.current = true;
+      void handleDownloadCuda();
+    }
+  }, [cudaStatus, cudaDownloadState, handleDownloadCuda]);
+
+  // The awaiting handleDownloadCuda reports the cancel as its result, so the
+  // card lands on "You cancelled the download" with a retry beside it.
   const handleCancelCudaDownload = useCallback(async () => {
     try {
       const result = await window.electronAPI?.cancelCudaBinaryDownload?.();
       if (result && !result.success) {
         throw new Error("CUDA download cancellation failed");
       }
-      setCudaDownloadState("idle");
-      setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
     } catch (error) {
       console.error("Failed to cancel CUDA download:", error);
       setCudaDownloadError("Failed to cancel download. Please try again.");
     }
   }, []);
-
-  const handleSkipCudaAndUseCpu = useCallback(() => {
-    setWhisperForceCpu(true);
-    setCudaDownloadState("idle");
-    setCudaDownloadProgress({ percentage: 0, downloadedBytes: 0, totalBytes: 0 });
-    setCudaDownloadError(null);
-  }, [setWhisperForceCpu]);
 
   // Auto-register default hotkey when entering the hotkey step (step 4)
   useEffect(() => {
@@ -532,15 +612,123 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     toast,
   ]);
 
-  /** Local Whisper on a CUDA-capable machine that has no usable GPU engine yet. */
-  const gpuEngineWanted =
+  const cudaBinaryReady = !!(cudaStatus?.installed && cudaStatus.upToDate);
+  /**
+   * Local Whisper on the GPU. Setup will not finish this way until the engine
+   * is installed and a test run proved the card uses it, so a GPU PC can only
+   * end up on the processor by the user's own choice.
+   */
+  const gpuWanted =
     useLocalWhisper &&
     !usingParakeet &&
-    isModelDownloaded &&
     !skippedModelSetup &&
     !whisperForceCpu &&
-    !!cudaStatus?.supported &&
-    !(cudaStatus?.installed && cudaStatus.upToDate);
+    gpuDetected &&
+    !!cudaStatus?.supported;
+  const gpuReady =
+    gpuWanted && cudaBinaryReady && gpuCheck.state === "passed" && gpuCheck.model === whisperModel;
+
+  // Languages are asked on this step, after the hardware check, so the
+  // recommended model is worked out here and follows the answer.
+  const ratingLanguage = resolveRatingLanguage(preferredLanguage, spokenLanguages);
+  const setupEngine = whisperForceCpu || !gpuDetected ? "cpu" : "gpu";
+  const setupChoice = hardware
+    ? pickSetupWhisperModel({
+        engine: setupEngine,
+        detectorModel: hardware.detectorModel,
+        cpuThreads: hardware.cpuThreads,
+        vramMb: hardware.vramMb,
+        ratingLanguage,
+      })
+    : null;
+  const recommendedModel = setupChoice?.model;
+
+  useEffect(() => {
+    if (currentStep !== 2 || !useLocalWhisper || usingParakeet || modelChosenByUser) return;
+    if (!recommendedModel || whisperModel === recommendedModel) return;
+    updateTranscriptionSettings({ whisperModel: recommendedModel });
+  }, [
+    currentStep,
+    useLocalWhisper,
+    usingParakeet,
+    modelChosenByUser,
+    recommendedModel,
+    whisperModel,
+    updateTranscriptionSettings,
+  ]);
+
+  const handleLocalModelSelect = useCallback(
+    (modelId: string) => {
+      if (modelId && modelId !== recommendedModel) setModelChosenByUser(true);
+      updateTranscriptionSettings({ whisperModel: modelId });
+    },
+    [recommendedModel, updateTranscriptionSettings]
+  );
+
+  // The model's Download button fetches the engine too, in the same click.
+  const handleModelDownloadStart = useCallback(() => {
+    if (gpuWanted && !cudaBinaryReady && cudaDownloadState !== "downloading") {
+      void handleDownloadCuda();
+    }
+  }, [gpuWanted, cudaBinaryReady, cudaDownloadState, handleDownloadCuda]);
+
+  useEffect(() => {
+    if (cudaDownloadState === "downloading" || cudaDownloadState === "error") {
+      engineCardRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+  }, [cudaDownloadState]);
+
+  /** Load the model on the GPU once, and read back what Whisper actually ran on. */
+  const runGpuCheck = useCallback(async () => {
+    const model = whisperModel;
+    setGpuCheck({ state: "running", model });
+    try {
+      // Explicit, so a CPU setting still syncing from an earlier toggle cannot
+      // make the check start the processor engine.
+      await window.electronAPI?.setWhisperForceCpu?.(false);
+      const start = await window.electronAPI?.whisperServerStart?.(model);
+      const status = await window.electronAPI?.getCudaBinaryStatus?.();
+      const engine = (status as { engineStatus?: Parameters<typeof describeGpuCheckFailure>[1] })
+        ?.engineStatus;
+      if (start?.success && engine?.effectiveEngine === "cuda") {
+        setGpuCheck({ state: "passed", model });
+        return;
+      }
+      setGpuCheck({ state: "failed", model, message: describeGpuCheckFailure(start, engine) });
+    } catch (error) {
+      setGpuCheck({
+        state: "failed",
+        model,
+        message: describeGpuCheckFailure(
+          { success: false, reason: error instanceof Error ? error.message : String(error) },
+          null
+        ),
+      });
+    }
+  }, [whisperModel]);
+
+  useEffect(() => {
+    if (currentStep !== 2 || !gpuWanted || !isModelDownloaded || !cudaBinaryReady) return;
+    if (gpuCheck.state === "running") return;
+    if (gpuCheck.state !== "idle" && gpuCheck.model === whisperModel) return;
+    void runGpuCheck();
+  }, [
+    currentStep,
+    gpuWanted,
+    isModelDownloaded,
+    cudaBinaryReady,
+    gpuCheck,
+    whisperModel,
+    runGpuCheck,
+  ]);
+
+  /** The user's own choice to run on the processor, with a model that suits it. */
+  const handleUseProcessorInstead = useCallback(() => {
+    if (cudaDownloadState === "downloading") void handleCancelCudaDownload();
+    setWhisperForceCpu(true);
+    setModelChosenByUser(false);
+    setGpuCheck({ state: "idle" });
+  }, [cudaDownloadState, handleCancelCudaDownload, setWhisperForceCpu]);
 
   const nextStep = useCallback(async () => {
     if (currentStep >= steps.length - 1) {
@@ -608,8 +796,6 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }, [useLocalWhisper]);
 
   const renderStep = () => {
-    const cudaBinaryReady = !!(cudaStatus?.installed && cudaStatus.upToDate);
-
     switch (currentStep) {
       case 0: // Welcome
         return (
@@ -673,28 +859,35 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 whisperModel: recommendations.whisperModel,
                 whisperForceCpu: recommendations.whisperForceCpu,
               });
-              setOnboardingGpuSupported(recommendations.whisperForceCpu === false);
-              setOnboardingRecommendedWhisperModel(recommendations.whisperModel);
+              // A fresh recommendation starts the model choice and the GPU
+              // test over.
+              setModelChosenByUser(false);
+              setGpuCheck({ state: "idle" });
               setHardwareRecommendationsApplied(true);
             }}
             onAppliedChange={setHardwareRecommendationsApplied}
+            onDetected={(detection) => setHardware(toSetupHardware(detection))}
+            alreadyApplied={hardwareRecommendationsApplied}
             showSkip={true}
           />
         );
 
-      case 2: // Setup - Choose Mode & Configure
-        const ratingLanguage = resolveRatingLanguage(preferredLanguage, spokenLanguages);
+      case 2: {
+        // Setup - Choose Mode & Configure
         const selectedLanguageLabel = getLanguageLabel(ratingLanguage || preferredLanguage);
         const showSmallModelLanguageWarning =
           useLocalWhisper && !usingParakeet && isWeakForNonEnglish(whisperModel, ratingLanguage);
 
-        const shouldShowCudaDownload =
-          useLocalWhisper &&
-          !usingParakeet &&
-          isModelDownloaded &&
-          !whisperForceCpu &&
-          cudaStatus?.supported &&
-          !cudaBinaryReady;
+        // Local Whisper on the processor: say which model and what it costs.
+        const onProcessor =
+          !!hardware && useLocalWhisper && !usingParakeet && setupEngine === "cpu";
+        const processorNote = !onProcessor
+          ? null
+          : setupChoice && whisperModel === setupChoice.model
+            ? { text: setupChoice.reason, slow: setupChoice.slowOnThisEngine }
+            : isHeavyOnCpu(whisperModel)
+              ? { text: describeSlowCpuModel(whisperModel), slow: true }
+              : null;
 
         return (
           <div className="space-y-5">
@@ -767,18 +960,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 updateTranscriptionSettings({ cloudTranscriptionModel: model })
               }
               selectedLocalModel={whisperModel}
-              onLocalModelSelect={(modelId) =>
-                updateTranscriptionSettings({ whisperModel: modelId })
-              }
+              onLocalModelSelect={handleLocalModelSelect}
+              onLocalModelDownloadStart={handleModelDownloadStart}
               selectedLocalProvider={localTranscriptionProvider}
               onLocalProviderSelect={(provider) =>
                 updateTranscriptionSettings({ localTranscriptionProvider: provider })
               }
               spokenLanguages={spokenLanguages}
               whisperForceCpu={whisperForceCpu}
-              onWhisperForceCpuChange={setWhisperForceCpu}
-              gpuSupported={onboardingGpuSupported}
-              recommendedLocalModel={onboardingRecommendedWhisperModel}
+              onWhisperForceCpuChange={(forceCpu) => {
+                setWhisperForceCpu(forceCpu);
+                setModelChosenByUser(false);
+                setGpuCheck({ state: "idle" });
+              }}
+              gpuSupported={gpuDetected}
+              recommendedLocalModel={recommendedModel}
               useLocalWhisper={useLocalWhisper}
               onModeChange={(isLocal) => updateTranscriptionSettings({ useLocalWhisper: isLocal })}
               openaiApiKey={openaiApiKey}
@@ -796,80 +992,98 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               variant="onboarding"
             />
 
-            {shouldShowCudaDownload && (
-              <div className="rounded-lg border border-border-subtle bg-surface-1 overflow-hidden">
-                <div className="p-3 border-b border-border-subtle">
+            {processorNote && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                  processorNote.slow
+                    ? "border-warning/25 bg-warning/8 text-warning"
+                    : "border-border-subtle bg-surface-1 text-muted-foreground"
+                }`}
+                data-testid="onboarding-processor-note"
+              >
+                {processorNote.text}
+              </div>
+            )}
+
+            {gpuWanted && (
+              <div
+                ref={engineCardRef}
+                className={`rounded-lg border overflow-hidden ${
+                  gpuReady ? "border-success/30 bg-success/5" : "border-border-subtle bg-surface-1"
+                }`}
+                data-testid="onboarding-gpu-engine"
+              >
+                <div className="p-3 space-y-1">
                   <h3 className="text-sm font-medium text-foreground">GPU engine</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {cudaDownloadState === "downloading"
-                      ? "Downloading in the background. Keep going, dictation runs on your CPU until it finishes and then switches to the GPU on its own."
-                      : cudaDownloadState === "error"
-                        ? "The download did not finish. Dictation still works on your CPU. Try again here, or later from Settings."
-                        : "Your graphics card can run Whisper several times faster. Download the engine now, about 750 MB, and keep going while it installs, or stay on your CPU. Dictation works either way."}
+                  <p className="text-xs text-muted-foreground" data-testid="gpu-engine-status">
+                    {gpuReady
+                      ? `Dictation runs on your ${gpuName}.`
+                      : cudaBinaryReady && gpuCheck.state === "running"
+                        ? `Checking that your ${gpuName} runs Whisper ${modelDisplayName(whisperModel)}...`
+                        : cudaBinaryReady && gpuCheck.state === "failed"
+                          ? gpuCheck.message
+                          : cudaBinaryReady
+                            ? `Installed. It starts once Whisper ${modelDisplayName(whisperModel)} has downloaded.`
+                            : cudaDownloadState === "downloading"
+                              ? "Downloading together with your model. Setup continues when both are in."
+                              : cudaDownloadState === "error"
+                                ? cudaDownloadError || "The download stopped before it finished."
+                                : isModelDownloaded
+                                  ? `Your ${gpuName} runs Whisper many times faster than the processor. It needs the GPU engine, about 750 MB.`
+                                  : `Your ${gpuName} runs Whisper many times faster than the processor. The GPU engine, about 750 MB, downloads together with the model.`}
                   </p>
                 </div>
 
-                {cudaDownloadState === "downloading" && (
+                {!cudaBinaryReady && cudaDownloadState === "downloading" && (
                   <DownloadProgressBar modelName="GPU engine" progress={cudaDownloadProgress} />
                 )}
 
-                <div className="p-3 space-y-2">
-                  {cudaDownloadState === "idle" && (
-                    <Button
-                      type="button"
-                      className="w-full"
-                      onClick={() => void handleDownloadCuda()}
-                    >
-                      Download GPU engine (about 750 MB)
-                    </Button>
-                  )}
-                  {cudaDownloadState === "downloading" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => void handleCancelCudaDownload()}
-                    >
-                      Cancel download
-                    </Button>
-                  )}
-                  {cudaDownloadState === "error" && (
-                    <>
-                      {cudaDownloadError && (
-                        <p className="text-xs text-destructive">{cudaDownloadError}</p>
-                      )}
+                {!gpuReady && (
+                  <div className="p-3 pt-0 space-y-2">
+                    {!cudaBinaryReady && cudaDownloadState === "downloading" && (
                       <Button
                         type="button"
                         variant="outline"
                         className="w-full"
-                        onClick={() => void handleDownloadCuda()}
+                        onClick={() => void handleCancelCudaDownload()}
                       >
-                        Try the download again
+                        Cancel download
                       </Button>
-                    </>
-                  )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleSkipCudaAndUseCpu}
-                    className="h-8 px-4 text-xs w-full"
-                  >
-                    Use my CPU only
-                  </Button>
-                </div>
+                    )}
+                    {!cudaBinaryReady &&
+                      (cudaDownloadState === "error" ||
+                        (cudaDownloadState === "idle" && isModelDownloaded)) && (
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={() => void handleDownloadCuda()}
+                        >
+                          {cudaDownloadState === "error"
+                            ? "Try the download again"
+                            : "Download the GPU engine (about 750 MB)"}
+                        </Button>
+                      )}
+                    {cudaBinaryReady && gpuCheck.state === "failed" && (
+                      <Button type="button" className="w-full" onClick={() => void runGpuCheck()}>
+                        Try the graphics card again
+                      </Button>
+                    )}
+                    {(cudaDownloadState === "error" ||
+                      (cudaBinaryReady && gpuCheck.state === "failed") ||
+                      (!cudaBinaryReady && cudaDownloadState === "idle" && isModelDownloaded)) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleUseProcessorInstead}
+                        className="h-8 px-4 text-xs w-full"
+                      >
+                        Use the processor instead
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
-            {useLocalWhisper &&
-              !usingParakeet &&
-              isModelDownloaded &&
-              !whisperForceCpu &&
-              cudaStatus?.supported &&
-              cudaBinaryReady &&
-              cudaDownloadState !== "downloading" && (
-                <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
-                  ✓ GPU engine installed
-                </div>
-              )}
             {isLoadingStatus && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -893,6 +1107,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             )}
           </div>
         );
+      }
 
       case 3: // Permissions
         const platform = permissionsHook.pasteToolsInfo?.platform;
@@ -962,6 +1177,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                 preferBuiltInMic={preferBuiltInMic}
                 selectedMicDeviceId={selectedMicDeviceId}
                 reloadSignal={permissionsHook.micPermissionGranted}
+                accessAllowed={permissionsHook.micAccessAllowed}
                 onChange={(next) => {
                   setPreferBuiltInMic(next.preferBuiltInMic);
                   setSelectedMicDeviceId(next.selectedMicDeviceId);
@@ -1119,27 +1335,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                     Local model setup was skipped. You can configure it later on the Dictation page.
                   </p>
                 )}
-                {gpuEngineWanted && cudaDownloadState === "idle" && (
-                  <p className="text-xs text-muted-foreground">
-                    Your graphics card can make this faster. Download the GPU engine any time under
-                    Settings, General, GPU speed-up.
-                  </p>
-                )}
-                {cudaDownloadState === "downloading" && (
-                  <p className="text-xs text-muted-foreground">
-                    GPU engine download at {Math.round(cudaDownloadProgress.percentage)}%. Dictation
-                    runs on your CPU until it finishes, then switches to the GPU on its own.
-                  </p>
-                )}
-                {cudaDownloadState === "done" && (
-                  <p className="text-xs text-primary">
-                    GPU engine installed. Dictation runs on your graphics card.
-                  </p>
-                )}
-                {cudaDownloadState === "error" && (
-                  <p className="text-xs text-muted-foreground">
-                    The GPU engine download did not finish. Dictation runs on your CPU. You can
-                    retry under Settings, General, GPU speed-up.
+                {useLocalWhisper && !skippedModelSetup && !usingParakeet && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="onboarding-engine-summary"
+                  >
+                    {gpuReady
+                      ? `Whisper ${modelDisplayName(whisperModel)} runs on your ${gpuName}.`
+                      : `Whisper ${modelDisplayName(whisperModel)} runs on your processor.`}
                   </p>
                 )}
               </div>
@@ -1174,11 +1377,14 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           if (!skippedModelSetup && !isModelDownloaded) {
             return false;
           }
-
-          // The GPU engine never blocks the step. When it is missing, Next
-          // starts the download in the background (see nextStep) and dictation
-          // runs on the CPU until it lands. Only wait for the status itself.
-          if (!skippedModelSetup && !whisperForceCpu && !cudaStatus) {
+          // Until the hardware is known, a GPU PC cannot be told from one without.
+          if (!skippedModelSetup && (!hardware || (!whisperForceCpu && !cudaStatus))) {
+            return false;
+          }
+          // On a GPU PC setup ends on the GPU, proven by a test run, or on the
+          // processor because the user chose it. Never on the processor by
+          // default, which is how a large model ended up running there.
+          if (gpuWanted && !gpuReady) {
             return false;
           }
           return true;
@@ -1232,8 +1438,20 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               ? "Testing Parakeet on this PC"
               : "Download Parakeet, or skip for now"
             : !skippedModelSetup && !isModelDownloaded
-              ? "Download a model, or skip for now"
-              : "Select a setup option to continue"
+              ? gpuWanted && cudaDownloadState === "downloading"
+                ? "Downloading the model and the GPU engine"
+                : gpuWanted && !cudaBinaryReady
+                  ? "Download a model. The GPU engine comes with it"
+                  : "Download a model, or skip for now"
+              : gpuWanted && !cudaBinaryReady
+                ? cudaDownloadState === "downloading"
+                  ? `Downloading the GPU engine, ${Math.round(cudaDownloadProgress.percentage)}%`
+                  : "Download the GPU engine, or use the processor"
+                : gpuWanted && gpuCheck.state === "failed"
+                  ? "Your graphics card could not run the engine"
+                  : gpuWanted && !gpuReady
+                    ? "Checking your graphics card"
+                    : "Select a setup option to continue"
       : null;
 
   return (
