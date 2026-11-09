@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A dictation keeps recording when another audio device, such as headphones, a dock or a screen with speakers, connects or disconnects while you speak. Before, the microphone was cut off at that moment and the rest of what you said was missing from the text.
+
 ## 0.26.1 - 2026-11-09
 
 ### Fixed
