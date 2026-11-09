@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Pressing the Read Aloud shortcut again before the reading has started no longer replaces what you had copied. Before, your clipboard could end up holding a line of marker text with "pt_sentinel" in it, and a copied image or formatted text was gone.
+
 ## 0.26.1 - 2026-11-09
 
 ### Fixed

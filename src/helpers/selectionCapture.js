@@ -44,6 +44,7 @@ class SelectionCapture {
     this.workerReady = false;
     this.pending = [];
     this.isStopping = false;
+    this.captureInFlight = null;
   }
 
   /**
@@ -276,7 +277,22 @@ class SelectionCapture {
    *   the worker reported an error. `elapsedMs` is the whole capture's wall
    *   time, so a real press's cost shows up in the debug log.
    */
-  async captureSelection() {
+  captureSelection() {
+    // One capture at a time. A second press of the shortcut can land while the
+    // worker still waits for the trigger keys to be released. A capture started
+    // then would save the first one's sentinel as "the user's clipboard" and
+    // restore it last, so the user's own clipboard was gone. Both presses want
+    // the same selection, so the second one shares the first one's result.
+    if (this.captureInFlight) return this.captureInFlight;
+
+    const capture = this._captureSelection().finally(() => {
+      if (this.captureInFlight === capture) this.captureInFlight = null;
+    });
+    this.captureInFlight = capture;
+    return capture;
+  }
+
+  async _captureSelection() {
     if (!this.isSupported) {
       return {
         text: "",
