@@ -158,25 +158,95 @@ function withSpeaker(segment, speaker) {
   return { ...segment, speaker, speaker_label: speaker, speakerLabel: speaker };
 }
 
+const SENTENCE_END = /[.!?…。！？]["'”’»)\]]*\s*$/u;
+const SENTENCE_MAX_WORDS = 50;
+
+/**
+ * Gives a sentence that the speaker turns cut in two back to one speaker.
+ *
+ * Whisper times a sentence's last words late, and the speaker models can start
+ * or end a turn a few words off, so a word near a turn boundary often lands in
+ * the other speaker's time: "How accurate is it with a strong" on one line and
+ * "accent?" on the next speaker's. People change turns between sentences, so
+ * where the speaker changes after a word that does not end a sentence, every
+ * word of that sentence goes to the speaker who has the most of its words.
+ * This is the realignment whisper-diarization does after its word-level
+ * assignment.
+ *
+ * The sentence is left as it is when no single speaker has the most words, when
+ * that speaker has fewer than half of them, or when it runs past 50 words,
+ * which is Whisper leaving out its full stops rather than one sentence. A reply
+ * that Whisper writes without a full stop before it ("...the whole lecture
+ * yeah") joins the sentence it follows. Words are changed in place.
+ */
+function realignSentences(words, maxWords = SENTENCE_MAX_WORDS) {
+  const ends = words.map((word) => SENTENCE_END.test(word.text));
+  let i = 0;
+  while (i < words.length - 1) {
+    if (ends[i] || words[i].speaker === words[i + 1].speaker) {
+      i += 1;
+      continue;
+    }
+    let from = i;
+    while (from > 0 && !ends[from - 1]) from -= 1;
+    let to = i + 1;
+    while (to < words.length - 1 && !ends[to]) to += 1;
+    const count = to - from + 1;
+    if (count <= maxWords) {
+      const votes = new Map();
+      for (let k = from; k <= to; k += 1) {
+        votes.set(words[k].speaker, (votes.get(words[k].speaker) || 0) + 1);
+      }
+      const [[speaker, most], runnerUp] = [...votes.entries()].sort((a, b) => b[1] - a[1]);
+      if ((!runnerUp || runnerUp[1] < most) && most * 2 >= count) {
+        for (let k = from; k <= to; k += 1) words[k].speaker = speaker;
+      }
+    }
+    i = to;
+  }
+}
+
 function assignSpeakersToSegments(whisperSegments = [], diarizationSegments = [], options = {}) {
   if (!Array.isArray(whisperSegments)) return [];
   const normalizedTurns = normalizeDiarizationSegments(diarizationSegments);
   if (normalizedTurns.length === 0)
     return whisperSegments.map((segment) => withSpeaker(segment, "Unknown speaker"));
 
-  return whisperSegments.flatMap((segment) => {
+  const decoded = whisperSegments.map((segment) => {
     const segmentSpeaker = findBestSpeaker(segment, normalizedTurns, options) || "Unknown speaker";
-    const words = timedWords(segment);
+    const words = timedWords(segment)?.map((word) => ({
+      ...word,
+      speaker: findBestSpeaker(word, normalizedTurns, options) || segmentSpeaker,
+    }));
+    return { segment, segmentSpeaker, words };
+  });
+
+  // Sentences run across Whisper's segments, which wrap at about 60
+  // characters. A segment without word times splits the run, since its
+  // words cannot be moved.
+  let run = [];
+  for (const { words } of decoded) {
+    if (words) {
+      run.push(...words);
+    } else {
+      realignSentences(run);
+      run = [];
+    }
+  }
+  realignSentences(run);
+
+  return decoded.flatMap(({ segment, segmentSpeaker, words }) => {
     if (!words) return [withSpeaker(segment, segmentSpeaker)];
     const turns = [];
     for (const word of words) {
-      const speaker = findBestSpeaker(word, normalizedTurns, options) || segmentSpeaker;
       const last = turns[turns.length - 1];
-      if (last?.speaker === speaker) {
+      if (last?.speaker === word.speaker) {
         last.text += word.text;
         last.end = Math.max(last.end, word.end);
       } else {
-        turns.push(withSpeaker({ start: word.start, end: word.end, text: word.text }, speaker));
+        turns.push(
+          withSpeaker({ start: word.start, end: word.end, text: word.text }, word.speaker)
+        );
       }
     }
     return turns;

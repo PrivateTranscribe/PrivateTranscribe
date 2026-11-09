@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.1 - 2026-11-09
+
+### Fixed
+
+- With speaker labels on, a sentence stays on the line of the person who said it. Before, its last words could land on the next speaker's line, such as "How accurate is it with a strong" on one line and "accent?" on the next.
+
 ## 0.26.0 - 2026-11-09
 
 ### Added
