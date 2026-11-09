@@ -129,11 +129,33 @@ function normalizeSegments(verboseJson = {}) {
     .filter(Boolean);
 }
 
-function mergeTurns(segments) {
+/**
+ * When a long turn in a speaker-labelled transcript starts a new line.
+ *
+ * Each line carries one timestamp, the moment its speaker started. Without a
+ * limit a lecture, or any file where only one voice is found, is one turn: a
+ * single line stamped [00:00:00] however long the recording, and a speaker who
+ * comes back after a break keeps the time from before it.
+ *
+ * So once a line has run a minute, the speaker's next segment after a sentence
+ * end starts a new line, stamped with that segment's start and labelled with
+ * the same speaker. Whisper wraps segments at about 60 characters, so most
+ * segment ends fall inside a sentence. With no sentence end in sight, as in a
+ * language Whisper does not punctuate, the line breaks at a minute and a half
+ * regardless.
+ */
+const TURN_LINE_SECONDS = 60;
+const TURN_LINE_MAX_SECONDS = 90;
+const SENTENCE_END = /[.!?…。！？]["'”’»)\]]*$/u;
+
+function mergeTurns(segments, { lineSeconds = Infinity, maxLineSeconds = Infinity } = {}) {
   const turns = [];
   for (const segment of segments) {
     const last = turns[turns.length - 1];
-    if (last && last.speaker === segment.speaker) {
+    const elapsed = last ? segment.start - last.start : 0;
+    const startsLine =
+      elapsed >= maxLineSeconds || (elapsed >= lineSeconds && SENTENCE_END.test(last.text));
+    if (last && last.speaker === segment.speaker && !startsLine) {
       last.end = segment.end;
       last.text = `${last.text} ${segment.text}`.trim();
     } else {
@@ -208,7 +230,12 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
   const turns =
     options.mergeTurns === false || (format === "timestamped" && !withSpeakers)
       ? analysis.segments
-      : mergeTurns(analysis.segments);
+      : mergeTurns(
+          analysis.segments,
+          format === "speakers"
+            ? { lineSeconds: TURN_LINE_SECONDS, maxLineSeconds: TURN_LINE_MAX_SECONDS }
+            : {}
+        );
 
   // Preserve explicitly attributed speech, including repeated answers.
   for (const turn of turns) {
@@ -235,6 +262,17 @@ function formatTranscript(verboseJson, format = "plain", options = {}) {
       .map(
         (segment) =>
           `[${formatTimestamp(segment.start)}] ${withSpeakers ? `${segment.speaker}: ` : ""}${segment.text}`
+      )
+      .join("\n");
+  } else if (format === "speakers") {
+    // The Transcribe page's output with speaker labels on. Every line starts
+    // with the time its speaker started, read from the repaired timeline, so
+    // the stamps never run backwards at a chunk seam. With only one voice
+    // found the label is left off, as it was before lines had times.
+    text = cleanTurns
+      .map(
+        (turn) =>
+          `[${formatTimestamp(turn.start)}] ${showSpeakerLabels ? `${turn.speaker}: ` : ""}${turn.text}`
       )
       .join("\n");
   } else {

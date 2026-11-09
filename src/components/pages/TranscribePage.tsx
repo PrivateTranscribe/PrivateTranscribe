@@ -233,6 +233,8 @@ export default function TranscribePage({ onOpenModelSettings }: TranscribePagePr
     return "local-diarization" as const;
   }, [speakerLabelsEnabled, diarizationReady, tdrzDownloaded, fileLanguage]);
 
+  // Both stamp every line with its start time: labels off once per segment,
+  // labels on once per speaker turn, plus once a minute inside a long turn.
   const outputFormat: OutputFormat = speakerLabelsEnabled ? "speakers" : "timestamped";
   const isUsingLocalDiarization = resolvedDiarizationMode === "local-diarization";
 
