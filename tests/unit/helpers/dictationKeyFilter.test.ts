@@ -6,7 +6,7 @@ const WindowManager = require("../../../src/helpers/windowManager");
 type KeyEvent = { type: string; holdToken?: number };
 
 /** A window manager past its constructor, with one overlay window that records what it is sent. */
-function manager(filter: ((event: KeyEvent) => unknown) | null) {
+function manager(filter: ((event: KeyEvent) => unknown) | null, { micAllowed = true } = {}) {
   const sent: unknown[][] = [];
   const overlay = {
     isDestroyed: () => false,
@@ -19,6 +19,8 @@ function manager(filter: ((event: KeyEvent) => unknown) | null) {
     mainWindow: overlay,
     isOverlaySuppressed: () => false,
     showDictationPanel: async () => overlay,
+    // Before Allow the key opens setup instead; that path is the microphone gate's own.
+    _microphoneAllowedOrOpenSetup: async () => micAllowed,
   });
   wm.setDictationKeyFilter(filter);
   return { wm, sent };
@@ -72,5 +74,19 @@ describe("the dictation key filter", () => {
         "hybrid-dictation-key-up",
       ]);
     }
+  });
+
+  it("gives the answer window no press before the microphone is allowed", async () => {
+    const taken: KeyEvent[] = [];
+    const { wm } = manager(
+      (event) => {
+        taken.push(event);
+        return true;
+      },
+      { micAllowed: false }
+    );
+    await wm.sendStartDictation(4);
+    await wm.sendToggleDictation();
+    expect(taken).toEqual([]);
   });
 });
