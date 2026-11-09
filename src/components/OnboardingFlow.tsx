@@ -916,11 +916,21 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <PermissionCard
                 icon={Mic}
                 title="Microphone"
-                description="Needed so PrivateTranscribe can hear you."
+                description="PrivateTranscribe keeps the microphone off until you press Allow."
                 granted={permissionsHook.micPermissionGranted}
                 onRequest={permissionsHook.requestMicPermission}
                 buttonText="Allow"
               />
+              {!isMacOS && (
+                <p
+                  className="px-1 text-xs text-muted-foreground leading-relaxed"
+                  data-testid="onboarding-mic-windows-note"
+                >
+                  Windows does not ask desktop apps before they use the microphone, so
+                  PrivateTranscribe asks here instead. While the microphone is in use, Windows shows
+                  a microphone icon in the taskbar.
+                </p>
+              )}
 
               {isMacOS && (
                 <PermissionCard

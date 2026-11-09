@@ -25,6 +25,12 @@ interface MicrophoneDeviceSelectProps {
   onChange: (next: MicrophonePreference) => void;
   /** Change this to re-enumerate, e.g. once mic permission has been granted. */
   reloadSignal?: unknown;
+  /**
+   * Whether the user has pressed Allow. The main process refuses every
+   * microphone request until then, so the test waits for it rather than
+   * failing with a permission error. Read from the main process when omitted.
+   */
+  accessAllowed?: boolean;
   className?: string;
 }
 
@@ -42,8 +48,26 @@ export default function MicrophoneDeviceSelect({
   selectedMicDeviceId,
   onChange,
   reloadSignal,
+  accessAllowed: accessAllowedProp,
   className = "",
 }: MicrophoneDeviceSelectProps) {
+  const [storedAccess, setStoredAccess] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (accessAllowedProp !== undefined) return;
+    let cancelled = false;
+    window.electronAPI
+      ?.getMicrophoneAccess?.()
+      .then((state) => {
+        if (!cancelled) setStoredAccess(!!state?.allowed);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [accessAllowedProp, reloadSignal]);
+  // Without the bridge (a renderer test) nothing is enforced, so nothing waits.
+  const accessAllowed =
+    accessAllowedProp ?? (window.electronAPI?.getMicrophoneAccess ? storedAccess === true : true);
   const [devices, setDevices] = useState<AudioInputDeviceInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [testState, setTestState] = useState<TestState>("idle");
@@ -239,7 +263,7 @@ export default function MicrophoneDeviceSelect({
           variant="outline"
           size="sm"
           onClick={() => void runTest()}
-          disabled={testState === "listening"}
+          disabled={testState === "listening" || !accessAllowed}
           className="h-8 px-3 text-xs"
         >
           <Mic className="w-3.5 h-3.5" />
@@ -286,9 +310,11 @@ export default function MicrophoneDeviceSelect({
 
       {testState === "idle" && !selectedIsGone && (
         <p className="text-xs text-muted-foreground">
-          {hasLabels
-            ? `Dictation uses: ${activeLabel}`
-            : "Run a test to allow access and see your device names."}
+          {!accessAllowed
+            ? "Press Allow for the microphone first. Until then PrivateTranscribe keeps it off."
+            : hasLabels
+              ? `Dictation uses: ${activeLabel}`
+              : "Run a test to see your device names."}
         </p>
       )}
     </div>

@@ -3,7 +3,13 @@ import type { PasteToolsResult } from "../types/electron";
 
 export interface UsePermissionsReturn {
   // State
+  /** Allow pressed and the microphone opened. */
   micPermissionGranted: boolean;
+  /**
+   * The in-app consent the main process enforces. Until it is true, every
+   * capture request from any window is refused.
+   */
+  micAccessAllowed: boolean;
   accessibilityPermissionGranted: boolean;
   micPermissionError: string | null;
   pasteToolsInfo: PasteToolsResult | null;
@@ -43,7 +49,7 @@ const getPlatformSettingsPath = (): string => {
 const getPlatformPrivacyPath = (): string => {
   if (typeof navigator !== "undefined") {
     const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes("win")) return "Settings → Privacy → Microphone";
+    if (ua.includes("win")) return "Settings → Privacy & security → Microphone";
     if (ua.includes("linux")) return "your system privacy settings";
   }
   return "System Settings → Privacy & Security → Microphone";
@@ -82,6 +88,11 @@ const describeMicError = (error: unknown): string => {
   }
 
   if (name === "NotAllowedError" || name === "SecurityError") {
+    // The app's own consent is recorded before this request runs, so a refusal
+    // here comes from the operating system.
+    if (getPlatform() === "win32") {
+      return `Windows is blocking the microphone for desktop apps. Open ${privacyPath} and turn on "Let desktop apps access your microphone".`;
+    }
     return `Permission was denied. Open ${privacyPath} and allow PrivateTranscribe.`;
   }
 
@@ -102,6 +113,7 @@ export const usePermissions = (
 ): UsePermissionsReturn => {
   const { checkPasteToolsOnMount = true } = options;
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
+  const [micAccessAllowed, setMicAccessAllowed] = useState(false);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
   const [accessibilityPermissionGranted, setAccessibilityPermissionGranted] = useState(false);
   const [pasteToolsInfo, setPasteToolsInfo] = useState<PasteToolsResult | null>(null);
@@ -148,6 +160,23 @@ export const usePermissions = (
     [openSystemSettings]
   );
 
+  // Start from the answer the main process holds, so a user who allowed the
+  // microphone earlier sees it allowed instead of being asked again.
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI
+      ?.getMicrophoneAccess?.()
+      .then((state) => {
+        if (cancelled || !state) return;
+        setMicAccessAllowed(state.allowed);
+        if (state.allowed) setMicPermissionGranted(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const requestMicPermission = useCallback(async () => {
     if (!navigator?.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
       const message =
@@ -165,6 +194,24 @@ export const usePermissions = (
     }
 
     setMicPermissionError(null);
+
+    // Pressing Allow is the consent. Record it in the main process first; its
+    // permission handler refuses every capture request until it holds it.
+    if (window.electronAPI?.allowMicrophone) {
+      try {
+        const state = await window.electronAPI.allowMicrophone();
+        setMicAccessAllowed(!!state?.allowed);
+        if (!state?.allowed) {
+          const message = state?.error || "PrivateTranscribe could not record your choice.";
+          setMicPermissionError(message);
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to record microphone consent:", error);
+        setMicPermissionError("PrivateTranscribe could not record your choice. Please try again.");
+        return;
+      }
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -304,6 +351,7 @@ export const usePermissions = (
 
   return {
     micPermissionGranted,
+    micAccessAllowed,
     accessibilityPermissionGranted,
     micPermissionError,
     pasteToolsInfo,

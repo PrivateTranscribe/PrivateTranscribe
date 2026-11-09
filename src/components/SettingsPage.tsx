@@ -3189,7 +3189,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                 description="Required for voice recording and dictation"
                 granted={permissionsHook.micPermissionGranted}
                 onRequest={permissionsHook.requestMicPermission}
-                buttonText="Test"
+                buttonText="Allow"
                 onOpenSettings={permissionsHook.openMicPrivacySettings}
               />
 
@@ -3225,6 +3225,7 @@ export default function SettingsPage({ activeSection = "general", onNavigate }: 
                     selectedMicDeviceId={selectedMicDeviceId}
                     onPreferBuiltInChange={setPreferBuiltInMic}
                     onDeviceSelect={setSelectedMicDeviceId}
+                    accessAllowed={permissionsHook.micAccessAllowed}
                   />
                 </SettingsPanelRow>
               </SettingsPanel>
