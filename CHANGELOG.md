@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Letters outside the English alphabet, such as æ, ø and å, no longer turn into odd symbols ("��") now and then in a long transcript or in text cleaned up by the local AI model. It happened when the answer from the local engine arrived in more than one piece and a letter was cut in the middle.
+
 ## 0.26.1 - 2026-11-09
 
 ### Fixed
