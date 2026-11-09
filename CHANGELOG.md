@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Turning Debug logging off stops the log file at once. Before, the app kept writing to the file until it was restarted, and some of those lines could contain words you had dictated.
+
 ## 0.26.1 - 2026-11-09
 
 ### Fixed
