@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A file transcription keeps running when you dictate with the same Whisper model while it works. Before, starting a dictation could restart the Whisper engine under the file. The file then failed with "socket hang up" and the part already transcribed was lost. A dictation that needs another model than the file still restarts the engine.
+
 ## 0.26.1 - 2026-11-09
 
 ### Fixed
