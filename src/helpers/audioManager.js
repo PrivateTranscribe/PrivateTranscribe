@@ -1569,8 +1569,11 @@ class AudioManager {
   }
 
   async waitForLongSessionQueue() {
-    while (this.longSession?.processingPromise) {
-      await this.longSession.processingPromise;
+    // Only this session's queue. Once a new recording has replaced the session,
+    // its queue is not ours to wait on, and the old one never clears its promise.
+    const state = this.longSession;
+    while (this.longSession === state && state?.processingPromise) {
+      await state.processingPromise;
     }
   }
 
@@ -1677,10 +1680,20 @@ class AudioManager {
   }
 
   async finalizeLongSessionResult(durationSeconds, cleanupMetadata = {}) {
-    await this.waitForLongSessionQueue();
-    await this.retryFailedLongSessionChunks();
-
+    // The session this job was started for. After a cancel, the next recording
+    // puts a new session in its place while this job may still be waiting, and
+    // from then on this job must not read, retry or clean up the new one.
     const state = this.longSession;
+    const stopIfSessionReplaced = () => {
+      if (this.longSession !== state) {
+        throw Object.assign(new Error("Long session was replaced"), { name: "AbortError" });
+      }
+    };
+
+    await this.waitForLongSessionQueue();
+    stopIfSessionReplaced();
+    await this.retryFailedLongSessionChunks();
+    stopIfSessionReplaced();
 
     const transcribedText = [...state.results.entries()]
       .sort(([left], [right]) => left - right)
@@ -2496,9 +2509,13 @@ class AudioManager {
   async processLongSessionAudio({ durationSeconds, smartContextCapture = null } = {}) {
     const pipelineStart = performance.now();
     const processingGeneration = ++this.processingGeneration;
+    const session = this.longSession;
 
     try {
       await this.stopLongSessionSegmentCapture();
+      if (this.longSession !== session) {
+        return;
+      }
       const result = await this.finalizeLongSessionResult(durationSeconds, {
         processingGeneration,
         smartContextCapture,
@@ -2581,7 +2598,12 @@ class AudioManager {
       }
     } finally {
       this.clearActiveTranscriptionAbortController(processingGeneration);
-      this.resetLongSessionState();
+      // Only this job's own session. A job cancelled during processing can end
+      // after the next recording has started, and resetting then threw away
+      // that recording's segment and every minute it had transcribed.
+      if (this.longSession === session) {
+        this.resetLongSessionState();
+      }
 
       if (this.processingGeneration === processingGeneration && this.isProcessing) {
         this.isProcessing = false;
