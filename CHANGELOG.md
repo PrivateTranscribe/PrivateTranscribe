@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Changing the thread count or the GPU setting while a file is being transcribed no longer stops that transcription. The new setting takes effect on the first transcription after it. Before, the file failed with "socket hang up" and the part already transcribed was lost.
 - Pressing the Read Aloud shortcut again before the reading has started no longer replaces what you had copied. Before, your clipboard could end up holding a line of marker text with "pt_sentinel" in it, and a copied image or formatted text was gone.
 - A file transcription keeps running when you dictate with the same Whisper model while it works. Before, starting a dictation could restart the Whisper engine under the file. The file then failed with "socket hang up" and the part already transcribed was lost. A dictation that needs another model than the file still restarts the engine.
 - Turning Debug logging off stops the log file at once. Before, the app kept writing to the file until it was restarted, and some of those lines could contain words you had dictated.
