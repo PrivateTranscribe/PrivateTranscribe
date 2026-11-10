@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A Whisper engine that is slow to shut down, for example when it is stuck in the graphics driver, no longer knocks out the engine started after it. Before, the next dictation could fail, or an extra engine could keep running in the background and hold its memory.
 - A dictation keeps recording when another audio device, such as headphones, a dock or a screen with speakers, connects or disconnects while you speak. Before, the microphone was cut off at that moment and the rest of what you said was missing from the text.
 
 ## 0.26.1 - 2026-11-09
