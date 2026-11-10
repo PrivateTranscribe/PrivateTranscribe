@@ -1063,6 +1063,11 @@ class WhisperServerManager {
       throw error;
     }
 
+    // stop() gives up on a process that does not close within five seconds,
+    // so this one can still be alive when the next server has taken its place.
+    // Its late events must not touch state that describes that next server.
+    const child = this.process;
+
     // The argv this process was handed, taken from the same array that was
     // passed to spawn() rather than rebuilt afterwards, request path masked.
     this.lastSpawn = {
@@ -1076,6 +1081,7 @@ class WhisperServerManager {
     };
 
     this.process.stdout.on("data", (data) => {
+      if (this.process !== child) return;
       const text = data.toString();
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
       this.scanForBackend(text);
@@ -1088,6 +1094,7 @@ class WhisperServerManager {
       // the request path, and startup errors quote this buffer.
       const shown = maskRequestPath(text, requestPathPrefix);
       stderrBuffer = appendBoundedText(stderrBuffer, shown);
+      if (this.process !== child) return;
       if (this.stdoutCapture !== null) this.stdoutCapture += text;
       this.scanForBackend(text);
       debugLogger.debug("whisper-server stderr", { data: shown.trim() });
@@ -1102,12 +1109,13 @@ class WhisperServerManager {
         syscall: error.syscall,
         serverBinary,
       });
-      this.ready = false;
+      if (this.process === child) this.ready = false;
     });
 
     this.process.on("close", (code) => {
       exitCode = code;
       debugLogger.debug("whisper-server process exited", { code });
+      if (this.process !== child) return;
       this.ready = false;
       this.printRealtimeEnabled = false;
       this.stdoutCapture = null;
