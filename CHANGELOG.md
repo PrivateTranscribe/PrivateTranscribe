@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- Cancelling a dictation with Escape while it is being cleaned up now also stops the cleanup. Before, the next dictation could be pasted without AI cleanup while the cancelled cleanup kept running, for up to several minutes.
+- Changing the thread count or the GPU setting while a file is being transcribed no longer stops that transcription. The new setting takes effect on the first transcription after it. Before, the file failed with "socket hang up" and the part already transcribed was lost.
+- Pressing the Read Aloud shortcut again before the reading has started no longer replaces what you had copied. Before, your clipboard could end up holding a line of marker text with "pt_sentinel" in it, and a copied image or formatted text was gone.
+- A file transcription keeps running when you dictate with the same Whisper model while it works. Before, starting a dictation could restart the Whisper engine under the file. The file then failed with "socket hang up" and the part already transcribed was lost. A dictation that needs another model than the file still restarts the engine.
+- Turning Debug logging off stops the log file at once. Before, the app kept writing to the file until it was restarted, and some of those lines could contain words you had dictated.
+- Letters outside the English alphabet, such as æ, ø and å, no longer turn into odd symbols ("��") now and then in a long transcript or in text cleaned up by the local AI model. It happened when the answer from the local engine arrived in more than one piece and a letter was cut in the middle.
+- A long dictation started right after you cancelled another long one, while that one was still being processed, keeps all its text. Before, the cancelled dictation could finish in the background and wipe what the new one had transcribed so far, so only the end of it was pasted.
+- A Whisper engine that is slow to shut down, for example when it is stuck in the graphics driver, no longer knocks out the engine started after it. Before, the next dictation could fail, or an extra engine could keep running in the background and hold its memory.
+- A local AI cleanup that is still running when the cleanup model's unload timer runs out now finishes. Before, the model was unloaded in the middle of the cleanup, and the text was pasted without cleanup and without a notice. This mostly showed with a short unload time or a long text on a slow computer.
 - Pressing Escape while the app is stuck finishing a dictation cancels it for good, and you can dictate again right away. Before, the cancelled dictation could still be transcribed and pasted about 30 seconds later, into whatever window was in front by then.
 - A dictation keeps recording when another audio device, such as headphones, a dock or a screen with speakers, connects or disconnects while you speak. Before, the microphone was cut off at that moment and the rest of what you said was missing from the text.
 

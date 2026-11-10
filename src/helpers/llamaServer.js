@@ -74,6 +74,7 @@ class LlamaServerManager {
     this.idleCheckTimeout = null;
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MINUTES * 60 * 1000;
     this.stoppedDueToIdle = false;
+    this.activeInferences = 0;
   }
 
   getServerBinaryPath() {
@@ -345,6 +346,14 @@ class LlamaServerManager {
     if (!this.ready || !this.process) return;
     if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
 
+    // A request that is still being answered is use, however long ago the
+    // last answer came back. Stopping now would fail that request.
+    if (this.activeInferences > 0) {
+      this.lastUsedTime = Date.now();
+      this._scheduleIdleCheck();
+      return;
+    }
+
     const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : Infinity;
     if (elapsed < this.idleTimeoutMs) {
       // Not idle yet - reschedule for the remaining window
@@ -403,7 +412,20 @@ class LlamaServerManager {
         ? Math.floor(options.timeoutMs)
         : DEFAULT_INFERENCE_TIMEOUT_MS;
 
+    this.activeInferences += 1;
+    try {
+      return await this._postInference(body, timeoutMs, options.signal);
+    } finally {
+      this.activeInferences = Math.max(0, this.activeInferences - 1);
+    }
+  }
+
+  _postInference(body, timeoutMs, signal) {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error("llama-server request cancelled"));
+        return;
+      }
       const startTime = Date.now();
 
       const req = http.request(
@@ -420,6 +442,9 @@ class LlamaServerManager {
           timeout: timeoutMs,
         },
         (res) => {
+          // Decode the body as one stream. Turning each read into text on its
+          // own breaks a letter such as "ø" whose bytes span two reads.
+          res.setEncoding("utf8");
           let data = "";
           res.on("data", (chunk) => {
             data += chunk;
@@ -457,6 +482,16 @@ class LlamaServerManager {
         req.destroy();
         reject(new Error(`llama-server request timed out after ${timeoutMs} ms`));
       });
+      // The caller gave up on this answer. Dropping the connection is how
+      // llama-server learns that nobody is waiting for it.
+      signal?.addEventListener(
+        "abort",
+        () => {
+          reject(new Error("llama-server request cancelled"));
+          req.destroy();
+        },
+        { once: true }
+      );
 
       req.write(body);
       req.end();

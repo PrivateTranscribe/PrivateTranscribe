@@ -397,6 +397,7 @@ class ModelManager {
         disableThinking: options.disableThinking,
         responseFormat: options.responseFormat,
         timeoutMs: options.timeoutMs,
+        signal: options.signal,
       });
 
       const totalTime = Date.now() - startTime;
