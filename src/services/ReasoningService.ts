@@ -1,5 +1,4 @@
 import { getModelProvider, getCloudModel } from "../models/ModelRegistry";
-import { SecureCache } from "../utils/SecureCache";
 import { withRetry, createApiRetryStrategy } from "../utils/retry";
 import {
   API_ENDPOINTS,
@@ -191,15 +190,8 @@ class ReasoningService {
   // The one cleanup running now, or null. Each call clears only its own, so a
   // request abandoned at the deadline can't free a newer one's place.
   private activeRequest: object | null = null;
-  private apiKeyCache: SecureCache<string>;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
   private static readonly OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
-  private cacheCleanupStop: (() => void) | undefined;
-
-  constructor() {
-    this.apiKeyCache = new SecureCache();
-    this.cacheCleanupStop = this.apiKeyCache.startAutoCleanup();
-  }
 
   private getCustomDictionary(): string[] {
     if (typeof window === "undefined" || !window.localStorage) return [];
@@ -473,41 +465,32 @@ class ReasoningService {
       return trimmedKey;
     }
 
-    let apiKey = this.apiKeyCache.get(provider);
+    // Asked from the main process every time and never kept here. Keys are
+    // saved in the control panel window while dictation runs in the overlay
+    // window, so a copy held by this window would outlive a key change made
+    // in the other one.
+    let apiKey: string | undefined;
+    try {
+      const keyGetters = {
+        openai: () => window.electronAPI.getOpenAIKey(),
+        anthropic: () => window.electronAPI.getAnthropicKey(),
+        gemini: () => window.electronAPI.getGeminiKey(),
+        groq: () => window.electronAPI.getGroqKey(),
+      };
+      apiKey = (await keyGetters[provider]()) ?? undefined;
 
-    logger.logReasoning(`${provider.toUpperCase()}_KEY_RETRIEVAL`, {
-      provider,
-      fromCache: !!apiKey,
-      cacheSize: this.apiKeyCache.size || 0,
-    });
-
-    if (!apiKey) {
-      try {
-        const keyGetters = {
-          openai: () => window.electronAPI.getOpenAIKey(),
-          anthropic: () => window.electronAPI.getAnthropicKey(),
-          gemini: () => window.electronAPI.getGeminiKey(),
-          groq: () => window.electronAPI.getGroqKey(),
-        };
-        apiKey = (await keyGetters[provider]()) ?? undefined;
-
-        logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCHED`, {
-          provider,
-          hasKey: !!apiKey,
-          keyLength: apiKey?.length || 0,
-          keyPreview: apiKey ? "[configured]" : "none",
-        });
-
-        if (apiKey) {
-          this.apiKeyCache.set(provider, apiKey);
-        }
-      } catch (error) {
-        logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCH_ERROR`, {
-          provider,
-          error: (error as Error).message,
-          stack: (error as Error).stack,
-        });
-      }
+      logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCHED`, {
+        provider,
+        hasKey: !!apiKey,
+        keyLength: apiKey?.length || 0,
+        keyPreview: apiKey ? "[configured]" : "none",
+      });
+    } catch (error) {
+      logger.logReasoning(`${provider.toUpperCase()}_KEY_FETCH_ERROR`, {
+        provider,
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      });
     }
 
     if (!apiKey) {
@@ -1487,24 +1470,6 @@ class ReasoningService {
         name: (error as Error).name,
       });
       return false;
-    }
-  }
-
-  clearApiKeyCache(provider?: "openai" | "anthropic" | "gemini" | "groq" | "custom"): void {
-    if (provider) {
-      if (provider !== "custom") {
-        this.apiKeyCache.delete(provider);
-      }
-      logger.logReasoning("API_KEY_CACHE_CLEARED", { provider });
-    } else {
-      this.apiKeyCache.clear();
-      logger.logReasoning("API_KEY_CACHE_CLEARED", { provider: "all" });
-    }
-  }
-
-  destroy(): void {
-    if (this.cacheCleanupStop) {
-      this.cacheCleanupStop();
     }
   }
 }
