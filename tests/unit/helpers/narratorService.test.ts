@@ -29,7 +29,7 @@ const { templateRewrite } = require("../../../src/helpers/narrator/rewriter");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { NarratorModes } = require("../../../src/helpers/narrator/narratorMode");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { WINDOW_MS, CONFIRM_MS } = require("../../../src/helpers/narrator/voiceAnswers");
+const { WINDOW_MS, CONFIRM_MS, GRACE_MS } = require("../../../src/helpers/narrator/voiceAnswers");
 
 type Item = Record<string, unknown>;
 type Played = { chime: boolean; texts: string[]; ended: boolean; cancelled: boolean };
@@ -782,7 +782,7 @@ describe("voice questions", () => {
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(overlay.played[0]).toMatchObject({ chime: true });
-    // Before its first word a press dictates, so the overlay does not offer one.
+    // Before its first word the key cannot answer yet, so the overlay does not offer it.
     expect(narrator.getState().question).toBeNull();
     // Held past its start (8 s) and the pause it may wait for (4 s): no window could be whole.
     await vi.advanceTimersByTimeAsync(12_500);
@@ -791,6 +791,57 @@ describe("voice questions", () => {
     expect(reply).toEqual({ answer: null, reason: "not_active" });
     expect(overlay.spoken()).toEqual([]);
     expect(narrator.getState().question).toBeNull();
+  });
+
+  it("takes a key press between the chime and the question's first word, so it is not dictated", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator, recorder } = voiceNarrator({ overlay });
+    void narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    // The chime plays; the question's words have not begun.
+    expect(overlay.played[0]).toMatchObject({ chime: true });
+    expect(overlay.spoken()).toEqual([]);
+    // True means the narrator took the event, so dictation never sees it.
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(true);
+    expect(narrator.answers.onKey({ type: "start", holdToken: 1 })).toBe(true);
+    expect(narrator.answers.onKey({ type: "stop" })).toBe(true);
+    // Nothing was recorded as an answer either: the question has not been heard.
+    expect(recorder.start).not.toHaveBeenCalled();
+    overlay.finish(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken()).toEqual([
+      "Export fix asks: Merge PR 65 now? Say Merge it, or Not now.",
+    ]);
+    // From its first word the key answers, as before.
+    expect(narrator.answers.onKey({ type: "start", holdToken: 2 })).toBe(true);
+    expect(recorder.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the key back to dictation when a question was dropped after its chime", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator } = voiceNarrator({ overlay });
+    const controller = new AbortController();
+    void narrator.askByVoice(QUESTION, { signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(true);
+    // The chat stops waiting: no question follows the chime.
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(GRACE_MS);
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
+  });
+
+  it("gives the key back at once when a dictation barges in during the chime", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator } = voiceNarrator({ overlay });
+    void narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(true);
+    // The overlay stops the narrator when a dictation starts while it plays.
+    narrator.stop();
+    overlay.finish(0, "stopped");
+    await vi.advanceTimersByTimeAsync(0);
+    // The next tap ends that dictation, so it must reach dictation.
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
   });
 
   it("masks a secret in the chat's name, as in the question, before the windows see it", async () => {

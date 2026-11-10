@@ -877,6 +877,28 @@ class Narrator {
     const { ask, language } = job;
     const text = ANSWER_PHRASES[language].question(ask.chat, ask.question, ask.choices);
     job.chimePlayback = this._chime();
+    // From the chime on the key is the question's: until its first word a
+    // press does nothing, since as a dictation it would be pasted into the
+    // game or the call. The chime waits for a dictation in progress, so that
+    // one still ends with the key.
+    let unsaid = () => {};
+    let over = false;
+    void job.chimePlayback.started.then((at) => {
+      if (!at || over || !this._alive(job)) return;
+      unsaid = this.answers.announce({ isAlive: () => this._alive(job), until: job.closeBy });
+    });
+    try {
+      return await this._chimeThenAsk(job, text);
+    } finally {
+      over = true;
+      // After a stop the key goes back at once: a dictation that barged in
+      // during the chime must end with its next press.
+      unsaid({ grace: job.generation === this.generation });
+    }
+  }
+
+  async _chimeThenAsk(job, text) {
+    const { ask, language } = job;
     const call = this.settings.makeRoom ? this.room?.watchCall?.() : null;
     try {
       job.firstPart = this._prepare(text, language, job);
@@ -907,7 +929,7 @@ class Narrator {
       onHeard: () => {
         job.spoken = true;
         // The overlay shows the question from its first word, which is also
-        // when the key starts answering it: before that, a press dictates.
+        // when the key starts answering it: before that, a press does nothing.
         this.question = {
           id: job.id,
           chat: ask.chat,

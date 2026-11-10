@@ -16,9 +16,11 @@
  * Nothing here pastes or types. The recording is the overlay's own, its text
  * is matched to the question's own labels and then dropped, and only a label
  * leaves, to the caller that asked. Outside a session every key event goes
- * on to dictation untouched, except a press in the first 3 s after one ends:
- * that press was meant as an answer, and as a dictation it would paste it
- * into the game or the call.
+ * on to dictation untouched, with two exceptions. A press in the first 3 s
+ * after one ends was meant as an answer, and as a dictation it would paste it
+ * into the game or the call. The same goes for a press between a question's
+ * chime and its first word (see announce): it is taken and does nothing,
+ * since no answer fits a question that has not been heard.
  *
  * A caller with a time limit gives `closeBy`, after which no new answer is
  * taken, and `deadline`, at which the session ends whatever it is doing. A
@@ -141,6 +143,39 @@ class VoiceAnswers {
     this.swallowRelease = false;
     /** Until when a press still belongs to the session that just ended. */
     this.graceUntil = 0;
+    /** The question whose chime plays and whose first word has not, or null. */
+    this.announcement = null;
+  }
+
+  /**
+   * A question's chime plays. From now until its first word (ask) the
+   * dictation key neither answers nor dictates. The returned function ends
+   * that when the question is dropped unsaid; a press stays taken for 3 s
+   * more, as after a session, unless it is told `{grace: false}`: a stop is
+   * a dictation barging in or the user asking for silence, and the next press
+   * is then that dictation's own. `isAlive` and `until` are the question's own
+   * limits, so a question that went away cannot keep the key.
+   *
+   * @param {{isAlive?: () => boolean, until?: number}} [question]
+   * @returns {(opts?: {grace?: boolean}) => void}
+   */
+  announce({ isAlive = () => true, until = Infinity } = {}) {
+    const announcement = { isAlive, until };
+    this.announcement = announcement;
+    return ({ grace = true } = {}) => {
+      if (this.announcement !== announcement) return;
+      this.announcement = null;
+      if (grace) this.graceUntil = Math.max(this.graceUntil, Date.now() + GRACE_MS);
+    };
+  }
+
+  /** Whether a question's chime has played and its first word is still to come. */
+  _announced() {
+    const announcement = this.announcement;
+    if (!announcement) return false;
+    if (Date.now() <= announcement.until && announcement.isAlive()) return true;
+    this.announcement = null;
+    return false;
   }
 
   /** Whether the dictation key answers a question right now. */
@@ -194,6 +229,8 @@ class VoiceAnswers {
     deadline = Infinity,
   }) {
     if (this.session) this._finish(this.session, { result: "replaced" });
+    // Its first word plays: the key answers from here on.
+    this.announcement = null;
     const session = {
       chatName,
       options,
@@ -252,9 +289,9 @@ class VoiceAnswers {
         this.swallowRelease = false;
         return swallow;
       }
-      // A press just after a question ended was meant for it: as a dictation it
-      // would paste the answer into the game or the call.
-      if (Date.now() < this.graceUntil) {
+      // A press just after a question ended, or after its chime, was meant for
+      // it: as a dictation it would paste the answer into the game or the call.
+      if (this._announced() || Date.now() < this.graceUntil) {
         if (isHold) this.swallowRelease = true;
         return true;
       }
@@ -274,8 +311,14 @@ class VoiceAnswers {
     switch (session.phase) {
       case "asking":
       case "open":
-        // A release here ends a dictation that began before the question.
-        if (!PRESSES.has(type)) return false;
+        if (!PRESSES.has(type)) {
+          // The release of a hold taken before the question's first word goes
+          // with it. Any other ends a dictation that began before the question.
+          const swallow = this.swallowRelease;
+          this.swallowRelease = false;
+          return swallow;
+        }
+        this.swallowRelease = false;
         this._record(session, event);
         return true;
       case "recording": {
