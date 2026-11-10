@@ -301,6 +301,35 @@ describe("the voice answer window", () => {
     expect(t.recorder.stop).toHaveBeenCalledTimes(1);
   });
 
+  // "Tap or hold" is the default key mode. On Windows the key's presses are
+  // sorted into taps and holds before they reach the answer window: a tap
+  // arrives as one "toggle" when the key comes up, a hold as "start" and
+  // "stop". So a tap's key-up does not end the answer it began.
+  it("takes a tap in the default key mode as a tap: recording runs on after the key is up", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ActivationGestureController = require("../../../src/helpers/activationGestureController");
+    const t = setup();
+    t.handle.questionDone();
+    const key = new ActivationGestureController({
+      mode: "tapHold",
+      onTap: () => t.answers.onKey({ type: "toggle" }),
+      onHoldStart: () => t.answers.onKey({ type: "start", holdToken: 1 }),
+      onHoldEnd: () => t.answers.onKey({ type: "stop" }),
+    });
+
+    key.keyDown();
+    await vi.advanceTimersByTimeAsync(60);
+    key.keyUp();
+    expect(t.recorder.start).toHaveBeenCalledTimes(1);
+    expect(t.recorder.stop).not.toHaveBeenCalled();
+
+    // The next tap ends it, as it ends a dictation.
+    key.keyDown();
+    await vi.advanceTimersByTimeAsync(60);
+    key.keyUp();
+    expect(t.recorder.stop).toHaveBeenCalledTimes(1);
+  });
+
   it("throws away a hold that was part of another shortcut and keeps listening", async () => {
     const t = setup();
     t.handle.questionDone();
