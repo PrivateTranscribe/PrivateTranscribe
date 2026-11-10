@@ -29,7 +29,7 @@ const { templateRewrite } = require("../../../src/helpers/narrator/rewriter");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { NarratorModes } = require("../../../src/helpers/narrator/narratorMode");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { WINDOW_MS, CONFIRM_MS } = require("../../../src/helpers/narrator/voiceAnswers");
+const { WINDOW_MS, CONFIRM_MS, GRACE_MS } = require("../../../src/helpers/narrator/voiceAnswers");
 
 type Item = Record<string, unknown>;
 type Played = { chime: boolean; texts: string[]; ended: boolean; cancelled: boolean };
@@ -734,6 +734,21 @@ describe("voice questions", () => {
     expect(roest.synthesize).not.toHaveBeenCalled();
   });
 
+  it("matches a Danish question's answer as Danish: a spoken number picks the label with its digit", async () => {
+    const { narrator, overlay, recorder, answer } = voiceNarrator();
+    void narrator.askByVoice({
+      ...QUESTION,
+      question: "Skal jeg rette den første eller den anden?",
+      choices: ["Ret 1", "Ret 2"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    answer("Ret to.");
+    expect(recorder.start).toHaveBeenCalledWith(expect.any(String), { language: "da" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken().at(-1)).toBe("Export fix: Ret 2.");
+    narrator.stop();
+  });
+
   it("says an English question in English when it names a Danish word, as Speak in says", async () => {
     const english = fakeVoice("kokoro-en");
     const piper = fakeVoice("piper-da");
@@ -782,7 +797,7 @@ describe("voice questions", () => {
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(overlay.played[0]).toMatchObject({ chime: true });
-    // Before its first word a press dictates, so the overlay does not offer one.
+    // Before its first word the key cannot answer yet, so the overlay does not offer it.
     expect(narrator.getState().question).toBeNull();
     // Held past its start (8 s) and the pause it may wait for (4 s): no window could be whole.
     await vi.advanceTimersByTimeAsync(12_500);
@@ -791,6 +806,57 @@ describe("voice questions", () => {
     expect(reply).toEqual({ answer: null, reason: "not_active" });
     expect(overlay.spoken()).toEqual([]);
     expect(narrator.getState().question).toBeNull();
+  });
+
+  it("takes a key press between the chime and the question's first word, so it is not dictated", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator, recorder } = voiceNarrator({ overlay });
+    void narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    // The chime plays; the question's words have not begun.
+    expect(overlay.played[0]).toMatchObject({ chime: true });
+    expect(overlay.spoken()).toEqual([]);
+    // True means the narrator took the event, so dictation never sees it.
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(true);
+    expect(narrator.answers.onKey({ type: "start", holdToken: 1 })).toBe(true);
+    expect(narrator.answers.onKey({ type: "stop" })).toBe(true);
+    // Nothing was recorded as an answer either: the question has not been heard.
+    expect(recorder.start).not.toHaveBeenCalled();
+    overlay.finish(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken()).toEqual([
+      "Export fix asks: Merge PR 65 now? Say Merge it, or Not now.",
+    ]);
+    // From its first word the key answers, as before.
+    expect(narrator.answers.onKey({ type: "start", holdToken: 2 })).toBe(true);
+    expect(recorder.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the key back to dictation when a question was dropped after its chime", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator } = voiceNarrator({ overlay });
+    const controller = new AbortController();
+    void narrator.askByVoice(QUESTION, { signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(true);
+    // The chat stops waiting: no question follows the chime.
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(GRACE_MS);
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
+  });
+
+  it("gives the key back at once when a dictation barges in during the chime", async () => {
+    const overlay = fakeOverlay({ hold: true });
+    const { narrator } = voiceNarrator({ overlay });
+    void narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(true);
+    // The overlay stops the narrator when a dictation starts while it plays.
+    narrator.stop();
+    overlay.finish(0, "stopped");
+    await vi.advanceTimersByTimeAsync(0);
+    // The next tap ends that dictation, so it must reach dictation.
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
   });
 
   it("masks a secret in the chat's name, as in the question, before the windows see it", async () => {
@@ -803,6 +869,58 @@ describe("voice questions", () => {
     expect(shown).toMatch(/^Fix \[REDACTED/);
     narrator.stop();
     await reply;
+  });
+
+  it("plays no chime for a question whose voice is not downloaded, and tells the chat and the page why", async () => {
+    // The voice as it is before its download: it exists, and making a sentence fails.
+    const missing = {
+      ...fakeVoice("kokoro-en", async () => {
+        throw Object.assign(new Error("Read Aloud is unavailable"), { code: "voice-missing" });
+      }),
+      installed: async () => false,
+    };
+    const { narrator, overlay } = voiceNarrator({
+      voices: { "piper-da": fakeVoice("piper-da"), "kokoro-en": missing },
+    });
+    const reply = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(overlay.played).toEqual([]);
+    await expect(reply).resolves.toEqual({
+      answer: null,
+      reason: "not_active",
+      error: expect.stringMatching(/English voice is not downloaded.*Ask it in the chat/),
+    });
+    expect(narrator.getState().voiceError).toEqual({
+      language: "en",
+      code: "voice-missing",
+      message: "The English voice is not downloaded",
+    });
+    // The key was never the question's.
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
+  });
+
+  it("writes that a question was said to the log, without any of its words", async () => {
+    const { narrator } = voiceNarrator();
+    void narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    const written = fs.readFileSync(path.join(dir, "narrator-log.jsonl"), "utf8");
+    // Nothing the chat's request carried: not the question, a choice or the chat's name.
+    for (const words of ["Merge PR 65", "Merge it", "Not now", "Export fix"]) {
+      expect(written).not.toContain(words);
+    }
+    const said = "Export fix asks: Merge PR 65 now? Say Merge it, or Not now.";
+    const lines = written.trim().split(/\r?\n/);
+    expect(JSON.parse(lines[lines.length - 1])).toEqual({
+      at: expect.any(String),
+      kind: "question",
+      id: "q1",
+      result: "done",
+      chars: said.length,
+      language: "en",
+      latencyMs: null,
+    });
+    expect(narrator.getState().week).toMatchObject({ question: 1 });
+    narrator.stop();
   });
 
   it("returns not_active at once, saying nothing, unless every switch is on", async () => {
