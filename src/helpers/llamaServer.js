@@ -74,6 +74,7 @@ class LlamaServerManager {
     this.idleCheckTimeout = null;
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MINUTES * 60 * 1000;
     this.stoppedDueToIdle = false;
+    this.activeInferences = 0;
   }
 
   getServerBinaryPath() {
@@ -345,6 +346,14 @@ class LlamaServerManager {
     if (!this.ready || !this.process) return;
     if (!this.idleTimeoutMs || this.idleTimeoutMs <= 0) return;
 
+    // A request that is still being answered is use, however long ago the
+    // last answer came back. Stopping now would fail that request.
+    if (this.activeInferences > 0) {
+      this.lastUsedTime = Date.now();
+      this._scheduleIdleCheck();
+      return;
+    }
+
     const elapsed = this.lastUsedTime ? Date.now() - this.lastUsedTime : Infinity;
     if (elapsed < this.idleTimeoutMs) {
       // Not idle yet - reschedule for the remaining window
@@ -403,6 +412,15 @@ class LlamaServerManager {
         ? Math.floor(options.timeoutMs)
         : DEFAULT_INFERENCE_TIMEOUT_MS;
 
+    this.activeInferences += 1;
+    try {
+      return await this._postInference(body, timeoutMs);
+    } finally {
+      this.activeInferences = Math.max(0, this.activeInferences - 1);
+    }
+  }
+
+  _postInference(body, timeoutMs) {
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
 
