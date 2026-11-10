@@ -1831,6 +1831,9 @@ class AudioManager {
       return false;
     }
 
+    // A cancel that arrived after this finalization was scheduled still wins.
+    const shouldDiscard = discard || this.discardCurrentRecording;
+
     const durationSeconds = this.getRecordingDurationSeconds();
     const wasLongSession = this.longSession.active;
     const audioBlob = wasLongSession
@@ -1854,7 +1857,7 @@ class AudioManager {
     }
     this.releaseMediaRecorder();
 
-    if (discard) {
+    if (shouldDiscard) {
       this.cancelLongSessionWork();
       this.resetLongSessionState();
       this.isProcessing = false;
@@ -2269,6 +2272,10 @@ class AudioManager {
     if (this.isStoppingRecording) {
       this.discardCurrentRecording = true;
       this.emitStateChange();
+      // The stop press left a watchdog that would transcribe the dictation if
+      // the recorder never reports its stop. Replace it with the cancel one, so
+      // a hung stop ends discarded and soon, not pasted 30 seconds later.
+      this.scheduleRecorderStopWatchdog({ discard: true, timeoutMs: 350 });
       return true;
     }
 
