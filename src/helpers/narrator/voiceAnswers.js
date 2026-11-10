@@ -348,7 +348,7 @@ class VoiceAnswers {
     const session = this.session;
     if (!session || session.phase !== "hearing" || session.recording?.id !== recordingId) return;
     clearTimeout(session.timer);
-    const match = error ? null : matchAnswer(text, session.options);
+    const match = error ? null : matchAnswer(text, session.options, { language: session.language });
     this.debug("Narrator heard a voice answer", {
       matched: Boolean(match),
       score: match ? Number(match.score.toFixed(2)) : null,

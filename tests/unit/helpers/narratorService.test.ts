@@ -734,6 +734,21 @@ describe("voice questions", () => {
     expect(roest.synthesize).not.toHaveBeenCalled();
   });
 
+  it("matches a Danish question's answer as Danish: a spoken number picks the label with its digit", async () => {
+    const { narrator, overlay, recorder, answer } = voiceNarrator();
+    void narrator.askByVoice({
+      ...QUESTION,
+      question: "Skal jeg rette den første eller den anden?",
+      choices: ["Ret 1", "Ret 2"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    answer("Ret to.");
+    expect(recorder.start).toHaveBeenCalledWith(expect.any(String), { language: "da" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(overlay.spoken().at(-1)).toBe("Export fix: Ret 2.");
+    narrator.stop();
+  });
+
   it("says an English question in English when it names a Danish word, as Speak in says", async () => {
     const english = fakeVoice("kokoro-en");
     const piper = fakeVoice("piper-da");
