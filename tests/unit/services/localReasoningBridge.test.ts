@@ -97,3 +97,51 @@ describe("local reasoning capacity", () => {
     expect(normal).not.toHaveProperty("timeoutMs");
   });
 });
+
+// The renderer cancels a dictation's cleanup; the bridge has to let go of it,
+// or the next cleanup is refused as "Already processing a request".
+describe("a local cleanup cancelled by its dictation", () => {
+  it("stops the running request and takes the next one", async () => {
+    const run = vi.spyOn(modelManager, "runInference").mockImplementationOnce(
+      (_modelId: string, _transcript: string, config: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          config.signal.addEventListener("abort", () =>
+            reject(new Error("llama-server request cancelled"))
+          );
+        })
+    );
+    const cancelled = LocalReasoningService.processText("first", "test-model").catch(
+      (error: Error) => error
+    );
+    await Promise.resolve();
+    expect(run).toHaveBeenCalledOnce();
+
+    expect(LocalReasoningService.cancelActive()).toBe(true);
+    expect(await cancelled).toBeInstanceOf(Error);
+
+    run.mockResolvedValue("Second.");
+    expect(await LocalReasoningService.processText("second", "test-model")).toBe("Second.");
+  });
+
+  // Before the model is loaded nothing reads the signal: the model check and
+  // the server start can take a minute.
+  it("takes the next one when the cancelled run is still loading its model", async () => {
+    const run = vi
+      .spyOn(modelManager, "runInference")
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const cancelled = LocalReasoningService.processText("first", "test-model").catch(
+      (error: Error) => error
+    );
+    await Promise.resolve();
+
+    expect(LocalReasoningService.cancelActive()).toBe(true);
+    expect(await cancelled).toBeInstanceOf(Error);
+
+    run.mockResolvedValue("Second.");
+    expect(await LocalReasoningService.processText("second", "test-model")).toBe("Second.");
+  });
+
+  it("has nothing to cancel when no cleanup runs", () => {
+    expect(LocalReasoningService.cancelActive()).toBe(false);
+  });
+});

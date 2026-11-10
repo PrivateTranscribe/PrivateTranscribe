@@ -2323,6 +2323,9 @@ class AudioManager {
       this.processingGeneration += 1;
       this.abortActiveTranscriptionRequest();
       this.cancelLongSessionWork();
+      // The cancelled dictation may already be in AI cleanup. Stop that too,
+      // or the next dictation finds the cleanup service busy and is pasted raw.
+      ReasoningService.cancelActiveRequest?.();
       this.isProcessing = false;
       this.emitStateChange();
       return true;

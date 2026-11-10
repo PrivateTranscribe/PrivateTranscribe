@@ -2366,6 +2366,12 @@ class IPCHandlers {
       }
     });
 
+    // The dictation this cleanup belonged to was cancelled.
+    ipcMain.handle("cancel-local-reasoning", async () => {
+      const LocalReasoningService = require("../services/localReasoningBridge").default;
+      return { success: true, cancelled: LocalReasoningService.cancelActive() };
+    });
+
     // Anthropic reasoning handler
     ipcMain.handle(
       "process-anthropic-reasoning",

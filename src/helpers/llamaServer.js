@@ -414,14 +414,18 @@ class LlamaServerManager {
 
     this.activeInferences += 1;
     try {
-      return await this._postInference(body, timeoutMs);
+      return await this._postInference(body, timeoutMs, options.signal);
     } finally {
       this.activeInferences = Math.max(0, this.activeInferences - 1);
     }
   }
 
-  _postInference(body, timeoutMs) {
+  _postInference(body, timeoutMs, signal) {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error("llama-server request cancelled"));
+        return;
+      }
       const startTime = Date.now();
 
       const req = http.request(
@@ -478,6 +482,16 @@ class LlamaServerManager {
         req.destroy();
         reject(new Error(`llama-server request timed out after ${timeoutMs} ms`));
       });
+      // The caller gave up on this answer. Dropping the connection is how
+      // llama-server learns that nobody is waiting for it.
+      signal?.addEventListener(
+        "abort",
+        () => {
+          reject(new Error("llama-server request cancelled"));
+          req.destroy();
+        },
+        { once: true }
+      );
 
       req.write(body);
       req.end();
