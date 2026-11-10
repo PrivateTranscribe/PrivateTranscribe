@@ -456,11 +456,15 @@ class WhisperManager {
     });
     const modelPath = this.getModelPath(model);
 
-    // Start server if not running, was auto-stopped due to idleness, or if model changed
+    // Start server if not running, was auto-stopped due to idleness, if model
+    // changed, or if a settings change waits for its restart. start() itself
+    // keeps the server while it is still transcribing something else.
+    const settingsRestartPending = this.serverManager.restartPendingForSettings === true;
     if (
       !this.serverManager.ready ||
       this.serverManager.stoppedDueToIdle ||
-      this.currentServerModel !== model
+      this.currentServerModel !== model ||
+      settingsRestartPending
     ) {
       debugLogger.debug("Starting/restarting whisper-server for model", {
         model,
@@ -472,7 +476,9 @@ class WhisperManager {
           ? "not running"
           : this.serverManager.stoppedDueToIdle
             ? "stopped due to idle"
-            : "model changed",
+            : this.currentServerModel !== model
+              ? "model changed"
+              : "settings changed",
       });
       await this.serverManager.start(modelPath, {
         printRealtime: requestOptions.fileMode === true && requestOptions.speakerDetection === true,

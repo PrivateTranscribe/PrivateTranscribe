@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Changing the thread count or the GPU setting while a file is being transcribed no longer stops that transcription. The new setting takes effect on the first transcription after it. Before, the file failed with "socket hang up" and the part already transcribed was lost.
 - A dictation keeps recording when another audio device, such as headphones, a dock or a screen with speakers, connects or disconnects while you speak. Before, the microphone was cut off at that moment and the rest of what you said was missing from the text.
 
 ## 0.26.1 - 2026-11-09

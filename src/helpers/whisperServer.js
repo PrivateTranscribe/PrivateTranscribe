@@ -305,6 +305,9 @@ class WhisperServerManager {
     this.idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
 
     this.activeTranscriptions = 0;
+    // A settings change arrived while a transcription was in flight; the
+    // restart it needs happens on the first start after that work.
+    this.restartPendingForSettings = false;
     this.stdoutCapture = null;
     this.printRealtimeEnabled = false;
   }
@@ -456,6 +459,21 @@ class WhisperServerManager {
   }
 
   /**
+   * Stop the server so a changed startup setting takes effect on its next
+   * start. A stop kills whatever the server is transcribing, so while work is
+   * in flight the stop is left to the first start() after it. A caller that
+   * skips start() for a warm server checks restartPendingForSettings first.
+   */
+  async _stopForSettingsChange() {
+    if (this.process && this.activeTranscriptions > 0) {
+      this.restartPendingForSettings = true;
+      debugLogger.info("WhisperServer: settings change waits for the running transcription");
+      return;
+    }
+    await this.stop();
+  }
+
+  /**
    * Change the CPU thread count. Unlike most tuning this is a server startup
    * argument, so an already-running server has to be stopped; it restarts with
    * the new count on the next transcription.
@@ -467,7 +485,7 @@ class WhisperServerManager {
     if (this.threadSetting === next) return;
 
     this.threadSetting = next;
-    await this.stop();
+    await this._stopForSettingsChange();
     debugLogger.info("WhisperServer: thread count changed", {
       setting: next === 0 ? "auto" : next,
       resolved: resolveWhisperThreads(next),
@@ -498,7 +516,7 @@ class WhisperServerManager {
       this._cudaBlockedByPolicy = false;
     }
     this.cachedServerBinaryPath = null;
-    await this.stop();
+    await this._stopForSettingsChange();
     debugLogger.info("WhisperServer: forceCpu applied", {
       forceCpu: value,
       stoppedWrongModeServer: !!activeBinaryIsWrongForMode,
@@ -518,7 +536,7 @@ class WhisperServerManager {
     this._lastCudaStartupFailure = null;
     this._cudaBlockedByPolicy = false;
     if (stopRunningServer && this.process) {
-      await this.stop();
+      await this._stopForSettingsChange();
     }
   }
 
@@ -761,11 +779,18 @@ class WhisperServerManager {
       !this.isCudaServerBinaryPath(this.activeServerBinaryPath) &&
       !!gpuBinaryManager.getCudaBinaryPath();
 
+    // A settings change that had to wait for a transcription is applied by
+    // the first start after it, through the ordinary restart below. The flag
+    // stays set until that restart really happens.
+    const settingsRestartDue = () =>
+      this.restartPendingForSettings && this.activeTranscriptions === 0;
+
     // Fast path: server is already running with the right model and no startup
     // is in progress.  Just bump the usage timestamp and return immediately.
     const wantsPrintRealtime = options.printRealtime === true;
     if (
       !cudaRetryWanted &&
+      !settingsRestartDue() &&
       this.ready &&
       this.loadedModelPath === modelPath &&
       this.printRealtimeEnabled === wantsPrintRealtime &&
@@ -803,6 +828,7 @@ class WhisperServerManager {
         // become ready for this model (e.g. from a concurrent caller).
         if (
           !cudaRetryWanted &&
+          !settingsRestartDue() &&
           this.ready &&
           this.loadedModelPath === modelPath &&
           this.printRealtimeEnabled === wantsPrintRealtime
@@ -813,6 +839,7 @@ class WhisperServerManager {
           return;
         }
         if (this.process) await this.stop();
+        this.restartPendingForSettings = false;
         await this._doStart(modelPath, options);
       });
 
@@ -2091,6 +2118,7 @@ class WhisperServerManager {
 
     this.process = null;
     this.ready = false;
+    this.restartPendingForSettings = false;
     this.port = null;
     this.requestPathPrefix = null;
     this.modelPath = null;
