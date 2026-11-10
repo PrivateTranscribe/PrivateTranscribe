@@ -122,6 +122,23 @@ class DebugLogger {
 
     if (this.debugMode && !this.fileLoggingEnabled) {
       this.initializeFileLogging();
+    } else if (!this.debugMode) {
+      this.stopFileLogging();
+    }
+  }
+
+  /**
+   * The log file belongs to debug logging and ends with it. Lowering the level
+   * alone left the file open, so info, warning and error lines kept landing in
+   * it after the user had turned debug logging off, dictated text included.
+   */
+  stopFileLogging() {
+    this.fileLoggingPending = false;
+    this.fileLoggingEnabled = false;
+    this.logFile = null;
+    if (this.logStream) {
+      this.logStream.end();
+      this.logStream = null;
     }
   }
 
