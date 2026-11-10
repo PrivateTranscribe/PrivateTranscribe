@@ -191,6 +191,8 @@ class ReasoningService {
   // The one cleanup running now, or null. Each call clears only its own, so a
   // request abandoned at the deadline can't free a newer one's place.
   private activeRequest: object | null = null;
+  // Stops the cleanup running now and frees its place; null when none runs.
+  private cancelActive: (() => void) | null = null;
   private apiKeyCache: SecureCache<string>;
   private openAiEndpointPreference = new Map<string, "responses" | "chat">();
   private static readonly OPENAI_ENDPOINT_PREF_STORAGE_KEY = "openAiEndpointPreference";
@@ -729,11 +731,25 @@ class ReasoningService {
       // to start first.
       const startupMs = provider === "local" ? DICTATION_CLEANUP_TIMEOUT.LOCAL_STARTUP_MS : 0;
       const abandon = new AbortController();
-      result = await this.withDeadline(
-        this.runProvider(provider, text, trimmedModel, model, agentName, config, abandon.signal),
-        timeoutMs + startupMs + DEADLINE_GRACE_MS,
-        () => abandon.abort()
-      );
+      const cancelled = new Promise<never>((_, reject) => {
+        if (!request) return;
+        this.cancelActive = () => {
+          abandon.abort();
+          // A local model runs in the main process, out of the signal's reach.
+          if (provider === "local") {
+            void window.electronAPI?.cancelLocalReasoning?.()?.catch(() => {});
+          }
+          reject(new Error("AI cleanup cancelled"));
+        };
+      });
+      result = await Promise.race([
+        this.withDeadline(
+          this.runProvider(provider, text, trimmedModel, model, agentName, config, abandon.signal),
+          timeoutMs + startupMs + DEADLINE_GRACE_MS,
+          () => abandon.abort()
+        ),
+        cancelled,
+      ]);
 
       // A coding prompt is dictated prose for another agent, not generated code.
       // Throw so the dictation pipeline preserves the original words on failure.
@@ -771,6 +787,7 @@ class ReasoningService {
     } finally {
       if (request && this.activeRequest === request) {
         this.activeRequest = null;
+        this.cancelActive = null;
       }
     }
   }
@@ -794,6 +811,22 @@ class ReasoningService {
       limits.BASE_MS + text.length * limits.PER_CHARACTER_MS,
       longSession ? limits.LONG_SESSION_MAX_MS : limits.MAX_MS
     );
+  }
+
+  /**
+   * Stop the cleanup that is running now, if any. Its caller gets a rejection
+   * and the next cleanup can start at once. Without this a cancelled dictation
+   * kept the service busy until its provider answered or the deadline passed.
+   */
+  cancelActiveRequest(): boolean {
+    const cancel = this.cancelActive;
+    if (!cancel) return false;
+    // Freed here, not when the rejection has travelled up: the next dictation
+    // may ask for its cleanup before then.
+    this.cancelActive = null;
+    this.activeRequest = null;
+    cancel();
+    return true;
   }
 
   /**

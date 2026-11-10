@@ -38,6 +38,8 @@ let modelPath: string;
 let server: http.Server | null = null;
 let manager: any;
 let releaseAnswer: (() => void) | null = null;
+// Called when the client drops a completion request before it was answered.
+let onDropped: (() => void) | null = null;
 
 /** Answers the health check at once and holds each completion until released. */
 async function startSlowLlama() {
@@ -52,6 +54,9 @@ async function startSlowLlama() {
         answer({ status: "ok" });
         return;
       }
+      res.on("close", () => {
+        if (!res.writableEnded) onDropped?.();
+      });
       releaseAnswer = () =>
         answer({ choices: [{ message: { content: "Rettet tekst." }, finish_reason: "stop" }] });
     });
@@ -81,6 +86,7 @@ beforeEach(() => {
   fs.writeFileSync(modelPath, "not really a model");
   manager = new LlamaServerManager();
   releaseAnswer = null;
+  onDropped = null;
 });
 
 afterEach(async () => {
@@ -131,5 +137,36 @@ describe("llama-server idle unload", () => {
 
     expect(stop).toHaveBeenCalled();
     expect(manager.stoppedDueToIdle).toBe(true);
+  });
+});
+
+describe("a llama-server request its caller has given up on", () => {
+  it("ends at once and drops the connection", async () => {
+    await startManager();
+    const dropped = new Promise<void>((resolve) => {
+      onDropped = resolve;
+    });
+    const abort = new AbortController();
+
+    const cleanup = manager.inference([{ role: "user", content: "ret den her tekst" }], {
+      signal: abort.signal,
+    });
+    await waitForRequest();
+    abort.abort();
+
+    await expect(cleanup).rejects.toThrow("llama-server request cancelled");
+    await dropped;
+    expect(manager.activeInferences).toBe(0);
+  });
+
+  it("is not sent at all when it was cancelled before it started", async () => {
+    await startManager();
+    const abort = new AbortController();
+    abort.abort();
+
+    await expect(
+      manager.inference([{ role: "user", content: "ret den her tekst" }], { signal: abort.signal })
+    ).rejects.toThrow("llama-server request cancelled");
+    expect(releaseAnswer).toBeNull();
   });
 });
