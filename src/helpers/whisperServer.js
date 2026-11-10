@@ -1763,6 +1763,9 @@ class WhisperServerManager {
           timeout: timeoutMs,
         },
         (res) => {
+          // Decode the body as one stream. Turning each read into text on its
+          // own breaks a letter such as "ø" whose bytes span two reads.
+          res.setEncoding("utf8");
           let data = "";
           res.on("data", (chunk) => {
             data += chunk;
