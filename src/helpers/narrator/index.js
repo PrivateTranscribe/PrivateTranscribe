@@ -134,6 +134,22 @@ const QUESTION_PAUSE_MS = 4_000;
 const MISSED_TTL_MS = 2 * 60 * 60 * 1000;
 
 const NOT_ACTIVE = Object.freeze({ answer: null, reason: "not_active" });
+/**
+ * A question whose voice is not downloaded: `shown` goes on the Narrator
+ * page, `toChat` to the chat that asked, as the tool's error.
+ */
+const VOICE_NOT_DOWNLOADED = {
+  da: {
+    shown: "The Danish voice is not downloaded",
+    toChat:
+      "PrivateTranscribe's Danish voice is not downloaded, so the question was not said. Ask it in the chat. The user can download the voice on the app's Narrator page.",
+  },
+  en: {
+    shown: "The English voice is not downloaded",
+    toChat:
+      "PrivateTranscribe's English voice is not downloaded, so the question was not said. Ask it in the chat. It is the app's Read Aloud voice, which the user can download there.",
+  },
+};
 
 function withTimeout(promise, ms, message) {
   let timer;
@@ -483,7 +499,9 @@ class Narrator {
    * A chat's question through the ask_by_voice tool: said out loud with its
    * choices, then answered with the dictation key. Resolves within
    * QUESTION_DEADLINE_MS with exactly what the tool returns: {answer} or
-   * {answer: null, reason}. "not_active" means nothing was said.
+   * {answer: null, reason}. "not_active" means nothing was said. With
+   * `error` beside it, nothing can be said until the user does something,
+   * and the chat gets those words instead.
    *
    * @param {{question: string, choices: string[], chat: string, sessionId?: string|null, cwd?: string}} ask
    * @param {{signal?: AbortSignal}} [opts]   aborted when the chat stops waiting
@@ -495,8 +513,17 @@ class Narrator {
       `${ask.question} ${ask.choices.join(" ")}`,
       this.settings.language
     );
-    if (!this._voiceFor(language, { quick: true })) return NOT_ACTIVE;
+    const voice = this._voiceFor(language, { quick: true });
+    if (!voice) return NOT_ACTIVE;
     if (!(await this._inNarratorMode(ask.sessionId, ask.cwd))) return NOT_ACTIVE;
+    // A chime with no question after it helps nobody: without its voice the
+    // question is not started, and the chat and the Narrator page hear why.
+    if (await this._notDownloaded(voice)) {
+      const words = VOICE_NOT_DOWNLOADED[language];
+      this.voiceError = { language, code: "voice-missing", message: words.shown };
+      this._emitState();
+      return { ...NOT_ACTIVE, error: words.toChat };
+    }
     // Settings can change while the chat's transcript was read.
     if (!this.takesVoiceQuestions || signal?.aborted) return NOT_ACTIVE;
 
@@ -535,6 +562,16 @@ class Narrator {
       clearTimeout(timer);
       clearTimeout(late);
       signal?.removeEventListener("abort", drop);
+    }
+  }
+
+  /** Whether a voice says its model is not on this PC. A voice that cannot tell counts as there. */
+  async _notDownloaded(voice) {
+    if (typeof voice.installed !== "function") return false;
+    try {
+      return (await voice.installed()) === false;
+    } catch {
+      return false;
     }
   }
 

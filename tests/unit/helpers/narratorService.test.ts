@@ -856,6 +856,34 @@ describe("voice questions", () => {
     await reply;
   });
 
+  it("plays no chime for a question whose voice is not downloaded, and tells the chat and the page why", async () => {
+    // The voice as it is before its download: it exists, and making a sentence fails.
+    const missing = {
+      ...fakeVoice("kokoro-en", async () => {
+        throw Object.assign(new Error("Read Aloud is unavailable"), { code: "voice-missing" });
+      }),
+      installed: async () => false,
+    };
+    const { narrator, overlay } = voiceNarrator({
+      voices: { "piper-da": fakeVoice("piper-da"), "kokoro-en": missing },
+    });
+    const reply = narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(overlay.played).toEqual([]);
+    await expect(reply).resolves.toEqual({
+      answer: null,
+      reason: "not_active",
+      error: expect.stringMatching(/English voice is not downloaded.*Ask it in the chat/),
+    });
+    expect(narrator.getState().voiceError).toEqual({
+      language: "en",
+      code: "voice-missing",
+      message: "The English voice is not downloaded",
+    });
+    // The key was never the question's.
+    expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
+  });
+
   it("returns not_active at once, saying nothing, unless every switch is on", async () => {
     for (const off of [{ gaming: false }, { answerByVoice: false }, { enabled: false }]) {
       const { narrator, overlay } = voiceNarrator();
