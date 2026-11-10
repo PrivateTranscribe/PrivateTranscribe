@@ -1091,15 +1091,17 @@ class Narrator {
       ducked: ducking ? await ducking : false,
     };
     if (startedAt) {
-      this.log.append({
-        kind: job.kind,
-        result,
-        chatId: item?.chatId,
-        chatTitle: item ? redact(item.chatTitle, 200) : undefined,
-        text: spoken,
-        language,
-        latencyMs,
-      });
+      // A question's words came in a chat's request, and nothing a request
+      // carries is written down: its id and its length say that it was said.
+      const said =
+        job.kind === "question"
+          ? { id: job.id, chars: spoken.length }
+          : {
+              chatId: item?.chatId,
+              chatTitle: item ? redact(item.chatTitle, 200) : undefined,
+              text: spoken,
+            };
+      this.log.append({ kind: job.kind, result, ...said, language, latencyMs });
     }
     this._emitState();
     return result;

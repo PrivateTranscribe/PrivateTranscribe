@@ -884,6 +884,30 @@ describe("voice questions", () => {
     expect(narrator.answers.onKey({ type: "toggle" })).toBe(false);
   });
 
+  it("writes that a question was said to the log, without any of its words", async () => {
+    const { narrator } = voiceNarrator();
+    void narrator.askByVoice(QUESTION);
+    await vi.advanceTimersByTimeAsync(0);
+    const written = fs.readFileSync(path.join(dir, "narrator-log.jsonl"), "utf8");
+    // Nothing the chat's request carried: not the question, a choice or the chat's name.
+    for (const words of ["Merge PR 65", "Merge it", "Not now", "Export fix"]) {
+      expect(written).not.toContain(words);
+    }
+    const said = "Export fix asks: Merge PR 65 now? Say Merge it, or Not now.";
+    const lines = written.trim().split(/\r?\n/);
+    expect(JSON.parse(lines[lines.length - 1])).toEqual({
+      at: expect.any(String),
+      kind: "question",
+      id: "q1",
+      result: "done",
+      chars: said.length,
+      language: "en",
+      latencyMs: null,
+    });
+    expect(narrator.getState().week).toMatchObject({ question: 1 });
+    narrator.stop();
+  });
+
   it("returns not_active at once, saying nothing, unless every switch is on", async () => {
     for (const off of [{ gaming: false }, { answerByVoice: false }, { enabled: false }]) {
       const { narrator, overlay } = voiceNarrator();
