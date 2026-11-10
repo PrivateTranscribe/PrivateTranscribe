@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { expect, test } from "./fixtures/electron-app";
+import { installAppRequire } from "./fixtures/app-drive";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -29,6 +30,10 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
  *      that moment arrives as Ctrl+<modifiers>+C and copies nothing — silently.
  *      Run 4 holds Ctrl across the capture and asserts both that the text still
  *      came back and that the worker actually spent time waiting for release.
+ *
+ * A second test presses Read Aloud twice. The second press lands while the
+ * first capture still waits for the trigger keys, the way a quick double press
+ * of a chord does, and the clipboard the user had must still be there after.
  *
  * The held modifier is produced by `windows-hold-key.exe`, a native SendInput
  * helper already in the repo. It cannot be done from PowerShell: keybd_event
@@ -62,6 +67,9 @@ const CLIPBOARD_MARKER = "pre-existing clipboard content";
 
 /** How long Ctrl stays down across the run-4 capture. */
 const MODIFIER_HOLD_MS = 600;
+
+/** The second press of a double press, well inside the hold above. */
+const SECOND_PRESS_AFTER_MS = 200;
 
 const HOLD_KEY_EXE = path.join(REPO_ROOT, "resources", "bin", "windows-hold-key.exe");
 
@@ -354,7 +362,66 @@ async function silenceReadAloud(electronApp: ElectronApplication): Promise<void>
   }, emptyHome);
 }
 
+type ClipboardKeeper = {
+  __ptE2eRequire: (file: string) => any;
+  __ptE2eLive: Record<string, any>;
+};
+
+/**
+ * This spec writes the real clipboard, so keep what the developer had on it
+ * and put it back when the test ends.
+ *
+ * The copy lives in the test app's memory and nowhere else: a clipboard can
+ * hold a password, so it is never printed or written to disk. It covers what
+ * the app's own snapshot covers, which is text, HTML, RTF and an image. Copied
+ * files and formats private to one program do not come back.
+ */
+async function keepDevelopersClipboard(electronApp: ElectronApplication): Promise<void> {
+  await installAppRequire(electronApp);
+  await electronApp.evaluate(({ clipboard }) => {
+    const g = globalThis as unknown as ClipboardKeeper;
+    const { snapshotClipboard } = g.__ptE2eRequire("src/helpers/clipboardSnapshot.js");
+    g.__ptE2eLive.developersClipboard = snapshotClipboard(clipboard);
+  });
+}
+
+async function restoreDevelopersClipboard(electronApp: ElectronApplication): Promise<void> {
+  await electronApp.evaluate(({ clipboard }) => {
+    const g = globalThis as unknown as ClipboardKeeper;
+    const kept = g.__ptE2eLive?.developersClipboard;
+    if (!kept) return;
+    const { restoreClipboard } = g.__ptE2eRequire("src/helpers/clipboardSnapshot.js");
+    // An empty clipboard is cleared, or the marker would stay on it.
+    restoreClipboard(clipboard, kept, { clearWhenEmpty: true });
+    g.__ptE2eLive.developersClipboard = null;
+  });
+}
+
+/**
+ * Record every readaloud-speak event the overlay receives. This is the same
+ * channel App.jsx's player listens on, so it proves the capture reached the
+ * renderer with the text intact.
+ */
+async function recordSpeakEvents(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as any).__seenSpeak = [];
+    (window as any).electronAPI.onReadAloudSpeak((_event: unknown, data: { text: string }) => {
+      (window as any).__seenSpeak.push(data?.text);
+    });
+  });
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 test.describe.configure({ mode: "serial" });
+
+test.beforeEach(async ({ electronApp }) => {
+  await keepDevelopersClipboard(electronApp);
+});
+
+test.afterEach(async ({ electronApp }) => {
+  await restoreDevelopersClipboard(electronApp);
+});
 
 /**
  * Drop any readaloud-speak events recorded so far, so each graded capture is
@@ -394,15 +461,7 @@ test.describe("read aloud selection capture", () => {
 
     await silenceReadAloud(electronApp);
 
-    // Record every readaloud-speak event the overlay receives. This is the same
-    // channel App.jsx's player listens on, so it proves the capture reached the
-    // renderer with the text intact.
-    await overlayWindow.evaluate(() => {
-      (window as any).__seenSpeak = [];
-      (window as any).electronAPI.onReadAloudSpeak((_event: unknown, data: { text: string }) => {
-        (window as any).__seenSpeak.push(data?.text);
-      });
-    });
+    await recordSpeakEvents(overlayWindow);
 
     const file = path.join(os.tmpdir(), `pt-selection-${Date.now()}.txt`);
     // No trailing newline: the assertion is literal equality with these bytes.
@@ -560,6 +619,133 @@ test.describe("read aloud selection capture", () => {
 
       // Single line so the ledger's numbers can be read straight from the runner.
       console.log(`SELECTION_WAITED_MS_HELD=${guarded.waitedMs}`);
+    } finally {
+      if (notepad) await closeNotepad(notepad.ourPids);
+      fs.rmSync(file, { force: true });
+    }
+  });
+
+  /**
+   * A second press of the shortcut can land while the first capture still
+   * waits for the trigger keys to be released. A second capture started then
+   * used to save the first one's sentinel as "the user's clipboard" and restore
+   * it last, so what the user had copied was gone.
+   *
+   * The presses go through the IPC the global shortcut shares, with Ctrl held
+   * down for real. The shortcut itself is not registered in a test run.
+   */
+  test("a second press during the first capture leaves the user's clipboard alone", async ({
+    electronApp,
+    overlayWindow,
+  }) => {
+    expect(
+      fs.existsSync(HOLD_KEY_EXE),
+      `missing ${HOLD_KEY_EXE}, run npm run compile:holdkey`
+    ).toBe(true);
+
+    await silenceReadAloud(electronApp);
+    await recordSpeakEvents(overlayWindow);
+
+    const file = path.join(os.tmpdir(), `pt-selection-${Date.now()}.txt`);
+    fs.writeFileSync(file, KNOWN_CONTENT, "utf8");
+
+    let notepad: { hostPid: number; ourPids: number[] } | null = null;
+
+    try {
+      notepad = await openNotepad(file);
+
+      const press = (): Promise<CaptureResult> =>
+        overlayWindow.evaluate(
+          async () => await (window as any).electronAPI.readAloudReadSelection()
+        ) as Promise<CaptureResult>;
+
+      type DoublePress = { first: CaptureResult; second: CaptureResult; clipboardAfter: string };
+      let outcome: DoublePress | null = null;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await prepareNotepad(notepad.hostPid, KNOWN_CONTENT);
+        await resetSpeakEvents(overlayWindow);
+
+        const holder = await holdControl();
+        let first: CaptureResult;
+        let second: CaptureResult;
+        try {
+          const firstPress = press();
+          firstPress.catch(() => {});
+          await pause(SECOND_PRESS_AFTER_MS);
+          const secondPress = press();
+          const both = Promise.all([firstPress, secondPress]);
+          both.catch(() => {});
+          await pause(MODIFIER_HOLD_MS - SECOND_PRESS_AFTER_MS);
+          await holder.release();
+          [first, second] = await both;
+        } finally {
+          await holder.release();
+        }
+
+        // Read once, and before anything else here writes the clipboard: the
+        // environment check below puts the marker back and would hide a loss.
+        const clipboardAfter = await getClipboard();
+        const result = { first, second, clipboardAfter };
+
+        if (first.source === "selection" && second.source === "selection") {
+          outcome = result;
+          break;
+        }
+        let desktopStillHealthy = true;
+        try {
+          await prepareNotepad(notepad.hostPid, KNOWN_CONTENT);
+        } catch {
+          desktopStillHealthy = false;
+        }
+        if (desktopStillHealthy) {
+          outcome = result;
+          break;
+        }
+        console.warn(
+          `[e2e] double press: the desktop lost the foreground during the capture ` +
+            `(attempt ${attempt}/3). Retrying, this run tested nothing.`
+        );
+      }
+
+      if (!outcome) {
+        throw new Error("double press: the desktop never stayed quiet long enough to run it.");
+      }
+      const { first, second, clipboardAfter } = outcome;
+
+      // The premise: the first capture was still waiting for Ctrl when the
+      // second press came.
+      expect(
+        first.waitedMs,
+        `first press reported no wait (detail: ${first.detail})`
+      ).not.toBeNull();
+      expect(first.waitedMs as number, "the second press came after the wait").toBeGreaterThan(
+        SECOND_PRESS_AFTER_MS
+      );
+
+      expect
+        .soft(clipboardAfter, "the clipboard the user had is gone after the double press")
+        .toBe(CLIPBOARD_MARKER);
+
+      // Both presses asked for the same selection and both get it, never the
+      // sentinel or the user's own clipboard.
+      expect.soft(first.source, `first press source (detail: ${first.detail})`).toBe("selection");
+      expect.soft(first.text, "first press text").toBe(KNOWN_CONTENT);
+      expect
+        .soft(second.source, `second press source (detail: ${second.detail})`)
+        .toBe("selection");
+      expect.soft(second.text, "second press text").toBe(KNOWN_CONTENT);
+
+      const seen = await waitForSpeakEvents(overlayWindow, 2);
+      expect(seen.length, "the overlay never got a text to read").toBeGreaterThan(0);
+      for (const text of seen) {
+        expect.soft(text, "text handed to the overlay to read").toBe(KNOWN_CONTENT);
+      }
+
+      console.log(
+        `DOUBLE_PRESS first=${first.waitedMs}ms second=${second.waitedMs}ms ` +
+          `clipboard_kept=${clipboardAfter === CLIPBOARD_MARKER} spoken=${seen.length}`
+      );
     } finally {
       if (notepad) await closeNotepad(notepad.ourPids);
       fs.rmSync(file, { force: true });
