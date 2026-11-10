@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localStorageMock } from "../../setup";
 
 vi.mock("../../../src/services/ReasoningService", () => ({
@@ -140,5 +140,56 @@ describe("AudioManager custom dictionary", () => {
     const manager = new AudioManager();
 
     expect(manager.applyDictionaryReplacements("pay with ca$$h")).toBe("pay with Ca$$h");
+  });
+});
+
+// Corrections the user confirmed are added to the dictionary prompt as hints.
+// Correction Memory is a beta: with it off, none of them may leave the PC.
+describe("AudioManager correction hints in the dictionary prompt", () => {
+  const CORRECTIONS = [
+    { source: "cube control", target: "kubectl", confirmed: true },
+    { source: "julsgaard", target: "Julsgaard", confirmed: true },
+    { source: "maybe", target: "Unconfirmed", confirmed: false },
+  ];
+
+  beforeEach(() => {
+    (globalThis as any).localStorage = localStorageMock;
+    Object.defineProperty(globalThis, "navigator", {
+      value: { mediaDevices: null },
+      writable: true,
+      configurable: true,
+    });
+    localStorageMock.clear();
+    localStorageMock.setItem("customDictionary", JSON.stringify(["Synty"]));
+    (globalThis as any).electronAPI = {
+      getCorrectionMemory: vi.fn().mockResolvedValue(CORRECTIONS),
+    };
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).electronAPI;
+  });
+
+  it("leaves earlier corrections out of the prompt once the beta is turned off", async () => {
+    let betaOn = true;
+    const manager = new AudioManager();
+    manager._checkBetaFeatureAccess = (featureId: string) =>
+      featureId === "correction-memory" && betaOn;
+
+    // A local dictation with the beta on reads the corrections and keeps them.
+    await manager.refreshCorrectionHints();
+    expect(manager.getCustomDictionaryPrompt()).toBe("Synty, kubectl, Julsgaard");
+
+    // The user turns the beta off. The cloud path builds its prompt from this
+    // call alone, so this is what a cloud provider is sent.
+    betaOn = false;
+    expect(manager.getCustomDictionaryPrompt()).toBe("Synty");
+  });
+
+  // A guard on the helper: the app never reads corrections without the check.
+  it("adds no corrections when nothing has said the beta is on", async () => {
+    const manager = new AudioManager();
+    await manager.refreshCorrectionHints();
+    expect(manager.getCustomDictionaryPrompt()).toBe("Synty");
   });
 });
