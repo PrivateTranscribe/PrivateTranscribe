@@ -336,6 +336,7 @@ class AudioManager {
     this._pooledStream = null;
     this._pooledStreamReleaseTimer = null;
     this._pooledStreamConstraintsKey = null;
+    this._pooledStreamStale = false;
     this.processingGeneration = 0;
     this.activeTranscriptionAbortController = null;
     this.activeTranscriptionGeneration = 0;
@@ -348,8 +349,7 @@ class AudioManager {
     if (typeof navigator !== "undefined" && navigator.mediaDevices) {
       this._warmDeviceCache();
       this._deviceChangeHandler = () => {
-        this._warmDeviceCache();
-        this._clearPooledStream();
+        this.handleDeviceChange();
       };
       navigator.mediaDevices.addEventListener("devicechange", this._deviceChangeHandler);
     }
@@ -378,6 +378,24 @@ class AudioManager {
           this.invalidateTranscriptionRuntimeCaches();
         }) || null;
     }
+  }
+
+  /**
+   * Windows reports a device change for any audio endpoint that comes or goes,
+   * output devices included: a headset connecting, a dock, a monitor waking.
+   * The warm stream is the one the recorder is reading, so stopping its tracks
+   * here cut the dictation off mid-sentence. Mark it stale instead and drop it
+   * when the recording ends, so the next dictation opens the microphone anew.
+   */
+  handleDeviceChange() {
+    this._warmDeviceCache();
+
+    if (this.isRecording || this.isStartingRecording || this.isStoppingRecording) {
+      this._pooledStreamStale = true;
+      return;
+    }
+
+    this._clearPooledStream();
   }
 
   handleSystemResumed() {
@@ -415,6 +433,7 @@ class AudioManager {
     if (
       this._pooledStream &&
       this._pooledStreamConstraintsKey === key &&
+      !this._pooledStreamStale &&
       this._pooledStream.getTracks().every((t) => t.readyState === "live" && !t.muted)
     ) {
       if (this._pooledStreamReleaseTimer) {
@@ -494,6 +513,10 @@ class AudioManager {
       clearTimeout(this._pooledStreamReleaseTimer);
       this._pooledStreamReleaseTimer = null;
     }
+    if (this._pooledStreamStale) {
+      this._clearPooledStream();
+      return;
+    }
     // Keep the mic device open between dictations so a repeat hotkey press reuses the warm
     // stream instead of paying the getUserMedia cold-start cost (the "slow after idle" lag).
     // User-configurable via the "Keep microphone ready" setting; 0 = keep warm indefinitely.
@@ -522,6 +545,7 @@ class AudioManager {
       this._pooledStream = null;
     }
     this._pooledStreamConstraintsKey = null;
+    this._pooledStreamStale = false;
   }
 
   getCustomDictionaryPrompt() {
@@ -1794,6 +1818,9 @@ class AudioManager {
       return false;
     }
 
+    // A cancel that arrived after this finalization was scheduled still wins.
+    const shouldDiscard = discard || this.discardCurrentRecording;
+
     const durationSeconds = this.getRecordingDurationSeconds();
     const wasLongSession = this.longSession.active;
     const audioBlob = wasLongSession
@@ -1817,7 +1844,7 @@ class AudioManager {
     }
     this.releaseMediaRecorder();
 
-    if (discard) {
+    if (shouldDiscard) {
       this.cancelLongSessionWork();
       this.resetLongSessionState();
       this.isProcessing = false;
@@ -2232,6 +2259,10 @@ class AudioManager {
     if (this.isStoppingRecording) {
       this.discardCurrentRecording = true;
       this.emitStateChange();
+      // The stop press left a watchdog that would transcribe the dictation if
+      // the recorder never reports its stop. Replace it with the cancel one, so
+      // a hung stop ends discarded and soon, not pasted 30 seconds later.
+      this.scheduleRecorderStopWatchdog({ discard: true, timeoutMs: 350 });
       return true;
     }
 
