@@ -708,7 +708,8 @@ class IPCHandlers {
         return this.databaseManager.getTranscriptions(safeLimit);
       } catch (err) {
         debugLogger.error("[IPC:db-get-transcriptions] error:", err.message);
-        return { success: true, data: [] };
+        // The list itself, as on success: the history store keeps what comes back.
+        return [];
       }
     });
 
