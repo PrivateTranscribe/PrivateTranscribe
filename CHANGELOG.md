@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- A new or corrected API key for AI cleanup is used by the very next dictation. Before, dictation could keep using the old key for up to an hour, so cleanup could keep failing without a message while the Test button worked.
+- A local AI model now becomes the active model when its download finishes, even if you have gone to another page, unless you chose another provider or model meanwhile. Before, it sat unused, and if it was your first local model, dictation was pasted without cleanup.
+- The control panel no longer stops at "Something went wrong" on every start when the history cannot be read from the database. It opens and shows an empty history.
 - With the Correction Memory beta turned off, cloud transcription no longer gets spelling hints taken from your confirmed corrections. Before, hints kept from an earlier local Whisper dictation could still be sent, until the next one or a restart. Words that a correction has added to your Dictionary are Dictionary words and are still sent.
 - Cancelling a dictation with Escape while it is being cleaned up now also stops the cleanup. Before, the next dictation could be pasted without AI cleanup while the cancelled cleanup kept running, for up to several minutes.
 - Changing the thread count or the GPU setting while a file is being transcribed no longer stops that transcription. The new setting takes effect on the first transcription after it. Before, the file failed with "socket hang up" and the part already transcribed was lost.
