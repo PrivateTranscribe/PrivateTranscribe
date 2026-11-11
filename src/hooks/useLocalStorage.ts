@@ -7,6 +7,21 @@ type LocalStorageChangeDetail = {
   value: string | null;
 };
 
+/**
+ * Save a value from outside a mounted hook and tell this window's hooks that
+ * read the same key. Code that outlives its component uses this: a state
+ * setter of an unmounted component saves nothing. Not for use during render:
+ * the hooks are told at once.
+ */
+export function writeLocalStorageValue(key: string, value: string) {
+  localStorage.setItem(key, value);
+  window.dispatchEvent(
+    new CustomEvent<LocalStorageChangeDetail>(LOCAL_STORAGE_CHANGE_EVENT, {
+      detail: { key, value },
+    })
+  );
+}
+
 export function useLocalStorage<T>(
   key: string,
   defaultValue: T,

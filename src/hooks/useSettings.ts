@@ -15,7 +15,6 @@ import { useBetaFeaturesEnabled } from "../utils/betaFeatures";
 import { useDebouncedCallback } from "./useDebouncedCallback";
 import { API_ENDPOINTS } from "../config/constants";
 import { isValidApiUrl } from "../helpers/urlValidation";
-import ReasoningService from "../services/ReasoningService";
 import type { LocalTranscriptionProvider, TranscriptionSettingsBroadcast } from "../types/electron";
 import { markEngineChosen, migrateRetiredParakeetSetting } from "../utils/parakeetEngineMigration";
 
@@ -659,14 +658,13 @@ export function useSettings() {
     ]
   );
 
-  // Wrapped setters that sync to Electron IPC and invalidate cache
+  // Wrapped setters that sync to Electron IPC
   const setOpenaiApiKey = useCallback(
     (key: string) => {
       setOpenaiApiKeyLocal(key);
       window.electronAPI?.saveOpenAIKey?.(key)?.catch((err: unknown) => {
         console.error("[useSettings] saveOpenAIKey IPC failed:", err);
       });
-      ReasoningService.clearApiKeyCache("openai");
       broadcastTranscriptionSettingsUpdate({ openaiApiKey: key });
       debouncedPersistToEnv();
     },
@@ -679,7 +677,6 @@ export function useSettings() {
       window.electronAPI?.saveAnthropicKey?.(key)?.catch((err: unknown) => {
         console.error("[useSettings] saveAnthropicKey IPC failed:", err);
       });
-      ReasoningService.clearApiKeyCache("anthropic");
       debouncedPersistToEnv();
     },
     [setAnthropicApiKeyLocal, debouncedPersistToEnv]
@@ -691,7 +688,6 @@ export function useSettings() {
       window.electronAPI?.saveGeminiKey?.(key)?.catch((err: unknown) => {
         console.error("[useSettings] saveGeminiKey IPC failed:", err);
       });
-      ReasoningService.clearApiKeyCache("gemini");
       debouncedPersistToEnv();
     },
     [setGeminiApiKeyLocal, debouncedPersistToEnv]
@@ -703,7 +699,6 @@ export function useSettings() {
       window.electronAPI?.saveGroqKey?.(key)?.catch((err: unknown) => {
         console.error("[useSettings] saveGroqKey IPC failed:", err);
       });
-      ReasoningService.clearApiKeyCache("groq");
       broadcastTranscriptionSettingsUpdate({ groqApiKey: key });
       debouncedPersistToEnv();
     },
@@ -728,7 +723,6 @@ export function useSettings() {
       window.electronAPI?.saveCustomReasoningKey?.(key)?.catch((err: unknown) => {
         console.error("[useSettings] saveCustomReasoningKey IPC failed:", err);
       });
-      ReasoningService.clearApiKeyCache("custom");
       debouncedPersistToEnv();
     },
     [setCustomReasoningApiKeyLocal, debouncedPersistToEnv]
