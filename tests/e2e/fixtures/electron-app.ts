@@ -249,6 +249,10 @@ export type RelaunchResult = {
   controlPanel: Page;
 };
 
+export type RelaunchOptions = {
+  whileClosed?: () => void | Promise<void>;
+};
+
 export type PrivateTranscribeFixtures = {
   /** Throwaway Electron userData dir — database, settings, and consent live here. */
   userDataDir: string;
@@ -265,8 +269,11 @@ export type PrivateTranscribeFixtures = {
    *
    * The returned windows replace the `overlayWindow` / `controlPanel` fixtures,
    * which point at the old, now-destroyed instance.
+   *
+   * `whileClosed` runs between the two, with no app process alive: the place to
+   * change a file in the profile the way a crash or a disk fault would.
    */
-  relaunchElectronApp: () => Promise<RelaunchResult>;
+  relaunchElectronApp: (options?: RelaunchOptions) => Promise<RelaunchResult>;
   /** The always-on-top dictation overlay (index.html, no query). */
   overlayWindow: Page;
   /** The settings/history window (index.html?panel=true). */
@@ -615,7 +622,7 @@ async function ensureOnboarded(
 /** Owns the app process across restarts, so teardown always sees the live one. */
 type AppController = {
   readonly app: ElectronApplication;
-  relaunch: () => Promise<RelaunchResult>;
+  relaunch: (options?: RelaunchOptions) => Promise<RelaunchResult>;
 };
 
 type InternalFixtures = {
@@ -800,12 +807,13 @@ export const test = base.extend<
       get app() {
         return app;
       },
-      async relaunch() {
+      async relaunch(options = {}) {
         // The old instance's trace is discarded: a restart spec's evidence is
         // what the new instance reports, and the failure capture below runs
         // against whichever instance is live when the test ends.
         await app.context().tracing.stop();
         await closeApp(app);
+        await options.whileClosed?.();
 
         app = await launchApp(inputs);
         const controlPanel = await ensureOnboarded(app, completeOnboarding, experimentalFeatures);
@@ -848,7 +856,7 @@ export const test = base.extend<
   },
 
   relaunchElectronApp: async ({ appController }, use) => {
-    await use(() => appController.relaunch());
+    await use((options) => appController.relaunch(options));
   },
 
   controlPanel: async ({ electronApp, completeOnboarding, experimentalFeatures }, use) => {
